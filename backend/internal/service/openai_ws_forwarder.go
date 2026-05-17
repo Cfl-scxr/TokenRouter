@@ -224,7 +224,9 @@ type OpenAIWSIngressHooks struct {
 	InitialRequestModel string
 	BeforeTurn          func(turn int) error
 	BeforeRequest       func(turn int, payload []byte, originalModel string) error
-	AfterTurn           func(turn int, result *OpenAIForwardResult, turnErr error)
+	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
+	OnUpstreamError func(turn int, statusCode int, responseBody []byte, message string)
+	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 
 func normalizeOpenAIWSLogValue(value string) string {
@@ -2964,6 +2966,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					)
 				}
 			}
+			if openAIWSEventMayCarryUpstreamWarning(eventType) && hooks != nil && hooks.OnUpstreamError != nil {
+				bodyCopy := append([]byte(nil), upstreamMessage...)
+				hooks.OnUpstreamError(turn, 0, bodyCopy, extractOpenAIWSUpstreamWarningMessage(upstreamMessage))
+			}
 			isTokenEvent := isOpenAIWSTokenEvent(eventType)
 			if isTokenEvent {
 				tokenEventCount++
@@ -3865,6 +3871,33 @@ func isOpenAIWSTerminalEvent(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func openAIWSEventMayCarryUpstreamWarning(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "error", "response.failed", "response.incomplete":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractOpenAIWSUpstreamWarningMessage(message []byte) string {
+	if len(message) == 0 {
+		return ""
+	}
+	paths := []string{
+		"error.message",
+		"response.error.message",
+		"response.status_details.error.message",
+		"response.incomplete_details.reason",
+	}
+	for _, path := range paths {
+		if value := strings.TrimSpace(gjson.GetBytes(message, path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func isOpenAIWSTokenEvent(eventType string) bool {

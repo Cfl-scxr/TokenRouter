@@ -120,6 +120,7 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			&relayState{},
 			nil,
 			nil,
+			nil,
 			drop,
 			nil,
 			nil,
@@ -147,6 +148,7 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			time.Now(),
 			time.Now,
 			&relayState{},
+			nil,
 			nil,
 			nil,
 			drop,
@@ -179,6 +181,7 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 			time.Now(),
 			time.Now,
 			&relayState{},
+			nil,
 			nil,
 			nil,
 			drop,
@@ -415,6 +418,7 @@ func TestObserveUpstreamMessage_ResponseIDFallbackPolicy(t *testing.T) {
 		startAt,
 		nowFn,
 		nil,
+		nil,
 	)
 	require.False(t, observed.terminal)
 	require.Equal(t, "", observed.responseID)
@@ -425,6 +429,7 @@ func TestObserveUpstreamMessage_ResponseIDFallbackPolicy(t *testing.T) {
 		[]byte(`{"type":"response.completed","id":"resp_fallback","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`),
 		startAt,
 		nowFn,
+		nil,
 		nil,
 	)
 	require.True(t, observed.terminal)

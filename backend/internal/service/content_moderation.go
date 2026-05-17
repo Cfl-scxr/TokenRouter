@@ -22,6 +22,7 @@ import (
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -388,6 +389,13 @@ type ContentModerationCyberWarning struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// ContentModerationCyberWarningPolicy 描述 cyber 警告落库后的窗口计数和封禁策略。
+type ContentModerationCyberWarningPolicy struct {
+	AutoBanEnabled bool
+	BanThreshold   int
+	WindowHours    int
+}
+
 // ContentModerationCyberWarningInput 是网关记录 cyber 警告时传入的上下文。
 type ContentModerationCyberWarningInput struct {
 	RequestID      string
@@ -501,9 +509,11 @@ type ContentModerationRepository interface {
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
 	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error)
 	CreateCyberWarning(ctx context.Context, warning *ContentModerationCyberWarning) error
+	CreateCyberWarningAndApplyUserBan(ctx context.Context, warning *ContentModerationCyberWarning, policy ContentModerationCyberWarningPolicy) (bool, error)
 	ListCyberWarnings(ctx context.Context, filter ContentModerationCyberWarningFilter) ([]ContentModerationCyberWarning, *pagination.PaginationResult, error)
 	CountCyberWarningsByUserSince(ctx context.Context, userID int64, since time.Time) (int, error)
 	GetCyberSummary(ctx context.Context, filter ContentModerationCyberWarningFilter) (*ContentModerationCyberSummary, error)
+	MarkCyberWarningEmailSent(ctx context.Context, id int64) error
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 }
 
@@ -1148,10 +1158,15 @@ func (s *ContentModerationService) RecordCyberWarning(ctx context.Context, input
 		warningText = bodyWarningText
 	}
 	warning := s.buildCyberWarning(input, warningText)
-	s.applyCyberWarningSideEffects(ctx, cfg, warning)
-	if err := s.repo.CreateCyberWarning(ctx, warning); err != nil {
+	autoBanJustApplied, err := s.repo.CreateCyberWarningAndApplyUserBan(ctx, warning, ContentModerationCyberWarningPolicy{
+		AutoBanEnabled: cfg.CyberAutoBanEnabled,
+		BanThreshold:   cfg.CyberBanThreshold,
+		WindowHours:    cfg.CyberWindowHours,
+	})
+	if err != nil {
 		return nil, err
 	}
+	s.applyCyberWarningPostCommitSideEffects(ctx, cfg, warning, autoBanJustApplied)
 	return warning, nil
 }
 
@@ -1599,43 +1614,24 @@ func (s *ContentModerationService) buildCyberWarning(input ContentModerationCybe
 	}
 }
 
-func (s *ContentModerationService) applyCyberWarningSideEffects(ctx context.Context, cfg *ContentModerationConfig, warning *ContentModerationCyberWarning) {
-	if s == nil || cfg == nil || warning == nil || warning.UserID == nil || *warning.UserID <= 0 {
+func (s *ContentModerationService) applyCyberWarningPostCommitSideEffects(ctx context.Context, cfg *ContentModerationConfig, warning *ContentModerationCyberWarning, autoBanJustApplied bool) {
+	if s == nil || cfg == nil || warning == nil || warning.UserID == nil || *warning.UserID <= 0 || !autoBanJustApplied {
 		return
 	}
-	count := 1
-	if s.repo != nil && cfg.CyberWindowHours > 0 {
-		since := time.Now().Add(-time.Duration(cfg.CyberWindowHours) * time.Hour)
-		if n, err := s.repo.CountCyberWarningsByUserSince(ctx, *warning.UserID, since); err == nil {
-			count = n + 1
-		}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *warning.UserID)
 	}
-	warning.ViolationCount = count
-	autoBanJustApplied := false
-	if cfg.CyberAutoBanEnabled && cfg.CyberBanThreshold > 0 && count >= cfg.CyberBanThreshold && s.userRepo != nil {
-		user, err := s.userRepo.GetByID(ctx, *warning.UserID)
-		if err != nil {
-			slog.Warn("content_moderation.cyber_ban_get_user_failed", "user_id", *warning.UserID, "error", err)
-			return
-		}
-		if user.Status != StatusDisabled {
-			user.Status = StatusDisabled
-			if err := s.userRepo.Update(ctx, user); err != nil {
-				slog.Warn("content_moderation.cyber_ban_update_user_failed", "user_id", *warning.UserID, "error", err)
-				return
-			}
-			if s.authCacheInvalidator != nil {
-				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *warning.UserID)
-			}
-			autoBanJustApplied = true
-		}
-		warning.AutoBanned = true
+	if s.emailService == nil || strings.TrimSpace(warning.UserEmail) == "" {
+		return
 	}
-	if autoBanJustApplied && s.emailService != nil && strings.TrimSpace(warning.UserEmail) != "" {
-		if err := s.sendCyberAccountDisabledEmail(ctx, cfg, warning); err != nil {
-			slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", *warning.UserID, "email", warning.UserEmail, "error", err)
-		} else {
-			warning.EmailSent = true
+	if err := s.sendCyberAccountDisabledEmail(ctx, cfg, warning); err != nil {
+		slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", *warning.UserID, "email", warning.UserEmail, "error", err)
+		return
+	}
+	warning.EmailSent = true
+	if s.repo != nil && warning.ID > 0 {
+		if err := s.repo.MarkCyberWarningEmailSent(ctx, warning.ID); err != nil {
+			slog.Warn("content_moderation.cyber_ban_email_mark_failed", "warning_id", warning.ID, "user_id", *warning.UserID, "error", err)
 		}
 	}
 }
@@ -2200,6 +2196,12 @@ func IsOpenAICyberWarningText(text string) bool {
 
 func extractCyberWarningText(body []byte) string {
 	text := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if text == "" {
+		text = strings.TrimSpace(gjson.GetBytes(body, "response.error.message").String())
+	}
+	if text == "" {
+		text = strings.TrimSpace(gjson.GetBytes(body, "response.status_details.error.message").String())
+	}
 	if text == "" {
 		text = strings.TrimSpace(string(body))
 	}

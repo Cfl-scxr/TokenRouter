@@ -733,6 +733,16 @@ func (r *contentModerationHandlerTestRepo) CreateCyberWarning(ctx context.Contex
 	return nil
 }
 
+func (r *contentModerationHandlerTestRepo) CreateCyberWarningAndApplyUserBan(ctx context.Context, warning *service.ContentModerationCyberWarning, policy service.ContentModerationCyberWarningPolicy) (bool, error) {
+	if warning != nil {
+		if warning.ViolationCount <= 0 {
+			warning.ViolationCount = 1
+		}
+		r.cyberWarnings = append(r.cyberWarnings, *warning)
+	}
+	return false, nil
+}
+
 func (r *contentModerationHandlerTestRepo) ListCyberWarnings(ctx context.Context, filter service.ContentModerationCyberWarningFilter) ([]service.ContentModerationCyberWarning, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
@@ -743,6 +753,10 @@ func (r *contentModerationHandlerTestRepo) CountCyberWarningsByUserSince(ctx con
 
 func (r *contentModerationHandlerTestRepo) GetCyberSummary(ctx context.Context, filter service.ContentModerationCyberWarningFilter) (*service.ContentModerationCyberSummary, error) {
 	return &service.ContentModerationCyberSummary{}, nil
+}
+
+func (r *contentModerationHandlerTestRepo) MarkCyberWarningEmailSent(ctx context.Context, id int64) error {
+	return nil
 }
 
 func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {
@@ -839,6 +853,56 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 	require.True(t, repo.logs[0].Flagged)
 	require.Equal(t, service.ContentModerationActionBlock, repo.logs[0].Action)
 	require.Equal(t, "bad prompt", repo.logs[0].InputExcerpt)
+}
+
+func TestOpenAIRecordCyberWarning_RecordsStructuredResponseBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := service.ContentModerationConfig{
+		CyberWarningEnabled: true,
+		CyberWindowHours:    720,
+	}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationHandlerTestRepo{}
+	settingRepo := &contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyRiskControlEnabled:      "true",
+		service.SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	moderationSvc := service.NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil)
+	h := &OpenAIGatewayHandler{contentModerationService: moderationSvc}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	apiKey := &service.APIKey{
+		ID:     101,
+		Name:   "test-key",
+		UserID: 1001,
+		User:   &service.User{ID: 1001, Email: "user@example.com"},
+	}
+	account := &service.Account{
+		ID:   2001,
+		Name: "openai-1",
+	}
+
+	h.recordOpenAICyberWarning(
+		c,
+		nil,
+		apiKey,
+		account,
+		"gpt-5.1",
+		400,
+		[]byte(`{"error":{"message":"This request may pose a cybersecurity risk."}}`),
+		"",
+	)
+
+	require.Len(t, repo.cyberWarnings, 1)
+	warning := repo.cyberWarnings[0]
+	require.Equal(t, "user@example.com", warning.UserEmail)
+	require.Equal(t, int64(2001), *warning.AccountID)
+	require.Equal(t, "/v1/responses", warning.Endpoint)
+	require.Contains(t, warning.WarningText, "cybersecurity risk")
 }
 
 func TestOpenAIResponsesWebSocket_PassthroughUsageLogPersistsUserAgentAndReasoningEffort(t *testing.T) {

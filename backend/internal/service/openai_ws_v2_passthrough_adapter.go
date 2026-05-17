@@ -471,6 +471,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(usageRaw, openAIWSLogValueMaxLen),
 				)
 			},
+			OnUpstreamError: func(payload []byte, message string) {
+				if hooks != nil && hooks.OnUpstreamError != nil {
+					turnNo := int(completedTurns.Load()) + 1
+					if turnNo < 1 {
+						turnNo = 1
+					}
+					hooks.OnUpstreamError(turnNo, 0, payload, message)
+				}
+			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
 				turnNo := int(completedTurns.Add(1))
 				turnResult := &OpenAIForwardResult{

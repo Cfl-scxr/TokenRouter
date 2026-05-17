@@ -744,6 +744,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, failoverErr.StatusCode, failoverErr.ResponseBody, err.Error())
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount {
@@ -780,6 +781,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					)
 					continue
 				}
+				statusCode := 0
+				if v, ok := getContextInt64(c, service.OpsUpstreamStatusCodeKey); ok {
+					statusCode = int(v)
+				}
+				h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, nil, err.Error())
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)
 				reqLog.Warn("openai_messages.forward_failed",
@@ -1343,6 +1349,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 			currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 			return nil
+		},
+		OnUpstreamError: func(turn int, statusCode int, responseBody []byte, warningText string) {
+			model := reqModel
+			h.recordOpenAICyberWarning(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText)
 		},
 		AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 			releaseTurnSlots()

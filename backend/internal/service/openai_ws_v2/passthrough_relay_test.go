@@ -453,6 +453,56 @@ func TestRelay_OnTurnComplete_PerTerminalEvent(t *testing.T) {
 	require.Equal(t, 5, result.Usage.OutputTokens)
 }
 
+func TestRelay_OnUpstreamError_ReportsErrorEvent(t *testing.T) {
+	t.Parallel()
+
+	errorEvent := []byte(`{"type":"error","error":{"message":"This request may pose a cybersecurity risk."}}`)
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{msgType: coderws.MessageText, payload: errorEvent},
+	}, true)
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var gotPayload []byte
+	var gotMessage string
+	_, _ = Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		OnUpstreamError: func(payload []byte, message string) {
+			gotPayload = append([]byte(nil), payload...)
+			gotMessage = message
+		},
+	})
+
+	require.JSONEq(t, string(errorEvent), string(gotPayload))
+	require.Contains(t, gotMessage, "cybersecurity risk")
+}
+
+func TestRelay_OnUpstreamError_ReportsFailedEvent(t *testing.T) {
+	t.Parallel()
+
+	failedEvent := []byte(`{"type":"response.failed","response":{"id":"resp_failed","error":{"message":"This request may pose a cybersecurity risk."}}}`)
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{msgType: coderws.MessageText, payload: failedEvent},
+	}, true)
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var gotPayload []byte
+	var gotMessage string
+	_, _ = Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		OnUpstreamError: func(payload []byte, message string) {
+			gotPayload = append([]byte(nil), payload...)
+			gotMessage = message
+		},
+	})
+
+	require.JSONEq(t, string(failedEvent), string(gotPayload))
+	require.Contains(t, gotMessage, "cybersecurity risk")
+}
+
 func TestRelay_OnTurnComplete_ProvidesTurnMetrics(t *testing.T) {
 	t.Parallel()
 

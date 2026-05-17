@@ -60,9 +60,11 @@ type RelayOptions struct {
 	UpstreamDrainTimeout time.Duration
 	FirstMessageType     coderws.MessageType
 	OnUsageParseFailure  func(eventType string, usageRaw string)
-	OnTurnComplete       func(turn RelayTurnResult)
-	OnTrace              func(event RelayTraceEvent)
-	Now                  func() time.Time
+	// OnUpstreamError 在上游返回 error/failed 类事件时回调，调用方可记录风控等非计费信号。
+	OnUpstreamError func(payload []byte, message string)
+	OnTurnComplete  func(turn RelayTurnResult)
+	OnTrace         func(event RelayTraceEvent)
+	Now             func() time.Time
 }
 
 type RelayTraceEvent struct {
@@ -200,6 +202,7 @@ func Relay(
 		nowFn,
 		state,
 		options.OnUsageParseFailure,
+		options.OnUpstreamError,
 		options.OnTurnComplete,
 		&dropDownstreamWrites,
 		upstreamToClientFrames,
@@ -366,6 +369,7 @@ func runUpstreamToClient(
 	nowFn func() time.Time,
 	state *relayState,
 	onUsageParseFailure func(eventType string, usageRaw string),
+	onUpstreamError func(payload []byte, message string),
 	onTurnComplete func(turn RelayTurnResult),
 	dropDownstreamWrites *atomic.Bool,
 	forwardedFrames *atomic.Int64,
@@ -397,7 +401,7 @@ func runUpstreamToClient(
 		observedEvent := observedUpstreamEvent{}
 		switch msgType {
 		case coderws.MessageText:
-			observedEvent = observeUpstreamMessage(state, payload, startAt, nowFn, onUsageParseFailure)
+			observedEvent = observeUpstreamMessage(state, payload, startAt, nowFn, onUsageParseFailure, onUpstreamError)
 		case coderws.MessageBinary:
 			// binary frame 直接透传，不进入 JSON 观测路径（避免无效解析开销）。
 		}
@@ -526,6 +530,7 @@ func observeUpstreamMessage(
 	startAt time.Time,
 	nowFn func() time.Time,
 	onUsageParseFailure func(eventType string, usageRaw string),
+	onUpstreamError func(payload []byte, message string),
 ) observedUpstreamEvent {
 	if state == nil || len(message) == 0 {
 		return observedUpstreamEvent{}
@@ -534,6 +539,10 @@ func observeUpstreamMessage(
 	eventType := strings.TrimSpace(values[0].String())
 	if eventType == "" {
 		return observedUpstreamEvent{}
+	}
+	if eventMayCarryUpstreamWarning(eventType) && onUpstreamError != nil {
+		bodyCopy := append([]byte(nil), message...)
+		onUpstreamError(bodyCopy, extractUpstreamWarningMessage(message))
 	}
 	responseID := strings.TrimSpace(values[1].String())
 	if responseID == "" {
@@ -750,6 +759,33 @@ func isTerminalEvent(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func eventMayCarryUpstreamWarning(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "error", "response.failed", "response.incomplete":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractUpstreamWarningMessage(message []byte) string {
+	if len(message) == 0 {
+		return ""
+	}
+	paths := []string{
+		"error.message",
+		"response.error.message",
+		"response.status_details.error.message",
+		"response.incomplete_details.reason",
+	}
+	for _, path := range paths {
+		if value := strings.TrimSpace(gjson.GetBytes(message, path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func shouldParseUsage(eventType string) bool {

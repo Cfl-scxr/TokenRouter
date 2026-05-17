@@ -41,9 +41,6 @@ func (h *OpenAIGatewayHandler) recordOpenAICyberWarning(c *gin.Context, reqLog *
 	if h == nil || h.contentModerationService == nil || c == nil {
 		return
 	}
-	if !service.IsOpenAICyberWarningText(warningText) && !service.IsOpenAICyberWarningText(string(responseBody)) {
-		return
-	}
 	input := buildOpenAICyberWarningInput(c, apiKey, account, model, statusCode, responseBody, warningText)
 	warning, err := h.contentModerationService.RecordCyberWarning(c.Request.Context(), input)
 	if err != nil {

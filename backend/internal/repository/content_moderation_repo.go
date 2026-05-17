@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +15,10 @@ import (
 
 type contentModerationRepository struct {
 	db *sql.DB
+}
+
+type sqlQueryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 func NewContentModerationRepository(db *sql.DB) service.ContentModerationRepository {
@@ -205,6 +210,44 @@ func (r *contentModerationRepository) CreateCyberWarning(ctx context.Context, wa
 	if warning == nil {
 		return nil
 	}
+	if warning.ViolationCount <= 0 {
+		warning.ViolationCount = 1
+	}
+	return insertContentModerationCyberWarning(ctx, r.db, warning)
+}
+
+func (r *contentModerationRepository) CreateCyberWarningAndApplyUserBan(ctx context.Context, warning *service.ContentModerationCyberWarning, policy service.ContentModerationCyberWarningPolicy) (bool, error) {
+	if warning == nil {
+		return false, nil
+	}
+	if warning.ViolationCount <= 0 {
+		warning.ViolationCount = 1
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin content moderation cyber warning tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	userStatus, userLocked, err := lockCyberWarningUserTx(ctx, tx, warning)
+	if err != nil {
+		return false, err
+	}
+	if err := insertContentModerationCyberWarning(ctx, tx, warning); err != nil {
+		return false, err
+	}
+
+	autoBanJustApplied, err := applyCyberWarningUserBanTx(ctx, tx, warning, policy, userStatus, userLocked)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit content moderation cyber warning tx: %w", err)
+	}
+	return autoBanJustApplied, nil
+}
+
+func insertContentModerationCyberWarning(ctx context.Context, q sqlQueryRower, warning *service.ContentModerationCyberWarning) error {
 	var userID any
 	if warning.UserID != nil {
 		userID = *warning.UserID
@@ -221,7 +264,7 @@ func (r *contentModerationRepository) CreateCyberWarning(ctx context.Context, wa
 	if warning.AccountID != nil {
 		accountID = *warning.AccountID
 	}
-	err := r.db.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 INSERT INTO content_moderation_cyber_warnings (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
     account_id, account_name, endpoint, model, upstream_status, warning_text,
@@ -239,6 +282,77 @@ INSERT INTO content_moderation_cyber_warnings (
 		return fmt.Errorf("insert content moderation cyber warning: %w", err)
 	}
 	return nil
+}
+
+func lockCyberWarningUserTx(ctx context.Context, tx *sql.Tx, warning *service.ContentModerationCyberWarning) (string, bool, error) {
+	if warning == nil || warning.UserID == nil || *warning.UserID <= 0 {
+		return "", false, nil
+	}
+	userID := *warning.UserID
+	userStatus := ""
+	// 先锁用户行再插入 warning，避免多个事务先持有外键检查锁再升级为 FOR UPDATE 造成死锁。
+	err := tx.QueryRowContext(ctx, `SELECT status FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&userStatus)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("lock cyber warning user: %w", err)
+	}
+	return userStatus, true, nil
+}
+
+func applyCyberWarningUserBanTx(ctx context.Context, tx *sql.Tx, warning *service.ContentModerationCyberWarning, policy service.ContentModerationCyberWarningPolicy, userStatus string, userLocked bool) (bool, error) {
+	if warning == nil || warning.UserID == nil || *warning.UserID <= 0 || !userLocked {
+		return false, nil
+	}
+	userID := *warning.UserID
+
+	count := 1
+	if policy.WindowHours > 0 {
+		since := time.Now().Add(-time.Duration(policy.WindowHours) * time.Hour)
+		err := tx.QueryRowContext(ctx, `
+WITH last_auto_ban AS (
+    SELECT MAX(created_at) AS at
+    FROM content_moderation_cyber_warnings
+    WHERE user_id = $1 AND auto_banned = TRUE AND id <> $3
+)
+SELECT COUNT(*)
+FROM content_moderation_cyber_warnings
+WHERE user_id = $1
+  AND created_at >= $2
+  AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
+`, userID, since, warning.ID).Scan(&count)
+		if err != nil {
+			return false, fmt.Errorf("count cyber warnings in tx: %w", err)
+		}
+	}
+
+	warning.ViolationCount = count
+	autoBanJustApplied := false
+	if policy.AutoBanEnabled && policy.BanThreshold > 0 && count >= policy.BanThreshold {
+		warning.AutoBanned = true
+		if userStatus != service.StatusDisabled {
+			result, err := tx.ExecContext(ctx, `
+UPDATE users
+SET status = $2, updated_at = NOW()
+WHERE id = $1 AND status <> $2
+`, userID, service.StatusDisabled)
+			if err != nil {
+				return false, fmt.Errorf("disable cyber warning user: %w", err)
+			}
+			if rows, err := result.RowsAffected(); err == nil && rows > 0 {
+				autoBanJustApplied = true
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE content_moderation_cyber_warnings
+SET violation_count = $2, auto_banned = $3
+WHERE id = $1
+`, warning.ID, warning.ViolationCount, warning.AutoBanned); err != nil {
+		return false, fmt.Errorf("update cyber warning policy fields: %w", err)
+	}
+	return autoBanJustApplied, nil
 }
 
 func (r *contentModerationRepository) ListCyberWarnings(ctx context.Context, filter service.ContentModerationCyberWarningFilter) ([]service.ContentModerationCyberWarning, *pagination.PaginationResult, error) {
@@ -350,6 +464,20 @@ WHERE user_id = $1
 		return 0, fmt.Errorf("count user content moderation cyber warnings: %w", err)
 	}
 	return count, nil
+}
+
+func (r *contentModerationRepository) MarkCyberWarningEmailSent(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return nil
+	}
+	if _, err := r.db.ExecContext(ctx, `
+UPDATE content_moderation_cyber_warnings
+SET email_sent = TRUE
+WHERE id = $1
+`, id); err != nil {
+		return fmt.Errorf("mark content moderation cyber warning email sent: %w", err)
+	}
+	return nil
 }
 
 func (r *contentModerationRepository) GetCyberSummary(ctx context.Context, filter service.ContentModerationCyberWarningFilter) (*service.ContentModerationCyberSummary, error) {
