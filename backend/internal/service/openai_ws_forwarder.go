@@ -95,6 +95,33 @@ func wrapOpenAIWSFallback(reason string, err error) error {
 	return &openAIWSFallbackError{Reason: strings.TrimSpace(reason), Err: err}
 }
 
+// openAIWSUpstreamWarningError 在 WS 错误路径中保留上游原始风控 warning。
+type openAIWSUpstreamWarningError struct {
+	warning *OpenAIUpstreamWarning
+	err     error
+}
+
+func (e *openAIWSUpstreamWarningError) Error() string {
+	if e == nil || e.err == nil {
+		return "openai ws upstream warning"
+	}
+	return e.err.Error()
+}
+
+func (e *openAIWSUpstreamWarningError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *openAIWSUpstreamWarningError) OpenAIUpstreamWarning() *OpenAIUpstreamWarning {
+	if e == nil {
+		return nil
+	}
+	return e.warning
+}
+
 // OpenAIWSClientCloseError 表示应以指定 WebSocket close code 主动关闭客户端连接的错误。
 type OpenAIWSClientCloseError struct {
 	statusCode coderws.StatusCode
@@ -2025,6 +2052,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	flushedBufferedEventCount := 0
 	firstEventType := ""
 	lastEventType := ""
+	var upstreamWarning *OpenAIUpstreamWarning
 
 	var flusher http.Flusher
 	if reqStream {
@@ -2190,6 +2218,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
+		if openAIWSEventMayCarryUpstreamWarning(eventType) {
+			upstreamWarning = &OpenAIUpstreamWarning{
+				ResponseBody: append([]byte(nil), message...),
+				Message:      extractOpenAIWSUpstreamWarningMessage(message),
+			}
+		}
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
@@ -2239,10 +2273,20 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 			// error 事件后连接不再可复用，避免回池后污染下一请求。
 			lease.MarkBroken()
+			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
+			if upstreamWarning != nil {
+				upstreamWarning.StatusCode = statusCode
+			}
 			if !wroteDownstream && canFallback {
+				if openAIUpstreamWarningIsCyber(upstreamWarning) {
+					// 可 fallback 的 error 事件也可能是 cyber 风控拒绝，必须保留原始 warning 防止重试覆盖。
+					return nil, wrapOpenAIWSFallback(fallbackReason, &openAIWSUpstreamWarningError{
+						warning: upstreamWarning,
+						err:     errors.New(errMsg),
+					})
+				}
 				return nil, wrapOpenAIWSFallback(fallbackReason, errors.New(errMsg))
 			}
-			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
 			setOpsUpstreamError(c, statusCode, errMsg, "")
 			if reqStream && !clientDisconnected {
 				flushBufferedStreamEvents("error_event")
@@ -2307,6 +2351,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				wroteDownstream,
 			)
 			if !wroteDownstream {
+				if upstreamWarning != nil {
+					// 非流式 terminal 事件可能只有顶层 error，没有 response 对象；错误回退时仍需保留原始风控信号。
+					return nil, wrapOpenAIWSFallback("missing_final_response", &openAIWSUpstreamWarningError{
+						warning: upstreamWarning,
+						err:     errors.New("no terminal response payload"),
+					})
+				}
 				return nil, wrapOpenAIWSFallback("missing_final_response", errors.New("no terminal response payload"))
 			}
 			return nil, errors.New("ws finished without final response")
@@ -2370,6 +2421,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ResponseHeaders: lease.HandshakeHeaders(),
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
+		UpstreamWarning: upstreamWarning,
 	}, nil
 }
 

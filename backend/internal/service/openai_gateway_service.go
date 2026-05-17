@@ -209,6 +209,53 @@ type OpenAIUsage struct {
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
+// OpenAIUpstreamWarning 表示上游返回的非计费风控警告事件。
+type OpenAIUpstreamWarning struct {
+	StatusCode   int
+	ResponseBody []byte
+	Message      string
+}
+
+// OpenAIUpstreamWarningCarrier 允许错误链携带可落库的上游风控 warning。
+type OpenAIUpstreamWarningCarrier interface {
+	OpenAIUpstreamWarning() *OpenAIUpstreamWarning
+}
+
+// ExtractOpenAIUpstreamWarning 从转发错误链中提取上游 cyber 风控警告。
+func ExtractOpenAIUpstreamWarning(err error) (*OpenAIUpstreamWarning, bool) {
+	if err == nil {
+		return nil, false
+	}
+	var carrier OpenAIUpstreamWarningCarrier
+	if !errors.As(err, &carrier) || carrier == nil {
+		return nil, false
+	}
+	warning := carrier.OpenAIUpstreamWarning()
+	if warning == nil {
+		return nil, false
+	}
+	return cloneOpenAIUpstreamWarning(warning), true
+}
+
+func cloneOpenAIUpstreamWarning(warning *OpenAIUpstreamWarning) *OpenAIUpstreamWarning {
+	if warning == nil {
+		return nil
+	}
+	cloned := *warning
+	if warning.ResponseBody != nil {
+		cloned.ResponseBody = append([]byte(nil), warning.ResponseBody...)
+	}
+	return &cloned
+}
+
+func openAIUpstreamWarningIsCyber(warning *OpenAIUpstreamWarning) bool {
+	if warning == nil {
+		return false
+	}
+	// 保持 WS 重试决策与 cyber 落库识别规则一致，避免重试覆盖可统计的上游风控拒绝。
+	return IsOpenAICyberWarningText(warning.Message) || IsOpenAICyberWarningText(string(warning.ResponseBody))
+}
+
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
 	RequestID  string
@@ -236,6 +283,8 @@ type OpenAIForwardResult struct {
 	FirstTokenMs    *int
 	ImageCount      int
 	ImageSize       string
+	// UpstreamWarning 仅在上游成功完成传输但 terminal 事件携带风控拒绝时填充。
+	UpstreamWarning *OpenAIUpstreamWarning
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -582,6 +631,11 @@ func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 	reason := strings.TrimSpace(fallbackErr.Reason)
 	if reason == "" {
 		return "", false
+	}
+
+	if warning, ok := ExtractOpenAIUpstreamWarning(err); ok && openAIUpstreamWarningIsCyber(warning) {
+		// 已收到上游 terminal 风控拒绝，重试只会覆盖原始拒绝原因。
+		return reason, false
 	}
 
 	baseReason := strings.TrimPrefix(reason, "prewarm_")

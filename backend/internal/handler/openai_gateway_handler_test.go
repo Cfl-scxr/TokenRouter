@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -903,6 +904,130 @@ func TestOpenAIRecordCyberWarning_RecordsStructuredResponseBody(t *testing.T) {
 	require.Equal(t, int64(2001), *warning.AccountID)
 	require.Equal(t, "/v1/responses", warning.Endpoint)
 	require.Contains(t, warning.WarningText, "cybersecurity risk")
+}
+
+func TestOpenAIRecordForwardResultCyberWarning_RecordsWSV2TerminalWarning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := service.ContentModerationConfig{
+		CyberWarningEnabled: true,
+		CyberWindowHours:    720,
+	}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationHandlerTestRepo{}
+	settingRepo := &contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyRiskControlEnabled:      "true",
+		service.SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	moderationSvc := service.NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil)
+	h := &OpenAIGatewayHandler{contentModerationService: moderationSvc}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	apiKey := &service.APIKey{
+		ID:     101,
+		Name:   "test-key",
+		UserID: 1001,
+		User:   &service.User{ID: 1001, Email: "user@example.com"},
+	}
+	account := &service.Account{
+		ID:   2001,
+		Name: "openai-1",
+	}
+	result := &service.OpenAIForwardResult{
+		Model: "gpt-5.1",
+		UpstreamWarning: &service.OpenAIUpstreamWarning{
+			ResponseBody: []byte(`{"type":"response.failed","response":{"error":{"message":"This request may pose a cybersecurity risk."}}}`),
+			Message:      "This request may pose a cybersecurity risk.",
+		},
+	}
+
+	h.recordOpenAIForwardResultCyberWarning(c, nil, apiKey, account, "fallback-model", result)
+
+	require.Len(t, repo.cyberWarnings, 1)
+	warning := repo.cyberWarnings[0]
+	require.Equal(t, "gpt-5.1", warning.Model)
+	require.Equal(t, "user@example.com", warning.UserEmail)
+	require.Equal(t, int64(2001), *warning.AccountID)
+	require.Contains(t, warning.WarningText, "cybersecurity risk")
+}
+
+type openAIHandlerTestWarningError struct {
+	warning *service.OpenAIUpstreamWarning
+	err     error
+}
+
+func (e *openAIHandlerTestWarningError) Error() string {
+	if e == nil || e.err == nil {
+		return "test warning error"
+	}
+	return e.err.Error()
+}
+
+func (e *openAIHandlerTestWarningError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *openAIHandlerTestWarningError) OpenAIUpstreamWarning() *service.OpenAIUpstreamWarning {
+	if e == nil {
+		return nil
+	}
+	return e.warning
+}
+
+func TestOpenAIRecordForwardErrorCyberWarning_RecordsWSV2TerminalWarning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := service.ContentModerationConfig{
+		CyberWarningEnabled: true,
+		CyberWindowHours:    720,
+	}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationHandlerTestRepo{}
+	settingRepo := &contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyRiskControlEnabled:      "true",
+		service.SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	moderationSvc := service.NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil)
+	h := &OpenAIGatewayHandler{contentModerationService: moderationSvc}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	apiKey := &service.APIKey{
+		ID:     101,
+		Name:   "test-key",
+		UserID: 1001,
+		User:   &service.User{ID: 1001, Email: "user@example.com"},
+	}
+	account := &service.Account{
+		ID:   2001,
+		Name: "openai-1",
+	}
+	err = fmt.Errorf("openai ws fallback: missing_final_response: %w", &openAIHandlerTestWarningError{
+		warning: &service.OpenAIUpstreamWarning{
+			ResponseBody: []byte(`{"type":"response.failed","error":{"type":"safety_error","message":"This request has been flagged for potentially high-risk cyber activity."}}`),
+			Message:      "This request has been flagged for potentially high-risk cyber activity.",
+		},
+		err: errors.New("no terminal response payload"),
+	})
+
+	recorded := h.recordOpenAIForwardErrorCyberWarning(c, nil, apiKey, account, "gpt-5.1", 502, err)
+
+	require.True(t, recorded)
+	require.Len(t, repo.cyberWarnings, 1)
+	warning := repo.cyberWarnings[0]
+	require.Equal(t, "gpt-5.1", warning.Model)
+	require.Equal(t, "user@example.com", warning.UserEmail)
+	require.Equal(t, int64(2001), *warning.AccountID)
+	require.Equal(t, 502, warning.UpstreamStatus)
+	require.Contains(t, warning.WarningText, "high-risk cyber")
 }
 
 func TestOpenAIResponsesWebSocket_PassthroughUsageLogPersistsUserAgentAndReasoningEffort(t *testing.T) {

@@ -60,6 +60,32 @@ func (h *OpenAIGatewayHandler) recordOpenAICyberWarning(c *gin.Context, reqLog *
 	}
 }
 
+// recordOpenAIForwardResultCyberWarning 记录成功转发结果中携带的上游 cyber 风控警告。
+func (h *OpenAIGatewayHandler) recordOpenAIForwardResultCyberWarning(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, account *service.Account, fallbackModel string, result *service.OpenAIForwardResult) {
+	if result == nil || result.UpstreamWarning == nil {
+		return
+	}
+	model := strings.TrimSpace(result.Model)
+	if model == "" {
+		model = strings.TrimSpace(fallbackModel)
+	}
+	warning := result.UpstreamWarning
+	h.recordOpenAICyberWarning(c, reqLog, apiKey, account, model, warning.StatusCode, warning.ResponseBody, warning.Message)
+}
+
+// recordOpenAIForwardErrorCyberWarning 记录错误链中携带的上游 cyber 风控警告。
+func (h *OpenAIGatewayHandler) recordOpenAIForwardErrorCyberWarning(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, account *service.Account, model string, statusCode int, err error) bool {
+	warning, ok := service.ExtractOpenAIUpstreamWarning(err)
+	if !ok || warning == nil {
+		return false
+	}
+	if warning.StatusCode > 0 {
+		statusCode = warning.StatusCode
+	}
+	h.recordOpenAICyberWarning(c, reqLog, apiKey, account, model, statusCode, warning.ResponseBody, warning.Message)
+	return true
+}
+
 func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string) service.ContentModerationCyberWarningInput {
 	input := service.ContentModerationCyberWarningInput{
 		RequestID:      contentModerationRequestID(c.Request.Context()),
