@@ -471,13 +471,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(usageRaw, openAIWSLogValueMaxLen),
 				)
 			},
-			OnUpstreamError: func(payload []byte, message string) {
-				if hooks != nil && hooks.OnUpstreamError != nil {
+			OnUpstreamEvent: func(eventType string, payload []byte) {
+				warning := buildOpenAIWSUpstreamWarning(eventType, payload)
+				if warning != nil && hooks != nil && hooks.OnUpstreamError != nil {
 					turnNo := int(completedTurns.Load()) + 1
 					if turnNo < 1 {
 						turnNo = 1
 					}
-					hooks.OnUpstreamError(turnNo, 0, payload, message)
+					hooks.OnUpstreamError(turnNo, warning.StatusCode, warning.ResponseBody, warning.Message)
 				}
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {

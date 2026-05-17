@@ -197,49 +197,10 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 }
 
 func (h *ContentModerationHandler) ListCyberWarnings(c *gin.Context) {
-	page, pageSize := response.ParsePagination(c)
-	filter := service.ContentModerationCyberWarningFilter{
-		Pagination: pagination.PaginationParams{
-			Page:      page,
-			PageSize:  pageSize,
-			SortOrder: pagination.SortOrderDesc,
-		},
-		Search: c.Query("search"),
-	}
-	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
-		userID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || userID <= 0 {
-			response.BadRequest(c, "Invalid user_id")
-			return
-		}
-		filter.UserID = &userID
-	}
-	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
-		accountID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || accountID <= 0 {
-			response.BadRequest(c, "Invalid account_id")
-			return
-		}
-		filter.AccountID = &accountID
-	}
-	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
-		t, _, err := parseContentModerationDate(raw)
-		if err != nil {
-			response.BadRequest(c, "Invalid from")
-			return
-		}
-		filter.From = &t
-	}
-	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
-		t, dateOnly, err := parseContentModerationDate(raw)
-		if err != nil {
-			response.BadRequest(c, "Invalid to")
-			return
-		}
-		if dateOnly {
-			t = t.Add(24*time.Hour - time.Nanosecond)
-		}
-		filter.To = &t
+	filter, errMsg, ok := parseCyberWarningFilter(c, true)
+	if !ok {
+		response.BadRequest(c, errMsg)
+		return
 	}
 	items, pageResult, err := h.service.ListCyberWarnings(c.Request.Context(), filter)
 	if err != nil {
@@ -250,43 +211,10 @@ func (h *ContentModerationHandler) ListCyberWarnings(c *gin.Context) {
 }
 
 func (h *ContentModerationHandler) GetCyberSummary(c *gin.Context) {
-	filter := service.ContentModerationCyberWarningFilter{
-		Search: c.Query("search"),
-	}
-	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
-		userID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || userID <= 0 {
-			response.BadRequest(c, "Invalid user_id")
-			return
-		}
-		filter.UserID = &userID
-	}
-	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
-		accountID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || accountID <= 0 {
-			response.BadRequest(c, "Invalid account_id")
-			return
-		}
-		filter.AccountID = &accountID
-	}
-	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
-		t, _, err := parseContentModerationDate(raw)
-		if err != nil {
-			response.BadRequest(c, "Invalid from")
-			return
-		}
-		filter.From = &t
-	}
-	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
-		t, dateOnly, err := parseContentModerationDate(raw)
-		if err != nil {
-			response.BadRequest(c, "Invalid to")
-			return
-		}
-		if dateOnly {
-			t = t.Add(24*time.Hour - time.Nanosecond)
-		}
-		filter.To = &t
+	filter, errMsg, ok := parseCyberWarningFilter(c, false)
+	if !ok {
+		response.BadRequest(c, errMsg)
+		return
 	}
 	summary, err := h.service.GetCyberSummary(c.Request.Context(), filter)
 	if err != nil {
@@ -294,6 +222,50 @@ func (h *ContentModerationHandler) GetCyberSummary(c *gin.Context) {
 		return
 	}
 	response.Success(c, summary)
+}
+
+func parseCyberWarningFilter(c *gin.Context, withPagination bool) (service.ContentModerationCyberWarningFilter, string, bool) {
+	filter := service.ContentModerationCyberWarningFilter{Search: c.Query("search")}
+	if withPagination {
+		page, pageSize := response.ParsePagination(c)
+		filter.Pagination = pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortOrder: pagination.SortOrderDesc,
+		}
+	}
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		userID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || userID <= 0 {
+			return filter, "Invalid user_id", false
+		}
+		filter.UserID = &userID
+	}
+	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
+		accountID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || accountID <= 0 {
+			return filter, "Invalid account_id", false
+		}
+		filter.AccountID = &accountID
+	}
+	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
+		t, _, err := parseContentModerationDate(raw)
+		if err != nil {
+			return filter, "Invalid from", false
+		}
+		filter.From = &t
+	}
+	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
+		t, dateOnly, err := parseContentModerationDate(raw)
+		if err != nil {
+			return filter, "Invalid to", false
+		}
+		if dateOnly {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		filter.To = &t
+	}
+	return filter, "", true
 }
 
 func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {

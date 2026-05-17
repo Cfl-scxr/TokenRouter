@@ -3303,7 +3303,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberErro
 	select {
 	case got := <-upstreamErrCh:
 		require.Equal(t, 1, got.turn)
-		require.Equal(t, 0, got.statusCode)
+		require.Equal(t, http.StatusBadRequest, got.statusCode)
 		require.JSONEq(t, string(errorEvent), string(got.body))
 		require.Contains(t, got.message, "cybersecurity risk")
 	case <-time.After(2 * time.Second):
@@ -3367,11 +3367,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberFail
 	}
 
 	serverErrCh := make(chan error, 1)
-	upstreamErrCh := make(chan string, 1)
+	upstreamErrCh := make(chan int, 1)
 	hooks := &OpenAIWSIngressHooks{
-		OnUpstreamError: func(_ int, _ int, responseBody []byte, message string) {
+		OnUpstreamError: func(_ int, statusCode int, responseBody []byte, message string) {
 			require.JSONEq(t, string(failedEvent), string(responseBody))
-			upstreamErrCh <- message
+			require.Contains(t, message, "cybersecurity risk")
+			upstreamErrCh <- statusCode
 		},
 	}
 	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3423,8 +3424,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberFail
 	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
 
 	select {
-	case message := <-upstreamErrCh:
-		require.Contains(t, message, "cybersecurity risk")
+	case statusCode := <-upstreamErrCh:
+		require.Equal(t, http.StatusBadGateway, statusCode)
 	case <-time.After(2 * time.Second):
 		t.Fatal("未收到上游 response.failed 事件回调")
 	}

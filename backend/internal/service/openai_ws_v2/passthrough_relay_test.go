@@ -465,17 +465,17 @@ func TestRelay_OnUpstreamError_ReportsErrorEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	var gotEventType string
 	var gotPayload []byte
-	var gotMessage string
 	_, _ = Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
-		OnUpstreamError: func(payload []byte, message string) {
+		OnUpstreamEvent: func(eventType string, payload []byte) {
+			gotEventType = eventType
 			gotPayload = append([]byte(nil), payload...)
-			gotMessage = message
 		},
 	})
 
+	require.Equal(t, "error", gotEventType)
 	require.JSONEq(t, string(errorEvent), string(gotPayload))
-	require.Contains(t, gotMessage, "cybersecurity risk")
 }
 
 func TestRelay_OnUpstreamError_ReportsFailedEvent(t *testing.T) {
@@ -490,17 +490,17 @@ func TestRelay_OnUpstreamError_ReportsFailedEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	var gotEventType string
 	var gotPayload []byte
-	var gotMessage string
 	_, _ = Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
-		OnUpstreamError: func(payload []byte, message string) {
+		OnUpstreamEvent: func(eventType string, payload []byte) {
+			gotEventType = eventType
 			gotPayload = append([]byte(nil), payload...)
-			gotMessage = message
 		},
 	})
 
+	require.Equal(t, "response.failed", gotEventType)
 	require.JSONEq(t, string(failedEvent), string(gotPayload))
-	require.Contains(t, gotMessage, "cybersecurity risk")
 }
 
 func TestRelay_OnTurnComplete_ProvidesTurnMetrics(t *testing.T) {

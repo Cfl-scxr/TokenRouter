@@ -2218,11 +2218,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
-		if openAIWSEventMayCarryUpstreamWarning(eventType) {
-			upstreamWarning = &OpenAIUpstreamWarning{
-				ResponseBody: append([]byte(nil), message...),
-				Message:      extractOpenAIWSUpstreamWarningMessage(message),
-			}
+		if warning := buildOpenAIWSUpstreamWarning(eventType, message); warning != nil {
+			upstreamWarning = warning
 		}
 
 		if eventType == "error" {
@@ -3018,9 +3015,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					)
 				}
 			}
-			if openAIWSEventMayCarryUpstreamWarning(eventType) && hooks != nil && hooks.OnUpstreamError != nil {
-				bodyCopy := append([]byte(nil), upstreamMessage...)
-				hooks.OnUpstreamError(turn, 0, bodyCopy, extractOpenAIWSUpstreamWarningMessage(upstreamMessage))
+			if warning := buildOpenAIWSUpstreamWarning(eventType, upstreamMessage); warning != nil && hooks != nil && hooks.OnUpstreamError != nil {
+				hooks.OnUpstreamError(turn, warning.StatusCode, warning.ResponseBody, warning.Message)
 			}
 			isTokenEvent := isOpenAIWSTokenEvent(eventType)
 			if isTokenEvent {
@@ -3931,6 +3927,21 @@ func openAIWSEventMayCarryUpstreamWarning(eventType string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func buildOpenAIWSUpstreamWarning(eventType string, message []byte) *OpenAIUpstreamWarning {
+	if !openAIWSEventMayCarryUpstreamWarning(eventType) || len(message) == 0 {
+		return nil
+	}
+	statusCode := http.StatusBadGateway
+	if strings.TrimSpace(eventType) == "error" {
+		statusCode = openAIWSErrorHTTPStatus(message)
+	}
+	return &OpenAIUpstreamWarning{
+		StatusCode:   statusCode,
+		ResponseBody: append([]byte(nil), message...),
+		Message:      extractOpenAIWSUpstreamWarningMessage(message),
 	}
 }
 
