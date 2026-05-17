@@ -37,6 +37,66 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
+func (h *OpenAIGatewayHandler) recordOpenAICyberWarning(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string) {
+	if h == nil || h.contentModerationService == nil || c == nil {
+		return
+	}
+	if !service.IsOpenAICyberWarningText(warningText) && !service.IsOpenAICyberWarningText(string(responseBody)) {
+		return
+	}
+	input := buildOpenAICyberWarningInput(c, apiKey, account, model, statusCode, responseBody, warningText)
+	warning, err := h.contentModerationService.RecordCyberWarning(c.Request.Context(), input)
+	if err != nil {
+		if reqLog != nil {
+			reqLog.Warn("content_moderation.cyber_warning_record_failed", zap.Error(err))
+		}
+		return
+	}
+	if warning != nil && reqLog != nil {
+		reqLog.Info("content_moderation.cyber_warning_recorded",
+			zap.Int64("warning_id", warning.ID),
+			zap.Int64p("user_id", warning.UserID),
+			zap.Int64p("account_id", warning.AccountID),
+			zap.Int("violation_count", warning.ViolationCount),
+			zap.Bool("auto_banned", warning.AutoBanned),
+		)
+	}
+}
+
+func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string) service.ContentModerationCyberWarningInput {
+	input := service.ContentModerationCyberWarningInput{
+		RequestID:      contentModerationRequestID(c.Request.Context()),
+		Endpoint:       GetInboundEndpoint(c),
+		Model:          strings.TrimSpace(model),
+		UpstreamStatus: statusCode,
+		ResponseBody:   responseBody,
+		WarningText:    strings.TrimSpace(warningText),
+	}
+	if apiKey != nil {
+		input.APIKeyID = apiKey.ID
+		input.APIKeyName = apiKey.Name
+		input.UserID = apiKey.UserID
+		if apiKey.User != nil {
+			input.UserEmail = apiKey.User.Email
+		}
+		if apiKey.GroupID != nil {
+			groupID := *apiKey.GroupID
+			input.GroupID = &groupID
+		}
+		if apiKey.Group != nil {
+			input.GroupName = apiKey.Group.Name
+		}
+	}
+	if account != nil {
+		input.AccountID = account.ID
+		input.AccountName = account.Name
+	}
+	if input.Endpoint == "" && c.Request != nil && c.Request.URL != nil {
+		input.Endpoint = c.Request.URL.Path
+	}
+	return input
+}
+
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil

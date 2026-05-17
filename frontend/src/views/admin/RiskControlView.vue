@@ -139,23 +139,54 @@
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.records') }}</h2>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.recordsHint') }}</p>
               </div>
-              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="logsLoading" @click="loadLogs">
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="logsLoading" @click="loadRecords">
                 <Icon name="refresh" size="sm" :class="logsLoading ? 'animate-spin' : ''" />
                 {{ t('admin.riskControl.refresh') }}
               </button>
             </div>
 
+            <div class="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+              <button
+                v-for="tab in recordTabs"
+                :key="tab.id"
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+                :class="activeRecordTab === tab.id ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-800 dark:text-white' : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                @click="switchRecordTab(tab.id)"
+              >
+                {{ tab.label }}
+              </button>
+            </div>
+
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-              <Select v-model="filters.result" :options="resultOptions" @change="reloadLogsFromFirstPage" />
-              <Select v-model="filters.group_id" :options="groupFilterOptions" @change="reloadLogsFromFirstPage" />
-              <Select v-model="filters.endpoint" :options="endpointOptions" @change="reloadLogsFromFirstPage" />
+              <Select v-if="activeRecordTab === 'moderation'" v-model="filters.result" :options="resultOptions" @change="reloadLogsFromFirstPage" />
+              <Select v-if="activeRecordTab === 'moderation'" v-model="filters.group_id" :options="groupFilterOptions" @change="reloadLogsFromFirstPage" />
+              <Select v-if="activeRecordTab === 'moderation'" v-model="filters.endpoint" :options="endpointOptions" @change="reloadLogsFromFirstPage" />
               <input v-model.trim="filters.search" type="search" class="input" :placeholder="t('admin.riskControl.filters.search')" @keyup.enter="reloadLogsFromFirstPage" />
               <input v-model="filters.from" type="datetime-local" class="input" :title="t('admin.riskControl.filters.from')" @change="reloadLogsFromFirstPage" />
               <input v-model="filters.to" type="datetime-local" class="input" :title="t('admin.riskControl.filters.to')" @change="reloadLogsFromFirstPage" />
             </div>
+            <div v-if="activeRecordTab === 'cyber'" class="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/30">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberEvents') }}</p>
+                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(cyberSummary?.events ?? 0) }}</p>
+              </div>
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/30">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberRequests') }}</p>
+                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(cyberSummary?.requests ?? 0) }}</p>
+              </div>
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/30">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberUsers') }}</p>
+                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(cyberSummary?.users ?? 0) }}</p>
+              </div>
+              <div class="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/30">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberAccounts') }}</p>
+                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(cyberSummary?.accounts ?? 0) }}</p>
+              </div>
+            </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <div v-if="activeRecordTab === 'moderation'" class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
               <thead class="bg-gray-50 dark:bg-dark-800">
                 <tr>
@@ -231,6 +262,78 @@
                         @click="openInputDetail(row)"
                       >
                         <span class="min-w-0 flex-1 truncate">{{ inputSummaryText(row) }}</span>
+                        <Icon name="eye" size="xs" class="flex-shrink-0 text-gray-300 transition-colors group-hover:text-primary-500 dark:text-gray-500" />
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.time') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.user') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.apiKey') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberAccount') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.endpoint') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberStatus') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.actionMeta') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberWarning') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-800">
+                <tr v-if="logsLoading">
+                  <td colspan="8" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</td>
+                </tr>
+                <tr v-else-if="cyberWarnings.length === 0">
+                  <td colspan="8" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.emptyCyberWarnings') }}</td>
+                </tr>
+                <template v-else>
+                  <tr v-for="row in cyberWarnings" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/60">
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.user_email || '-' }}</div>
+                      <div v-if="row.user_id" class="text-xs text-gray-400">UID {{ row.user_id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ row.api_key_name || '-' }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.account_name || '-' }}</div>
+                      <div v-if="row.account_id" class="text-xs text-gray-400">AID {{ row.account_id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.endpoint || '-' }}</div>
+                      <div class="text-xs text-gray-400">openai / {{ row.model || '-' }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">HTTP {{ row.upstream_status || '-' }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ t('admin.riskControl.violationCount', { count: row.violation_count || 1 }) }}</div>
+                      <div class="text-xs text-gray-400">
+                        {{ row.email_sent ? t('admin.riskControl.emailSent') : t('admin.riskControl.emailNotSent') }}
+                        <span v-if="row.auto_banned"> / {{ t('admin.riskControl.autoBanned') }}</span>
+                      </div>
+                      <button
+                        v-if="canUnbanCyberRow(row)"
+                        type="button"
+                        class="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                        :disabled="unbanningUserID === row.user_id"
+                        @click="unbanCyberUser(row)"
+                      >
+                        <Icon name="checkCircle" size="xs" :class="unbanningUserID === row.user_id ? 'animate-spin' : ''" />
+                        {{ unbanningUserID === row.user_id ? t('common.processing') : t('admin.riskControl.unbanUser') }}
+                      </button>
+                    </td>
+                    <td class="w-[360px] max-w-sm px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <button
+                        type="button"
+                        class="group flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+                        :title="cyberSummaryText(row)"
+                        @click="openCyberDetail(row)"
+                      >
+                        <span class="min-w-0 flex-1 truncate">{{ cyberSummaryText(row) }}</span>
                         <Icon name="eye" size="xs" class="flex-shrink-0 text-gray-300 transition-colors group-hover:text-primary-500 dark:text-gray-500" />
                       </button>
                     </td>
@@ -726,6 +829,36 @@
                 <input v-model.number="configForm.violation_window_hours" type="number" min="1" max="8760" class="input" />
               </div>
             </div>
+            <div class="rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+              <div class="mb-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberSettings') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberSettingsHint') }}</p>
+              </div>
+              <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberWarningEnabled') }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberWarningEnabledHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.cyber_warning_enabled" />
+                </div>
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberAutoBan') }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberAutoBanHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.cyber_auto_ban_enabled" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.cyberBanThreshold') }}</label>
+                  <input v-model.number="configForm.cyber_ban_threshold" type="number" min="1" max="1000" class="input" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.cyberViolationWindowHours') }}</label>
+                  <input v-model.number="configForm.cyber_violation_window_hours" type="number" min="1" max="8760" class="input" />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div v-else class="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -810,6 +943,55 @@
           </div>
         </template>
       </BaseDialog>
+
+      <BaseDialog
+        :show="cyberDetailRow !== null"
+        :title="t('admin.riskControl.cyberDetailTitle')"
+        width="wide"
+        @close="closeCyberDetail"
+      >
+        <div v-if="cyberDetailRow" class="space-y-5">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.time') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ formatDateTime(cyberDetailRow.created_at) }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.user') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ cyberDetailRow.user_email || '-' }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberAccount') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ cyberDetailRow.account_name || '-' }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberStatus') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">HTTP {{ cyberDetailRow.upstream_status || '-' }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberWarning') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ cyberDetailRow.endpoint || '-' }} · openai / {{ cyberDetailRow.model || '-' }}
+                </p>
+              </div>
+              <span v-if="cyberDetailRow.group_name" class="inline-flex rounded-md bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                {{ cyberDetailRow.group_name }}
+              </span>
+            </div>
+            <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ cyberDetailText }}</pre>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end">
+            <button type="button" class="btn btn-secondary" @click="closeCyberDetail">{{ t('common.close') }}</button>
+          </div>
+        </template>
+      </BaseDialog>
     </div>
   </AppLayout>
 </template>
@@ -827,6 +1009,8 @@ import { adminAPI } from '@/api/admin'
 import type {
   ContentModerationAPIKeyStatus,
   ContentModerationConfig,
+  ContentModerationCyberWarning,
+  CyberSummary,
   ContentModerationLog,
   ContentModerationRuntimeStatus,
   ContentModerationTestAuditResult,
@@ -839,6 +1023,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention'
+type RecordTab = 'moderation' | 'cyber'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
@@ -875,10 +1060,13 @@ const hashActionLoading = ref(false)
 const unbanningUserID = ref<number | null>(null)
 const settingsOpen = ref(false)
 const activeSettingsTab = ref<SettingsTab>('basic')
+const activeRecordTab = ref<RecordTab>('moderation')
 const groupSearch = ref('')
 const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
 const logs = ref<ContentModerationLog[]>([])
+const cyberWarnings = ref<ContentModerationCyberWarning[]>([])
+const cyberSummary = ref<CyberSummary | null>(null)
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
@@ -887,6 +1075,7 @@ const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
+const cyberDetailRow = ref<ContentModerationCyberWarning | null>(null)
 let statusTimer: number | null = null
 
 const configForm = reactive({
@@ -916,6 +1105,10 @@ const configForm = reactive({
   auto_ban_enabled: true,
   ban_threshold: 10,
   violation_window_hours: 720,
+  cyber_warning_enabled: true,
+  cyber_auto_ban_enabled: false,
+  cyber_ban_threshold: 10,
+  cyber_violation_window_hours: 720,
   hit_retention_days: 180,
   non_hit_retention_days: 3,
   pre_hash_check_enabled: false,
@@ -967,6 +1160,11 @@ const endpointOptions = computed<SelectOption[]>(() => [
   { value: '/v1beta/models', label: '/v1beta/models' },
   { value: '/v1/images/generations', label: '/v1/images/generations' },
   { value: '/v1/images/edits', label: '/v1/images/edits' },
+])
+
+const recordTabs = computed<Array<{ id: RecordTab; label: string }>>(() => [
+  { id: 'moderation', label: t('admin.riskControl.recordTabs.moderation') },
+  { id: 'cyber', label: t('admin.riskControl.recordTabs.cyber') },
 ])
 
 const groupFilterOptions = computed<SelectOption[]>(() => [
@@ -1100,8 +1298,14 @@ const overviewItems = computed<OverviewItem[]>(() => [
   {
     key: 'logs',
     label: t('admin.riskControl.overview.logs'),
-    value: formatNumber(pagination.total),
-    meta: t('admin.riskControl.overview.currentFilter'),
+    value: formatNumber(activeRecordTab.value === 'cyber' ? (cyberSummary.value?.events ?? pagination.total) : pagination.total),
+    meta: activeRecordTab.value === 'cyber'
+      ? t('admin.riskControl.cyberSummaryMeta', {
+        requests: formatNumber(cyberSummary.value?.requests ?? 0),
+        users: formatNumber(cyberSummary.value?.users ?? 0),
+        accounts: formatNumber(cyberSummary.value?.accounts ?? 0),
+      })
+      : t('admin.riskControl.overview.currentFilter'),
     icon: 'document',
     iconClass: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300',
   },
@@ -1126,6 +1330,11 @@ const moderationScoreRows = computed<ModerationScoreRow[]>(() => {
 const inputDetailText = computed(() => {
   if (!inputDetailRow.value) return '-'
   return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
+})
+
+const cyberDetailText = computed(() => {
+  if (!cyberDetailRow.value) return '-'
+  return cyberDetailRow.value.warning_text || '-'
 })
 
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
@@ -1192,6 +1401,10 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
   configForm.ban_threshold = config.ban_threshold || 10
   configForm.violation_window_hours = config.violation_window_hours || 720
+  configForm.cyber_warning_enabled = config.cyber_warning_enabled ?? true
+  configForm.cyber_auto_ban_enabled = config.cyber_auto_ban_enabled ?? false
+  configForm.cyber_ban_threshold = config.cyber_ban_threshold || 10
+  configForm.cyber_violation_window_hours = config.cyber_violation_window_hours || 720
   configForm.hit_retention_days = config.hit_retention_days || 180
   configForm.non_hit_retention_days = Math.min(Math.max(config.non_hit_retention_days || 3, 1), 3)
   configForm.pre_hash_check_enabled = config.pre_hash_check_enabled ?? false
@@ -1212,7 +1425,7 @@ async function loadAll() {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
       prunePendingDeleteAPIKeyHashes()
     }
-    await loadLogs()
+    await loadRecords()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.loadFailed')))
   } finally {
@@ -1261,6 +1474,10 @@ async function saveConfig() {
       auto_ban_enabled: configForm.auto_ban_enabled,
       ban_threshold: Number(configForm.ban_threshold) || 10,
       violation_window_hours: Number(configForm.violation_window_hours) || 720,
+      cyber_warning_enabled: configForm.cyber_warning_enabled,
+      cyber_auto_ban_enabled: configForm.cyber_auto_ban_enabled,
+      cyber_ban_threshold: Number(configForm.cyber_ban_threshold) || 10,
+      cyber_violation_window_hours: Number(configForm.cyber_violation_window_hours) || 720,
       hit_retention_days: Number(configForm.hit_retention_days) || 180,
       non_hit_retention_days: Math.min(Math.max(Number(configForm.non_hit_retention_days) || 3, 1), 3),
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
@@ -1283,7 +1500,7 @@ async function saveConfig() {
     applyConfig(updated)
     settingsOpen.value = false
     appStore.showSuccess(t('admin.riskControl.saved'))
-    await Promise.all([loadStatus(true), loadLogs()])
+    await Promise.all([loadStatus(true), loadRecords()])
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.saveFailed')))
   } finally {
@@ -1317,7 +1534,46 @@ async function loadLogs() {
   }
 }
 
+async function loadCyberWarnings() {
+  logsLoading.value = true
+  try {
+    const params = {
+      page: pagination.page,
+      page_size: pagination.page_size,
+      search: filters.search || undefined,
+      from: normalizeDateTimeLocal(filters.from),
+      to: normalizeDateTimeLocal(filters.to),
+    }
+    const [result, summary] = await Promise.all([
+      adminAPI.riskControl.listCyberWarnings(params),
+      adminAPI.riskControl.getCyberSummary(params),
+    ])
+    cyberWarnings.value = result.items
+    cyberSummary.value = summary
+    pagination.total = result.total
+    pagination.page = result.page
+    pagination.page_size = result.page_size
+    pagination.pages = result.pages
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.cyberFailed')))
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+async function loadRecords() {
+  if (activeRecordTab.value === 'cyber') {
+    await loadCyberWarnings()
+    return
+  }
+  await loadLogs()
+}
+
 function canUnbanRow(row: ContentModerationLog): boolean {
+  return Boolean(row.auto_banned && row.user_id && row.user_status === 'disabled')
+}
+
+function canUnbanCyberRow(row: ContentModerationCyberWarning): boolean {
   return Boolean(row.auto_banned && row.user_id && row.user_status === 'disabled')
 }
 
@@ -1333,12 +1589,41 @@ function closeInputDetail() {
   inputDetailRow.value = null
 }
 
+function cyberSummaryText(row: ContentModerationCyberWarning): string {
+  return row.warning_text || '-'
+}
+
+function openCyberDetail(row: ContentModerationCyberWarning) {
+  cyberDetailRow.value = row
+}
+
+function closeCyberDetail() {
+  cyberDetailRow.value = null
+}
+
 async function unbanUser(row: ContentModerationLog) {
   if (!row.user_id || unbanningUserID.value !== null) return
   unbanningUserID.value = row.user_id
   try {
     const result = await adminAPI.riskControl.unbanUser(row.user_id)
     logs.value = logs.value.map((item) => {
+      if (item.user_id !== row.user_id) return item
+      return { ...item, user_status: result.status }
+    })
+    appStore.showSuccess(t('admin.riskControl.unbanSuccess'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.unbanFailed')))
+  } finally {
+    unbanningUserID.value = null
+  }
+}
+
+async function unbanCyberUser(row: ContentModerationCyberWarning) {
+  if (!row.user_id || unbanningUserID.value !== null) return
+  unbanningUserID.value = row.user_id
+  try {
+    const result = await adminAPI.riskControl.unbanUser(row.user_id)
+    cyberWarnings.value = cyberWarnings.value.map((item) => {
       if (item.user_id !== row.user_id) return item
       return { ...item, user_status: result.status }
     })
@@ -1388,18 +1673,25 @@ function openSettings() {
 
 function reloadLogsFromFirstPage() {
   pagination.page = 1
-  void loadLogs()
+  void loadRecords()
 }
 
 function onPageChange(page: number) {
   pagination.page = page
-  void loadLogs()
+  void loadRecords()
 }
 
 function onPageSizeChange(pageSize: number) {
   pagination.page = 1
   pagination.page_size = pageSize
-  void loadLogs()
+  void loadRecords()
+}
+
+function switchRecordTab(tab: RecordTab) {
+  if (activeRecordTab.value === tab) return
+  activeRecordTab.value = tab
+  pagination.page = 1
+  void loadRecords()
 }
 
 function toggleClearApiKey() {

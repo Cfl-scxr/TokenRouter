@@ -707,7 +707,8 @@ func (r *contentModerationHandlerSettingRepo) Delete(ctx context.Context, key st
 }
 
 type contentModerationHandlerTestRepo struct {
-	logs []service.ContentModerationLog
+	logs          []service.ContentModerationLog
+	cyberWarnings []service.ContentModerationCyberWarning
 }
 
 func (r *contentModerationHandlerTestRepo) CreateLog(ctx context.Context, log *service.ContentModerationLog) error {
@@ -723,6 +724,25 @@ func (r *contentModerationHandlerTestRepo) ListLogs(ctx context.Context, filter 
 
 func (r *contentModerationHandlerTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
 	return 0, nil
+}
+
+func (r *contentModerationHandlerTestRepo) CreateCyberWarning(ctx context.Context, warning *service.ContentModerationCyberWarning) error {
+	if warning != nil {
+		r.cyberWarnings = append(r.cyberWarnings, *warning)
+	}
+	return nil
+}
+
+func (r *contentModerationHandlerTestRepo) ListCyberWarnings(ctx context.Context, filter service.ContentModerationCyberWarningFilter) ([]service.ContentModerationCyberWarning, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+}
+
+func (r *contentModerationHandlerTestRepo) CountCyberWarningsByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
+	return 0, nil
+}
+
+func (r *contentModerationHandlerTestRepo) GetCyberSummary(ctx context.Context, filter service.ContentModerationCyberWarningFilter) (*service.ContentModerationCyberSummary, error) {
+	return &service.ContentModerationCyberSummary{}, nil
 }
 
 func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {

@@ -201,6 +201,239 @@ WHERE user_id = $1
 	return count, nil
 }
 
+func (r *contentModerationRepository) CreateCyberWarning(ctx context.Context, warning *service.ContentModerationCyberWarning) error {
+	if warning == nil {
+		return nil
+	}
+	var userID any
+	if warning.UserID != nil {
+		userID = *warning.UserID
+	}
+	var apiKeyID any
+	if warning.APIKeyID != nil {
+		apiKeyID = *warning.APIKeyID
+	}
+	var groupID any
+	if warning.GroupID != nil {
+		groupID = *warning.GroupID
+	}
+	var accountID any
+	if warning.AccountID != nil {
+		accountID = *warning.AccountID
+	}
+	err := r.db.QueryRowContext(ctx, `
+INSERT INTO content_moderation_cyber_warnings (
+    request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
+    account_id, account_name, endpoint, model, upstream_status, warning_text,
+    violation_count, auto_banned, email_sent
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7,
+    $8, $9, $10, $11, $12, $13,
+    $14, $15, $16
+) RETURNING id, created_at`,
+		warning.RequestID, userID, warning.UserEmail, apiKeyID, warning.APIKeyName, groupID, warning.GroupName,
+		accountID, warning.AccountName, warning.Endpoint, warning.Model, warning.UpstreamStatus, warning.WarningText,
+		warning.ViolationCount, warning.AutoBanned, warning.EmailSent,
+	).Scan(&warning.ID, &warning.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert content moderation cyber warning: %w", err)
+	}
+	return nil
+}
+
+func (r *contentModerationRepository) ListCyberWarnings(ctx context.Context, filter service.ContentModerationCyberWarningFilter) ([]service.ContentModerationCyberWarning, *pagination.PaginationResult, error) {
+	where, args := buildContentModerationCyberWhere(filter)
+	whereSQL := "WHERE " + strings.Join(where, " AND ")
+
+	var total int64
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM content_moderation_cyber_warnings w "+whereSQL, args...).Scan(&total); err != nil {
+		return nil, nil, fmt.Errorf("count content moderation cyber warnings: %w", err)
+	}
+
+	params := filter.Pagination
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	if params.PageSize <= 0 {
+		params.PageSize = 20
+	}
+	if params.PageSize > 100 {
+		params.PageSize = 100
+	}
+	queryArgs := append([]any{}, args...)
+	queryArgs = append(queryArgs, params.Limit(), params.Offset())
+	rows, err := r.db.QueryContext(ctx, `
+SELECT
+    w.id, w.request_id, w.user_id, w.user_email, w.api_key_id, w.api_key_name, w.group_id, w.group_name,
+    w.account_id, w.account_name, w.endpoint, w.model, w.upstream_status, w.warning_text,
+    w.violation_count, w.auto_banned, w.email_sent, COALESCE(u.status, ''), w.created_at
+FROM content_moderation_cyber_warnings w
+LEFT JOIN users u ON u.id = w.user_id `+whereSQL+`
+ORDER BY w.created_at DESC, w.id DESC
+LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
+		queryArgs...,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list content moderation cyber warnings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := make([]service.ContentModerationCyberWarning, 0)
+	for rows.Next() {
+		var item service.ContentModerationCyberWarning
+		var userID, apiKeyID, groupID, accountID sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.RequestID,
+			&userID,
+			&item.UserEmail,
+			&apiKeyID,
+			&item.APIKeyName,
+			&groupID,
+			&item.GroupName,
+			&accountID,
+			&item.AccountName,
+			&item.Endpoint,
+			&item.Model,
+			&item.UpstreamStatus,
+			&item.WarningText,
+			&item.ViolationCount,
+			&item.AutoBanned,
+			&item.EmailSent,
+			&item.UserStatus,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, nil, fmt.Errorf("scan content moderation cyber warning: %w", err)
+		}
+		if userID.Valid {
+			v := userID.Int64
+			item.UserID = &v
+		}
+		if apiKeyID.Valid {
+			v := apiKeyID.Int64
+			item.APIKeyID = &v
+		}
+		if groupID.Valid {
+			v := groupID.Int64
+			item.GroupID = &v
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			item.AccountID = &v
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate content moderation cyber warnings: %w", err)
+	}
+	return items, paginationResultFromTotal(total, params), nil
+}
+
+func (r *contentModerationRepository) CountCyberWarningsByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
+	if userID <= 0 {
+		return 0, nil
+	}
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+WITH last_auto_ban AS (
+    SELECT MAX(created_at) AS at
+    FROM content_moderation_cyber_warnings
+    WHERE user_id = $1 AND auto_banned = TRUE
+)
+SELECT COUNT(*)
+FROM content_moderation_cyber_warnings
+WHERE user_id = $1
+  AND created_at >= $2
+  AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
+`, userID, since).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count user content moderation cyber warnings: %w", err)
+	}
+	return count, nil
+}
+
+func (r *contentModerationRepository) GetCyberSummary(ctx context.Context, filter service.ContentModerationCyberWarningFilter) (*service.ContentModerationCyberSummary, error) {
+	where, args := buildContentModerationCyberWhere(filter)
+	whereSQL := "WHERE " + strings.Join(where, " AND ")
+	result := &service.ContentModerationCyberSummary{}
+	if err := r.db.QueryRowContext(ctx, `
+SELECT
+    COUNT(*),
+    COUNT(DISTINCT NULLIF(request_id, '')),
+    COUNT(DISTINCT user_id),
+    COUNT(DISTINCT account_id)
+FROM content_moderation_cyber_warnings w `+whereSQL, args...).Scan(
+		&result.Events,
+		&result.Requests,
+		&result.Users,
+		&result.Accounts,
+	); err != nil {
+		return nil, fmt.Errorf("summary content moderation cyber warnings: %w", err)
+	}
+	userRows, err := r.db.QueryContext(ctx, `
+SELECT
+    COUNT(*) AS count,
+    w.user_id,
+    COALESCE(NULLIF(MAX(w.user_email), ''), '无法关联用户') AS user_email,
+    COALESCE(string_agg(DISTINCT CASE WHEN w.api_key_id IS NOT NULL THEN w.api_key_id::text || ' / ' || COALESCE(NULLIF(w.api_key_name, ''), '未命名') END, ', '), '-') AS api_keys,
+    to_char(MAX(w.created_at AT TIME ZONE 'Asia/Shanghai'), 'YYYY-MM-DD HH24:MI:SS') AS last_seen
+FROM content_moderation_cyber_warnings w `+whereSQL+`
+GROUP BY w.user_id
+ORDER BY count DESC, last_seen DESC
+LIMIT 100`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("summary content moderation cyber warnings by user: %w", err)
+	}
+	defer func() { _ = userRows.Close() }()
+	for userRows.Next() {
+		var item service.ContentModerationCyberUserSummary
+		var userID sql.NullInt64
+		if err := userRows.Scan(&item.Count, &userID, &item.UserEmail, &item.APIKeys, &item.LastSeen); err != nil {
+			return nil, fmt.Errorf("scan content moderation cyber user summary: %w", err)
+		}
+		if userID.Valid {
+			v := userID.Int64
+			item.UserID = &v
+		}
+		result.ByUser = append(result.ByUser, item)
+	}
+	if err := userRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate content moderation cyber user summary: %w", err)
+	}
+
+	accountRows, err := r.db.QueryContext(ctx, `
+SELECT
+    COUNT(*) AS count,
+    w.account_id,
+    COALESCE(NULLIF(MAX(w.account_name), ''), 'unknown') AS account_name,
+    COUNT(DISTINCT w.user_id) AS users,
+    to_char(MAX(w.created_at AT TIME ZONE 'Asia/Shanghai'), 'YYYY-MM-DD HH24:MI:SS') AS last_seen
+FROM content_moderation_cyber_warnings w `+whereSQL+`
+GROUP BY w.account_id
+ORDER BY count DESC, last_seen DESC
+LIMIT 100`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("summary content moderation cyber warnings by account: %w", err)
+	}
+	defer func() { _ = accountRows.Close() }()
+	for accountRows.Next() {
+		var item service.ContentModerationCyberAccountSummary
+		var accountID sql.NullInt64
+		if err := accountRows.Scan(&item.Count, &accountID, &item.AccountName, &item.Users, &item.LastSeen); err != nil {
+			return nil, fmt.Errorf("scan content moderation cyber account summary: %w", err)
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			item.AccountID = &v
+		}
+		result.ByAccount = append(result.ByAccount, item)
+	}
+	if err := accountRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate content moderation cyber account summary: %w", err)
+	}
+	return result, nil
+}
+
 func (r *contentModerationRepository) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {
 	result := &service.ContentModerationCleanupResult{FinishedAt: time.Now()}
 	if r == nil || r.db == nil {
@@ -269,6 +502,34 @@ func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) (
 	}
 	if filter.To != nil && !filter.To.IsZero() {
 		add("l.created_at <= $%d", *filter.To)
+	}
+	return where, args
+}
+
+func buildContentModerationCyberWhere(filter service.ContentModerationCyberWarningFilter) ([]string, []any) {
+	where := []string{"w.id IS NOT NULL"}
+	args := make([]any, 0)
+	add := func(expr string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(expr, len(args)))
+	}
+	if filter.UserID != nil {
+		add("w.user_id = $%d", *filter.UserID)
+	}
+	if filter.AccountID != nil {
+		add("w.account_id = $%d", *filter.AccountID)
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		like := "%" + search + "%"
+		args = append(args, like, like, like, like, like, like)
+		idx := len(args) - 5
+		where = append(where, fmt.Sprintf("(w.request_id ILIKE $%d OR w.user_email ILIKE $%d OR w.api_key_name ILIKE $%d OR w.account_name ILIKE $%d OR w.model ILIKE $%d OR w.warning_text ILIKE $%d)", idx, idx+1, idx+2, idx+3, idx+4, idx+5))
+	}
+	if filter.From != nil && !filter.From.IsZero() {
+		add("w.created_at >= $%d", *filter.From)
+	}
+	if filter.To != nil && !filter.To.IsZero() {
+		add("w.created_at <= $%d", *filter.To)
 	}
 	return where, args
 }

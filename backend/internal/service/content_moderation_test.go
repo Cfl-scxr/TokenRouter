@@ -73,7 +73,8 @@ func (r *contentModerationTestSettingRepo) Delete(ctx context.Context, key strin
 }
 
 type contentModerationTestRepo struct {
-	logs []ContentModerationLog
+	logs          []ContentModerationLog
+	cyberWarnings []ContentModerationCyberWarning
 }
 
 func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentModerationLog) error {
@@ -89,6 +90,31 @@ func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter Content
 
 func (r *contentModerationTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
 	return 0, nil
+}
+
+func (r *contentModerationTestRepo) CreateCyberWarning(ctx context.Context, warning *ContentModerationCyberWarning) error {
+	if warning != nil {
+		r.cyberWarnings = append(r.cyberWarnings, *warning)
+	}
+	return nil
+}
+
+func (r *contentModerationTestRepo) ListCyberWarnings(ctx context.Context, filter ContentModerationCyberWarningFilter) ([]ContentModerationCyberWarning, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+}
+
+func (r *contentModerationTestRepo) CountCyberWarningsByUserSince(ctx context.Context, userID int64, since time.Time) (int, error) {
+	count := 0
+	for _, warning := range r.cyberWarnings {
+		if warning.UserID != nil && *warning.UserID == userID && warning.CreatedAt.After(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (r *contentModerationTestRepo) GetCyberSummary(ctx context.Context, filter ContentModerationCyberWarningFilter) (*ContentModerationCyberSummary, error) {
+	return &ContentModerationCyberSummary{}, nil
 }
 
 func (r *contentModerationTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error) {
@@ -1035,6 +1061,90 @@ func TestContentModerationUnbanUser_ActiveUserOnlyInvalidatesAuthCache(t *testin
 	require.Equal(t, StatusActive, result.Status)
 	require.Empty(t, userRepo.updated)
 	require.Equal(t, []int64{1001}, invalidator.userIDs)
+}
+
+func TestIsOpenAICyberWarningText(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "cybersecurity risk", text: "This request may pose a cybersecurity risk", want: true},
+		{name: "cyber and risk separated", text: "Cyber content was rejected because of risk controls", want: true},
+		{name: "cyber link", text: "See https://chatgpt.com/cyber for details", want: true},
+		{name: "usage policy", text: "Your request violates our usage policy", want: true},
+		{name: "flagged", text: "The request was flagged by safety systems", want: true},
+		{name: "normal error", text: "upstream service unavailable", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, IsOpenAICyberWarningText(tc.text))
+		})
+	}
+}
+
+func TestContentModerationRecordCyberWarning_DefaultRecordsWithoutBan(t *testing.T) {
+	userID := int64(1001)
+	rawCfg, _ := json.Marshal(defaultContentModerationConfig())
+	settingRepo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	repo := &contentModerationTestRepo{}
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Email: "user@example.com", Status: StatusActive}}
+	invalidator := &contentModerationTestAuthCacheInvalidator{}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, userRepo, invalidator, nil)
+
+	warning, err := svc.RecordCyberWarning(context.Background(), ContentModerationCyberWarningInput{
+		RequestID:      "req_1",
+		UserID:         userID,
+		UserEmail:      "user@example.com",
+		AccountID:      2001,
+		AccountName:    "openai-1",
+		UpstreamStatus: 400,
+		ResponseBody:   []byte(`{"error":{"message":"This request may pose a cybersecurity risk."}}`),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, warning)
+	require.Len(t, repo.cyberWarnings, 1)
+	require.Equal(t, 1, repo.cyberWarnings[0].ViolationCount)
+	require.False(t, repo.cyberWarnings[0].AutoBanned)
+	require.Empty(t, userRepo.updated)
+	require.Empty(t, invalidator.userIDs)
+}
+
+func TestContentModerationRecordCyberWarning_BansWhenCyberThresholdReached(t *testing.T) {
+	userID := int64(1001)
+	cfg := defaultContentModerationConfig()
+	cfg.CyberAutoBanEnabled = true
+	cfg.CyberBanThreshold = 1
+	rawCfg, _ := json.Marshal(cfg)
+	settingRepo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	repo := &contentModerationTestRepo{}
+	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Email: "user@example.com", Status: StatusActive}}
+	invalidator := &contentModerationTestAuthCacheInvalidator{}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, userRepo, invalidator, nil)
+
+	warning, err := svc.RecordCyberWarning(context.Background(), ContentModerationCyberWarningInput{
+		RequestID:      "req_1",
+		UserID:         userID,
+		UserEmail:      "user@example.com",
+		AccountID:      2001,
+		AccountName:    "openai-1",
+		UpstreamStatus: 400,
+		WarningText:    "flagged by OpenAI cyber policy",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, warning)
+	require.True(t, warning.AutoBanned)
+	require.Len(t, userRepo.updated, 1)
+	require.Equal(t, StatusDisabled, userRepo.updated[0].Status)
+	require.Equal(t, []int64{userID}, invalidator.userIDs)
 }
 
 func contentModerationIntPtr(v int) *int {

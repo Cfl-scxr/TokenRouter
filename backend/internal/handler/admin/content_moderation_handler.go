@@ -46,6 +46,10 @@ type contentModerationConfigRequest struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	CyberWarningEnabled  *bool     `json:"cyber_warning_enabled"`
+	CyberAutoBanEnabled  *bool     `json:"cyber_auto_ban_enabled"`
+	CyberBanThreshold    *int      `json:"cyber_ban_threshold"`
+	CyberWindowHours     *int      `json:"cyber_violation_window_hours"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -103,6 +107,10 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		HitRetentionDays:     req.HitRetentionDays,
 		NonHitRetentionDays:  req.NonHitRetentionDays,
 		PreHashCheckEnabled:  req.PreHashCheckEnabled,
+		CyberWarningEnabled:  req.CyberWarningEnabled,
+		CyberAutoBanEnabled:  req.CyberAutoBanEnabled,
+		CyberBanThreshold:    req.CyberBanThreshold,
+		CyberWindowHours:     req.CyberWindowHours,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -186,6 +194,106 @@ func (h *ContentModerationHandler) ListLogs(c *gin.Context) {
 		return
 	}
 	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
+func (h *ContentModerationHandler) ListCyberWarnings(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	filter := service.ContentModerationCyberWarningFilter{
+		Pagination: pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortOrder: pagination.SortOrderDesc,
+		},
+		Search: c.Query("search"),
+	}
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		userID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || userID <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &userID
+	}
+	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
+		accountID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || accountID <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return
+		}
+		filter.AccountID = &accountID
+	}
+	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
+		t, _, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid from")
+			return
+		}
+		filter.From = &t
+	}
+	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
+		t, dateOnly, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid to")
+			return
+		}
+		if dateOnly {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		filter.To = &t
+	}
+	items, pageResult, err := h.service.ListCyberWarnings(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, pageResult.Total, pageResult.Page, pageResult.PageSize)
+}
+
+func (h *ContentModerationHandler) GetCyberSummary(c *gin.Context) {
+	filter := service.ContentModerationCyberWarningFilter{
+		Search: c.Query("search"),
+	}
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		userID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || userID <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		filter.UserID = &userID
+	}
+	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
+		accountID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || accountID <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return
+		}
+		filter.AccountID = &accountID
+	}
+	if raw := strings.TrimSpace(c.Query("from")); raw != "" {
+		t, _, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid from")
+			return
+		}
+		filter.From = &t
+	}
+	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
+		t, dateOnly, err := parseContentModerationDate(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid to")
+			return
+		}
+		if dateOnly {
+			t = t.Add(24*time.Hour - time.Nanosecond)
+		}
+		filter.To = &t
+	}
+	summary, err := h.service.GetCyberSummary(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, summary)
 }
 
 func (h *ContentModerationHandler) UnbanUser(c *gin.Context) {

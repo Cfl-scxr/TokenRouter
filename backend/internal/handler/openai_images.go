@@ -217,6 +217,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, parsed.Model, failoverErr.StatusCode, failoverErr.ResponseBody, err.Error())
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
@@ -252,6 +253,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					)
 					continue
 				}
+				statusCode := 0
+				if v, ok := getContextInt64(c, service.OpsUpstreamStatusCodeKey); ok {
+					statusCode = int(v)
+				}
+				h.recordOpenAICyberWarning(c, reqLog, apiKey, account, parsed.Model, statusCode, nil, err.Error())
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				fields := []zap.Field{

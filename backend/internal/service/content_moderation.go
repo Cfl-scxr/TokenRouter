@@ -62,6 +62,8 @@ const (
 	maxContentModerationRetryCount               = 5
 	defaultContentModerationHitRetentionDays     = 180
 	defaultContentModerationNonHitRetentionDays  = 3
+	defaultContentModerationCyberBanThreshold    = 10
+	defaultContentModerationCyberWindowHours     = 720
 	maxContentModerationRetentionDays            = 3650
 	maxContentModerationNonHitRetentionDays      = 3
 	contentModerationKeyRateLimitFreezeDuration  = time.Minute
@@ -142,6 +144,10 @@ type ContentModerationConfig struct {
 	HitRetentionDays     int                `json:"hit_retention_days"`
 	NonHitRetentionDays  int                `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool               `json:"pre_hash_check_enabled"`
+	CyberWarningEnabled  bool               `json:"cyber_warning_enabled"`
+	CyberAutoBanEnabled  bool               `json:"cyber_auto_ban_enabled"`
+	CyberBanThreshold    int                `json:"cyber_ban_threshold"`
+	CyberWindowHours     int                `json:"cyber_violation_window_hours"`
 }
 
 type ContentModerationConfigView struct {
@@ -171,6 +177,10 @@ type ContentModerationConfigView struct {
 	HitRetentionDays     int                             `json:"hit_retention_days"`
 	NonHitRetentionDays  int                             `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool                            `json:"pre_hash_check_enabled"`
+	CyberWarningEnabled  bool                            `json:"cyber_warning_enabled"`
+	CyberAutoBanEnabled  bool                            `json:"cyber_auto_ban_enabled"`
+	CyberBanThreshold    int                             `json:"cyber_ban_threshold"`
+	CyberWindowHours     int                             `json:"cyber_violation_window_hours"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -240,6 +250,10 @@ type UpdateContentModerationConfigInput struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	CyberWarningEnabled  *bool     `json:"cyber_warning_enabled"`
+	CyberAutoBanEnabled  *bool     `json:"cyber_auto_ban_enabled"`
+	CyberBanThreshold    *int      `json:"cyber_ban_threshold"`
+	CyberWindowHours     *int      `json:"cyber_violation_window_hours"`
 }
 
 type ContentModerationCheckInput struct {
@@ -351,6 +365,47 @@ type ContentModerationLog struct {
 	CreatedAt         time.Time          `json:"created_at"`
 }
 
+// ContentModerationCyberWarning 表示一次 OpenAI 上游 cyber 风控拒绝事件。
+type ContentModerationCyberWarning struct {
+	ID             int64     `json:"id"`
+	RequestID      string    `json:"request_id"`
+	UserID         *int64    `json:"user_id,omitempty"`
+	UserEmail      string    `json:"user_email"`
+	APIKeyID       *int64    `json:"api_key_id,omitempty"`
+	APIKeyName     string    `json:"api_key_name"`
+	GroupID        *int64    `json:"group_id,omitempty"`
+	GroupName      string    `json:"group_name"`
+	AccountID      *int64    `json:"account_id,omitempty"`
+	AccountName    string    `json:"account_name"`
+	Endpoint       string    `json:"endpoint"`
+	Model          string    `json:"model"`
+	UpstreamStatus int       `json:"upstream_status"`
+	WarningText    string    `json:"warning_text"`
+	ViolationCount int       `json:"violation_count"`
+	AutoBanned     bool      `json:"auto_banned"`
+	EmailSent      bool      `json:"email_sent"`
+	UserStatus     string    `json:"user_status"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// ContentModerationCyberWarningInput 是网关记录 cyber 警告时传入的上下文。
+type ContentModerationCyberWarningInput struct {
+	RequestID      string
+	UserID         int64
+	UserEmail      string
+	APIKeyID       int64
+	APIKeyName     string
+	GroupID        *int64
+	GroupName      string
+	AccountID      int64
+	AccountName    string
+	Endpoint       string
+	Model          string
+	UpstreamStatus int
+	ResponseBody   []byte
+	WarningText    string
+}
+
 type ContentModerationLogFilter struct {
 	Pagination pagination.PaginationParams
 	Result     string
@@ -359,6 +414,44 @@ type ContentModerationLogFilter struct {
 	Search     string
 	From       *time.Time
 	To         *time.Time
+}
+
+// ContentModerationCyberWarningFilter 描述 cyber 警告列表和统计的筛选条件。
+type ContentModerationCyberWarningFilter struct {
+	Pagination pagination.PaginationParams
+	UserID     *int64
+	AccountID  *int64
+	Search     string
+	From       *time.Time
+	To         *time.Time
+}
+
+// ContentModerationCyberSummary 是 cyber 警告统计总览。
+type ContentModerationCyberSummary struct {
+	Events    int64                                  `json:"events"`
+	Requests  int64                                  `json:"requests"`
+	Users     int64                                  `json:"users"`
+	Accounts  int64                                  `json:"accounts"`
+	ByUser    []ContentModerationCyberUserSummary    `json:"by_user"`
+	ByAccount []ContentModerationCyberAccountSummary `json:"by_account"`
+}
+
+// ContentModerationCyberUserSummary 是按用户聚合的 cyber 警告统计。
+type ContentModerationCyberUserSummary struct {
+	Count     int64  `json:"count"`
+	UserID    *int64 `json:"user_id,omitempty"`
+	UserEmail string `json:"user_email"`
+	APIKeys   string `json:"api_keys"`
+	LastSeen  string `json:"last_seen"`
+}
+
+// ContentModerationCyberAccountSummary 是按上游账号聚合的 cyber 警告统计。
+type ContentModerationCyberAccountSummary struct {
+	Count       int64  `json:"count"`
+	AccountID   *int64 `json:"account_id,omitempty"`
+	AccountName string `json:"account_name"`
+	Users       int64  `json:"users"`
+	LastSeen    string `json:"last_seen"`
 }
 
 type ContentModerationCleanupResult struct {
@@ -407,6 +500,10 @@ type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
 	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time) (int, error)
+	CreateCyberWarning(ctx context.Context, warning *ContentModerationCyberWarning) error
+	ListCyberWarnings(ctx context.Context, filter ContentModerationCyberWarningFilter) ([]ContentModerationCyberWarning, *pagination.PaginationResult, error)
+	CountCyberWarningsByUserSince(ctx context.Context, userID int64, since time.Time) (int, error)
+	GetCyberSummary(ctx context.Context, filter ContentModerationCyberWarningFilter) (*ContentModerationCyberSummary, error)
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 }
 
@@ -559,6 +656,18 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.PreHashCheckEnabled != nil {
 		cfg.PreHashCheckEnabled = *input.PreHashCheckEnabled
+	}
+	if input.CyberWarningEnabled != nil {
+		cfg.CyberWarningEnabled = *input.CyberWarningEnabled
+	}
+	if input.CyberAutoBanEnabled != nil {
+		cfg.CyberAutoBanEnabled = *input.CyberAutoBanEnabled
+	}
+	if input.CyberBanThreshold != nil {
+		cfg.CyberBanThreshold = *input.CyberBanThreshold
+	}
+	if input.CyberWindowHours != nil {
+		cfg.CyberWindowHours = *input.CyberWindowHours
 	}
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
@@ -1011,6 +1120,64 @@ func (s *ContentModerationService) ListLogs(ctx context.Context, filter ContentM
 	return s.repo.ListLogs(ctx, filter)
 }
 
+func (s *ContentModerationService) RecordCyberWarning(ctx context.Context, input ContentModerationCyberWarningInput) (*ContentModerationCyberWarning, error) {
+	if s == nil || s.settingRepo == nil || s.repo == nil {
+		return nil, nil
+	}
+	if !s.isRiskControlEnabled(ctx) {
+		return nil, nil
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.CyberWarningEnabled {
+		return nil, nil
+	}
+	warningText := strings.TrimSpace(input.WarningText)
+	bodyWarningText := extractCyberWarningText(input.ResponseBody)
+	warningTextMatched := IsOpenAICyberWarningText(warningText)
+	bodyMatched := IsOpenAICyberWarningText(bodyWarningText) || IsOpenAICyberWarningText(string(input.ResponseBody))
+	if !warningTextMatched && !bodyMatched {
+		return nil, nil
+	}
+	if bodyMatched && !warningTextMatched {
+		warningText = bodyWarningText
+	}
+	if strings.TrimSpace(warningText) == "" {
+		warningText = bodyWarningText
+	}
+	warning := s.buildCyberWarning(input, warningText)
+	s.applyCyberWarningSideEffects(ctx, cfg, warning)
+	if err := s.repo.CreateCyberWarning(ctx, warning); err != nil {
+		return nil, err
+	}
+	return warning, nil
+}
+
+func (s *ContentModerationService) ListCyberWarnings(ctx context.Context, filter ContentModerationCyberWarningFilter) ([]ContentModerationCyberWarning, *pagination.PaginationResult, error) {
+	if filter.Pagination.Page <= 0 {
+		filter.Pagination.Page = 1
+	}
+	if filter.Pagination.PageSize <= 0 {
+		filter.Pagination.PageSize = 20
+	}
+	if filter.Pagination.PageSize > 100 {
+		filter.Pagination.PageSize = 100
+	}
+	if filter.Pagination.SortOrder == "" {
+		filter.Pagination.SortOrder = pagination.SortOrderDesc
+	}
+	return s.repo.ListCyberWarnings(ctx, filter)
+}
+
+func (s *ContentModerationService) GetCyberSummary(ctx context.Context, filter ContentModerationCyberWarningFilter) (*ContentModerationCyberSummary, error) {
+	if s == nil || s.repo == nil {
+		return &ContentModerationCyberSummary{}, nil
+	}
+	return s.repo.GetCyberSummary(ctx, filter)
+}
+
 func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) (*ContentModerationUnbanUserResult, error) {
 	if s == nil || s.userRepo == nil {
 		return nil, infraerrors.InternalServer("CONTENT_MODERATION_USER_REPOSITORY_UNAVAILABLE", "用户仓储不可用")
@@ -1402,6 +1569,77 @@ func (s *ContentModerationService) applyFlaggedSideEffects(ctx context.Context, 
 	log.EmailSent = emailSent
 }
 
+func (s *ContentModerationService) buildCyberWarning(input ContentModerationCyberWarningInput, warningText string) *ContentModerationCyberWarning {
+	var userID *int64
+	if input.UserID > 0 {
+		userID = &input.UserID
+	}
+	var apiKeyID *int64
+	if input.APIKeyID > 0 {
+		apiKeyID = &input.APIKeyID
+	}
+	var accountID *int64
+	if input.AccountID > 0 {
+		accountID = &input.AccountID
+	}
+	return &ContentModerationCyberWarning{
+		RequestID:      strings.TrimSpace(input.RequestID),
+		UserID:         userID,
+		UserEmail:      strings.TrimSpace(input.UserEmail),
+		APIKeyID:       apiKeyID,
+		APIKeyName:     strings.TrimSpace(input.APIKeyName),
+		GroupID:        cloneInt64Ptr(input.GroupID),
+		GroupName:      strings.TrimSpace(input.GroupName),
+		AccountID:      accountID,
+		AccountName:    strings.TrimSpace(input.AccountName),
+		Endpoint:       strings.TrimSpace(input.Endpoint),
+		Model:          strings.TrimSpace(input.Model),
+		UpstreamStatus: input.UpstreamStatus,
+		WarningText:    trimRunes(redactContentModerationSecrets(warningText), 1000),
+	}
+}
+
+func (s *ContentModerationService) applyCyberWarningSideEffects(ctx context.Context, cfg *ContentModerationConfig, warning *ContentModerationCyberWarning) {
+	if s == nil || cfg == nil || warning == nil || warning.UserID == nil || *warning.UserID <= 0 {
+		return
+	}
+	count := 1
+	if s.repo != nil && cfg.CyberWindowHours > 0 {
+		since := time.Now().Add(-time.Duration(cfg.CyberWindowHours) * time.Hour)
+		if n, err := s.repo.CountCyberWarningsByUserSince(ctx, *warning.UserID, since); err == nil {
+			count = n + 1
+		}
+	}
+	warning.ViolationCount = count
+	autoBanJustApplied := false
+	if cfg.CyberAutoBanEnabled && cfg.CyberBanThreshold > 0 && count >= cfg.CyberBanThreshold && s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, *warning.UserID)
+		if err != nil {
+			slog.Warn("content_moderation.cyber_ban_get_user_failed", "user_id", *warning.UserID, "error", err)
+			return
+		}
+		if user.Status != StatusDisabled {
+			user.Status = StatusDisabled
+			if err := s.userRepo.Update(ctx, user); err != nil {
+				slog.Warn("content_moderation.cyber_ban_update_user_failed", "user_id", *warning.UserID, "error", err)
+				return
+			}
+			if s.authCacheInvalidator != nil {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *warning.UserID)
+			}
+			autoBanJustApplied = true
+		}
+		warning.AutoBanned = true
+	}
+	if autoBanJustApplied && s.emailService != nil && strings.TrimSpace(warning.UserEmail) != "" {
+		if err := s.sendCyberAccountDisabledEmail(ctx, cfg, warning); err != nil {
+			slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", *warning.UserID, "email", warning.UserEmail, "error", err)
+		} else {
+			warning.EmailSent = true
+		}
+	}
+}
+
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
 	siteName := s.siteName(ctx)
 	subject := fmt.Sprintf("[%s] 账户风控提醒 / Risk Control Notice", sanitizeEmailHeader(siteName))
@@ -1414,6 +1652,13 @@ func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context,
 	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
 	body := buildContentModerationAccountDisabledEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+}
+
+func (s *ContentModerationService) sendCyberAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, warning *ContentModerationCyberWarning) error {
+	siteName := s.siteName(ctx)
+	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
+	body := buildContentModerationCyberAccountDisabledEmailBody(siteName, warning, cfg)
+	return s.emailService.SendEmail(ctx, warning.UserEmail, subject, body)
 }
 
 func (s *ContentModerationService) siteName(ctx context.Context) string {
@@ -1451,6 +1696,10 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		HitRetentionDays:     defaultContentModerationHitRetentionDays,
 		NonHitRetentionDays:  defaultContentModerationNonHitRetentionDays,
 		PreHashCheckEnabled:  false,
+		CyberWarningEnabled:  true,
+		CyberAutoBanEnabled:  false,
+		CyberBanThreshold:    defaultContentModerationCyberBanThreshold,
+		CyberWindowHours:     defaultContentModerationCyberWindowHours,
 	}
 }
 
@@ -1526,6 +1775,12 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	if cfg.NonHitRetentionDays > maxContentModerationNonHitRetentionDays {
 		cfg.NonHitRetentionDays = maxContentModerationNonHitRetentionDays
+	}
+	if cfg.CyberBanThreshold <= 0 {
+		cfg.CyberBanThreshold = defaultContentModerationCyberBanThreshold
+	}
+	if cfg.CyberWindowHours <= 0 {
+		cfg.CyberWindowHours = defaultContentModerationCyberWindowHours
 	}
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), cfg.Thresholds)
@@ -1705,6 +1960,10 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		HitRetentionDays:     cfg.HitRetentionDays,
 		NonHitRetentionDays:  cfg.NonHitRetentionDays,
 		PreHashCheckEnabled:  cfg.PreHashCheckEnabled,
+		CyberWarningEnabled:  cfg.CyberWarningEnabled,
+		CyberAutoBanEnabled:  cfg.CyberAutoBanEnabled,
+		CyberBanThreshold:    cfg.CyberBanThreshold,
+		CyberWindowHours:     cfg.CyberWindowHours,
 	}
 }
 
@@ -1922,6 +2181,29 @@ func mergeContentModerationThresholds(base map[string]float64, override map[stri
 		}
 	}
 	return out
+}
+
+// IsOpenAICyberWarningText 判断上游错误文本是否属于 OpenAI cyber 风控拒绝。
+func IsOpenAICyberWarningText(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	if lower == "" {
+		return false
+	}
+	if strings.Contains(lower, "cybersecurity risk") ||
+		strings.Contains(lower, "chatgpt.com/cyber") ||
+		strings.Contains(lower, "usage policy") ||
+		strings.Contains(lower, "flagged") {
+		return true
+	}
+	return strings.Contains(lower, "cyber") && strings.Contains(lower, "risk")
+}
+
+func extractCyberWarningText(body []byte) string {
+	text := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if text == "" {
+		text = strings.TrimSpace(string(body))
+	}
+	return text
 }
 
 func normalizeInt64IDs(ids []int64) []int64 {

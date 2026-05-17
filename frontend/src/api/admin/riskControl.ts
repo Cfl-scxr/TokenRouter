@@ -29,6 +29,10 @@ export interface ContentModerationConfig {
   hit_retention_days: number
   non_hit_retention_days: number
   pre_hash_check_enabled: boolean
+  cyber_warning_enabled: boolean
+  cyber_auto_ban_enabled: boolean
+  cyber_ban_threshold: number
+  cyber_violation_window_hours: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -100,6 +104,10 @@ export interface UpdateContentModerationConfig {
   hit_retention_days?: number
   non_hit_retention_days?: number
   pre_hash_check_enabled?: boolean
+  cyber_warning_enabled?: boolean
+  cyber_auto_ban_enabled?: boolean
+  cyber_ban_threshold?: number
+  cyber_violation_window_hours?: number
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -154,6 +162,28 @@ export interface ContentModerationLog {
   created_at: string
 }
 
+export interface ContentModerationCyberWarning {
+  id: number
+  request_id: string
+  user_id: number | null
+  user_email: string
+  api_key_id: number | null
+  api_key_name: string
+  group_id: number | null
+  group_name: string
+  account_id: number | null
+  account_name: string
+  endpoint: string
+  model: string
+  upstream_status: number
+  warning_text: string
+  violation_count: number
+  auto_banned: boolean
+  email_sent: boolean
+  user_status: string
+  created_at: string
+}
+
 export interface ListContentModerationLogsParams {
   page?: number
   page_size?: number
@@ -165,12 +195,55 @@ export interface ListContentModerationLogsParams {
   to?: string
 }
 
+export interface ListCyberWarningsParams {
+  page?: number
+  page_size?: number
+  user_id?: number
+  account_id?: number
+  search?: string
+  from?: string
+  to?: string
+}
+
 export interface ContentModerationLogsResponse {
   items: ContentModerationLog[]
   total: number
   page: number
   page_size: number
   pages: number
+}
+
+export interface CyberWarningsResponse {
+  items: ContentModerationCyberWarning[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+export interface CyberSummaryUser {
+  count: number
+  user_id?: number
+  user_email: string
+  api_keys: string
+  last_seen: string
+}
+
+export interface CyberSummaryAccount {
+  count: number
+  account_id?: number
+  account_name: string
+  users: number
+  last_seen: string
+}
+
+export interface CyberSummary {
+  events: number
+  requests: number
+  users: number
+  accounts: number
+  by_user: CyberSummaryUser[]
+  by_account: CyberSummaryAccount[]
 }
 
 export interface ContentModerationUnbanUserResponse {
@@ -220,6 +293,24 @@ export async function listLogs(
   return data
 }
 
+export async function listCyberWarnings(
+  params: ListCyberWarningsParams = {}
+): Promise<CyberWarningsResponse> {
+  const { data } = await apiClient.get<CyberWarningsResponse>('/admin/risk-control/cyber-warnings', {
+    params,
+  })
+  return data
+}
+
+export async function getCyberSummary(
+  params: ListCyberWarningsParams = {}
+): Promise<CyberSummary> {
+  const { data } = await apiClient.get<CyberSummary>('/admin/risk-control/cyber-summary', {
+    params,
+  })
+  return data
+}
+
 export async function unbanUser(userID: number): Promise<ContentModerationUnbanUserResponse> {
   const { data } = await apiClient.post<ContentModerationUnbanUserResponse>(
     `/admin/risk-control/users/${userID}/unban`
@@ -245,6 +336,8 @@ export const riskControlAPI = {
   getStatus,
   testAPIKeys,
   listLogs,
+  listCyberWarnings,
+  getCyberSummary,
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,
