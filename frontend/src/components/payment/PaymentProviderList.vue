@@ -127,8 +127,16 @@ const { t } = useI18n()
 const localProviders = ref<ProviderInstance[]>([])
 
 watch(() => props.providers, (val) => {
-  localProviders.value = [...val]
+  localProviders.value = val.map(normalizeProvider)
 }, { immediate: true })
+
+function normalizeProvider(provider: ProviderInstance): ProviderInstance {
+  return {
+    ...provider,
+    // 兼容旧后端把空 supported_types 序列化成 null 的情况，避免单条坏数据中断整行渲染。
+    supported_types: Array.isArray(provider.supported_types) ? provider.supported_types : [],
+  }
+}
 
 function onDragEnd() {
   const updates = localProviders.value.map((p, idx) => ({

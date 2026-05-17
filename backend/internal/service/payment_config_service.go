@@ -544,8 +544,9 @@ func derefStr(v *string) string {
 }
 
 func splitTypes(s string) []string {
-	if s == "" {
-		return nil
+	if strings.TrimSpace(s) == "" {
+		// 返回空切片，避免管理端 JSON 把 nil 切片编码成 null。
+		return []string{}
 	}
 	parts := strings.Split(s, ",")
 	result := make([]string, 0, len(parts))

@@ -106,7 +106,12 @@ const modeLabel = computed(() => {
   return ''
 })
 
+const selectedTypes = computed(() => {
+  // 兼容旧接口或脏数据返回 null，避免 includes 在渲染阶段抛错。
+  return Array.isArray(props.provider.supported_types) ? props.provider.supported_types : []
+})
+
 function isSelected(type: string): boolean {
-  return props.provider.supported_types.includes(type)
+  return selectedTypes.value.includes(type)
 }
 </script>
