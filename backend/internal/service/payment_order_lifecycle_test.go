@@ -96,6 +96,10 @@ func (r *paymentOrderLifecycleRedeemRepo) GetByID(_ context.Context, id int64) (
 	return nil, ErrRedeemCodeNotFound
 }
 
+func (r *paymentOrderLifecycleRedeemRepo) GetByIDForUpdate(ctx context.Context, id int64) (*RedeemCode, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *paymentOrderLifecycleRedeemRepo) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
 	redeemCode, ok := r.codesByCode[code]
 	if !ok {

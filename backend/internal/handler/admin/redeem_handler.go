@@ -43,6 +43,14 @@ type GenerateRedeemCodesRequest struct {
 	PlanID    *int64  `json:"plan_id"` // 订阅类型必填
 }
 
+// UpdateRedeemCodeRequest 表示更新兑换码请求。
+type UpdateRedeemCodeRequest struct {
+	Value     *float64 `json:"value"`
+	MaxUses   *int     `json:"max_uses" binding:"omitempty,min=0"`
+	ExpiresAt *int64   `json:"expires_at" binding:"omitempty,min=0"`
+	PlanID    *int64   `json:"plan_id"` // 订阅类型专用
+}
+
 // CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
 // Type 为 omitempty 而非 required 是为了向后兼容旧版调用方（不传 type 时默认 balance）。
 type CreateAndRedeemCodeRequest struct {
@@ -92,6 +100,42 @@ func (h *RedeemHandler) GetByID(c *gin.Context) {
 	}
 
 	code, err := h.adminService.GetRedeemCode(c.Request.Context(), codeID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.RedeemCodeFromServiceAdmin(code))
+}
+
+// Update 处理更新兑换码。
+// PUT /api/v1/admin/redeem-codes/:id
+func (h *RedeemHandler) Update(c *gin.Context) {
+	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid redeem code ID")
+		return
+	}
+
+	var req UpdateRedeemCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	input := &service.UpdateRedeemCodeInput{
+		Value:        req.Value,
+		MaxUses:      req.MaxUses,
+		PlanID:       req.PlanID,
+		ExpiresAtSet: req.ExpiresAt != nil,
+	}
+	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
+		// expires_at=0 表示清除过期时间；省略字段表示保持不变。
+		t := time.Unix(*req.ExpiresAt, 0)
+		input.ExpiresAt = &t
+	}
+
+	code, err := h.adminService.UpdateRedeemCode(c.Request.Context(), codeID, input)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

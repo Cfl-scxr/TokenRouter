@@ -530,6 +530,24 @@ func (s *stubAdminService) GenerateRedeemCodes(ctx context.Context, input *servi
 	return s.redeems, nil
 }
 
+func (s *stubAdminService) UpdateRedeemCode(ctx context.Context, id int64, input *service.UpdateRedeemCodeInput) (*service.RedeemCode, error) {
+	code := service.RedeemCode{ID: id, Code: "R-TEST", Status: service.StatusUnused, MaxUses: 1}
+	if input.MaxUses != nil {
+		code.MaxUses = *input.MaxUses
+	}
+	if input.Value != nil {
+		code.Value = *input.Value
+	}
+	if input.ExpiresAtSet {
+		code.ExpiresAt = input.ExpiresAt
+	}
+	if input.PlanID != nil {
+		code.Type = service.RedeemTypeSubscription
+		code.PlanID = input.PlanID
+	}
+	return &code, nil
+}
+
 func (s *stubAdminService) DeleteRedeemCode(ctx context.Context, id int64) error {
 	return nil
 }

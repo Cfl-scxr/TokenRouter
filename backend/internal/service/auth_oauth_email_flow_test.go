@@ -34,6 +34,10 @@ func (s *redeemCodeRepoStub) GetByID(context.Context, int64) (*RedeemCode, error
 	panic("unexpected GetByID call")
 }
 
+func (s *redeemCodeRepoStub) GetByIDForUpdate(context.Context, int64) (*RedeemCode, error) {
+	panic("unexpected GetByIDForUpdate call")
+}
+
 func (s *redeemCodeRepoStub) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
 	if s.codesByCode == nil {
 		return nil, ErrRedeemCodeNotFound

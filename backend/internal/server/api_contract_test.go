@@ -1843,6 +1843,10 @@ func (stubRedeemCodeRepo) GetByID(ctx context.Context, id int64) (*service.Redee
 	return nil, service.ErrRedeemCodeNotFound
 }
 
+func (stubRedeemCodeRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.RedeemCode, error) {
+	return nil, service.ErrRedeemCodeNotFound
+}
+
 func (stubRedeemCodeRepo) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
 	return nil, service.ErrRedeemCodeNotFound
 }

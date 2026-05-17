@@ -45,6 +45,7 @@ type RedeemCodeRepository interface {
 	Create(ctx context.Context, code *RedeemCode) error
 	CreateBatch(ctx context.Context, codes []RedeemCode) error
 	GetByID(ctx context.Context, id int64) (*RedeemCode, error)
+	GetByIDForUpdate(ctx context.Context, id int64) (*RedeemCode, error)
 	GetByCode(ctx context.Context, code string) (*RedeemCode, error)
 	GetByCodeForUpdate(ctx context.Context, code string) (*RedeemCode, error)
 	Update(ctx context.Context, code *RedeemCode) error

@@ -132,6 +132,10 @@ func (r *paymentReferralRewardRedeemRepo) GetByID(_ context.Context, id int64) (
 	return nil, ErrRedeemCodeNotFound
 }
 
+func (r *paymentReferralRewardRedeemRepo) GetByIDForUpdate(ctx context.Context, id int64) (*RedeemCode, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *paymentReferralRewardRedeemRepo) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
 	redeemCode := r.codesByCode[code]
 	if redeemCode == nil {

@@ -97,6 +97,21 @@ func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.
 	return redeemCodeEntityToService(model), nil
 }
 
+func (r *redeemCodeRepository) GetByIDForUpdate(ctx context.Context, id int64) (*service.RedeemCode, error) {
+	client := clientFromContext(ctx, r.client)
+	model, err := client.RedeemCode.Query().
+		Where(redeemcode.IDEQ(id)).
+		ForUpdate().
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrRedeemCodeNotFound
+		}
+		return nil, err
+	}
+	return redeemCodeEntityToService(model), nil
+}
+
 func (r *redeemCodeRepository) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
 	client := clientFromContext(ctx, r.client)
 	model, err := client.RedeemCode.Query().

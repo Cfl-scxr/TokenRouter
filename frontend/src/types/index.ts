@@ -1359,6 +1359,13 @@ export interface GenerateRedeemCodesRequest {
   plan_id?: number | null
 }
 
+export interface UpdateRedeemCodeRequest {
+  value?: number
+  max_uses?: number
+  expires_at?: number | null
+  plan_id?: number | null
+}
+
 export interface RedeemCodeRequest {
   code: string
 }

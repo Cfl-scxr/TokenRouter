@@ -7,6 +7,7 @@ import { apiClient } from '../client'
 import type {
   RedeemCode,
   GenerateRedeemCodesRequest,
+  UpdateRedeemCodeRequest,
   RedeemCodeType,
   PaginatedResponse
 } from '@/types'
@@ -98,6 +99,17 @@ export async function generate(
 }
 
 /**
+ * 更新兑换码
+ * @param id - 兑换码 ID
+ * @param request - 需要更新的字段
+ * @returns 更新后的兑换码
+ */
+export async function update(id: number, request: UpdateRedeemCodeRequest): Promise<RedeemCode> {
+  const { data } = await apiClient.put<RedeemCode>(`/admin/redeem-codes/${id}`, request)
+  return data
+}
+
+/**
  * Delete redeem code
  * @param id - Redeem code ID
  * @returns Success confirmation
@@ -179,6 +191,7 @@ export const redeemAPI = {
   list,
   getById,
   generate,
+  update,
   delete: deleteCode,
   batchDelete,
   expire,

@@ -147,6 +147,15 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center space-x-2">
               <button
+                v-if="canEditCode(row)"
+                @click="handleEdit(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+                :title="t('admin.redeem.editCode')"
+              >
+                <Icon name="edit" size="sm" :stroke-width="2" />
+                <span class="text-xs">{{ t('common.edit') }}</span>
+              </button>
+              <button
                 v-if="row.status === 'unused'"
                 @click="handleDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
@@ -161,7 +170,7 @@
                 </svg>
                 <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
-              <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+              <span v-if="!canEditCode(row) && row.status !== 'unused'" class="text-gray-400 dark:text-dark-500">-</span>
             </div>
           </template>
         </DataTable>
@@ -335,6 +344,101 @@
       </div>
     </Teleport>
 
+    <!-- 编辑兑换码弹窗 -->
+    <BaseDialog
+      :show="showEditDialog"
+      :title="t('admin.redeem.editCodeTitle')"
+      width="normal"
+      @close="closeEditDialog"
+    >
+      <form id="edit-redeem-form" @submit.prevent="handleUpdateCode" class="space-y-4">
+        <div v-if="editingCode">
+          <label class="input-label">{{ t('admin.redeem.columns.code') }}</label>
+          <input :value="editingCode.code" type="text" readonly class="input font-mono" />
+        </div>
+
+        <div v-if="editingCode">
+          <label class="input-label">{{ t('admin.redeem.codeType') }}</label>
+          <input :value="t('admin.redeem.types.' + editingCode.type)" type="text" readonly class="input" />
+        </div>
+
+        <div
+          v-if="
+            editingCode &&
+            editingCode.used_count === 0 &&
+            editingCode.type !== 'subscription' &&
+            editingCode.type !== 'invitation'
+          "
+        >
+          <label class="input-label">
+            {{
+              editingCode.type === 'balance'
+                ? t('admin.redeem.amount')
+                : t('admin.redeem.columns.value')
+            }}
+          </label>
+          <input
+            v-model.number="editForm.value"
+            type="number"
+            :step="editingCode.type === 'balance' ? '0.01' : '1'"
+            :min="editingCode.type === 'balance' ? '0.01' : '1'"
+            required
+            class="input"
+          />
+        </div>
+
+        <div v-if="editingCode && editingCode.used_count === 0 && editingCode.type === 'subscription'">
+          <label class="input-label">{{ t('payment.admin.planName') }}</label>
+          <Select
+            v-model="editForm.plan_id"
+            :options="subscriptionPlanOptions"
+            :placeholder="t('admin.announcements.form.selectPackages')"
+          />
+        </div>
+
+        <div v-if="editingCode && editingCode.used_count > 0" class="rounded-lg bg-yellow-50 p-3 dark:bg-yellow-900/20">
+          <p class="text-sm text-yellow-700 dark:text-yellow-300">
+            {{ t('admin.redeem.valueLockedHint') }}
+          </p>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('admin.redeem.maxUses') }}</label>
+          <input
+            v-model.number="editForm.max_uses"
+            type="number"
+            min="0"
+            required
+            class="input"
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('admin.redeem.maxUsesHint') }}
+          </p>
+        </div>
+
+        <div v-if="editingCode?.type !== 'invitation'">
+          <label class="input-label">
+            {{ t('admin.redeem.expiresAt') }}
+            <span class="ml-1 text-xs font-normal text-gray-400">
+              ({{ t('common.optional') }})
+            </span>
+          </label>
+          <input v-model="editForm.expires_at_str" type="datetime-local" class="input" />
+        </div>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" @click="closeEditDialog" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="edit-redeem-form" :disabled="updating" class="btn btn-primary">
+            {{ updating ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Generated Codes Result Dialog -->
     <Teleport to="body">
       <div v-if="showResultDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -430,7 +534,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
-import { formatDateTime, parseDateTimeLocalInput } from '@/utils/format'
+import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import type { RedeemCode, RedeemCodeType } from '@/types'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { Column } from '@/components/common/types'
@@ -440,6 +544,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -473,8 +578,8 @@ const generatedCodesText = computed(() => {
 
 const textareaHeight = computed(() => {
   const lineCount = generatedCodes.value.length
-  const lineHeight = 24 // approximate line height in px
-  const padding = 24 // top + bottom padding
+  const lineHeight = 24 // 近似行高，单位 px
+  const padding = 24 // 上下内边距
   const minHeight = 60
   const maxHeight = 240
   const calculatedHeight = Math.min(
@@ -555,6 +660,7 @@ const filterStatusOptions = computed(() => [
 const codes = ref<RedeemCode[]>([])
 const loading = ref(false)
 const generating = ref(false)
+const updating = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
   type: '',
@@ -575,7 +681,9 @@ let abortController: AbortController | null = null
 
 const showDeleteDialog = ref(false)
 const showDeleteUnusedDialog = ref(false)
+const showEditDialog = ref(false)
 const deletingCode = ref<RedeemCode | null>(null)
+const editingCode = ref<RedeemCode | null>(null)
 const copiedCode = ref<string | null>(null)
 
 const generateForm = reactive({
@@ -588,6 +696,13 @@ const generateForm = reactive({
   expires_at_str: ''
 })
 const hasCustomCode = computed(() => generateForm.code.trim().length > 0)
+
+const editForm = reactive({
+  value: 0,
+  plan_id: null as number | null,
+  max_uses: 1,
+  expires_at_str: ''
+})
 
 // 监听类型变化，邀请码类型时自动设置 value 为 0
 watch(
@@ -627,6 +742,15 @@ const getStatusBadgeClass = (status: RedeemCode['status']) => {
   if (status === 'active') return 'badge-warning'
   if (status === 'used') return 'badge-gray'
   return 'badge-danger'
+}
+
+const canEditCode = (code: RedeemCode) => {
+  return ['balance', 'concurrency', 'subscription', 'invitation'].includes(code.type)
+}
+
+const toDateTimeLocalString = (value: string | null) => {
+  if (!value) return ''
+  return formatDateTimeLocalInput(Math.floor(new Date(value).getTime() / 1000))
 }
 
 const resetGenerateForm = () => {
@@ -758,7 +882,7 @@ const handleExportCodes = async () => {
   try {
     const blob = await adminAPI.redeem.exportCodes(buildRedeemQueryFilters())
 
-    // Create download link
+    // 创建下载链接
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -772,6 +896,70 @@ const handleExportCodes = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToExport'))
     console.error('Error exporting codes:', error)
+  }
+}
+
+const handleEdit = (code: RedeemCode) => {
+  editingCode.value = code
+  editForm.value = code.value
+  editForm.plan_id = code.plan_id ?? null
+  editForm.max_uses = code.max_uses
+  editForm.expires_at_str = toDateTimeLocalString(code.expires_at)
+  showEditDialog.value = true
+}
+
+const closeEditDialog = () => {
+  showEditDialog.value = false
+  editingCode.value = null
+}
+
+const handleUpdateCode = async () => {
+  const code = editingCode.value
+  if (!code) return
+  if (code.type !== 'invitation' && (!Number.isInteger(editForm.max_uses) || editForm.max_uses < 0)) {
+    appStore.showError(t('admin.redeem.maxUsesRequired'))
+    return
+  }
+  if (editForm.max_uses > 0 && editForm.max_uses < code.used_count) {
+    appStore.showError(t('admin.redeem.maxUsesBelowUsed'))
+    return
+  }
+  if (code.type === 'subscription' && code.used_count === 0 && !editForm.plan_id) {
+    appStore.showError(t('admin.announcements.form.selectPackages'))
+    return
+  }
+
+  const payload: {
+    value?: number
+    plan_id?: number | null
+    max_uses?: number
+    expires_at?: number | null
+  } = {
+    max_uses: code.type === 'invitation' ? 1 : editForm.max_uses
+  }
+
+  if (code.used_count === 0) {
+    if (code.type === 'subscription') {
+      payload.plan_id = editForm.plan_id
+    } else if (code.type !== 'invitation') {
+      payload.value = editForm.value
+    }
+  }
+  if (code.type !== 'invitation') {
+    payload.expires_at = parseDateTimeLocalInput(editForm.expires_at_str) || 0
+  }
+
+  updating.value = true
+  try {
+    await adminAPI.redeem.update(code.id, payload)
+    appStore.showSuccess(t('admin.redeem.codeUpdated'))
+    closeEditDialog()
+    loadCodes()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || error.response?.data?.message || t('admin.redeem.failedToUpdate'))
+    console.error('Error updating code:', error)
+  } finally {
+    updating.value = false
   }
 }
 

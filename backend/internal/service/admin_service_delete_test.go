@@ -387,7 +387,10 @@ type redeemRepoStub struct {
 	getErrByID    map[int64]error
 	codesByID     map[int64]*RedeemCode
 	deleteErrByID map[int64]error
+	updateErr     error
+	updatedCodes  []*RedeemCode
 	deletedIDs    []int64
+	lockedGetIDs  []int64
 }
 
 func (s *redeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -412,6 +415,11 @@ func (s *redeemRepoStub) GetByID(ctx context.Context, id int64) (*RedeemCode, er
 	return &RedeemCode{ID: id}, nil
 }
 
+func (s *redeemRepoStub) GetByIDForUpdate(ctx context.Context, id int64) (*RedeemCode, error) {
+	s.lockedGetIDs = append(s.lockedGetIDs, id)
+	return s.GetByID(ctx, id)
+}
+
 func (s *redeemRepoStub) GetByCode(ctx context.Context, code string) (*RedeemCode, error) {
 	panic("unexpected GetByCode call")
 }
@@ -421,7 +429,13 @@ func (s *redeemRepoStub) GetByCodeForUpdate(ctx context.Context, code string) (*
 }
 
 func (s *redeemRepoStub) Update(ctx context.Context, code *RedeemCode) error {
-	panic("unexpected Update call")
+	s.updatedCodes = append(s.updatedCodes, code)
+	if s.codesByID == nil {
+		s.codesByID = make(map[int64]*RedeemCode)
+	}
+	cloned := *code
+	s.codesByID[code.ID] = &cloned
+	return s.updateErr
 }
 
 func (s *redeemRepoStub) Delete(ctx context.Context, id int64) error {
@@ -621,4 +635,107 @@ func TestAdminService_BatchDeleteRedeemCodes_PartialFailures(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), deleted)
 	require.Equal(t, []int64{1, 2, 3}, repo.deletedIDs)
+}
+
+func TestAdminService_UpdateRedeemCode_UnusedBalanceUpdatesValueLimitAndExpiry(t *testing.T) {
+	expiresAt := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	value := 25.5
+	maxUses := 3
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "R-1", Type: RedeemTypeBalance, Value: 10, Status: StatusUnused, MaxUses: 1},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	updated, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{
+		Value:        &value,
+		MaxUses:      &maxUses,
+		ExpiresAt:    &expiresAt,
+		ExpiresAtSet: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, value, updated.Value)
+	require.Equal(t, maxUses, updated.MaxUses)
+	require.Equal(t, &expiresAt, updated.ExpiresAt)
+	require.Equal(t, StatusUnused, updated.Status)
+	require.Len(t, repo.updatedCodes, 1)
+	require.Equal(t, []int64{1}, repo.lockedGetIDs)
+}
+
+func TestAdminService_UpdateRedeemCode_UsedValueLocked(t *testing.T) {
+	value := 50.0
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "R-1", Type: RedeemTypeBalance, Value: 10, Status: StatusUsed, MaxUses: 1, UsedCount: 1},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	_, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{Value: &value})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "value or plan cannot be updated")
+	require.Empty(t, repo.updatedCodes)
+}
+
+func TestAdminService_UpdateRedeemCode_RejectsMaxUsesBelowUsedCount(t *testing.T) {
+	maxUses := 1
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "R-1", Type: RedeemTypeBalance, Value: 10, Status: StatusActive, MaxUses: 3, UsedCount: 2},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	_, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{MaxUses: &maxUses})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "max_uses cannot be less than used_count")
+	require.Empty(t, repo.updatedCodes)
+}
+
+func TestAdminService_UpdateRedeemCode_RestoresExhaustedCodeWhenLimitIncreases(t *testing.T) {
+	maxUses := 2
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "R-1", Type: RedeemTypeBalance, Value: 10, Status: StatusUsed, MaxUses: 1, UsedCount: 1},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	updated, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{MaxUses: &maxUses})
+
+	require.NoError(t, err)
+	require.Equal(t, StatusActive, updated.Status)
+	require.Equal(t, maxUses, updated.MaxUses)
+}
+
+func TestAdminService_UpdateRedeemCode_RestoresExpiredCodeWhenExpiryCleared(t *testing.T) {
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {
+			ID:        1,
+			Code:      "R-1",
+			Type:      RedeemTypeBalance,
+			Value:     10,
+			Status:    StatusExpired,
+			MaxUses:   3,
+			UsedCount: 1,
+			ExpiresAt: ptrTime(time.Now().Add(-time.Hour)),
+		},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	updated, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{ExpiresAtSet: true})
+
+	require.NoError(t, err)
+	require.Nil(t, updated.ExpiresAt)
+	require.Equal(t, StatusActive, updated.Status)
+}
+
+func TestAdminService_UpdateRedeemCode_RejectsSystemRecords(t *testing.T) {
+	maxUses := 2
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "R-1", Type: RedeemTypeReferralReward, Value: 10, Status: StatusUsed, MaxUses: 1, UsedCount: 1},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	_, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{MaxUses: &maxUses})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "system redeem records cannot be updated")
+	require.Empty(t, repo.updatedCodes)
 }
