@@ -228,13 +228,18 @@ export async function clearError(id: number): Promise<Account> {
 }
 
 /**
- * Get account usage information (5h/7d window)
- * @param id - Account ID
- * @returns Account usage info
+ * 获取账号用量信息（5h/7d 窗口）
+ * @param id - 账号 ID
+ * @param source - 用量来源
+ * @param force - 是否强制刷新上游快照
+ * @returns 账号用量信息
  */
-export async function getUsage(id: number, source?: 'passive' | 'active'): Promise<AccountUsageInfo> {
+export async function getUsage(id: number, source?: 'passive' | 'active', force?: boolean): Promise<AccountUsageInfo> {
+  const params: Record<string, string> = {}
+  if (source) params.source = source
+  if (force) params.force = 'true'
   const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
-    params: source ? { source } : undefined
+    params: Object.keys(params).length > 0 ? params : undefined
   })
   return data
 }

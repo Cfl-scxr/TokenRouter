@@ -66,6 +66,24 @@ func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 	}
 }
 
+func TestAccountUsageService_ShouldProbeOpenAICodexSnapshot_ForceBypassesCache(t *testing.T) {
+	t.Parallel()
+
+	svc := &AccountUsageService{cache: NewUsageCache()}
+	now := time.Now()
+	accountID := int64(123)
+
+	if !svc.shouldProbeOpenAICodexSnapshot(accountID, now) {
+		t.Fatal("首次探测应该写入缓存并允许执行")
+	}
+	if svc.shouldProbeOpenAICodexSnapshot(accountID, now.Add(time.Minute)) {
+		t.Fatal("缓存有效期内的普通探测应该被跳过")
+	}
+	if !svc.shouldProbeOpenAICodexSnapshot(accountID, now.Add(2*time.Minute), true) {
+		t.Fatal("强制刷新应该绕过探测缓存")
+	}
+}
+
 func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -140,7 +158,7 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 		},
 	}
 
-	usage, err := svc.getOpenAIUsage(context.Background(), account)
+	usage, err := svc.getOpenAIUsage(context.Background(), account, false)
 	if err != nil {
 		t.Fatalf("getOpenAIUsage() error = %v", err)
 	}
