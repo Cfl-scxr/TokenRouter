@@ -589,14 +589,16 @@ export async function completeWeChatOAuthRegistration(
 }
 
 async function createPendingOAuthAccount(
-  provider: 'linuxdo' | 'oidc' | 'wechat',
+  provider: 'linuxdo' | 'oidc' | 'wechat' | 'dingtalk',
   invitationCode: string,
-  decision?: OAuthAdoptionDecision
+  decision?: OAuthAdoptionDecision,
+  affiliateCode?: string
 ): Promise<PendingOAuthCreateAccountResponse> {
   const { data } = await apiClient.post<PendingOAuthCreateAccountResponse>(
     `/auth/oauth/${provider}/complete-registration`,
     {
       invitation_code: invitationCode,
+      ...(affiliateCode?.trim() ? { aff_code: affiliateCode.trim() } : {}),
       ...serializeOAuthAdoptionDecision(decision)
     }
   )
@@ -622,6 +624,14 @@ export async function createPendingWeChatOAuthAccount(
   decision?: OAuthAdoptionDecision
 ): Promise<PendingOAuthCreateAccountResponse> {
   return createPendingOAuthAccount('wechat', invitationCode, decision)
+}
+
+export async function createPendingDingTalkOAuthAccount(
+  invitationCode: string,
+  decision?: OAuthAdoptionDecision,
+  affiliateCode?: string
+): Promise<PendingOAuthCreateAccountResponse> {
+  return createPendingOAuthAccount('dingtalk', invitationCode, decision, affiliateCode)
 }
 
 export async function completePendingOAuthBindLogin(
@@ -674,7 +684,8 @@ export const authAPI = {
   exchangePendingOAuthCompletion,
   completeLinuxDoOAuthRegistration,
   completeOIDCOAuthRegistration,
-  completeWeChatOAuthRegistration
+  completeWeChatOAuthRegistration,
+  createPendingDingTalkOAuthAccount
 }
 
 export default authAPI

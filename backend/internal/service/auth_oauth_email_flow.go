@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 	switch signupSource {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "github", "google":
+	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk":
 		return signupSource
 	default:
 		return "email"
@@ -105,11 +106,12 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	verifyCode string,
 	invitationCode string,
 	signupSource string,
+	referralCode string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 	}
 
@@ -118,18 +120,26 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, ErrEmailReserved
 	}
 	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		slog.Error("oauth email register: policy rejected", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
 	if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
+		slog.Error("oauth email register: verify code failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
 
 	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
+		return nil, nil, err
+	}
+	artifacts, err := s.resolveOAuthEmailReferralArtifacts(ctx, referralCode)
+	if err != nil {
 		return nil, nil, err
 	}
 
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
+		slog.Error("oauth email register: ExistsByEmail failed", "email", email, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
 	if existsEmail {
@@ -153,11 +163,16 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	if artifacts.inviter != nil {
+		user.ReferredByUserID = &artifacts.inviter.ID
+		user.ReferralRewardAmount = artifacts.rewardAmount
+	}
 
-	if err := s.createOAuthEmailAccountUser(ctx, user); err != nil {
+	if err := s.createOAuthEmailAccountUser(ctx, user, artifacts); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
+		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
 
@@ -181,7 +196,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 	}
 
@@ -204,7 +219,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
 		return nil, nil, err
 	}
-	artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, referralCode, ErrInvitationCodeRequired)
+	artifacts, err := s.resolveOAuthEmailReferralArtifacts(ctx, referralCode)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -243,7 +258,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		user.ReferralRewardAmount = artifacts.rewardAmount
 	}
 
-	if err := s.createOAuthEmailAccountUser(ctx, user); err != nil {
+	if err := s.createOAuthEmailAccountUser(ctx, user, artifacts); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
@@ -258,17 +273,46 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	return tokenPair, user, nil
 }
 
-func (s *AuthService) createOAuthEmailAccountUser(ctx context.Context, user *User) error {
+func (s *AuthService) createOAuthEmailAccountUser(ctx context.Context, user *User, artifacts *registrationArtifacts) error {
 	if s == nil || user == nil {
 		return ErrServiceUnavailable
 	}
+	if artifacts == nil {
+		artifacts = &registrationArtifacts{}
+	}
 
 	// 这些 OAuth 注册路径延后消费邀请码；这里只复用注册路径的邮箱归一化与返利码生成，不提前核销邀请码。
-	err := s.createRegisteredUser(ctx, user, &registrationArtifacts{})
+	artifacts.invitationRedeemCode = nil
+	err := s.createRegisteredUser(ctx, user, artifacts)
 	if err != nil && user.ID > 0 && !errors.Is(err, ErrEmailExists) {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 	}
 	return err
+}
+
+func (s *AuthService) resolveOAuthEmailReferralArtifacts(ctx context.Context, referralCode string) (*registrationArtifacts, error) {
+	artifacts := &registrationArtifacts{}
+	normalizedReferralCode := NormalizeReferralCode(referralCode)
+	if normalizedReferralCode == "" || s == nil || s.userRepo == nil {
+		return artifacts, nil
+	}
+
+	inviter, err := s.userRepo.GetByReferralCode(ctx, normalizedReferralCode)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return artifacts, nil
+		}
+		return nil, ErrServiceUnavailable
+	}
+
+	artifacts.inviter = inviter
+	if s.settingService != nil {
+		artifacts.rewardAmount = s.settingService.GetReferralRewardAmount(ctx)
+	}
+	if artifacts.rewardAmount < 0 {
+		artifacts.rewardAmount = 0
+	}
+	return artifacts, nil
 }
 
 // FinalizeOAuthEmailAccount applies invitation usage and normal signup bootstrap

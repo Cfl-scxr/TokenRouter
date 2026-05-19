@@ -196,6 +196,7 @@ func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFai
 		"246810",
 		"INVITE123",
 		"oidc",
+		"",
 	)
 
 	require.Nil(t, tokenPair)
@@ -236,6 +237,7 @@ func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *tes
 		"246810",
 		"",
 		" OIDC ",
+		"",
 	)
 
 	require.NoError(t, err)
@@ -273,6 +275,7 @@ func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing
 		"246810",
 		"",
 		"twitter",
+		"",
 	)
 
 	require.NoError(t, err)
@@ -280,6 +283,69 @@ func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing
 	require.NotNil(t, user)
 	require.Len(t, userRepo.created, 1)
 	require.Equal(t, "email", userRepo.created[0].SignupSource)
+}
+
+func TestRegisterOAuthEmailAccountAppliesReferralWithoutConsumingInvitation(t *testing.T) {
+	inviter := &User{
+		ID:           99,
+		Email:        "inviter@example.com",
+		ReferralCode: "ref789",
+	}
+	userRepo := &userRepoStub{
+		nextID: 44,
+		user:   inviter,
+	}
+	redeemRepo := &redeemCodeRepoStub{
+		codesByCode: map[string]*RedeemCode{
+			"INVITE789": {
+				ID:     8,
+				Code:   "INVITE789",
+				Type:   RedeemTypeInvitation,
+				Status: StatusUnused,
+			},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		redeemRepo,
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+			SettingKeyReferralRewardAmount:  "6.25",
+		},
+		emailCache,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"INVITE789",
+		"dingtalk",
+		"REF789",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ReferredByUserID)
+	require.Equal(t, inviter.ID, *user.ReferredByUserID)
+	require.Equal(t, 6.25, user.ReferralRewardAmount)
+	require.Empty(t, redeemRepo.useCalls)
+	require.Empty(t, redeemRepo.updateCalls)
+	require.Len(t, userRepo.created, 1)
+	require.Equal(t, "dingtalk", userRepo.created[0].SignupSource)
 }
 
 func TestRollbackOAuthEmailAccountCreationRestoresInvitationUsage(t *testing.T) {

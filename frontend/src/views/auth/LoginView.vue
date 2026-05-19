@@ -11,7 +11,7 @@
         </p>
       </div>
 
-      <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled || githubOAuthEnabled || googleOAuthEnabled)" class="space-y-4">
+      <div v-if="showOAuthLogin" class="space-y-4">
         <EmailOAuthButtons
           v-if="githubOAuthEnabled || googleOAuthEnabled"
           :disabled="authActionDisabled"
@@ -21,6 +21,11 @@
         />
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
+          :disabled="authActionDisabled"
+          :show-divider="false"
+        />
+        <DingTalkOAuthSection
+          v-if="dingtalkOAuthEnabled"
           :disabled="authActionDisabled"
           :show-divider="false"
         />
@@ -199,6 +204,7 @@ import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
+import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
@@ -230,6 +236,7 @@ const publicSettingsLoaded = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const linuxdoOAuthEnabled = ref<boolean>(false)
+const dingtalkOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
@@ -277,6 +284,18 @@ const agreementGateActive = computed(
 const authActionDisabled = computed(
   () => isLoading.value || !publicSettingsLoaded.value || agreementGateActive.value
 )
+
+const showOAuthLogin = computed(
+  () =>
+    !backendModeEnabled.value &&
+    (linuxdoOAuthEnabled.value ||
+      dingtalkOAuthEnabled.value ||
+      wechatOAuthEnabled.value ||
+      oidcOAuthEnabled.value ||
+      githubOAuthEnabled.value ||
+      googleOAuthEnabled.value)
+)
+
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
     appStore.showError(value)
@@ -299,6 +318,7 @@ onMounted(async () => {
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    dingtalkOAuthEnabled.value = settings.dingtalk_oauth_enabled ?? false
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     backendModeEnabled.value = settings.backend_mode_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
