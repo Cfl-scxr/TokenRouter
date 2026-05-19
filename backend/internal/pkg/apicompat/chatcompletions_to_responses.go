@@ -325,7 +325,13 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	if content.Text != nil {
 		return json.Marshal(*content.Text)
 	}
-	return json.Marshal(convertChatContentPartsToResponses(content.Parts))
+	parts := convertChatContentPartsToResponses(content.Parts)
+	if len(parts) == 0 {
+		// nil slice 会被序列化为 JSON null，上游 Responses API 会拒绝该值
+		//（期望对象数组或字符串）。没有可用 parts 时回退为空字符串。
+		return json.Marshal("")
+	}
+	return json.Marshal(parts)
 }
 
 func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {
