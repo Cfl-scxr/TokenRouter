@@ -193,6 +193,43 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toBeUndefined()
   })
 
+  it('preserves model mappings when editing the whitelist', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      ...account.credentials,
+      model_whitelist: ['gpt-5.2'],
+      model_mapping: {
+        'gpt-latest': 'gpt-5.2'
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    getWebSearchEmulationConfigMock.mockReset()
+    getSettingsMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    getSettingsMock.mockResolvedValue({ account_quota_notify_enabled: false })
+    getWebSearchEmulationConfigMock.mockResolvedValue({ enabled: false, providers: [] })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const whitelistButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.modelWhitelist'))
+    expect(whitelistButton).toBeTruthy()
+
+    await whitelistButton!.trigger('click')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toEqual(['gpt-5.2-2025-12-11'])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-latest': 'gpt-5.2'
+    })
+  })
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {
