@@ -75,6 +75,32 @@ type AnthropicContentBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
+// MarshalJSON 保留 text/thinking 块里的空字符串字段，避免流式 content_block_start 丢失协议要求的键。
+func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
+	type anthropicContentBlock AnthropicContentBlock
+
+	switch b.Type {
+	case "text":
+		return json.Marshal(struct {
+			Text string `json:"text"`
+			anthropicContentBlock
+		}{
+			Text:                  b.Text,
+			anthropicContentBlock: anthropicContentBlock(b),
+		})
+	case "thinking":
+		return json.Marshal(struct {
+			Thinking string `json:"thinking"`
+			anthropicContentBlock
+		}{
+			Thinking:              b.Thinking,
+			anthropicContentBlock: anthropicContentBlock(b),
+		})
+	default:
+		return json.Marshal(anthropicContentBlock(b))
+	}
+}
+
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"
