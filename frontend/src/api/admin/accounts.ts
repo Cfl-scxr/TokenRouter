@@ -446,6 +446,20 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   return data
 }
 
+export interface SyncUpstreamModelsResult {
+  models: string[]
+}
+
+/**
+ * 从账号上游模型列表端点同步实时支持的模型。
+ * @param id - 账号 ID
+ * @returns 上游返回的模型 ID 列表
+ */
+export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
+  return data
+}
+
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -660,6 +674,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  syncUpstreamModels,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
