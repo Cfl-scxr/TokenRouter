@@ -36,6 +36,11 @@ const (
 	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
 	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
+
+	// 客户端侧配置限制仍应进入 ops_error_logs，但要从 SLA/错误率口径中排除。
+	OpsClientBusinessLimitedKey                 = "ops_client_business_limited"
+	OpsClientBusinessLimitedReasonKey           = "ops_client_business_limited_reason"
+	OpsClientBusinessLimitedReasonIPRestriction = "api_key_ip_restriction"
 )
 
 func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {
@@ -51,6 +56,30 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 		return
 	}
 	c.Set(key, value)
+}
+
+// MarkOpsClientBusinessLimited 标记本次失败来自客户端侧配置限制。
+func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {
+	if c == nil {
+		return
+	}
+	c.Set(OpsClientBusinessLimitedKey, true)
+	if reason = strings.TrimSpace(reason); reason != "" {
+		c.Set(OpsClientBusinessLimitedReasonKey, reason)
+	}
+}
+
+// HasOpsClientBusinessLimited 返回当前请求是否已标记为客户端侧业务限制。
+func HasOpsClientBusinessLimited(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(OpsClientBusinessLimitedKey)
+	if !ok {
+		return false
+	}
+	marked, _ := v.(bool)
+	return marked
 }
 
 // SetOpsUpstreamError is the exported wrapper for setOpsUpstreamError, used by
