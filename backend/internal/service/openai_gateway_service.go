@@ -4762,28 +4762,49 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 		return
 	}
 
-	usage.InputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens").Int())
-	usage.OutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens").Int())
-	usage.CacheReadInputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens_details.cached_tokens").Int())
-	usage.ImageOutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens_details.image_tokens").Int())
+	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data); ok {
+		*usage = parsedUsage
+	}
 }
 
 func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return OpenAIUsage{}, false
 	}
-	values := gjson.GetManyBytes(
-		body,
-		"usage.input_tokens",
-		"usage.output_tokens",
-		"usage.input_tokens_details.cached_tokens",
-		"usage.output_tokens_details.image_tokens",
-	)
+	// 优先解析顶层 usage，兼容非流式响应；再解析 SSE/WS 终端事件里的 response.usage。
+	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+		return usage, true
+	}
+	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+}
+
+func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
+	if !value.Exists() || !value.IsObject() {
+		return OpenAIUsage{}, false
+	}
+	// OpenAI Responses 使用 input/output，Chat Completions 使用 prompt/completion，两种都要计费。
+	inputTokens := value.Get("input_tokens").Int()
+	if inputTokens == 0 {
+		inputTokens = value.Get("prompt_tokens").Int()
+	}
+	outputTokens := value.Get("output_tokens").Int()
+	if outputTokens == 0 {
+		outputTokens = value.Get("completion_tokens").Int()
+	}
+	cacheReadTokens := value.Get("input_tokens_details.cached_tokens").Int()
+	if cacheReadTokens == 0 {
+		cacheReadTokens = value.Get("prompt_tokens_details.cached_tokens").Int()
+	}
+	imageOutputTokens := value.Get("output_tokens_details.image_tokens").Int()
+	if imageOutputTokens == 0 {
+		imageOutputTokens = value.Get("completion_tokens_details.image_tokens").Int()
+	}
 	return OpenAIUsage{
-		InputTokens:          int(values[0].Int()),
-		OutputTokens:         int(values[1].Int()),
-		CacheReadInputTokens: int(values[2].Int()),
-		ImageOutputTokens:    int(values[3].Int()),
+		InputTokens:              int(inputTokens),
+		OutputTokens:             int(outputTokens),
+		CacheCreationInputTokens: int(value.Get("cache_creation_input_tokens").Int()),
+		CacheReadInputTokens:     int(cacheReadTokens),
+		ImageOutputTokens:        int(imageOutputTokens),
 	}, true
 }
 

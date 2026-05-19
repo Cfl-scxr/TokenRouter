@@ -8,6 +8,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestResponsesUsageUnmarshalAcceptsChatUsageShape(t *testing.T) {
+	var usage ResponsesUsage
+	err := json.Unmarshal([]byte(`{"prompt_tokens":31,"completion_tokens":9,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":4}}`), &usage)
+	require.NoError(t, err)
+
+	assert.Equal(t, 31, usage.InputTokens)
+	assert.Equal(t, 9, usage.OutputTokens)
+	assert.Equal(t, 40, usage.TotalTokens)
+	require.NotNil(t, usage.InputTokensDetails)
+	assert.Equal(t, 11, usage.InputTokensDetails.CachedTokens)
+	require.NotNil(t, usage.OutputTokensDetails)
+	assert.Equal(t, 4, usage.OutputTokensDetails.ReasoningTokens)
+}
+
 // ---------------------------------------------------------------------------
 // ChatCompletionsToResponses tests
 // ---------------------------------------------------------------------------
