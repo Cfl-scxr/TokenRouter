@@ -25,6 +25,7 @@ type openAITokenCacheStub struct {
 	releaseLockErr   error
 	getCalled        int32
 	setCalled        int32
+	deleteCalled     int32
 	lockCalled       int32
 	unlockCalled     int32
 	simulateLockRace bool
@@ -59,6 +60,7 @@ func (s *openAITokenCacheStub) SetAccessToken(ctx context.Context, cacheKey stri
 }
 
 func (s *openAITokenCacheStub) DeleteAccessToken(ctx context.Context, cacheKey string) error {
+	atomic.AddInt32(&s.deleteCalled, 1)
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
@@ -929,4 +931,32 @@ func TestOpenAITokenProvider_RuntimeMetrics_LockAcquireFailure(t *testing.T) {
 	metrics := provider.SnapshotRuntimeMetrics()
 	require.GreaterOrEqual(t, metrics.LockAcquireFailure, int64(1))
 	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
+}
+
+func TestOpenAITokenProvider_NoRefreshTokenExpired_DisablesAccount(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	repo := &rateLimitAccountRepoStub{}
+
+	expiresAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	account := &Account{
+		ID:       2881,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "expired-access-token",
+			"expires_at":   expiresAt,
+		},
+	}
+
+	cache.tokens[OpenAITokenCacheKey(account)] = "stale-cached-token"
+	cache.getErr = errors.New("simulated cache miss")
+	provider := NewOpenAITokenProvider(repo, cache, nil)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+	require.Error(t, err)
+	require.Empty(t, token)
+	require.Contains(t, err.Error(), "refresh_token is missing")
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Contains(t, repo.lastErrorMsg, "refresh_token is missing")
+	require.Equal(t, int32(1), atomic.LoadInt32(&cache.deleteCalled))
 }

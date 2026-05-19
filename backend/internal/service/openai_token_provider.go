@@ -154,7 +154,10 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew
 	if needsRefresh && strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
 		if expiresAt != nil && !time.Now().Before(*expiresAt) {
-			return "", errors.New("openai access_token expired and refresh_token is missing")
+			const reason = "openai access_token expired and refresh_token is missing"
+			// 缺失 refresh_token 的过期 OAuth 账号无法自愈，需要立即剔出调度池。
+			p.disableAccountMissingRefreshToken(account, reason)
+			return "", errors.New(reason)
 		}
 		needsRefresh = false
 	}
@@ -259,6 +262,35 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	}
 
 	return accessToken, nil
+}
+
+// disableAccountMissingRefreshToken 将缺失 refresh_token 的过期 OpenAI OAuth 账号标记为 error。
+// 请求 context 可能已经取消，因此这里使用后台 context 完成状态落库和缓存清理。
+func (p *OpenAITokenProvider) disableAccountMissingRefreshToken(account *Account, reason string) {
+	if p == nil || p.accountRepo == nil || account == nil {
+		return
+	}
+
+	bgCtx := context.Background()
+	if err := p.accountRepo.SetError(bgCtx, account.ID, reason); err != nil {
+		slog.Warn("openai_token_provider.set_error_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+		return
+	}
+	if p.tokenCache != nil {
+		if err := p.tokenCache.DeleteAccessToken(bgCtx, OpenAITokenCacheKey(account)); err != nil {
+			slog.Warn("openai_token_provider.cache_delete_failed",
+				"account_id", account.ID,
+				"error", err,
+			)
+		}
+	}
+	slog.Warn("openai_token_provider.account_disabled_missing_refresh_token",
+		"account_id", account.ID,
+		"reason", reason,
+	)
 }
 
 func (p *OpenAITokenProvider) waitForTokenAfterLockRace(ctx context.Context, cacheKey string) (string, error) {
