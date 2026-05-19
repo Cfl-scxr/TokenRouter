@@ -4117,7 +4117,7 @@ export default {
       concurrency: '并发数',
       subscription: '订阅',
       invitation: '邀请码',
-      invitationHint: '邀请码仅支持单次注册使用，不支持多次兑换或过期时间设置。',
+      invitationHint: '邀请码仅支持单次注册使用，可设置过期时间。',
       allTypes: '全部类型',
       allStatus: '全部状态',
       unused: '未使用',

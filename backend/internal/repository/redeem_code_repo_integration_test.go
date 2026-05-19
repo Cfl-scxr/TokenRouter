@@ -216,6 +216,24 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_Status() {
 	s.Require().Equal(service.StatusUsed, codes[0].Status)
 }
 
+func (s *RedeemCodeRepoSuite) TestListWithFilters_StatusExpiredIncludesInvitationExpiry() {
+	past := time.Now().UTC().Add(-time.Hour)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{
+		Code:      uniqueTestValue(s.T(), "INVITE-EXPIRED"),
+		Type:      service.RedeemTypeInvitation,
+		Status:    service.StatusUnused,
+		MaxUses:   1,
+		ExpiresAt: &past,
+	}))
+
+	codes, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusExpired, "")
+
+	s.Require().NoError(err)
+	s.Require().Len(codes, 1)
+	s.Require().Equal(service.RedeemTypeInvitation, codes[0].Type)
+	s.Require().Equal(service.StatusExpired, codes[0].Status)
+}
+
 func (s *RedeemCodeRepoSuite) TestListWithFilters_Search() {
 	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "ALPHA-CODE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused}))
 	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "BETA-CODE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused}))
@@ -323,6 +341,24 @@ func (s *RedeemCodeRepoSuite) TestUse_AlreadyUsed() {
 
 	err := s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().Error(err, "expected error for already used code")
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
+}
+
+func (s *RedeemCodeRepoSuite) TestUse_ExpiredInvitationRejected() {
+	user := s.createUser(uniqueTestValue(s.T(), "expired-invite") + "@example.com")
+	past := time.Now().UTC().Add(-time.Hour)
+	code := &service.RedeemCode{
+		Code:      "EXPIRED-INVITE",
+		Type:      service.RedeemTypeInvitation,
+		Status:    service.StatusUnused,
+		MaxUses:   1,
+		ExpiresAt: &past,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+
+	err := s.repo.Use(s.ctx, code.ID, user.ID)
+
+	s.Require().Error(err, "expected error for expired invitation code")
 	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
 }
 

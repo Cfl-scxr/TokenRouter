@@ -3975,7 +3975,7 @@ export default {
       concurrency: 'Concurrency',
       subscription: 'Subscription',
       invitation: 'Invitation',
-      invitationHint: 'Invitation codes remain single-use and do not support reusable redemptions or expiry settings.',
+      invitationHint: 'Invitation codes remain single-use and can have an expiration time.',
       unused: 'Unused',
       used: 'Exhausted',
       columns: {

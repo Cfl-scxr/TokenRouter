@@ -1374,6 +1374,7 @@ export interface GenerateRedeemCodesRequest {
   value: number
   max_uses?: number
   expires_at?: number | null
+  expires_in_days?: number
   plan_id?: number | null
 }
 

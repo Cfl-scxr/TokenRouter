@@ -67,7 +67,7 @@ func (r *RedeemCode) IsExhausted() bool {
 }
 
 func (r *RedeemCode) IsNaturallyExpired() bool {
-	if r == nil || r.Type == RedeemTypeInvitation || r.ExpiresAt == nil {
+	if r == nil || r.ExpiresAt == nil {
 		return false
 	}
 	return !time.Now().Before(*r.ExpiresAt)

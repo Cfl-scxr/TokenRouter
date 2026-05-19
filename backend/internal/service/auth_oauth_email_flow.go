@@ -72,7 +72,7 @@ func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, i
 	if err != nil {
 		return nil, ErrInvitationCodeInvalid
 	}
-	if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+	if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
 		return nil, ErrInvitationCodeInvalid
 	}
 	return redeemCode, nil
@@ -434,7 +434,11 @@ func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invit
 func (s *AuthService) useOAuthRegistrationInvitation(ctx context.Context, invitationID, userID int64) error {
 	if client := s.oauthEmailFlowClient(ctx); client != nil {
 		affected, err := client.RedeemCode.Update().
-			Where(redeemcode.IDEQ(invitationID), redeemcode.StatusEQ(StatusUnused)).
+			Where(
+				redeemcode.IDEQ(invitationID),
+				redeemcode.StatusEQ(StatusUnused),
+				redeemcode.Or(redeemcode.ExpiresAtIsNil(), redeemcode.ExpiresAtGT(time.Now().UTC())),
+			).
 			SetStatus(StatusUsed).
 			SetUsedCount(1).
 			SetUsedBy(userID).

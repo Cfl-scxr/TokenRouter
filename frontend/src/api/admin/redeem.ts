@@ -69,7 +69,8 @@ export async function generate(
   planId?: number | null,
   maxUses?: number,
   expiresAt?: number | null,
-  code?: string
+  code?: string,
+  expiresInDays?: number | null
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
@@ -83,6 +84,9 @@ export async function generate(
 
   if (expiresAt && expiresAt > 0) {
     payload.expires_at = expiresAt
+  }
+  if (expiresInDays && expiresInDays > 0) {
+    payload.expires_in_days = expiresInDays
   }
 
   if (code && code.trim()) {

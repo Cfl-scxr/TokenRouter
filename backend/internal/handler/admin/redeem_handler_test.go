@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
@@ -129,4 +130,88 @@ func TestCreateAndRedeem_BalanceIgnoresSubscriptionFields(t *testing.T) {
 
 	assert.NotEqual(t, http.StatusBadRequest, code,
 		"balance type should not require plan_id")
+}
+
+func TestResolveRedeemCodeExpiresAt_FromDays(t *testing.T) {
+	days := 3
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(nil, &days)
+
+	require.NoError(t, err)
+	require.NotNil(t, expiresAt)
+	require.WithinDuration(t, time.Now().UTC().AddDate(0, 0, days), *expiresAt, 2*time.Second)
+}
+
+func TestResolveRedeemCodeExpiresAt_FromUnixSeconds(t *testing.T) {
+	futureUnix := time.Now().UTC().Add(time.Hour).Unix()
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(&futureUnix, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, expiresAt)
+	require.Equal(t, futureUnix, expiresAt.Unix())
+	require.Equal(t, time.UTC, expiresAt.Location())
+}
+
+func TestResolveRedeemCodeExpiresAt_ZeroMeansNoExpiry(t *testing.T) {
+	zero := int64(0)
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(&zero, nil)
+
+	require.NoError(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsPastAbsoluteTime(t *testing.T) {
+	pastUnix := time.Now().UTC().Add(-time.Minute).Unix()
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(&pastUnix, nil)
+
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsNonPositiveDays(t *testing.T) {
+	days := 0
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(nil, &days)
+
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsConflictingInputs(t *testing.T) {
+	futureUnix := time.Now().UTC().Add(time.Hour).Unix()
+	days := 3
+
+	expiresAt, err := resolveRedeemCodeExpiresAt(&futureUnix, &days)
+
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestGenerate_AcceptsInvitationExpiry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adminSvc := newStubAdminService()
+	h := NewRedeemHandler(adminSvc, nil)
+	futureUnix := time.Now().UTC().Add(time.Hour).Unix()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, err := json.Marshal(map[string]any{
+		"count":      1,
+		"type":       "invitation",
+		"value":      0,
+		"expires_at": futureUnix,
+	})
+	require.NoError(t, err)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/admin/redeem-codes/generate", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.Generate(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, adminSvc.lastGenerateRedeemCodes)
+	require.NotNil(t, adminSvc.lastGenerateRedeemCodes.ExpiresAt)
+	require.Equal(t, futureUnix, adminSvc.lastGenerateRedeemCodes.ExpiresAt.Unix())
 }

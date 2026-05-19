@@ -800,7 +800,7 @@ func (s *AuthService) resolveRegistrationArtifacts(ctx context.Context, invitati
 			logger.LegacyPrintf("service.auth", "[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
 			return nil, ErrInvitationCodeInvalid
 		}
-		if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+		if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
 			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
 			return nil, ErrInvitationCodeInvalid
 		}

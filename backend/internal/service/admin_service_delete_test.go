@@ -726,6 +726,26 @@ func TestAdminService_UpdateRedeemCode_RestoresExpiredCodeWhenExpiryCleared(t *t
 	require.Equal(t, StatusActive, updated.Status)
 }
 
+func TestAdminService_UpdateRedeemCode_InvitationKeepsExpiry(t *testing.T) {
+	expiresAt := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	maxUses := 0
+	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
+		1: {ID: 1, Code: "INVITE-1", Type: RedeemTypeInvitation, Status: StatusUnused, MaxUses: 1},
+	}}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	updated, err := svc.UpdateRedeemCode(context.Background(), 1, &UpdateRedeemCodeInput{
+		MaxUses:      &maxUses,
+		ExpiresAt:    &expiresAt,
+		ExpiresAtSet: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, updated.MaxUses)
+	require.Equal(t, &expiresAt, updated.ExpiresAt)
+	require.Equal(t, StatusUnused, updated.Status)
+}
+
 func TestAdminService_UpdateRedeemCode_RejectsSystemRecords(t *testing.T) {
 	maxUses := 2
 	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{

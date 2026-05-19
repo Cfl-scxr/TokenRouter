@@ -3,7 +3,7 @@
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
-          <!-- Left: Search + Filters -->
+          <!-- 左侧：搜索和筛选 -->
           <div class="flex-1 sm:max-w-64">
             <input
               v-model="searchQuery"
@@ -26,7 +26,7 @@
             @change="loadCodes"
           />
 
-          <!-- Right: Action buttons -->
+          <!-- 右侧：操作按钮 -->
           <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
             <button
               @click="loadCodes"
@@ -186,7 +186,7 @@
           @update:pageSize="handlePageSizeChange"
         />
 
-        <!-- Batch Actions -->
+        <!-- 批量操作 -->
         <div v-if="filters.status === 'unused'" class="flex justify-end">
           <button @click="showDeleteUnusedDialog = true" class="btn btn-danger">
             {{ t('admin.redeem.deleteAllUnused') }}
@@ -195,7 +195,7 @@
       </template>
     </TablePageLayout>
 
-    <!-- Delete Confirmation Dialog -->
+    <!-- 删除确认弹窗 -->
     <ConfirmDialog
       :show="showDeleteDialog"
       :title="t('admin.redeem.deleteCode')"
@@ -207,7 +207,7 @@
       @cancel="showDeleteDialog = false"
     />
 
-    <!-- Delete Unused Codes Dialog -->
+    <!-- 删除未使用兑换码弹窗 -->
     <ConfirmDialog
       :show="showDeleteUnusedDialog"
       :title="t('admin.redeem.deleteAllUnused')"
@@ -219,7 +219,7 @@
       @cancel="showDeleteUnusedDialog = false"
     />
 
-    <!-- Generate Codes Dialog -->
+    <!-- 生成兑换码弹窗 -->
     <Teleport to="body">
       <div v-if="showGenerateDialog" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="fixed inset-0 bg-black/50" @click="showGenerateDialog = false"></div>
@@ -288,7 +288,7 @@
                 />
               </div>
             </template>
-            <template v-if="generateForm.type !== 'invitation'">
+            <template>
               <div>
                 <label class="input-label">{{ t('admin.redeem.maxUses') }}</label>
                 <input
@@ -297,6 +297,7 @@
                   min="0"
                   required
                   class="input"
+                  :disabled="generateForm.type === 'invitation'"
                 />
                 <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                   {{ t('admin.redeem.maxUsesHint') }}
@@ -416,7 +417,7 @@
           </p>
         </div>
 
-        <div v-if="editingCode?.type !== 'invitation'">
+        <div>
           <label class="input-label">
             {{ t('admin.redeem.expiresAt') }}
             <span class="ml-1 text-xs font-normal text-gray-400">
@@ -439,12 +440,12 @@
       </template>
     </BaseDialog>
 
-    <!-- Generated Codes Result Dialog -->
+    <!-- 生成结果弹窗 -->
     <Teleport to="body">
       <div v-if="showResultDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="fixed inset-0 bg-black/50" @click="closeResultDialog"></div>
         <div class="relative z-10 w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-dark-800">
-          <!-- Header -->
+          <!-- 头部 -->
           <div
             class="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-dark-600"
           >
@@ -482,7 +483,7 @@
               <Icon name="x" size="md" :stroke-width="2" />
             </button>
           </div>
-          <!-- Content -->
+          <!-- 内容 -->
           <div class="p-5">
             <div class="relative">
               <textarea
@@ -493,7 +494,7 @@
               ></textarea>
             </div>
           </div>
-          <!-- Footer -->
+          <!-- 底部 -->
           <div
             class="flex justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-gray-50 px-5 py-4 dark:border-dark-600 dark:bg-dark-700/50"
           >
@@ -702,14 +703,13 @@ const editForm = reactive({
   expires_at_str: ''
 })
 
-// 监听类型变化，邀请码类型时自动设置 value 为 0
+// 监听类型变化，邀请码类型固定为单次使用，但仍允许设置兑换码自身过期时间。
 watch(
   () => generateForm.type,
   (newType) => {
     if (newType === 'invitation') {
       generateForm.value = 0
       generateForm.max_uses = 1
-      generateForm.expires_at_str = ''
     } else if (newType === 'subscription') {
       generateForm.value = 0
     } else if (generateForm.value === 0) {
@@ -833,14 +833,13 @@ const handleGenerateCodes = async () => {
     appStore.showError(t('admin.announcements.form.selectPackages'))
     return
   }
-  if (generateForm.type !== 'invitation' && (!Number.isInteger(generateForm.max_uses) || generateForm.max_uses < 0)) {
+  if (!Number.isInteger(generateForm.max_uses) || generateForm.max_uses < 0) {
     appStore.showError(t('admin.redeem.maxUsesRequired'))
     return
   }
 
   const customCode = generateForm.code.trim()
-  const expiresAt =
-    generateForm.type === 'invitation' ? null : parseDateTimeLocalInput(generateForm.expires_at_str)
+  const expiresAt = parseDateTimeLocalInput(generateForm.expires_at_str)
 
   generating.value = true
   try {
@@ -849,7 +848,7 @@ const handleGenerateCodes = async () => {
       generateForm.type,
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.plan_id : undefined,
-      generateForm.type === 'invitation' ? undefined : generateForm.max_uses,
+      generateForm.max_uses,
       expiresAt,
       customCode || undefined
     )
@@ -914,7 +913,7 @@ const closeEditDialog = () => {
 const handleUpdateCode = async () => {
   const code = editingCode.value
   if (!code) return
-  if (code.type !== 'invitation' && (!Number.isInteger(editForm.max_uses) || editForm.max_uses < 0)) {
+  if (!Number.isInteger(editForm.max_uses) || editForm.max_uses < 0) {
     appStore.showError(t('admin.redeem.maxUsesRequired'))
     return
   }
@@ -943,9 +942,7 @@ const handleUpdateCode = async () => {
       payload.value = editForm.value
     }
   }
-  if (code.type !== 'invitation') {
-    payload.expires_at = parseDateTimeLocalInput(editForm.expires_at_str) || 0
-  }
+  payload.expires_at = parseDateTimeLocalInput(editForm.expires_at_str) || 0
 
   updating.value = true
   try {
@@ -983,7 +980,7 @@ const confirmDelete = async () => {
 
 const confirmDeleteUnused = async () => {
   try {
-    // Get all unused codes and delete them
+    // 拉取当前未使用兑换码并批量删除。
     const unusedCodesResponse = await adminAPI.redeem.list(1, 1000, { status: 'unused' })
     const unusedCodeIds = unusedCodesResponse.items.map((code) => code.id)
 

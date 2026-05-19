@@ -179,7 +179,6 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 	if codeType == RedeemTypeInvitation {
 		value = 0
 		maxUses = 1
-		req.ExpiresAt = nil
 	}
 
 	codes := make([]RedeemCode, 0, req.Count)
@@ -239,7 +238,6 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	}
 	if code.Type == RedeemTypeInvitation {
 		code.MaxUses = 1
-		code.ExpiresAt = nil
 	}
 	code.Status = code.PersistedStatus()
 

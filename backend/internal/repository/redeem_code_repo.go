@@ -370,21 +370,18 @@ func redeemCodeEffectiveStatusPredicate(status string) dbpredicate.RedeemCode {
 
 func redeemCodeEffectiveStatusExpr(s *entsql.Selector) string {
 	statusCol := s.C(redeemcode.FieldStatus)
-	typeCol := s.C(redeemcode.FieldType)
 	expiresAtCol := s.C(redeemcode.FieldExpiresAt)
 	usedCountCol := s.C(redeemcode.FieldUsedCount)
 	maxUsesCol := s.C(redeemcode.FieldMaxUses)
 
 	return fmt.Sprintf(
 		"CASE "+
-			"WHEN %s = '%s' OR (%s <> '%s' AND %s IS NOT NULL AND %s <= NOW()) THEN '%s' "+
+			"WHEN %s = '%s' OR (%s IS NOT NULL AND %s <= NOW()) THEN '%s' "+
 			"WHEN %s > 0 AND %s >= %s THEN '%s' "+
 			"WHEN %s > 0 THEN '%s' "+
 			"ELSE '%s' END",
 		statusCol,
 		service.StatusExpired,
-		typeCol,
-		service.RedeemTypeInvitation,
 		expiresAtCol,
 		expiresAtCol,
 		service.StatusExpired,
@@ -400,12 +397,10 @@ func redeemCodeEffectiveStatusExpr(s *entsql.Selector) string {
 
 func redeemCodeEffectiveExpiredPredicate(s *entsql.Selector) *entsql.Predicate {
 	statusCol := s.C(redeemcode.FieldStatus)
-	typeCol := s.C(redeemcode.FieldType)
 	expiresAtCol := s.C(redeemcode.FieldExpiresAt)
 	return entsql.Or(
 		entsql.EQ(statusCol, service.StatusExpired),
 		entsql.And(
-			entsql.Not(entsql.EQ(typeCol, service.RedeemTypeInvitation)),
 			entsql.Not(entsql.IsNull(expiresAtCol)),
 			entsql.LTE(expiresAtCol, entsql.Expr("NOW()")),
 		),

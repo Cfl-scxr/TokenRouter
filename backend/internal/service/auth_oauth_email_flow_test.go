@@ -209,6 +209,57 @@ func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFai
 	require.Empty(t, redeemRepo.updateCalls)
 }
 
+func TestRegisterOAuthEmailAccountRejectsExpiredInvitation(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 42}
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	redeemRepo := &redeemCodeRepoStub{
+		codesByCode: map[string]*RedeemCode{
+			"INVITE-EXPIRED": {
+				ID:        7,
+				Code:      "INVITE-EXPIRED",
+				Type:      RedeemTypeInvitation,
+				Status:    StatusUnused,
+				MaxUses:   1,
+				ExpiresAt: &expiredAt,
+			},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		redeemRepo,
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+		},
+		emailCache,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"INVITE-EXPIRED",
+		"oidc",
+		"",
+	)
+
+	require.Nil(t, tokenPair)
+	require.Nil(t, user)
+	require.ErrorIs(t, err, ErrInvitationCodeInvalid)
+	require.Empty(t, userRepo.created)
+}
+
 func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *testing.T) {
 	userRepo := &userRepoStub{nextID: 42}
 	emailCache := &emailCacheStub{

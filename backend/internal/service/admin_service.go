@@ -2897,9 +2897,6 @@ func (s *adminServiceImpl) UpdateRedeemCode(ctx context.Context, id int64, input
 		}
 
 		if input.ExpiresAtSet {
-			if code.Type == RedeemTypeInvitation && input.ExpiresAt != nil {
-				return infraerrors.BadRequest("REDEEM_CODE_INVITATION_EXPIRES_UNSUPPORTED", "invitation codes do not support expires_at")
-			}
 			code.ExpiresAt = input.ExpiresAt
 		}
 
@@ -2915,7 +2912,6 @@ func (s *adminServiceImpl) UpdateRedeemCode(ctx context.Context, id int64, input
 
 		if code.Type == RedeemTypeInvitation {
 			code.MaxUses = 1
-			code.ExpiresAt = nil
 		}
 		if code.Status == StatusExpired && !code.IsNaturallyExpired() {
 			// 更新次数或过期时间后，允许管理员把手动过期的普通兑换码恢复为可兑换状态。
@@ -3034,7 +3030,6 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 	}
 	if input.Type == RedeemTypeInvitation {
 		maxUses = 1
-		input.ExpiresAt = nil
 	}
 
 	codes := make([]RedeemCode, 0, input.Count)
