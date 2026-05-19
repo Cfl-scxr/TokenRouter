@@ -1218,6 +1218,8 @@ export type RedeemCodeType =
   | 'invitation'
   | 'referral_reward'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
+export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
+export type ImageSizeBreakdown = Record<string, number>
 
 export interface UsageLog {
   id: number
@@ -1259,6 +1261,10 @@ export interface UsageLog {
   // 图片生成字段
   image_count: number
   image_size: string | null
+  image_input_size: string | null
+  image_output_size: string | null
+  image_size_source: ImageSizeSource | null
+  image_size_breakdown: ImageSizeBreakdown | null
 
   // User-Agent
   user_agent: string | null
