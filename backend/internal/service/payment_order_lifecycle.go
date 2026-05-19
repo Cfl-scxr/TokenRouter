@@ -26,6 +26,7 @@ const (
 	rateLimitModeFixed         = "fixed"
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
+	pendingWxpayReconcileLimit = 20
 )
 
 func (s *PaymentService) checkCancelRateLimit(ctx context.Context, userID int64, cfg *PaymentConfig) error {
@@ -294,6 +295,36 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 		}
 	}
 	return o, nil
+}
+
+// ReconcilePendingWxpayOrders 主动补偿未收到回调的微信待支付订单，避免等到过期才发现已支付。
+func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, error) {
+	now := time.Now()
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.ExpiresAtGT(now),
+			paymentorder.Or(
+				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
+				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
+				paymentorder.ProviderKeyEQ(payment.TypeWxpay),
+				paymentorder.ProviderKeyHasPrefix(payment.TypeWxpay+"_"),
+			),
+		).
+		Order(dbent.Asc(paymentorder.FieldCreatedAt)).
+		Limit(pendingWxpayReconcileLimit).
+		All(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query pending wxpay orders: %w", err)
+	}
+
+	recovered := 0
+	for _, order := range orders {
+		if s.checkPaid(ctx, order) == checkPaidResultAlreadyPaid {
+			recovered++
+		}
+	}
+	return recovered, nil
 }
 
 // VerifyOrderPublic returns the currently persisted public order state without

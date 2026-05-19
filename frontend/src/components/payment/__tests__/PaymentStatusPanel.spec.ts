@@ -225,6 +225,38 @@ describe('PaymentStatusPanel', () => {
     expect(wrapper.text()).toContain('payment.result.success')
   })
 
+  it('actively verifies a stuck wxpay pending order and settles it when upstream confirms payment', async () => {
+    pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
+    verifyOrder.mockResolvedValue({
+      data: orderFactory('COMPLETED'),
+    })
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: 'https://pay.example.com/qr/42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'wxpay',
+        outTradeNo: 'sub2_20260420abcd1234',
+        orderType: 'balance',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+
+    expect(pollOrderStatus).toHaveBeenCalledWith(42)
+    expect(verifyOrder).toHaveBeenCalledWith('sub2_20260420abcd1234')
+    expect(wrapper.text()).toContain('payment.result.success')
+    expect(wrapper.emitted('success')).toHaveLength(1)
+  })
+
   it('shows success when cancel discovers the order was already paid', async () => {
     cancelOrder.mockResolvedValue({ data: { message: 'already_paid' } })
     verifyOrder.mockResolvedValue({ data: orderFactory('COMPLETED') })

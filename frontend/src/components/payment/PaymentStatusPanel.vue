@@ -178,6 +178,11 @@ const outcome = ref<PaymentOutcome | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let verifyAttempts = 0
+let lastVerifyAt = 0
+
+const VERIFY_RETRY_INTERVAL_MS = 15000
+const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
@@ -225,7 +230,7 @@ function isSuccessStatus(status: string | null | undefined): boolean {
 }
 
 function upstreamVerificationOutTradeNo(): string {
-  if (props.paymentType !== 'stripe') return ''
+  if (props.paymentType !== 'stripe' && !isWxpay.value) return ''
   return props.outTradeNo || ''
 }
 
@@ -255,11 +260,12 @@ async function renderQR() {
 
 async function pollStatus() {
   if (!props.orderId || outcome.value) return
-  // Stripe 支付等待页主动向上游确认，避免 webhook 延迟或漏发时一直停在等待态。
+  // Stripe 直接查上游；微信在本地仍 pending 时再节流补查，避免漏回调导致一直等待。
   const upstreamOutTradeNo = upstreamVerificationOutTradeNo()
-  const order = upstreamOutTradeNo
+  let order = upstreamOutTradeNo && props.paymentType === 'stripe'
     ? await verifyOrderWithUpstream(upstreamOutTradeNo)
     : await paymentStore.pollOrderStatus(props.orderId)
+  order = await tryRecoverPendingWxpayOrder(order)
   applyResolvedOrderStatus(order)
 }
 
@@ -290,6 +296,26 @@ async function verifyOrderWithUpstream(outTradeNo: string): Promise<PaymentOrder
   } catch (err: unknown) {
     console.warn('[payment] Failed to verify order upstream:', err)
     return paymentStore.pollOrderStatus(props.orderId)
+  }
+}
+
+async function tryRecoverPendingWxpayOrder(order: PaymentOrder | null): Promise<PaymentOrder | null> {
+  if (!order || !isWxpay.value) return order
+  const outTradeNo = String(order.out_trade_no || props.outTradeNo || '').trim()
+  if (!outTradeNo) return order
+  if (String(order.status || '').trim().toUpperCase() !== 'PENDING') return order
+  const now = Date.now()
+  if (verifyAttempts >= VERIFY_RETRY_MAX_ATTEMPTS || now - lastVerifyAt < VERIFY_RETRY_INTERVAL_MS) {
+    return order
+  }
+
+  lastVerifyAt = now
+  verifyAttempts += 1
+  try {
+    const response = await paymentAPI.verifyOrder(outTradeNo)
+    return response.data ?? order
+  } catch {
+    return order
   }
 }
 
@@ -343,6 +369,8 @@ function startPolling() {
 
 // Initialize on mount
 qrUrl.value = props.qrCode
+verifyAttempts = 0
+lastVerifyAt = 0
 let seconds = 30 * 60
 if (props.expiresAt) {
   seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
