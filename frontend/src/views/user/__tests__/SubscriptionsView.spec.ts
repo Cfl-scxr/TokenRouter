@@ -37,6 +37,7 @@ function createTestI18n() {
           weekly: 'Weekly',
           monthly: 'Monthly',
           resetIn: 'Reset in {time}',
+          quotaEndsIn: 'Ends in {time}',
           unlimited: 'Unlimited',
           unlimitedDesc: 'Unlimited usage',
           pendingOnly: 'Pending only',
