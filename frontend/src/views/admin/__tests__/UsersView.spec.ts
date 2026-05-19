@@ -75,6 +75,36 @@ const createAdminUser = (): AdminUser => ({
   current_concurrency: 0
 })
 
+const mountUsersView = () => mount(UsersView, {
+  global: {
+    stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      TablePageLayout: {
+        template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+      },
+      DataTable: DataTableStub,
+      Pagination: true,
+      ConfirmDialog: true,
+      EmptyState: true,
+      GroupBadge: true,
+      Select: true,
+      UserAttributesConfigModal: true,
+      UserConcurrencyCell: true,
+      PlatformUsageBreakdown: { props: ['today', 'total', 'byPlatform'], template: '<div data-test="usage-cell">{{ total }}</div>' },
+      PlatformCostCell: { props: ['usage'], template: '<div data-test="platform-cost">{{ usage?.total_actual_cost ?? "-" }}</div>' },
+      UserCreateModal: true,
+      UserEditModal: true,
+      UserApiKeysModal: true,
+      UserAllowedGroupsModal: true,
+      UserBalanceModal: true,
+      UserBalanceHistoryModal: true,
+      GroupReplaceModal: true,
+      Icon: true,
+      Teleport: true
+    }
+  }
+})
+
 const DataTableStub = {
   props: ['columns', 'data'],
   emits: ['sort'],
@@ -83,7 +113,9 @@ const DataTableStub = {
       <div data-test="columns">{{ columns.map(col => col.key).join(',') }}</div>
       <button data-test="sort-last-used" @click="$emit('sort', 'last_used_at', 'desc')">sort</button>
       <div v-for="row in data" :key="row.id">
+        <div data-test="row-email">{{ row.email }}</div>
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <slot v-for="column in columns" :name="'cell-' + column.key" :value="row[column.key]" :row="row" />
       </div>
     </div>
   `
@@ -113,33 +145,7 @@ describe('admin UsersView', () => {
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {
-    const wrapper = mount(UsersView, {
-      global: {
-        stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          TablePageLayout: {
-            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
-          },
-          DataTable: DataTableStub,
-          Pagination: true,
-          ConfirmDialog: true,
-          EmptyState: true,
-          GroupBadge: true,
-          Select: true,
-          UserAttributesConfigModal: true,
-          UserConcurrencyCell: true,
-          UserCreateModal: true,
-          UserEditModal: true,
-          UserApiKeysModal: true,
-          UserAllowedGroupsModal: true,
-          UserBalanceModal: true,
-          UserBalanceHistoryModal: true,
-          GroupReplaceModal: true,
-          Icon: true,
-          Teleport: true
-        }
-      }
-    })
+    const wrapper = mountUsersView()
 
     await flushPromises()
 
@@ -160,5 +166,75 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('hides new platform usage columns for existing column settings schema', async () => {
+    localStorage.setItem('user-hidden-columns', JSON.stringify(['notes']))
+    localStorage.setItem('user-column-settings-version', '1')
+
+    const wrapper = mountUsersView()
+    await flushPromises()
+
+    const visibleColumns = wrapper.get('[data-test="columns"]').text().split(',')
+    expect(visibleColumns).not.toContain('usage_anthropic')
+    expect(visibleColumns).not.toContain('usage_openai')
+    expect(visibleColumns).not.toContain('usage_gemini')
+    expect(visibleColumns).not.toContain('usage_antigravity')
+    expect(JSON.parse(localStorage.getItem('user-hidden-columns') || '[]')).toEqual(
+      expect.arrayContaining(['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'])
+    )
+  })
+
+  it('sorts current page by platform usage after enabling a platform column', async () => {
+    const highUsageUser = createAdminUser()
+    highUsageUser.id = 42
+    highUsageUser.email = 'high@example.com'
+    const lowUsageUser = createAdminUser()
+    lowUsageUser.id = 7
+    lowUsageUser.email = 'low@example.com'
+
+    localStorage.setItem(
+      'user-hidden-columns',
+      JSON.stringify(['notes', 'groups', 'subscriptions', 'usage', 'concurrency', 'usage_openai', 'usage_gemini', 'usage_antigravity'])
+    )
+    localStorage.setItem('user-column-settings-version', '2')
+    localStorage.setItem(
+      'admin-users-usage-sort',
+      JSON.stringify({ key: 'usage_anthropic', metric: 'total', order: 'desc' })
+    )
+    listUsers.mockResolvedValue({
+      items: [lowUsageUser, highUsageUser],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    getBatchUsersUsage.mockResolvedValue({
+      stats: {
+        42: {
+          user_id: 42,
+          today_actual_cost: 1,
+          total_actual_cost: 10,
+          by_platform: [{ platform: 'anthropic', today_actual_cost: 1, total_actual_cost: 10 }]
+        },
+        7: {
+          user_id: 7,
+          today_actual_cost: 1,
+          total_actual_cost: 1,
+          by_platform: [{ platform: 'anthropic', today_actual_cost: 1, total_actual_cost: 1 }]
+        }
+      }
+    })
+
+    const wrapper = mountUsersView()
+    await flushPromises()
+    await new Promise(resolve => window.setTimeout(resolve, 60))
+    await flushPromises()
+
+    expect(getBatchUsersUsage).toHaveBeenCalledWith([7, 42])
+    expect(wrapper.findAll('[data-test="row-email"]').map(node => node.text())).toEqual([
+      'high@example.com',
+      'low@example.com'
+    ])
   })
 })

@@ -427,6 +427,41 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetBatchUserUsageStatsSplitsByEffectivePlatform(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(30 * 24 * time.Hour)
+	rows := sqlmock.NewRows([]string{"user_id", "platform", "total_cost", "today_cost"}).
+		AddRow(int64(1), "anthropic", 3.5, 1.5).
+		AddRow(int64(1), "openai", 2.25, 0.25).
+		AddRow(int64(1), nil, 0.75, 0.5).
+		AddRow(int64(2), "gemini", 7.0, 4.0)
+
+	mock.ExpectQuery("LEFT JOIN groups g ON g\\.id = ul\\.group_id").
+		WithArgs(sqlmock.AnyArg(), start, end, sqlmock.AnyArg()).
+		WillReturnRows(rows)
+
+	stats, err := repo.GetBatchUserUsageStats(context.Background(), []int64{1, 2}, start, end)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	require.Len(t, stats, 2)
+	require.InDelta(t, 6.5, stats[1].TotalActualCost, 0.000001)
+	require.InDelta(t, 2.25, stats[1].TodayActualCost, 0.000001)
+	require.Equal(t, []PlatformUsage{
+		{Platform: "anthropic", TotalActualCost: 3.5, TodayActualCost: 1.5},
+		{Platform: "openai", TotalActualCost: 2.25, TodayActualCost: 0.25},
+	}, stats[1].ByPlatform)
+
+	require.InDelta(t, 7.0, stats[2].TotalActualCost, 0.000001)
+	require.InDelta(t, 4.0, stats[2].TodayActualCost, 0.000001)
+	require.Equal(t, []PlatformUsage{
+		{Platform: "gemini", TotalActualCost: 7.0, TodayActualCost: 4.0},
+	}, stats[2].ByPlatform)
+}
+
 func TestUsageLogRepositoryGetModelStatsAccountCostColumn(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
