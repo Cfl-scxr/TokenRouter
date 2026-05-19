@@ -6293,31 +6293,25 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 	})
 }
 
-// applyOpenAIFastPolicyToWSResponseCreate evaluates the OpenAI fast policy
-// against a single client→upstream WebSocket frame whose top-level
-// "type"=="response.create". It mirrors the HTTP-side
-// applyOpenAIFastPolicyToBody contract but operates on a Realtime/Responses
-// WS payload:
+// applyOpenAIFastPolicyToWSResponseCreate 针对单个 client -> upstream WebSocket
+// 帧评估 OpenAI fast policy，该帧的顶层 "type" 必须是 "response.create"。
+// 该函数镜像 HTTP 侧 applyOpenAIFastPolicyToBody 的契约，但作用于
+// Realtime/Responses WS payload：
 //
-//   - pass: returns frame unchanged (newBytes == frame, blocked == nil)
-//   - filter: returns a copy with top-level service_tier removed
-//   - block: returns (frame, *OpenAIFastBlockedError)
+//   - pass：保留 service_tier，并将 "fast" 等别名归一化为 "priority"
+//   - filter：返回删除顶层 service_tier 的副本
+//   - block：返回 (frame, *OpenAIFastBlockedError)
 //
-// Only frames whose "type" field strictly equals "response.create" are
-// inspected/mutated. Any other frame type — including the empty string —
-// passes through untouched. The OpenAI Realtime client-event spec requires
-// "type" to be set, so an empty type is treated as a malformed frame we do
-// not police; the upstream is the source of truth for rejecting it.
+// 只有 "type" 字段严格等于 "response.create" 的帧会被检查或修改。其它帧类型
+// （包括空字符串）都会原样透传。OpenAI Realtime client-event 规范要求设置
+// "type"，因此空 type 被视为畸形帧，本层不拦截，由上游负责拒绝。
 //
-// service_tier lives at the top level of response.create — same as the
-// Responses HTTP body shape (see openai_gateway_chat_completions.go:304 +
-// extractOpenAIServiceTierFromBody at line 5593, and the test fixture at
-// openai_ws_forwarder_ingress_session_test.go:402). We therefore only need
-// to inspect / strip the top-level field; there is no nested form in the
-// schema today.
+// service_tier 位于 response.create 顶层，与 Responses HTTP body 形态一致
+// （参见 openai_gateway_chat_completions.go:304、extractOpenAIServiceTierFromBody
+// 以及 openai_ws_forwarder_ingress_session_test.go:402 的测试样例）。因此这里只需
+// 检查或剥离顶层字段；当前 schema 没有嵌套形式。
 //
-// The caller is responsible for choosing the upstream model passed in —
-// this helper does not re-derive it.
+// 调用方负责传入用于上游请求的 model；该 helper 不会重新推导。
 func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	ctx context.Context,
 	account *Account,

@@ -257,19 +257,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		len(firstClientMessage),
 	)
 
-	// Apply OpenAI Fast Policy on the first response.create frame. Subsequent
-	// frames are filtered via a wrapping FrameConn below so every client→
-	// upstream frame goes through the same policy evaluator/normalize/scope as
-	// HTTP entrypoints.
+	// 在首个 response.create 帧上应用 OpenAI Fast Policy。后续帧会通过下方的
+	// FrameConn 包装器过滤，确保每个 client -> upstream 帧都经过与 HTTP 入口相同的
+	// 策略评估、归一化和 scope 处理。
 	//
-	// We capture the session-level model from the first frame here so the
-	// per-frame filter (below) can fall back to it when a follow-up frame
-	// omits "model" — Realtime clients are allowed to send response.create
-	// without re-stating the model, in which case the upstream uses the model
-	// negotiated at session.update time. Without this fallback, an empty
-	// model would miss the default ["gpt-5.5","gpt-5.5*"] whitelist and be
-	// silently passed through, defeating the policy on every frame after
-	// the first.
+	// 这里从首帧捕获会话级 model，供下方逐帧过滤器在后续帧省略 "model" 时回退使用。
+	// Realtime 客户端允许发送不重复声明 model 的 response.create，此时上游会使用
+	// session.update 协商得到的 model。没有这个 fallback 时，空 model 会绕过管理员
+	// 配置的模型白名单并被静默透传，导致首帧之后的每一帧都无法命中该策略。
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	initialRequestModel := ""
 	if hooks != nil {
