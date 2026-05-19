@@ -38,4 +38,27 @@ describe('TotpLoginModal', () => {
     expect(wrapper.text()).not.toContain('Invalid code')
     expect(wrapper.find('.bg-red-50').exists()).toBe(false)
   })
+
+  it('fills visible code inputs from hidden one-time-code autofill input', async () => {
+    const wrapper = mount(TotpLoginModal, {
+      props: {
+        tempToken: 'temp-token',
+      },
+    })
+
+    const hiddenInput = wrapper.get('input[autocomplete="one-time-code"]')
+    await hiddenInput.setValue('12a3456')
+    await wrapper.vm.$nextTick()
+
+    const visibleInputs = wrapper.findAll('input[autocomplete="off"]')
+    expect(visibleInputs.map(input => (input.element as HTMLInputElement).value)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+    ])
+    expect(wrapper.emitted('verify')).toEqual([['123456']])
+  })
 })

@@ -22,8 +22,20 @@
           </p>
         </div>
 
-        <!-- Code Input -->
+        <!-- 验证码输入 -->
         <div class="mb-6">
+          <!-- 隐藏输入框用于让密码管理器识别并自动填充一次性验证码。 -->
+          <input
+            ref="hiddenOtpInputRef"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            class="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
+            aria-hidden="true"
+            tabindex="-1"
+            @input="handleHiddenOtpInput"
+          />
           <div class="flex justify-center gap-2">
             <input
               v-for="(_, index) in 6"
@@ -33,6 +45,7 @@
               maxlength="1"
               inputmode="numeric"
               pattern="[0-9]"
+              autocomplete="off"
               class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               :disabled="verifying"
               @input="handleCodeInput($event, index)"
@@ -40,14 +53,14 @@
               @paste="handlePaste"
             />
           </div>
-          <!-- Loading indicator -->
+          <!-- 验证中提示 -->
           <div v-if="verifying" class="mt-3 flex items-center justify-center gap-2 text-sm text-gray-500">
             <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500"></div>
             {{ t('common.verifying') }}
           </div>
         </div>
 
-        <!-- Cancel button only -->
+        <!-- 取消按钮 -->
         <button
           type="button"
           class="btn btn-secondary w-full"
@@ -82,8 +95,9 @@ const appStore = useAppStore()
 const verifying = ref(false)
 const code = ref<string[]>(['', '', '', '', '', ''])
 const inputRefs = ref<(HTMLInputElement | null)[]>([])
+const hiddenOtpInputRef = ref<HTMLInputElement | null>(null)
 
-// Watch for code changes and auto-submit when 6 digits are entered
+// 监听验证码变化，输入 6 位后自动提交。
 watch(
   () => code.value.join(''),
   (newCode) => {
@@ -100,10 +114,14 @@ defineExpose({
       appStore.showError(message)
     }
     code.value = ['', '', '', '', '', '']
-    // Clear input DOM values
+    // 清空可见输入框的 DOM 值。
     inputRefs.value.forEach(input => {
       if (input) input.value = ''
     })
+    // 清空隐藏的自动填充输入框，避免下一次打开时残留旧验证码。
+    if (hiddenOtpInputRef.value) {
+      hiddenOtpInputRef.value.value = ''
+    }
     nextTick(() => {
       inputRefs.value[0]?.focus()
     })
@@ -126,16 +144,38 @@ const handleCodeInput = (event: Event, index: number) => {
   }
 }
 
+const fillCodeDigits = (digits: string[]) => {
+  digits.forEach((digit, index) => {
+    code.value[index] = digit
+    if (inputRefs.value[index]) {
+      inputRefs.value[index]!.value = digit
+    }
+  })
+
+  for (let i = digits.length; i < 6; i++) {
+    code.value[i] = ''
+    if (inputRefs.value[i]) {
+      inputRefs.value[i]!.value = ''
+    }
+  }
+}
+
+const handleHiddenOtpInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 6).split('')
+
+  fillCodeDigits(digits)
+}
+
 const handleKeydown = (event: KeyboardEvent, index: number) => {
   if (event.key === 'Backspace') {
     const input = event.target as HTMLInputElement
-    // If current cell is empty and not the first, move to previous cell
+    // 当前格为空时退格回到上一格。
     if (!input.value && index > 0) {
       event.preventDefault()
       inputRefs.value[index - 1]?.focus()
     }
-    // Otherwise, let the browser handle the backspace naturally
-    // The input event will sync code.value via handleCodeInput
+    // 其他情况交给浏览器处理，input 事件会同步 code.value。
   }
 }
 
@@ -144,21 +184,8 @@ const handlePaste = (event: ClipboardEvent) => {
   const pastedData = event.clipboardData?.getData('text') || ''
   const digits = pastedData.replace(/[^0-9]/g, '').slice(0, 6).split('')
 
-  // Update both the ref and the input elements
-  digits.forEach((digit, index) => {
-    code.value[index] = digit
-    if (inputRefs.value[index]) {
-      inputRefs.value[index]!.value = digit
-    }
-  })
-
-  // Clear remaining inputs if pasted less than 6 digits
-  for (let i = digits.length; i < 6; i++) {
-    code.value[i] = ''
-    if (inputRefs.value[i]) {
-      inputRefs.value[i]!.value = ''
-    }
-  }
+  // 同步响应式验证码和可见输入框。
+  fillCodeDigits(digits)
 
   const focusIndex = Math.min(digits.length, 5)
   nextTick(() => {
