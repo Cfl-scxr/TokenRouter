@@ -598,14 +598,12 @@ const closeResultDialog = () => {
 }
 
 const copyGeneratedCodes = async () => {
-  try {
-    await navigator.clipboard.writeText(generatedCodesText.value)
+  const success = await clipboardCopy(generatedCodesText.value, t('admin.redeem.copied'))
+  if (success) {
     copiedAll.value = true
     setTimeout(() => {
       copiedAll.value = false
     }, 2000)
-  } catch (error) {
-    appStore.showError(t('admin.redeem.failedToCopy'))
   }
 }
 
