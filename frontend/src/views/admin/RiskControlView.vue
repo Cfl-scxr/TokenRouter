@@ -921,6 +921,7 @@
             </div>
           </div>
 
+          <!-- 展示用户请求提示词，帮助管理员判断 Cyber 警告的触发上下文。 -->
           <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -968,6 +969,21 @@
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberStatus') }}</p>
               <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">HTTP {{ cyberDetailRow.upstream_status || '-' }}</p>
             </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPrompt') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ cyberDetailRow.endpoint || '-' }} · openai / {{ cyberDetailRow.model || '-' }}
+                </p>
+              </div>
+              <span v-if="cyberDetailRow.group_name" class="inline-flex rounded-md bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                {{ cyberDetailRow.group_name }}
+              </span>
+            </div>
+            <pre class="mt-4 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ cyberPromptText }}</pre>
           </div>
 
           <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
@@ -1337,6 +1353,12 @@ const cyberDetailText = computed(() => {
   return cyberDetailRow.value.warning_text || '-'
 })
 
+// Cyber 告警详情单独展示用户提示词，避免只看到上游拒绝文本。
+const cyberPromptText = computed(() => {
+  if (!cyberDetailRow.value) return '-'
+  return cyberDetailRow.value.prompt_excerpt || '-'
+})
+
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
 
 const queueUsageStyle = computed(() => ({
@@ -1590,7 +1612,7 @@ function closeInputDetail() {
 }
 
 function cyberSummaryText(row: ContentModerationCyberWarning): string {
-  return row.warning_text || '-'
+  return row.prompt_excerpt || row.warning_text || '-'
 }
 
 function openCyberDetail(row: ContentModerationCyberWarning) {

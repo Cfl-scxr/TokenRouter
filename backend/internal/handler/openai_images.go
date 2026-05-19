@@ -89,6 +89,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
+	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIImages, parsed.ModerationBody())
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 	if !acquired {
 		return

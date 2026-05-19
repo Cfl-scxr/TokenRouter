@@ -1495,6 +1495,7 @@ export default {
       cyberAccount: '上游账号',
       cyberStatus: '上游状态',
       cyberWarning: '警告内容',
+      cyberPrompt: '用户提示词',
       cyberDetailTitle: 'Cyber 警告详情',
       hitRetentionDays: '命中记录保留（天）',
       nonHitRetentionDays: '未命中记录保留（天，最多 3 天）',

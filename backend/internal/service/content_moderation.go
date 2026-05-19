@@ -50,6 +50,7 @@ const (
 	maxContentModerationTimeoutMS     = 30000
 	maxModerationInputRunes           = 12000
 	maxModerationExcerptRunes         = 240
+	maxCyberWarningPromptExcerptRunes = 1000
 
 	defaultContentModerationWorkerCount          = 4
 	maxContentModerationWorkerCount              = 32
@@ -382,6 +383,7 @@ type ContentModerationCyberWarning struct {
 	Model          string    `json:"model"`
 	UpstreamStatus int       `json:"upstream_status"`
 	WarningText    string    `json:"warning_text"`
+	PromptExcerpt  string    `json:"prompt_excerpt"`
 	ViolationCount int       `json:"violation_count"`
 	AutoBanned     bool      `json:"auto_banned"`
 	EmailSent      bool      `json:"email_sent"`
@@ -412,6 +414,7 @@ type ContentModerationCyberWarningInput struct {
 	UpstreamStatus int
 	ResponseBody   []byte
 	WarningText    string
+	PromptExcerpt  string
 }
 
 type ContentModerationLogFilter struct {
@@ -1523,7 +1526,7 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 		HighestScore:      highestScore,
 		CategoryScores:    cloneFloatMap(scores),
 		ThresholdSnapshot: cloneFloatMap(cfg.Thresholds),
-		InputExcerpt:      trimRunes(redactContentModerationSecrets(text), maxModerationExcerptRunes),
+		InputExcerpt:      sanitizeContentModerationExcerpt(text, maxModerationExcerptRunes),
 		UpstreamLatencyMS: latency,
 		QueueDelayMS:      queueDelay,
 		Error:             errText,
@@ -1611,6 +1614,7 @@ func (s *ContentModerationService) buildCyberWarning(input ContentModerationCybe
 		Model:          strings.TrimSpace(input.Model),
 		UpstreamStatus: input.UpstreamStatus,
 		WarningText:    trimRunes(redactContentModerationSecrets(warningText), 1000),
+		PromptExcerpt:  sanitizeContentModerationExcerpt(input.PromptExcerpt, maxCyberWarningPromptExcerptRunes),
 	}
 }
 
@@ -2307,6 +2311,11 @@ func cloneInt64Ptr(in *int64) *int64 {
 	}
 	v := *in
 	return &v
+}
+
+func sanitizeContentModerationExcerpt(text string, max int) string {
+	// 管理端只需要可读摘要，这里统一脱敏并截断，避免把密钥或超长提示词写入记录。
+	return trimRunes(redactContentModerationSecrets(text), max)
 }
 
 func trimRunes(text string, max int) string {

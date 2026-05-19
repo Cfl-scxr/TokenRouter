@@ -1474,6 +1474,7 @@ export default {
       cyberAccount: 'Upstream Account',
       cyberStatus: 'Upstream Status',
       cyberWarning: 'Warning',
+      cyberPrompt: 'User Prompt',
       cyberDetailTitle: 'Cyber Warning Detail',
       hitRetentionDays: 'Hit Record Retention (days)',
       nonHitRetentionDays: 'Non-Hit Record Retention (days, max 3)',

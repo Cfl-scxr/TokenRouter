@@ -38,10 +38,14 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 }
 
 func (h *OpenAIGatewayHandler) recordOpenAICyberWarning(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string) {
+	h.recordOpenAICyberWarningWithPromptExcerpt(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText, currentOpenAICyberWarningPromptExcerpt(c))
+}
+
+func (h *OpenAIGatewayHandler) recordOpenAICyberWarningWithPromptExcerpt(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string, promptExcerpt string) {
 	if h == nil || h.contentModerationService == nil || c == nil {
 		return
 	}
-	input := buildOpenAICyberWarningInput(c, apiKey, account, model, statusCode, responseBody, warningText)
+	input := buildOpenAICyberWarningInput(c, apiKey, account, model, statusCode, responseBody, warningText, promptExcerpt)
 	warning, err := h.contentModerationService.RecordCyberWarning(c.Request.Context(), input)
 	if err != nil {
 		if reqLog != nil {
@@ -86,7 +90,7 @@ func (h *OpenAIGatewayHandler) recordOpenAIForwardErrorCyberWarning(c *gin.Conte
 	return true
 }
 
-func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string) service.ContentModerationCyberWarningInput {
+func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, account *service.Account, model string, statusCode int, responseBody []byte, warningText string, promptExcerpt string) service.ContentModerationCyberWarningInput {
 	input := service.ContentModerationCyberWarningInput{
 		RequestID:      contentModerationRequestID(c.Request.Context()),
 		Endpoint:       GetInboundEndpoint(c),
@@ -94,6 +98,7 @@ func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, accoun
 		UpstreamStatus: statusCode,
 		ResponseBody:   responseBody,
 		WarningText:    strings.TrimSpace(warningText),
+		PromptExcerpt:  strings.TrimSpace(promptExcerpt),
 	}
 	if apiKey != nil {
 		input.APIKeyID = apiKey.ID
@@ -118,6 +123,34 @@ func buildOpenAICyberWarningInput(c *gin.Context, apiKey *service.APIKey, accoun
 		input.Endpoint = c.Request.URL.Path
 	}
 	return input
+}
+
+func currentOpenAICyberWarningPromptExcerpt(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if value, ok := c.Get(openAICyberWarningPromptExcerptKey); ok {
+		if excerpt, ok := value.(string); ok {
+			return strings.TrimSpace(excerpt)
+		}
+	}
+	return ""
+}
+
+func setOpenAICyberWarningRequestSnapshot(c *gin.Context, protocol string, body []byte) {
+	if c == nil || len(body) == 0 {
+		return
+	}
+	// Cyber 警告只需要提示词摘要，立即提取可避免在上下文里复制和长期持有完整请求体。
+	excerpt := service.ExtractContentModerationInput(protocol, body).ExcerptText()
+	setOpenAICyberWarningPromptExcerpt(c, excerpt)
+}
+
+func setOpenAICyberWarningPromptExcerpt(c *gin.Context, promptExcerpt string) {
+	if c == nil {
+		return
+	}
+	c.Set(openAICyberWarningPromptExcerptKey, strings.TrimSpace(promptExcerpt))
 }
 
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {

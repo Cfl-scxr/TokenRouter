@@ -1157,11 +1157,15 @@ func TestContentModerationRecordCyberWarning_DefaultRecordsWithoutBan(t *testing
 		AccountName:    "openai-1",
 		UpstreamStatus: 400,
 		ResponseBody:   []byte(`{"error":{"message":"This request may pose a cybersecurity risk."}}`),
+		PromptExcerpt:  "inspect target sk-proj-1234567890abcdef",
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, warning)
 	require.Len(t, repo.cyberWarnings, 1)
+	require.Contains(t, repo.cyberWarnings[0].PromptExcerpt, "inspect target")
+	require.Contains(t, repo.cyberWarnings[0].PromptExcerpt, "[已脱敏]")
+	require.NotContains(t, repo.cyberWarnings[0].PromptExcerpt, "sk-proj-1234567890abcdef")
 	require.Equal(t, 1, repo.cyberWarnings[0].ViolationCount)
 	require.False(t, repo.cyberWarnings[0].AutoBanned)
 	require.Empty(t, userRepo.updated)

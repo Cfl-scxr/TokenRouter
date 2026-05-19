@@ -177,6 +177,7 @@ export interface ContentModerationCyberWarning {
   model: string
   upstream_status: number
   warning_text: string
+  prompt_excerpt: string
   violation_count: number
   auto_banned: boolean
   email_sent: boolean

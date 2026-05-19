@@ -267,15 +267,15 @@ func insertContentModerationCyberWarning(ctx context.Context, q sqlQueryRower, w
 	err := q.QueryRowContext(ctx, `
 INSERT INTO content_moderation_cyber_warnings (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
-    account_id, account_name, endpoint, model, upstream_status, warning_text,
+    account_id, account_name, endpoint, model, upstream_status, warning_text, prompt_excerpt,
     violation_count, auto_banned, email_sent
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12, $13,
-    $14, $15, $16
+    $8, $9, $10, $11, $12, $13, $14,
+    $15, $16, $17
 ) RETURNING id, created_at`,
 		warning.RequestID, userID, warning.UserEmail, apiKeyID, warning.APIKeyName, groupID, warning.GroupName,
-		accountID, warning.AccountName, warning.Endpoint, warning.Model, warning.UpstreamStatus, warning.WarningText,
+		accountID, warning.AccountName, warning.Endpoint, warning.Model, warning.UpstreamStatus, warning.WarningText, warning.PromptExcerpt,
 		warning.ViolationCount, warning.AutoBanned, warning.EmailSent,
 	).Scan(&warning.ID, &warning.CreatedAt)
 	if err != nil {
@@ -379,7 +379,7 @@ func (r *contentModerationRepository) ListCyberWarnings(ctx context.Context, fil
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
     w.id, w.request_id, w.user_id, w.user_email, w.api_key_id, w.api_key_name, w.group_id, w.group_name,
-    w.account_id, w.account_name, w.endpoint, w.model, w.upstream_status, w.warning_text,
+    w.account_id, w.account_name, w.endpoint, w.model, w.upstream_status, w.warning_text, w.prompt_excerpt,
     w.violation_count, w.auto_banned, w.email_sent, COALESCE(u.status, ''), w.created_at
 FROM content_moderation_cyber_warnings w
 LEFT JOIN users u ON u.id = w.user_id `+whereSQL+`
@@ -411,6 +411,7 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 			&item.Model,
 			&item.UpstreamStatus,
 			&item.WarningText,
+			&item.PromptExcerpt,
 			&item.ViolationCount,
 			&item.AutoBanned,
 			&item.EmailSent,
@@ -649,9 +650,9 @@ func buildContentModerationCyberWhere(filter service.ContentModerationCyberWarni
 	}
 	if search := strings.TrimSpace(filter.Search); search != "" {
 		like := "%" + search + "%"
-		args = append(args, like, like, like, like, like, like)
-		idx := len(args) - 5
-		where = append(where, fmt.Sprintf("(w.request_id ILIKE $%d OR w.user_email ILIKE $%d OR w.api_key_name ILIKE $%d OR w.account_name ILIKE $%d OR w.model ILIKE $%d OR w.warning_text ILIKE $%d)", idx, idx+1, idx+2, idx+3, idx+4, idx+5))
+		args = append(args, like, like, like, like, like, like, like)
+		idx := len(args) - 6
+		where = append(where, fmt.Sprintf("(w.request_id ILIKE $%d OR w.user_email ILIKE $%d OR w.api_key_name ILIKE $%d OR w.account_name ILIKE $%d OR w.model ILIKE $%d OR w.warning_text ILIKE $%d OR w.prompt_excerpt ILIKE $%d)", idx, idx+1, idx+2, idx+3, idx+4, idx+5, idx+6))
 	}
 	if filter.From != nil && !filter.From.IsZero() {
 		add("w.created_at >= $%d", *filter.From)

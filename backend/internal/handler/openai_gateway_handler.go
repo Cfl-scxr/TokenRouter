@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
@@ -191,6 +192,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, body)
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -615,6 +617,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolAnthropicMessages, body)
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -1183,6 +1186,29 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	)
 	setOpsRequestContext(c, reqModel, true, firstMessage)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
+	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, firstMessage)
+	// WS passthrough 的客户端帧和上游事件可能并发回调，按 turn 保存提示词摘要需要加锁。
+	cyberPromptExcerptByTurn := map[int]string{}
+	var cyberPromptExcerptMu sync.RWMutex
+	setCyberPromptExcerpt := func(turn int, promptExcerpt string) {
+		if turn <= 0 {
+			return
+		}
+		cyberPromptExcerptMu.Lock()
+		cyberPromptExcerptByTurn[turn] = strings.TrimSpace(promptExcerpt)
+		cyberPromptExcerptMu.Unlock()
+	}
+	getCyberPromptExcerpt := func(turn int) string {
+		cyberPromptExcerptMu.RLock()
+		defer cyberPromptExcerptMu.RUnlock()
+		return cyberPromptExcerptByTurn[turn]
+	}
+	clearCyberPromptExcerpt := func(turn int) {
+		cyberPromptExcerptMu.Lock()
+		delete(cyberPromptExcerptByTurn, turn)
+		cyberPromptExcerptMu.Unlock()
+	}
+	setCyberPromptExcerpt(1, currentOpenAICyberWarningPromptExcerpt(c))
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage); decision != nil && decision.Blocked {
 		writeContentModerationWSError(ctx, wsConn, decision)
@@ -1319,6 +1345,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			if model == "" {
 				model = reqModel
 			}
+			setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, payload)
+			setCyberPromptExcerpt(turn, currentOpenAICyberWarningPromptExcerpt(c))
 			if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
 				writeContentModerationWSError(ctx, wsConn, decision)
 				return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
@@ -1358,10 +1386,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		},
 		OnUpstreamError: func(turn int, statusCode int, responseBody []byte, warningText string) {
 			model := reqModel
-			h.recordOpenAICyberWarning(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText)
+			h.recordOpenAICyberWarningWithPromptExcerpt(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText, getCyberPromptExcerpt(turn))
 		},
 		AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 			releaseTurnSlots()
+			clearCyberPromptExcerpt(turn)
 			if turnErr != nil {
 				if result == nil || result.ImageCount <= 0 {
 					return

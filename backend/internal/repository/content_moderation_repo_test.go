@@ -27,6 +27,7 @@ func TestContentModerationRepositoryCreateCyberWarningAndApplyUserBan_DisablesUs
 		Model:          "gpt-5.1",
 		UpstreamStatus: 400,
 		WarningText:    "This request may pose a cybersecurity risk.",
+		PromptExcerpt:  "bad cyber prompt",
 	}
 
 	mock.ExpectBegin()
@@ -48,6 +49,7 @@ func TestContentModerationRepositoryCreateCyberWarningAndApplyUserBan_DisablesUs
 			warning.Model,
 			warning.UpstreamStatus,
 			warning.WarningText,
+			warning.PromptExcerpt,
 			1,
 			false,
 			false,
@@ -109,6 +111,7 @@ func TestContentModerationRepositoryCreateCyberWarningAndApplyUserBan_KeepsBelow
 			warning.Model,
 			warning.UpstreamStatus,
 			warning.WarningText,
+			warning.PromptExcerpt,
 			1,
 			false,
 			false,
