@@ -47,6 +47,8 @@ export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct',
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
+/** 仅支付宝官方使用：跳过当面付 precreate，改为在新标签页打开支付宝收银台。 */
+export const PAYMENT_MODE_REDIRECT = 'redirect'
 
 export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'CNY', label: 'CNY' },

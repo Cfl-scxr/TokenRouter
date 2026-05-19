@@ -189,8 +189,60 @@ func TestCreateTradeUsesPagePayForDesktop(t *testing.T) {
 	if resp.PayURL == "" {
 		t.Fatal("expected pay_url for desktop page pay")
 	}
-	if resp.QRCode != resp.PayURL {
-		t.Fatalf("qr_code = %q, want same as pay_url %q", resp.QRCode, resp.PayURL)
+	// page.pay 返回的是收银台页面 URL，不是可扫码支付内容，不能透传给 QRCode。
+	if resp.QRCode != "" {
+		t.Fatalf("qr_code = %q, want empty for page pay", resp.QRCode)
+	}
+}
+
+// 当实例配置 paymentMode == "redirect" 时，桌面支付必须跳过 precreate 直接走 page.pay。
+func TestCreateTradeRedirectModeSkipsPrecreate(t *testing.T) {
+	origPreCreate := alipayTradePreCreate
+	origPagePay := alipayTradePagePay
+	t.Cleanup(func() {
+		alipayTradePreCreate = origPreCreate
+		alipayTradePagePay = origPagePay
+	})
+
+	preCreateCalls := 0
+	pagePayCalls := 0
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		preCreateCalls++
+		return &alipay.TradePreCreateRsp{
+			Error:  alipay.Error{Code: alipay.CodeSuccess},
+			QRCode: "https://qr.alipay.example.com/precreate-token",
+		}, nil
+	}
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		pagePayCalls++
+		if param.ProductCode != alipayProductCodePagePay {
+			t.Fatalf("product_code = %q, want %q", param.ProductCode, alipayProductCodePagePay)
+		}
+		return url.Parse("https://openapi.alipay.com/gateway.do?page-pay")
+	}
+
+	provider := &Alipay{
+		config: map[string]string{"paymentMode": "redirect"},
+	}
+	resp, err := provider.createDesktopTrade(context.Background(), &alipay.Client{}, payment.CreatePaymentRequest{
+		OrderID: "sub2_103",
+		Amount:  "12.00",
+		Subject: "Balance recharge",
+	}, "https://merchant.example.com/api/v1/payment/webhook/alipay", "https://merchant.example.com/payment/result")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if preCreateCalls != 0 {
+		t.Fatalf("precreate calls = %d, want 0 (redirect mode must skip precreate)", preCreateCalls)
+	}
+	if pagePayCalls != 1 {
+		t.Fatalf("page pay calls = %d, want 1", pagePayCalls)
+	}
+	if resp.PayURL == "" {
+		t.Fatal("expected pay_url for redirect mode")
+	}
+	if resp.QRCode != "" {
+		t.Fatalf("qr_code = %q, want empty for redirect mode", resp.QRCode)
 	}
 }
 
