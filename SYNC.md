@@ -308,7 +308,10 @@
   - 决策：保留 fork 当前 Bedrock 模型映射、beta policy、cache_control 清理和 Codex 图片生成桥接配置；新增渠道级 `bedrock_cc_compat` 开关，在转发前对 Anthropic 平台请求做 thinking 类型/budget 和 tool_use ID 兼容清理，Bedrock 原生转发继续走现有请求体准备与签名流程。
   - 测试：`go test ./internal/service -run 'Test(IsBedrockOpus47OrNewer|SanitizeBedrockThinking|SanitizeBedrockToolUseIDs|PrepareBedrockRequestBodyWithTokens_CCCompat|ResolveBedrockBetaTokens|PrepareBedrockRequestBody|BuildBedrockURL|AdjustBedrockModelRegionPrefix)'`；`pnpm typecheck`；`git diff --check HEAD~1..HEAD`；`git diff --cached --check`。
   - 备注：尝试运行 `pnpm test:run src/views/admin/__tests__/ChannelsView.spec.ts`，当前仓库没有该测试文件，未执行到用例。
-fix(ops): 排除本地客户端限制错误的 SLA 计数: https://github.com/Wei-Shaw/sub2api/pull/2643
+✅ fix(ops): 排除本地客户端限制错误的 SLA 计数: https://github.com/Wei-Shaw/sub2api/pull/2643
+  - 同步方式：cherry-pick PR 单提交 `69305a60`，无冲突。
+  - 决策：保留 fork 已有 API Key IP 限制 `OpsClientBusinessLimited` 标记和上游错误上下文判定；新增 API Key 过期/停用/用户不存在、查询参数 key 弃用、订阅/余额/本地限额等本地客户端限制的 SLA 排除规则，并确保带上游上下文的同类文本仍归 provider/upstream 计入 SLA。
+  - 测试：`go test ./internal/handler -run 'TestClassifyOps(AuthClientErrorsExcludedFromSLA|LocalBusinessLimitErrorsExcludedFromSLA|IPRestrictionAccessDeniedExcludedFromSLA|OtherErrorsStillCountForSLA|UnsupportedModelExcludedFromSLA|UnmarkedNoAvailableTextStillCountsForSLA|UpstreamAuthTextStillCountsForSLA|UpstreamNoAvailableTextStillCountsForSLA)'`；`git diff --check HEAD~1..HEAD`。
 fix(channel-monitor): 兼容 Responses reasoning 输出: https://github.com/Wei-Shaw/sub2api/pull/2641
 PR：为 API Key IP 白/黑名单增加可配置的反代真实 IP 判断: https://github.com/Wei-Shaw/sub2api/pull/2645
 fix(auth): user_provider_default_grants 加入 github/google/dingtalk: https://github.com/Wei-Shaw/sub2api/pull/2648
