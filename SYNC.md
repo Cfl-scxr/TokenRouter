@@ -303,7 +303,11 @@
   - 同步方式：cherry-pick PR 单提交 `8211aa70`，无冲突。
   - 决策：保留 fork 现有 thinking signature rectifier、Ops 上游错误记录和重试预算逻辑；仅把 `thinking block must contain thinking` 上游错误纳入既有 thinking block 过滤重试路径，新增注释保持中文。
   - 测试：`go test -tags unit ./internal/service -run 'TestFilterThinkingBlocksForRetry_(DropsThinkingBlockWithEmptyContent|RemovesRedactedThinkingAndKeepsValidContent|EmptyContentGetsPlaceholder|StripsEmptyTextBlocks)'`；`git diff --check HEAD~1..HEAD`。
-feat(bedrock): add Claude Code compatibility transformations: https://github.com/Wei-Shaw/sub2api/pull/2642
+✅ feat(bedrock): add Claude Code compatibility transformations: https://github.com/Wei-Shaw/sub2api/pull/2642
+  - 同步方式：cherry-pick PR 单提交 `4fd21994`，手动解决 `ChannelsView.vue` 中 Bedrock CC 开关插入位置与当前 fork 渠道表单的冲突，并将新增注释改为中文。
+  - 决策：保留 fork 当前 Bedrock 模型映射、beta policy、cache_control 清理和 Codex 图片生成桥接配置；新增渠道级 `bedrock_cc_compat` 开关，在转发前对 Anthropic 平台请求做 thinking 类型/budget 和 tool_use ID 兼容清理，Bedrock 原生转发继续走现有请求体准备与签名流程。
+  - 测试：`go test ./internal/service -run 'Test(IsBedrockOpus47OrNewer|SanitizeBedrockThinking|SanitizeBedrockToolUseIDs|PrepareBedrockRequestBodyWithTokens_CCCompat|ResolveBedrockBetaTokens|PrepareBedrockRequestBody|BuildBedrockURL|AdjustBedrockModelRegionPrefix)'`；`pnpm typecheck`；`git diff --check HEAD~1..HEAD`；`git diff --cached --check`。
+  - 备注：尝试运行 `pnpm test:run src/views/admin/__tests__/ChannelsView.spec.ts`，当前仓库没有该测试文件，未执行到用例。
 fix(ops): 排除本地客户端限制错误的 SLA 计数: https://github.com/Wei-Shaw/sub2api/pull/2643
 fix(channel-monitor): 兼容 Responses reasoning 输出: https://github.com/Wei-Shaw/sub2api/pull/2641
 PR：为 API Key IP 白/黑名单增加可配置的反代真实 IP 判断: https://github.com/Wei-Shaw/sub2api/pull/2645

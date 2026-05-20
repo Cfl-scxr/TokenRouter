@@ -354,6 +354,21 @@
               </div>
             </div>
 
+            <!-- Bedrock CC 兼容（仅 Anthropic） -->
+            <div v-if="section.platform === 'anthropic'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.bedrockCCCompat') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                    {{ t('admin.channels.form.bedrockCCCompatHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="section.bedrock_cc_compat" />
+              </div>
+            </div>
+
             <!-- 模型映射 -->
             <div>
               <div class="mb-1 flex items-center justify-between">
@@ -669,6 +684,7 @@ interface PlatformSection {
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
+  bedrock_cc_compat: boolean
   account_stats_pricing_rules: FormPricingRule[]
 }
 
@@ -765,6 +781,7 @@ function addPlatformSection(platform: GroupPlatform) {
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
+    bedrock_cc_compat: false,
     account_stats_pricing_rules: [],
   })
 }
@@ -1126,6 +1143,19 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.codex_image_generation_bridge
   }
 
+  const bedrockCCCompat: Record<string, boolean> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    if (section.platform === 'anthropic') {
+      bedrockCCCompat[section.platform] = !!section.bedrock_cc_compat
+    }
+  }
+  if (Object.keys(bedrockCCCompat).length > 0) {
+    featuresConfig.bedrock_cc_compat = bedrockCCCompat
+  } else {
+    delete featuresConfig.bedrock_cc_compat
+  }
+
   return { group_ids, model_pricing, model_mapping, features_config: featuresConfig }
 }
 
@@ -1176,6 +1206,8 @@ function apiToForm(channel: Channel): PlatformSection[] {
     const webSearchEnabled = wsEmulation?.[platform] === true
     const codexImageGenerationBridge = fc?.codex_image_generation_bridge as Record<string, boolean> | undefined
     const codexImageGenerationBridgeEnabled = codexImageGenerationBridge?.[platform] === true
+    const bedrockCCCompat = fc?.bedrock_cc_compat as Record<string, boolean> | undefined
+    const bedrockCCCompatEnabled = bedrockCCCompat?.[platform] === true
 
     sections.push({
       platform,
@@ -1186,6 +1218,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
+      bedrock_cc_compat: bedrockCCCompatEnabled,
       account_stats_pricing_rules: [],
     })
   }
