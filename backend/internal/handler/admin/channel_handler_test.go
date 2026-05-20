@@ -3,22 +3,26 @@
 package admin
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
 // ---------------------------------------------------------------------------
-// helpers
+// 测试辅助函数
 // ---------------------------------------------------------------------------
 
 func float64Ptr(v float64) *float64 { return &v }
 func channelIntPtr(v int) *int      { return &v }
 
 // ---------------------------------------------------------------------------
-// 1. channelToResponse
+// channelToResponse 转换测试
 // ---------------------------------------------------------------------------
 
 func TestChannelToResponse_NilInput(t *testing.T) {
@@ -67,11 +71,11 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, "2025-06-01T12:00:00Z", resp.CreatedAt)
 	require.Equal(t, "2025-06-01T13:00:00Z", resp.UpdatedAt)
 
-	// model mapping
+	// 模型映射
 	require.Len(t, resp.ModelMapping, 1)
 	require.Equal(t, "claude-haiku-3", resp.ModelMapping["anthropic"]["claude-3-haiku"])
 
-	// pricing
+	// 定价信息
 	require.Len(t, resp.ModelPricing, 1)
 	p := resp.ModelPricing[0]
 	require.Equal(t, int64(10), p.ID)
@@ -253,7 +257,7 @@ func TestChannelToResponse_MultipleEntries(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. pricingRequestToService
+// pricingRequestToService 转换测试
 // ---------------------------------------------------------------------------
 
 func TestPricingRequestToService_Defaults(t *testing.T) {
@@ -264,7 +268,7 @@ func TestPricingRequestToService_Defaults(t *testing.T) {
 		wantValue string
 	}{
 		{
-			name: "empty billing mode defaults to token",
+			name: "空计费模式默认使用 token",
 			req: channelModelPricingRequest{
 				Models:      []string{"m1"},
 				BillingMode: "",
@@ -273,7 +277,7 @@ func TestPricingRequestToService_Defaults(t *testing.T) {
 			wantValue: string(service.BillingModeToken),
 		},
 		{
-			name: "empty platform stays empty",
+			name: "空平台保持为空",
 			req: channelModelPricingRequest{
 				Models:   []string{"m1"},
 				Platform: "",
@@ -386,7 +390,7 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 		{
 			Models:      []string{"m1"},
 			BillingMode: "token",
-			// all price fields are nil by default
+			// 所有价格字段默认均为空
 		},
 	}
 
@@ -399,4 +403,59 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 	require.Nil(t, r.CacheReadPrice)
 	require.Nil(t, r.ImageOutputPrice)
 	require.Nil(t, r.PerRequestPrice)
+}
+
+// ---------------------------------------------------------------------------
+// SyncPricingModels 处理器测试
+// ---------------------------------------------------------------------------
+
+func setupSyncPricingModelsRouter(pricingSvc *service.PricingService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := &ChannelHandler{pricingService: pricingSvc}
+	router.GET("/channels/pricing/sync-models", h.SyncPricingModels)
+	return router
+}
+
+func TestSyncPricingModels_MissingPlatform(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSyncPricingModels_UnsupportedPlatform(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform=unknown", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	for _, platform := range []string{"anthropic", "openai", "gemini", "antigravity"} {
+		req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+platform, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, "platform=%s", platform)
+
+		var body struct {
+			Data struct {
+				Models []string `json:"models"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
+	}
 }

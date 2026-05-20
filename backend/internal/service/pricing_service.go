@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -945,6 +946,23 @@ func (s *PricingService) getPricingFilePath() string {
 // getHashFilePath 获取哈希文件路径
 func (s *PricingService) getHashFilePath() string {
 	return filepath.Join(s.cfg.Pricing.DataDir, "model_pricing.sha256")
+}
+
+// ListModelNamesByProvider 返回指定 provider 在定价目录中的全部模型名
+// provider 匹配不区分大小写，返回结果按字母序排序。
+func (s *PricingService) ListModelNamesByProvider(provider string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	names := make([]string, 0)
+	for name, p := range s.pricingData {
+		if strings.ToLower(p.LiteLLMProvider) == provider {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // isNumeric 检查字符串是否为纯数字
