@@ -11,11 +11,24 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 )
 
-// SubscriptionExpiryService periodically updates expired subscription status.
+const (
+	subscriptionExpiryUpdateTimeout       = 10 * time.Second
+	subscriptionExpiryReminderListTimeout = 10 * time.Second
+	subscriptionExpiryReminderSendTimeout = emailSendTimeout
+)
+
+type subscriptionExpiryNotificationSender interface {
+	Send(ctx context.Context, input NotificationEmailSendInput) error
+}
+
+// SubscriptionExpiryService 定期更新过期订阅状态，并发送到期提醒。
 type SubscriptionExpiryService struct {
 	userSubRepo              UserSubscriptionRepository
-	notificationEmailService *NotificationEmailService
+	notificationEmailService subscriptionExpiryNotificationSender
 	interval                 time.Duration
+	updateTimeout            time.Duration
+	reminderListTimeout      time.Duration
+	reminderSendTimeout      time.Duration
 	stopCh                   chan struct{}
 	stopOnce                 sync.Once
 	wg                       sync.WaitGroup
@@ -23,9 +36,12 @@ type SubscriptionExpiryService struct {
 
 func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interval time.Duration) *SubscriptionExpiryService {
 	return &SubscriptionExpiryService{
-		userSubRepo: userSubRepo,
-		interval:    interval,
-		stopCh:      make(chan struct{}),
+		userSubRepo:         userSubRepo,
+		interval:            interval,
+		updateTimeout:       subscriptionExpiryUpdateTimeout,
+		reminderListTimeout: subscriptionExpiryReminderListTimeout,
+		reminderSendTimeout: subscriptionExpiryReminderSendTimeout,
+		stopCh:              make(chan struct{}),
 	}
 }
 
@@ -66,10 +82,9 @@ func (s *SubscriptionExpiryService) Stop() {
 }
 
 func (s *SubscriptionExpiryService) runOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+	ctx, cancel := context.WithTimeout(context.Background(), s.expiredStatusUpdateTimeout())
 	updated, err := s.userSubRepo.BatchUpdateExpiredStatus(ctx)
+	cancel()
 	if err != nil {
 		log.Printf("[SubscriptionExpiry] Update expired subscriptions failed: %v", err)
 		return
@@ -77,21 +92,23 @@ func (s *SubscriptionExpiryService) runOnce() {
 	if updated > 0 {
 		log.Printf("[SubscriptionExpiry] Updated %d expired subscriptions", updated)
 	}
-	s.sendExpiryReminders(ctx)
+	s.sendExpiryReminders()
 }
 
-func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
+func (s *SubscriptionExpiryService) sendExpiryReminders() {
 	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
 		return
 	}
 	for page := 1; ; page++ {
+		ctx, cancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
+		cancel()
 		if err != nil {
 			log.Printf("[SubscriptionExpiry] List active subscriptions for reminder failed: %v", err)
 			return
 		}
 		for i := range subs {
-			s.sendExpiryReminderIfDue(ctx, &subs[i])
+			s.sendExpiryReminderIfDue(&subs[i])
 		}
 		if pag == nil || page >= pag.Pages || len(subs) == 0 {
 			return
@@ -99,7 +116,7 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 	}
 }
 
-func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context, sub *UserSubscription) {
+func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(sub *UserSubscription) {
 	if sub == nil || sub.User == nil || sub.User.Email == "" {
 		return
 	}
@@ -107,6 +124,9 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 	if daysRemaining != 7 && daysRemaining != 3 && daysRemaining != 1 {
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.expiryReminderSendTimeout())
+	defer cancel()
 	if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionExpiryReminder,
 		RecipientEmail: sub.User.Email,
@@ -123,6 +143,27 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 	}); err != nil {
 		log.Printf("[SubscriptionExpiry] Send expiry reminder failed: subscription=%d user=%d err=%v", sub.ID, sub.UserID, err)
 	}
+}
+
+func (s *SubscriptionExpiryService) expiredStatusUpdateTimeout() time.Duration {
+	if s != nil && s.updateTimeout > 0 {
+		return s.updateTimeout
+	}
+	return subscriptionExpiryUpdateTimeout
+}
+
+func (s *SubscriptionExpiryService) expiryReminderListTimeout() time.Duration {
+	if s != nil && s.reminderListTimeout > 0 {
+		return s.reminderListTimeout
+	}
+	return subscriptionExpiryReminderListTimeout
+}
+
+func (s *SubscriptionExpiryService) expiryReminderSendTimeout() time.Duration {
+	if s != nil && s.reminderSendTimeout > 0 {
+		return s.reminderSendTimeout
+	}
+	return subscriptionExpiryReminderSendTimeout
 }
 
 func subscriptionReminderPlanName(sub *UserSubscription) string {
