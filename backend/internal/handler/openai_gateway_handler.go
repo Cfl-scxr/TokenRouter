@@ -131,7 +131,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 	sessionHashBody := body
 	if service.IsOpenAIResponsesCompactPathForTest(c) {
 		if compactSeed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); compactSeed != "" {
@@ -190,7 +190,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, body)
 
@@ -622,7 +622,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolAnthropicMessages, body)
 
@@ -1195,7 +1195,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		zap.Bool("has_previous_response_id", previousResponseID != ""),
 		zap.String("previous_response_id_kind", previousResponseIDKind),
 	)
-	setOpsRequestContext(c, reqModel, true, firstMessage)
+	setOpsRequestContext(c, reqModel, true)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, firstMessage)
 	// WS passthrough 的客户端帧和上游事件可能并发回调，按 turn 保存提示词摘要需要加锁。
