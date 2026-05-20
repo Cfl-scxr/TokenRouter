@@ -98,6 +98,25 @@ export interface UsageRankingParams {
   end_date?: string
 }
 
+export interface ApiKeyDailyUsagePoint {
+  date: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
+}
+
+export interface ApiKeyDailyUsageResponse {
+  items: ApiKeyDailyUsagePoint[]
+  days: number
+  start_date: string
+  end_date: string
+}
+
 /**
  * List usage logs with optional filters
  * @param page - Page number (default: 1)
@@ -273,6 +292,23 @@ export async function getDashboardModels(params?: {
   return data
 }
 
+/**
+ * 获取当前用户某个 API Key 的按日用量明细。
+ * @param apiKeyId - API Key ID
+ * @param days - 查询天数（1-90）
+ * @returns 按日用量明细行
+ */
+export async function getMyApiKeyDailyUsage(
+  apiKeyId: number,
+  days: number = 30
+): Promise<ApiKeyDailyUsageResponse> {
+  const { data } = await apiClient.get<ApiKeyDailyUsageResponse>(
+    `/user/api-keys/${apiKeyId}/usage/daily`,
+    { params: { days } }
+  )
+  return data
+}
+
 export interface BatchApiKeyUsageStats {
   api_key_id: number
   today_actual_cost: number
@@ -319,6 +355,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage
 }
 
