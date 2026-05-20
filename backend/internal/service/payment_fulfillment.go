@@ -351,6 +351,7 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		})
 		s.invalidateReferralRewardCaches(ctx, grantResult)
 	}
+	s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	return nil
 }
 
@@ -408,6 +409,80 @@ func (s *PaymentService) invalidateReferralRewardCaches(ctx context.Context, gra
 	balanceReward := &RedeemCode{Type: RedeemTypeBalance}
 	s.redeemService.invalidateRedeemCaches(ctx, grantResult.inviteeUserID, balanceReward)
 	s.redeemService.invalidateRedeemCaches(ctx, grantResult.inviterUserID, balanceReward)
+}
+
+func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
+	if s == nil || s.notificationEmailService == nil || o == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+		defer cancel()
+		var err error
+		switch auditAction {
+		case "RECHARGE_SUCCESS":
+			err = s.sendBalanceRechargeSuccessNotification(ctx, o)
+		case "SUBSCRIPTION_SUCCESS":
+			err = s.sendSubscriptionPurchaseSuccessNotification(ctx, o)
+		default:
+			return
+		}
+		if err != nil {
+			slog.Warn("payment fulfillment notification email failed", "order_id", o.ID, "action", auditAction, "err", err.Error())
+		}
+	}()
+}
+
+func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	currentBalance := ""
+	if s.userRepo != nil {
+		if user, err := s.userRepo.GetByID(ctx, o.UserID); err == nil && user != nil {
+			currentBalance = fmt.Sprintf("%.2f", user.Balance)
+		}
+	}
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventBalanceRechargeSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables: map[string]string{
+			"recharge_amount": fmt.Sprintf("%.2f", o.Amount),
+			"current_balance": currentBalance,
+			"order_id":        strconv.FormatInt(o.ID, 10),
+		},
+	})
+}
+
+func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	subscriptionGroup := firstNonEmpty(o.PlanSnapshot.Name, "Subscription")
+	subscriptionDays := ""
+	if o.PlanSnapshot.ValidityDays > 0 {
+		subscriptionDays = strconv.Itoa(o.PlanSnapshot.ValidityDays)
+	}
+	variables := map[string]string{
+		"subscription_group": subscriptionGroup,
+		"subscription_days":  subscriptionDays,
+		"expiry_time":        "",
+		"order_id":           strconv.FormatInt(o.ID, 10),
+	}
+	if o.PlanID != nil {
+		if s.subscriptionSvc != nil {
+			if sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.PlanID); err == nil && sub != nil {
+				variables["expiry_time"] = sub.ExpiresAt.Format("2006-01-02 15:04")
+			}
+		}
+	}
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventSubscriptionPurchaseSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables:      variables,
+	})
 }
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {

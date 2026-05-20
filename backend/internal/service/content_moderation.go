@@ -1701,6 +1701,24 @@ func (s *ContentModerationService) applyCyberWarningPostCommitSideEffects(ctx co
 
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
 	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationViolation,
+			RecipientEmail: log.UserEmail,
+			RecipientName:  emailRecipientName(log.UserEmail),
+			UserID:         contentModerationEmailUserID(log),
+			SourceType:     "content_moderation",
+			SourceID:       contentModerationEmailSourceID(log),
+			Variables:      contentModerationEmailVariables(log, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template content moderation violation email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
+		}
+	}
 	subject := fmt.Sprintf("[%s] 账户风控提醒 / Risk Control Notice", sanitizeEmailHeader(siteName))
 	body := buildContentModerationViolationEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
@@ -1708,6 +1726,24 @@ func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *
 
 func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
 	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationDisabled,
+			RecipientEmail: log.UserEmail,
+			RecipientName:  emailRecipientName(log.UserEmail),
+			UserID:         contentModerationEmailUserID(log),
+			SourceType:     "content_moderation",
+			SourceID:       contentModerationEmailSourceID(log),
+			Variables:      contentModerationEmailVariables(log, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template content moderation disabled email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
+		}
+	}
 	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
 	body := buildContentModerationAccountDisabledEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
@@ -1715,9 +1751,106 @@ func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context,
 
 func (s *ContentModerationService) sendCyberAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, warning *ContentModerationCyberWarning) error {
 	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationDisabled,
+			RecipientEmail: warning.UserEmail,
+			RecipientName:  emailRecipientName(warning.UserEmail),
+			UserID:         contentModerationCyberEmailUserID(warning),
+			SourceType:     "content_moderation_cyber",
+			SourceID:       contentModerationCyberEmailSourceID(warning),
+			Variables:      contentModerationCyberEmailVariables(warning, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template cyber content moderation disabled email failed; falling back to built-in body", "warning_id", warning.ID, "recipient_hash", notificationEmailHash(warning.UserEmail), "err", err.Error())
+		}
+	}
 	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
 	body := buildContentModerationCyberAccountDisabledEmailBody(siteName, warning, cfg)
 	return s.emailService.SendEmail(ctx, warning.UserEmail, subject, body)
+}
+
+func contentModerationEmailUserID(log *ContentModerationLog) int64 {
+	if log == nil || log.UserID == nil {
+		return 0
+	}
+	return *log.UserID
+}
+
+func contentModerationEmailSourceID(log *ContentModerationLog) string {
+	if log == nil || log.ID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", log.ID)
+}
+
+func contentModerationEmailVariables(log *ContentModerationLog, cfg *ContentModerationConfig) map[string]string {
+	variables := map[string]string{
+		"triggered_at":        time.Now().UTC().Format(time.RFC3339),
+		"group_name":          "-",
+		"moderation_category": "-",
+		"moderation_score":    "0.000",
+		"violation_count":     "0",
+		"ban_threshold":       "0",
+	}
+	if log != nil {
+		if !log.CreatedAt.IsZero() {
+			variables["triggered_at"] = log.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		if strings.TrimSpace(log.GroupName) != "" {
+			variables["group_name"] = strings.TrimSpace(log.GroupName)
+		}
+		if strings.TrimSpace(log.HighestCategory) != "" {
+			variables["moderation_category"] = strings.TrimSpace(log.HighestCategory)
+		}
+		variables["moderation_score"] = fmt.Sprintf("%.3f", log.HighestScore)
+		variables["violation_count"] = fmt.Sprintf("%d", log.ViolationCount)
+	}
+	if cfg != nil {
+		variables["ban_threshold"] = fmt.Sprintf("%d", cfg.BanThreshold)
+	}
+	return variables
+}
+
+func contentModerationCyberEmailUserID(warning *ContentModerationCyberWarning) int64 {
+	if warning == nil || warning.UserID == nil {
+		return 0
+	}
+	return *warning.UserID
+}
+
+func contentModerationCyberEmailSourceID(warning *ContentModerationCyberWarning) string {
+	if warning == nil || warning.ID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", warning.ID)
+}
+
+func contentModerationCyberEmailVariables(warning *ContentModerationCyberWarning, cfg *ContentModerationConfig) map[string]string {
+	variables := map[string]string{
+		"triggered_at":        time.Now().UTC().Format(time.RFC3339),
+		"group_name":          "-",
+		"moderation_category": "cyber",
+		"moderation_score":    "0.000",
+		"violation_count":     "0",
+		"ban_threshold":       "0",
+	}
+	if warning != nil {
+		if !warning.CreatedAt.IsZero() {
+			variables["triggered_at"] = warning.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		if strings.TrimSpace(warning.GroupName) != "" {
+			variables["group_name"] = strings.TrimSpace(warning.GroupName)
+		}
+	}
+	if cfg != nil {
+		variables["ban_threshold"] = fmt.Sprintf("%d", cfg.CyberBanThreshold)
+	}
+	return variables
 }
 
 func (s *ContentModerationService) siteName(ctx context.Context) string {
