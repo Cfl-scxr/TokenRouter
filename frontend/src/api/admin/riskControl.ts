@@ -1,6 +1,7 @@
 import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
+export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
 
 export interface ContentModerationConfig {
   enabled: boolean
@@ -33,6 +34,8 @@ export interface ContentModerationConfig {
   cyber_auto_ban_enabled: boolean
   cyber_ban_threshold: number
   cyber_violation_window_hours: number
+  blocked_keywords: string[]
+  keyword_blocking_mode: KeywordBlockingMode
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -108,6 +111,8 @@ export interface UpdateContentModerationConfig {
   cyber_auto_ban_enabled?: boolean
   cyber_ban_threshold?: number
   cyber_violation_window_hours?: number
+  blocked_keywords?: string[]
+  keyword_blocking_mode?: KeywordBlockingMode
 }
 
 export interface ContentModerationRuntimeStatus {

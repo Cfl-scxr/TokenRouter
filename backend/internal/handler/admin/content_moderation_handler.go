@@ -50,6 +50,8 @@ type contentModerationConfigRequest struct {
 	CyberAutoBanEnabled  *bool     `json:"cyber_auto_ban_enabled"`
 	CyberBanThreshold    *int      `json:"cyber_ban_threshold"`
 	CyberWindowHours     *int      `json:"cyber_violation_window_hours"`
+	BlockedKeywords      *[]string `json:"blocked_keywords"`
+	KeywordBlockingMode  *string   `json:"keyword_blocking_mode"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -111,6 +113,8 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		CyberAutoBanEnabled:  req.CyberAutoBanEnabled,
 		CyberBanThreshold:    req.CyberBanThreshold,
 		CyberWindowHours:     req.CyberWindowHours,
+		BlockedKeywords:      req.BlockedKeywords,
+		KeywordBlockingMode:  req.KeywordBlockingMode,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
