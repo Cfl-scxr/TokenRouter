@@ -153,6 +153,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		HelpText:                  cfg.HelpText,
 		HelpImageURL:              cfg.HelpImageURL,
 		StripePublishableKey:      cfg.StripePublishableKey,
+		AlipayForceQRCode:         cfg.AlipayForceQRCode,
 	})
 }
 
@@ -168,6 +169,7 @@ type checkoutInfoResponse struct {
 	HelpText                  string                          `json:"help_text"`
 	HelpImageURL              string                          `json:"help_image_url"`
 	StripePublishableKey      string                          `json:"stripe_publishable_key"`
+	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
 }
 
 type checkoutPlan struct {

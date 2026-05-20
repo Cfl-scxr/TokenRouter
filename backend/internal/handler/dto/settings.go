@@ -232,6 +232,9 @@ type SystemSettings struct {
 	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 
+	// 支付宝移动端强制使用二维码支付，不再跳转手机网站支付。
+	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
+
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold   float64            `json:"balance_low_notify_threshold"`

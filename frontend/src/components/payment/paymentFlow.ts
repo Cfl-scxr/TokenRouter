@@ -56,6 +56,8 @@ export interface PaymentLaunchContext {
   orderType: OrderType
   isMobile: boolean
   isWechatBrowser?: boolean
+  /** 开启后支付宝不再按移动端跳转，始终走二维码等待流程。 */
+  forceQRCode?: boolean
   now?: number
   stripePopupUrl?: string
   stripeRouteUrl?: string
@@ -80,6 +82,8 @@ export interface BuildCreateOrderPayloadInput {
   isMobile: boolean
   isWechatBrowser: boolean
   billingInfo?: BillingInfo
+  /** 开启后支付宝下单向后端传 is_mobile=false，以生成二维码。 */
+  forceQRCode?: boolean
 }
 
 type CreateOrderFlowResult = CreateOrderResult & {
@@ -113,11 +117,15 @@ export function getVisibleMethods(methods: Record<string, MethodLimit>): Record<
 export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): CreateOrderRequest {
   const visibleMethod = normalizeVisibleMethod(input.paymentType) || input.paymentType.trim()
   const normalizedOrigin = (input.origin || '').trim().replace(/\/+$/, '')
+  // 支付宝强制二维码时，后端必须按桌面请求生成扫码链接。
+  const effectiveMobile = (input.forceQRCode && visibleMethod === 'alipay')
+    ? false
+    : input.isMobile
   const payload: CreateOrderRequest = {
     amount: input.amount,
     payment_type: visibleMethod,
     order_type: input.orderType,
-    is_mobile: input.isMobile,
+    is_mobile: effectiveMobile,
     payment_source: visibleMethod === 'wxpay' && input.isWechatBrowser
       ? 'wechat_in_app_resume'
       : 'hosted_redirect',
@@ -200,9 +208,13 @@ export function decidePaymentLaunch(
   }
 
   const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
+  // 支付宝强制二维码时，跳过移动端 pay_url 优先分支，继续走扫码等待。
+  const effectiveMobile = (context.forceQRCode && visibleMethod === 'alipay')
+    ? false
+    : context.isMobile
   const prefersRedirect = normalizedPaymentMode === 'redirect'
     || normalizedPaymentMode === 'popup'
-    || (context.isMobile && !!baseState.payUrl)
+    || (effectiveMobile && !!baseState.payUrl)
   const prefersQr = normalizedPaymentMode === 'qrcode'
     || normalizedPaymentMode === 'native'
     || (!prefersRedirect && !!baseState.qrCode)

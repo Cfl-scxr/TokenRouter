@@ -79,6 +79,8 @@ export interface CheckoutInfoResponse {
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
+  /** 开启后支付宝移动端始终展示二维码，不再跳转手机网站支付。 */
+  alipay_force_qrcode?: boolean
 }
 
 // ==================== Orders ====================
