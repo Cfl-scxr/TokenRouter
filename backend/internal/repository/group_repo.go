@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
-	"github.com/TokenFlux/TokenRouter/ent/apikey"
 	"github.com/TokenFlux/TokenRouter/ent/group"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
@@ -607,7 +606,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	}
 	// err 为 dbent.ErrTxStarted 时，复用当前 client 参与同一事务。
 
-	// Lock the group row to avoid concurrent writes while we cascade.
+	// 锁定分组行，避免级联删除期间出现并发写入。
 	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分"未找到"与其他错误。
 	rows, err := exec.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", id)
 	if err != nil {
@@ -632,28 +631,18 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 
 	var affectedUserIDs []int64
 
-	// 2. Clear group_id for api keys bound to this group.
-	// 仅更新未软删除的记录，避免修改已删除数据，保证审计与历史回溯一致性。
-	// 与 APIKeyRepository 的软删除语义保持一致，减少跨模块行为差异。
-	if _, err := txClient.APIKey.Update().
-		Where(apikey.GroupIDEQ(id), apikey.DeletedAtIsNil()).
-		ClearGroupID().
-		Save(ctx); err != nil {
-		return nil, err
-	}
-
-	// 3. Remove the group id from user_allowed_groups join table.
-	// Legacy users.allowed_groups 列已弃用，不再同步。
+	// 2. 从 user_allowed_groups 关联表移除该分组 ID。
+	// 历史 users.allowed_groups 列已弃用，不再同步。
 	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 	}
 
-	// 4. Delete account_groups join rows.
+	// 3. 删除 account_groups 关联行。
 	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 	}
 
-	// 5. Soft-delete group itself.
+	// 4. 软删除分组自身。
 	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
 		return nil, err
 	}
