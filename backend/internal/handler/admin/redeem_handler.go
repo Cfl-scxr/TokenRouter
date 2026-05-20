@@ -264,7 +264,7 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			ExpiresAt: expiresAt,
 		})
 		if createErr != nil {
-			// Unique code race: if code now exists, use idempotent semantics by used_by.
+			// 唯一码并发创建时，如果此时已能查到固定码，则按 used_by 做幂等处理。
 			existingAfterCreateErr, getErr := h.redeemService.GetByCode(ctx, req.Code)
 			if getErr == nil {
 				return h.resolveCreateAndRedeemExisting(ctx, existingAfterCreateErr, req.UserID)
@@ -289,7 +289,7 @@ func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, exis
 		return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(existing)}, nil
 	}
 
-	// If previous run created the code but crashed before redeem, redeem it now.
+	// 如果上一次请求已创建固定码但在兑换前中断，这里补偿完成兑换。
 	if existing.IsExpired() {
 		return nil, service.ErrRedeemCodeExpired
 	}
@@ -303,9 +303,10 @@ func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, exis
 			!errors.Is(err, service.ErrRedeemCodeAlreadyUsed) {
 			return nil, err
 		}
-		latest, getErr := h.redeemService.GetByCode(ctx, existing.Code)
-		if getErr == nil {
-			existing = latest
+		if latest, getErr := h.redeemService.GetByCode(ctx, existing.Code); getErr == nil && latest != nil {
+			if latest.UsedBy != nil && *latest.UsedBy == userID {
+				return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(latest)}, nil
+			}
 		}
 	}
 

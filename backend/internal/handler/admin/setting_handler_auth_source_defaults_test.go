@@ -214,7 +214,7 @@ func TestSettingHandler_UpdateSettings_AcceptsMarkdownCustomMenuURL(t *testing.T
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
 		"promo_code_enabled": true,
@@ -251,7 +251,7 @@ func TestSettingHandler_UpdateSettings_RejectsEmptyMarkdownCustomMenuSlug(t *tes
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
 		"promo_code_enabled": true,
