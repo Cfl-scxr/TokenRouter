@@ -22,12 +22,17 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	}
 
 	out := &ResponsesRequest{
-		Model:       req.Model,
-		Input:       inputJSON,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		Stream:      req.Stream,
-		Include:     []string{"reasoning.encrypted_content"},
+		Model:   req.Model,
+		Input:   inputJSON,
+		Stream:  req.Stream,
+		Include: []string{"reasoning.encrypted_content"},
+	}
+
+	// Responses API 的 gpt-5.x 推理模型不接受采样参数，携带 temperature/top_p 会触发 400。
+	// 因此只有非推理模型才透传这些参数。
+	if !isReasoningModel(req.Model) {
+		out.Temperature = req.Temperature
+		out.TopP = req.TopP
 	}
 
 	storeFalse := false
@@ -435,6 +440,12 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+// isReasoningModel 判断模型是否为 Responses API 下不支持 temperature/top_p 的推理模型。
+// 当前所有 gpt-5.x 模型都按推理模型处理。
+func isReasoningModel(model string) bool {
+	return strings.HasPrefix(model, "gpt-5")
 }
 
 // normalizeToolParameters ensures the tool parameter schema is valid for

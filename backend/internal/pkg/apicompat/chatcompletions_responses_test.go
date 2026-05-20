@@ -345,6 +345,48 @@ func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	assert.Equal(t, "flex", resp.ServiceTier)
 }
 
+// ---------------------------------------------------------------------------
+// 推理模型剥离 temperature / top_p
+// ---------------------------------------------------------------------------
+
+func TestChatCompletionsToResponses_TemperatureStrippedForReasoningModel(t *testing.T) {
+	temp := 0.7
+	req := &ChatCompletionsRequest{
+		Model:       "gpt-5.2",
+		Messages:    []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Temperature: &temp,
+		TopP:        &temp,
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	assert.Nil(t, resp.Temperature, "reasoning model: temperature must be stripped")
+	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
+
+	// 发给上游的序列化请求体不能包含这些字段。
+	b, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"temperature"`)
+	assert.NotContains(t, string(b), `"top_p"`)
+}
+
+func TestChatCompletionsToResponses_TemperaturePreservedForNonReasoningModel(t *testing.T) {
+	temp := 0.7
+	req := &ChatCompletionsRequest{
+		Model:       "gpt-4o",
+		Messages:    []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Temperature: &temp,
+		TopP:        &temp,
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Temperature, "non-reasoning model: temperature must be preserved")
+	assert.InDelta(t, 0.7, *resp.Temperature, 1e-9)
+	require.NotNil(t, resp.TopP, "non-reasoning model: top_p must be preserved")
+	assert.InDelta(t, 0.7, *resp.TopP, 1e-9)
+}
+
 func TestChatCompletionsToResponses_AssistantWithTextAndToolCalls(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
