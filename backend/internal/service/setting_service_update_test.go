@@ -290,6 +290,17 @@ func TestSettingService_UpdateSettings_AntigravityUserAgentVersion(t *testing.T)
 	require.Equal(t, "1.23.2", repo.updates[SettingKeyAntigravityUserAgentVersion])
 }
 
+func TestSettingService_UpdateSettings_OpenAICodexUserAgent(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAICodexUserAgent: " codex-tui/9.9.9 test-terminal ",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "codex-tui/9.9.9 test-terminal", repo.updates[SettingKeyOpenAICodexUserAgent])
+}
+
 func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {
 	t.Run("后台设置优先", func(t *testing.T) {
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
@@ -311,6 +322,30 @@ func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) 
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{}}, &config.Config{})
 
 		require.Equal(t, antigravity.GetDefaultUserAgentVersion(), svc.GetAntigravityUserAgentVersion(context.Background()))
+	})
+}
+
+func TestSettingService_GetOpenAICodexUserAgent_Precedence(t *testing.T) {
+	t.Run("后台设置优先", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyOpenAICodexUserAgent: "codex-tui/9.9.9 test-terminal",
+		}}, &config.Config{})
+
+		require.Equal(t, "codex-tui/9.9.9 test-terminal", svc.GetOpenAICodexUserAgent(context.Background()))
+	})
+
+	t.Run("空值回退内置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyOpenAICodexUserAgent: "",
+		}}, &config.Config{})
+
+		require.Equal(t, DefaultOpenAICodexUserAgent, svc.GetOpenAICodexUserAgent(context.Background()))
+	})
+
+	t.Run("缺失回退内置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{}}, &config.Config{})
+
+		require.Equal(t, DefaultOpenAICodexUserAgent, svc.GetOpenAICodexUserAgent(context.Background()))
 	})
 }
 

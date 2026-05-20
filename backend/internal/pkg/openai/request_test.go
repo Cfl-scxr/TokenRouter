@@ -27,6 +27,30 @@ func TestIsCodexCLIRequest(t *testing.T) {
 	}
 }
 
+func TestIsBrowserUserAgent(t *testing.T) {
+	tests := []struct {
+		name string
+		ua   string
+		want bool
+	}{
+		{name: "Chrome 浏览器", ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36", want: true},
+		{name: "大小写混合", ua: "mozilla/5.0 Safari/537.36", want: true},
+		{name: "空白包裹", ua: "  Mozilla/5.0 Firefox/126.0  ", want: true},
+		{name: "Codex CLI", ua: "codex_cli_rs/0.125.0", want: false},
+		{name: "curl", ua: "curl/8.0.1", want: false},
+		{name: "空字符串", ua: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsBrowserUserAgent(tt.ua)
+			if got != tt.want {
+				t.Fatalf("IsBrowserUserAgent(%q) = %v, want %v", tt.ua, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsCodexOfficialClientRequest(t *testing.T) {
 	tests := []struct {
 		name string
