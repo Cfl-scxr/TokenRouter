@@ -219,7 +219,7 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_Status() {
 func (s *RedeemCodeRepoSuite) TestListWithFilters_StatusExpiredIncludesInvitationExpiry() {
 	past := time.Now().UTC().Add(-time.Hour)
 	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{
-		Code:      uniqueTestValue(s.T(), "INVITE-EXPIRED"),
+		Code:      "INVITE-EXP",
 		Type:      service.RedeemTypeInvitation,
 		Status:    service.StatusUnused,
 		MaxUses:   1,
