@@ -335,7 +335,8 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 		return err
 	}
 
-	duration := sub.ExpiresAt.Sub(sub.StartsAt)
+	now := time.Now()
+	chainDelta := revokeChainDelta(sub, now)
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -346,8 +347,8 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 	if err := s.userSubRepo.Delete(txCtx, sub.ID); err != nil {
 		return err
 	}
-	if duration > 0 {
-		if err := s.shiftLaterChain(txCtx, chain, sub, -duration); err != nil {
+	if chainDelta != 0 {
+		if err := s.shiftLaterChain(txCtx, chain, sub, chainDelta); err != nil {
 			return err
 		}
 	}
@@ -356,6 +357,19 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 	return nil
+}
+
+func revokeChainDelta(sub *UserSubscription, now time.Time) time.Duration {
+	if sub == nil {
+		return 0
+	}
+	if now.Before(sub.StartsAt) {
+		return sub.StartsAt.Sub(sub.ExpiresAt)
+	}
+	if sub.ExpiresAt.After(now) {
+		return now.Sub(sub.ExpiresAt)
+	}
+	return 0
 }
 
 func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*UserSubscription, error) {
@@ -426,6 +440,79 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+func (s *SubscriptionService) SetSubscriptionValidityDays(ctx context.Context, subscriptionID int64, validityDays int) (*UserSubscription, error) {
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	if validityDays <= 0 {
+		return nil, ErrAdjustWouldExpire
+	}
+	if validityDays > MaxValidityDays {
+		validityDays = MaxValidityDays
+	}
+
+	now := time.Now()
+	oldExpiresAt := sub.ExpiresAt
+	newExpiresAt := targetSubscriptionExpiresAt(sub, now, validityDays)
+	if newExpiresAt.After(MaxExpiresAt) {
+		newExpiresAt = MaxExpiresAt
+	}
+	if !newExpiresAt.After(sub.StartsAt) {
+		return nil, ErrAdjustWouldExpire
+	}
+
+	delta := newExpiresAt.Sub(oldExpiresAt)
+	chain, err := s.userSubRepo.ListByUserIDAndPlanID(ctx, sub.UserID, sub.PlanID)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	if err := s.userSubRepo.ExtendExpiry(txCtx, subscriptionID, newExpiresAt); err != nil {
+		return nil, err
+	}
+	if delta != 0 {
+		if err := s.shiftLaterChain(txCtx, chain, sub, delta); err != nil {
+			return nil, err
+		}
+	}
+
+	var status string
+	if !newExpiresAt.After(now) {
+		status = SubscriptionStatusExpired
+	} else if now.Before(sub.StartsAt) {
+		status = SubscriptionStatusPending
+	} else {
+		status = SubscriptionStatusActive
+	}
+	if err := s.userSubRepo.UpdateStatus(txCtx, subscriptionID, status); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+func targetSubscriptionExpiresAt(sub *UserSubscription, now time.Time, validityDays int) time.Time {
+	return subscriptionValidityAnchor(sub, now).AddDate(0, 0, validityDays)
+}
+
+func subscriptionValidityAnchor(sub *UserSubscription, now time.Time) time.Time {
+	if sub != nil && now.Before(sub.StartsAt) {
+		return sub.StartsAt
+	}
+	return now
 }
 
 func (s *SubscriptionService) shiftLaterChain(ctx context.Context, chain []UserSubscription, anchor *UserSubscription, delta time.Duration) error {

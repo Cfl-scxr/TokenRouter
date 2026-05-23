@@ -451,6 +451,51 @@ func TestShiftLaterChain_ShiftsOnlyLaterSubscriptions(t *testing.T) {
 	require.Equal(t, SubscriptionStatusPending, shiftedLater.Status)
 }
 
+func TestRevokeChainDelta_ActiveSubscriptionOnlyReleasesRemainingWindow(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	active := &UserSubscription{
+		StartsAt:  now.AddDate(0, 0, -10),
+		ExpiresAt: now.AddDate(0, 0, 20),
+		Status:    SubscriptionStatusActive,
+	}
+	pending := &UserSubscription{
+		StartsAt:  now.AddDate(0, 0, 5),
+		ExpiresAt: now.AddDate(0, 0, 35),
+		Status:    SubscriptionStatusPending,
+	}
+	expired := &UserSubscription{
+		StartsAt:  now.AddDate(0, 0, -40),
+		ExpiresAt: now.AddDate(0, 0, -10),
+		Status:    SubscriptionStatusExpired,
+	}
+
+	require.Equal(t, now.Sub(active.ExpiresAt), revokeChainDelta(active, now))
+	require.Equal(t, pending.StartsAt.Sub(pending.ExpiresAt), revokeChainDelta(pending, now))
+	require.Equal(t, time.Duration(0), revokeChainDelta(expired, now))
+}
+
+func TestTargetSubscriptionExpiresAt_ActiveSubscriptionCountsFromNow(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	active := &UserSubscription{
+		StartsAt:  now.AddDate(0, 0, -11),
+		ExpiresAt: now.AddDate(0, 0, 19),
+		Status:    SubscriptionStatusActive,
+	}
+
+	require.Equal(t, now.AddDate(0, 0, 30), targetSubscriptionExpiresAt(active, now, 30))
+}
+
+func TestTargetSubscriptionExpiresAt_PendingSubscriptionCountsFromStartsAt(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	pending := &UserSubscription{
+		StartsAt:  now.AddDate(0, 0, 7),
+		ExpiresAt: now.AddDate(0, 0, 37),
+		Status:    SubscriptionStatusPending,
+	}
+
+	require.Equal(t, pending.StartsAt.AddDate(0, 0, 15), targetSubscriptionExpiresAt(pending, now, 15))
+}
+
 func TestGetActiveSubscription_FiltersByPlanID(t *testing.T) {
 	subRepo := newSubscriptionUserSubRepoStub()
 	now := time.Now().UTC()

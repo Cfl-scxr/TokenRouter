@@ -54,9 +54,9 @@ type BulkAssignSubscriptionRequest struct {
 	Notes        string  `json:"notes"`
 }
 
-// AdjustSubscriptionRequest represents adjust subscription request (extend or shorten)
+// AdjustSubscriptionRequest 表示要设置的目标订阅有效期。
 type AdjustSubscriptionRequest struct {
-	Days int `json:"days" binding:"required,min=-36500,max=36500"` // negative to shorten, positive to extend
+	Days int `json:"days" binding:"required,min=1,max=36500"` // 从当前时间或待生效开始时间起算的目标有效天数
 }
 
 // List handles listing all subscriptions with pagination and filters
@@ -186,7 +186,7 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	response.Success(c, dto.BulkAssignResultFromService(result))
 }
 
-// Extend handles adjusting a subscription (extend or shorten)
+// Extend 将订阅调整为指定的目标有效期。
 // POST /api/v1/admin/subscriptions/:id/extend
 func (h *SubscriptionHandler) Extend(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -209,7 +209,7 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		Body:           req,
 	}
 	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
+		subscription, execErr := h.subscriptionService.SetSubscriptionValidityDays(ctx, subscriptionID, req.Days)
 		if execErr != nil {
 			return nil, execErr
 		}

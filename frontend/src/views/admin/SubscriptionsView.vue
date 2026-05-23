@@ -584,11 +584,12 @@
           </p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.subscriptions.form.adjustDays') }}</label>
+          <label class="input-label">{{ t('admin.subscriptions.form.targetValidityDays') }}</label>
           <div class="flex items-center gap-2">
             <input
               v-model.number="extendForm.days"
               type="number"
+              min="1"
               required
               class="input text-center"
               :placeholder="t('admin.subscriptions.adjustDaysPlaceholder')"
@@ -1212,7 +1213,7 @@ const handleAssignSubscription = async () => {
 
 const handleExtend = (subscription: UserSubscription) => {
   extendingSubscription.value = subscription
-  extendForm.days = 30
+  extendForm.days = getTargetValidityDays(subscription)
   showExtendModal.value = true
 }
 
@@ -1224,14 +1225,9 @@ const closeExtendModal = () => {
 const handleExtendSubscription = async () => {
   if (!extendingSubscription.value) return
 
-  // 前端验证：调整后的过期时间必须在未来
-  if (extendingSubscription.value.expires_at) {
-    const expiresAt = new Date(extendingSubscription.value.expires_at)
-    const newExpiresAt = new Date(expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000)
-    if (newExpiresAt <= new Date()) {
-      appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
-      return
-    }
+  if (!Number.isFinite(extendForm.days) || extendForm.days < 1) {
+    appStore.showError(t('admin.subscriptions.validityDaysRequired'))
+    return
   }
 
   submitting.value = true
@@ -1305,6 +1301,16 @@ const getDaysRemaining = (expiresAt: string): number | null => {
   const diff = expires.getTime() - now.getTime()
   if (diff < 0) return null
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+const getTargetValidityDays = (subscription: UserSubscription): number => {
+  const startsAt = new Date(subscription.starts_at)
+  const expiresAt = new Date(subscription.expires_at)
+  const now = new Date()
+  // 待生效订阅按它自己的开始时间计算有效期，生效中订阅按当前剩余天数计算。
+  const anchor = now < startsAt ? startsAt : now
+  const diff = expiresAt.getTime() - anchor.getTime()
+  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }
 
 const isExpiringSoon = (expiresAt: string): boolean => {

@@ -134,7 +134,7 @@ func TestMigration134AllowsEmailOAuthProviderTypes(t *testing.T) {
 }
 
 func TestMigration140ExtendsUserProviderDefaultGrantsProviderTypes(t *testing.T) {
-	content, err := FS.ReadFile("140_extend_user_provider_default_grants_check.sql")
+	content, err := FS.ReadFile("137_extend_user_provider_default_grants_check.sql")
 	require.NoError(t, err)
 
 	sql := string(content)
