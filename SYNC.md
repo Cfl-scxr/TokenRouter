@@ -388,7 +388,10 @@
   - 决策：保留 fork 现有 Bedrock SigV4/API Key、跨区域模型前缀、渠道模型映射和 beta policy 流程；在渠道映射后应用 Bedrock CC 兼容转换，统一清理 Anthropic API 专有字段、补齐 Bedrock 必填字段、修复 thinking/tool_use ID，并过滤 Bedrock 不支持的 beta token。
   - 决策：upstream 将 `features_config.bedrock_cc_compat` 改为布尔开关；当前 fork 前端仍保存为 `{platform: boolean}`。后端同时兼容新版布尔值和既有 map 格式，避免已有渠道配置失效。
   - 测试：`go test ./internal/service -run 'Test(PrepareBedrock|ResolveBedrock|FilterBedrock|AutoInjectBedrock|SanitizeBedrock|IsBedrock|Channel_IsBedrock|ResolveBedrockBetaTokensForRequest)'`；`go test -tags unit ./internal/service -run 'Test(PrepareBedrock|ResolveBedrock|FilterBedrock|AutoInjectBedrock|SanitizeBedrock|IsBedrock|Channel_IsBedrock|ResolveBedrockBetaTokensForRequest)'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test ./internal/handler -run 'TestGatewayHandler|TestGatewayModels|Test.*Bedrock|Test.*Messages'`；`git diff --check`。
-fix(apicompat): Responses 转 Chat Completions 时 developer role 映射为 system: https://github.com/Wei-Shaw/sub2api/pull/2656
+✅ fix(apicompat): Responses 转 Chat Completions 时 developer role 映射为 system: https://github.com/Wei-Shaw/sub2api/pull/2656
+  - 同步方式：cherry-pick PR head `c4d7edba`，无冲突。
+  - 决策：仅调整 Responses API 请求桥接到 Chat Completions 时的 role 归一化；`developer` 映射为 `system`，空 role 仍回退 `user`，其它 Chat Completions 合法 role 保持不变。
+  - 测试：`go test ./internal/pkg/apicompat -run 'TestResponsesInputToChatMessages|TestResponsesToChatCompletionsRequest|TestResponsesToChatCompletions|TestChatCompletionsToResponses'`；`git diff --cached --check`。
 feat(registration): 邮箱白名单支持后缀通配符匹配(*.edu.cn): https://github.com/Wei-Shaw/sub2api/pull/2672
 feat(risk-control): 内容审计支持按模型生效: https://github.com/Wei-Shaw/sub2api/pull/2674
 fix: optimize OpenAI account cooldown scheduling: https://github.com/TokenFlux/TokenRouter/commit/1e406fed52f82b7e4812c02ad0d668b5446b97c2
