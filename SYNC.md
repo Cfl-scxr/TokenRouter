@@ -316,7 +316,10 @@
   - 同步方式：检查 PR 单提交 `d3d5843b`；未应用代码。
   - 决策：当前 fork 不包含 upstream 的 `channel_monitor_checker.go`、Channel Monitor service/repository/API 或前端监控页面，PR 修改目标链路不存在；延续此前 PR 2585 的处理，为避免引入整套未接线 Channel Monitor 模块，本条标记为不适用。
   - 测试：`rg --files backend/internal/service backend/internal/handler backend/internal/repository backend/ent/schema backend/migrations frontend/src | rg 'channel_monitor|ChannelMonitor|monitor|Monitor'`；`rg -n 'channelMonitor|channel-monitor|ChannelMonitor|MonitorForm|MonitorTemplate|channel_monitor|monitor templates|responses reasoning' frontend/src backend/internal/server/routes backend/internal/handler backend/internal/service backend/internal/repository backend/ent/schema backend/migrations`。
-PR：为 API Key IP 白/黑名单增加可配置的反代真实 IP 判断: https://github.com/Wei-Shaw/sub2api/pull/2645
+✅ PR：为 API Key IP 白/黑名单增加可配置的反代真实 IP 判断: https://github.com/Wei-Shaw/sub2api/pull/2645
+  - 同步方式：按功能提交顺序同步 `08c8c67d` 与 `1d2445ff`，手动解决后台设置 handler、访问日志 middleware 和 setting service 测试冲突。
+  - 决策：保留 fork 现有 `GetTrustedClientIP` 默认安全口径、API Key IP 限制 Ops business-limited 标记、OpenAI Codex UA 设置测试和完整 Settings 字段；新增后台/API/前端开关 `api_key_acl_trust_forwarded_ip`，默认关闭，开启后 API Key 白/黑名单改用 `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` 的真实客户端 IP；访问日志继续与使用记录一致使用 `ip.GetClientIP`。
+  - 测试：`go test -tags unit ./internal/server/middleware -run 'TestAPIKeyAuthIPRestriction|TestLogger_AccessLog'`；`go test -tags unit ./internal/service -run 'TestSettingService_(UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig|ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfigWhenMissing|UpdateSettings_OpenAICodexUserAgent)'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`pnpm typecheck`；`git diff --check HEAD~2..HEAD`。
 fix(auth): user_provider_default_grants 加入 github/google/dingtalk: https://github.com/Wei-Shaw/sub2api/pull/2648
 feat(redeem): 兑换码支持批量修改: https://github.com/Wei-Shaw/sub2api/pull/2615
 fix(i18n):: https://github.com/TokenFlux/TokenRouter/commit/9673a22f26e1f81d0abda3e6d8ca8cd7d8fb74d4
