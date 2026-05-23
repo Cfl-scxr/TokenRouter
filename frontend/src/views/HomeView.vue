@@ -25,14 +25,6 @@
           <span class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ siteName }}</span>
         </router-link>
 
-        <router-link
-          to="/models"
-          class="hidden min-w-[220px] max-w-xs flex-1 items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:bg-dark-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white md:flex"
-        >
-          <Icon name="search" size="sm" />
-          <span class="truncate">{{ t('home.nav.searchModels') }}</span>
-        </router-link>
-
         <div class="flex items-center gap-2 sm:gap-3">
           <div class="hidden items-center gap-5 text-sm font-medium text-gray-600 dark:text-dark-300 lg:flex">
             <router-link to="/models" class="transition hover:text-gray-950 dark:hover:text-white">
@@ -46,14 +38,6 @@
               class="transition hover:text-gray-950 dark:hover:text-white"
             >
               {{ t('home.docs') }}
-            </a>
-            <a
-              :href="githubUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="transition hover:text-gray-950 dark:hover:text-white"
-            >
-              GitHub
             </a>
           </div>
 
@@ -111,14 +95,24 @@
             class="inline-flex min-h-[44px] min-w-[180px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-6 py-3 text-sm font-semibold text-gray-900 shadow-sm transition hover:border-primary-300 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100 dark:hover:border-primary-500"
           >
             {{ t('home.exploreMarketplace') }}
-            <Icon name="sparkles" size="sm" class="text-primary-500" />
+            <span class="relative flex h-5 w-5 items-center justify-center overflow-hidden">
+              <Transition name="home-marketplace-icon" mode="out-in">
+                <ProviderIcon
+                  v-if="homeMarketplaceButtonBrand"
+                  :key="homeMarketplaceButtonBrand"
+                  :brand="homeMarketplaceButtonBrand"
+                  size="18px"
+                />
+                <Icon v-else key="marketplace-fallback" name="sparkles" size="sm" class="text-primary-500" />
+              </Transition>
+            </span>
           </router-link>
         </div>
       </section>
 
       <section class="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-4">
         <div v-for="card in homeStatsCards" :key="card.key" class="text-center">
-          <p class="text-3xl font-bold tracking-tight text-gray-950 dark:text-white md:text-4xl">
+          <p class="min-h-[1.1em] text-3xl font-bold tabular-nums tracking-tight text-gray-950 dark:text-white md:text-4xl">
             {{ card.value }}
           </p>
           <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">{{ card.label }}</p>
@@ -128,23 +122,24 @@
         {{ t('home.stats.unavailable') }}
       </p>
 
-      <section class="mx-auto mt-20 grid max-w-7xl gap-6 lg:grid-cols-4">
-        <article class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-800 dark:bg-dark-900">
+      <section class="mx-auto mt-20 grid max-w-5xl gap-6 md:grid-cols-2">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
           <div class="relative h-48 overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
-            <span class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(15,23,42,0.05),transparent_52%)] dark:bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,0.08),transparent_52%)]"></span>
-            <span
-              v-for="(icon, index) in homeProviderCloudIcons"
-              :key="`${icon.brand}-${index}`"
-              class="absolute flex h-7 w-7 items-center justify-center rounded-full border border-gray-100 bg-white/95 text-gray-700 shadow-[0_5px_16px_rgba(15,23,42,0.13)] ring-1 ring-black/[0.02] dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100 dark:ring-white/[0.04]"
-              :style="{
-                left: icon.left,
-                top: icon.top,
-                opacity: icon.opacity,
-                transform: `translate(-50%, -50%) scale(${icon.scale})`,
-              }"
-            >
-              <ProviderIcon :brand="icon.brand" size="14px" />
-            </span>
+            <div class="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-110">
+              <span
+                v-for="(icon, index) in homeProviderCloudIcons"
+                :key="`${icon.brand}-${index}`"
+                class="absolute flex h-7 w-7 items-center justify-center rounded-full border border-gray-100 bg-white/95 text-gray-700 shadow-[0_5px_16px_rgba(15,23,42,0.13)] ring-1 ring-black/[0.02] dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100 dark:ring-white/[0.04]"
+                :style="{
+                  left: icon.left,
+                  top: icon.top,
+                  opacity: icon.opacity,
+                  transform: `translate(-50%, -50%) scale(${icon.scale})`,
+                }"
+              >
+                <ProviderIcon :brand="icon.brand" size="14px" />
+              </span>
+            </div>
             <span
               class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white via-white/35 to-transparent dark:from-dark-950 dark:via-dark-950/35"
             ></span>
@@ -163,38 +158,40 @@
           </div>
         </article>
 
-        <article class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-800 dark:bg-dark-900">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
           <div class="relative flex h-48 items-center justify-center overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
-            <div class="absolute top-7 z-10 max-w-[82%] truncate rounded-lg bg-gray-100 px-3.5 py-1.5 text-xs font-medium text-gray-800 shadow-sm dark:bg-dark-900 dark:text-dark-100">
-              {{ homeRouteLabel }}
-            </div>
-            <svg
-              class="absolute left-1/2 top-12 h-28 w-[260px] -translate-x-1/2 text-gray-300 dark:text-dark-700"
-              viewBox="0 0 260 120"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M130 0V30"
-                stroke="currentColor"
-                stroke-width="1.35"
-                stroke-linecap="round"
-              />
-              <path
-                d="M130 30C130 63 35 55 35 92M130 30C130 58 130 68 130 92M130 30C130 63 225 55 225 92"
-                stroke="currentColor"
-                stroke-width="1.35"
-                stroke-linecap="round"
-              />
-            </svg>
-            <div class="absolute bottom-6 left-1/2 flex w-[226px] -translate-x-1/2 justify-between">
-              <span
-                v-for="brand in homeRouteProviderBrands"
-                :key="brand"
-                class="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-100 bg-white text-gray-700 shadow-[0_5px_16px_rgba(15,23,42,0.13)] dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100"
+            <div class="relative h-full w-full transition-transform duration-500 ease-out group-hover:scale-110">
+              <div class="absolute left-1/2 top-7 z-10 max-w-[82%] -translate-x-1/2 truncate rounded-lg bg-gray-100 px-3.5 py-1.5 text-xs font-medium text-gray-800 shadow-sm dark:bg-dark-900 dark:text-dark-100">
+                {{ homeRouteLabel }}
+              </div>
+              <svg
+                class="absolute left-1/2 top-12 h-28 w-[260px] -translate-x-1/2 text-gray-300 dark:text-dark-700"
+                viewBox="0 0 260 120"
+                fill="none"
+                aria-hidden="true"
               >
-                <ProviderIcon :brand="brand" size="17px" />
-              </span>
+                <path
+                  d="M130 0V30"
+                  stroke="currentColor"
+                  stroke-width="1.35"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M130 30C130 63 35 55 35 92M130 30C130 58 130 68 130 92M130 30C130 63 225 55 225 92"
+                  stroke="currentColor"
+                  stroke-width="1.35"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <div class="absolute bottom-6 left-1/2 flex w-[226px] -translate-x-1/2 justify-between">
+                <span
+                  v-for="brand in homeRouteProviderBrands"
+                  :key="brand"
+                  class="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-100 bg-white text-gray-700 shadow-[0_5px_16px_rgba(15,23,42,0.13)] dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100"
+                >
+                  <ProviderIcon :brand="brand" size="17px" />
+                </span>
+              </div>
             </div>
           </div>
           <div class="p-6">
@@ -211,9 +208,9 @@
           </div>
         </article>
 
-        <article class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-800 dark:bg-dark-900">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
           <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 p-6 dark:border-dark-800 dark:bg-dark-950">
-            <div class="w-full max-w-[220px] rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900">
+            <div class="w-full max-w-[220px] rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <div class="mb-4 flex items-center justify-between text-xs text-gray-500 dark:text-dark-400">
                 <span>{{ t('home.features.usageChart') }}</span>
                 <Icon name="chart" size="sm" />
@@ -240,9 +237,9 @@
           </div>
         </article>
 
-        <article class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-800 dark:bg-dark-900">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
           <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 dark:border-dark-800 dark:bg-dark-950">
-            <div class="relative flex h-28 w-28 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
+            <div class="relative flex h-28 w-28 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <Icon name="shield" size="xl" class="text-gray-400 dark:text-dark-300" />
               <span class="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
                 <Icon name="check" size="md" :stroke-width="2" />
@@ -308,7 +305,7 @@
             <article
               v-for="provider in supportedProviders.slice(0, 6)"
               :key="provider.key"
-              class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-dark-800 dark:bg-dark-900"
+              class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50"
             >
               <div class="flex items-start gap-4">
                 <span
@@ -365,7 +362,7 @@
             </div>
             <p class="mt-4 max-w-sm text-sm leading-6 text-gray-600 dark:text-dark-300">{{ step.description }}</p>
 
-            <div v-if="step.key === 'signup'" class="mt-auto pt-6">
+            <div v-if="step.key === 'signup'" class="mt-8">
               <div class="flex items-center gap-3 text-primary-500">
                 <Icon name="user" size="md" :stroke-width="1.8" />
                 <div class="space-y-1.5">
@@ -373,15 +370,12 @@
                   <div class="h-1.5 w-20 rounded-full bg-primary-100 dark:bg-primary-400/20"></div>
                 </div>
               </div>
-              <div class="mt-4 grid max-w-[210px] grid-cols-4 gap-3">
+              <div class="mt-4 grid max-w-[156px] grid-cols-3 gap-3">
                 <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:ring-dark-800">
                   <ProviderIcon brand="Google" size="20px" />
                 </span>
-                <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:ring-dark-800">
-                  <ProviderIcon brand="OpenAI" size="19px" />
-                </span>
-                <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:ring-dark-800">
-                  <ProviderIcon brand="Claude" size="19px" />
+                <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 text-gray-800 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:text-gray-100 dark:ring-dark-800">
+                  <GitHubMark class="h-5 w-5" />
                 </span>
                 <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 text-primary-500 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:ring-dark-800">
                   <Icon name="mail" size="md" :stroke-width="1.8" />
@@ -413,7 +407,7 @@
               </div>
             </div>
 
-            <div v-else class="mt-auto max-w-[270px] pt-6">
+            <div v-else class="mt-8 max-w-[270px]">
               <div class="flex items-center gap-3 text-primary-500">
                 <Icon name="key" size="md" :stroke-width="1.8" />
                 <div class="flex-1 rounded-md bg-white/90 px-3 py-2 font-mono text-xs text-gray-600 shadow-sm ring-1 ring-gray-100 dark:bg-dark-950 dark:text-dark-300 dark:ring-dark-800">
@@ -434,34 +428,16 @@
         <p class="text-sm text-gray-500 dark:text-dark-400">
           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
-        <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-dark-400 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-900 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
-          </a>
-        </div>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
+import GitHubMark from '@/components/auth/GitHubMark.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -475,8 +451,10 @@ import {
   resolveProviderBrandKey,
 } from '@/utils/providerBrand'
 
+type HomeStatsKey = 'today-tokens' | 'total-tokens' | 'total-users' | 'supported-models'
 type HomeStatsIcon = 'bolt' | 'database' | 'users' | 'grid'
 type HomeStepIcon = 'userPlus' | 'grid' | 'key'
+type HomeStatFormat = 'compact' | 'number'
 
 interface HomeProviderCategory {
   key: string
@@ -493,7 +471,7 @@ interface HomeProviderSummary extends HomeProviderCategory {
 }
 
 interface HomeStatsCard {
-  key: string
+  key: HomeStatsKey
   label: string
   value: string
   icon: HomeStatsIcon
@@ -554,8 +532,6 @@ const isHomeContentUrl = computed(() => {
 
 const { isDark, toggleTheme } = useTheme()
 
-const githubUrl = 'https://github.com/TokenFlux/TokenRouter'
-
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
@@ -573,6 +549,17 @@ const homeMarketplaceLoading = ref(true)
 const homeStatsLoading = ref(true)
 const homeMarketplaceError = ref(false)
 const homeStatsError = ref(false)
+const homeMarketplaceButtonIconIndex = ref(0)
+let homeMarketplaceButtonIconTimer: number | null = null
+const homeAnimatedStats = ref<Record<HomeStatsKey, number>>({
+  'today-tokens': 0,
+  'total-tokens': 0,
+  'total-users': 0,
+  'supported-models': 0,
+})
+const homeAnimatedStatKeys = new Set<HomeStatsKey>()
+const homeStatAnimationFrames = new Map<HomeStatsKey, number>()
+const homeStatAnimationDurationMs = 3200
 
 const providerVisualFallbacks = [
   'Google',
@@ -629,6 +616,13 @@ const providerCloudLayout = [
 const totalModelCount = computed(() =>
   marketplaceGroups.value.reduce((total, group) => total + group.models.length, 0)
 )
+
+const homeStatAnimationTargets = computed<Record<HomeStatsKey, number | null>>(() => ({
+  'today-tokens': homeStatsLoading.value ? null : normalizedHomeStatTarget(homeStats.value?.today_tokens),
+  'total-tokens': homeStatsLoading.value ? null : normalizedHomeStatTarget(homeStats.value?.total_tokens),
+  'total-users': homeStatsLoading.value ? null : normalizedHomeStatTarget(homeStats.value?.total_users),
+  'supported-models': homeMarketplaceLoading.value ? null : normalizedHomeStatTarget(totalModelCount.value),
+}))
 
 const supportedProviders = computed<HomeProviderSummary[]>(() => {
   const summaries = new Map<string, HomeProviderSummary>()
@@ -687,7 +681,7 @@ const homeStatsCards = computed<HomeStatsCard[]>(() => [
   {
     key: 'today-tokens',
     label: t('home.stats.todayTokens'),
-    value: formatHomeStat(homeStats.value?.today_tokens),
+    value: formatAnimatedHomeStat('today-tokens', homeStatAnimationTargets.value['today-tokens'], homeStatsLoading.value),
     icon: 'bolt',
     iconWrapClass: 'bg-sky-100 dark:bg-sky-500/15',
     iconClass: 'text-sky-600 dark:text-sky-300',
@@ -695,7 +689,7 @@ const homeStatsCards = computed<HomeStatsCard[]>(() => [
   {
     key: 'total-tokens',
     label: t('home.stats.totalTokens'),
-    value: formatHomeStat(homeStats.value?.total_tokens),
+    value: formatAnimatedHomeStat('total-tokens', homeStatAnimationTargets.value['total-tokens'], homeStatsLoading.value),
     icon: 'database',
     iconWrapClass: 'bg-emerald-100 dark:bg-emerald-500/15',
     iconClass: 'text-emerald-600 dark:text-emerald-300',
@@ -703,7 +697,7 @@ const homeStatsCards = computed<HomeStatsCard[]>(() => [
   {
     key: 'total-users',
     label: t('home.stats.totalUsers'),
-    value: formatHomeStat(homeStats.value?.total_users),
+    value: formatAnimatedHomeStat('total-users', homeStatAnimationTargets.value['total-users'], homeStatsLoading.value, 'number'),
     icon: 'users',
     iconWrapClass: 'bg-violet-100 dark:bg-violet-500/15',
     iconClass: 'text-violet-600 dark:text-violet-300',
@@ -711,7 +705,7 @@ const homeStatsCards = computed<HomeStatsCard[]>(() => [
   {
     key: 'supported-models',
     label: t('home.stats.supportedModels'),
-    value: formatMarketplaceStat(totalModelCount.value),
+    value: formatAnimatedHomeStat('supported-models', homeStatAnimationTargets.value['supported-models'], homeMarketplaceLoading.value, 'number'),
     icon: 'grid',
     iconWrapClass: 'bg-primary-100 dark:bg-primary-500/15',
     iconClass: 'text-primary-600 dark:text-primary-300',
@@ -721,6 +715,16 @@ const homeStatsCards = computed<HomeStatsCard[]>(() => [
 const homeProviderVisuals = computed(() => {
   const brands = supportedProviders.value.map(provider => provider.iconBrand)
   return mergeProviderVisualBrands(brands)
+})
+
+const homeMarketplaceButtonBrands = computed(() => supportedProviders.value.map(provider => provider.iconBrand))
+
+const homeMarketplaceButtonBrand = computed(() => {
+  const brands = homeMarketplaceButtonBrands.value
+  if (brands.length === 0) {
+    return ''
+  }
+  return brands[homeMarketplaceButtonIconIndex.value % brands.length]
 })
 
 const homeProviderCloudIcons = computed<HomeProviderCloudIcon[]>(() => {
@@ -821,11 +825,24 @@ function formatOfficialPriceRatio(ratio: number): string {
   return t('marketplace.officialPriceDiscount', { discount })
 }
 
-function formatHomeStat(value?: number): string {
-  if (homeStatsLoading.value) {
+function formatAnimatedHomeStat(
+  key: HomeStatsKey,
+  target: number | null,
+  loading: boolean,
+  format: HomeStatFormat = 'compact'
+): string {
+  if (loading) {
     return '...'
   }
-  return typeof value === 'number' ? formatCompactNumber(value) : '-'
+  if (target === null) {
+    return '-'
+  }
+
+  const value = homeAnimatedStats.value[key]
+  const formatted = format === 'compact'
+    ? formatAnimatedCompactNumber(value, target)
+    : formatWholeNumber(value)
+  return `${formatted}+`
 }
 
 function formatMarketplaceStat(value: number): string {
@@ -835,12 +852,108 @@ function formatMarketplaceStat(value: number): string {
   return new Intl.NumberFormat(numberLocale.value).format(value)
 }
 
-function formatCompactNumber(value: number): string {
-  return new Intl.NumberFormat(numberLocale.value, {
+function formatAnimatedCompactNumber(value: number, target: number): string {
+  const targetParts = new Intl.NumberFormat(numberLocale.value, {
     notation: 'compact',
     maximumFractionDigits: 1,
-  }).format(value)
+  }).formatToParts(target)
+  const compactPart = targetParts.find(part => part.type === 'compact')?.value ?? ''
+  const scaledValue = compactPart ? scaleCompactValue(value, target) : value
+  const decimalDigits = compactPart && targetParts.some(part => part.type === 'fraction') ? 1 : 0
+  const numberText = new Intl.NumberFormat(numberLocale.value, {
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
+    useGrouping: false,
+  }).format(scaledValue)
+
+  return `${numberText}${compactPart}`
 }
+
+function scaleCompactValue(value: number, target: number): number {
+  const compactTargetNumber = Number(new Intl.NumberFormat(numberLocale.value, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).formatToParts(target)
+    .filter(part => part.type === 'integer' || part.type === 'decimal' || part.type === 'fraction')
+    .map(part => part.value)
+    .join(''))
+  if (!Number.isFinite(compactTargetNumber) || compactTargetNumber <= 0) {
+    return value
+  }
+
+  return value / (target / compactTargetNumber)
+}
+
+function formatWholeNumber(value: number): string {
+  return new Intl.NumberFormat(numberLocale.value, {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  }).format(Math.round(value))
+}
+
+function normalizedHomeStatTarget(value?: number): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null
+}
+
+function startHomeStatAnimation(key: HomeStatsKey, target: number) {
+  homeAnimatedStatKeys.add(key)
+  if (homeStatAnimationFrames.has(key)) {
+    cancelAnimationFrame(homeStatAnimationFrames.get(key)!)
+    homeStatAnimationFrames.delete(key)
+  }
+
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  if (reduceMotion || target === 0) {
+    homeAnimatedStats.value = { ...homeAnimatedStats.value, [key]: target }
+    return
+  }
+
+  const startTime = performance.now()
+  const tick = (now: number) => {
+    const progress = Math.min((now - startTime) / homeStatAnimationDurationMs, 1)
+    // 四次缓出配合更长时长，让计数器前段启动快，尾段明显慢下来。
+    const easedProgress = 1 - Math.pow(1 - progress, 4)
+    homeAnimatedStats.value = {
+      ...homeAnimatedStats.value,
+      [key]: target * easedProgress,
+    }
+
+    if (progress < 1) {
+      homeStatAnimationFrames.set(key, requestAnimationFrame(tick))
+      return
+    }
+
+    homeAnimatedStats.value = { ...homeAnimatedStats.value, [key]: target }
+    homeStatAnimationFrames.delete(key)
+  }
+
+  homeStatAnimationFrames.set(key, requestAnimationFrame(tick))
+}
+
+watch(
+  homeStatAnimationTargets,
+  (targets) => {
+    ;(Object.entries(targets) as Array<[HomeStatsKey, number | null]>).forEach(([key, target]) => {
+      if (target === null || homeAnimatedStatKeys.has(key)) {
+        return
+      }
+      startHomeStatAnimation(key, target)
+    })
+  },
+  { immediate: true }
+)
+
+watch(
+  homeMarketplaceButtonBrands,
+  (brands) => {
+    if (brands.length === 0) {
+      homeMarketplaceButtonIconIndex.value = 0
+      return
+    }
+    homeMarketplaceButtonIconIndex.value %= brands.length
+  },
+  { immediate: true }
+)
 
 function localizedHomeCopy(zhText: string | undefined, enText: string | undefined, fallback: string): string {
   const primary = currentLanguage.value === 'zh' ? zhText : enText
@@ -913,6 +1026,12 @@ async function fetchHomeStats() {
 
 onMounted(async () => {
   authStore.checkAuth()
+  homeMarketplaceButtonIconTimer = window.setInterval(() => {
+    if (homeMarketplaceButtonBrands.value.length <= 1) {
+      return
+    }
+    homeMarketplaceButtonIconIndex.value += 1
+  }, 1800)
 
   if (!appStore.publicSettingsLoaded) {
     try {
@@ -926,4 +1045,30 @@ onMounted(async () => {
     await Promise.all([fetchHomeMarketplace(), fetchHomeStats()])
   }
 })
+
+onUnmounted(() => {
+  homeStatAnimationFrames.forEach(frameId => cancelAnimationFrame(frameId))
+  homeStatAnimationFrames.clear()
+  if (homeMarketplaceButtonIconTimer) {
+    window.clearInterval(homeMarketplaceButtonIconTimer)
+    homeMarketplaceButtonIconTimer = null
+  }
+})
 </script>
+
+<style scoped>
+.home-marketplace-icon-enter-active,
+.home-marketplace-icon-leave-active {
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.home-marketplace-icon-enter-from {
+  opacity: 0;
+  transform: translateY(-70%);
+}
+
+.home-marketplace-icon-leave-to {
+  opacity: 0;
+  transform: translateY(70%);
+}
+</style>
