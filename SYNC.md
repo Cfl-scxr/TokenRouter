@@ -365,7 +365,11 @@
   - 同步方式：尝试 cherry-pick direct commit `16793d3a` 后确认不适用，未保留文件变更。
   - 决策：当前 fork 仅保留中文 `README.md`，且已删除 upstream 的 `README_CN.md` / `README_JA.md` 与 README 赞助商表；该提交只向 upstream 多语言 README 赞助商表追加 RunAPI 和 logo 资产，目标展示结构在本 fork 不存在。为避免复活已删除 README 或新增无人引用资产，本条标记为不适用。
   - 测试：`rg -n "<<<<<<<|=======|>>>>>>>|RunAPI|Sponsors|赞助商" README.md README_CN.md README_JA.md assets/partners/logos/runapi.png 2>/dev/null || true`；`git status --short --branch`。
-fix(deps): 升级 js-cookie 解决 GHSA-qjx8-664m-686j 阻塞 frontend-security CI: https://github.com/Wei-Shaw/sub2api/pull/2687
+✅ fix(deps): 升级 js-cookie 解决 GHSA-qjx8-664m-686j 阻塞 frontend-security CI: https://github.com/Wei-Shaw/sub2api/pull/2687
+  - 同步方式：fetch PR 2687 后 cherry-pick 功能提交 `ffd53343`。
+  - 决策：保留 fork 当前前端依赖集合，仅新增 `pnpm.overrides` 将传递依赖 `js-cookie` 固定到 `3.0.7`，并同步 lockfile 中 `ahooks` / `js-beautify` 的解析版本。
+  - 决策：本地 pnpm 11.0.5 不接受 upstream lockfile 顶层 `overrides` 配置；按当前工具链重新规范化锁文件，保留 `package.json` 的 override 和 `js-cookie@3.0.7` 锁定，不提交 pnpm 11 生成的 `pnpm-workspace.yaml` build 审批占位文件。
+  - 测试：`CI=true pnpm install --frozen-lockfile`；`pnpm typecheck`；`rg -n "js-cookie@3\\.0\\.5|js-cookie: 3\\.0\\.5|js-cookie@3\\.0\\.7|js-cookie: 3\\.0\\.7|\"js-cookie\"" frontend/package.json frontend/pnpm-lock.yaml`；`git diff --check`；`git diff --cached --check`。
 fix(frontend): 修正 Cache Hit Rate 计算分母，包含全部 prompt tokens: https://github.com/Wei-Shaw/sub2api/pull/2682
 fix(risk-control): Agent 工具循环中同一用户消息重复审计去重: https://github.com/Wei-Shaw/sub2api/pull/2681
 feat(account): 测试连接支持 OpenAI-compatible Chat Completions 路径: https://github.com/Wei-Shaw/sub2api/pull/2658
