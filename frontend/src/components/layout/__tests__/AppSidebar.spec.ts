@@ -30,3 +30,20 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar admin personal menu', () => {
+  it('shows the regular dashboard under My Account for admins', () => {
+    const personalNavItemsBlockMatch = componentSource.match(
+      /const personalNavItems = computed\(\(\): NavItem\[\] => \{[\s\S]*?const adminNavItems = computed/
+    )
+
+    expect(personalNavItemsBlockMatch).not.toBeNull()
+    const personalNavItemsBlock = personalNavItemsBlockMatch?.[0] ?? ''
+    const dashboardIndex = personalNavItemsBlock.indexOf("path: '/dashboard'")
+    const modelsIndex = personalNavItemsBlock.indexOf("path: '/models'")
+
+    expect(dashboardIndex).toBeGreaterThanOrEqual(0)
+    expect(modelsIndex).toBeGreaterThanOrEqual(0)
+    expect(dashboardIndex).toBeLessThan(modelsIndex)
+  })
+})

@@ -639,9 +639,10 @@ const userNavItems = computed((): NavItem[] => {
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
 
-// Personal navigation items (for admin's "My Account" section, without Dashboard)
+// 管理员“我的账户”分组使用的个人导航项
 const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
+    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon },
     { path: '/usage-ranking', label: t('nav.usageRanking'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
