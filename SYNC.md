@@ -341,7 +341,11 @@
   - 同步方式：手工移植 PR 单提交 `60f6602b`，接入本 fork 现有 `schedulerCache` helper 风格。
   - 决策：删除账号事务提交后立即调用 `DeleteAccount` 清理单账号调度缓存，避免粘性会话或延迟 outbox worker 继续读到旧快照；保留既有 scheduler outbox 事件，用于分组相关异步刷新。
   - 测试：`go test -tags integration ./internal/repository -run 'TestAccountRepoSuite/TestDelete'`；`git diff --check`。
-fix(openai): surface image moderation errors: https://github.com/Wei-Shaw/sub2api/pull/2399
+✅ fix(openai): surface image moderation errors: https://github.com/Wei-Shaw/sub2api/pull/2399
+  - 同步方式：手工移植 PR 单提交 `888cd809`，适配本 fork 已有 OpenAI Images OAuth Responses 路由、n 参数透传、用量计费、failover 和 Ops/Cyber 记录逻辑。
+  - 决策：解析 upstream Responses SSE 中的 `error` / `response.failed`，将 `moderation_blocked` / `image_generation_user_error` 透出为客户端 400 或流式 error event；这类用户侧图片风控错误不再标记账号调度失败、不触发账号切换或 generic fallback。
+  - 决策：保留 fork 当前失败路径的 Ops upstream error 上下文和图片转发结构；补齐 `auth_oauth_pending_flow_test` 的 redeem repo fake `BatchUpdate` 方法，使 handler 包在 PR 2615 接口扩展后能完整编译。
+  - 测试：`go test ./internal/service -run 'Test(OpenAIGatewayServiceForwardImages|CollectOpenAIImages|BuildOpenAIImages|ExtractOpenAIImages)'`；`go test ./internal/handler -run 'TestOpenAI.*Images|TestImage'`；`git diff --check`。
 feat: add subscription expiry email toggle: https://github.com/TokenFlux/TokenRouter/commit/a613a587bab22c36785347e78b35b49c167079d3
 feat(oidc): 上游邮箱已验证时跳过 choice 页直接登录注册: https://github.com/Wei-Shaw/sub2api/pull/2655
 fix(oidc): harden verified-email fast path: https://github.com/TokenFlux/TokenRouter/commit/aae20ef4370516158e681d03ecd98071a45cd267
