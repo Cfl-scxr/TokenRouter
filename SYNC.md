@@ -333,7 +333,10 @@
   - 同步方式：检查 direct commit `9673a22f`；无需额外代码变更。
   - 决策：该提交删除 PR 2613/2615 叠加后重复的兑换码批量修改 i18n key。本 fork 在手工移植 PR 2615 时已只保留一组 `admin.redeem` 批量修改文案，并按当前兑换码模型移除 upstream 的 `group` 批量字段，因此无需 cherry-pick。
   - 测试：`rg -n "batchUpdate|selectedCount|clearSelection|batchFields|batchNotesPlaceholder" frontend/src/i18n/locales/en.ts frontend/src/i18n/locales/zh.ts`；`pnpm typecheck`。
-fix: mark reused refresh tokens non-retryable and unschedule errored accounts: https://github.com/Wei-Shaw/sub2api/pull/2374
+✅ fix: mark reused refresh tokens non-retryable and unschedule errored accounts: https://github.com/Wei-Shaw/sub2api/pull/2374
+  - 同步方式：按 PR 功能提交 `49b415e3`、`202aab8e` 手工移植；`refresh_token_reused` 不可重试判断已在本 fork 现有实现中包含，本条补充对应回归测试。
+  - 决策：保留 fork 当前 OAuth 刷新失败后的隐私设置尝试、临时不可调度、Redis 临时不可调度缓存清理、scheduler cache/outbox 快照刷新逻辑；在 `Update` 和 `SetError` 写入 error 状态时同步关闭 `schedulable`，避免错误账号被重新调度。
+  - 测试：`go test -tags unit ./internal/service -run 'Test(IsNonRetryableRefreshError|TokenRefreshService_RefreshWithRetry_NonRetryableErrorAllPlatforms)'`；`go test -tags integration ./internal/repository -run 'TestAccountRepoSuite/Test(SetError|UpdateErrorStatusUnschedulesAccount|ListSchedulable)'`；`git diff --check`。
 fix: clear scheduler cache when deleting accounts: https://github.com/Wei-Shaw/sub2api/pull/2375
 fix(openai): surface image moderation errors: https://github.com/Wei-Shaw/sub2api/pull/2399
 feat: add subscription expiry email toggle: https://github.com/TokenFlux/TokenRouter/commit/a613a587bab22c36785347e78b35b49c167079d3
