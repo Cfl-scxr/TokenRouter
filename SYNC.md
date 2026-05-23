@@ -422,4 +422,8 @@
   - 决策：保留 fork 当前账号创建/编辑弹窗、代理页批量导入/质量检测等结构；仅新增紧凑 `ProxyAdBanner` 外链组件，并放在账号代理选择器和代理创建弹窗 Tab 行旁边，不改变代理 CRUD/API 逻辑。
   - 测试：`pnpm typecheck`；`pnpm test:run src/components/account/__tests__/CreateAccountModal.spec.ts src/components/account/__tests__/EditAccountModal.spec.ts src/views/admin/__tests__/ProxiesView.spec.ts`；`git diff --cached --check`；`git diff --check`。
   - 备注：Vitest 当前仅匹配到既有 `EditAccountModal.spec.ts` 并通过；仓库中没有 `CreateAccountModal.spec.ts` 或 `ProxiesView.spec.ts`。
-fix(i18n): escape at-sign in email whitelist placeholder: https://github.com/TokenFlux/TokenRouter/commit/0cfabaa82ea11fe296ce81c786841dbfaeccac36
+✅ fix(i18n): escape at-sign in email whitelist placeholder: https://github.com/TokenFlux/TokenRouter/commit/0cfabaa82ea11fe296ce81c786841dbfaeccac36
+  - 同步方式：cherry-pick direct commit `0cfabaa82ea11fe296ce81c786841dbfaeccac36`，无冲突。
+  - 决策：仅转义中英文注册邮箱白名单 placeholder 里的 `@` 为 Vue I18n 安全写法，保留上一条邮箱通配符同步后的 `*.edu.cn` 示例和 fork 的邮箱归一化设置文案。
+  - 测试：`pnpm test:run src/views/admin/__tests__/SettingsView.spec.ts src/utils/__tests__/registrationEmailPolicy.spec.ts`；`pnpm typecheck`；`git diff --cached --check`；`git diff --check`。
+  - 备注：Vitest 输出 Node `localStorage` warning 和既有 `router-link` stub warning，未影响断言。
