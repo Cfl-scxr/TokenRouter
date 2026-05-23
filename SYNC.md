@@ -337,7 +337,10 @@
   - 同步方式：按 PR 功能提交 `49b415e3`、`202aab8e` 手工移植；`refresh_token_reused` 不可重试判断已在本 fork 现有实现中包含，本条补充对应回归测试。
   - 决策：保留 fork 当前 OAuth 刷新失败后的隐私设置尝试、临时不可调度、Redis 临时不可调度缓存清理、scheduler cache/outbox 快照刷新逻辑；在 `Update` 和 `SetError` 写入 error 状态时同步关闭 `schedulable`，避免错误账号被重新调度。
   - 测试：`go test -tags unit ./internal/service -run 'Test(IsNonRetryableRefreshError|TokenRefreshService_RefreshWithRetry_NonRetryableErrorAllPlatforms)'`；`go test -tags integration ./internal/repository -run 'TestAccountRepoSuite/Test(SetError|UpdateErrorStatusUnschedulesAccount|ListSchedulable)'`；`git diff --check`。
-fix: clear scheduler cache when deleting accounts: https://github.com/Wei-Shaw/sub2api/pull/2375
+✅ fix: clear scheduler cache when deleting accounts: https://github.com/Wei-Shaw/sub2api/pull/2375
+  - 同步方式：手工移植 PR 单提交 `60f6602b`，接入本 fork 现有 `schedulerCache` helper 风格。
+  - 决策：删除账号事务提交后立即调用 `DeleteAccount` 清理单账号调度缓存，避免粘性会话或延迟 outbox worker 继续读到旧快照；保留既有 scheduler outbox 事件，用于分组相关异步刷新。
+  - 测试：`go test -tags integration ./internal/repository -run 'TestAccountRepoSuite/TestDelete'`；`git diff --check`。
 fix(openai): surface image moderation errors: https://github.com/Wei-Shaw/sub2api/pull/2399
 feat: add subscription expiry email toggle: https://github.com/TokenFlux/TokenRouter/commit/a613a587bab22c36785347e78b35b49c167079d3
 feat(oidc): 上游邮箱已验证时跳过 choice 页直接登录注册: https://github.com/Wei-Shaw/sub2api/pull/2655
