@@ -417,5 +417,9 @@
   - 同步方式：PR 分支包含大量已同步/无关历史，仅 cherry-pick tip 功能提交 `0af44ce4c2e97da35b853f3e96d91aee6e724ab9`，手动解决模块路径 import 冲突。
   - 决策：保留 fork 当前 OpenAI gateway 诊断日志字段；仅将 codex_cli_only 拒绝日志里的 `request_client_ip` 改为复用 `ip.GetClientIP(c)`，让反代头解析与 access log/usage 记录一致，同时继续保留 `request_remote_addr` 排查底层 peer。
   - 测试：`go test ./internal/service -run 'TestLogCodexCLIOnlyDetection|TestOpenAIGatewayService_GetCodexClientRestrictionDetector|TestGetAPIKeyIDFromContext'`；`go test ./internal/service -run 'TestOpenAIGateway|TestForwardAsRawChatCompletions|TestForwardAsChatCompletions|TestHandleChatStreamingResponse'`；`git diff --cached --check`；`git diff --check`。
-feat(admin): add compact proxy IP resource link: https://github.com/TokenFlux/TokenRouter/commit/0430899748ac7c6c5d26d94cac8cc9b46bccb8ab
+✅ feat(admin): add compact proxy IP resource link: https://github.com/TokenFlux/TokenRouter/commit/0430899748ac7c6c5d26d94cac8cc9b46bccb8ab
+  - 同步方式：cherry-pick direct commit `0430899748ac7c6c5d26d94cac8cc9b46bccb8ab`，无冲突。
+  - 决策：保留 fork 当前账号创建/编辑弹窗、代理页批量导入/质量检测等结构；仅新增紧凑 `ProxyAdBanner` 外链组件，并放在账号代理选择器和代理创建弹窗 Tab 行旁边，不改变代理 CRUD/API 逻辑。
+  - 测试：`pnpm typecheck`；`pnpm test:run src/components/account/__tests__/CreateAccountModal.spec.ts src/components/account/__tests__/EditAccountModal.spec.ts src/views/admin/__tests__/ProxiesView.spec.ts`；`git diff --cached --check`；`git diff --check`。
+  - 备注：Vitest 当前仅匹配到既有 `EditAccountModal.spec.ts` 并通过；仓库中没有 `CreateAccountModal.spec.ts` 或 `ProxiesView.spec.ts`。
 fix(i18n): escape at-sign in email whitelist placeholder: https://github.com/TokenFlux/TokenRouter/commit/0cfabaa82ea11fe296ce81c786841dbfaeccac36
