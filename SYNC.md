@@ -374,7 +374,10 @@
   - 同步方式：fetch PR 2682 后 cherry-pick 功能提交 `6ba20acd`，手动解决 `TokenUsageTrend.vue` 中 fork 已有公式与 upstream 同步公式的上下文冲突。
   - 决策：当前 fork 的图表数据集名为 `Cached Input %`，且组件内已用 `input_tokens + cache_creation_tokens + cache_read_tokens` 作为分母；保留该既有 UI 文案和中文注释，本条只补充 upstream 的回归测试并将测试断言适配 fork label。
   - 测试：`pnpm test:run src/components/charts/__tests__/TokenUsageTrend.spec.ts`；`pnpm typecheck`；`git diff --check`；`git diff --cached --check`。
-fix(risk-control): Agent 工具循环中同一用户消息重复审计去重: https://github.com/Wei-Shaw/sub2api/pull/2681
+✅ fix(risk-control): Agent 工具循环中同一用户消息重复审计去重: https://github.com/Wei-Shaw/sub2api/pull/2681
+  - 同步方式：fetch PR 2681 后 cherry-pick 功能提交 `199a5bcc`，无冲突。
+  - 决策：保留 fork 现有关键词拦截、warning/auto-ban 和图片抽样审计语义；仅将 Anthropic/OpenAI Chat/OpenAI Responses/Gemini 的文本提取从“回溯最后一条用户消息”改为“仅数组末尾本身是用户输入时才审计”，避免 Agent 工具循环中的 assistant/tool/function_call_output 结尾重复审计同一用户输入。
+  - 测试：`go test ./internal/service -run 'TestExtractContentModerationInput|TestContentModerationInput|TestContentModerationCheck_|TestNormalizeBlockedKeywords|TestMatchBlockedKeyword|TestNormalizeKeywordBlockingMode|TestContentModerationConfigNormalize'`；`go test ./internal/service -run 'TestContentModeration|TestExtractContentModerationInput|Test.*Moderation.*'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
 feat(account): 测试连接支持 OpenAI-compatible Chat Completions 路径: https://github.com/Wei-Shaw/sub2api/pull/2658
 feat(bedrock): add Claude Code compatibility for AWS Bedrock: https://github.com/Wei-Shaw/sub2api/pull/2662
 fix(apicompat): Responses 转 Chat Completions 时 developer role 映射为 system: https://github.com/Wei-Shaw/sub2api/pull/2656
