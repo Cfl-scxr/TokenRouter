@@ -361,7 +361,10 @@
   - 决策：保留上一条 fast path 的触发边界，并在创建用户前先做 backend-mode 新用户登录拦截；被拦截时直接重定向错误并清理 pending cookies，避免先创建用户再发现后端模式禁止。
   - 决策：fast path 写入 identity metadata 时将真实已验证邮箱规范化为 `email`，把 OIDC 合成邮箱另存为 `synthetic_email`，避免身份元数据继续暴露/混用内部合成邮箱。
   - 测试：`go test ./internal/handler -run 'TestOIDCOAuthCallbackVerifiedEmailFastPath|TestTryOIDCVerifiedEmailFastPath|Test.*OIDC|Test.*OAuth.*Pending'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
-chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/16793d3af03324498a506cea0fbc1353c4ee5cfe
+✅ chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/16793d3af03324498a506cea0fbc1353c4ee5cfe
+  - 同步方式：尝试 cherry-pick direct commit `16793d3a` 后确认不适用，未保留文件变更。
+  - 决策：当前 fork 仅保留中文 `README.md`，且已删除 upstream 的 `README_CN.md` / `README_JA.md` 与 README 赞助商表；该提交只向 upstream 多语言 README 赞助商表追加 RunAPI 和 logo 资产，目标展示结构在本 fork 不存在。为避免复活已删除 README 或新增无人引用资产，本条标记为不适用。
+  - 测试：`rg -n "<<<<<<<|=======|>>>>>>>|RunAPI|Sponsors|赞助商" README.md README_CN.md README_JA.md assets/partners/logos/runapi.png 2>/dev/null || true`；`git status --short --branch`。
 fix(deps): 升级 js-cookie 解决 GHSA-qjx8-664m-686j 阻塞 frontend-security CI: https://github.com/Wei-Shaw/sub2api/pull/2687
 fix(frontend): 修正 Cache Hit Rate 计算分母，包含全部 prompt tokens: https://github.com/Wei-Shaw/sub2api/pull/2682
 fix(risk-control): Agent 工具循环中同一用户消息重复审计去重: https://github.com/Wei-Shaw/sub2api/pull/2681
