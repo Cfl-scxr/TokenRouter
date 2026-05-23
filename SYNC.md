@@ -383,7 +383,11 @@
   - 决策：保留 fork 已有 OpenAI Responses 探测、raw Chat Completions 网关 URL 构造、compact/image 测试和 OAuth Codex 行为；当 API Key 账号已探测为不支持 Responses API 时，测试连接改走 `/v1/chat/completions` SSE 路径，而不再提示“测试接口仅支持 Responses API”。
   - 决策：前端测试弹窗仅新增 `status` SSE 事件展示，用于呈现 Chat Completions 路径验证状态，不改变现有 content/image/test_complete 流程。
   - 测试：`go test -tags unit ./internal/service -run 'TestAccountTestService_OpenAI|TestNormalizeAccountTestMode|TestBuildOpenAI(ChatCompletionsURL|ResponsesURL_ProbeURL)'`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-account-tests-localstorage" pnpm test:run src/components/account/__tests__/AccountTestModal.spec.ts`；`pnpm typecheck`。
-feat(bedrock): add Claude Code compatibility for AWS Bedrock: https://github.com/Wei-Shaw/sub2api/pull/2662
+✅ feat(bedrock): add Claude Code compatibility for AWS Bedrock: https://github.com/Wei-Shaw/sub2api/pull/2662
+  - 同步方式：fetch PR 2662 后 cherry-pick 功能提交 `fe1c6c95`，手动解决 `bedrock_request.go` 模块路径冲突。
+  - 决策：保留 fork 现有 Bedrock SigV4/API Key、跨区域模型前缀、渠道模型映射和 beta policy 流程；在渠道映射后应用 Bedrock CC 兼容转换，统一清理 Anthropic API 专有字段、补齐 Bedrock 必填字段、修复 thinking/tool_use ID，并过滤 Bedrock 不支持的 beta token。
+  - 决策：upstream 将 `features_config.bedrock_cc_compat` 改为布尔开关；当前 fork 前端仍保存为 `{platform: boolean}`。后端同时兼容新版布尔值和既有 map 格式，避免已有渠道配置失效。
+  - 测试：`go test ./internal/service -run 'Test(PrepareBedrock|ResolveBedrock|FilterBedrock|AutoInjectBedrock|SanitizeBedrock|IsBedrock|Channel_IsBedrock|ResolveBedrockBetaTokensForRequest)'`；`go test -tags unit ./internal/service -run 'Test(PrepareBedrock|ResolveBedrock|FilterBedrock|AutoInjectBedrock|SanitizeBedrock|IsBedrock|Channel_IsBedrock|ResolveBedrockBetaTokensForRequest)'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test ./internal/handler -run 'TestGatewayHandler|TestGatewayModels|Test.*Bedrock|Test.*Messages'`；`git diff --check`。
 fix(apicompat): Responses 转 Chat Completions 时 developer role 映射为 system: https://github.com/Wei-Shaw/sub2api/pull/2656
 feat(registration): 邮箱白名单支持后缀通配符匹配(*.edu.cn): https://github.com/Wei-Shaw/sub2api/pull/2672
 feat(risk-control): 内容审计支持按模型生效: https://github.com/Wei-Shaw/sub2api/pull/2674
