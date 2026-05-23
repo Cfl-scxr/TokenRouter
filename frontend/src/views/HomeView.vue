@@ -933,7 +933,8 @@ function startHomeStatAnimation(key: HomeStatsKey, target: number) {
 watch(
   homeStatAnimationTargets,
   (targets) => {
-    ;(Object.entries(targets) as Array<[HomeStatsKey, number | null]>).forEach(([key, target]) => {
+    const statEntries = Object.entries(targets) as Array<[HomeStatsKey, number | null]>
+    statEntries.forEach(([key, target]) => {
       if (target === null || homeAnimatedStatKeys.has(key)) {
         return
       }

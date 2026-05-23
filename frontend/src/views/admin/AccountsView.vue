@@ -20,10 +20,8 @@
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
                 <button
-                  @click="
-                    showAutoRefreshDropdown = !showAutoRefreshDropdown;
-                    showAccountToolsDropdown = false
-                  "
+                  ref="autoRefreshButtonRef"
+                  @click="toggleAutoRefreshDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.accounts.autoRefresh')"
                 >
@@ -38,7 +36,8 @@
                 </button>
                 <div
                   v-if="showAutoRefreshDropdown"
-                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                  class="fixed z-50 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                  :style="autoRefreshDropdownStyle"
                 >
                   <div class="p-2">
                     <button
@@ -65,10 +64,8 @@
               <!-- 更多工具下拉菜单 -->
               <div class="relative" ref="accountToolsDropdownRef">
                 <button
-                  @click="
-                    showAccountToolsDropdown = !showAccountToolsDropdown;
-                    showAutoRefreshDropdown = false
-                  "
+                  ref="accountToolsButtonRef"
+                  @click="toggleAccountToolsDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.accounts.moreActions')"
                 >
@@ -78,7 +75,8 @@
                 </button>
                 <div
                   v-if="showAccountToolsDropdown"
-                  class="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                  class="fixed z-50 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                  :style="accountToolsDropdownStyle"
                 >
                   <div class="max-h-[70vh] overflow-y-auto p-2">
                     <div class="px-2 py-2">
@@ -496,6 +494,7 @@ const exportingData = ref(false)
 // 账号工具下拉菜单
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
+const accountToolsButtonRef = ref<HTMLElement | null>(null)
 const hiddenColumns = reactive<Set<string>>(new Set())
 const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
@@ -538,6 +537,9 @@ const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
+const autoRefreshButtonRef = ref<HTMLElement | null>(null)
+const accountToolsDropdownStyle = ref<Record<string, string>>({})
+const autoRefreshDropdownStyle = ref<Record<string, string>>({})
 const AUTO_REFRESH_STORAGE_KEY = 'account-auto-refresh'
 const autoRefreshIntervals = [5, 10, 15, 30] as const
 const autoRefreshEnabled = ref(false)
@@ -671,6 +673,48 @@ const saveAutoRefreshToStorage = () => {
   } catch (e) {
     console.error('Failed to save auto refresh settings:', e)
   }
+}
+
+const clampDropdownLeft = (left: number, width: number) => {
+  const margin = 16
+  return Math.min(
+    Math.max(left, margin),
+    Math.max(margin, window.innerWidth - width - margin)
+  )
+}
+
+const buildTopDropdownStyle = (trigger: HTMLElement | null, width: number): Record<string, string> => {
+  if (!trigger) return {}
+  const rect = trigger.getBoundingClientRect()
+  // 右对齐触发按钮，同时限制在视口内，避免移动端下拉菜单被左侧裁掉。
+  const left = clampDropdownLeft(rect.right - width, width)
+  return {
+    top: `${rect.bottom + 8}px`,
+    left: `${left}px`,
+    maxHeight: `${Math.max(240, window.innerHeight - rect.bottom - 24)}px`
+  }
+}
+
+const updateTopDropdownPositions = () => {
+  if (showAccountToolsDropdown.value) {
+    const width = Math.min(320, Math.max(0, window.innerWidth - 32))
+    accountToolsDropdownStyle.value = buildTopDropdownStyle(accountToolsButtonRef.value, width)
+  }
+  if (showAutoRefreshDropdown.value) {
+    autoRefreshDropdownStyle.value = buildTopDropdownStyle(autoRefreshButtonRef.value, 224)
+  }
+}
+
+const toggleAccountToolsDropdown = () => {
+  showAccountToolsDropdown.value = !showAccountToolsDropdown.value
+  showAutoRefreshDropdown.value = false
+  updateTopDropdownPositions()
+}
+
+const toggleAutoRefreshDropdown = () => {
+  showAutoRefreshDropdown.value = !showAutoRefreshDropdown.value
+  showAccountToolsDropdown.value = false
+  updateTopDropdownPositions()
 }
 
 if (typeof window !== 'undefined') {
@@ -971,6 +1015,7 @@ const handleManualRefresh = async () => {
 
 const closeAccountToolsDropdown = () => {
   showAccountToolsDropdown.value = false
+  accountToolsDropdownStyle.value = {}
 }
 
 const openSyncFromCrs = () => {
@@ -1655,9 +1700,14 @@ const isExpired = (value: number | null) => {
   return value * 1000 <= Date.now()
 }
 
-// 滚动时关闭操作菜单（不关闭列设置下拉菜单）
+// 滚动时关闭行内操作菜单，顶部下拉菜单保持打开但同步位置。
 const handleScroll = () => {
   menu.show = false
+  updateTopDropdownPositions()
+}
+
+const handleViewportResize = () => {
+  updateTopDropdownPositions()
 }
 
 // 点击外部关闭顶部下拉菜单
@@ -1681,6 +1731,7 @@ onMounted(async () => {
     console.error('Failed to load proxies/groups:', error)
   }
   window.addEventListener('scroll', handleScroll, true)
+  window.addEventListener('resize', handleViewportResize)
   document.addEventListener('click', handleClickOutside)
 
   if (autoRefreshEnabled.value) {
@@ -1693,6 +1744,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)
+  window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)
 })
 </script>

@@ -52,53 +52,6 @@
         : 'relative z-10 px-4 pb-12 pt-6 sm:px-6 lg:px-8'"
     >
       <div :class="isAuthenticated ? 'space-y-4' : 'relative mx-auto max-w-[1400px] space-y-5'">
-        <section class="card overflow-hidden p-4 md:p-5">
-          <div class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_repeat(3,minmax(0,210px))]">
-            <div class="min-w-0 space-y-3">
-              <div>
-                <h1 class="text-2xl font-bold tracking-tight text-gray-950 dark:text-white">
-                  {{ t('marketplace.title') }}
-                </h1>
-                <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-600 dark:text-dark-300">
-                  {{ t('marketplace.subtitle') }}
-                </p>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-dark-400">
-                <span class="rounded-full bg-gray-100 px-3 py-1.5 dark:bg-dark-950">
-                  {{ t('marketplace.actualPricingNote', { unitName: balanceUnitName }) }}
-                </span>
-                <span class="rounded-full bg-gray-100 px-3 py-1.5 dark:bg-dark-950">
-                  {{ totalGroupCount }} {{ t('marketplace.groupsStat') }}
-                </span>
-                <span class="rounded-full bg-gray-100 px-3 py-1.5 dark:bg-dark-950">
-                  {{ totalModelCount }} {{ t('marketplace.modelsStat') }}
-                </span>
-              </div>
-            </div>
-
-            <div
-              v-for="card in overviewCards"
-              :key="card.key"
-              class="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-950/80"
-            >
-              <div class="flex items-start gap-3">
-                <div class="rounded-lg p-2" :class="overviewIconWrapClass(card.key)">
-                  <Icon :name="card.icon" size="md" :class="overviewIconClass(card.key)" />
-                </div>
-                <div class="min-w-0">
-                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ card.label }}
-                  </p>
-                  <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ card.value }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <div class="flex flex-wrap items-center gap-3">
           <div class="min-w-[280px] flex-1 xl:max-w-[420px]">
             <SearchInput
@@ -386,7 +339,6 @@ import { useAppStore, useAuthStore } from '@/stores'
 
 type VisibleMarketplaceGroup = MarketplaceGroup
 type PricingFilter = 'all' | 'token' | 'image' | 'unpriced'
-type OverviewIcon = 'grid' | 'sparkles' | 'globe'
 
 interface PricingRow {
   key: string
@@ -403,13 +355,6 @@ interface ContextIntervalPricingRow {
 interface SelectedPricingModel {
   group: MarketplaceGroup
   model: MarketplaceModel
-}
-
-interface OverviewCard {
-  key: string
-  label: string
-  value: number
-  icon: OverviewIcon
 }
 
 const { t } = useI18n()
@@ -458,9 +403,6 @@ const sortedGroups = computed(() =>
     return left.id - right.id
   })
 )
-
-const totalGroupCount = computed(() => groups.value.length)
-const totalModelCount = computed(() => groups.value.reduce((sum, group) => sum + group.models.length, 0))
 
 const availableBrands = computed(() => {
   const seen = new Set<string>()
@@ -539,32 +481,6 @@ const filteredGroups = computed<VisibleMarketplaceGroup[]>(() => {
     }]
   })
 })
-
-const visibleGroupCount = computed(() => filteredGroups.value.length)
-const visibleModelCount = computed(() =>
-  filteredGroups.value.reduce((sum, group) => sum + group.models.length, 0)
-)
-
-const overviewCards = computed<OverviewCard[]>(() => [
-  {
-    key: 'visible-groups',
-    label: t('marketplace.matchingGroups'),
-    value: visibleGroupCount.value,
-    icon: 'grid',
-  },
-  {
-    key: 'visible-models',
-    label: t('marketplace.matchingModels'),
-    value: visibleModelCount.value,
-    icon: 'sparkles',
-  },
-  {
-    key: 'brands',
-    label: t('marketplace.brandsStat'),
-    value: availableBrands.value.length,
-    icon: 'globe',
-  },
-])
 
 function hasPositiveValue(value?: number | null): value is number {
   return typeof value === 'number' && value > 0
@@ -683,26 +599,6 @@ function formatRMBEquivalentAmount(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(value)
-}
-
-function overviewIconWrapClass(key: string): string {
-  const variants: Record<string, string> = {
-    'visible-groups': 'bg-blue-100 dark:bg-blue-900/30',
-    'visible-models': 'bg-emerald-100 dark:bg-emerald-900/30',
-    brands: 'bg-violet-100 dark:bg-violet-900/30',
-  }
-
-  return variants[key] ?? 'bg-gray-100 dark:bg-dark-700'
-}
-
-function overviewIconClass(key: string): string {
-  const variants: Record<string, string> = {
-    'visible-groups': 'text-blue-600 dark:text-blue-400',
-    'visible-models': 'text-emerald-600 dark:text-emerald-400',
-    brands: 'text-violet-600 dark:text-violet-400',
-  }
-
-  return variants[key] ?? 'text-gray-600 dark:text-dark-300'
 }
 
 function formatPrice(value: number): string {

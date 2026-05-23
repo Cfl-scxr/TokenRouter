@@ -164,6 +164,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const optionsListRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 const triggerRect = ref<DOMRect | null>(null)
+const dropdownLeft = ref<number | null>(null)
 
 // i18n placeholders
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
@@ -180,10 +181,15 @@ const dropdownStyle = computed(() => {
   if (!triggerRect.value) return {}
 
   const rect = triggerRect.value
+  const viewportMargin = 16
+  const maxDropdownWidth = Math.max(200, window.innerWidth - viewportMargin * 2)
+  const estimatedWidth = Math.min(Math.max(rect.width, 200), maxDropdownWidth)
+  const fallbackLeft = clampDropdownLeft(rect.left, estimatedWidth)
   const style: Record<string, string> = {
     position: 'fixed',
-    left: `${rect.left}px`,
+    left: `${dropdownLeft.value ?? fallbackLeft}px`,
     minWidth: `${rect.width}px`,
+    maxWidth: `${maxDropdownWidth}px`,
     zIndex: '100000020'
   }
 
@@ -195,6 +201,14 @@ const dropdownStyle = computed(() => {
 
   return style
 })
+
+const clampDropdownLeft = (left: number, width: number) => {
+  const viewportMargin = 16
+  return Math.min(
+    Math.max(left, viewportMargin),
+    Math.max(viewportMargin, window.innerWidth - width - viewportMargin)
+  )
+}
 
 const getOptionValue = (option: any): any => {
   if (typeof option === 'object' && option !== null) {
@@ -295,7 +309,16 @@ const handleOptionMouseEnter = (option: any, index: number) => {
 const updateTriggerRect = () => {
   if (containerRef.value) {
     triggerRect.value = containerRef.value.getBoundingClientRect()
+    nextTick(updateDropdownLeft)
   }
+}
+
+const updateDropdownLeft = () => {
+  if (!triggerRect.value) return
+  const dropdownWidth = dropdownRef.value?.offsetWidth
+    || Math.min(Math.max(triggerRect.value.width, 200), Math.max(200, window.innerWidth - 32))
+  // 按实际菜单宽度回拉，避免窄屏时选项文字被裁到视口外。
+  dropdownLeft.value = clampDropdownLeft(triggerRect.value.left, dropdownWidth)
 }
 
 const calculateDropdownPosition = () => {
@@ -304,6 +327,7 @@ const calculateDropdownPosition = () => {
 
   nextTick(() => {
     if (!dropdownRef.value || !triggerRect.value) return
+    updateDropdownLeft()
     const dropdownHeight = dropdownRef.value.offsetHeight || 240
     const spaceBelow = window.innerHeight - triggerRect.value.bottom
     const spaceAbove = triggerRect.value.top
@@ -344,6 +368,7 @@ watch(isOpen, (open) => {
   } else {
     searchQuery.value = ''
     focusedIndex.value = -1
+    dropdownLeft.value = null
     window.removeEventListener('scroll', updateTriggerRect, { capture: true })
     window.removeEventListener('resize', calculateDropdownPosition)
   }

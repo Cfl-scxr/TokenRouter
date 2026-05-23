@@ -798,7 +798,7 @@
   .sidebar-link-active {
     @apply bg-primary-100 dark:bg-dark-950;
     @apply text-primary-700 dark:text-white;
-    @apply ring-1 ring-primary-300/40 dark:ring-primary-500/90;
+    @apply ring-1 ring-primary-300/40 dark:ring-dark-700/80;
     @apply hover:bg-primary-200 dark:hover:bg-dark-950;
   }
 
