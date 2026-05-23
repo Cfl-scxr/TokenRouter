@@ -312,7 +312,10 @@
   - 同步方式：cherry-pick PR 单提交 `69305a60`，无冲突。
   - 决策：保留 fork 已有 API Key IP 限制 `OpsClientBusinessLimited` 标记和上游错误上下文判定；新增 API Key 过期/停用/用户不存在、查询参数 key 弃用、订阅/余额/本地限额等本地客户端限制的 SLA 排除规则，并确保带上游上下文的同类文本仍归 provider/upstream 计入 SLA。
   - 测试：`go test ./internal/handler -run 'TestClassifyOps(AuthClientErrorsExcludedFromSLA|LocalBusinessLimitErrorsExcludedFromSLA|IPRestrictionAccessDeniedExcludedFromSLA|OtherErrorsStillCountForSLA|UnsupportedModelExcludedFromSLA|UnmarkedNoAvailableTextStillCountsForSLA|UpstreamAuthTextStillCountsForSLA|UpstreamNoAvailableTextStillCountsForSLA)'`；`git diff --check HEAD~1..HEAD`。
-fix(channel-monitor): 兼容 Responses reasoning 输出: https://github.com/Wei-Shaw/sub2api/pull/2641
+✅ fix(channel-monitor): 兼容 Responses reasoning 输出: https://github.com/Wei-Shaw/sub2api/pull/2641
+  - 同步方式：检查 PR 单提交 `d3d5843b`；未应用代码。
+  - 决策：当前 fork 不包含 upstream 的 `channel_monitor_checker.go`、Channel Monitor service/repository/API 或前端监控页面，PR 修改目标链路不存在；延续此前 PR 2585 的处理，为避免引入整套未接线 Channel Monitor 模块，本条标记为不适用。
+  - 测试：`rg --files backend/internal/service backend/internal/handler backend/internal/repository backend/ent/schema backend/migrations frontend/src | rg 'channel_monitor|ChannelMonitor|monitor|Monitor'`；`rg -n 'channelMonitor|channel-monitor|ChannelMonitor|MonitorForm|MonitorTemplate|channel_monitor|monitor templates|responses reasoning' frontend/src backend/internal/server/routes backend/internal/handler backend/internal/service backend/internal/repository backend/ent/schema backend/migrations`。
 PR：为 API Key IP 白/黑名单增加可配置的反代真实 IP 判断: https://github.com/Wei-Shaw/sub2api/pull/2645
 fix(auth): user_provider_default_grants 加入 github/google/dingtalk: https://github.com/Wei-Shaw/sub2api/pull/2648
 feat(redeem): 兑换码支持批量修改: https://github.com/Wei-Shaw/sub2api/pull/2615
