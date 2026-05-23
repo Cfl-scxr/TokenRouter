@@ -133,6 +133,19 @@ func TestMigration134AllowsEmailOAuthProviderTypes(t *testing.T) {
 	require.Contains(t, sql, "ON CONFLICT (key) DO NOTHING")
 }
 
+func TestMigration140ExtendsUserProviderDefaultGrantsProviderTypes(t *testing.T) {
+	content, err := FS.ReadFile("140_extend_user_provider_default_grants_check.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "user_provider_default_grants_provider_type_check")
+	require.Contains(t, sql, "'github'")
+	require.Contains(t, sql, "'google'")
+	require.Contains(t, sql, "'dingtalk'")
+	require.NotContains(t, sql, "users_signup_source_check")
+	require.NotContains(t, sql, "auth_identities_provider_type_check")
+}
+
 func TestMigration124BackfillsLegacyOIDCSecurityFlagsSafely(t *testing.T) {
 	content, err := FS.ReadFile("124_backfill_legacy_oidc_security_flags.sql")
 	require.NoError(t, err)

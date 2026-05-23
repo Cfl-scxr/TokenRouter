@@ -320,7 +320,10 @@
   - 同步方式：按功能提交顺序同步 `08c8c67d` 与 `1d2445ff`，手动解决后台设置 handler、访问日志 middleware 和 setting service 测试冲突。
   - 决策：保留 fork 现有 `GetTrustedClientIP` 默认安全口径、API Key IP 限制 Ops business-limited 标记、OpenAI Codex UA 设置测试和完整 Settings 字段；新增后台/API/前端开关 `api_key_acl_trust_forwarded_ip`，默认关闭，开启后 API Key 白/黑名单改用 `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` 的真实客户端 IP；访问日志继续与使用记录一致使用 `ip.GetClientIP`。
   - 测试：`go test -tags unit ./internal/server/middleware -run 'TestAPIKeyAuthIPRestriction|TestLogger_AccessLog'`；`go test -tags unit ./internal/service -run 'TestSettingService_(UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig|ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfigWhenMissing|UpdateSettings_OpenAICodexUserAgent)'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`pnpm typecheck`；`git diff --check HEAD~2..HEAD`。
-fix(auth): user_provider_default_grants 加入 github/google/dingtalk: https://github.com/Wei-Shaw/sub2api/pull/2648
+✅ fix(auth): user_provider_default_grants 加入 github/google/dingtalk: https://github.com/Wei-Shaw/sub2api/pull/2648
+  - 同步方式：手工移植 upstream 单提交 `4bfb707f` 的迁移缺口，并补充本 fork 的迁移回归测试。
+  - 决策：当前 fork 已有 GitHub/Google/DingTalk 默认授权应用层配置；本条仅补 `user_provider_default_grants` 的 provider_type check 约束，使其与 134/136 已更新的 OAuth provider 集合一致。
+  - 测试：`go test ./migrations -run 'TestMigration(134AllowsEmailOAuthProviderTypes|140ExtendsUserProviderDefaultGrantsProviderTypes)'`；`git diff --check`。
 feat(redeem): 兑换码支持批量修改: https://github.com/Wei-Shaw/sub2api/pull/2615
 fix(i18n):: https://github.com/TokenFlux/TokenRouter/commit/9673a22f26e1f81d0abda3e6d8ca8cd7d8fb74d4
 fix: mark reused refresh tokens non-retryable and unschedule errored accounts: https://github.com/Wei-Shaw/sub2api/pull/2374
