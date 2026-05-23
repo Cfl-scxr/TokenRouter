@@ -237,12 +237,13 @@ type SystemSettings struct {
 	// 支付宝移动端强制使用二维码支付，不再跳转手机网站支付。
 	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
 
-	// Balance low notification
-	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThreshold   float64            `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL string             `json:"balance_low_notify_recharge_url"`
-	AccountQuotaNotifyEnabled   bool               `json:"account_quota_notify_enabled"`
-	AccountQuotaNotifyEmails    []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	// 余额、订阅到期与账号限额通知
+	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold       float64            `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL     string             `json:"balance_low_notify_recharge_url"`
+	SubscriptionExpiryNotifyEnabled bool               `json:"subscription_expiry_notify_enabled"`
+	AccountQuotaNotifyEnabled       bool               `json:"account_quota_notify_enabled"`
+	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// OpenAI fast/flex 策略
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -412,6 +413,8 @@ type EmailTemplateEventOption struct {
 	Value       string `json:"value"`
 	Label       string `json:"label,omitempty"`
 	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Optional    bool   `json:"optional,omitempty"`
 }
 
 // EmailTemplateSummary 是后台邮件模板列表展示的摘要。

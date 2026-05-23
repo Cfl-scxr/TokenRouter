@@ -116,3 +116,71 @@ func (s *subscriptionExpiryBlockingSender) recordErr(err error) {
 	defer s.mu.Unlock()
 	s.errs = append(s.errs, err)
 }
+
+type subscriptionExpirySettingRepoStub struct {
+	values map[string]string
+	err    error
+}
+
+func (r *subscriptionExpirySettingRepoStub) Get(context.Context, string) (*Setting, error) {
+	return nil, ErrSettingNotFound
+}
+
+func (r *subscriptionExpirySettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if r.err != nil {
+		return "", r.err
+	}
+	value, ok := r.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (r *subscriptionExpirySettingRepoStub) Set(context.Context, string, string) error {
+	return nil
+}
+
+func (r *subscriptionExpirySettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+
+func (r *subscriptionExpirySettingRepoStub) SetMultiple(context.Context, map[string]string) error {
+	return nil
+}
+
+func (r *subscriptionExpirySettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	return nil, nil
+}
+
+func (r *subscriptionExpirySettingRepoStub) Delete(context.Context, string) error {
+	return nil
+}
+
+func TestSubscriptionExpiryService_ExpiryReminderEnabledDefaultsToTrue(t *testing.T) {
+	svc := NewSubscriptionExpiryService(nil, time.Minute)
+	svc.SetSettingRepository(&subscriptionExpirySettingRepoStub{values: map[string]string{}})
+
+	require.True(t, svc.expiryReminderEnabled(context.Background()))
+}
+
+func TestSubscriptionExpiryService_ExpiryReminderDisabledSkipsSubscriptionScan(t *testing.T) {
+	repo := &subscriptionExpiryRepoStub{}
+	settingRepo := &subscriptionExpirySettingRepoStub{
+		values: map[string]string{SettingKeySubscriptionExpiryNotifyEnabled: "false"},
+	}
+	svc := NewSubscriptionExpiryService(repo, time.Minute)
+	svc.SetSettingRepository(settingRepo)
+	svc.notificationEmailService = &subscriptionExpiryBlockingSender{}
+
+	svc.sendExpiryReminders()
+
+	require.Zero(t, repo.listCalls)
+}
+
+func TestSubscriptionExpiryService_ExpiryReminderSettingReadErrorFailsClosed(t *testing.T) {
+	svc := NewSubscriptionExpiryService(nil, time.Minute)
+	svc.SetSettingRepository(&subscriptionExpirySettingRepoStub{err: errors.New("db down")})
+
+	require.False(t, svc.expiryReminderEnabled(context.Background()))
+}

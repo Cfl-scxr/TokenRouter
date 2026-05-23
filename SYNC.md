@@ -346,7 +346,11 @@
   - 决策：解析 upstream Responses SSE 中的 `error` / `response.failed`，将 `moderation_blocked` / `image_generation_user_error` 透出为客户端 400 或流式 error event；这类用户侧图片风控错误不再标记账号调度失败、不触发账号切换或 generic fallback。
   - 决策：保留 fork 当前失败路径的 Ops upstream error 上下文和图片转发结构；补齐 `auth_oauth_pending_flow_test` 的 redeem repo fake `BatchUpdate` 方法，使 handler 包在 PR 2615 接口扩展后能完整编译。
   - 测试：`go test ./internal/service -run 'Test(OpenAIGatewayServiceForwardImages|CollectOpenAIImages|BuildOpenAIImages|ExtractOpenAIImages)'`；`go test ./internal/handler -run 'TestOpenAI.*Images|TestImage'`；`git diff --check`。
-feat: add subscription expiry email toggle: https://github.com/TokenFlux/TokenRouter/commit/a613a587bab22c36785347e78b35b49c167079d3
+✅ feat: add subscription expiry email toggle: https://github.com/TokenFlux/TokenRouter/commit/a613a587bab22c36785347e78b35b49c167079d3
+  - 同步方式：cherry-pick direct commit `a613a587`，手动解决设置 DTO/API contract、订阅到期服务和测试冲突。
+  - 决策：保留 fork 当前订阅到期提醒的发送超时隔离、分页扫描独立 context、`subscriptionExpiryNotificationSender` 测试抽象和 `subscriptionReminderPlanName` 兜底逻辑；新增 `subscription_expiry_notify_enabled` 全局开关，设置读取失败时 fail closed，缺失设置时保持历史默认开启。
+  - 决策：前端 Email 设置页新增订阅到期提醒开关，并保留邮件模板编辑器事件说明增强；迁移 141 默认写入开启值。
+  - 测试：`go test ./internal/service -run 'TestSubscriptionExpiry|TestSettingService|TestParseSettings|TestUpdateSettings'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test ./migrations -run 'TestMigration|Test.*141|Test.*Subscription'`；`go test ./cmd/server ./internal/service ./internal/server -run 'Test(SubscriptionExpiry|Setting|APIContracts|Settings|EmailTemplate|Wire)'`；`pnpm typecheck`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-settings-vitest-localstorage" pnpm test:run src/views/admin/__tests__/SettingsView.spec.ts`；`git diff --check`；`git diff --cached --check`。
 feat(oidc): 上游邮箱已验证时跳过 choice 页直接登录注册: https://github.com/Wei-Shaw/sub2api/pull/2655
 fix(oidc): harden verified-email fast path: https://github.com/TokenFlux/TokenRouter/commit/aae20ef4370516158e681d03ecd98071a45cd267
 chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/16793d3af03324498a506cea0fbc1353c4ee5cfe

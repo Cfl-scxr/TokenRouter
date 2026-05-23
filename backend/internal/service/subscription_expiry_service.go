@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -24,6 +25,7 @@ type subscriptionExpiryNotificationSender interface {
 // SubscriptionExpiryService 定期更新过期订阅状态，并发送到期提醒。
 type SubscriptionExpiryService struct {
 	userSubRepo              UserSubscriptionRepository
+	settingRepo              SettingRepository
 	notificationEmailService subscriptionExpiryNotificationSender
 	interval                 time.Duration
 	updateTimeout            time.Duration
@@ -43,6 +45,10 @@ func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interv
 		reminderSendTimeout: subscriptionExpiryReminderSendTimeout,
 		stopCh:              make(chan struct{}),
 	}
+}
+
+func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepository) {
+	s.settingRepo = settingRepo
 }
 
 func (s *SubscriptionExpiryService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
@@ -99,6 +105,12 @@ func (s *SubscriptionExpiryService) sendExpiryReminders() {
 	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
 		return
 	}
+	settingCtx, settingCancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
+	enabled := s.expiryReminderEnabled(settingCtx)
+	settingCancel()
+	if !enabled {
+		return
+	}
 	for page := 1; ; page++ {
 		ctx, cancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
@@ -114,6 +126,21 @@ func (s *SubscriptionExpiryService) sendExpiryReminders() {
 			return
 		}
 	}
+}
+
+func (s *SubscriptionExpiryService) expiryReminderEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionExpiryNotifyEnabled)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return true
+		}
+		log.Printf("[SubscriptionExpiry] Read expiry reminder switch failed: %v", err)
+		return false
+	}
+	return !isFalseSettingValue(value)
 }
 
 func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(sub *UserSubscription) {
