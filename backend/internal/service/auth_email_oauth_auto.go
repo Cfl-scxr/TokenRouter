@@ -13,7 +13,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 )
 
-// EmailOAuthIdentityInput 是 GitHub/Google 这类已验证邮箱 OAuth 登录的身份输入。
+// EmailOAuthIdentityInput 是 GitHub/Google/OIDC 这类已验证邮箱 OAuth 登录的身份输入。
 type EmailOAuthIdentityInput struct {
 	ProviderType     string
 	ProviderKey      string
@@ -50,7 +50,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	}
 
 	providerType := normalizeOAuthSignupSource(input.ProviderType)
-	if providerType != "github" && providerType != "google" {
+	if providerType != "github" && providerType != "google" && providerType != "oidc" {
 		return nil, nil, infraerrors.BadRequest("OAUTH_PROVIDER_INVALID", "oauth provider is invalid")
 	}
 	providerKey := strings.TrimSpace(input.ProviderKey)

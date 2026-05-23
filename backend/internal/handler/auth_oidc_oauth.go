@@ -454,6 +454,24 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		}
 	}
 
+	// 上游提供已验证邮箱、部署不要求额外确认且本地无同邮箱账号时，直接信任
+	// 上游身份完成登录/注册；任何失败都回落到常规 choice 流程。
+	if compatEmailUser == nil &&
+		strings.TrimSpace(compatEmail) != "" &&
+		emailVerified != nil && *emailVerified {
+		if h.tryOIDCVerifiedEmailFastPath(
+			c,
+			frontendCallback,
+			redirectTo,
+			identityRef,
+			compatEmail,
+			username,
+			upstreamClaims,
+		) {
+			return
+		}
+	}
+
 	if h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
 		if err := h.createOIDCOAuthChoicePendingSession(
 			c,
@@ -1188,4 +1206,64 @@ func oidcClearCookie(c *gin.Context, name string, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// tryOIDCVerifiedEmailFastPath 在上游身份带有已验证邮箱且部署不需要额外确认时，
+// 复用 GitHub/Google 已验证邮箱登录路径，跳过 choice/pending 页面。
+//
+// 返回 true 表示已签发令牌并重定向浏览器；返回 false 表示调用方继续走常规
+// choice 流程。
+func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity service.PendingAuthIdentityKey,
+	compatEmail string,
+	username string,
+	upstreamClaims map[string]any,
+) bool {
+	if h == nil || h.authService == nil || h.settingSvc == nil {
+		return false
+	}
+	ctx := c.Request.Context()
+	if h.isForceEmailOnThirdPartySignup(ctx) {
+		return false
+	}
+	if h.settingSvc.IsInvitationCodeEnabled(ctx) {
+		return false
+	}
+
+	upstreamMetadata := make(map[string]any, len(upstreamClaims))
+	for k, v := range upstreamClaims {
+		upstreamMetadata[k] = v
+	}
+	input := service.EmailOAuthIdentityInput{
+		ProviderType:     strings.TrimSpace(identity.ProviderType),
+		ProviderKey:      strings.TrimSpace(identity.ProviderKey),
+		ProviderSubject:  strings.TrimSpace(identity.ProviderSubject),
+		Email:            strings.TrimSpace(strings.ToLower(compatEmail)),
+		EmailVerified:    true,
+		Username:         strings.TrimSpace(username),
+		DisplayName:      pendingSessionStringValue(upstreamClaims, "suggested_display_name"),
+		AvatarURL:        pendingSessionStringValue(upstreamClaims, "suggested_avatar_url"),
+		UpstreamMetadata: upstreamMetadata,
+	}
+	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
+	if err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path skipped: reason=%s", infraerrors.Reason(err))
+		return false
+	}
+	if err := h.ensureBackendModeAllowsUser(ctx, user); err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: reason=%s", infraerrors.Reason(err))
+		return false
+	}
+
+	fragment := url.Values{}
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("redirect", redirectTo)
+	redirectWithFragment(c, frontendCallback, fragment)
+	return true
 }

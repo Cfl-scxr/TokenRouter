@@ -351,7 +351,11 @@
   - 决策：保留 fork 当前订阅到期提醒的发送超时隔离、分页扫描独立 context、`subscriptionExpiryNotificationSender` 测试抽象和 `subscriptionReminderPlanName` 兜底逻辑；新增 `subscription_expiry_notify_enabled` 全局开关，设置读取失败时 fail closed，缺失设置时保持历史默认开启。
   - 决策：前端 Email 设置页新增订阅到期提醒开关，并保留邮件模板编辑器事件说明增强；迁移 141 默认写入开启值。
   - 测试：`go test ./internal/service -run 'TestSubscriptionExpiry|TestSettingService|TestParseSettings|TestUpdateSettings'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test ./migrations -run 'TestMigration|Test.*141|Test.*Subscription'`；`go test ./cmd/server ./internal/service ./internal/server -run 'Test(SubscriptionExpiry|Setting|APIContracts|Settings|EmailTemplate|Wire)'`；`pnpm typecheck`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-settings-vitest-localstorage" pnpm test:run src/views/admin/__tests__/SettingsView.spec.ts`；`git diff --check`；`git diff --cached --check`。
-feat(oidc): 上游邮箱已验证时跳过 choice 页直接登录注册: https://github.com/Wei-Shaw/sub2api/pull/2655
+✅ feat(oidc): 上游邮箱已验证时跳过 choice 页直接登录注册: https://github.com/Wei-Shaw/sub2api/pull/2655
+  - 同步方式：按 PR 内提交顺序 cherry-pick `39fe7aa0` 与 `55554adc`，并将新增注释改为中文。
+  - 决策：保留 fork 现有 OIDC pending choice / 强制邮箱确认 / 邀请码注册流程；仅当上游 compat email 已验证、本地无同邮箱账号、未开启强制邮箱确认且未开启邀请码时，复用已验证邮箱 OAuth 登录注册路径直接完成 OIDC 登录。
+  - 决策：fast path 创建失败、后端模式限制或配置不满足时统一回落到原 choice pending 流程；日志只记录 `infraerrors.Reason(err)`，避免暴露邮箱等敏感信息。
+  - 测试：`go test ./internal/handler -run 'Test.*OIDC|Test.*OAuth.*Pending|TestTryOIDCVerifiedEmailFastPath'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
 fix(oidc): harden verified-email fast path: https://github.com/TokenFlux/TokenRouter/commit/aae20ef4370516158e681d03ecd98071a45cd267
 chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/16793d3af03324498a506cea0fbc1353c4ee5cfe
 fix(deps): 升级 js-cookie 解决 GHSA-qjx8-664m-686j 阻塞 frontend-security CI: https://github.com/Wei-Shaw/sub2api/pull/2687
