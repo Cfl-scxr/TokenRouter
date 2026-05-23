@@ -8,6 +8,7 @@ import type {
   RedeemCode,
   GenerateRedeemCodesRequest,
   UpdateRedeemCodeRequest,
+  BatchUpdateRedeemCodeFields,
   RedeemCodeType,
   PaginatedResponse
 } from '@/types'
@@ -24,7 +25,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     type?: RedeemCodeType
-    status?: 'active' | 'used' | 'expired' | 'unused'
+    status?: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
@@ -140,6 +141,26 @@ export async function batchDelete(ids: number[]): Promise<{
 }
 
 /**
+ * 批量修改选中兑换码的非权益字段
+ * @param ids - 兑换码 ID 列表
+ * @param fields - 需要更新的字段集合
+ * @returns 更新数量
+ */
+export async function batchUpdate(
+  ids: number[],
+  fields: BatchUpdateRedeemCodeFields
+): Promise<{
+  updated: number
+  message: string
+}> {
+  const { data } = await apiClient.post<{
+    updated: number
+    message: string
+  }>('/admin/redeem-codes/batch-update', { ids, fields })
+  return data
+}
+
+/**
  * Expire redeem code
  * @param id - Redeem code ID
  * @returns Updated redeem code
@@ -179,7 +200,7 @@ export async function getStats(): Promise<{
  */
 export async function exportCodes(filters?: {
   type?: RedeemCodeType
-  status?: 'active' | 'used' | 'expired' | 'unused'
+  status?: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
   search?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -198,6 +219,7 @@ export const redeemAPI = {
   update,
   delete: deleteCode,
   batchDelete,
+  batchUpdate,
   expire,
   getStats,
   exportCodes

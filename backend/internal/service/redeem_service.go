@@ -49,6 +49,7 @@ type RedeemCodeRepository interface {
 	GetByCode(ctx context.Context, code string) (*RedeemCode, error)
 	GetByCodeForUpdate(ctx context.Context, code string) (*RedeemCode, error)
 	Update(ctx context.Context, code *RedeemCode) error
+	BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error)
 	Delete(ctx context.Context, id int64) error
 	Use(ctx context.Context, id, userID int64) error
 	CreateUsage(ctx context.Context, usage *RedeemCodeUsage) error
@@ -80,6 +81,50 @@ type RedeemCodeResponse struct {
 	Value     float64   `json:"value"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type NullableTimeUpdate struct {
+	Set   bool
+	Value *time.Time
+}
+
+type RedeemCodeBatchUpdateFields struct {
+	Status    *string
+	ExpiresAt NullableTimeUpdate
+	Notes     *string
+
+	// 这些核心字段只用于显式拒绝批量修改，避免绕过单条编辑里的权益一致性校验。
+	Type    *string
+	Value   *float64
+	MaxUses *int
+	PlanID  *int64
+}
+
+func (f RedeemCodeBatchUpdateFields) HasChanges() bool {
+	return f.Status != nil ||
+		f.ExpiresAt.Set ||
+		f.Notes != nil ||
+		f.Type != nil ||
+		f.Value != nil ||
+		f.MaxUses != nil ||
+		f.PlanID != nil
+}
+
+func (f RedeemCodeBatchUpdateFields) HasCoreFieldChanges() bool {
+	return f.Type != nil || f.Value != nil || f.MaxUses != nil || f.PlanID != nil
+}
+
+func (f RedeemCodeBatchUpdateFields) TouchesUsedSensitiveFields() bool {
+	return f.Status != nil || f.ExpiresAt.Set
+}
+
+type RedeemCodeBatchUpdateInput struct {
+	IDs    []int64
+	Fields RedeemCodeBatchUpdateFields
+}
+
+type RedeemCodeBatchUpdateResult struct {
+	Updated int64 `json:"updated"`
 }
 
 // RedeemService 兑换码服务
@@ -245,6 +290,58 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 		return fmt.Errorf("create redeem code: %w", err)
 	}
 	return nil
+}
+
+func (s *RedeemService) BatchUpdate(ctx context.Context, input *RedeemCodeBatchUpdateInput) (*RedeemCodeBatchUpdateResult, error) {
+	if input == nil {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_BATCH_UPDATE_INVALID", "batch update input is required")
+	}
+	if len(input.IDs) == 0 {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_BATCH_UPDATE_IDS_REQUIRED", "ids are required")
+	}
+	if !input.Fields.HasChanges() {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_BATCH_UPDATE_EMPTY", "at least one field must be selected")
+	}
+	if input.Fields.HasCoreFieldChanges() {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_CORE_FIELDS_IMMUTABLE", "type, value, max_uses and plan_id cannot be batch updated")
+	}
+
+	ids := make([]int64, 0, len(input.IDs))
+	seen := make(map[int64]struct{}, len(input.IDs))
+	for _, id := range input.IDs {
+		if id <= 0 {
+			return nil, infraerrors.BadRequest("REDEEM_CODE_BATCH_UPDATE_INVALID_ID", "ids must be positive")
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_BATCH_UPDATE_IDS_REQUIRED", "ids are required")
+	}
+
+	if input.Fields.Status != nil {
+		switch *input.Fields.Status {
+		case StatusUnused, StatusDisabled:
+		default:
+			return nil, infraerrors.BadRequest("REDEEM_CODE_STATUS_INVALID", "status must be unused or disabled")
+		}
+	}
+	if input.Fields.ExpiresAt.Set && input.Fields.ExpiresAt.Value != nil {
+		expiresAt := input.Fields.ExpiresAt.Value.UTC()
+		if !expiresAt.After(time.Now().UTC()) {
+			return nil, infraerrors.BadRequest("REDEEM_CODE_EXPIRES_AT_INVALID", "expires_at must be in the future")
+		}
+		input.Fields.ExpiresAt.Value = &expiresAt
+	}
+
+	updated, err := s.redeemRepo.BatchUpdate(ctx, ids, input.Fields)
+	if err != nil {
+		return nil, err
+	}
+	return &RedeemCodeBatchUpdateResult{Updated: updated}, nil
 }
 
 // checkRedeemRateLimit 检查用户兑换错误次数是否超限

@@ -2,12 +2,15 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -214,4 +217,111 @@ func TestGenerate_AcceptsInvitationExpiry(t *testing.T) {
 	require.NotNil(t, adminSvc.lastGenerateRedeemCodes)
 	require.NotNil(t, adminSvc.lastGenerateRedeemCodes.ExpiresAt)
 	require.Equal(t, futureUnix, adminSvc.lastGenerateRedeemCodes.ExpiresAt.Unix())
+}
+
+func TestRedeemBatchUpdate_NullExpiresAtClearsExpiry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	status := service.StatusDisabled
+	notes := "批量维护"
+	repo := &batchUpdateRedeemRepoStub{}
+	redeemSvc := service.NewRedeemService(repo, nil, nil, nil, nil, nil, nil)
+	h := NewRedeemHandler(newStubAdminService(), redeemSvc)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body, err := json.Marshal(map[string]any{
+		"ids": []int64{1, 2},
+		"fields": map[string]any{
+			"status":     status,
+			"expires_at": nil,
+			"notes":      notes,
+		},
+	})
+	require.NoError(t, err)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/admin/redeem-codes/batch-update", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.BatchUpdate(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, []int64{1, 2}, repo.ids)
+	require.Equal(t, &status, repo.fields.Status)
+	require.True(t, repo.fields.ExpiresAt.Set)
+	require.Nil(t, repo.fields.ExpiresAt.Value)
+	require.Equal(t, &notes, repo.fields.Notes)
+}
+
+type batchUpdateRedeemRepoStub struct {
+	ids    []int64
+	fields service.RedeemCodeBatchUpdateFields
+}
+
+func (s *batchUpdateRedeemRepoStub) BatchUpdate(ctx context.Context, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	s.ids = append([]int64(nil), ids...)
+	s.fields = fields
+	return int64(len(ids)), nil
+}
+
+func (s *batchUpdateRedeemRepoStub) Create(ctx context.Context, code *service.RedeemCode) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) CreateBatch(ctx context.Context, codes []service.RedeemCode) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {
+	return nil, service.ErrRedeemCodeNotFound
+}
+
+func (s *batchUpdateRedeemRepoStub) GetByIDForUpdate(ctx context.Context, id int64) (*service.RedeemCode, error) {
+	return nil, service.ErrRedeemCodeNotFound
+}
+
+func (s *batchUpdateRedeemRepoStub) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
+	return nil, service.ErrRedeemCodeNotFound
+}
+
+func (s *batchUpdateRedeemRepoStub) GetByCodeForUpdate(ctx context.Context, code string) (*service.RedeemCode, error) {
+	return nil, service.ErrRedeemCodeNotFound
+}
+
+func (s *batchUpdateRedeemRepoStub) Update(ctx context.Context, code *service.RedeemCode) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) Delete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) Use(ctx context.Context, id, userID int64) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) CreateUsage(ctx context.Context, usage *service.RedeemCodeUsage) error {
+	return errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) GetUsageByRedeemCodeAndUser(ctx context.Context, redeemCodeID, userID int64) (*service.RedeemCodeUsage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) List(ctx context.Context, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) ListByUser(ctx context.Context, userID int64, limit int) ([]service.RedeemCode, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (s *batchUpdateRedeemRepoStub) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
+	return 0, errors.New("not implemented")
 }

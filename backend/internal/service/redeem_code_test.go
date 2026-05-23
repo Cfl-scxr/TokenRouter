@@ -54,6 +54,13 @@ func TestRedeemCodeExpirySemantics(t *testing.T) {
 			wantExpired: true,
 			wantCanUse:  false,
 		},
+		{
+			name:        "禁用兑换码即使未过期也不可用",
+			code:        RedeemCode{Status: StatusDisabled, MaxUses: 1, ExpiresAt: &future},
+			wantStatus:  StatusDisabled,
+			wantExpired: false,
+			wantCanUse:  false,
+		},
 	}
 
 	for _, tt := range tests {

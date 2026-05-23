@@ -133,6 +133,10 @@ func (r *paymentOrderLifecycleRedeemRepo) Update(_ context.Context, code *Redeem
 	return nil
 }
 
+func (r *paymentOrderLifecycleRedeemRepo) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected call")
+}
+
 func (r *paymentOrderLifecycleRedeemRepo) Delete(context.Context, int64) error {
 	panic("unexpected call")
 }

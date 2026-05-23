@@ -39,6 +39,15 @@
             <button @click="handleExportCodes" class="btn btn-secondary">
               {{ t('admin.redeem.exportCsv') }}
             </button>
+            <button
+              data-testid="batch-update-open"
+              @click="openBatchUpdateDialog"
+              :disabled="selectedCount === 0 || batchUpdating"
+              class="btn btn-secondary"
+            >
+              <Icon name="edit" size="md" class="mr-2" />
+              {{ t('admin.redeem.batchUpdate') }}
+            </button>
             <button @click="showGenerateDialog = true" class="btn btn-primary">
               {{ t('admin.redeem.generateCodes') }}
             </button>
@@ -56,6 +65,28 @@
           default-sort-order="desc"
           @sort="handleSort"
         >
+          <template #header-select>
+            <input
+              data-testid="select-all-codes"
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="allVisibleSelected"
+              @click.stop
+              @change="toggleSelectAllVisible($event)"
+            />
+          </template>
+
+          <template #cell-select="{ row }">
+            <input
+              data-testid="select-code"
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="selectedCodeIds.has(row.id)"
+              @click.stop
+              @change="toggleSelectRow(row.id, $event)"
+            />
+          </template>
+
           <template #cell-code="{ value }">
             <div class="flex items-center space-x-2">
               <code class="font-mono text-sm text-gray-900 dark:text-gray-100">{{ value }}</code>
@@ -187,6 +218,27 @@
         />
 
         <!-- 批量操作 -->
+        <div
+          v-if="selectedCount > 0"
+          class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20"
+        >
+          <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+            {{ t('admin.redeem.selectedCount', { count: selectedCount }) }}
+          </span>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+              @click="clearSelectedCodes"
+            >
+              {{ t('admin.redeem.clearSelection') }}
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" @click="openBatchUpdateDialog">
+              {{ t('admin.redeem.batchUpdate') }}
+            </button>
+          </div>
+        </div>
+
         <div v-if="filters.status === 'unused'" class="flex justify-end">
           <button @click="showDeleteUnusedDialog = true" class="btn btn-danger">
             {{ t('admin.redeem.deleteAllUnused') }}
@@ -440,6 +492,95 @@
       </template>
     </BaseDialog>
 
+    <!-- 批量修改弹窗 -->
+    <BaseDialog
+      :show="showBatchUpdateDialog"
+      :title="t('admin.redeem.batchUpdateTitle')"
+      width="normal"
+      @close="closeBatchUpdateDialog"
+    >
+      <form id="batch-update-redeem-form" class="space-y-4" @submit.prevent="handleBatchUpdate">
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('admin.redeem.selectedCount', { count: selectedCount }) }}
+        </p>
+
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <input
+              data-testid="batch-field-status"
+              v-model="batchUpdateForm.update_status"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            {{ t('admin.redeem.batchFields.status') }}
+          </label>
+          <Select
+            v-if="batchUpdateForm.update_status"
+            v-model="batchUpdateForm.status"
+            data-testid="batch-status-select"
+            :options="batchStatusOptions"
+          />
+        </div>
+
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <input
+              v-model="batchUpdateForm.update_expires_at"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            {{ t('admin.redeem.batchFields.expiresAt') }}
+          </label>
+          <template v-if="batchUpdateForm.update_expires_at">
+            <Select v-model="batchUpdateForm.expires_mode" :options="batchExpiryModeOptions" />
+            <input
+              v-if="batchUpdateForm.expires_mode === 'custom'"
+              v-model="batchUpdateForm.expires_at_str"
+              type="datetime-local"
+              class="input"
+            />
+          </template>
+        </div>
+
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <input
+              data-testid="batch-field-notes"
+              v-model="batchUpdateForm.update_notes"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            {{ t('admin.redeem.batchFields.notes') }}
+          </label>
+          <textarea
+            v-if="batchUpdateForm.update_notes"
+            data-testid="batch-notes-input"
+            v-model="batchUpdateForm.notes"
+            rows="3"
+            class="input"
+            :placeholder="t('admin.redeem.batchNotesPlaceholder')"
+          ></textarea>
+        </div>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" @click="closeBatchUpdateDialog" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            data-testid="batch-update-submit"
+            type="submit"
+            form="batch-update-redeem-form"
+            :disabled="batchUpdating"
+            class="btn btn-primary"
+          >
+            {{ batchUpdating ? t('common.processing') : t('admin.redeem.batchUpdate') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- 生成结果弹窗 -->
     <Teleport to="body">
       <div v-if="showResultDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -533,10 +674,11 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
+import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
-import type { RedeemCode, RedeemCodeType } from '@/types'
+import type { BatchUpdateRedeemCodeFields, RedeemCode, RedeemCodeType } from '@/types'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -621,6 +763,7 @@ const downloadGeneratedCodes = () => {
 }
 
 const columns = computed<Column[]>(() => [
+  { key: 'select', label: '' },
   { key: 'code', label: t('admin.redeem.columns.code') },
   { key: 'type', label: t('admin.redeem.columns.type'), sortable: true },
   { key: 'value', label: t('admin.redeem.columns.value'), sortable: true },
@@ -653,13 +796,25 @@ const filterStatusOptions = computed(() => [
   { value: 'unused', label: t('admin.redeem.unused') },
   { value: 'active', label: t('admin.redeem.status.active') },
   { value: 'used', label: t('admin.redeem.used') },
-  { value: 'expired', label: t('admin.redeem.status.expired') }
+  { value: 'expired', label: t('admin.redeem.status.expired') },
+  { value: 'disabled', label: t('admin.redeem.status.disabled') }
+])
+
+const batchStatusOptions = computed(() => [
+  { value: 'unused', label: t('admin.redeem.status.unused') },
+  { value: 'disabled', label: t('admin.redeem.status.disabled') }
+])
+
+const batchExpiryModeOptions = computed(() => [
+  { value: 'clear', label: t('admin.redeem.neverExpires') },
+  { value: 'custom', label: t('admin.redeem.customExpiry') }
 ])
 
 const codes = ref<RedeemCode[]>([])
 const loading = ref(false)
 const generating = ref(false)
 const updating = ref(false)
+const batchUpdating = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
   type: '',
@@ -681,9 +836,23 @@ let abortController: AbortController | null = null
 const showDeleteDialog = ref(false)
 const showDeleteUnusedDialog = ref(false)
 const showEditDialog = ref(false)
+const showBatchUpdateDialog = ref(false)
 const deletingCode = ref<RedeemCode | null>(null)
 const editingCode = ref<RedeemCode | null>(null)
 const copiedCode = ref<string | null>(null)
+
+const {
+  selectedSet: selectedCodeIds,
+  selectedCount,
+  allVisibleSelected,
+  select,
+  deselect,
+  clear: clearSelectedCodes,
+  toggleVisible
+} = useTableSelection<RedeemCode>({
+  rows: codes,
+  getId: (code) => code.id
+})
 
 const generateForm = reactive({
   code: '',
@@ -701,6 +870,16 @@ const editForm = reactive({
   plan_id: null as number | null,
   max_uses: 1,
   expires_at_str: ''
+})
+
+const batchUpdateForm = reactive({
+  update_status: false,
+  status: 'disabled' as 'unused' | 'disabled',
+  update_expires_at: false,
+  expires_mode: 'clear' as 'clear' | 'custom',
+  expires_at_str: '',
+  update_notes: false,
+  notes: ''
 })
 
 // 监听类型变化，邀请码类型固定为单次使用，但仍允许设置兑换码自身过期时间。
@@ -729,7 +908,13 @@ watch(
 
 const buildRedeemQueryFilters = () => ({
   type: (filters.type || undefined) as RedeemCodeType | undefined,
-  status: (filters.status || undefined) as 'active' | 'used' | 'expired' | 'unused' | undefined,
+  status: (filters.status || undefined) as
+    | 'active'
+    | 'used'
+    | 'expired'
+    | 'unused'
+    | 'disabled'
+    | undefined,
   search: searchQuery.value || undefined,
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -739,6 +924,7 @@ const getStatusBadgeClass = (status: RedeemCode['status']) => {
   if (status === 'unused') return 'badge-success'
   if (status === 'active') return 'badge-warning'
   if (status === 'used') return 'badge-gray'
+  if (status === 'disabled') return 'badge-gray'
   return 'badge-danger'
 }
 
@@ -759,6 +945,18 @@ const resetGenerateForm = () => {
   generateForm.plan_id = null
   generateForm.max_uses = 1
   generateForm.expires_at_str = ''
+}
+
+const resetBatchUpdateForm = () => {
+  batchUpdateForm.update_status = false
+  batchUpdateForm.status = 'disabled'
+  batchUpdateForm.update_expires_at = false
+  batchUpdateForm.expires_mode = 'clear'
+  batchUpdateForm.expires_at_str = formatDateTimeLocalInput(
+    Math.floor(Date.now() / 1000) + 24 * 60 * 60
+  )
+  batchUpdateForm.update_notes = false
+  batchUpdateForm.notes = ''
 }
 
 const loadCodes = async () => {
@@ -826,6 +1024,58 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   sortState.sort_order = order
   pagination.page = 1
   loadCodes()
+}
+
+const toggleSelectRow = (id: number, event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.checked) {
+    select(id)
+    return
+  }
+  deselect(id)
+}
+
+const toggleSelectAllVisible = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  toggleVisible(target.checked)
+}
+
+const openBatchUpdateDialog = () => {
+  if (selectedCount.value === 0) {
+    appStore.showInfo(t('admin.redeem.selectCodesFirst'))
+    return
+  }
+  resetBatchUpdateForm()
+  showBatchUpdateDialog.value = true
+}
+
+const closeBatchUpdateDialog = () => {
+  showBatchUpdateDialog.value = false
+}
+
+const buildBatchUpdateFields = (): BatchUpdateRedeemCodeFields | null => {
+  const fields: BatchUpdateRedeemCodeFields = {}
+
+  if (batchUpdateForm.update_status) {
+    fields.status = batchUpdateForm.status
+  }
+  if (batchUpdateForm.update_expires_at) {
+    if (batchUpdateForm.expires_mode === 'clear') {
+      fields.expires_at = null
+    } else {
+      const expiresAt = parseDateTimeLocalInput(batchUpdateForm.expires_at_str)
+      if (!expiresAt) {
+        appStore.showError(t('admin.redeem.expiryDaysRequired'))
+        return null
+      }
+      fields.expires_at = new Date(expiresAt * 1000).toISOString()
+    }
+  }
+  if (batchUpdateForm.update_notes) {
+    fields.notes = batchUpdateForm.notes
+  }
+
+  return Object.keys(fields).length > 0 ? fields : null
 }
 
 const handleGenerateCodes = async () => {
@@ -997,6 +1247,42 @@ const confirmDeleteUnused = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToDeleteUnused'))
     console.error('Error deleting unused codes:', error)
+  }
+}
+
+const handleBatchUpdate = async () => {
+  const ids = Array.from(selectedCodeIds.value)
+  if (ids.length === 0) {
+    appStore.showInfo(t('admin.redeem.selectCodesFirst'))
+    return
+  }
+
+  const hasSelectedFields =
+    batchUpdateForm.update_status ||
+    batchUpdateForm.update_expires_at ||
+    batchUpdateForm.update_notes
+  if (!hasSelectedFields) {
+    appStore.showError(t('admin.redeem.noBatchFieldsSelected'))
+    return
+  }
+
+  const fields = buildBatchUpdateFields()
+  if (!fields) {
+    return
+  }
+
+  batchUpdating.value = true
+  try {
+    const result = await adminAPI.redeem.batchUpdate(ids, fields)
+    appStore.showSuccess(t('admin.redeem.batchUpdateSuccess', { count: result.updated }))
+    showBatchUpdateDialog.value = false
+    clearSelectedCodes()
+    loadCodes()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToBatchUpdate'))
+    console.error('Error batch updating codes:', error)
+  } finally {
+    batchUpdating.value = false
   }
 }
 

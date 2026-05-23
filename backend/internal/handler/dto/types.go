@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"bytes"
+	"encoding/json"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/domain"
@@ -389,6 +391,42 @@ type AdminRedeemCode struct {
 	RedeemCode
 
 	Notes string `json:"notes"`
+}
+
+// NullableTimeField 用于区分 JSON 字段缺失、传入 null 和传入具体时间。
+type NullableTimeField struct {
+	Set   bool
+	Value *time.Time
+}
+
+func (f *NullableTimeField) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		f.Value = nil
+		return nil
+	}
+	var value time.Time
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	f.Value = &value
+	return nil
+}
+
+type BatchUpdateRedeemCodeFields struct {
+	Status    *string           `json:"status,omitempty"`
+	ExpiresAt NullableTimeField `json:"expires_at,omitempty"`
+	Notes     *string           `json:"notes,omitempty"`
+
+	Type    *string  `json:"type,omitempty"`
+	Value   *float64 `json:"value,omitempty"`
+	MaxUses *int     `json:"max_uses,omitempty"`
+	PlanID  *int64   `json:"plan_id,omitempty"`
+}
+
+type BatchUpdateRedeemCodesRequest struct {
+	IDs    []int64                     `json:"ids" binding:"required,min=1"`
+	Fields BatchUpdateRedeemCodeFields `json:"fields" binding:"required"`
 }
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。

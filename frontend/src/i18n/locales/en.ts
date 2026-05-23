@@ -4021,6 +4021,21 @@ export default {
       },
       userPrefix: 'User #{id}',
       exportCsv: 'Export CSV',
+      batchUpdate: 'Batch Update',
+      batchUpdateTitle: 'Batch Update Redeem Codes',
+      selectedCount: '{count} code(s) selected',
+      clearSelection: 'Clear selection',
+      selectCodesFirst: 'Select redeem codes first',
+      noBatchFieldsSelected: 'Select at least one field to update',
+      batchUpdateSuccess: 'Updated {count} redeem code(s)',
+      failedToBatchUpdate: 'Failed to batch update redeem codes',
+      batchFields: {
+        status: 'Status',
+        expiresAt: 'Expiration',
+        notes: 'Notes'
+      },
+      batchNotesPlaceholder: 'Leave empty to clear notes',
+      customExpiry: 'Custom Time',
       deleteAllUnused: 'Delete All Unused Codes',
       deleteCode: 'Delete Redeem Code',
       deleteCodeConfirm:

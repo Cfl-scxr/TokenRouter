@@ -186,6 +186,87 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 	return nil
 }
 
+func (r *redeemCodeRepository) BatchUpdate(ctx context.Context, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return 0, nil
+	}
+
+	if dbent.TxFromContext(ctx) != nil {
+		return r.batchUpdate(ctx, clientFromContext(ctx, r.client), uniqueIDs, fields)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		if errors.Is(err, dbent.ErrTxStarted) {
+			return r.batchUpdate(ctx, clientFromContext(ctx, r.client), uniqueIDs, fields)
+		}
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	updated, err := r.batchUpdate(txCtx, tx.Client(), uniqueIDs, fields)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return updated, nil
+}
+
+func (r *redeemCodeRepository) batchUpdate(ctx context.Context, client *dbent.Client, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	existing, err := client.RedeemCode.Query().
+		Where(redeemcode.IDIn(ids...)).
+		All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(existing) != len(ids) {
+		return 0, service.ErrRedeemCodeNotFound
+	}
+	if fields.TouchesUsedSensitiveFields() {
+		for _, code := range existing {
+			if code.UsedCount > 0 || code.Status == service.StatusUsed || code.Status == service.StatusActive {
+				return 0, service.ErrRedeemCodeUsed
+			}
+		}
+	}
+
+	update := client.RedeemCode.Update().Where(redeemcode.IDIn(ids...))
+	if fields.Status != nil {
+		update.SetStatus(*fields.Status)
+	}
+	if fields.Notes != nil {
+		update.SetNotes(*fields.Notes)
+	}
+	if fields.ExpiresAt.Set {
+		if fields.ExpiresAt.Value != nil {
+			update.SetExpiresAt(*fields.ExpiresAt.Value)
+		} else {
+			update.ClearExpiresAt()
+		}
+	}
+
+	affected, err := update.Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if affected != len(ids) {
+		return 0, service.ErrRedeemCodeNotFound
+	}
+	return int64(affected), nil
+}
+
 func (r *redeemCodeRepository) Delete(ctx context.Context, id int64) error {
 	client := clientFromContext(ctx, r.client)
 	_, err := client.RedeemCode.Delete().Where(redeemcode.IDEQ(id)).Exec(ctx)
@@ -342,6 +423,8 @@ func redeemCodeEffectiveStatusPredicate(status string) dbpredicate.RedeemCode {
 		switch status {
 		case service.StatusExpired:
 			s.Where(redeemCodeEffectiveExpiredPredicate(s))
+		case service.StatusDisabled:
+			s.Where(entsql.EQ(s.C(redeemcode.FieldStatus), service.StatusDisabled))
 		case service.StatusUsed:
 			s.Where(entsql.And(
 				redeemCodeEffectiveAvailablePredicate(s),
@@ -376,10 +459,14 @@ func redeemCodeEffectiveStatusExpr(s *entsql.Selector) string {
 
 	return fmt.Sprintf(
 		"CASE "+
+			"WHEN %s = '%s' THEN '%s' "+
 			"WHEN %s = '%s' OR (%s IS NOT NULL AND %s <= NOW()) THEN '%s' "+
 			"WHEN %s > 0 AND %s >= %s THEN '%s' "+
 			"WHEN %s > 0 THEN '%s' "+
 			"ELSE '%s' END",
+		statusCol,
+		service.StatusDisabled,
+		service.StatusDisabled,
 		statusCol,
 		service.StatusExpired,
 		expiresAtCol,
@@ -408,7 +495,10 @@ func redeemCodeEffectiveExpiredPredicate(s *entsql.Selector) *entsql.Predicate {
 }
 
 func redeemCodeEffectiveAvailablePredicate(s *entsql.Selector) *entsql.Predicate {
-	return entsql.Not(redeemCodeEffectiveExpiredPredicate(s))
+	return entsql.And(
+		entsql.Not(redeemCodeEffectiveExpiredPredicate(s)),
+		entsql.NEQ(s.C(redeemcode.FieldStatus), service.StatusDisabled),
+	)
 }
 
 func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

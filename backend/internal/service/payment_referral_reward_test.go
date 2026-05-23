@@ -155,6 +155,10 @@ func (r *paymentReferralRewardRedeemRepo) Update(_ context.Context, code *Redeem
 	return nil
 }
 
+func (r *paymentReferralRewardRedeemRepo) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+}
+
 func (r *paymentReferralRewardRedeemRepo) Delete(_ context.Context, id int64) error {
 	for code, redeemCode := range r.codesByCode {
 		if redeemCode.ID == id {

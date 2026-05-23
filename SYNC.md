@@ -324,7 +324,11 @@
   - 同步方式：手工移植 upstream 单提交 `4bfb707f` 的迁移缺口，并补充本 fork 的迁移回归测试。
   - 决策：当前 fork 已有 GitHub/Google/DingTalk 默认授权应用层配置；本条仅补 `user_provider_default_grants` 的 provider_type check 约束，使其与 134/136 已更新的 OAuth provider 集合一致。
   - 测试：`go test ./migrations -run 'TestMigration(134AllowsEmailOAuthProviderTypes|140ExtendsUserProviderDefaultGrantsProviderTypes)'`；`git diff --check`。
-feat(redeem): 兑换码支持批量修改: https://github.com/Wei-Shaw/sub2api/pull/2615
+✅ feat(redeem): 兑换码支持批量修改: https://github.com/Wei-Shaw/sub2api/pull/2615
+  - 同步方式：手工移植 upstream 单提交 `3263ca63` 的批量修改能力，避开 PR 分支中已同步历史和本 fork 不存在的订阅分组模型。
+  - 决策：保留 fork 当前兑换码的 `plan_id`、`max_uses`、`used_count`、自然过期和 `expires_at` 语义；批量修改仅开放状态、过期时间和备注，显式拒绝批量修改 type/value/max_uses/plan_id，避免绕过单条编辑里的权益一致性校验。
+  - 决策：已部分或全部使用的兑换码不能批量修改状态或过期时间，备注-only 修改仍允许；`disabled` 状态按不可用状态处理，并从有效可用状态筛选中排除。
+  - 测试：`go test -tags unit ./internal/service -run 'TestRedeem(CodeExpirySemantics|Service_BatchUpdate)'`；`go test ./internal/handler/admin/redeem_handler.go ./internal/handler/admin/idempotency_helper.go ./internal/handler/admin/admin_service_stub_test.go ./internal/handler/admin/redeem_handler_test.go -run 'TestRedeemBatchUpdate|TestResolveRedeemCodeExpiresAt|TestGenerate_AcceptsInvitationExpiry'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test -tags integration ./internal/repository -run 'TestRedeemCodeRepoSuite/Test(ListWithFilters_Status|Use|Update)'`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-redeem-batch-localstorage" pnpm test:run src/views/admin/__tests__/RedeemView.batchUpdate.spec.ts`；`pnpm typecheck`；`git diff --check`。
 fix(i18n):: https://github.com/TokenFlux/TokenRouter/commit/9673a22f26e1f81d0abda3e6d8ca8cd7d8fb74d4
 fix: mark reused refresh tokens non-retryable and unschedule errored accounts: https://github.com/Wei-Shaw/sub2api/pull/2374
 fix: clear scheduler cache when deleting accounts: https://github.com/Wei-Shaw/sub2api/pull/2375

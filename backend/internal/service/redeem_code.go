@@ -84,6 +84,8 @@ func (r *RedeemCode) PersistedStatus() string {
 	switch {
 	case r == nil:
 		return StatusUnused
+	case r.Status == StatusDisabled:
+		return StatusDisabled
 	case r.Status == StatusExpired:
 		return StatusExpired
 	case r.IsExhausted():
@@ -98,6 +100,9 @@ func (r *RedeemCode) PersistedStatus() string {
 func (r *RedeemCode) EffectiveStatus() string {
 	if r == nil {
 		return StatusUnused
+	}
+	if r.Status == StatusDisabled {
+		return StatusDisabled
 	}
 	if r.IsExpired() {
 		return StatusExpired

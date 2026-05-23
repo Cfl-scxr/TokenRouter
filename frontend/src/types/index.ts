@@ -1353,7 +1353,7 @@ export interface RedeemCode {
   code: string
   type: RedeemCodeType
   value: number
-  status: 'active' | 'used' | 'expired' | 'unused'
+  status: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
   max_uses: number
   used_count: number
   expires_at: string | null
@@ -1383,6 +1383,17 @@ export interface UpdateRedeemCodeRequest {
   max_uses?: number
   expires_at?: number | null
   plan_id?: number | null
+}
+
+export interface BatchUpdateRedeemCodeFields {
+  status?: 'unused' | 'disabled'
+  expires_at?: string | null
+  notes?: string
+}
+
+export interface BatchUpdateRedeemCodesRequest {
+  ids: number[]
+  fields: BatchUpdateRedeemCodeFields
 }
 
 export interface RedeemCodeRequest {
