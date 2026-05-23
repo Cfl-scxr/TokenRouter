@@ -500,6 +500,7 @@ export default {
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
     emailSuffixNotAllowedWithAllowed:
       'This email domain is not allowed. Allowed domains: {suffixes}',
+    emailSuffixAllowedMore: 'and {count} more',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteName}.',
     reloginRequired: 'Session expired. Please log in again.',
@@ -5088,9 +5089,9 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com)",
-        emailSuffixWhitelistPlaceholder: 'example.com',
-        emailSuffixWhitelistInputHint: 'Leave empty for no restriction',
+          "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn)",
+        emailSuffixWhitelistPlaceholder: '@example.com, *.edu.cn',
+        emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         emailNormalization: 'Email Normalization',
         emailNormalizationHint:
           "When enabled, registration or email updates treat y.o.u.r.n.a.m.e{'@'}example.com and yourname+abc{'@'}example.com as yourname{'@'}example.com and compare against all registered accounts by the normalized address to block alias-based duplicate signups. It does not modify existing account emails.",

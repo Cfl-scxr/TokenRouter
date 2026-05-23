@@ -499,6 +499,7 @@ export default {
     registrationFailed: '注册失败，请重试。',
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',
     emailSuffixNotAllowedWithAllowed: '该邮箱域名不被允许。可用域名：{suffixes}',
+    emailSuffixAllowedMore: '等 {count} 项',
     loginSuccess: '登录成功！欢迎回来。',
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteName}。',
     reloginRequired: '会话已过期，请重新登录。',
@@ -5247,9 +5248,9 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com）",
-        emailSuffixWhitelistPlaceholder: 'example.com',
-        emailSuffixWhitelistInputHint: '留空则不限制',
+          "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
+        emailSuffixWhitelistPlaceholder: '@example.com, *.edu.cn',
+        emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         emailNormalization: '邮箱地址归一化',
         emailNormalizationHint:
           "启用后，注册或修改邮箱时会将 y.o.u.r.n.a.m.e{'@'}example.com 和 yourname+abc{'@'}example.com 视为 yourname{'@'}example.com，并基于归一化结果与所有已注册账号比较，防止使用邮箱别名重复注册。不会修改已存在账号的邮箱。",

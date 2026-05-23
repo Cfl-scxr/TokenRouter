@@ -392,7 +392,12 @@
   - 同步方式：cherry-pick PR head `c4d7edba`，无冲突。
   - 决策：仅调整 Responses API 请求桥接到 Chat Completions 时的 role 归一化；`developer` 映射为 `system`，空 role 仍回退 `user`，其它 Chat Completions 合法 role 保持不变。
   - 测试：`go test ./internal/pkg/apicompat -run 'TestResponsesInputToChatMessages|TestResponsesToChatCompletionsRequest|TestResponsesToChatCompletions|TestChatCompletionsToResponses'`；`git diff --cached --check`。
-feat(registration): 邮箱白名单支持后缀通配符匹配(*.edu.cn): https://github.com/Wei-Shaw/sub2api/pull/2672
+✅ feat(registration): 邮箱白名单支持后缀通配符匹配(*.edu.cn): https://github.com/Wei-Shaw/sub2api/pull/2672
+  - 同步方式：cherry-pick PR 功能提交 `a5b9b68b763417a67443a4288573cfb851c2318c`，手动解决中英文 i18n 文案冲突。
+  - 决策：保留 fork 现有邮箱地址归一化开关和重复注册防护文案；仅扩展注册邮箱后缀白名单支持 `*.edu.cn` 这类通配符，后端和前端均保持精确域名 `@qq.com` 不匹配子域名，通配符同时匹配根域名及其子域名。
+  - 决策：前端白名单标签从隐式 `@` 展示改为展示完整 token，提交设置时精确域名继续补 `@`，通配符保持 `*.`；新增代码注释按本仓库要求改为中文。
+  - 测试：`go test -tags unit ./internal/service -run 'Test.*RegistrationEmail|TestSettingService_.*RegistrationEmail'`；`pnpm test:run src/utils/__tests__/registrationEmailPolicy.spec.ts`；`pnpm typecheck`；`git diff --check`；`git diff --cached --check`。
+  - 备注：Vitest 输出 Node `localStorage` warning，未影响断言。
 feat(risk-control): 内容审计支持按模型生效: https://github.com/Wei-Shaw/sub2api/pull/2674
 fix: optimize OpenAI account cooldown scheduling: https://github.com/TokenFlux/TokenRouter/commit/1e406fed52f82b7e4812c02ad0d668b5446b97c2
 fix: update x/net vulnerability dependency: https://github.com/TokenFlux/TokenRouter/commit/b6c0b4084878bd8c77b605dff7cbb1f0955b84de
