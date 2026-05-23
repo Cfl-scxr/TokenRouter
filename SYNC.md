@@ -409,7 +409,10 @@
   - 决策：保留 fork 当前 `NewGatewayService`、`NewChannelService`、Ops cleanup、OpenAI 403 阈值/冷却可配置和 token 缓存删除行为；新增 upstream 的 OpenAI 运行态调度屏蔽快路径、429 storm failover 限制、并发负载短 TTL 缓存和 token refresh/clear error 后的调度屏蔽同步。
   - 决策：`AdminService` 与 `TokenRefreshService` 注入 `OpenAIGatewayService` 作为 `AccountRuntimeBlocker`，管理员清错和后台刷新成功会清除运行态屏蔽；OpenAI 403 临时冷却继续使用 fork 设置页配置的阈值、窗口和冷却时长，并额外通知运行态调度屏蔽。
   - 测试：`go test ./cmd/server`；`go test ./internal/service -run 'Test(OpenAIAccountRuntimeBlock|OpenAIAccountScheduler|ConcurrencyService|RateLimitService|OpenAITokenProvider|TokenRefresh|SchedulerSnapshot)'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test ./internal/handler -run 'Test.*OpenAI|Test.*Gateway|Test.*Images'`；`go test ./internal/service -run 'TestContentModeration|TestOpenAIGateway|TestForwardAsRawChatCompletions|TestForwardAsChatCompletions|TestOpenAIImages|TestOpenAIWS|TestHandleChatStreamingResponse|TestGeminiMessagesCompatService'`；`go test ./internal/config`；`git diff --cached --check`；`git diff --check`。
-fix: update x/net vulnerability dependency: https://github.com/TokenFlux/TokenRouter/commit/b6c0b4084878bd8c77b605dff7cbb1f0955b84de
+✅ fix: update x/net vulnerability dependency: https://github.com/TokenFlux/TokenRouter/commit/b6c0b4084878bd8c77b605dff7cbb1f0955b84de
+  - 同步方式：cherry-pick direct commit `b6c0b4084878bd8c77b605dff7cbb1f0955b84de`，无冲突。
+  - 决策：保留 fork 当前 HTTP server 超时、请求体大小限制和 H2C 配置项；升级 `golang.org/x/net` 及联动的 `x/crypto`、`x/term`、`x/mod`、`x/sys`、`x/text`、`x/tools`，并将 H2C 接入改为 Go 1.26 标准库 `http.Protocols`/`http2.ConfigureServer`，不再使用 `x/net/http2/h2c` wrapper。
+  - 测试：`go test ./cmd/server ./internal/server`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --cached --check`；`git diff --check`。
 fix: 修复反代部署下拒绝日志客户端 IP 不准确: https://github.com/Wei-Shaw/sub2api/pull/2698
 feat(admin): add compact proxy IP resource link: https://github.com/TokenFlux/TokenRouter/commit/0430899748ac7c6c5d26d94cac8cc9b46bccb8ab
 fix(i18n): escape at-sign in email whitelist placeholder: https://github.com/TokenFlux/TokenRouter/commit/0cfabaa82ea11fe296ce81c786841dbfaeccac36
