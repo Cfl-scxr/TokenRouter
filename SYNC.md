@@ -378,7 +378,11 @@
   - 同步方式：fetch PR 2681 后 cherry-pick 功能提交 `199a5bcc`，无冲突。
   - 决策：保留 fork 现有关键词拦截、warning/auto-ban 和图片抽样审计语义；仅将 Anthropic/OpenAI Chat/OpenAI Responses/Gemini 的文本提取从“回溯最后一条用户消息”改为“仅数组末尾本身是用户输入时才审计”，避免 Agent 工具循环中的 assistant/tool/function_call_output 结尾重复审计同一用户输入。
   - 测试：`go test ./internal/service -run 'TestExtractContentModerationInput|TestContentModerationInput|TestContentModerationCheck_|TestNormalizeBlockedKeywords|TestMatchBlockedKeyword|TestNormalizeKeywordBlockingMode|TestContentModerationConfigNormalize'`；`go test ./internal/service -run 'TestContentModeration|TestExtractContentModerationInput|Test.*Moderation.*'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
-feat(account): 测试连接支持 OpenAI-compatible Chat Completions 路径: https://github.com/Wei-Shaw/sub2api/pull/2658
+✅ feat(account): 测试连接支持 OpenAI-compatible Chat Completions 路径: https://github.com/Wei-Shaw/sub2api/pull/2658
+  - 同步方式：cherry-pick PR head `ca60cede`，手动解决账号测试服务和 OpenAI 测试文件冲突，并将新增注释改为中文。
+  - 决策：保留 fork 已有 OpenAI Responses 探测、raw Chat Completions 网关 URL 构造、compact/image 测试和 OAuth Codex 行为；当 API Key 账号已探测为不支持 Responses API 时，测试连接改走 `/v1/chat/completions` SSE 路径，而不再提示“测试接口仅支持 Responses API”。
+  - 决策：前端测试弹窗仅新增 `status` SSE 事件展示，用于呈现 Chat Completions 路径验证状态，不改变现有 content/image/test_complete 流程。
+  - 测试：`go test -tags unit ./internal/service -run 'TestAccountTestService_OpenAI|TestNormalizeAccountTestMode|TestBuildOpenAI(ChatCompletionsURL|ResponsesURL_ProbeURL)'`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-account-tests-localstorage" pnpm test:run src/components/account/__tests__/AccountTestModal.spec.ts`；`pnpm typecheck`。
 feat(bedrock): add Claude Code compatibility for AWS Bedrock: https://github.com/Wei-Shaw/sub2api/pull/2662
 fix(apicompat): Responses 转 Chat Completions 时 developer role 映射为 system: https://github.com/Wei-Shaw/sub2api/pull/2656
 feat(registration): 邮箱白名单支持后缀通配符匹配(*.edu.cn): https://github.com/Wei-Shaw/sub2api/pull/2672
