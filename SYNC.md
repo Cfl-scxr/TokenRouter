@@ -370,7 +370,10 @@
   - 决策：保留 fork 当前前端依赖集合，仅新增 `pnpm.overrides` 将传递依赖 `js-cookie` 固定到 `3.0.7`，并同步 lockfile 中 `ahooks` / `js-beautify` 的解析版本。
   - 决策：本地 pnpm 11.0.5 不接受 upstream lockfile 顶层 `overrides` 配置；按当前工具链重新规范化锁文件，保留 `package.json` 的 override 和 `js-cookie@3.0.7` 锁定，不提交 pnpm 11 生成的 `pnpm-workspace.yaml` build 审批占位文件。
   - 测试：`CI=true pnpm install --frozen-lockfile`；`pnpm typecheck`；`rg -n "js-cookie@3\\.0\\.5|js-cookie: 3\\.0\\.5|js-cookie@3\\.0\\.7|js-cookie: 3\\.0\\.7|\"js-cookie\"" frontend/package.json frontend/pnpm-lock.yaml`；`git diff --check`；`git diff --cached --check`。
-fix(frontend): 修正 Cache Hit Rate 计算分母，包含全部 prompt tokens: https://github.com/Wei-Shaw/sub2api/pull/2682
+✅ fix(frontend): 修正 Cache Hit Rate 计算分母，包含全部 prompt tokens: https://github.com/Wei-Shaw/sub2api/pull/2682
+  - 同步方式：fetch PR 2682 后 cherry-pick 功能提交 `6ba20acd`，手动解决 `TokenUsageTrend.vue` 中 fork 已有公式与 upstream 同步公式的上下文冲突。
+  - 决策：当前 fork 的图表数据集名为 `Cached Input %`，且组件内已用 `input_tokens + cache_creation_tokens + cache_read_tokens` 作为分母；保留该既有 UI 文案和中文注释，本条只补充 upstream 的回归测试并将测试断言适配 fork label。
+  - 测试：`pnpm test:run src/components/charts/__tests__/TokenUsageTrend.spec.ts`；`pnpm typecheck`；`git diff --check`；`git diff --cached --check`。
 fix(risk-control): Agent 工具循环中同一用户消息重复审计去重: https://github.com/Wei-Shaw/sub2api/pull/2681
 feat(account): 测试连接支持 OpenAI-compatible Chat Completions 路径: https://github.com/Wei-Shaw/sub2api/pull/2658
 feat(bedrock): add Claude Code compatibility for AWS Bedrock: https://github.com/Wei-Shaw/sub2api/pull/2662
