@@ -11,40 +11,6 @@
         </p>
       </div>
 
-      <div v-if="linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled || githubOAuthEnabled || googleOAuthEnabled" class="space-y-4">
-        <EmailOAuthButtons
-          v-if="githubOAuthEnabled || googleOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :github-enabled="githubOAuthEnabled"
-          :google-enabled="googleOAuthEnabled"
-          :referral-code="formData.referral_code"
-          :show-divider="false"
-        />
-        <LinuxDoOAuthSection
-          v-if="linuxdoOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :show-divider="false"
-        />
-        <WechatOAuthSection
-          v-if="wechatOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :show-divider="false"
-        />
-        <OidcOAuthSection
-          v-if="oidcOAuthEnabled"
-          :disabled="registrationActionDisabled"
-          :provider-name="oidcOAuthProviderName"
-          :show-divider="false"
-        />
-        <div class="flex items-center gap-3">
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
-            {{ t('auth.oauthOrContinue') }}
-          </span>
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-        </div>
-      </div>
-
       <!-- Registration Disabled Message -->
       <div
         v-if="!registrationEnabled && settingsLoaded"
@@ -275,6 +241,40 @@
           }}
         </button>
       </form>
+
+      <div v-if="linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled || githubOAuthEnabled || googleOAuthEnabled" class="space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+          <span class="text-xs text-gray-500 dark:text-dark-400">
+            {{ t('auth.oauthOrContinue') }}
+          </span>
+          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+        </div>
+        <EmailOAuthButtons
+          v-if="githubOAuthEnabled || googleOAuthEnabled"
+          :disabled="registrationActionDisabled"
+          :github-enabled="githubOAuthEnabled"
+          :google-enabled="googleOAuthEnabled"
+          :referral-code="formData.referral_code"
+          :show-divider="false"
+        />
+        <LinuxDoOAuthSection
+          v-if="linuxdoOAuthEnabled"
+          :disabled="registrationActionDisabled"
+          :show-divider="false"
+        />
+        <WechatOAuthSection
+          v-if="wechatOAuthEnabled"
+          :disabled="registrationActionDisabled"
+          :show-divider="false"
+        />
+        <OidcOAuthSection
+          v-if="oidcOAuthEnabled"
+          :disabled="registrationActionDisabled"
+          :provider-name="oidcOAuthProviderName"
+          :show-divider="false"
+        />
+      </div>
     </div>
 
     <!-- Footer -->
