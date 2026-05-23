@@ -356,7 +356,11 @@
   - 决策：保留 fork 现有 OIDC pending choice / 强制邮箱确认 / 邀请码注册流程；仅当上游 compat email 已验证、本地无同邮箱账号、未开启强制邮箱确认且未开启邀请码时，复用已验证邮箱 OAuth 登录注册路径直接完成 OIDC 登录。
   - 决策：fast path 创建失败、后端模式限制或配置不满足时统一回落到原 choice pending 流程；日志只记录 `infraerrors.Reason(err)`，避免暴露邮箱等敏感信息。
   - 测试：`go test ./internal/handler -run 'Test.*OIDC|Test.*OAuth.*Pending|TestTryOIDCVerifiedEmailFastPath'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
-fix(oidc): harden verified-email fast path: https://github.com/TokenFlux/TokenRouter/commit/aae20ef4370516158e681d03ecd98071a45cd267
+✅ fix(oidc): harden verified-email fast path: https://github.com/TokenFlux/TokenRouter/commit/aae20ef4370516158e681d03ecd98071a45cd267
+  - 同步方式：cherry-pick direct commit `aae20ef4`，手动解决 `auth_oidc_oauth.go` 中中文注释上下文冲突。
+  - 决策：保留上一条 fast path 的触发边界，并在创建用户前先做 backend-mode 新用户登录拦截；被拦截时直接重定向错误并清理 pending cookies，避免先创建用户再发现后端模式禁止。
+  - 决策：fast path 写入 identity metadata 时将真实已验证邮箱规范化为 `email`，把 OIDC 合成邮箱另存为 `synthetic_email`，避免身份元数据继续暴露/混用内部合成邮箱。
+  - 测试：`go test ./internal/handler -run 'TestOIDCOAuthCallbackVerifiedEmailFastPath|TestTryOIDCVerifiedEmailFastPath|Test.*OIDC|Test.*OAuth.*Pending'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`git diff --check`；`git diff --cached --check`。
 chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/16793d3af03324498a506cea0fbc1353c4ee5cfe
 fix(deps): 升级 js-cookie 解决 GHSA-qjx8-664m-686j 阻塞 frontend-security CI: https://github.com/Wei-Shaw/sub2api/pull/2687
 fix(frontend): 修正 Cache Hit Rate 计算分母，包含全部 prompt tokens: https://github.com/Wei-Shaw/sub2api/pull/2682
