@@ -398,7 +398,12 @@
   - 决策：前端白名单标签从隐式 `@` 展示改为展示完整 token，提交设置时精确域名继续补 `@`，通配符保持 `*.`；新增代码注释按本仓库要求改为中文。
   - 测试：`go test -tags unit ./internal/service -run 'Test.*RegistrationEmail|TestSettingService_.*RegistrationEmail'`；`pnpm test:run src/utils/__tests__/registrationEmailPolicy.spec.ts`；`pnpm typecheck`；`git diff --check`；`git diff --cached --check`。
   - 备注：Vitest 输出 Node `localStorage` warning，未影响断言。
-feat(risk-control): 内容审计支持按模型生效: https://github.com/Wei-Shaw/sub2api/pull/2674
+✅ feat(risk-control): 内容审计支持按模型生效: https://github.com/Wei-Shaw/sub2api/pull/2674
+  - 同步方式：PR 分支包含大量已同步/无关历史，仅 cherry-pick tip 功能提交 `0d5c6f7cc7d8209aa30c7406a3ca88766ad178f5`。
+  - 决策：保留 fork 现有 OpenAI Cyber warning 记录、独立自动封禁、记录 Tab 和详情页；在同一内容审计配置中新增 `model_filter`，按客户端请求模型名决定是否执行内容审计，渠道模型映射后的上游模型不改变匹配结果。
+  - 决策：前端仅合入模型范围相关 UI/i18n，不引入 PR 分支夹带的 Channel Monitor 等无关翻译；记录页同时保留 fork 的内容审计/Cyber 警告切换和新增模型范围摘要。
+  - 测试：`go test ./internal/service -run 'TestContentModeration(Check_ModelFilter|LoadConfig_LegacyConfigDefaultsModelFilter|UpdateConfig|NormalizeKeyword|Check_Keyword|RecordCyber|Cyber)|TestNormalizeContentModerationModel|TestContentModerationConfig'`；`go test ./internal/service -run 'TestContentModeration|TestNormalizeKeywordBlockingMode|TestIsOpenAICyberWarningText'`；`go test ./internal/handler/admin -run 'Test.*ContentModeration|Test.*RiskControl|Test.*Cyber'`；`pnpm test:run src/views/admin/__tests__/RiskControlView.spec.ts`；`pnpm typecheck`；`git diff --check`；`git diff --cached --check`。
+  - 备注：handler/admin 指定测试包编译通过但当前 pattern 未匹配到用例；Vitest 输出 Node `localStorage` warning，未影响断言。
 fix: optimize OpenAI account cooldown scheduling: https://github.com/TokenFlux/TokenRouter/commit/1e406fed52f82b7e4812c02ad0d668b5446b97c2
 fix: update x/net vulnerability dependency: https://github.com/TokenFlux/TokenRouter/commit/b6c0b4084878bd8c77b605dff7cbb1f0955b84de
 fix: 修复反代部署下拒绝日志客户端 IP 不准确: https://github.com/Wei-Shaw/sub2api/pull/2698
