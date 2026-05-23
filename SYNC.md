@@ -329,7 +329,10 @@
   - 决策：保留 fork 当前兑换码的 `plan_id`、`max_uses`、`used_count`、自然过期和 `expires_at` 语义；批量修改仅开放状态、过期时间和备注，显式拒绝批量修改 type/value/max_uses/plan_id，避免绕过单条编辑里的权益一致性校验。
   - 决策：已部分或全部使用的兑换码不能批量修改状态或过期时间，备注-only 修改仍允许；`disabled` 状态按不可用状态处理，并从有效可用状态筛选中排除。
   - 测试：`go test -tags unit ./internal/service -run 'TestRedeem(CodeExpirySemantics|Service_BatchUpdate)'`；`go test ./internal/handler/admin/redeem_handler.go ./internal/handler/admin/idempotency_helper.go ./internal/handler/admin/admin_service_stub_test.go ./internal/handler/admin/redeem_handler_test.go -run 'TestRedeemBatchUpdate|TestResolveRedeemCodeExpiresAt|TestGenerate_AcceptsInvitationExpiry'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`go test -tags integration ./internal/repository -run 'TestRedeemCodeRepoSuite/Test(ListWithFilters_Status|Use|Update)'`；`NODE_OPTIONS="--localstorage-file=/tmp/tokenrouter-redeem-batch-localstorage" pnpm test:run src/views/admin/__tests__/RedeemView.batchUpdate.spec.ts`；`pnpm typecheck`；`git diff --check`。
-fix(i18n):: https://github.com/TokenFlux/TokenRouter/commit/9673a22f26e1f81d0abda3e6d8ca8cd7d8fb74d4
+✅ fix(i18n):: https://github.com/TokenFlux/TokenRouter/commit/9673a22f26e1f81d0abda3e6d8ca8cd7d8fb74d4
+  - 同步方式：检查 direct commit `9673a22f`；无需额外代码变更。
+  - 决策：该提交删除 PR 2613/2615 叠加后重复的兑换码批量修改 i18n key。本 fork 在手工移植 PR 2615 时已只保留一组 `admin.redeem` 批量修改文案，并按当前兑换码模型移除 upstream 的 `group` 批量字段，因此无需 cherry-pick。
+  - 测试：`rg -n "batchUpdate|selectedCount|clearSelection|batchFields|batchNotesPlaceholder" frontend/src/i18n/locales/en.ts frontend/src/i18n/locales/zh.ts`；`pnpm typecheck`。
 fix: mark reused refresh tokens non-retryable and unschedule errored accounts: https://github.com/Wei-Shaw/sub2api/pull/2374
 fix: clear scheduler cache when deleting accounts: https://github.com/Wei-Shaw/sub2api/pull/2375
 fix(openai): surface image moderation errors: https://github.com/Wei-Shaw/sub2api/pull/2399
