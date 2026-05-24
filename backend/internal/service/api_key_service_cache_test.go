@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -125,6 +126,127 @@ type authCacheStub struct {
 	deleteAuthKeys []string
 }
 
+type authGroupRepoStub struct {
+	groupsByPlatform map[string][]Group
+}
+
+func (s *authGroupRepoStub) Create(ctx context.Context, group *Group) error {
+	panic("unexpected Create call")
+}
+
+func (s *authGroupRepoStub) GetByID(ctx context.Context, id int64) (*Group, error) {
+	panic("unexpected GetByID call")
+}
+
+func (s *authGroupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	panic("unexpected GetByIDLite call")
+}
+
+func (s *authGroupRepoStub) Update(ctx context.Context, group *Group) error {
+	panic("unexpected Update call")
+}
+
+func (s *authGroupRepoStub) Delete(ctx context.Context, id int64) error {
+	panic("unexpected Delete call")
+}
+
+func (s *authGroupRepoStub) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
+	panic("unexpected DeleteCascade call")
+}
+
+func (s *authGroupRepoStub) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (s *authGroupRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (s *authGroupRepoStub) ListActive(ctx context.Context) ([]Group, error) {
+	panic("unexpected ListActive call")
+}
+
+func (s *authGroupRepoStub) ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error) {
+	return s.ListActiveByPlatformLite(ctx, platform)
+}
+
+func (s *authGroupRepoStub) ListActiveByPlatformLite(ctx context.Context, platform string) ([]Group, error) {
+	groups := s.groupsByPlatform[platform]
+	out := make([]Group, len(groups))
+	copy(out, groups)
+	return out, nil
+}
+
+func (s *authGroupRepoStub) ExistsByName(ctx context.Context, name string) (bool, error) {
+	panic("unexpected ExistsByName call")
+}
+
+func (s *authGroupRepoStub) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
+	panic("unexpected GetAccountCount call")
+}
+
+func (s *authGroupRepoStub) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	panic("unexpected DeleteAccountGroupsByGroupID call")
+}
+
+func (s *authGroupRepoStub) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs call")
+}
+
+func (s *authGroupRepoStub) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	panic("unexpected BindAccountsToGroup call")
+}
+
+func (s *authGroupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
+	panic("unexpected UpdateSortOrders call")
+}
+
+type authUserGroupRateRepoStub struct {
+	overrides map[int64]*int
+	calls     []int64
+}
+
+func (s *authUserGroupRateRepoStub) GetByUserID(ctx context.Context, userID int64) (map[int64]float64, error) {
+	panic("unexpected GetByUserID call")
+}
+
+func (s *authUserGroupRateRepoStub) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
+	panic("unexpected GetByUserAndGroup call")
+}
+
+func (s *authUserGroupRateRepoStub) GetRPMOverrideByUserAndGroup(ctx context.Context, userID, groupID int64) (*int, error) {
+	s.calls = append(s.calls, groupID)
+	return s.overrides[groupID], nil
+}
+
+func (s *authUserGroupRateRepoStub) GetByGroupID(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
+	panic("unexpected GetByGroupID call")
+}
+
+func (s *authUserGroupRateRepoStub) SyncUserGroupRates(ctx context.Context, userID int64, rates map[int64]*float64) error {
+	panic("unexpected SyncUserGroupRates call")
+}
+
+func (s *authUserGroupRateRepoStub) SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
+	panic("unexpected SyncGroupRateMultipliers call")
+}
+
+func (s *authUserGroupRateRepoStub) SyncGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error {
+	panic("unexpected SyncGroupRPMOverrides call")
+}
+
+func (s *authUserGroupRateRepoStub) ClearGroupRPMOverrides(ctx context.Context, groupID int64) error {
+	panic("unexpected ClearGroupRPMOverrides call")
+}
+
+func (s *authUserGroupRateRepoStub) DeleteByGroupID(ctx context.Context, groupID int64) error {
+	panic("unexpected DeleteByGroupID call")
+}
+
+func (s *authUserGroupRateRepoStub) DeleteByUserID(ctx context.Context, userID int64) error {
+	panic("unexpected DeleteByUserID call")
+}
+
 func (s *authCacheStub) GetCreateAttemptCount(ctx context.Context, userID int64) (int, error) {
 	return 0, nil
 }
@@ -224,6 +346,211 @@ func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	require.Equal(t, groupID, apiKey.Group.ID)
 	require.True(t, apiKey.Group.ModelRoutingEnabled)
 	require.Equal(t, map[string][]int64{"claude-opus-*": {1, 2}}, apiKey.Group.ModelRouting)
+}
+
+func TestAPIKeyService_GetByKey_FallsBackDisabledBoundGroupToPlatformDefaultFromRepo(t *testing.T) {
+	disabledGroupID := int64(9)
+	defaultGroupID := int64(10)
+	defaultRPM := 77
+	oldRPM := 3
+	repo := &authRepoStub{
+		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+			return &APIKey{
+				ID:      1,
+				UserID:  2,
+				GroupID: &disabledGroupID,
+				Key:     key,
+				Status:  StatusActive,
+				User: &User{
+					ID:                   2,
+					Status:               StatusActive,
+					Role:                 RoleUser,
+					Balance:              10,
+					Concurrency:          3,
+					UserGroupRPMOverride: &oldRPM,
+				},
+				Group: &Group{
+					ID:             disabledGroupID,
+					Name:           "openai-disabled",
+					Platform:       PlatformOpenAI,
+					Status:         StatusDisabled,
+					Hydrated:       true,
+					RateMultiplier: 9,
+				},
+			}, nil
+		},
+	}
+	groupRepo := &authGroupRepoStub{
+		groupsByPlatform: map[string][]Group{
+			PlatformOpenAI: {
+				{
+					ID:             defaultGroupID,
+					Name:           "openai-default",
+					Platform:       PlatformOpenAI,
+					Status:         StatusActive,
+					Hydrated:       true,
+					IsDefault:      true,
+					RateMultiplier: 1.5,
+				},
+			},
+		},
+	}
+	rateRepo := &authUserGroupRateRepoStub{overrides: map[int64]*int{defaultGroupID: &defaultRPM}}
+	svc := NewAPIKeyService(repo, nil, groupRepo, nil, rateRepo, nil, &config.Config{})
+
+	apiKey, err := svc.GetByKey(context.Background(), "k-disabled")
+	require.NoError(t, err)
+	require.NotNil(t, apiKey.GroupID)
+	require.Equal(t, defaultGroupID, *apiKey.GroupID)
+	require.NotNil(t, apiKey.Group)
+	require.Equal(t, defaultGroupID, apiKey.Group.ID)
+	require.Equal(t, PlatformOpenAI, apiKey.Group.Platform)
+	require.Equal(t, StatusActive, apiKey.Group.Status)
+	require.NotNil(t, apiKey.User.UserGroupRPMOverride)
+	require.Equal(t, defaultRPM, *apiKey.User.UserGroupRPMOverride)
+	require.Equal(t, []int64{defaultGroupID}, rateRepo.calls)
+}
+
+func TestAPIKeyService_GetByKey_FallsBackDisabledBoundGroupToPlatformDefaultFromAuthCache(t *testing.T) {
+	cache := &authCacheStub{}
+	repo := &authRepoStub{
+		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+			return nil, errors.New("unexpected repo call")
+		},
+	}
+	disabledGroupID := int64(9)
+	defaultGroupID := int64(10)
+	groupRepo := &authGroupRepoStub{
+		groupsByPlatform: map[string][]Group{
+			PlatformGemini: {
+				{
+					ID:             defaultGroupID,
+					Name:           "gemini-default",
+					Platform:       PlatformGemini,
+					Status:         StatusActive,
+					Hydrated:       true,
+					IsDefault:      true,
+					RateMultiplier: 2,
+				},
+			},
+		},
+	}
+	oldRPM := 3
+	cache.getAuthCache = func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error) {
+		return &APIKeyAuthCacheEntry{
+			Snapshot: &APIKeyAuthSnapshot{
+				Version:  apiKeyAuthSnapshotVersion,
+				APIKeyID: 1,
+				UserID:   2,
+				GroupID:  &disabledGroupID,
+				Status:   StatusActive,
+				User: APIKeyAuthUserSnapshot{
+					ID:                   2,
+					Status:               StatusActive,
+					Role:                 RoleUser,
+					Balance:              10,
+					Concurrency:          3,
+					UserGroupRPMOverride: &oldRPM,
+				},
+				Group: &APIKeyAuthGroupSnapshot{
+					ID:             disabledGroupID,
+					Name:           "gemini-disabled",
+					Platform:       PlatformGemini,
+					Status:         StatusDisabled,
+					RateMultiplier: 8,
+				},
+			},
+		}, nil
+	}
+	cfg := &config.Config{APIKeyAuth: config.APIKeyAuthCacheConfig{L2TTLSeconds: 60}}
+	svc := NewAPIKeyService(repo, nil, groupRepo, nil, nil, cache, cfg)
+
+	apiKey, err := svc.GetByKey(context.Background(), "k-cached-disabled")
+	require.NoError(t, err)
+	require.NotNil(t, apiKey.GroupID)
+	require.Equal(t, defaultGroupID, *apiKey.GroupID)
+	require.NotNil(t, apiKey.Group)
+	require.Equal(t, defaultGroupID, apiKey.Group.ID)
+	require.Nil(t, apiKey.User.UserGroupRPMOverride)
+}
+
+func TestAPIKeyService_GetByKey_DoesNotFallbackDeletedOrMissingBoundGroup(t *testing.T) {
+	t.Run("deleted status", func(t *testing.T) {
+		groupID := int64(9)
+		repo := &authRepoStub{
+			getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+				return &APIKey{
+					ID:      1,
+					UserID:  2,
+					GroupID: &groupID,
+					Key:     key,
+					Status:  StatusActive,
+					User: &User{
+						ID:          2,
+						Status:      StatusActive,
+						Role:        RoleUser,
+						Balance:     10,
+						Concurrency: 3,
+					},
+					Group: &Group{
+						ID:       groupID,
+						Name:     "deleted",
+						Platform: PlatformOpenAI,
+						Status:   "deleted",
+						Hydrated: true,
+					},
+				}, nil
+			},
+		}
+		groupRepo := &authGroupRepoStub{
+			groupsByPlatform: map[string][]Group{
+				PlatformOpenAI: {{ID: 10, Name: "openai-default", Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, IsDefault: true}},
+			},
+		}
+		ctx := context.WithValue(context.Background(), ctxkey.InboundEndpoint, "/v1/images/generations")
+		svc := NewAPIKeyService(repo, nil, groupRepo, nil, nil, nil, &config.Config{})
+
+		apiKey, err := svc.GetByKey(ctx, "k-deleted")
+		require.NoError(t, err)
+		require.NotNil(t, apiKey.GroupID)
+		require.Equal(t, groupID, *apiKey.GroupID)
+		require.Equal(t, groupID, apiKey.Group.ID)
+	})
+
+	t.Run("missing edge", func(t *testing.T) {
+		groupID := int64(9)
+		repo := &authRepoStub{
+			getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+				return &APIKey{
+					ID:      1,
+					UserID:  2,
+					GroupID: &groupID,
+					Key:     key,
+					Status:  StatusActive,
+					User: &User{
+						ID:          2,
+						Status:      StatusActive,
+						Role:        RoleUser,
+						Balance:     10,
+						Concurrency: 3,
+					},
+				}, nil
+			},
+		}
+		groupRepo := &authGroupRepoStub{
+			groupsByPlatform: map[string][]Group{
+				PlatformAnthropic: {{ID: 10, Name: "default", Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true, IsDefault: true}},
+			},
+		}
+		ctx := context.WithValue(context.Background(), ctxkey.InboundEndpoint, "/v1/messages")
+		svc := NewAPIKeyService(repo, nil, groupRepo, nil, nil, nil, &config.Config{})
+
+		apiKey, err := svc.GetByKey(ctx, "k-missing-group")
+		require.NoError(t, err)
+		require.NotNil(t, apiKey.GroupID)
+		require.Equal(t, groupID, *apiKey.GroupID)
+		require.Nil(t, apiKey.Group)
+	})
 }
 
 func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t *testing.T) {

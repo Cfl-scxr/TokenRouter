@@ -396,6 +396,86 @@ func TestAPIKeyAuthRejectsUnavailableGroup(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuthFallsBackDisabledGroupToPlatformDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	disabledGroupID := int64(101)
+	defaultGroupID := int64(202)
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+	}
+	disabledGroup := &service.Group{
+		ID:       disabledGroupID,
+		Name:     "openai-disabled",
+		Status:   service.StatusDisabled,
+		Platform: service.PlatformOpenAI,
+		Hydrated: true,
+	}
+	apiKey := &service.APIKey{
+		ID:      100,
+		UserID:  user.ID,
+		GroupID: &disabledGroupID,
+		Key:     "test-key",
+		Status:  service.StatusActive,
+		User:    user,
+		Group:   disabledGroup,
+	}
+
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+	groupRepo := &stubGroupRepoForAuth{
+		groupsByPlatform: map[string][]service.Group{
+			service.PlatformOpenAI: {
+				{
+					ID:             defaultGroupID,
+					Name:           "openai-default",
+					Status:         service.StatusActive,
+					Platform:       service.PlatformOpenAI,
+					Hydrated:       true,
+					IsDefault:      true,
+					RateMultiplier: 1,
+				},
+			},
+		},
+	}
+
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, groupRepo, nil, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.GET("/t", func(c *gin.Context) {
+		currentKey, ok := GetAPIKeyFromContext(c)
+		if !ok || currentKey.GroupID == nil || *currentKey.GroupID != defaultGroupID {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
+			return
+		}
+		groupFromCtx, ok := c.Request.Context().Value(ctxkey.Group).(*service.Group)
+		if !ok || groupFromCtx == nil || groupFromCtx.ID != defaultGroupID {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestAPIKeyAuthIPRestrictionDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -662,6 +742,81 @@ func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService
 type stubApiKeyRepo struct {
 	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
 	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
+}
+
+type stubGroupRepoForAuth struct {
+	groupsByPlatform map[string][]service.Group
+}
+
+func (r *stubGroupRepoForAuth) Create(ctx context.Context, group *service.Group) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) Update(ctx context.Context, group *service.Group) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) Delete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) ListActive(ctx context.Context) ([]service.Group, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
+	return r.ListActiveByPlatformLite(ctx, platform)
+}
+
+func (r *stubGroupRepoForAuth) ListActiveByPlatformLite(ctx context.Context, platform string) ([]service.Group, error) {
+	groups := r.groupsByPlatform[platform]
+	out := make([]service.Group, len(groups))
+	copy(out, groups)
+	return out, nil
+}
+
+func (r *stubGroupRepoForAuth) ExistsByName(ctx context.Context, name string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
+	return 0, 0, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubGroupRepoForAuth) UpdateSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
+	return errors.New("not implemented")
 }
 
 func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.APIKey) error {

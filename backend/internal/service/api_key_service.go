@@ -508,7 +508,7 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	return apiKey, nil
 }
 
-// applyDefaultGroupFallback 为未绑定有效分组的 API Key 计算请求级默认分组。
+// applyDefaultGroupFallback 为未绑定有效分组或绑定停用分组的 API Key 计算请求级默认分组。
 // 这里只修正当前请求中的对象，不回写数据库，也不写入认证缓存，避免不同端点之间互相污染。
 func (s *APIKeyService) applyDefaultGroupFallback(ctx context.Context, apiKey *APIKey) *APIKey {
 	if apiKey == nil || s.groupRepo == nil {
@@ -519,9 +519,18 @@ func (s *APIKeyService) applyDefaultGroupFallback(ctx context.Context, apiKey *A
 			gid := apiKey.Group.ID
 			apiKey.GroupID = &gid
 		}
+		if strings.EqualFold(apiKey.Group.Status, "deleted") {
+			return apiKey
+		}
+		if fallbackPlatform, ok := fallbackPlatformFromBoundGroup(apiKey.Group); ok {
+			return s.applyDefaultGroupByPlatform(ctx, apiKey, fallbackPlatform)
+		}
 		if apiKey.GroupID != nil && apiKey.Group.ID == *apiKey.GroupID {
 			return apiKey
 		}
+	} else if apiKey.GroupID != nil {
+		// Key 明确绑定了分组但查询不到实体时，保持 GROUP_DELETED 语义，不使用入口默认分组兜底。
+		return apiKey
 	}
 
 	platform, ok := resolveAPIKeyFallbackPlatform(ctx)
@@ -529,6 +538,30 @@ func (s *APIKeyService) applyDefaultGroupFallback(ctx context.Context, apiKey *A
 		return apiKey
 	}
 
+	return s.applyDefaultGroupByPlatform(ctx, apiKey, platform)
+}
+
+// fallbackPlatformFromBoundGroup 返回停用绑定分组所属平台。
+// deleted/缺失分组不兜底，保留调用方现有的不可用分组报错语义。
+func fallbackPlatformFromBoundGroup(group *Group) (string, bool) {
+	if group == nil {
+		return "", false
+	}
+	if group.Status == StatusActive || strings.EqualFold(group.Status, "deleted") {
+		return "", false
+	}
+	platform := strings.TrimSpace(group.Platform)
+	if platform == "" {
+		return "", false
+	}
+	return platform, true
+}
+
+// applyDefaultGroupByPlatform 将当前请求中的 API Key 切到指定平台的默认分组。
+func (s *APIKeyService) applyDefaultGroupByPlatform(ctx context.Context, apiKey *APIKey, platform string) *APIKey {
+	if apiKey == nil || s.groupRepo == nil {
+		return apiKey
+	}
 	group, err := findPlatformDefaultGroup(ctx, s.groupRepo, platform)
 	if err != nil || group == nil {
 		return apiKey
@@ -537,7 +570,24 @@ func (s *APIKeyService) applyDefaultGroupFallback(ctx context.Context, apiKey *A
 	gid := group.ID
 	apiKey.GroupID = &gid
 	apiKey.Group = group
+	s.refreshFallbackUserGroupRPMOverride(ctx, apiKey, gid)
 	return apiKey
+}
+
+// refreshFallbackUserGroupRPMOverride 重新绑定默认分组后刷新用户专属 RPM。
+// 认证缓存里的 override 属于原分组，不能沿用到 fallback 分组。
+func (s *APIKeyService) refreshFallbackUserGroupRPMOverride(ctx context.Context, apiKey *APIKey, groupID int64) {
+	if apiKey == nil || apiKey.User == nil {
+		return
+	}
+	apiKey.User.UserGroupRPMOverride = nil
+	if s.userGroupRateRepo == nil || apiKey.UserID <= 0 || groupID <= 0 {
+		return
+	}
+	override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.UserID, groupID)
+	if err == nil {
+		apiKey.User.UserGroupRPMOverride = override
+	}
 }
 
 // resolveAPIKeyFallbackPlatform 根据当前请求上下文推断默认分组所属平台。
