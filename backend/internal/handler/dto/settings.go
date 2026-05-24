@@ -150,21 +150,21 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency         int                          `json:"default_concurrency"`
-	DefaultBalance             float64                      `json:"default_balance"`
-	RiskControlEnabled         bool                         `json:"risk_control_enabled"` // 风控中心功能开关
-	AffiliateEnabled           bool                         `json:"affiliate_enabled"`
-	AffiliateRebateRate        float64                      `json:"affiliate_rebate_rate"`
-	AffiliateRebateFreezeHours int                          `json:"affiliate_rebate_freeze_hours"`
-	AffiliateRebateDurationDays int                         `json:"affiliate_rebate_duration_days"`
-	AffiliateRebatePerInviteeCap float64                    `json:"affiliate_rebate_per_invitee_cap"`
-	DefaultUserRPMLimit        int                          `json:"default_user_rpm_limit"`
-	DefaultSubscriptions       []DefaultSubscriptionSetting `json:"default_subscriptions"`
-	BalanceUnitName            string                       `json:"balance_unit_name"`
-	BalanceUnitSymbol          string                       `json:"balance_unit_symbol"`
-	BalanceIconSVG             string                       `json:"balance_icon_svg"`
-	ReasoningPointRMBUnitPrice float64                      `json:"reasoning_point_rmb_unit_price"`
-	USDExchangeRate            float64                      `json:"usd_exchange_rate"`
+	DefaultConcurrency           int                          `json:"default_concurrency"`
+	DefaultBalance               float64                      `json:"default_balance"`
+	RiskControlEnabled           bool                         `json:"risk_control_enabled"` // 风控中心功能开关
+	AffiliateEnabled             bool                         `json:"affiliate_enabled"`
+	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
+	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
+	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	BalanceUnitName              string                       `json:"balance_unit_name"`
+	BalanceUnitSymbol            string                       `json:"balance_unit_symbol"`
+	BalanceIconSVG               string                       `json:"balance_icon_svg"`
+	ReasoningPointRMBUnitPrice   float64                      `json:"reasoning_point_rmb_unit_price"`
+	USDExchangeRate              float64                      `json:"usd_exchange_rate"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -311,13 +311,13 @@ type PublicSettings struct {
 	BalanceUnitName                  string                   `json:"balance_unit_name"`
 	BalanceUnitSymbol                string                   `json:"balance_unit_symbol"`
 	BalanceIconSVG                   string                   `json:"balance_icon_svg"`
-		BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
-		AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
-		RiskControlEnabled               bool                     `json:"risk_control_enabled"` // 风控中心入口开关
-		AffiliateEnabled                 bool                     `json:"affiliate_enabled"`     // 邀请返利入口开关
-		BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
-		BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
-	}
+	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
+	RiskControlEnabled               bool                     `json:"risk_control_enabled"` // 风控中心入口开关
+	AffiliateEnabled                 bool                     `json:"affiliate_enabled"`    // 邀请返利入口开关
+	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
+}
 
 type LoginAgreementDocument struct {
 	ID        string `json:"id"`
