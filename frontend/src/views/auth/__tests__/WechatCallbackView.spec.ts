@@ -512,7 +512,7 @@ describe('WechatCallbackView', () => {
     expect(completeWeChatOAuthRegistrationMock).toHaveBeenCalledWith('INVITE-CODE', {
       adoptDisplayName: false,
       adoptAvatar: true,
-    })
+    }, undefined)
     expect(setTokenMock).toHaveBeenCalledWith('wechat-invite-token')
     expect(replaceMock).toHaveBeenCalledWith('/subscriptions')
   })
@@ -554,7 +554,7 @@ describe('WechatCallbackView', () => {
     expect(completeWeChatOAuthRegistrationMock).toHaveBeenCalledWith('invite-code', {
       adoptDisplayName: true,
       adoptAvatar: true,
-    })
+    }, undefined)
     expect(setTokenMock).not.toHaveBeenCalled()
     expect(replaceMock).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="wechat-choice-bind-existing"]').exists()).toBe(true)
