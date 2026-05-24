@@ -124,7 +124,33 @@ export interface RegisterRequest {
   turnstile_token?: string
   promo_code?: string
   invitation_code?: string
-  referral_code?: string
+  aff_code?: string
+}
+
+export interface AffiliateInvitee {
+  user_id: number
+  email: string
+  username: string
+  created_at?: string
+  total_rebate: number
+}
+
+export interface UserAffiliateDetail {
+  user_id: number
+  aff_code: string
+  inviter_id?: number | null
+  aff_count: number
+  aff_quota: number
+  aff_frozen_quota: number
+  aff_history_quota: number
+  // 当前用户作为邀请人时实际生效的返利比例，专属比例优先于全局比例。
+  effective_rebate_rate_percent: number
+  invitees: AffiliateInvitee[]
+}
+
+export interface AffiliateTransferResponse {
+  transferred_quota: number
+  balance: number
 }
 
 export interface SendVerifyCodeRequest {
@@ -169,6 +195,7 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  affiliate_enabled: boolean
   login_agreement_enabled?: boolean
   login_agreement_mode?: 'modal' | 'checkbox' | string
   login_agreement_updated_at?: string
@@ -228,12 +255,6 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
-}
-
-export interface UserReferralInfo {
-  referral_code: string
-  invited_count: number
-  reward_total: number
 }
 
 // ==================== Subscription Types ====================
@@ -1228,7 +1249,7 @@ export type RedeemCodeType =
   | 'admin_concurrency'
   | 'subscription'
   | 'invitation'
-  | 'referral_reward'
+  | 'affiliate_balance'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>

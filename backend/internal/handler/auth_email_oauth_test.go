@@ -129,14 +129,14 @@ func TestEmailOAuthCallbackExistingEmailLogsInWhenInvitationEnabled(t *testing.T
 	_ = user
 }
 
-func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionWithReferralCode(t *testing.T) {
+func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionWithAffiliateCode(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/github/callback", nil)
-	req.AddCookie(&http.Cookie{Name: emailOAuthReferralCookie, Value: encodeCookieValue(" REF123 ")})
+	req.AddCookie(&http.Cookie{Name: emailOAuthAffCookie, Value: encodeCookieValue(" AFF123 ")})
 	c.Request = req
 
 	handler.emailOAuthCallbackWithProfile(c, "github", config.EmailOAuthProviderConfig{
@@ -162,7 +162,7 @@ func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionWithReferralCode(t 
 	session, err := client.PendingAuthSession.Query().Only(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "ref-user@example.com", session.ResolvedEmail)
-	require.Equal(t, "ref123", pendingSessionStringValue(session.UpstreamIdentityClaims, "referral_code"))
+	require.Equal(t, "AFF123", pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code"))
 
 	completion, ok := readCompletionResponse(session.LocalFlowState)
 	require.True(t, ok)
@@ -174,12 +174,37 @@ func TestEmailOAuthCallbackCreatesPasswordRegistrationSessionWithReferralCode(t 
 	require.Equal(t, "ref-user@example.com", completion["resolved_email"])
 }
 
-func TestCompleteEmailOAuthRegistrationUsesReferralCodeFromPendingSession(t *testing.T) {
+func TestEmailOAuthStartAcceptsAffCodeQueryAlias(t *testing.T) {
+	handler, _ := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyGitHubOAuthEnabled:             "true",
+			service.SettingKeyGitHubOAuthClientID:            "github-client",
+			service.SettingKeyGitHubOAuthClientSecret:        "github-secret",
+			service.SettingKeyGitHubOAuthRedirectURL:         "https://api.example/api/v1/auth/oauth/github/callback",
+			service.SettingKeyGitHubOAuthFrontendRedirectURL: "/auth/oauth/callback",
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/github/start?redirect=/dashboard&aff_code=AFFALIAS", nil)
+
+	handler.GitHubOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	affCookie := findCookie(recorder.Result().Cookies(), emailOAuthAffCookie)
+	require.NotNil(t, affCookie)
+	require.Equal(t, encodeCookieValue("AFFALIAS"), affCookie.Value)
+}
+
+func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *testing.T) {
+	affiliateRepo := newOAuthPendingFlowAffiliateRepo()
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
 		invitationEnabled: true,
 		settingValues: map[string]string{
-			service.SettingKeyReferralRewardAmount: "8.5",
+			service.SettingKeyAffiliateEnabled: "true",
 		},
+		affiliateRepo: affiliateRepo,
 	})
 	ctx := context.Background()
 	inviter, err := client.User.Create().
@@ -188,9 +213,9 @@ func TestCompleteEmailOAuthRegistrationUsesReferralCodeFromPendingSession(t *tes
 		SetPasswordHash("hash").
 		SetRole(service.RoleUser).
 		SetStatus(service.StatusActive).
-		SetReferralCode("ref456").
 		Save(ctx)
 	require.NoError(t, err)
+	affiliateRepo.setCode(t, inviter.ID, "AFF456")
 	invitation, err := client.RedeemCode.Create().
 		SetCode("INVITE456").
 		SetType(service.RedeemTypeInvitation).
@@ -215,7 +240,7 @@ func TestCompleteEmailOAuthRegistrationUsesReferralCodeFromPendingSession(t *tes
 			"provider":         "google",
 			"provider_key":     "google",
 			"provider_subject": "google-ref-user",
-			"referral_code":    "REF456",
+			"aff_code":         "AFF456",
 		}).
 		SetLocalFlowState(map[string]any{
 			"step":  oauthPendingChoiceStep,
@@ -240,10 +265,8 @@ func TestCompleteEmailOAuthRegistrationUsesReferralCodeFromPendingSession(t *tes
 	require.NoError(t, err)
 	require.NotEmpty(t, user.PasswordHash)
 	require.NotEqual(t, "secret-123", user.PasswordHash)
-	require.Equal(t, "oauthflow", user.ReferralCode)
-	require.NotNil(t, user.ReferredByUserID)
-	require.Equal(t, inviter.ID, *user.ReferredByUserID)
-	require.Equal(t, 8.5, user.ReferralRewardAmount)
+	require.Equal(t, inviter.ID, affiliateRepo.inviterIDFor(t, user.ID))
+	require.Equal(t, 1, affiliateRepo.affCountFor(t, inviter.ID))
 
 	tamperedCount, err := client.User.Query().Where(dbuser.EmailEQ("tampered@example.com")).Count(ctx)
 	require.NoError(t, err)

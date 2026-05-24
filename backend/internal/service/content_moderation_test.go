@@ -273,22 +273,6 @@ func (r *contentModerationTestUserRepo) LockRegistrationEmail(ctx context.Contex
 	panic("unexpected LockRegistrationEmail call")
 }
 
-func (r *contentModerationTestUserRepo) GetByReferralCode(ctx context.Context, code string) (*User, error) {
-	panic("unexpected GetByReferralCode call")
-}
-
-func (r *contentModerationTestUserRepo) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	panic("unexpected EnsureReferralCode call")
-}
-
-func (r *contentModerationTestUserRepo) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	panic("unexpected CountReferredUsers call")
-}
-
-func (r *contentModerationTestUserRepo) SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error) {
-	panic("unexpected SumReferralRewardsByInviter call")
-}
-
 func (r *contentModerationTestUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

@@ -23,9 +23,11 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { resolveAffiliateCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
+  affCode?: string
   providerName?: string
   showDivider?: boolean
 }>(), {
@@ -45,13 +47,10 @@ const providerInitial = computed(() => normalizedProviderName.value.charAt(0).to
 
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
-  const referralCode = typeof route.query.ref === 'string' ? route.query.ref.trim() : ''
+  storeOAuthAffiliateCode(resolveAffiliateCode(props.affCode, route.query.aff, route.query.aff_code))
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
   const params = new URLSearchParams({ redirect: redirectTo })
-  if (referralCode) {
-    params.set('ref', referralCode)
-  }
   const startURL = `${normalized}/auth/oauth/oidc/start?${params.toString()}`
   window.location.href = startURL
 }

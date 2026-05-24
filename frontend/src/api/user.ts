@@ -14,7 +14,8 @@ import type {
   ChangePasswordRequest,
   NotifyEmailEntry,
   UserAuthProvider,
-  UserReferralInfo,
+  UserAffiliateDetail,
+  AffiliateTransferResponse,
 } from '@/types'
 
 /**
@@ -176,8 +177,13 @@ export async function startOAuthBinding(
   window.location.href = startURL
 }
 
-export async function getReferralInfo(): Promise<UserReferralInfo> {
-  const { data } = await apiClient.get<UserReferralInfo>('/user/referral')
+export async function getAffiliateDetail(): Promise<UserAffiliateDetail> {
+  const { data } = await apiClient.get<UserAffiliateDetail>('/user/aff')
+  return data
+}
+
+export async function transferAffiliateQuota(): Promise<AffiliateTransferResponse> {
+  const { data } = await apiClient.post<AffiliateTransferResponse>('/user/aff/transfer')
   return data
 }
 
@@ -194,7 +200,8 @@ export const userAPI = {
   unbindAuthIdentity,
   buildOAuthBindingStartURL,
   startOAuthBinding,
-  getReferralInfo,
+  getAffiliateDetail,
+  transferAffiliateQuota,
 }
 
 export default userAPI

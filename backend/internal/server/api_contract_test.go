@@ -825,7 +825,11 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"reasoning_point_rmb_unit_price": 0,
-					"referral_reward_amount": 0,
+					"affiliate_enabled": false,
+					"affiliate_rebate_rate": 20,
+					"affiliate_rebate_freeze_hours": 0,
+					"affiliate_rebate_duration_days": 0,
+					"affiliate_rebate_per_invitee_cap": 0,
 					"usd_exchange_rate": 0,
 					"table_default_page_size": 20,
 						"table_page_size_options": [10, 20, 50, 100],
@@ -1043,7 +1047,11 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"reasoning_point_rmb_unit_price": 0,
-					"referral_reward_amount": 0,
+					"affiliate_enabled": false,
+					"affiliate_rebate_rate": 20,
+					"affiliate_rebate_freeze_hours": 0,
+					"affiliate_rebate_duration_days": 0,
+					"affiliate_rebate_per_invitee_cap": 0,
 					"usd_exchange_rate": 0,
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
@@ -1271,7 +1279,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 
-	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil)
+	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil, nil)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 
 	settingRepo := newStubSettingRepo()
@@ -1472,22 +1480,6 @@ func (r *stubUserRepo) ExistsByNormalizedEmail(ctx context.Context, normalizedEm
 
 func (r *stubUserRepo) LockRegistrationEmail(ctx context.Context, normalizedEmail string) error {
 	return errors.New("not implemented")
-}
-
-func (r *stubUserRepo) GetByReferralCode(ctx context.Context, code string) (*service.User, error) {
-	return nil, service.ErrUserNotFound
-}
-
-func (r *stubUserRepo) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	return "", errors.New("not implemented")
-}
-
-func (r *stubUserRepo) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	return 0, errors.New("not implemented")
-}
-
-func (r *stubUserRepo) SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error) {
-	return 0, errors.New("not implemented")
 }
 
 func (r *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

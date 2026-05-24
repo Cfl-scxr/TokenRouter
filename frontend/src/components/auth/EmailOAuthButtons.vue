@@ -31,14 +31,14 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GitHubMark from './GitHubMark.vue'
 import GoogleMark from './GoogleMark.vue'
+import { resolveAffiliateCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
 type EmailOAuthProvider = 'github' | 'google'
 const EMAIL_OAUTH_PENDING_PROVIDER_KEY = 'email_oauth_pending_provider'
-const EMAIL_OAUTH_PENDING_REFERRAL_KEY = 'email_oauth_referral_code'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
-  referralCode?: string
+  affCode?: string
   githubEnabled?: boolean
   googleEnabled?: boolean
   showDivider?: boolean
@@ -70,33 +70,16 @@ function providerLabel(provider: EmailOAuthProvider): string {
   return hasMultipleProviders.value ? name : t('auth.emailOAuth.signIn', { providerName: name })
 }
 
-function firstQueryValue(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (Array.isArray(value)) {
-    const item = value.find((entry) => typeof entry === 'string' && entry.trim())
-    return typeof item === 'string' ? item.trim() : ''
-  }
-  return ''
-}
-
-function resolvedReferralCode(): string {
-  return (props.referralCode?.trim() || firstQueryValue(route.query.ref)).trim()
-}
-
 function startLogin(provider: EmailOAuthProvider): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
-  const referralCode = resolvedReferralCode()
+  const affiliateCode = resolveAffiliateCode(props.affCode, route.query.aff, route.query.aff_code)
+  storeOAuthAffiliateCode(affiliateCode)
   window.sessionStorage.setItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY, provider)
-  if (referralCode) {
-    window.sessionStorage.setItem(EMAIL_OAUTH_PENDING_REFERRAL_KEY, referralCode)
-  } else {
-    window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_REFERRAL_KEY)
-  }
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
   const params = new URLSearchParams({ redirect: redirectTo })
-  if (referralCode) {
-    params.set('ref', referralCode)
+  if (affiliateCode) {
+    params.set('aff', affiliateCode)
   }
   window.location.href = `${normalized}/auth/oauth/${provider}/start?${params.toString()}`
 }

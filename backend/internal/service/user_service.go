@@ -107,10 +107,6 @@ type UserRepository interface {
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	ExistsByNormalizedEmail(ctx context.Context, normalizedEmail string) (bool, error)
 	LockRegistrationEmail(ctx context.Context, normalizedEmail string) error
-	GetByReferralCode(ctx context.Context, code string) (*User, error)
-	EnsureReferralCode(ctx context.Context, userID int64) (string, error)
-	CountReferredUsers(ctx context.Context, userID int64) (int, error)
-	SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
 	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
 	AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error
@@ -256,29 +252,6 @@ func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, erro
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
 	return user, nil
-}
-
-func (s *UserService) GetReferralInfo(ctx context.Context, userID int64) (*UserReferralInfo, error) {
-	referralCode, err := s.userRepo.EnsureReferralCode(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("ensure referral code: %w", err)
-	}
-
-	invitedCount, err := s.userRepo.CountReferredUsers(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("count referred users: %w", err)
-	}
-
-	rewardTotal, err := s.userRepo.SumReferralRewardsByInviter(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("sum referral rewards: %w", err)
-	}
-
-	return &UserReferralInfo{
-		ReferralCode: referralCode,
-		InvitedCount: invitedCount,
-		RewardTotal:  rewardTotal,
-	}, nil
 }
 
 func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID int64, user *User) (UserIdentitySummarySet, error) {

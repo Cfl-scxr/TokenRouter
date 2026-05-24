@@ -34,16 +34,16 @@ func (s *AuthService) LoginOrRegisterVerifiedEmailOAuthWithInvitation(
 	ctx context.Context,
 	input EmailOAuthIdentityInput,
 	invitationCode string,
-	referralCode string,
+	affiliateCode string,
 ) (*TokenPair, *User, error) {
-	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, invitationCode, referralCode)
+	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, invitationCode, affiliateCode)
 }
 
 func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	ctx context.Context,
 	input EmailOAuthIdentityInput,
 	invitationCode string,
-	referralCode string,
+	affiliateCode string,
 ) (*TokenPair, *User, error) {
 	if s == nil || s.userRepo == nil || s.entClient == nil {
 		return nil, nil, ErrServiceUnavailable
@@ -93,7 +93,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		user, err = s.userRepo.GetByEmail(ctx, email)
 		if err != nil {
 			if errors.Is(err, ErrUserNotFound) {
-				user, err = s.createEmailOAuthUser(ctx, email, input.Username, providerType, invitationCode, referralCode)
+				user, err = s.createEmailOAuthUser(ctx, email, input.Username, providerType, invitationCode, affiliateCode)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -142,12 +142,12 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	return tokenPair, user, nil
 }
 
-func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, referralCode string) (*User, error) {
+func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode string) (*User, error) {
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return nil, ErrRegDisabled
 	}
 
-	artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, referralCode, ErrOAuthInvitationRequired)
+	artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, ErrOAuthInvitationRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -176,10 +176,6 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 		Status:       StatusActive,
 		SignupSource: providerType,
 	}
-	if artifacts.inviter != nil {
-		user.ReferredByUserID = &artifacts.inviter.ID
-		user.ReferralRewardAmount = artifacts.rewardAmount
-	}
 	if err := s.createRegisteredUser(ctx, user, artifacts); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			existing, loadErr := s.userRepo.GetByEmail(ctx, email)
@@ -195,6 +191,7 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	}
 	s.postAuthUserBootstrap(ctx, user, providerType, false)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
+	s.bindRegistrationAffiliate(ctx, user.ID, affiliateCode)
 	return user, nil
 }
 

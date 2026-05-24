@@ -133,22 +133,6 @@ func (s *emailSyncRepoStub) ExistsByNormalizedEmail(context.Context, string) (bo
 
 func (s *emailSyncRepoStub) LockRegistrationEmail(context.Context, string) error { return nil }
 
-func (s *emailSyncRepoStub) GetByReferralCode(context.Context, string) (*User, error) {
-	return nil, ErrUserNotFound
-}
-
-func (s *emailSyncRepoStub) EnsureReferralCode(context.Context, int64) (string, error) {
-	return "", nil
-}
-
-func (s *emailSyncRepoStub) CountReferredUsers(context.Context, int64) (int, error) {
-	return 0, nil
-}
-
-func (s *emailSyncRepoStub) SumReferralRewardsByInviter(context.Context, int64) (float64, error) {
-	return 0, nil
-}
-
 func (s *emailSyncRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }

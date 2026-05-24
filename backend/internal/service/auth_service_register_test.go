@@ -212,6 +212,7 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 		nil,
 		nil, // promoService
 		nil, // defaultSubAssigner
+		nil, // affiliateService
 	)
 }
 
@@ -243,7 +244,7 @@ func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testi
 	}, nil)
 
 	// 应返回服务不可用错误，而不是允许绕过验证
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code", "", "", "")
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 }
 
@@ -255,7 +256,7 @@ func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
 		SettingKeyEmailVerifyEnabled:  "true",
 	}, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
 }
 
@@ -269,7 +270,7 @@ func TestAuthService_Register_EmailVerifyInvalid(t *testing.T) {
 		SettingKeyEmailVerifyEnabled:  "true",
 	}, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "", "", "")
 	require.ErrorIs(t, err, ErrInvalidVerifyCode)
 	require.ErrorContains(t, err, "verify code")
 }
@@ -389,43 +390,6 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
-}
-
-func TestAuthService_RegisterWithReferral_DoesNotGrantImmediateReward(t *testing.T) {
-	inviter := &User{
-		ID:           99,
-		Email:        "inviter@test.com",
-		Balance:      100,
-		ReferralCode: "ref123",
-	}
-	repo := &userRepoStub{
-		nextID: 6,
-		user:   inviter,
-	}
-	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:  "true",
-		SettingKeyReferralRewardAmount: "8.5",
-	}, nil)
-
-	token, user, err := service.RegisterWithReferral(
-		context.Background(),
-		"invitee@test.com",
-		"password",
-		"",
-		"",
-		"",
-		"ref123",
-	)
-	require.NoError(t, err)
-	require.NotEmpty(t, token)
-	require.NotNil(t, user)
-	require.Equal(t, 3.5, user.Balance, "注册阶段不应立即发放邀请返利")
-	require.Equal(t, int64(99), *user.ReferredByUserID)
-	require.Equal(t, 8.5, user.ReferralRewardAmount)
-	require.Nil(t, user.ReferralRewardGrantedAt)
-	require.Equal(t, 100.0, inviter.Balance, "邀请人在注册阶段不应立即获得返利")
-	require.Len(t, repo.created, 1)
-	require.Equal(t, 3.5, repo.created[0].Balance, "落库初始余额应保持默认值")
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {
@@ -706,7 +670,7 @@ func newAuthServiceWithDingTalkCfg(settings map[string]string, dtCfg config.Ding
 		DingTalk: dtCfg,
 	}
 	settingService := NewSettingService(&settingRepoStub{values: settings}, cfg)
-	return NewAuthService(nil, nil, nil, nil, cfg, settingService, nil, nil, nil, nil, nil)
+	return NewAuthService(nil, nil, nil, nil, cfg, settingService, nil, nil, nil, nil, nil, nil)
 }
 
 // minDingTalkURLs 返回一个包含必填字段的基础 DingTalkConnectConfig（不设 Enabled/BypassRegistration/Policy）。

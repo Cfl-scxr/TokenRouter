@@ -173,29 +173,6 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	return out, nil
 }
 
-func (r *userRepository) GetByReferralCode(ctx context.Context, code string) (*service.User, error) {
-	code = service.NormalizeReferralCode(code)
-	if code == "" {
-		return nil, service.ErrUserNotFound
-	}
-
-	client := clientFromContext(ctx, r.client)
-	m, err := client.User.Query().Where(dbuser.ReferralCodeEQ(code)).Only(ctx)
-	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-
-	out := userEntityToService(m)
-	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
-	if err != nil {
-		return nil, err
-	}
-	if v, ok := groups[m.ID]; ok {
-		out.AllowedGroups = v
-	}
-	return out, nil
-}
-
 func (r *userRepository) Update(ctx context.Context, userIn *service.User) error {
 	return r.updateWithNormalizationGuard(ctx, userIn, "")
 }
@@ -875,90 +852,6 @@ func (r *userRepository) LockRegistrationEmail(ctx context.Context, normalizedEm
 	return err
 }
 
-func (r *userRepository) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	client := clientFromContext(ctx, r.client)
-
-	current, err := client.User.Query().
-		Where(dbuser.IDEQ(userID)).
-		Select(dbuser.FieldReferralCode).
-		Only(ctx)
-	if err != nil {
-		return "", translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-
-	code := service.NormalizeReferralCode(current.ReferralCode)
-	if code != "" {
-		return code, nil
-	}
-	expectedCode := current.ReferralCode
-
-	const maxReferralCodeAttempts = 5
-	for attempt := 0; attempt < maxReferralCodeAttempts; attempt++ {
-		code, err = service.GenerateReferralCode()
-		if err != nil {
-			return "", fmt.Errorf("generate referral code: %w", err)
-		}
-
-		updated, err := client.User.Update().
-			Where(
-				dbuser.IDEQ(userID),
-				dbuser.ReferralCodeEQ(expectedCode),
-			).
-			SetReferralCode(code).
-			Save(ctx)
-		if err == nil && updated > 0 {
-			return code, nil
-		}
-		if err != nil && !isUniqueConstraintViolation(err) {
-			return "", translatePersistenceError(err, service.ErrUserNotFound, nil)
-		}
-
-		refreshed, refreshErr := client.User.Query().
-			Where(dbuser.IDEQ(userID)).
-			Select(dbuser.FieldReferralCode).
-			Only(ctx)
-		if refreshErr != nil {
-			return "", translatePersistenceError(refreshErr, service.ErrUserNotFound, nil)
-		}
-		currentCode := service.NormalizeReferralCode(refreshed.ReferralCode)
-		if currentCode != "" {
-			return currentCode, nil
-		}
-		expectedCode = refreshed.ReferralCode
-	}
-
-	return "", fmt.Errorf("generate unique referral code: too many conflicts")
-}
-
-func (r *userRepository) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	client := clientFromContext(ctx, r.client)
-	return client.User.Query().
-		Where(dbuser.ReferredByUserIDEQ(userID)).
-		Count(ctx)
-}
-
-func (r *userRepository) SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error) {
-	client := clientFromContext(ctx, r.client)
-	var result []struct {
-		Sum float64 `json:"sum"`
-	}
-
-	err := client.User.Query().
-		Where(
-			dbuser.ReferredByUserIDEQ(userID),
-			dbuser.ReferralRewardGrantedAtNotNil(),
-		).
-		Aggregate(dbent.As(dbent.Sum(dbuser.FieldReferralRewardAmount), "sum")).
-		Scan(ctx, &result)
-	if err != nil {
-		return 0, err
-	}
-	if len(result) == 0 {
-		return 0, nil
-	}
-	return result[0].Sum, nil
-}
-
 func ensureNormalizedEmailAvailableWithClient(ctx context.Context, client *dbent.Client, userID int64, email string) error {
 	client = clientFromContext(ctx, client)
 	if client == nil {
@@ -1228,10 +1121,7 @@ func (r *userRepository) createWithClient(ctx context.Context, client *dbent.Cli
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
-		SetRpmLimit(userIn.RPMLimit).
-		SetReferralCode(userIn.ReferralCode).
-		SetNillableReferredByUserID(userIn.ReferredByUserID).
-		SetReferralRewardAmount(userIn.ReferralRewardAmount)
+		SetRpmLimit(userIn.RPMLimit)
 	return createOp.Save(ctx)
 }
 

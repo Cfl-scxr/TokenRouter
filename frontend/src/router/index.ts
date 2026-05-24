@@ -261,6 +261,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/affiliate',
+    name: 'Affiliate',
+    component: () => import('@/views/user/AffiliateView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Affiliate',
+      titleKey: 'affiliate.title',
+      descriptionKey: 'affiliate.description',
+      requiresAffiliate: true
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -554,6 +567,54 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.usage.description'
     }
   },
+  {
+    path: '/admin/affiliates',
+    redirect: '/admin/affiliates/invites',
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      requiresAffiliate: true
+    }
+  },
+  {
+    path: '/admin/affiliates/invites',
+    name: 'AdminAffiliateInvites',
+    component: () => import('@/views/admin/affiliates/AdminAffiliateInvitesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Affiliate Invite Records',
+      titleKey: 'nav.affiliateInviteRecords',
+      descriptionKey: 'admin.affiliates.invitesDescription',
+      requiresAffiliate: true
+    }
+  },
+  {
+    path: '/admin/affiliates/rebates',
+    name: 'AdminAffiliateRebates',
+    component: () => import('@/views/admin/affiliates/AdminAffiliateRebatesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Affiliate Rebate Records',
+      titleKey: 'nav.affiliateRebateRecords',
+      descriptionKey: 'admin.affiliates.rebatesDescription',
+      requiresAffiliate: true
+    }
+  },
+  {
+    path: '/admin/affiliates/transfers',
+    name: 'AdminAffiliateTransfers',
+    component: () => import('@/views/admin/affiliates/AdminAffiliateTransfersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Affiliate Transfer Records',
+      titleKey: 'nav.affiliateTransferRecords',
+      descriptionKey: 'admin.affiliates.transfersDescription',
+      requiresAffiliate: true
+    }
+  },
 
 
   // ==================== Payment Admin Routes ====================
@@ -768,14 +829,24 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  if (to.meta.requiresAffiliate) {
+    const affiliateEnabled = appStore.cachedPublicSettings?.affiliate_enabled === true
+    if (!affiliateEnabled) {
+      next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+      return
+    }
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/admin/affiliates',
       '/subscriptions',
-      '/redeem'
+      '/redeem',
+      '/affiliate'
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {

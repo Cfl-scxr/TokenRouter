@@ -7,7 +7,7 @@ const routeState = vi.hoisted(() => ({
 }))
 
 const locationState = vi.hoisted(() => ({
-  current: { href: 'http://localhost/register?ref=REF123' } as { href: string },
+  current: { href: 'http://localhost/register?aff=REF123' } as { href: string },
 }))
 
 vi.mock('vue-router', () => ({
@@ -27,8 +27,8 @@ vi.mock('vue-i18n', () => ({
 
 describe('EmailOAuthButtons', () => {
   beforeEach(() => {
-    routeState.query = { redirect: '/billing?plan=pro', ref: 'REF123' }
-    locationState.current = { href: 'http://localhost/register?ref=REF123' }
+    routeState.query = { redirect: '/billing?plan=pro', aff: 'REF123' }
+    locationState.current = { href: 'http://localhost/register?aff=REF123' }
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: locationState.current,
@@ -36,7 +36,7 @@ describe('EmailOAuthButtons', () => {
     window.sessionStorage.clear()
   })
 
-  it('passes the local referral code to the email oauth start URL', async () => {
+  it('passes the local affiliate code to the email oauth start URL', async () => {
     const wrapper = mount(EmailOAuthButtons, {
       props: {
         githubEnabled: true,
@@ -53,9 +53,9 @@ describe('EmailOAuthButtons', () => {
     await wrapper.get('button').trigger('click')
 
     expect(locationState.current.href).toBe(
-      '/api/v1/auth/oauth/github/start?redirect=%2Fbilling%3Fplan%3Dpro&ref=REF123'
+      '/api/v1/auth/oauth/github/start?redirect=%2Fbilling%3Fplan%3Dpro&aff=REF123'
     )
-    expect(window.sessionStorage.getItem('email_oauth_referral_code')).toBe('REF123')
+    expect(window.sessionStorage.getItem('oauth_aff_code')).toBe('REF123')
     expect(window.sessionStorage.getItem('email_oauth_pending_provider')).toBe('github')
   })
 

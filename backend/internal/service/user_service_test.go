@@ -182,14 +182,6 @@ func (m *mockUserRepo) ExistsByNormalizedEmail(context.Context, string) (bool, e
 	return false, nil
 }
 func (m *mockUserRepo) LockRegistrationEmail(context.Context, string) error { return nil }
-func (m *mockUserRepo) GetByReferralCode(context.Context, string) (*User, error) {
-	return nil, ErrUserNotFound
-}
-func (m *mockUserRepo) EnsureReferralCode(context.Context, int64) (string, error) { return "", nil }
-func (m *mockUserRepo) CountReferredUsers(context.Context, int64) (int, error)    { return 0, nil }
-func (m *mockUserRepo) SumReferralRewardsByInviter(context.Context, int64) (float64, error) {
-	return 0, nil
-}
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }

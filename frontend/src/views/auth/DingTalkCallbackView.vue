@@ -255,7 +255,7 @@ import {
   type PendingOAuthExchangeResponse
 } from '@/api/auth'
 import {
-  clearAllAffiliateReferralCodes,
+  clearAllAffiliateCodes,
   loadOAuthAffiliateCode,
   oauthAffiliatePayload
 } from '@/utils/oauthAffiliate'
@@ -572,7 +572,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
     clearPendingAuthSession()
-    clearAllAffiliateReferralCodes()
+    clearAllAffiliateCodes()
     appStore.showSuccess(bindSuccessMessage)
     await router.replace(bindRedirect)
     return
@@ -584,7 +584,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
 
   persistOAuthTokenContext(completion)
   await authStore.setToken(completion.access_token)
-  clearAllAffiliateReferralCodes()
+  clearAllAffiliateCodes()
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(redirect)
 }
@@ -732,7 +732,7 @@ async function handleSubmitTotpChallenge() {
       totp_code: code
     })
     await authStore.setToken(completion.access_token)
-    clearAllAffiliateReferralCodes()
+    clearAllAffiliateCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
     await router.replace(redirectTo.value)
   } catch (e: unknown) {
@@ -756,7 +756,7 @@ onMounted(async () => {
     if (legacyLogin) {
       persistOAuthTokenContext(legacyLogin)
       await authStore.setToken(legacyLogin.access_token)
-      clearAllAffiliateReferralCodes()
+      clearAllAffiliateCodes()
       appStore.showSuccess(t('auth.loginSuccess'))
       await router.replace(redirect)
       return

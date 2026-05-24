@@ -176,7 +176,7 @@ describe('RegisterView', () => {
       turnstile_token: undefined,
       promo_code: undefined,
       invitation_code: 'INVITE123',
-      referral_code: undefined,
+      aff_code: undefined,
     })
     expect(showErrorMock).not.toHaveBeenCalled()
     expect(pushMock).toHaveBeenCalledWith('/dashboard')

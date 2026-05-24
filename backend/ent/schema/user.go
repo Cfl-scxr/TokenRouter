@@ -55,11 +55,11 @@ func (User) Fields() []ent.Field {
 			MaxLen(20).
 			Default(domain.StatusActive),
 
-		// Optional profile fields (added later; default '' in DB migration)
+		// 可选资料字段（后续迁移加入，数据库默认值为空字符串）
 		field.String("username").
 			MaxLen(100).
 			Default(""),
-		// wechat field migrated to user_attribute_values (see migration 019)
+		// wechat 字段已迁移到 user_attribute_values（见迁移 019）
 		field.String("notes").
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
@@ -108,19 +108,6 @@ func (User) Fields() []ent.Field {
 		field.Float("total_recharged").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
-		field.String("referral_code").
-			MaxLen(32).
-			Default(""),
-		field.Int64("referred_by_user_id").
-			Optional().
-			Nillable(),
-		field.Float("referral_reward_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
-			Default(0),
-		field.Time("referral_reward_granted_at").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
@@ -153,7 +140,5 @@ func (User) Indexes() []ent.Index {
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
-		index.Fields("referral_code"),
-		index.Fields("referred_by_user_id"),
 	}
 }

@@ -25,7 +25,7 @@ const (
 	emailOAuthStateCookieName   = "email_oauth_state"
 	emailOAuthRedirectCookie    = "email_oauth_redirect"
 	emailOAuthProviderCookie    = "email_oauth_provider"
-	emailOAuthReferralCookie    = "email_oauth_referral"
+	emailOAuthAffCookie         = "email_oauth_aff"
 	emailOAuthCookieMaxAgeSec   = 10 * 60
 	emailOAuthDefaultRedirect   = "/dashboard"
 	emailOAuthDefaultFrontendCB = "/auth/oauth/callback"
@@ -79,10 +79,11 @@ func (h *AuthHandler) emailOAuthStart(c *gin.Context, provider string) {
 	emailOAuthSetCookie(c, emailOAuthStateCookieName, encodeCookieValue(state), secureCookie)
 	emailOAuthSetCookie(c, emailOAuthRedirectCookie, encodeCookieValue(redirectTo), secureCookie)
 	emailOAuthSetCookie(c, emailOAuthProviderCookie, encodeCookieValue(provider), secureCookie)
-	if referralCode := service.NormalizeReferralCode(firstNonEmpty(c.Query("ref"), c.Query("referral_code"))); referralCode != "" {
-		emailOAuthSetCookie(c, emailOAuthReferralCookie, encodeCookieValue(referralCode), secureCookie)
+	// 兼容直接访问邮箱 OAuth start URL 的 aff_code；邀请页仍优先使用更短的 aff。
+	if affCode := strings.TrimSpace(firstNonEmpty(c.Query("aff"), c.Query("aff_code"))); affCode != "" {
+		emailOAuthSetCookie(c, emailOAuthAffCookie, encodeCookieValue(affCode), secureCookie)
 	} else {
-		emailOAuthClearCookie(c, emailOAuthReferralCookie, secureCookie)
+		emailOAuthClearCookie(c, emailOAuthAffCookie, secureCookie)
 	}
 
 	authURL, err := buildEmailOAuthAuthorizeURL(cfg, state)
@@ -119,7 +120,7 @@ func (h *AuthHandler) emailOAuthCallback(c *gin.Context, provider string) {
 		emailOAuthClearCookie(c, emailOAuthStateCookieName, secureCookie)
 		emailOAuthClearCookie(c, emailOAuthRedirectCookie, secureCookie)
 		emailOAuthClearCookie(c, emailOAuthProviderCookie, secureCookie)
-		emailOAuthClearCookie(c, emailOAuthReferralCookie, secureCookie)
+		emailOAuthClearCookie(c, emailOAuthAffCookie, secureCookie)
 	}()
 	expectedState, err := readCookieDecoded(c, emailOAuthStateCookieName)
 	if err != nil || expectedState == "" || expectedState != state {
@@ -169,7 +170,7 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 		AvatarURL:        profile.AvatarURL,
 		UpstreamMetadata: profile.Metadata,
 	}
-	referralCode := h.emailOAuthReferralCode(c)
+	affCode := h.emailOAuthAffCode(c)
 	if shouldCreate, err := h.emailOAuthShouldCreatePendingRegistration(c.Request.Context(), input); err != nil {
 		redirectOAuthError(c, frontendCallback, infraerrors.Reason(err), infraerrors.Message(err), "")
 		return
@@ -182,7 +183,7 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 		return
 	}
 
-	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(c.Request.Context(), input, "", referralCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(c.Request.Context(), input, "", affCode)
 	if err != nil {
 		if errors.Is(err, service.ErrOAuthInvitationRequired) {
 			if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
@@ -238,12 +239,12 @@ func (h *AuthHandler) emailOAuthShouldCreatePendingRegistration(ctx context.Cont
 	return false, nil
 }
 
-func (h *AuthHandler) emailOAuthReferralCode(c *gin.Context) string {
+func (h *AuthHandler) emailOAuthAffCode(c *gin.Context) string {
 	if c == nil {
 		return ""
 	}
-	if code, err := readCookieDecoded(c, emailOAuthReferralCookie); err == nil {
-		return service.NormalizeReferralCode(code)
+	if code, err := readCookieDecoded(c, emailOAuthAffCookie); err == nil {
+		return strings.TrimSpace(code)
 	}
 	return ""
 }
@@ -266,7 +267,7 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 
 	email := strings.TrimSpace(strings.ToLower(profile.Email))
 	username := strings.TrimSpace(profile.Username)
-	referralCode := h.emailOAuthReferralCode(c)
+	affCode := h.emailOAuthAffCode(c)
 	upstreamClaims := map[string]any{
 		"email":            email,
 		"email_verified":   profile.EmailVerified,
@@ -281,8 +282,8 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 	if strings.TrimSpace(profile.AvatarURL) != "" {
 		upstreamClaims["suggested_avatar_url"] = strings.TrimSpace(profile.AvatarURL)
 	}
-	if referralCode != "" {
-		upstreamClaims["referral_code"] = referralCode
+	if affCode != "" {
+		upstreamClaims["aff_code"] = affCode
 	}
 	for key, value := range profile.Metadata {
 		if _, exists := upstreamClaims[key]; !exists {
@@ -329,7 +330,7 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 type completeEmailOAuthRequest struct {
 	Password       string `json:"password" binding:"required,min=6"`
 	InvitationCode string `json:"invitation_code,omitempty"`
-	ReferralCode   string `json:"referral_code,omitempty"`
+	AffCode        string `json:"aff_code,omitempty"`
 }
 
 func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider string) {
@@ -357,9 +358,9 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		return
 	}
 
-	referralCode := service.NormalizeReferralCode(req.ReferralCode)
-	if referralCode == "" {
-		referralCode = service.NormalizeReferralCode(pendingSessionStringValue(session.UpstreamIdentityClaims, "referral_code"))
+	affCode := strings.TrimSpace(req.AffCode)
+	if affCode == "" {
+		affCode = strings.TrimSpace(pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code"))
 	}
 
 	tokenPair, user, err := h.authService.RegisterVerifiedOAuthEmailAccount(
@@ -368,7 +369,6 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		req.Password,
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
-		referralCode,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -410,6 +410,7 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		user,
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
+		affCode,
 	); err != nil {
 		_ = tx.Rollback()
 		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))

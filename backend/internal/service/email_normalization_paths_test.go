@@ -181,22 +181,6 @@ func (s *emailNormalizationRepoStub) LockRegistrationEmail(context.Context, stri
 	panic("unexpected LockRegistrationEmail call")
 }
 
-func (s *emailNormalizationRepoStub) GetByReferralCode(context.Context, string) (*User, error) {
-	return nil, ErrUserNotFound
-}
-
-func (s *emailNormalizationRepoStub) EnsureReferralCode(context.Context, int64) (string, error) {
-	return "referral-code", nil
-}
-
-func (s *emailNormalizationRepoStub) CountReferredUsers(context.Context, int64) (int, error) {
-	return 0, nil
-}
-
-func (s *emailNormalizationRepoStub) SumReferralRewardsByInviter(context.Context, int64) (float64, error) {
-	return 0, nil
-}
-
 func (s *emailNormalizationRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }
@@ -248,6 +232,7 @@ func newEmailNormalizationAuthService(repo UserRepository, settings map[string]s
 		nil,
 		cfg,
 		NewSettingService(&settingRepoStub{values: settings}, cfg),
+		nil,
 		nil,
 		nil,
 		nil,

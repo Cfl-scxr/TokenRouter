@@ -15,10 +15,11 @@ import (
 
 // UserHandler handles user-related requests
 type UserHandler struct {
-	userService  *service.UserService
-	authService  *service.AuthService
-	emailService *service.EmailService
-	emailCache   service.EmailCache
+	userService      *service.UserService
+	authService      *service.AuthService
+	emailService     *service.EmailService
+	emailCache       service.EmailCache
+	affiliateService *service.AffiliateService
 }
 
 // NewUserHandler creates a new UserHandler
@@ -27,12 +28,14 @@ func NewUserHandler(
 	authService *service.AuthService,
 	emailService *service.EmailService,
 	emailCache service.EmailCache,
+	affiliateService *service.AffiliateService,
 ) *UserHandler {
 	return &UserHandler{
-		userService:  userService,
-		authService:  authService,
-		emailService: emailService,
-		emailCache:   emailCache,
+		userService:      userService,
+		authService:      authService,
+		emailService:     emailService,
+		emailCache:       emailCache,
+		affiliateService: affiliateService,
 	}
 }
 
@@ -98,22 +101,43 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	response.Success(c, profileResp)
 }
 
-// GetReferralInfo handles getting the current user's referral information.
-// GET /api/v1/user/referral
-func (h *UserHandler) GetReferralInfo(c *gin.Context) {
+// GetAffiliate 获取当前用户的邀请返利详情。
+// GET /api/v1/user/aff
+func (h *UserHandler) GetAffiliate(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
-	info, err := h.userService.GetReferralInfo(c.Request.Context(), subject.UserID)
+	detail, err := h.affiliateService.GetAffiliateDetail(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	response.Success(c, dto.UserReferralInfoFromService(info))
+	response.Success(c, detail)
+}
+
+// TransferAffiliateQuota 将当前用户可提现的邀请返利额度转入余额。
+// POST /api/v1/user/aff/transfer
+func (h *UserHandler) TransferAffiliateQuota(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	transferred, balance, err := h.affiliateService.TransferAffiliateQuota(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"transferred_quota": transferred,
+		"balance":           balance,
+	})
 }
 
 // ChangePassword handles changing user password

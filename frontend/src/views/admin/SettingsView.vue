@@ -4264,36 +4264,6 @@
 
         <!-- Tab: General -->
         <div v-show="activeTab === 'general'" class="space-y-6">
-          <!-- Referral Reward Settings -->
-          <div class="card">
-            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t('admin.settings.referral.title') }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.referral.description') }}
-              </p>
-            </div>
-            <div class="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.referral.rewardAmount') }}
-                </label>
-                <input
-                  v-model.number="form.referral_reward_amount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="input"
-                  :placeholder="t('admin.settings.referral.rewardAmountPlaceholder')"
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.referral.rewardAmountHint') }}
-                </p>
-              </div>
-            </div>
-          </div>
-
           <!-- Balance Display Settings -->
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -5244,6 +5214,103 @@
 
         <!-- 分页：功能特性 -->
         <div v-show="activeTab === 'features'" class="space-y-6">
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.affiliate.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.affiliate.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.features.affiliate.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.affiliate_enabled" />
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.features.affiliate.rebateRate") }}
+                  </label>
+                  <div class="relative">
+                    <input
+                      v-model.number="form.affiliate_rebate_rate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      class="input pr-8"
+                      placeholder="20"
+                    />
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.rebateRateHint") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.features.affiliate.freezeHours") }}
+                  </label>
+                  <input
+                    v-model.number="form.affiliate_rebate_freeze_hours"
+                    type="number"
+                    min="0"
+                    max="720"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.freezeHoursDesc") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.features.affiliate.durationDays") }}
+                  </label>
+                  <input
+                    v-model.number="form.affiliate_rebate_duration_days"
+                    type="number"
+                    min="0"
+                    max="3650"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.durationDaysDesc") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.features.affiliate.perInviteeCap") }}
+                  </label>
+                  <input
+                    v-model.number="form.affiliate_rebate_per_invitee_cap"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.perInviteeCapDesc") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -6732,9 +6799,13 @@ const form = reactive<SettingsForm>({
   login_agreement_updated_at: "2026-03-31",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
+  affiliate_enabled: false,
+  affiliate_rebate_rate: 20,
+  affiliate_rebate_freeze_hours: 0,
+  affiliate_rebate_duration_days: 0,
+  affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
   default_subscriptions: [],
-  referral_reward_amount: 0,
   balance_unit_name: "USD",
   balance_unit_symbol: "$",
   balance_icon_svg: "",
@@ -7946,12 +8017,25 @@ async function saveSettings() {
       login_agreement_updated_at: form.login_agreement_updated_at,
       login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
+      affiliate_enabled: form.affiliate_enabled,
+      affiliate_rebate_rate: Math.min(
+        100,
+        Math.max(0, Number(form.affiliate_rebate_rate) || 0),
+      ),
+      affiliate_rebate_freeze_hours: Math.max(
+        0,
+        Math.min(720, Math.floor(Number(form.affiliate_rebate_freeze_hours) || 0)),
+      ),
+      affiliate_rebate_duration_days: Math.max(
+        0,
+        Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0)),
+      ),
+      affiliate_rebate_per_invitee_cap: Math.max(
+        0,
+        Number(form.affiliate_rebate_per_invitee_cap) || 0,
+      ),
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
-      referral_reward_amount: Math.max(
-        0,
-        Number(form.referral_reward_amount) || 0,
-      ),
       balance_unit_name: form.balance_unit_name,
       balance_unit_symbol: form.balance_unit_symbol,
       balance_icon_svg: form.balance_icon_svg,

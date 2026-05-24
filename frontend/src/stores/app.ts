@@ -1,6 +1,6 @@
 /**
- * Application State Store
- * Manages global UI state including sidebar, loading indicators, and toast notifications
+ * 应用状态 Store
+ * 统一管理侧边栏、加载状态、站点配置缓存和 toast 通知。
  */
 
 import { defineStore } from 'pinia'
@@ -22,7 +22,7 @@ export const useAppStore = defineStore('app', () => {
   const loading = ref<boolean>(false)
   const toasts = ref<Toast[]>([])
 
-  // Public settings cache state
+  // 公共设置缓存状态
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
   const defaultSiteName = ref<string>('Sub2API')
@@ -33,7 +33,7 @@ export const useAppStore = defineStore('app', () => {
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
 
-  // Version cache state
+  // 版本信息缓存状态
   const versionLoaded = ref<boolean>(false)
   const versionLoading = ref<boolean>(false)
   const currentVersion = ref<string>('')
@@ -42,7 +42,7 @@ export const useAppStore = defineStore('app', () => {
   const buildType = ref<string>('source')
   const releaseInfo = ref<ReleaseInfo | null>(null)
 
-  // Auto-incrementing ID for toasts
+  // toast 自增 ID
   let toastIdCounter = 0
 
   // ==================== Computed ====================
@@ -349,6 +349,7 @@ export const useAppStore = defineStore('app', () => {
         promo_code_enabled: true,
         password_reset_enabled: false,
         invitation_code_enabled: false,
+        affiliate_enabled: false,
         turnstile_enabled: false,
         turnstile_site_key: '',
         site_name: siteName.value,

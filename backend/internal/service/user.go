@@ -1,9 +1,6 @@
 package service
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -51,10 +48,6 @@ type User struct {
 	BalanceNotifyThreshold     *float64
 	BalanceNotifyExtraEmails   []NotifyEmailEntry
 	TotalRecharged             float64
-	ReferralCode               string
-	ReferredByUserID           *int64
-	ReferralRewardAmount       float64
-	ReferralRewardGrantedAt    *time.Time
 
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制）。仅在所用分组未设置 rpm_limit
 	// 且该 (用户, 分组) 无 rpm_override 时作为全局兜底生效，计数键 rpm:u:{userID}:{min}。
@@ -67,12 +60,6 @@ type User struct {
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
-}
-
-type UserReferralInfo struct {
-	ReferralCode string
-	InvitedCount int
-	RewardTotal  float64
 }
 
 func (u *User) IsAdmin() bool {
@@ -112,25 +99,4 @@ func (u *User) SetPassword(password string) error {
 
 func (u *User) CheckPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil
-}
-
-func NormalizeReferralCode(code string) string {
-	code = strings.ToLower(strings.TrimSpace(code))
-	if code == "" || len(code) > 32 {
-		return ""
-	}
-	for _, ch := range code {
-		if (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
-			return ""
-		}
-	}
-	return code
-}
-
-func GenerateReferralCode() (string, error) {
-	buf := make([]byte, 10)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return NormalizeReferralCode(hex.EncodeToString(buf)), nil
 }

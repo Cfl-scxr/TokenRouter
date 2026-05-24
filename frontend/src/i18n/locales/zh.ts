@@ -388,6 +388,11 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
+    affiliate: '邀请返利',
+    affiliateManagement: '邀请返利',
+    affiliateInviteRecords: '邀请记录',
+    affiliateRebateRecords: '返利记录',
+    affiliateTransferRecords: '提取记录',
     profile: '个人资料',
     users: '用户管理',
     groups: '分组管理',
@@ -1068,7 +1073,7 @@ export default {
     concurrencyReducedAdmin: '并发减少（管理员）',
     adminAdjustment: '管理员调整',
     subscriptionAssigned: '订阅已分配',
-    referralReward: '邀请返利',
+    affiliateBalance: '邀请返利转余额',
     subscriptionAssignedDesc: '您已获得 {groupName} 的访问权限',
     subscriptionDays: '{days} 天',
     days: '天',
@@ -1079,6 +1084,52 @@ export default {
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
+  },
+
+  affiliate: {
+    title: '邀请返利',
+    description: '邀请新用户注册，并将返利额度转入账户余额',
+    yourCode: '我的邀请码',
+    inviteLink: '邀请链接',
+    copyCode: '复制邀请码',
+    copyLink: '复制链接',
+    codeCopied: '邀请码已复制',
+    linkCopied: '邀请链接已复制',
+    loadFailed: '加载邀请返利数据失败',
+    transferFailed: '转入余额失败',
+    stats: {
+      rebateRate: '我的返利比例',
+      rebateRateHint: '被邀请用户充值后你可获得的返利比例',
+      invitedUsers: '邀请人数',
+      availableQuota: '可转返利额度',
+      frozenQuota: '冻结中',
+      totalQuota: '历史返利额度'
+    },
+    transfer: {
+      title: '返利额度转余额',
+      description: '将当前可用返利额度转入账户余额',
+      button: '转入余额',
+      transferring: '转入中...',
+      empty: '当前没有可转入额度',
+      success: '已转入余额：{amount}'
+    },
+    invitees: {
+      title: '已邀请用户',
+      empty: '暂无邀请记录',
+      columns: {
+        email: '邮箱',
+        username: '用户名',
+        rebate: '返利明细',
+        joinedAt: '注册时间'
+      }
+    },
+    tips: {
+      title: '使用说明',
+      line1: '将邀请码或邀请链接分享给新用户。',
+      line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
+      line3: '返利额度可随时转入账户余额。',
+      line4: '新产生的返利需要经过冻结期后才能转出。'
+    }
   },
 
   // Profile
@@ -1123,20 +1174,6 @@ export default {
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
     passwordChangeFailed: '密码修改失败',
-    referral: {
-      title: '邀请返利',
-      description: '分享你的专属邀请链接，被邀请人首次成功付费后，双方会自动获得余额返利',
-      inviteLink: '专属邀请链接',
-      inviteLinkHint: '将此链接发送给新用户，被邀请人首次成功付费后系统会自动发放返利',
-      codeLabel: '返利码',
-      totalInvited: '累计邀请人数',
-      totalReward: '累计返利额度',
-      copy: '复制链接',
-      copied: '已复制',
-      copySuccess: '邀请链接已复制',
-      copyFailed: '复制邀请链接失败',
-      loadFailed: '加载邀请信息失败'
-    },
     // TOTP 2FA
     totp: {
       title: '双因素认证 (2FA)',
@@ -1993,6 +2030,49 @@ export default {
       }
     },
 
+    affiliates: {
+      invitesDescription: '查看全站邀请关系和被邀请用户累计返利',
+      rebatesDescription: '查看每一笔产生返利的充值订单',
+      transfersDescription: '查看返利额度转入账户余额的提取流水',
+      errors: {
+        loadFailed: '加载邀请返利记录失败'
+      },
+      records: {
+        search: '搜索',
+        searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
+        startAt: '开始日期',
+        endAt: '结束日期',
+        inviter: '邀请人',
+        invitee: '被邀请人',
+        user: '用户',
+        affCode: '邀请码',
+        order: '订单',
+        totalRebate: '累计返利',
+        orderAmount: '充值金额',
+        payAmount: '支付金额',
+        rebateAmount: '返利金额',
+        paymentType: '支付方式',
+        orderStatus: '订单状态',
+        transferAmount: '提取金额',
+        balanceAfter: '提取后余额',
+        availableQuotaAfter: '提取后可提',
+        frozenQuotaAfter: '提取后冻结',
+        historyQuotaAfter: '提取后历史返利',
+        invitedAt: '邀请时间',
+        rebatedAt: '返利时间',
+        transferredAt: '提取时间'
+      },
+      overview: {
+        title: '用户返利概览',
+        affCode: '邀请码',
+        rebateRate: '返利比例',
+        invitedCount: '邀请人数',
+        rebatedInviteeCount: '已产生返利人数',
+        availableQuota: '可提余额',
+        historyQuota: '历史返利'
+      }
+    },
+
     // Users Management
     users: {
       title: '用户管理',
@@ -2193,7 +2273,7 @@ export default {
       noBalanceHistory: '暂无变动记录',
       allTypes: '全部类型',
       typeBalance: '余额（兑换码）',
-      typeReferralReward: '余额（邀请返利）',
+      typeAffiliateBalance: '余额（邀请返利）',
       typeAdminBalance: '余额（管理员调整）',
       typeConcurrency: '并发（兑换码）',
       typeAdminConcurrency: '并发（管理员调整）',
@@ -4156,7 +4236,7 @@ export default {
         concurrency: '并发数',
         subscription: '订阅',
         invitation: '邀请码',
-        referral_reward: '邀请返利',
+        affiliate_balance: '邀请返利转余额',
         // 管理员在用户管理页面调整余额/并发时产生的记录
         admin_balance: '余额（管理员）',
         admin_concurrency: '并发数（管理员）'
@@ -5256,6 +5336,20 @@ export default {
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
         },
+        affiliate: {
+          title: '邀请返利',
+          description: '老用户邀请新用户注册，新用户充值后老用户按比例获得返利额度。',
+          enabled: '启用邀请返利',
+          enabledHint: '关闭后隐藏邀请返利入口，注册时不再绑定邀请码，新充值不再产生返利。',
+          rebateRate: '全局返利比例',
+          rebateRateHint: '充值后返给邀请人的默认比例，0-100，例如 10 表示返利 10%。',
+          freezeHours: '返利冻结期（小时）',
+          freezeHoursDesc: '新产生的返利在冻结期内不可转出。0 = 不冻结。',
+          durationDays: '返利有效期（天）',
+          durationDaysDesc: '被邀请用户注册后多少天内的充值产生返利。0 = 永久有效。',
+          perInviteeCap: '单人返利上限',
+          perInviteeCapDesc: '每个被邀请用户最多产生的返利总额。0 = 无上限。'
+        },
       },
       registration: {
         title: '注册设置',
@@ -5431,13 +5525,6 @@ export default {
         defaultSubscriptionsDuplicate: '默认订阅存在重复套餐：{planId}。每个套餐只能出现一次。',
         subscriptionGroup: '订阅套餐',
         subscriptionValidityDays: '有效期（天）'
-      },
-      referral: {
-        title: '邀请返利设置',
-        description: '配置被邀请人首次成功付费后发放的余额奖励',
-        rewardAmount: '单次返利额度',
-        rewardAmountPlaceholder: '0.00',
-        rewardAmountHint: '当被邀请人通过邀请链接注册，并完成首次成功付费后，邀请人和被邀请人都会获得这笔余额奖励'
       },
       balanceDisplay: {
         title: '余额展示设置',

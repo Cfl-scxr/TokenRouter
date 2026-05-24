@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1311,8 +1313,35 @@ func TestLogoutClearsPendingOAuthAndBindCookies(t *testing.T) {
 }
 
 func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T) {
-	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, true, "fresh@example.com", "246810")
+	affiliateRepo := newOAuthPendingFlowAffiliateRepo()
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		invitationEnabled:  true,
+		emailVerifyEnabled: true,
+		emailCache: &oauthPendingFlowEmailCacheStub{
+			verificationCodes: map[string]*service.VerificationCodeData{
+				"fresh@example.com": {
+					Code:      "246810",
+					CreatedAt: time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+				},
+			},
+		},
+		settingValues: map[string]string{
+			service.SettingKeyAffiliateEnabled: "true",
+		},
+		affiliateRepo: affiliateRepo,
+	})
 	ctx := context.Background()
+
+	inviter, err := client.User.Create().
+		SetEmail("inviter@example.com").
+		SetUsername("inviter").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	affiliateRepo.setCode(t, inviter.ID, "AFFROLL")
 
 	conflictOwner, err := client.User.Create().
 		SetEmail("owner@example.com").
@@ -1357,7 +1386,7 @@ func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T
 		Save(ctx)
 	require.NoError(t, err)
 
-	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123","invitation_code":"INVITE123"}`)
+	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123","invitation_code":"INVITE123","aff_code":"AFFROLL"}`)
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
@@ -1373,6 +1402,7 @@ func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T
 	userCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh@example.com")).Count(ctx)
 	require.NoError(t, err)
 	require.Zero(t, userCount)
+	require.Equal(t, 0, affiliateRepo.affCountFor(t, inviter.ID))
 
 	storedInvitation, err := client.RedeemCode.Get(ctx, invitation.ID)
 	require.NoError(t, err)
@@ -2121,6 +2151,7 @@ type oauthPendingFlowTestHandlerOptions struct {
 	emailCache         service.EmailCache
 	settingValues      map[string]string
 	defaultSubAssigner service.DefaultSubscriptionAssigner
+	affiliateRepo      service.AffiliateRepository
 	totpCache          service.TotpCache
 	totpEncryptor      service.SecretEncryptor
 	userRepoOptions    oauthPendingFlowUserRepoOptions
@@ -2198,6 +2229,11 @@ CREATE TABLE IF NOT EXISTS user_avatars (
 			},
 		}, options.emailCache)
 	}
+	affiliateRepo := options.affiliateRepo
+	if affiliateRepo == nil {
+		affiliateRepo = newOAuthPendingFlowAffiliateRepo()
+	}
+	affiliateSvc := service.NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
@@ -2210,6 +2246,7 @@ CREATE TABLE IF NOT EXISTS user_avatars (
 		nil,
 		nil,
 		options.defaultSubAssigner,
+		affiliateSvc,
 	)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
 	var totpSvc *service.TotpService
@@ -2666,9 +2703,6 @@ func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.Use
 		SetSignupSource(user.SignupSource).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
-		SetReferralCode(user.ReferralCode).
-		SetNillableReferredByUserID(user.ReferredByUserID).
-		SetReferralRewardAmount(user.ReferralRewardAmount).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -2914,48 +2948,6 @@ func (r *oauthPendingFlowUserRepo) LockRegistrationEmail(context.Context, string
 	return nil
 }
 
-func (r *oauthPendingFlowUserRepo) GetByReferralCode(ctx context.Context, code string) (*service.User, error) {
-	code = service.NormalizeReferralCode(code)
-	if code == "" {
-		return nil, service.ErrUserNotFound
-	}
-	entity, err := r.client.User.Query().Where(dbuser.ReferralCodeEQ(code)).Only(ctx)
-	if err != nil {
-		if dbent.IsNotFound(err) {
-			return nil, service.ErrUserNotFound
-		}
-		return nil, err
-	}
-	return oauthPendingFlowServiceUser(entity), nil
-}
-
-func (r *oauthPendingFlowUserRepo) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	entity, err := r.client.User.Get(ctx, userID)
-	if err != nil {
-		if dbent.IsNotFound(err) {
-			return "", service.ErrUserNotFound
-		}
-		return "", err
-	}
-	code := service.NormalizeReferralCode(entity.ReferralCode)
-	if code != "" {
-		return code, nil
-	}
-	code = service.NormalizeReferralCode("OAUTHFLOW")
-	if err := r.client.User.UpdateOneID(userID).SetReferralCode(code).Exec(ctx); err != nil {
-		return "", err
-	}
-	return code, nil
-}
-
-func (r *oauthPendingFlowUserRepo) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	return r.client.User.Query().Where(dbuser.ReferredByUserIDEQ(userID)).Count(ctx)
-}
-
-func (r *oauthPendingFlowUserRepo) SumReferralRewardsByInviter(context.Context, int64) (float64, error) {
-	return 0, nil
-}
-
 func (r *oauthPendingFlowUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }
@@ -3029,32 +3021,172 @@ func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 		return nil
 	}
 	return &service.User{
-		ID:                   entity.ID,
-		Email:                entity.Email,
-		Username:             entity.Username,
-		Notes:                entity.Notes,
-		PasswordHash:         entity.PasswordHash,
-		Role:                 entity.Role,
-		Balance:              entity.Balance,
-		Concurrency:          entity.Concurrency,
-		Status:               entity.Status,
-		SignupSource:         entity.SignupSource,
-		LastLoginAt:          entity.LastLoginAt,
-		LastActiveAt:         entity.LastActiveAt,
-		TotpSecretEncrypted:  entity.TotpSecretEncrypted,
-		TotpEnabled:          entity.TotpEnabled,
-		TotpEnabledAt:        entity.TotpEnabledAt,
-		TotalRecharged:       entity.TotalRecharged,
-		ReferralCode:         entity.ReferralCode,
-		ReferredByUserID:     entity.ReferredByUserID,
-		ReferralRewardAmount: entity.ReferralRewardAmount,
-		CreatedAt:            entity.CreatedAt,
-		UpdatedAt:            entity.UpdatedAt,
+		ID:                  entity.ID,
+		Email:               entity.Email,
+		Username:            entity.Username,
+		Notes:               entity.Notes,
+		PasswordHash:        entity.PasswordHash,
+		Role:                entity.Role,
+		Balance:             entity.Balance,
+		Concurrency:         entity.Concurrency,
+		Status:              entity.Status,
+		SignupSource:        entity.SignupSource,
+		LastLoginAt:         entity.LastLoginAt,
+		LastActiveAt:        entity.LastActiveAt,
+		TotpSecretEncrypted: entity.TotpSecretEncrypted,
+		TotpEnabled:         entity.TotpEnabled,
+		TotpEnabledAt:       entity.TotpEnabledAt,
+		TotalRecharged:      entity.TotalRecharged,
+		CreatedAt:           entity.CreatedAt,
+		UpdatedAt:           entity.UpdatedAt,
 	}
 }
 
 type oauthPendingFlowDefaultSubAssignerStub struct {
 	calls []service.AssignSubscriptionInput
+}
+
+type oauthPendingFlowAffiliateRepo struct {
+	profiles map[int64]*service.AffiliateSummary
+	byCode   map[string]int64
+}
+
+func newOAuthPendingFlowAffiliateRepo() *oauthPendingFlowAffiliateRepo {
+	return &oauthPendingFlowAffiliateRepo{
+		profiles: make(map[int64]*service.AffiliateSummary),
+		byCode:   make(map[string]int64),
+	}
+}
+
+func (r *oauthPendingFlowAffiliateRepo) EnsureUserAffiliate(_ context.Context, userID int64) (*service.AffiliateSummary, error) {
+	if userID <= 0 {
+		return nil, service.ErrUserNotFound
+	}
+	if profile := r.profiles[userID]; profile != nil {
+		cloned := *profile
+		return &cloned, nil
+	}
+	code := "AFF" + strconv.FormatInt(userID, 10)
+	profile := &service.AffiliateSummary{
+		UserID:    userID,
+		AffCode:   code,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	r.profiles[userID] = profile
+	r.byCode[code] = userID
+	cloned := *profile
+	return &cloned, nil
+}
+
+func (r *oauthPendingFlowAffiliateRepo) GetAffiliateByCode(_ context.Context, code string) (*service.AffiliateSummary, error) {
+	userID := r.byCode[strings.ToUpper(strings.TrimSpace(code))]
+	if userID <= 0 {
+		return nil, service.ErrAffiliateProfileNotFound
+	}
+	return r.EnsureUserAffiliate(context.Background(), userID)
+}
+
+func (r *oauthPendingFlowAffiliateRepo) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
+	profile, err := r.EnsureUserAffiliate(context.Background(), userID)
+	if err != nil {
+		return false, err
+	}
+	inviter, err := r.EnsureUserAffiliate(context.Background(), inviterID)
+	if err != nil {
+		return false, err
+	}
+	if profile.InviterID != nil {
+		return false, nil
+	}
+	stored := r.profiles[userID]
+	stored.InviterID = &inviterID
+	stored.UpdatedAt = time.Now().UTC()
+	r.profiles[inviterID].AffCount = inviter.AffCount + 1
+	return true, nil
+}
+
+func (r *oauthPendingFlowAffiliateRepo) setCode(t *testing.T, userID int64, code string) {
+	t.Helper()
+	profile, err := r.EnsureUserAffiliate(context.Background(), userID)
+	require.NoError(t, err)
+	delete(r.byCode, profile.AffCode)
+	normalized := strings.ToUpper(strings.TrimSpace(code))
+	stored := r.profiles[userID]
+	stored.AffCode = normalized
+	stored.AffCodeCustom = true
+	r.byCode[normalized] = userID
+}
+
+func (r *oauthPendingFlowAffiliateRepo) inviterIDFor(t *testing.T, userID int64) int64 {
+	t.Helper()
+	profile := r.profiles[userID]
+	require.NotNil(t, profile)
+	require.NotNil(t, profile.InviterID)
+	return *profile.InviterID
+}
+
+func (r *oauthPendingFlowAffiliateRepo) affCountFor(t *testing.T, userID int64) int {
+	t.Helper()
+	profile := r.profiles[userID]
+	require.NotNil(t, profile)
+	return profile.AffCount
+}
+
+func (r *oauthPendingFlowAffiliateRepo) AccrueQuota(context.Context, int64, int64, float64, int, *int64) (bool, error) {
+	panic("unexpected AccrueQuota call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
+	panic("unexpected GetAccruedRebateFromInvitee call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
+func (r *oauthPendingFlowAffiliateRepo) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ListInvitees(context.Context, int64, int) ([]service.AffiliateInvitee, error) {
+	return nil, nil
+}
+
+func (r *oauthPendingFlowAffiliateRepo) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) SetUserRebateRate(context.Context, int64, *float64) error {
+	panic("unexpected SetUserRebateRate call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
+	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ListUsersWithCustomSettings(context.Context, service.AffiliateAdminFilter) ([]service.AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ListAffiliateInviteRecords(context.Context, service.AffiliateRecordFilter) ([]service.AffiliateInviteRecord, int64, error) {
+	panic("unexpected ListAffiliateInviteRecords call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ListAffiliateRebateRecords(context.Context, service.AffiliateRecordFilter) ([]service.AffiliateRebateRecord, int64, error) {
+	panic("unexpected ListAffiliateRebateRecords call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) ListAffiliateTransferRecords(context.Context, service.AffiliateRecordFilter) ([]service.AffiliateTransferRecord, int64, error) {
+	panic("unexpected ListAffiliateTransferRecords call")
+}
+
+func (r *oauthPendingFlowAffiliateRepo) GetAffiliateUserOverview(context.Context, int64) (*service.AffiliateUserOverview, error) {
+	panic("unexpected GetAffiliateUserOverview call")
 }
 
 func (s *oauthPendingFlowDefaultSubAssignerStub) AssignOrExtendSubscription(

@@ -436,6 +436,7 @@ func (h *AuthHandler) createLinuxDoOAuthChoicePendingSession(
 
 type completeLinuxDoOAuthRequest struct {
 	InvitationCode   string `json:"invitation_code" binding:"required"`
+	AffCode          string `json:"aff_code,omitempty"` // 邀请返利码，仅注册新用户时绑定邀请关系。
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
@@ -519,7 +520,7 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairForSource(c.Request.Context(), email, username, req.InvitationCode, "", "linuxdo")
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairForSource(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "linuxdo")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

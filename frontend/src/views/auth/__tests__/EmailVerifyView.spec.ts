@@ -112,6 +112,7 @@ describe('EmailVerifyView', () => {
     apiClientPostMock.mockReset()
     authStoreState.pendingAuthSession = null
     sessionStorage.clear()
+    localStorage.clear()
 
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
@@ -412,6 +413,11 @@ describe('EmailVerifyView', () => {
   })
 
   it('keeps the normal email registration flow unchanged', async () => {
+    localStorage.setItem(
+      'affiliate_aff_code',
+      JSON.stringify({ code: 'AFF-OLD', expiresAt: Date.now() + 60000 })
+    )
+    sessionStorage.setItem('oauth_aff_code', 'AFF-OLD')
     sessionStorage.setItem(
       'register_data',
       JSON.stringify({
@@ -446,8 +452,11 @@ describe('EmailVerifyView', () => {
       turnstile_token: undefined,
       promo_code: 'PROMO',
       invitation_code: 'INVITE',
+      aff_code: 'AFF-OLD',
     })
     expect(apiClientPostMock).not.toHaveBeenCalled()
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
+    expect(localStorage.getItem('affiliate_aff_code')).toBeNull()
+    expect(sessionStorage.getItem('oauth_aff_code')).toBeNull()
   })
 })

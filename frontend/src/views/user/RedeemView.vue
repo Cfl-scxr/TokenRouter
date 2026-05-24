@@ -97,7 +97,7 @@
                 </h3>
                 <div class="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
                   <div class="mt-3 space-y-1">
-                    <p v-if="redeemResult.type === 'balance' || redeemResult.type === 'referral_reward'" class="font-medium">
+                    <p v-if="redeemResult.type === 'balance' || redeemResult.type === 'affiliate_balance'" class="font-medium">
                       {{ t('redeem.added') }}: {{ formatSignedBalanceAmount(redeemResult.value, 2) }}
                     </p>
                     <p
@@ -380,7 +380,7 @@ const redeemErrorMap = computed<Record<string, string>>(() => ({
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance' || type === 'referral_reward'
+  return type === 'balance' || type === 'admin_balance' || type === 'affiliate_balance'
 }
 
 const isSubscriptionType = (type: string) => {
@@ -402,8 +402,8 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
     return item.value >= 0 ? t('redeem.concurrencyAddedAdmin') : t('redeem.concurrencyReducedAdmin')
   } else if (item.type === 'subscription') {
     return t('redeem.subscriptionAssigned')
-  } else if (item.type === 'referral_reward') {
-    return t('redeem.referralReward')
+  } else if (item.type === 'affiliate_balance') {
+    return t('redeem.affiliateBalance')
   }
   return t('common.unknown')
 }

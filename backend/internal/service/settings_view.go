@@ -20,7 +20,6 @@ type SystemSettings struct {
 	PasswordResetEnabled             bool
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
-	ReferralRewardAmount             float64
 	TotpEnabled                      bool // TOTP 双因素认证
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
@@ -154,14 +153,19 @@ type SystemSettings struct {
 	DefaultConcurrency int
 	DefaultBalance     float64
 	// RiskControlEnabled 控制风控中心入口和网关内容审计总开关。
-	RiskControlEnabled         bool
-	DefaultUserRPMLimit        int
-	DefaultSubscriptions       []DefaultSubscriptionSetting
-	BalanceUnitName            string
-	BalanceUnitSymbol          string
-	BalanceIconSVG             string
-	ReasoningPointRMBUnitPrice float64
-	USDExchangeRate            float64
+	RiskControlEnabled            bool
+	AffiliateEnabled              bool
+	AffiliateRebateRate           float64
+	AffiliateRebateFreezeHours    int
+	AffiliateRebateDurationDays   int
+	AffiliateRebatePerInviteeCap  float64
+	DefaultUserRPMLimit           int
+	DefaultSubscriptions          []DefaultSubscriptionSetting
+	BalanceUnitName               string
+	BalanceUnitSymbol             string
+	BalanceIconSVG                string
+	ReasoningPointRMBUnitPrice    float64
+	USDExchangeRate               float64
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -285,12 +289,13 @@ type PublicSettings struct {
 	BalanceIconSVG           string
 
 	BalanceLowNotifyEnabled   bool
-	AccountQuotaNotifyEnabled bool
-	// RiskControlEnabled 暴露给前端用于控制风控中心入口显示。
-	RiskControlEnabled          bool
-	BalanceLowNotifyThreshold   float64
-	BalanceLowNotifyRechargeURL string
-}
+		AccountQuotaNotifyEnabled bool
+		// RiskControlEnabled 暴露给前端用于控制风控中心入口显示。
+		RiskControlEnabled          bool
+		AffiliateEnabled            bool
+		BalanceLowNotifyThreshold   float64
+		BalanceLowNotifyRechargeURL string
+	}
 
 type LoginAgreementDocument struct {
 	ID        string `json:"id"`

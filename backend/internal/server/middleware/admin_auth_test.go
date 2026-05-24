@@ -20,7 +20,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
-	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil)
+	authService := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
 
 	admin := &service.User{
 		ID:           1,
@@ -227,22 +227,6 @@ func (s *stubUserRepo) ExistsByNormalizedEmail(ctx context.Context, normalizedEm
 }
 func (s *stubUserRepo) LockRegistrationEmail(ctx context.Context, normalizedEmail string) error {
 	panic("unexpected LockRegistrationEmail call")
-}
-
-func (s *stubUserRepo) GetByReferralCode(ctx context.Context, code string) (*service.User, error) {
-	panic("unexpected GetByReferralCode call")
-}
-
-func (s *stubUserRepo) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	panic("unexpected EnsureReferralCode call")
-}
-
-func (s *stubUserRepo) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	panic("unexpected CountReferredUsers call")
-}
-
-func (s *stubUserRepo) SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error) {
-	panic("unexpected SumReferralRewardsByInviter call")
 }
 
 func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

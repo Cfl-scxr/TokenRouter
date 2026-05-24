@@ -1,21 +1,20 @@
-const OAUTH_AFFILIATE_REFERRAL_KEY = 'oauth_affiliate_referral_code'
-const EMAIL_OAUTH_PENDING_REFERRAL_KEY = 'email_oauth_referral_code'
+const OAUTH_AFFILIATE_CODE_KEY = 'oauth_aff_code'
+const AFFILIATE_CODE_KEY = 'affiliate_aff_code'
+const AFFILIATE_CODE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
-// OAuth 跳转会离开前端页面，返利码需要暂存在 sessionStorage 中跨回调读取。
-export function firstOAuthAffiliateQueryValue(value: unknown): string {
-  if (typeof value === 'string') {
-    return value.trim()
-  }
-  if (Array.isArray(value)) {
-    const item = value.find((entry) => typeof entry === 'string' && entry.trim())
-    return typeof item === 'string' ? item.trim() : ''
-  }
-  return ''
+interface StoredAffiliateCode {
+  code: string
+  expiresAt: number
 }
 
-export function resolveAffiliateReferralCode(...values: unknown[]): string {
+export function normalizeOAuthAffiliateCode(value?: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+export function pickOAuthAffiliateCode(...values: unknown[]): string {
   for (const value of values) {
-    const code = firstOAuthAffiliateQueryValue(value)
+    const code = normalizeOAuthAffiliateCode(value)
     if (code) {
       return code
     }
@@ -23,35 +22,113 @@ export function resolveAffiliateReferralCode(...values: unknown[]): string {
   return ''
 }
 
-export function storeOAuthAffiliateCode(code: string): void {
+export function storeAffiliateCode(value?: unknown, now = Date.now()): void {
   if (typeof window === 'undefined') {
     return
   }
-
-  const normalized = code.trim()
-  if (normalized) {
-    window.sessionStorage.setItem(OAUTH_AFFILIATE_REFERRAL_KEY, normalized)
+  const code = normalizeOAuthAffiliateCode(value)
+  if (!code) {
     return
   }
-  window.sessionStorage.removeItem(OAUTH_AFFILIATE_REFERRAL_KEY)
+  try {
+    // aff 参数来自邀请链接，短期保存在本地便于注册页和 OAuth 跳转共享。
+    const payload: StoredAffiliateCode = {
+      code,
+      expiresAt: now + AFFILIATE_CODE_TTL_MS
+    }
+    window.localStorage.setItem(AFFILIATE_CODE_KEY, JSON.stringify(payload))
+  } catch {
+    // 忽略浏览器存储异常，注册流程仍可继续。
+  }
+}
+
+export function loadAffiliateCode(now = Date.now()): string {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  try {
+    const raw = window.localStorage.getItem(AFFILIATE_CODE_KEY)
+    if (!raw) {
+      return ''
+    }
+    const parsed = JSON.parse(raw) as Partial<StoredAffiliateCode>
+    const code = normalizeOAuthAffiliateCode(parsed.code)
+    const expiresAt = Number(parsed.expiresAt) || 0
+    if (!code || expiresAt <= now) {
+      clearAffiliateCode()
+      return ''
+    }
+    return code
+  } catch {
+    clearAffiliateCode()
+    return ''
+  }
+}
+
+export function clearAffiliateCode(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.removeItem(AFFILIATE_CODE_KEY)
+  } catch {
+    // 忽略浏览器存储异常。
+  }
+}
+
+export function resolveAffiliateCode(...values: unknown[]): string {
+  const code = pickOAuthAffiliateCode(...values)
+  if (code) {
+    storeAffiliateCode(code)
+    return code
+  }
+  return loadAffiliateCode()
+}
+
+export function storeOAuthAffiliateCode(value?: unknown): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const code = normalizeOAuthAffiliateCode(value)
+  try {
+    if (code) {
+      window.sessionStorage.setItem(OAUTH_AFFILIATE_CODE_KEY, code)
+    } else {
+      window.sessionStorage.removeItem(OAUTH_AFFILIATE_CODE_KEY)
+    }
+  } catch {
+    // 忽略浏览器存储异常。
+  }
 }
 
 export function loadOAuthAffiliateCode(): string {
   if (typeof window === 'undefined') {
     return ''
   }
-  return window.sessionStorage.getItem(OAUTH_AFFILIATE_REFERRAL_KEY)?.trim() || ''
+  try {
+    return normalizeOAuthAffiliateCode(window.sessionStorage.getItem(OAUTH_AFFILIATE_CODE_KEY))
+  } catch {
+    return ''
+  }
 }
 
-export function oauthAffiliatePayload(code: string): { aff_code?: string } {
-  const normalized = code.trim()
-  return normalized ? { aff_code: normalized } : {}
-}
-
-export function clearAllAffiliateReferralCodes(): void {
+export function clearOAuthAffiliateCode(): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.sessionStorage.removeItem(OAUTH_AFFILIATE_REFERRAL_KEY)
-  window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_REFERRAL_KEY)
+  try {
+    window.sessionStorage.removeItem(OAUTH_AFFILIATE_CODE_KEY)
+  } catch {
+    // 忽略浏览器存储异常。
+  }
+}
+
+export function oauthAffiliatePayload(code: string): { aff_code?: string } {
+  const normalized = normalizeOAuthAffiliateCode(code)
+  return normalized ? { aff_code: normalized } : {}
+}
+
+export function clearAllAffiliateCodes(): void {
+  clearOAuthAffiliateCode()
+  clearAffiliateCode()
 }

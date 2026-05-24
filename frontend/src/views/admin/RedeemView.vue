@@ -48,7 +48,7 @@
               <Icon name="edit" size="md" class="mr-2" />
               {{ t('admin.redeem.batchUpdate') }}
             </button>
-            <button @click="showGenerateDialog = true" class="btn btn-primary">
+            <button data-testid="generate-open" @click="showGenerateDialog = true" class="btn btn-primary">
               {{ t('admin.redeem.generateCodes') }}
             </button>
           </div>
@@ -117,7 +117,7 @@
             <span
               :class="[
                 'badge',
-                value === 'balance' || value === 'referral_reward'
+                value === 'balance' || value === 'affiliate_balance'
                   ? 'badge-success'
                   : value === 'subscription'
                     ? 'badge-warning'
@@ -130,7 +130,7 @@
 
           <template #cell-value="{ value, row }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              <template v-if="row.type === 'balance' || row.type === 'referral_reward'">
+              <template v-if="row.type === 'balance' || row.type === 'affiliate_balance'">
                 {{ formatBalanceAmount(value, { fractionDigits: 2 }) }}
               </template>
               <template v-else-if="row.type === 'subscription'">
@@ -281,7 +281,7 @@
           <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('admin.redeem.generateCodesTitle') }}
           </h2>
-          <form @submit.prevent="handleGenerateCodes" class="space-y-4">
+          <form data-testid="generate-form" @submit.prevent="handleGenerateCodes" class="space-y-4">
             <div>
               <label class="input-label">
                 {{ t('admin.redeem.customCode') }}
@@ -340,35 +340,30 @@
                 />
               </div>
             </template>
-            <template>
-              <div>
-                <label class="input-label">{{ t('admin.redeem.maxUses') }}</label>
-                <input
-                  v-model.number="generateForm.max_uses"
-                  type="number"
-                  min="0"
-                  required
-                  class="input"
-                  :disabled="generateForm.type === 'invitation'"
-                />
-                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-                  {{ t('admin.redeem.maxUsesHint') }}
-                </p>
-              </div>
-              <div>
-                <label class="input-label">
-                  {{ t('admin.redeem.expiresAt') }}
-                  <span class="ml-1 text-xs font-normal text-gray-400">
-                    ({{ t('common.optional') }})
-                  </span>
-                </label>
-                <input
-                  v-model="generateForm.expires_at_str"
-                  type="datetime-local"
-                  class="input"
-                />
-              </div>
-            </template>
+            <div>
+              <label class="input-label">{{ t('admin.redeem.maxUses') }}</label>
+              <input
+                data-testid="generate-max-uses"
+                v-model.number="generateForm.max_uses"
+                type="number"
+                min="0"
+                required
+                class="input"
+                :disabled="generateForm.type === 'invitation'"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                {{ t('admin.redeem.maxUsesHint') }}
+              </p>
+            </div>
+            <div>
+              <label class="input-label">
+                {{ t('admin.redeem.expiresAt') }}
+                <span class="ml-1 text-xs font-normal text-gray-400">
+                  ({{ t('common.optional') }})
+                </span>
+              </label>
+              <input v-model="generateForm.expires_at_str" type="datetime-local" class="input" />
+            </div>
             <div>
               <label class="input-label">{{ t('admin.redeem.count') }}</label>
               <input
@@ -785,7 +780,7 @@ const typeOptions = computed(() => [
 const filterTypeOptions = computed(() => [
   { value: '', label: t('admin.redeem.allTypes') },
   { value: 'balance', label: t('admin.redeem.balance') },
-  { value: 'referral_reward', label: t('admin.redeem.types.referral_reward') },
+  { value: 'affiliate_balance', label: t('admin.redeem.types.affiliate_balance') },
   { value: 'concurrency', label: t('admin.redeem.concurrency') },
   { value: 'subscription', label: t('admin.redeem.subscription') },
   { value: 'invitation', label: t('admin.redeem.invitation') }

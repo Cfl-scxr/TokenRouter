@@ -224,7 +224,7 @@ func TestRedeemBatchUpdate_NullExpiresAtClearsExpiry(t *testing.T) {
 	status := service.StatusDisabled
 	notes := "批量维护"
 	repo := &batchUpdateRedeemRepoStub{}
-	redeemSvc := service.NewRedeemService(repo, nil, nil, nil, nil, nil, nil)
+	redeemSvc := service.NewRedeemService(repo, nil, nil, nil, nil, nil, nil, nil)
 	h := NewRedeemHandler(newStubAdminService(), redeemSvc)
 
 	w := httptest.NewRecorder()

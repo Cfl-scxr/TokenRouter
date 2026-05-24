@@ -72,6 +72,7 @@ type AuthService struct {
 	turnstileService     *TurnstileService
 	emailQueueService    *EmailQueueService
 	promoService         *PromoService
+	affiliateService     *AffiliateService
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	billingCache         BillingCache
@@ -100,6 +101,7 @@ func NewAuthService(
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
 ) *AuthService {
 	return &AuthService{
 		entClient:          entClient,
@@ -112,6 +114,7 @@ func NewAuthService(
 		turnstileService:   turnstileService,
 		emailQueueService:  emailQueueService,
 		promoService:       promoService,
+		affiliateService:   affiliateService,
 		defaultSubAssigner: defaultSubAssigner,
 	}
 }
@@ -130,15 +133,11 @@ func (s *AuthService) EntClient() *dbent.Client {
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "")
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
 }
 
-// RegisterWithVerification 用户注册（支持邮件验证、优惠码和邀请码），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode string) (string, *User, error) {
-	return s.RegisterWithReferral(ctx, email, password, verifyCode, promoCode, invitationCode, "")
-}
-
-func (s *AuthService) RegisterWithReferral(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, referralCode string) (string, *User, error) {
+// RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -160,7 +159,7 @@ func (s *AuthService) RegisterWithReferral(ctx context.Context, email, password,
 		return "", nil, ErrEmailExists
 	}
 
-	artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, referralCode, ErrInvitationCodeRequired)
+	artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, ErrInvitationCodeRequired)
 	if err != nil {
 		return "", nil, err
 	}
@@ -206,11 +205,6 @@ func (s *AuthService) RegisterWithReferral(ctx context.Context, email, password,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
-	if artifacts.inviter != nil {
-		user.ReferredByUserID = &artifacts.inviter.ID
-		user.ReferralRewardAmount = artifacts.rewardAmount
-	}
-
 	if err := s.createRegisteredUser(ctx, user, artifacts); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
@@ -224,6 +218,7 @@ func (s *AuthService) RegisterWithReferral(ctx context.Context, email, password,
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
+	s.bindRegistrationAffiliate(ctx, user.ID, affiliateCode)
 
 	// 应用优惠码（如果提供且功能已启用）
 	if promoCode != "" && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
@@ -559,21 +554,18 @@ func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context,
 // LoginOrRegisterOAuthWithTokenPair 用于第三方 OAuth/SSO 登录，返回完整的 TokenPair。
 // 与 LoginOrRegisterOAuth 功能相同，但返回 TokenPair 而非单个 token。
 // invitationCode 仅在邀请码注册模式下新用户注册时使用；已有账号登录时忽略。
-func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode string) (*TokenPair, *User, error) {
-	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, "", "")
-}
-
-func (s *AuthService) LoginOrRegisterOAuthWithTokenPairAndReferral(ctx context.Context, email, username, invitationCode, referralCode string) (*TokenPair, *User, error) {
-	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, referralCode, "")
+// affiliateCode 是邀请返利码，仅在新用户注册时生效；signupSource 用于渠道默认授权和钉钉注册豁免。
+func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, signupSource string) (*TokenPair, *User, error) {
+	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, affiliateCode, signupSource)
 }
 
 // LoginOrRegisterOAuthWithTokenPairForSource 用于需要显式记录 OAuth 来源的第三方登录。
 // affiliateCode 是邀请返利码，仅在新用户注册时生效；signupSource 用于渠道默认授权和钉钉注册豁免。
 func (s *AuthService) LoginOrRegisterOAuthWithTokenPairForSource(ctx context.Context, email, username, invitationCode, affiliateCode, signupSource string) (*TokenPair, *User, error) {
-	return s.loginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, affiliateCode, signupSource)
+	return s.LoginOrRegisterOAuthWithTokenPair(ctx, email, username, invitationCode, affiliateCode, signupSource)
 }
 
-func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, referralCode, signupSource string) (*TokenPair, *User, error) {
+func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, signupSource string) (*TokenPair, *User, error) {
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, nil, errors.New("refresh token cache not configured")
@@ -600,7 +592,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				return nil, nil, ErrRegDisabled
 			}
 
-			artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, referralCode, ErrOAuthInvitationRequired)
+			artifacts, err := s.resolveRegistrationArtifacts(ctx, invitationCode, ErrOAuthInvitationRequired)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -637,11 +629,6 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
-			if artifacts.inviter != nil {
-				newUser.ReferredByUserID = &artifacts.inviter.ID
-				newUser.ReferralRewardAmount = artifacts.rewardAmount
-			}
-
 			if err := s.createRegisteredUser(ctx, newUser, artifacts); err != nil {
 				if errors.Is(err, ErrEmailExists) {
 					user, err = s.userRepo.GetByEmail(ctx, email)
@@ -662,6 +649,7 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				user = newUser
 				s.postAuthUserBootstrap(ctx, user, signupSource, false)
 				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
+				s.bindRegistrationAffiliate(ctx, user.ID, affiliateCode)
 			}
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -686,33 +674,33 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 	return tokenPair, user, nil
 }
 
-// pendingOAuthTokenTTL is the validity period for pending OAuth tokens.
+// pendingOAuthTokenTTL 是待补全 OAuth 注册 token 的有效期。
 const pendingOAuthTokenTTL = 10 * time.Minute
 
-// pendingOAuthPurpose is the purpose claim value for pending OAuth registration tokens.
+// pendingOAuthPurpose 是待补全 OAuth 注册 token 的用途标记。
 const pendingOAuthPurpose = "pending_oauth_registration"
 
 type pendingOAuthClaims struct {
-	Email        string `json:"email"`
-	Username     string `json:"username"`
-	ReferralCode string `json:"referral_code,omitempty"`
-	Purpose      string `json:"purpose"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	AffCode  string `json:"aff_code,omitempty"`
+	Purpose  string `json:"purpose"`
 	jwt.RegisteredClaims
 }
 
-// CreatePendingOAuthToken generates a short-lived JWT that carries the OAuth identity
-// while waiting for the user to supply an invitation code.
+// CreatePendingOAuthToken 生成短期 JWT，用于在用户补全邀请码时暂存 OAuth 身份。
 func (s *AuthService) CreatePendingOAuthToken(email, username string) (string, error) {
-	return s.CreatePendingOAuthTokenWithReferral(email, username, "")
+	return s.CreatePendingOAuthTokenWithAffiliate(email, username, "")
 }
 
-func (s *AuthService) CreatePendingOAuthTokenWithReferral(email, username, referralCode string) (string, error) {
+// CreatePendingOAuthTokenWithAffiliate 生成带邀请返利码的待补全 OAuth token。
+func (s *AuthService) CreatePendingOAuthTokenWithAffiliate(email, username, affiliateCode string) (string, error) {
 	now := time.Now()
 	claims := &pendingOAuthClaims{
-		Email:        email,
-		Username:     username,
-		ReferralCode: NormalizeReferralCode(referralCode),
-		Purpose:      pendingOAuthPurpose,
+		Email:    email,
+		Username: username,
+		AffCode:  strings.TrimSpace(affiliateCode),
+		Purpose:  pendingOAuthPurpose,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(pendingOAuthTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -724,9 +712,9 @@ func (s *AuthService) CreatePendingOAuthTokenWithReferral(email, username, refer
 }
 
 type PendingOAuthIdentity struct {
-	Email        string
-	Username     string
-	ReferralCode string
+	Email    string
+	Username string
+	AffCode  string
 }
 
 // VerifyPendingOAuthToken validates a pending OAuth token and returns the embedded identity.
@@ -761,9 +749,9 @@ func (s *AuthService) VerifyPendingOAuthTokenDetails(tokenStr string) (*PendingO
 		return nil, ErrInvalidToken
 	}
 	return &PendingOAuthIdentity{
-		Email:        claims.Email,
-		Username:     claims.Username,
-		ReferralCode: NormalizeReferralCode(claims.ReferralCode),
+		Email:    claims.Email,
+		Username: claims.Username,
+		AffCode:  strings.TrimSpace(claims.AffCode),
 	}, nil
 }
 
@@ -784,11 +772,9 @@ func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, ite
 
 type registrationArtifacts struct {
 	invitationRedeemCode *RedeemCode
-	inviter              *User
-	rewardAmount         float64
 }
 
-func (s *AuthService) resolveRegistrationArtifacts(ctx context.Context, invitationCode, referralCode string, missingInvitationErr error) (*registrationArtifacts, error) {
+func (s *AuthService) resolveRegistrationArtifacts(ctx context.Context, invitationCode string, missingInvitationErr error) (*registrationArtifacts, error) {
 	artifacts := &registrationArtifacts{}
 
 	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
@@ -807,29 +793,23 @@ func (s *AuthService) resolveRegistrationArtifacts(ctx context.Context, invitati
 		artifacts.invitationRedeemCode = redeemCode
 	}
 
-	normalizedReferralCode := NormalizeReferralCode(referralCode)
-	if normalizedReferralCode == "" || s.userRepo == nil {
-		return artifacts, nil
-	}
-
-	inviter, err := s.userRepo.GetByReferralCode(ctx, normalizedReferralCode)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return artifacts, nil
-		}
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to resolve referral code %s: %v", normalizedReferralCode, err)
-		return nil, ErrServiceUnavailable
-	}
-
-	artifacts.inviter = inviter
-	if s.settingService != nil {
-		artifacts.rewardAmount = s.settingService.GetReferralRewardAmount(ctx)
-	}
-	if artifacts.rewardAmount < 0 {
-		artifacts.rewardAmount = 0
-	}
-
 	return artifacts, nil
+}
+
+func (s *AuthService) bindRegistrationAffiliate(ctx context.Context, userID int64, affiliateCode string) {
+	if s == nil || s.affiliateService == nil || userID <= 0 {
+		return
+	}
+	if _, err := s.affiliateService.EnsureUserAffiliate(ctx, userID); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", userID, err)
+		return
+	}
+	if code := strings.TrimSpace(affiliateCode); code != "" {
+		if err := s.affiliateService.BindInviterByCode(ctx, userID, code); err != nil {
+			// 邀请返利码绑定失败不影响注册结果，只记录日志便于排查。
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", userID, err)
+		}
+	}
 }
 
 func (s *AuthService) createRegisteredUser(ctx context.Context, user *User, artifacts *registrationArtifacts) error {
@@ -864,12 +844,6 @@ func (s *AuthService) createRegisteredUser(ctx context.Context, user *User, arti
 		if err := s.userRepo.Create(runCtx, user); err != nil {
 			return err
 		}
-
-		referralCode, err := s.userRepo.EnsureReferralCode(runCtx, user.ID)
-		if err != nil {
-			return err
-		}
-		user.ReferralCode = referralCode
 
 		if artifacts.invitationRedeemCode != nil {
 			if err := s.redeemRepo.Use(runCtx, artifacts.invitationRedeemCode.ID, user.ID); err != nil {

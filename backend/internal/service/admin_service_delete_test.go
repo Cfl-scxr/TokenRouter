@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strconv"
 	"testing"
 	"time"
 
@@ -173,45 +172,6 @@ func (s *userRepoStub) ExistsByNormalizedEmail(ctx context.Context, normalizedEm
 
 func (s *userRepoStub) LockRegistrationEmail(ctx context.Context, normalizedEmail string) error {
 	return nil
-}
-
-func (s *userRepoStub) GetByReferralCode(ctx context.Context, code string) (*User, error) {
-	if s.user != nil && s.user.ReferralCode == code {
-		return s.user, nil
-	}
-	for _, user := range s.created {
-		if user != nil && user.ReferralCode == code {
-			return user, nil
-		}
-	}
-	return nil, ErrUserNotFound
-}
-
-func (s *userRepoStub) EnsureReferralCode(ctx context.Context, userID int64) (string, error) {
-	referralCode := NormalizeReferralCode("ref-" + strconv.FormatInt(userID, 10))
-	if s.user != nil && s.user.ID == userID {
-		if s.user.ReferralCode == "" {
-			s.user.ReferralCode = referralCode
-		}
-		return s.user.ReferralCode, nil
-	}
-	for _, user := range s.created {
-		if user != nil && user.ID == userID {
-			if user.ReferralCode == "" {
-				user.ReferralCode = referralCode
-			}
-			return user.ReferralCode, nil
-		}
-	}
-	return referralCode, nil
-}
-
-func (s *userRepoStub) CountReferredUsers(ctx context.Context, userID int64) (int, error) {
-	return 0, nil
-}
-
-func (s *userRepoStub) SumReferralRewardsByInviter(ctx context.Context, userID int64) (float64, error) {
-	return 0, nil
 }
 
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
@@ -800,7 +760,7 @@ func TestAdminService_UpdateRedeemCode_InvitationKeepsExpiry(t *testing.T) {
 func TestAdminService_UpdateRedeemCode_RejectsSystemRecords(t *testing.T) {
 	maxUses := 2
 	repo := &redeemRepoStub{codesByID: map[int64]*RedeemCode{
-		1: {ID: 1, Code: "R-1", Type: RedeemTypeReferralReward, Value: 10, Status: StatusUsed, MaxUses: 1, UsedCount: 1},
+		1: {ID: 1, Code: "AFF-1", Type: RedeemTypeAffiliateBalance, Value: 10, Status: StatusUsed, MaxUses: 1, UsedCount: 1},
 	}}
 	svc := &adminServiceImpl{redeemCodeRepo: repo}
 

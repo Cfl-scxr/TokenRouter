@@ -3,9 +3,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import RedeemView from '../RedeemView.vue'
 
-const { listRedeemCodes, batchUpdateRedeemCodes, getPlans, showSuccess, showError, showInfo } =
+const {
+  listRedeemCodes,
+  generateRedeemCodes,
+  batchUpdateRedeemCodes,
+  getPlans,
+  showSuccess,
+  showError,
+  showInfo
+} =
   vi.hoisted(() => ({
     listRedeemCodes: vi.fn(),
+    generateRedeemCodes: vi.fn(),
     batchUpdateRedeemCodes: vi.fn(),
     getPlans: vi.fn(),
     showSuccess: vi.fn(),
@@ -17,7 +26,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     redeem: {
       list: listRedeemCodes,
-      generate: vi.fn(),
+      generate: generateRedeemCodes,
       update: vi.fn(),
       delete: vi.fn(),
       batchDelete: vi.fn(),
@@ -115,6 +124,7 @@ describe('admin RedeemView batch update', () => {
     document.body.innerHTML = ''
 
     listRedeemCodes.mockReset()
+    generateRedeemCodes.mockReset()
     batchUpdateRedeemCodes.mockReset()
     getPlans.mockReset()
     showSuccess.mockReset()
@@ -155,6 +165,21 @@ describe('admin RedeemView batch update', () => {
       page_size: 20,
       pages: 1
     })
+    generateRedeemCodes.mockResolvedValue([
+      {
+        id: 3,
+        code: 'CODE-3',
+        type: 'balance',
+        value: 10,
+        status: 'unused',
+        max_uses: 5,
+        used_count: 0,
+        used_by: null,
+        used_at: null,
+        created_at: '2026-01-01T00:00:00Z',
+        expires_at: null
+      }
+    ])
     batchUpdateRedeemCodes.mockResolvedValue({ updated: 1, message: 'ok' })
     getPlans.mockResolvedValue({ data: [] })
   })
@@ -199,5 +224,50 @@ describe('admin RedeemView batch update', () => {
       notes: 'maintenance'
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.redeem.batchUpdateSuccess')
+  })
+
+  it('shows and submits max uses when generating redeem codes', async () => {
+    const wrapper = mount(RedeemView, {
+      attachTo: document.body,
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          Select: SelectStub,
+          BaseDialog: {
+            props: ['show'],
+            template: '<div v-if="show"><slot /><slot name="footer" /></div>'
+          },
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="generate-open"]').trigger('click')
+    await flushPromises()
+
+    const maxUsesInput = wrapper.get('[data-testid="generate-max-uses"]')
+    expect(maxUsesInput.exists()).toBe(true)
+
+    await maxUsesInput.setValue('5')
+    await wrapper.get('[data-testid="generate-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(generateRedeemCodes).toHaveBeenCalledWith(
+      1,
+      'balance',
+      10,
+      undefined,
+      5,
+      null,
+      undefined
+    )
   })
 })

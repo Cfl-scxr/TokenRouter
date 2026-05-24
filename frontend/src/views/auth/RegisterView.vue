@@ -255,23 +255,26 @@
           :disabled="registrationActionDisabled"
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
-          :referral-code="formData.referral_code"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
           :disabled="registrationActionDisabled"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
           :disabled="registrationActionDisabled"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
           :disabled="registrationActionDisabled"
           :provider-name="oidcOAuthProviderName"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
       </div>
@@ -318,6 +321,11 @@ import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
 } from '@/utils/registrationEmailPolicy'
+import {
+  clearAffiliateCode,
+  loadAffiliateCode,
+  resolveAffiliateCode
+} from '@/utils/oauthAffiliate'
 import type { LoginAgreementDocument, PublicSettings } from '@/types'
 
 const { t, locale } = useI18n()
@@ -394,7 +402,7 @@ const formData = reactive({
   password: '',
   promo_code: '',
   invitation_code: '',
-  referral_code: ''
+  aff_code: ''
 })
 
 const errors = reactive({
@@ -428,13 +436,19 @@ watch(validationToastMessage, (value, previousValue) => {
   }
 })
 
+function syncAffiliateCode(): string {
+  // 只接受上游新版 aff/aff_code，不再读取旧版 ref 参数。
+  const code = resolveAffiliateCode(route.query.aff, route.query.aff_code)
+  if (code) {
+    formData.aff_code = code
+  }
+  return code
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  const referralParam = typeof route.query.ref === 'string' ? route.query.ref.trim() : ''
-  if (referralParam) {
-    formData.referral_code = referralParam
-  }
+  syncAffiliateCode()
 
   try {
     const settings = await getPublicSettings()
@@ -465,6 +479,7 @@ onMounted(async () => {
         await validatePromoCodeDebounced(promoParam)
       }
     }
+    syncAffiliateCode()
   } catch (error) {
     console.error('Failed to load public settings:', error)
     loginAgreementEnabled.value = false
@@ -473,6 +488,13 @@ onMounted(async () => {
     settingsLoaded.value = true
   }
 })
+
+watch(
+  () => [route.query.aff, route.query.aff_code],
+  () => {
+    syncAffiliateCode()
+  }
+)
 
 onUnmounted(() => {
   if (promoValidateTimeout) {
@@ -896,6 +918,11 @@ async function handleRegister(): Promise<void> {
   }
 
   try {
+    const affCode = formData.aff_code.trim() || loadAffiliateCode()
+    if (affCode) {
+      formData.aff_code = affCode
+    }
+
     // If email verification is enabled, redirect to verification page
     if (emailVerifyEnabled.value) {
       // Store registration data in sessionStorage
@@ -907,7 +934,7 @@ async function handleRegister(): Promise<void> {
           turnstile_token: turnstileToken.value,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
-          referral_code: formData.referral_code || undefined
+          aff_code: affCode || undefined
         })
       )
 
@@ -923,8 +950,9 @@ async function handleRegister(): Promise<void> {
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
-      referral_code: formData.referral_code || undefined
+      aff_code: affCode || undefined
     })
+    clearAffiliateCode()
 
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))

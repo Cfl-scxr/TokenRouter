@@ -128,7 +128,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PasswordResetEnabled:                   settings.PasswordResetEnabled,
 		FrontendURL:                            settings.FrontendURL,
 		InvitationCodeEnabled:                  settings.InvitationCodeEnabled,
-		ReferralRewardAmount:                   settings.ReferralRewardAmount,
 		TotpEnabled:                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:            h.settingService.IsTotpEncryptionKeyConfigured(),
 		LoginAgreementEnabled:                  settings.LoginAgreementEnabled,
@@ -238,6 +237,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
+		AffiliateEnabled:                       settings.AffiliateEnabled,
+		AffiliateRebateRate:                    settings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		BalanceUnitName:                        settings.BalanceUnitName,
@@ -423,7 +427,6 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
 	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	ReferralRewardAmount             float64                      `json:"referral_reward_amount"`
 	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
 	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
@@ -551,6 +554,11 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
+	AffiliateEnabled                          bool                              `json:"affiliate_enabled"`
+	AffiliateRebateRate                       float64                           `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours                int                               `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays               int                               `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap              float64                           `json:"affiliate_rebate_per_invitee_cap"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	BalanceUnitName                           string                            `json:"balance_unit_name"`
@@ -709,8 +717,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
 	}
-	if req.ReferralRewardAmount < 0 {
-		req.ReferralRewardAmount = 0
+	if req.AffiliateRebateRate < 0 {
+		req.AffiliateRebateRate = 0
+	}
+	if req.AffiliateRebateRate > 100 {
+		req.AffiliateRebateRate = 100
+	}
+	if req.AffiliateRebateFreezeHours < 0 {
+		req.AffiliateRebateFreezeHours = 0
+	}
+	if req.AffiliateRebateDurationDays < 0 {
+		req.AffiliateRebateDurationDays = 0
+	}
+	if req.AffiliateRebatePerInviteeCap < 0 {
+		req.AffiliateRebatePerInviteeCap = 0
 	}
 	if req.ReasoningPointRMBUnitPrice != nil && *req.ReasoningPointRMBUnitPrice < 0 {
 		*req.ReasoningPointRMBUnitPrice = 0
@@ -1558,7 +1578,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasswordResetEnabled:             req.PasswordResetEnabled,
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
-		ReferralRewardAmount:             req.ReferralRewardAmount,
 		TotpEnabled:                      req.TotpEnabled,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
@@ -1671,6 +1690,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
+		AffiliateEnabled:                       req.AffiliateEnabled,
+		AffiliateRebateRate:                    req.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             req.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            req.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           req.AffiliateRebatePerInviteeCap,
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
 				return *req.RiskControlEnabled
@@ -1970,7 +1994,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasswordResetEnabled:                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                            updatedSettings.FrontendURL,
 		InvitationCodeEnabled:                  updatedSettings.InvitationCodeEnabled,
-		ReferralRewardAmount:                   updatedSettings.ReferralRewardAmount,
 		TotpEnabled:                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:            h.settingService.IsTotpEncryptionKeyConfigured(),
 		LoginAgreementEnabled:                  updatedSettings.LoginAgreementEnabled,
@@ -2080,6 +2103,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
 		RiskControlEnabled:                     updatedSettings.RiskControlEnabled,
+		AffiliateEnabled:                       updatedSettings.AffiliateEnabled,
+		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		BalanceUnitName:                        updatedSettings.BalanceUnitName,
@@ -2534,8 +2562,20 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
-	if before.ReferralRewardAmount != after.ReferralRewardAmount {
-		changed = append(changed, "referral_reward_amount")
+	if before.AffiliateEnabled != after.AffiliateEnabled {
+		changed = append(changed, "affiliate_enabled")
+	}
+	if before.AffiliateRebateRate != after.AffiliateRebateRate {
+		changed = append(changed, "affiliate_rebate_rate")
+	}
+	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
+		changed = append(changed, "affiliate_rebate_freeze_hours")
+	}
+	if before.AffiliateRebateDurationDays != after.AffiliateRebateDurationDays {
+		changed = append(changed, "affiliate_rebate_duration_days")
+	}
+	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
+		changed = append(changed, "affiliate_rebate_per_invitee_cap")
 	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")

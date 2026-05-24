@@ -388,6 +388,11 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    affiliate: 'Affiliate Rebates',
+    affiliateManagement: 'Affiliate Rebates',
+    affiliateInviteRecords: 'Invite Records',
+    affiliateRebateRecords: 'Rebate Records',
+    affiliateTransferRecords: 'Transfer Records',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
@@ -1064,7 +1069,7 @@ export default {
     concurrencyReducedAdmin: 'Concurrency Reduced (Admin)',
     adminAdjustment: 'Admin Adjustment',
     subscriptionAssigned: 'Subscription Assigned',
-    referralReward: 'Referral Reward',
+    affiliateBalance: 'Affiliate Balance Transfer',
     subscriptionAssignedDesc: 'You have been granted access to {groupName}',
     subscriptionDays: '{days} days',
     days: ' days',
@@ -1075,6 +1080,52 @@ export default {
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
+  },
+
+  affiliate: {
+    title: 'Affiliate Rebates',
+    description: 'Invite new users and convert rebate quota into account balance',
+    yourCode: 'Your Affiliate Code',
+    inviteLink: 'Invite Link',
+    copyCode: 'Copy Code',
+    copyLink: 'Copy Link',
+    codeCopied: 'Affiliate code copied',
+    linkCopied: 'Invite link copied',
+    loadFailed: 'Failed to load affiliate data',
+    transferFailed: 'Failed to transfer affiliate quota',
+    stats: {
+      rebateRate: 'My Rebate Rate',
+      rebateRateHint: 'What you earn when invitees recharge',
+      invitedUsers: 'Invited Users',
+      availableQuota: 'Available Rebate Quota',
+      frozenQuota: 'Frozen',
+      totalQuota: 'Historical Rebate Quota'
+    },
+    transfer: {
+      title: 'Transfer Rebate Quota',
+      description: 'Move available rebate quota into your account balance',
+      button: 'Transfer to Balance',
+      transferring: 'Transferring...',
+      empty: 'No available rebate quota',
+      success: '{amount} has been transferred to your balance'
+    },
+    invitees: {
+      title: 'Invited Users',
+      empty: 'No invited users yet',
+      columns: {
+        email: 'Email',
+        username: 'Username',
+        rebate: 'Rebate',
+        joinedAt: 'Joined At'
+      }
+    },
+    tips: {
+      title: 'How It Works',
+      line1: 'Share your affiliate code or invite link with new users.',
+      line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
+      line3: 'Transfer rebate quota to balance at any time.',
+      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+    }
   },
 
   // Profile
@@ -1119,20 +1170,6 @@ export default {
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
     passwordChangeFailed: 'Failed to change password',
-    referral: {
-      title: 'Referral Rewards',
-      description: 'Share your invitation link and both users receive balance rewards after the invitee completes their first successful paid order',
-      inviteLink: 'Personal Invite Link',
-      inviteLinkHint: 'Send this link to new users. Rewards are credited automatically after the invitee completes their first successful paid order',
-      codeLabel: 'Referral Code',
-      totalInvited: 'Total Invited Users',
-      totalReward: 'Total Reward Earned',
-      copy: 'Copy Link',
-      copied: 'Copied',
-      copySuccess: 'Referral link copied',
-      copyFailed: 'Failed to copy referral link',
-      loadFailed: 'Failed to load referral information'
-    },
     // TOTP 2FA
     totp: {
       title: 'Two-Factor Authentication (2FA)',
@@ -1972,6 +2009,49 @@ export default {
       }
     },
 
+    affiliates: {
+      invitesDescription: 'View site-wide inviter and invitee relationships',
+      rebatesDescription: 'View recharge orders that generated affiliate rebates',
+      transfersDescription: 'View affiliate quota transfers into account balance',
+      errors: {
+        loadFailed: 'Failed to load affiliate records'
+      },
+      records: {
+        search: 'Search',
+        searchPlaceholder: 'Email, username, user ID, or order number',
+        startAt: 'Start date',
+        endAt: 'End date',
+        inviter: 'Inviter',
+        invitee: 'Invitee',
+        user: 'User',
+        affCode: 'Invite Code',
+        order: 'Order',
+        totalRebate: 'Total Rebate',
+        orderAmount: 'Top-up Amount',
+        payAmount: 'Paid Amount',
+        rebateAmount: 'Rebate Amount',
+        paymentType: 'Payment Method',
+        orderStatus: 'Order Status',
+        transferAmount: 'Transfer Amount',
+        balanceAfter: 'Balance After',
+        availableQuotaAfter: 'Available After',
+        frozenQuotaAfter: 'Frozen After',
+        historyQuotaAfter: 'Historical Rebate After',
+        invitedAt: 'Invited At',
+        rebatedAt: 'Rebated At',
+        transferredAt: 'Transferred At'
+      },
+      overview: {
+        title: 'Affiliate User Overview',
+        affCode: 'Invite Code',
+        rebateRate: 'Rebate Rate',
+        invitedCount: 'Invited Users',
+        rebatedInviteeCount: 'Rebated Invitees',
+        availableQuota: 'Available Quota',
+        historyQuota: 'Historical Rebate'
+      }
+    },
+
     // Users
     users: {
       title: 'User Management',
@@ -2136,7 +2216,7 @@ export default {
       noBalanceHistory: 'No records found for this user',
       allTypes: 'All Types',
       typeBalance: 'Balance (Redeem)',
-      typeReferralReward: 'Balance (Referral Reward)',
+      typeAffiliateBalance: 'Balance (Affiliate Rebate)',
       typeAdminBalance: 'Balance (Admin)',
       typeConcurrency: 'Concurrency (Redeem)',
       typeAdminConcurrency: 'Concurrency (Admin)',
@@ -4105,7 +4185,7 @@ export default {
         concurrency: 'Concurrency',
         subscription: 'Subscription',
         invitation: 'Invitation',
-        referral_reward: 'Referral Reward',
+        affiliate_balance: 'Affiliate Balance Transfer',
         // Admin adjustment types (created when admin modifies user balance/concurrency)
         admin_balance: 'Balance (Admin)',
         admin_concurrency: 'Concurrency (Admin)'
@@ -5097,6 +5177,20 @@ export default {
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
         },
+        affiliate: {
+          title: 'Affiliate Rebates',
+          description: 'Existing users invite new users and earn percentage-based rebate quota after invitees recharge.',
+          enabled: 'Enable Affiliate Rebates',
+          enabledHint: 'When off, affiliate menus are hidden, signup ignores invite codes, and new recharges generate no rebate.',
+          rebateRate: 'Global Rebate Rate',
+          rebateRateHint: 'Default percentage credited to inviters after recharge, 0-100. Example: 10 means 10%.',
+          freezeHours: 'Rebate Freeze Period (hours)',
+          freezeHoursDesc: 'New rebates cannot be transferred during this period. 0 = no freeze.',
+          durationDays: 'Rebate Duration (days)',
+          durationDaysDesc: 'Recharges count for rebates within this many days after invitee signup. 0 = permanent.',
+          perInviteeCap: 'Per-Invitee Rebate Cap',
+          perInviteeCapDesc: 'Maximum total rebate from one invitee. 0 = no limit.'
+        },
       },
       registration: {
         title: 'Registration Settings',
@@ -5275,13 +5369,6 @@ export default {
           'Duplicate subscription plan: {planId}. Each plan can only appear once.',
         subscriptionGroup: 'Subscription Plan',
         subscriptionValidityDays: 'Validity (days)'
-      },
-      referral: {
-        title: 'Referral Reward Settings',
-        description: 'Configure the balance reward granted after an invitee completes their first successful paid order',
-        rewardAmount: 'Reward Amount Per Referral',
-        rewardAmountPlaceholder: '0.00',
-        rewardAmountHint: 'Both the inviter and the invited user receive this balance reward after the invitee registers through an invite link and completes their first successful paid order'
       },
       balanceDisplay: {
         title: 'Balance Display',

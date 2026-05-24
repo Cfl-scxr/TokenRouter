@@ -53,6 +53,7 @@ func ProvideAuthService(
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	billingCache BillingCache,
 ) *AuthService {
@@ -68,6 +69,7 @@ func ProvideAuthService(
 		emailQueueService,
 		promoService,
 		defaultSubAssigner,
+		affiliateService,
 	)
 	svc.SetRuntimeCaches(authCacheInvalidator, billingCache)
 	return svc
@@ -476,6 +478,7 @@ var ProviderSet = wire.NewSet(
 	NewAccountService,
 	NewProxyService,
 	NewRedeemService,
+	NewAffiliateService,
 	NewPromoService,
 	NewUsageService,
 	NewDashboardService,
@@ -571,8 +574,8 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentService 创建支付服务并注入通知邮件服务。
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, notificationEmailService *NotificationEmailService) *PaymentService {
-	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo)
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
 	return svc
 }

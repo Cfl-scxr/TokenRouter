@@ -628,6 +628,16 @@ const userNavItems = computed((): NavItem[] => {
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
+    ...(appStore.cachedPublicSettings?.affiliate_enabled === true
+      ? [
+          {
+            path: '/affiliate',
+            label: t('nav.affiliate'),
+            icon: UsersIcon,
+            hideInSimpleMode: true
+          },
+        ]
+      : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -669,6 +679,16 @@ const personalNavItems = computed((): NavItem[] => {
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
+    ...(appStore.cachedPublicSettings?.affiliate_enabled === true
+      ? [
+          {
+            path: '/affiliate',
+            label: t('nav.affiliate'),
+            icon: UsersIcon,
+            hideInSimpleMode: true
+          },
+        ]
+      : []),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -717,6 +737,21 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    ...(appStore.cachedPublicSettings?.affiliate_enabled === true
+      ? [
+          {
+            path: '/admin/affiliates',
+            label: t('nav.affiliateManagement'),
+            icon: UsersIcon,
+            hideInSimpleMode: true,
+            children: [
+              { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon },
+              { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon },
+              { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
+            ],
+          },
+        ]
+      : []),
     ...(adminSettingsStore.paymentEnabled
       ? [
           {

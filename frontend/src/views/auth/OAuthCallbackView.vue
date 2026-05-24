@@ -157,6 +157,11 @@ import {
   persistOAuthTokenContext,
   type OAuthTokenResponse
 } from '@/api/auth'
+import {
+  clearAllAffiliateCodes,
+  loadOAuthAffiliateCode,
+  oauthAffiliatePayload
+} from '@/utils/oauthAffiliate'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,7 +183,6 @@ const pendingProvider = ref<'github' | 'google'>('github')
 const redirectTo = ref('/dashboard')
 const invalidCallback = ref(false)
 const EMAIL_OAUTH_PENDING_PROVIDER_KEY = 'email_oauth_pending_provider'
-const EMAIL_OAUTH_PENDING_REFERRAL_KEY = 'email_oauth_referral_code'
 
 type EmailOAuthPendingCompletion = Partial<OAuthTokenResponse> & {
   error?: string
@@ -251,11 +255,6 @@ function readPendingEmailOAuthProvider(): 'github' | 'google' | null {
   return null
 }
 
-function readPendingReferralCode(): string {
-  if (typeof window === 'undefined') return ''
-  return window.sessionStorage.getItem(EMAIL_OAUTH_PENDING_REFERRAL_KEY)?.trim() || ''
-}
-
 function redirectProviderCallbackToBackend(provider: 'github' | 'google'): void {
   if (typeof window === 'undefined') return
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
@@ -279,8 +278,8 @@ async function finalizeTokenResponse(tokenResponse: OAuthTokenResponse, redirect
   await authStore.setToken(tokenResponse.access_token)
   if (typeof window !== 'undefined') {
     window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY)
-    window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_REFERRAL_KEY)
   }
+  clearAllAffiliateCodes()
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(sanitizeRedirectPath(redirect))
 }
@@ -346,15 +345,12 @@ async function handleSubmitRegistration() {
 
   isSubmitting.value = true
   try {
-    const referralCode = readPendingReferralCode()
-    const payload: { password: string; invitation_code?: string; referral_code?: string } = {
-      password: password.value
+    const payload: { password: string; invitation_code?: string; aff_code?: string } = {
+      password: password.value,
+      ...oauthAffiliatePayload(loadOAuthAffiliateCode())
     }
     if (invitationRequired.value) {
       payload.invitation_code = code
-    }
-    if (referralCode) {
-      payload.referral_code = referralCode
     }
     const { data } = await apiClient.post<OAuthTokenResponse>(
       `/auth/oauth/${pendingProvider.value}/complete-registration`,

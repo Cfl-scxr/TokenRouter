@@ -390,88 +390,6 @@ func (_u *UserUpdate) AddTotalRecharged(v float64) *UserUpdate {
 	return _u
 }
 
-// SetReferralCode sets the "referral_code" field.
-func (_u *UserUpdate) SetReferralCode(v string) *UserUpdate {
-	_u.mutation.SetReferralCode(v)
-	return _u
-}
-
-// SetNillableReferralCode sets the "referral_code" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableReferralCode(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetReferralCode(*v)
-	}
-	return _u
-}
-
-// SetReferredByUserID sets the "referred_by_user_id" field.
-func (_u *UserUpdate) SetReferredByUserID(v int64) *UserUpdate {
-	_u.mutation.ResetReferredByUserID()
-	_u.mutation.SetReferredByUserID(v)
-	return _u
-}
-
-// SetNillableReferredByUserID sets the "referred_by_user_id" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableReferredByUserID(v *int64) *UserUpdate {
-	if v != nil {
-		_u.SetReferredByUserID(*v)
-	}
-	return _u
-}
-
-// AddReferredByUserID adds value to the "referred_by_user_id" field.
-func (_u *UserUpdate) AddReferredByUserID(v int64) *UserUpdate {
-	_u.mutation.AddReferredByUserID(v)
-	return _u
-}
-
-// ClearReferredByUserID clears the value of the "referred_by_user_id" field.
-func (_u *UserUpdate) ClearReferredByUserID() *UserUpdate {
-	_u.mutation.ClearReferredByUserID()
-	return _u
-}
-
-// SetReferralRewardAmount sets the "referral_reward_amount" field.
-func (_u *UserUpdate) SetReferralRewardAmount(v float64) *UserUpdate {
-	_u.mutation.ResetReferralRewardAmount()
-	_u.mutation.SetReferralRewardAmount(v)
-	return _u
-}
-
-// SetNillableReferralRewardAmount sets the "referral_reward_amount" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableReferralRewardAmount(v *float64) *UserUpdate {
-	if v != nil {
-		_u.SetReferralRewardAmount(*v)
-	}
-	return _u
-}
-
-// AddReferralRewardAmount adds value to the "referral_reward_amount" field.
-func (_u *UserUpdate) AddReferralRewardAmount(v float64) *UserUpdate {
-	_u.mutation.AddReferralRewardAmount(v)
-	return _u
-}
-
-// SetReferralRewardGrantedAt sets the "referral_reward_granted_at" field.
-func (_u *UserUpdate) SetReferralRewardGrantedAt(v time.Time) *UserUpdate {
-	_u.mutation.SetReferralRewardGrantedAt(v)
-	return _u
-}
-
-// SetNillableReferralRewardGrantedAt sets the "referral_reward_granted_at" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableReferralRewardGrantedAt(v *time.Time) *UserUpdate {
-	if v != nil {
-		_u.SetReferralRewardGrantedAt(*v)
-	}
-	return _u
-}
-
-// ClearReferralRewardGrantedAt clears the value of the "referral_reward_granted_at" field.
-func (_u *UserUpdate) ClearReferralRewardGrantedAt() *UserUpdate {
-	_u.mutation.ClearReferralRewardGrantedAt()
-	return _u
-}
-
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *UserUpdate) SetRpmLimit(v int) *UserUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1040,11 +958,6 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ReferralCode(); ok {
-		if err := user.ReferralCodeValidator(v); err != nil {
-			return &ValidationError{Name: "referral_code", err: fmt.Errorf(`ent: validator failed for field "User.referral_code": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -1152,30 +1065,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.ReferralCode(); ok {
-		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.ReferredByUserID(); ok {
-		_spec.SetField(user.FieldReferredByUserID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedReferredByUserID(); ok {
-		_spec.AddField(user.FieldReferredByUserID, field.TypeInt64, value)
-	}
-	if _u.mutation.ReferredByUserIDCleared() {
-		_spec.ClearField(user.FieldReferredByUserID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.ReferralRewardAmount(); ok {
-		_spec.SetField(user.FieldReferralRewardAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedReferralRewardAmount(); ok {
-		_spec.AddField(user.FieldReferralRewardAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.ReferralRewardGrantedAt(); ok {
-		_spec.SetField(user.FieldReferralRewardGrantedAt, field.TypeTime, value)
-	}
-	if _u.mutation.ReferralRewardGrantedAtCleared() {
-		_spec.ClearField(user.FieldReferralRewardGrantedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
@@ -2150,88 +2039,6 @@ func (_u *UserUpdateOne) AddTotalRecharged(v float64) *UserUpdateOne {
 	return _u
 }
 
-// SetReferralCode sets the "referral_code" field.
-func (_u *UserUpdateOne) SetReferralCode(v string) *UserUpdateOne {
-	_u.mutation.SetReferralCode(v)
-	return _u
-}
-
-// SetNillableReferralCode sets the "referral_code" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableReferralCode(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetReferralCode(*v)
-	}
-	return _u
-}
-
-// SetReferredByUserID sets the "referred_by_user_id" field.
-func (_u *UserUpdateOne) SetReferredByUserID(v int64) *UserUpdateOne {
-	_u.mutation.ResetReferredByUserID()
-	_u.mutation.SetReferredByUserID(v)
-	return _u
-}
-
-// SetNillableReferredByUserID sets the "referred_by_user_id" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableReferredByUserID(v *int64) *UserUpdateOne {
-	if v != nil {
-		_u.SetReferredByUserID(*v)
-	}
-	return _u
-}
-
-// AddReferredByUserID adds value to the "referred_by_user_id" field.
-func (_u *UserUpdateOne) AddReferredByUserID(v int64) *UserUpdateOne {
-	_u.mutation.AddReferredByUserID(v)
-	return _u
-}
-
-// ClearReferredByUserID clears the value of the "referred_by_user_id" field.
-func (_u *UserUpdateOne) ClearReferredByUserID() *UserUpdateOne {
-	_u.mutation.ClearReferredByUserID()
-	return _u
-}
-
-// SetReferralRewardAmount sets the "referral_reward_amount" field.
-func (_u *UserUpdateOne) SetReferralRewardAmount(v float64) *UserUpdateOne {
-	_u.mutation.ResetReferralRewardAmount()
-	_u.mutation.SetReferralRewardAmount(v)
-	return _u
-}
-
-// SetNillableReferralRewardAmount sets the "referral_reward_amount" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableReferralRewardAmount(v *float64) *UserUpdateOne {
-	if v != nil {
-		_u.SetReferralRewardAmount(*v)
-	}
-	return _u
-}
-
-// AddReferralRewardAmount adds value to the "referral_reward_amount" field.
-func (_u *UserUpdateOne) AddReferralRewardAmount(v float64) *UserUpdateOne {
-	_u.mutation.AddReferralRewardAmount(v)
-	return _u
-}
-
-// SetReferralRewardGrantedAt sets the "referral_reward_granted_at" field.
-func (_u *UserUpdateOne) SetReferralRewardGrantedAt(v time.Time) *UserUpdateOne {
-	_u.mutation.SetReferralRewardGrantedAt(v)
-	return _u
-}
-
-// SetNillableReferralRewardGrantedAt sets the "referral_reward_granted_at" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableReferralRewardGrantedAt(v *time.Time) *UserUpdateOne {
-	if v != nil {
-		_u.SetReferralRewardGrantedAt(*v)
-	}
-	return _u
-}
-
-// ClearReferralRewardGrantedAt clears the value of the "referral_reward_granted_at" field.
-func (_u *UserUpdateOne) ClearReferralRewardGrantedAt() *UserUpdateOne {
-	_u.mutation.ClearReferralRewardGrantedAt()
-	return _u
-}
-
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *UserUpdateOne) SetRpmLimit(v int) *UserUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -2813,11 +2620,6 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ReferralCode(); ok {
-		if err := user.ReferralCodeValidator(v); err != nil {
-			return &ValidationError{Name: "referral_code", err: fmt.Errorf(`ent: validator failed for field "User.referral_code": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -2942,30 +2744,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
 		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.ReferralCode(); ok {
-		_spec.SetField(user.FieldReferralCode, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.ReferredByUserID(); ok {
-		_spec.SetField(user.FieldReferredByUserID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedReferredByUserID(); ok {
-		_spec.AddField(user.FieldReferredByUserID, field.TypeInt64, value)
-	}
-	if _u.mutation.ReferredByUserIDCleared() {
-		_spec.ClearField(user.FieldReferredByUserID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.ReferralRewardAmount(); ok {
-		_spec.SetField(user.FieldReferralRewardAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedReferralRewardAmount(); ok {
-		_spec.AddField(user.FieldReferralRewardAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.ReferralRewardGrantedAt(); ok {
-		_spec.SetField(user.FieldReferralRewardGrantedAt, field.TypeTime, value)
-	}
-	if _u.mutation.ReferralRewardGrantedAtCleared() {
-		_spec.ClearField(user.FieldReferralRewardGrantedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)

@@ -35,7 +35,6 @@ type SystemSettings struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	FrontendURL                      string                   `json:"frontend_url"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
-	ReferralRewardAmount             float64                  `json:"referral_reward_amount"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
@@ -154,6 +153,11 @@ type SystemSettings struct {
 	DefaultConcurrency         int                          `json:"default_concurrency"`
 	DefaultBalance             float64                      `json:"default_balance"`
 	RiskControlEnabled         bool                         `json:"risk_control_enabled"` // 风控中心功能开关
+	AffiliateEnabled           bool                         `json:"affiliate_enabled"`
+	AffiliateRebateRate        float64                      `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours int                          `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays int                         `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap float64                    `json:"affiliate_rebate_per_invitee_cap"`
 	DefaultUserRPMLimit        int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions       []DefaultSubscriptionSetting `json:"default_subscriptions"`
 	BalanceUnitName            string                       `json:"balance_unit_name"`
@@ -307,12 +311,13 @@ type PublicSettings struct {
 	BalanceUnitName                  string                   `json:"balance_unit_name"`
 	BalanceUnitSymbol                string                   `json:"balance_unit_symbol"`
 	BalanceIconSVG                   string                   `json:"balance_icon_svg"`
-	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
-	RiskControlEnabled               bool                     `json:"risk_control_enabled"` // 风控中心入口开关
-	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
-}
+		BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
+		AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
+		RiskControlEnabled               bool                     `json:"risk_control_enabled"` // 风控中心入口开关
+		AffiliateEnabled                 bool                     `json:"affiliate_enabled"`     // 邀请返利入口开关
+		BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
+		BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
+	}
 
 type LoginAgreementDocument struct {
 	ID        string `json:"id"`
