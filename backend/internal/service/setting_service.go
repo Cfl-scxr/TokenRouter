@@ -909,6 +909,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
+		AffiliateEnabled:                 settings[SettingKeyAffiliateEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
 		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true" && len(loginAgreementDocuments) > 0,
 		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
@@ -1082,6 +1083,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	return &struct {
 		RegistrationEnabled              bool                     `json:"registration_enabled"`
 		EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+		ForceEmailOnThirdPartySignup     bool                     `json:"force_email_on_third_party_signup"`
 		RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
 		PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
 		PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
@@ -1140,6 +1142,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	}{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
+		ForceEmailOnThirdPartySignup:     settings.ForceEmailOnThirdPartySignup,
 		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                 settings.PromoCodeEnabled,
 		PasswordResetEnabled:             settings.PasswordResetEnabled,

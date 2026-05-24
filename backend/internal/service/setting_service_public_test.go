@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
@@ -88,6 +89,45 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 
 	settings, err := svc.GetPublicSettings(context.Background())
 	require.NoError(t, err)
+	require.True(t, settings.ForceEmailOnThirdPartySignup)
+}
+
+// 公开配置必须透传邀请返利开关，否则前端侧栏和路由守卫会把入口隐藏。
+func TestSettingService_GetPublicSettings_ExposesAffiliateEnabled(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAffiliateEnabled: "true",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.AffiliateEnabled)
+}
+
+// HTML 首屏注入配置要与 /settings/public 保持一致，避免刷新后菜单先按旧默认值渲染。
+func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAffiliateEnabled:             "true",
+			SettingKeyForceEmailOnThirdPartySignup: "true",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	payload, err := svc.GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+
+	encoded, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var settings struct {
+		AffiliateEnabled             bool `json:"affiliate_enabled"`
+		ForceEmailOnThirdPartySignup bool `json:"force_email_on_third_party_signup"`
+	}
+	require.NoError(t, json.Unmarshal(encoded, &settings))
+	require.True(t, settings.AffiliateEnabled)
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 }
 
