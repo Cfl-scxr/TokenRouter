@@ -36,7 +36,7 @@ func newBillingEligibilityService(t *testing.T, balance float64) *BillingCacheSe
 
 	svc := NewBillingCacheService(nil, &mockUserRepo{
 		getByIDUser: &User{ID: 1, Balance: balance},
-	}, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+	}, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard}, nil)
 	t.Cleanup(svc.Stop)
 	return svc
 }
@@ -57,6 +57,7 @@ func TestBillingEligibility_ExhaustedSubscriptionWithZeroBalanceFails(t *testing
 				nil,
 				nil,
 				activeBillingEligibilitySubscription(10, tt.used),
+				"",
 			)
 
 			require.ErrorIs(t, err, ErrInsufficientBalance)
@@ -72,6 +73,7 @@ func TestBillingEligibility_ExhaustedSubscriptionFallsBackToBalance(t *testing.T
 		nil,
 		nil,
 		activeBillingEligibilitySubscription(10, 10),
+		"",
 	)
 
 	require.NoError(t, err)
@@ -79,7 +81,7 @@ func TestBillingEligibility_ExhaustedSubscriptionFallsBackToBalance(t *testing.T
 
 func TestBillingEligibility_UnlimitedSubscriptionDoesNotRequireBalance(t *testing.T) {
 	now := time.Now()
-	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard}, nil)
 	t.Cleanup(svc.Stop)
 
 	err := svc.CheckBillingEligibility(
@@ -98,6 +100,7 @@ func TestBillingEligibility_UnlimitedSubscriptionDoesNotRequireBalance(t *testin
 			WeeklyLimitUSD:  nil,
 			MonthlyLimitUSD: billingEligibilityLimitPtr(0),
 		},
+		"",
 	)
 
 	require.NoError(t, err)

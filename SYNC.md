@@ -453,4 +453,10 @@
   - 决策：保留 fork 现有 OpenAI Cyber 警告记录、列表和自动封禁配置；在同一内容审计设置弹窗中新增“风险阈值”Tab，仅扩展 OpenAI Moderations 分类阈值配置，不改变 Cyber 警告策略。
   - 决策：保留 fork 当前 `channelMonitor`、备份和中文/英文 locale 结构，未引入 upstream 位置中重复的完整 `riskControl/channelMonitor` 文案块。
   - 测试：`go test ./internal/service ./internal/handler/admin -run 'Test(ContentModeration|UpdateContentModeration|Moderation)'`；`pnpm test:run src/views/admin/__tests__/RiskControlView.spec.ts`；`git diff --check`；`git diff --cached --check`。
-feat(quota): 用户 × 平台 USD 配额: https://github.com/Wei-Shaw/sub2api/pull/2766
+✅ feat(quota): 用户 × 平台 USD 配额: https://github.com/Wei-Shaw/sub2api/pull/2766
+  - 同步方式：cherry-pick PR head 提交 `6b39b344`，手动解决 Ent/Wire、认证注册、计费、设置、用户 dashboard 与后台用户管理冲突，并重新生成 Ent/Wire。
+  - 决策：保留 fork 模块路径 `github.com/TokenFlux/TokenRouter`、默认订阅 `plan_id` 模型、注册邀请码/返利流程、统一使用量扣费和余额展示 UI；未引入 upstream 旧的 `group_id/validity_days` 默认订阅语义。
+  - 决策：用户 × 平台 USD 配额仅对余额扣费金额生效；纯订阅扣费豁免，订阅额度耗尽并回退余额扣费时才累计平台配额。注册与 OAuth 注册会按默认配置快照平台限额，但快照失败不阻断用户创建。
+  - 决策：保留 fork 当前风控设置、Dashboard 日期范围回调和余额格式化逻辑；后台系统设置新增全局/认证源平台限额，用户管理新增平台限额查看、更新、重置，并清理相关缓存。
+  - 测试：`go run -mod=mod entgo.io/ent/cmd/ent generate --feature sql/upsert,intercept,sql/execquery,sql/lock --idtype int64 ./ent/schema`；`go run -mod=mod github.com/google/wire/cmd/wire ./cmd/server`；`go test -tags unit ./internal/service -run 'Test(AuthService_Register_AssignsDefaultSubscriptions|CheckBillingEligibility_SubscriptionMode_BypassesPlatformQuota|CheckUserPlatformQuotaEligibility_StandardMode_BlocksWhenLimitZero|RegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource|BillingEligibility_|AuthService_Register_|VerifyPendingOAuthToken_|AuthService_Register_UsesNormalizedEmailLookupWhenEnabled)'`；`go test -tags unit ./internal/handler ./internal/handler/admin -run 'Test.*PlatformQuota|TestUserHandlerUpdateProfileRejectsEmailField'`；`go test -tags unit ./internal/server -run TestAPIContracts`；`pnpm --dir frontend exec vue-tsc --noEmit --pretty false`。
+  - 备注：尝试运行更宽的 `go test ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/server -run 'Test.*(PlatformQuota|Quota|Billing|Register|Auth|User)'`，service 包通过后剩余包 6 分钟无输出，已中止，未作为通过记录。

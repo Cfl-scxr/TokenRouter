@@ -251,6 +251,9 @@ type SystemSettings struct {
 
 	// OpenAI fast/flex 策略
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
+
+	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
+	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
 }
 
 type DefaultSubscriptionSetting struct {

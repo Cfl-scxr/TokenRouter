@@ -238,6 +238,7 @@ func newEmailNormalizationAuthService(repo UserRepository, settings map[string]s
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 }
 

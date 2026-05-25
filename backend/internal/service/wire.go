@@ -54,6 +54,7 @@ func ProvideAuthService(
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	billingCache BillingCache,
 ) *AuthService {
@@ -70,6 +71,7 @@ func ProvideAuthService(
 		promoService,
 		defaultSubAssigner,
 		affiliateService,
+		userPlatformQuotaRepo,
 	)
 	svc.SetRuntimeCaches(authCacheInvalidator, billingCache)
 	return svc
@@ -447,8 +449,9 @@ func ProvideBillingCacheService(
 	rpmCache UserRPMCache,
 	rateRepo UserGroupRateRepository,
 	cfg *config.Config,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *BillingCacheService {
-	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg)
+	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
