@@ -31,6 +31,7 @@ export interface DataShareStats {
 
 export interface AdminDataShareSessionFilters extends DataShareSessionFilters {
   user_id?: number
+  user_name?: string
 }
 
 export async function getNotice(): Promise<DataShareNotice> {

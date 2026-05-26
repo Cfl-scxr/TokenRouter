@@ -292,7 +292,7 @@ func TestCompactDataShareMessagesKeepsUnfinishedTail(t *testing.T) {
 	}
 }
 
-func TestPartialSessionExportsCroppedCompletePrefix(t *testing.T) {
+func TestPartialSessionExportsRawSnapshot(t *testing.T) {
 	sys := "你是编码助手"
 	session := &DataShareSession{
 		TrajectoryID:       "traj",
@@ -332,24 +332,24 @@ func TestPartialSessionExportsCroppedCompletePrefix(t *testing.T) {
 		t.Fatalf("invalid jsonl: %v", err)
 	}
 	messages := mapsFromAny(payload["messages"])
-	if len(messages) != 5 {
-		t.Fatalf("exported messages len = %d, want cropped len 5: %#v", len(messages), messages)
+	if len(messages) != 6 {
+		t.Fatalf("exported messages len = %d, want raw len 6: %#v", len(messages), messages)
 	}
-	if got := payload["status"]; got != DataShareStatusCompleted {
-		t.Fatalf("exported status = %v, want completed", got)
+	if got := payload["status"]; got != DataShareStatusTerminated {
+		t.Fatalf("exported status = %v, want terminated", got)
 	}
-	if got := payload["is_final_snapshot"]; got != true {
-		t.Fatalf("exported is_final_snapshot = %v, want true", got)
+	if got := payload["is_final_snapshot"]; got != false {
+		t.Fatalf("exported is_final_snapshot = %v, want false", got)
 	}
 	if _, ok := payload["quality_status"]; ok {
 		t.Fatalf("quality_status should not be included in JSONL payload")
 	}
-	if errs := validateDataSharePayloadQuality(payload); len(errs) != 0 {
-		t.Fatalf("cropped payload quality errors = %v", errs)
+	if errs := validateDataSharePayloadQuality(payload); !containsString(errs, "tool_call_result_unpaired") {
+		t.Fatalf("payload quality errors = %v, want unpaired tail retained", errs)
 	}
 }
 
-func TestInvalidSessionCannotExport(t *testing.T) {
+func TestInvalidSessionCanExportWhenSelected(t *testing.T) {
 	sys := "你是编码助手"
 	session := &DataShareSession{
 		TrajectoryID:       "traj",
@@ -373,8 +373,15 @@ func TestInvalidSessionCannotExport(t *testing.T) {
 		t.Fatalf("quality_status = %q, want invalid", status)
 	}
 	var buf bytes.Buffer
-	if err := WriteSingleSessionJSONL(&buf, session); err == nil {
-		t.Fatalf("WriteSingleSessionJSONL should reject invalid session")
+	if err := WriteSingleSessionJSONL(&buf, session); err != nil {
+		t.Fatalf("WriteSingleSessionJSONL returned error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload); err != nil {
+		t.Fatalf("invalid jsonl: %v", err)
+	}
+	if got := payload["session_id"]; got != "sess" {
+		t.Fatalf("session_id = %v, want sess", got)
 	}
 }
 

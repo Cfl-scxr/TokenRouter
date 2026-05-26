@@ -15,7 +15,7 @@
           <div class="flex items-center gap-3">
             <Icon name="download" size="md" class="text-emerald-600 dark:text-emerald-400" />
             <div>
-              <p class="text-xs text-gray-500 dark:text-gray-400">可导出</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">合格</p>
               <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ exportableCount }}</p>
             </div>
           </div>
@@ -62,9 +62,9 @@
               <button class="btn btn-secondary" :disabled="loading" @click="loadSessions">
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
-              <button class="btn btn-primary" :disabled="exporting || sessions.length === 0" @click="downloadCurrent">
+              <button class="btn btn-primary" :disabled="exporting || selectedCount === 0" @click="downloadSelected">
                 <Icon name="download" size="md" class="mr-2" />
-                下载 JSONL
+                下载已选 JSONL
               </button>
             </div>
           </div>
@@ -80,6 +80,25 @@
             default-sort-order="desc"
             @sort="handleSort"
           >
+            <template #header-select>
+              <div class="flex flex-col items-center gap-1 normal-case">
+                <span v-if="selectedCount > 0" class="whitespace-nowrap text-[11px] font-medium leading-none text-primary-600 dark:text-primary-400" :title="selectionSummary">
+                  已选 {{ formatNumber(selectedCount) }}
+                </span>
+                <input
+                  :checked="allMatchingSelected"
+                  :disabled="pagination.total === 0"
+                  :indeterminate="selectionIndeterminate"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-primary-600"
+                  title="选择当前筛选条件下的所有条目"
+                  @change="toggleSelectAll"
+                />
+              </div>
+            </template>
+            <template #cell-select="{ row }">
+              <input :checked="isSelected(row.id)" type="checkbox" class="rounded border-gray-300 text-primary-600" @change="toggleSelect(row.id)" />
+            </template>
             <template #cell-session_id="{ value, row }">
               <div class="max-w-xs">
                 <p class="truncate font-medium text-gray-900 dark:text-white">{{ value }}</p>
@@ -182,6 +201,10 @@ const appStore = useAppStore()
 
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
+// 选中状态支持两种模式：显式 ID 列表，以及“当前筛选条件全集 + 排除列表”。
+const selectedIds = ref<Set<number>>(new Set())
+const excludedIds = ref<Set<number>>(new Set())
+const selectAllMatching = ref(false)
 const loading = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
@@ -204,6 +227,7 @@ const qualityOptions = [
 ]
 
 const columns: Column[] = [
+  { key: 'select', label: '' },
   { key: 'session_id', label: 'Session', sortable: true },
   { key: 'provider', label: 'Provider', sortable: true },
   { key: 'model', label: '模型', sortable: true },
@@ -217,6 +241,20 @@ const columns: Column[] = [
 const exportableCount = computed(() => sessions.value.filter(item => item.exportable).length)
 const totalStorageBytes = computed(() => sessions.value.reduce((sum, item) => sum + (item.storage_bytes || 0), 0))
 const totalTokens = computed(() => sessions.value.reduce((sum, item) => sum + (item.total_tokens || 0), 0))
+const selectedCount = computed(() => {
+  if (selectAllMatching.value) {
+    return Math.max(pagination.total - excludedIds.value.size, 0)
+  }
+  return selectedIds.value.size
+})
+const allMatchingSelected = computed(() => selectAllMatching.value && pagination.total > 0 && excludedIds.value.size === 0)
+const selectionIndeterminate = computed(() => selectedCount.value > 0 && !allMatchingSelected.value)
+const selectionSummary = computed(() => {
+  if (selectAllMatching.value) {
+    return `已选择当前筛选条件下 ${formatNumber(selectedCount.value)} 条`
+  }
+  return `已选择 ${formatNumber(selectedCount.value)} 条`
+})
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
 
 let filterTimer: number | null = null
@@ -249,6 +287,7 @@ async function loadSessions() {
 
 function handleFilterChange() {
   pagination.page = 1
+  clearSelection()
   if (filterTimer) window.clearTimeout(filterTimer)
   filterTimer = window.setTimeout(loadSessions, 250)
 }
@@ -271,6 +310,60 @@ function handlePageSizeChange(pageSize: number) {
   loadSessions()
 }
 
+function clearSelection() {
+  selectedIds.value = new Set()
+  excludedIds.value = new Set()
+  selectAllMatching.value = false
+}
+
+function isSelected(id: number) {
+  return selectAllMatching.value ? !excludedIds.value.has(id) : selectedIds.value.has(id)
+}
+
+function toggleSelect(id: number) {
+  if (selectAllMatching.value) {
+    const next = new Set(excludedIds.value)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    excludedIds.value = next
+    return
+  }
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedIds.value = next
+}
+
+function toggleSelectAll(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  if (!checked) {
+    clearSelection()
+    return
+  }
+  selectedIds.value = new Set()
+  excludedIds.value = new Set()
+  selectAllMatching.value = true
+}
+
+function buildSelectionFilters(): DataShareSessionFilters {
+  const out = buildFilters()
+  if (selectAllMatching.value) {
+    out.select_all = true
+    const excluded = Array.from(excludedIds.value)
+    if (excluded.length) out.exclude_ids = excluded.join(',')
+    return out
+  }
+  const ids = Array.from(selectedIds.value)
+  if (ids.length) out.ids = ids.join(',')
+  return out
+}
+
 async function openDetail(row: DataShareSession) {
   detailOpen.value = true
   detailLoading.value = true
@@ -284,10 +377,11 @@ async function openDetail(row: DataShareSession) {
   }
 }
 
-async function downloadCurrent() {
+async function downloadSelected() {
+  if (selectedCount.value === 0) return
   exporting.value = true
   try {
-    const blob = await dataSharingAPI.exportSessions(buildFilters())
+    const blob = await dataSharingAPI.exportSessions(buildSelectionFilters())
     dataSharingAPI.downloadBlob(blob, `data-sharing-${Date.now()}.jsonl`)
   } catch (error) {
     appStore.showError('下载失败')

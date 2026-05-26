@@ -31,17 +31,26 @@ export interface DataShareSession {
   output_tokens: number
   total_tokens: number
   user_id: number
+  user_name?: string
+  user_email?: string
   api_key_id: number
+  api_key_name?: string
   group_id: number
+  group_name?: string
   created_at: string
   ended_at?: string | null
   updated_at: string
 }
 
 export interface DataShareSessionFilters {
+  ids?: number[] | string
+  exclude_ids?: number[] | string
+  select_all?: boolean
   search?: string
   api_key_id?: number
+  api_key_name?: string
   group_id?: number
+  group_name?: string
   provider?: string
   model?: string
   exportable?: boolean | 'all'

@@ -31,7 +31,7 @@ type UpdateDataSharingNoticeRequest struct {
 
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
 type BatchDeleteDataShareSessionsRequest struct {
-	IDs []int64 `json:"ids" binding:"required"`
+	IDs []int64 `json:"ids"`
 }
 
 type adminDataShareSessionResponse struct {
@@ -58,8 +58,12 @@ type adminDataShareSessionResponse struct {
 	OutputTokens       int64            `json:"output_tokens"`
 	TotalTokens        int64            `json:"total_tokens"`
 	UserID             int64            `json:"user_id"`
+	UserName           string           `json:"user_name,omitempty"`
+	UserEmail          string           `json:"user_email,omitempty"`
 	APIKeyID           int64            `json:"api_key_id"`
+	APIKeyName         string           `json:"api_key_name,omitempty"`
 	GroupID            int64            `json:"group_id"`
+	GroupName          string           `json:"group_name,omitempty"`
 	CreatedAt          time.Time        `json:"created_at"`
 	EndedAt            *time.Time       `json:"ended_at,omitempty"`
 	UpdatedAt          time.Time        `json:"updated_at"`
@@ -148,7 +152,7 @@ func (h *DataSharingHandler) DeleteSession(c *gin.Context) {
 	response.Success(c, gin.H{"deleted": true})
 }
 
-// BatchDeleteSessions 按 ID 批量删除数据共享 session。
+// BatchDeleteSessions 按 ID 或当前筛选条件批量删除数据共享 session。
 func (h *DataSharingHandler) BatchDeleteSessions(c *gin.Context) {
 	var req BatchDeleteDataShareSessionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -157,6 +161,12 @@ func (h *DataSharingHandler) BatchDeleteSessions(c *gin.Context) {
 	}
 	filters, ok := parseAdminDataShareFilters(c)
 	if !ok {
+		return
+	}
+	if filters.SelectAll {
+		req.IDs = nil
+	} else if len(req.IDs) == 0 {
+		response.BadRequest(c, "ids or select_all is required")
 		return
 	}
 	affected, err := h.dataSharingService.BatchDeleteSessions(c.Request.Context(), req.IDs, filters)
@@ -171,6 +181,12 @@ func (h *DataSharingHandler) BatchDeleteSessions(c *gin.Context) {
 func (h *DataSharingHandler) ExportSessions(c *gin.Context) {
 	filters, ok := parseAdminDataShareFilters(c)
 	if !ok {
+		return
+	}
+	if filters.SelectAll {
+		filters.IDs = nil
+	} else if len(filters.IDs) == 0 {
+		response.BadRequest(c, "ids or select_all is required")
 		return
 	}
 	var buf bytes.Buffer
@@ -201,6 +217,11 @@ func parseAdminDataShareIDParam(c *gin.Context) (int64, error) {
 
 func parseAdminDataShareFilters(c *gin.Context) (service.DataShareSessionFilters, bool) {
 	var filters service.DataShareSessionFilters
+	ids, ok := parseAdminDataShareIDsQuery(c)
+	if !ok {
+		return filters, false
+	}
+	filters.IDs = ids
 	for _, item := range []struct {
 		key string
 		set func(int64)
@@ -223,6 +244,19 @@ func parseAdminDataShareFilters(c *gin.Context) (service.DataShareSessionFilters
 	filters.Provider = strings.TrimSpace(c.Query("provider"))
 	filters.Model = strings.TrimSpace(c.Query("model"))
 	filters.Search = strings.TrimSpace(c.Query("search"))
+	filters.UserName = strings.TrimSpace(c.Query("user_name"))
+	filters.APIKeyName = strings.TrimSpace(c.Query("api_key_name"))
+	filters.GroupName = strings.TrimSpace(c.Query("group_name"))
+	if selectAll, ok := parseAdminDataShareBoolQuery(c, "select_all"); ok {
+		filters.SelectAll = selectAll
+	} else {
+		return filters, false
+	}
+	excludeIDs, ok := parseAdminDataShareIDsQueryKey(c, "exclude_ids")
+	if !ok {
+		return filters, false
+	}
+	filters.ExcludeIDs = excludeIDs
 	if raw := strings.TrimSpace(c.Query("quality_status")); raw != "" && raw != "all" {
 		filters.QualityStatus = raw
 	}
@@ -247,6 +281,48 @@ func parseAdminDataShareFilters(c *gin.Context) (service.DataShareSessionFilters
 	filters.StartTime = start
 	filters.EndTime = end
 	return filters, true
+}
+
+func parseAdminDataShareIDsQuery(c *gin.Context) ([]int64, bool) {
+	return parseAdminDataShareIDsQueryKey(c, "ids")
+}
+
+func parseAdminDataShareIDsQueryKey(c *gin.Context, key string) ([]int64, bool) {
+	rawValues := c.QueryArray(key)
+	seen := make(map[int64]struct{}, len(rawValues))
+	ids := make([]int64, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		for _, raw := range strings.Split(rawValue, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id <= 0 {
+				response.BadRequest(c, "Invalid "+key)
+				return nil, false
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids, true
+}
+
+func parseAdminDataShareBoolQuery(c *gin.Context, key string) (bool, bool) {
+	raw := strings.TrimSpace(c.Query(key))
+	if raw == "" {
+		return false, true
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		response.BadRequest(c, "Invalid "+key)
+		return false, false
+	}
+	return v, true
 }
 
 func parseAdminDataShareTimeQuery(c *gin.Context, keys ...string) (*time.Time, error) {
@@ -295,8 +371,12 @@ func adminDataShareSessionToResponse(session *service.DataShareSession, includeP
 		OutputTokens:       session.OutputTokens,
 		TotalTokens:        session.TotalTokens,
 		UserID:             session.UserID,
+		UserName:           session.UserName,
+		UserEmail:          session.UserEmail,
 		APIKeyID:           session.APIKeyID,
+		APIKeyName:         session.APIKeyName,
 		GroupID:            session.GroupID,
+		GroupName:          session.GroupName,
 		CreatedAt:          session.CreatedAt,
 		EndedAt:            session.EndedAt,
 		UpdatedAt:          session.UpdatedAt,

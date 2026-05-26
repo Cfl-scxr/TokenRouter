@@ -13,6 +13,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/predicate"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/TokenFlux/TokenRouter/internal/service"
+	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -151,6 +152,9 @@ func (r *dataShareSessionRepository) List(ctx context.Context, params pagination
 	for i := range items {
 		out = append(out, *dataShareSessionEntityToService(items[i]))
 	}
+	if err := r.hydrateDisplayNames(ctx, out); err != nil {
+		return nil, nil, err
+	}
 	return out, paginationResultFromTotal(int64(total), params), nil
 }
 
@@ -161,7 +165,15 @@ func (r *dataShareSessionRepository) GetByID(ctx context.Context, id int64) (*se
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrDataShareSessionNotFound, nil)
 	}
-	return dataShareSessionEntityToService(item), nil
+	out := dataShareSessionEntityToService(item)
+	if out == nil {
+		return nil, service.ErrDataShareSessionNotFound
+	}
+	items := []service.DataShareSession{*out}
+	if err := r.hydrateDisplayNames(ctx, items); err != nil {
+		return nil, err
+	}
+	return &items[0], nil
 }
 
 func (r *dataShareSessionRepository) Delete(ctx context.Context, id int64) error {
@@ -178,14 +190,19 @@ func (r *dataShareSessionRepository) Delete(ctx context.Context, id int64) error
 }
 
 func (r *dataShareSessionRepository) BatchDelete(ctx context.Context, ids []int64, filters service.DataShareSessionFilters) (int64, error) {
-	if len(ids) == 0 {
+	if len(ids) == 0 && !filters.SelectAll {
 		return 0, nil
+	}
+	if filters.SelectAll {
+		filters.IDs = nil
+	} else {
+		filters.IDs = ids
 	}
 	q := clientFromContext(ctx, r.client).DataShareSession.Delete()
 	if preds := dataSharePredicates(filters); len(preds) > 0 {
 		q = q.Where(preds...)
 	}
-	affected, err := q.Where(datasharesession.IDIn(ids...)).Exec(ctx)
+	affected, err := q.Exec(ctx)
 	return int64(affected), err
 }
 
@@ -313,14 +330,29 @@ func applyDataShareFilters(q *dbent.DataShareSessionQuery, filters service.DataS
 
 func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.DataShareSession {
 	var preds []predicate.DataShareSession
+	if len(filters.IDs) > 0 {
+		preds = append(preds, datasharesession.IDIn(filters.IDs...))
+	}
+	if len(filters.ExcludeIDs) > 0 {
+		preds = append(preds, datasharesession.IDNotIn(filters.ExcludeIDs...))
+	}
 	if filters.UserID > 0 {
 		preds = append(preds, datasharesession.UserIDEQ(filters.UserID))
+	}
+	if filters.UserName != "" {
+		preds = append(preds, dataShareRelatedNamePredicate("users", "user_id", []string{"username", "email"}, filters.UserName))
 	}
 	if filters.APIKeyID > 0 {
 		preds = append(preds, datasharesession.APIKeyIDEQ(filters.APIKeyID))
 	}
+	if filters.APIKeyName != "" {
+		preds = append(preds, dataShareRelatedNamePredicate("api_keys", "api_key_id", []string{"name"}, filters.APIKeyName))
+	}
 	if filters.GroupID > 0 {
 		preds = append(preds, datasharesession.GroupIDEQ(filters.GroupID))
+	}
+	if filters.GroupName != "" {
+		preds = append(preds, dataShareRelatedNamePredicate("groups", "group_id", []string{"name"}, filters.GroupName))
 	}
 	if filters.Provider != "" {
 		preds = append(preds, datasharesession.ProviderEQ(filters.Provider))
@@ -345,9 +377,36 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 			datasharesession.TrajectoryIDContainsFold(filters.Search),
 			datasharesession.SessionIDContainsFold(filters.Search),
 			datasharesession.ModelContainsFold(filters.Search),
+			dataShareRelatedNamePredicate("users", "user_id", []string{"username", "email"}, filters.Search),
+			dataShareRelatedNamePredicate("api_keys", "api_key_id", []string{"name"}, filters.Search),
+			dataShareRelatedNamePredicate("groups", "group_id", []string{"name"}, filters.Search),
 		))
 	}
 	return preds
+}
+
+func dataShareRelatedNamePredicate(table string, localField string, columns []string, keyword string) predicate.DataShareSession {
+	return predicate.DataShareSession(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("EXISTS (SELECT 1 FROM ").
+				WriteString(table).
+				WriteString(" rel WHERE rel.id = ").
+				WriteString(s.C(localField)).
+				WriteString(" AND (")
+			for i, column := range columns {
+				if i > 0 {
+					b.WriteString(" OR ")
+				}
+				b.WriteString("LOWER(").
+					WriteString("rel.").
+					WriteString(column).
+					WriteString(") LIKE '%' || LOWER(").
+					Arg(keyword).
+					WriteString(") || '%'")
+			}
+			b.WriteString("))")
+		}))
+	})
 }
 
 func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any) {
@@ -360,11 +419,20 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 	if filters.UserID > 0 {
 		add("user_id = $%d", filters.UserID)
 	}
+	if filters.UserName != "" {
+		addDataShareRelatedNameStatsClause(&clauses, &args, "users", "user_id", []string{"username", "email"}, filters.UserName)
+	}
 	if filters.APIKeyID > 0 {
 		add("api_key_id = $%d", filters.APIKeyID)
 	}
+	if filters.APIKeyName != "" {
+		addDataShareRelatedNameStatsClause(&clauses, &args, "api_keys", "api_key_id", []string{"name"}, filters.APIKeyName)
+	}
 	if filters.GroupID > 0 {
 		add("group_id = $%d", filters.GroupID)
+	}
+	if filters.GroupName != "" {
+		addDataShareRelatedNameStatsClause(&clauses, &args, "groups", "group_id", []string{"name"}, filters.GroupName)
 	}
 	if filters.Provider != "" {
 		add("provider = $%d", filters.Provider)
@@ -388,12 +456,29 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 		// 搜索条件复用同一个参数，避免手工补多个占位符时出现编号错位。
 		args = append(args, filters.Search)
 		idx := len(args)
-		clauses = append(clauses, fmt.Sprintf("(trajectory_id ILIKE '%%' || $%d || '%%' OR session_id ILIKE '%%' || $%d || '%%' OR model ILIKE '%%' || $%d || '%%')", idx, idx, idx))
+		clauses = append(clauses, fmt.Sprintf(`(
+			trajectory_id ILIKE '%%' || $%d || '%%'
+			OR session_id ILIKE '%%' || $%d || '%%'
+			OR model ILIKE '%%' || $%d || '%%'
+			OR EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND (u.username ILIKE '%%' || $%d || '%%' OR u.email ILIKE '%%' || $%d || '%%'))
+			OR EXISTS (SELECT 1 FROM api_keys ak WHERE ak.id = api_key_id AND ak.name ILIKE '%%' || $%d || '%%')
+			OR EXISTS (SELECT 1 FROM groups g WHERE g.id = group_id AND g.name ILIKE '%%' || $%d || '%%')
+		)`, idx, idx, idx, idx, idx, idx, idx))
 	}
 	if len(clauses) == 0 {
 		return "", args
 	}
 	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func addDataShareRelatedNameStatsClause(clauses *[]string, args *[]any, table string, localField string, columns []string, keyword string) {
+	*args = append(*args, keyword)
+	idx := len(*args)
+	parts := make([]string, 0, len(columns))
+	for _, column := range columns {
+		parts = append(parts, fmt.Sprintf("LOWER(rel.%s) LIKE '%%' || LOWER($%d) || '%%'", column, idx))
+	}
+	*clauses = append(*clauses, fmt.Sprintf("EXISTS (SELECT 1 FROM %s rel WHERE rel.id = %s AND (%s))", table, localField, strings.Join(parts, " OR ")))
 }
 
 func dataShareListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
@@ -450,12 +535,152 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		OutputTokens:       m.OutputTokens,
 		TotalTokens:        m.TotalTokens,
 		UserID:             m.UserID,
+		UserName:           stringFromRepositoryAny(m.Meta["user_name"]),
+		UserEmail:          stringFromRepositoryAny(m.Meta["user_email"]),
 		APIKeyID:           m.APIKeyID,
+		APIKeyName:         stringFromRepositoryAny(m.Meta["api_key_name"]),
 		GroupID:            m.GroupID,
+		GroupName:          stringFromRepositoryAny(m.Meta["group_name"]),
 		CreatedAt:          m.CreatedAt,
 		EndedAt:            m.EndedAt,
 		UpdatedAt:          m.UpdatedAt,
 	}
+}
+
+func (r *dataShareSessionRepository) hydrateDisplayNames(ctx context.Context, items []service.DataShareSession) error {
+	if len(items) == 0 {
+		return nil
+	}
+	sqlq := r.sqlExecutorFromContext(ctx)
+	userIDs := make([]int64, 0, len(items))
+	apiKeyIDs := make([]int64, 0, len(items))
+	groupIDs := make([]int64, 0, len(items))
+	for i := range items {
+		if items[i].UserID > 0 {
+			userIDs = append(userIDs, items[i].UserID)
+		}
+		if items[i].APIKeyID > 0 {
+			apiKeyIDs = append(apiKeyIDs, items[i].APIKeyID)
+		}
+		if items[i].GroupID > 0 {
+			groupIDs = append(groupIDs, items[i].GroupID)
+		}
+	}
+	users, err := dataShareLoadUserNames(ctx, sqlq, uniqueInt64s(userIDs))
+	if err != nil {
+		return err
+	}
+	keys, err := dataShareLoadIDNames(ctx, sqlq, "api_keys", "name", uniqueInt64s(apiKeyIDs))
+	if err != nil {
+		return err
+	}
+	groups, err := dataShareLoadIDNames(ctx, sqlq, "groups", "name", uniqueInt64s(groupIDs))
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if info, ok := users[items[i].UserID]; ok {
+			if strings.TrimSpace(items[i].UserName) == "" {
+				items[i].UserName = info.Name
+			}
+			if strings.TrimSpace(items[i].UserEmail) == "" {
+				items[i].UserEmail = info.Email
+			}
+		}
+		if name := keys[items[i].APIKeyID]; strings.TrimSpace(items[i].APIKeyName) == "" && name != "" {
+			items[i].APIKeyName = name
+		}
+		if name := groups[items[i].GroupID]; strings.TrimSpace(items[i].GroupName) == "" && name != "" {
+			items[i].GroupName = name
+		}
+		if items[i].Meta == nil {
+			items[i].Meta = map[string]any{}
+		}
+		items[i].Meta["user_name"] = items[i].UserName
+		items[i].Meta["user_email"] = items[i].UserEmail
+		items[i].Meta["api_key_name"] = items[i].APIKeyName
+		items[i].Meta["group_name"] = items[i].GroupName
+		if items[i].SessionJSON != nil {
+			meta, _ := items[i].SessionJSON["meta"].(map[string]any)
+			if meta == nil {
+				meta = map[string]any{}
+			}
+			meta["user_name"] = items[i].UserName
+			meta["user_email"] = items[i].UserEmail
+			meta["api_key_name"] = items[i].APIKeyName
+			meta["group_name"] = items[i].GroupName
+			items[i].SessionJSON["meta"] = meta
+		}
+	}
+	return nil
+}
+
+type dataShareUserDisplay struct {
+	Name  string
+	Email string
+}
+
+func dataShareLoadUserNames(ctx context.Context, sqlq sqlExecutor, ids []int64) (map[int64]dataShareUserDisplay, error) {
+	out := make(map[int64]dataShareUserDisplay)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT id, COALESCE(NULLIF(username, ''), email, ''), COALESCE(email, '')
+		FROM users
+		WHERE id = ANY($1)
+	`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var item dataShareUserDisplay
+		if err := rows.Scan(&id, &item.Name, &item.Email); err != nil {
+			return nil, err
+		}
+		out[id] = item
+	}
+	return out, rows.Err()
+}
+
+func dataShareLoadIDNames(ctx context.Context, sqlq sqlExecutor, table string, nameColumn string, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	query := fmt.Sprintf("SELECT id, COALESCE(%s, '') FROM %s WHERE id = ANY($1)", nameColumn, table)
+	rows, err := sqlq.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
+}
+
+func uniqueInt64s(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	out := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func mergeDataShareTools(existing, incoming []map[string]any) []map[string]any {

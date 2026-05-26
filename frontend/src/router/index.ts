@@ -243,7 +243,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Data Sharing'
+      title: '数据共享'
     }
   },
   {
@@ -584,7 +584,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Data Sharing'
+      title: '数据共享'
     }
   },
   {

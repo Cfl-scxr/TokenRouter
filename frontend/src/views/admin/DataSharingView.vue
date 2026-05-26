@@ -87,9 +87,9 @@
                   <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input v-model="filters.search" type="text" class="input pl-10" placeholder="搜索 session、轨迹或模型" @input="handleFilterChange" />
                 </div>
-                <input v-model.number="filters.user_id" type="number" min="1" class="input w-32" placeholder="用户 ID" @input="handleFilterChange" />
-                <input v-model.number="filters.api_key_id" type="number" min="1" class="input w-32" placeholder="Key ID" @input="handleFilterChange" />
-                <input v-model.number="filters.group_id" type="number" min="1" class="input w-32" placeholder="分组 ID" @input="handleFilterChange" />
+                <input v-model="filters.user_name" type="text" class="input w-36" placeholder="用户名称" @input="handleFilterChange" />
+                <input v-model="filters.api_key_name" type="text" class="input w-36" placeholder="Key 名称" @input="handleFilterChange" />
+                <input v-model="filters.group_name" type="text" class="input w-36" placeholder="分组名称" @input="handleFilterChange" />
                 <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
                 <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
                 <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
@@ -98,13 +98,13 @@
                 <button class="btn btn-secondary" :disabled="loading" @click="refreshAll">
                   <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
                 </button>
-                <button class="btn btn-secondary" :disabled="selectedIds.size === 0" @click="batchDelete">
+                <button class="btn btn-secondary" :disabled="selectedCount === 0" @click="batchDelete">
                   <Icon name="trash" size="md" class="mr-2" />
                   删除已选
                 </button>
-                <button class="btn btn-primary" :disabled="exporting" @click="downloadCurrent">
+                <button class="btn btn-primary" :disabled="exporting || selectedCount === 0" @click="downloadSelected">
                   <Icon name="download" size="md" class="mr-2" />
-                  导出 JSONL
+                  导出已选 JSONL
                 </button>
               </div>
             </div>
@@ -122,15 +122,30 @@
             @sort="handleSort"
           >
             <template #header-select>
-              <input :checked="allCurrentSelected" type="checkbox" class="rounded border-gray-300 text-primary-600" @change="toggleSelectAll" />
+              <div class="flex flex-col items-center gap-1 normal-case">
+                <span v-if="selectedCount > 0" class="whitespace-nowrap text-[11px] font-medium leading-none text-primary-600 dark:text-primary-400" :title="selectionSummary">
+                  已选 {{ formatNumber(selectedCount) }}
+                </span>
+                <input
+                  :checked="allMatchingSelected"
+                  :disabled="pagination.total === 0"
+                  :indeterminate="selectionIndeterminate"
+                  type="checkbox"
+                  class="rounded border-gray-300 text-primary-600"
+                  title="选择当前筛选条件下的所有条目"
+                  @change="toggleSelectAll"
+                />
+              </div>
             </template>
             <template #cell-select="{ row }">
-              <input :checked="selectedIds.has(row.id)" type="checkbox" class="rounded border-gray-300 text-primary-600" @change="toggleSelect(row.id)" />
+              <input :checked="isSelected(row.id)" type="checkbox" class="rounded border-gray-300 text-primary-600" @change="toggleSelect(row.id)" />
             </template>
             <template #cell-session_id="{ value, row }">
               <div class="max-w-xs">
                 <p class="truncate font-medium text-gray-900 dark:text-white">{{ value }}</p>
-                <p class="truncate text-xs text-gray-500 dark:text-gray-400">用户 {{ row.user_id }} / Key {{ row.api_key_id }}</p>
+                <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ displayUser(row) }} / {{ displayAPIKey(row) }} / {{ displayGroup(row) }}
+                </p>
               </div>
             </template>
             <template #cell-model="{ value }">
@@ -149,6 +164,10 @@
                 <button class="btn btn-ghost btn-sm" @click="openDetail(row)">
                   <Icon name="eye" size="sm" class="mr-1" />
                   查看
+                </button>
+                <button class="btn btn-ghost btn-sm" @click="downloadOne(row)">
+                  <Icon name="download" size="sm" class="mr-1" />
+                  下载
                 </button>
                 <button class="btn btn-ghost btn-sm text-red-600 hover:text-red-700" @click="deleteOne(row)">
                   <Icon name="trash" size="sm" class="mr-1" />
@@ -181,9 +200,9 @@
       </div>
       <div v-else-if="selectedSession" class="space-y-4">
         <div class="flex flex-wrap gap-2">
-          <span class="badge badge-gray">用户 {{ selectedSession.user_id }}</span>
-          <span class="badge badge-gray">Key {{ selectedSession.api_key_id }}</span>
-          <span class="badge badge-gray">分组 {{ selectedSession.group_id }}</span>
+          <span class="badge badge-gray">用户 {{ displayUser(selectedSession) }}</span>
+          <span class="badge badge-gray">Key {{ displayAPIKey(selectedSession) }}</span>
+          <span class="badge badge-gray">分组 {{ displayGroup(selectedSession) }}</span>
           <span :class="['badge', qualityBadgeClass(selectedSession.quality_status)]">
             {{ qualityLabel(selectedSession.quality_status) }}
           </span>
@@ -234,7 +253,10 @@ const noticeContent = ref('')
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
+// 选中状态支持两种模式：显式 ID 列表，以及“当前筛选条件全集 + 排除列表”。
 const selectedIds = ref<Set<number>>(new Set())
+const excludedIds = ref<Set<number>>(new Set())
+const selectAllMatching = ref(false)
 
 const loading = ref(false)
 const statsLoading = ref(false)
@@ -247,9 +269,9 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const filters = reactive({
   search: '',
-  user_id: null as number | null,
-  api_key_id: null as number | null,
-  group_id: null as number | null,
+  user_name: '',
+  api_key_name: '',
+  group_name: '',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
@@ -375,7 +397,20 @@ const barChartOptions = computed(() => ({
   }
 }))
 
-const allCurrentSelected = computed(() => sessions.value.length > 0 && sessions.value.every(item => selectedIds.value.has(item.id)))
+const selectedCount = computed(() => {
+  if (selectAllMatching.value) {
+    return Math.max(pagination.total - excludedIds.value.size, 0)
+  }
+  return selectedIds.value.size
+})
+const allMatchingSelected = computed(() => selectAllMatching.value && pagination.total > 0 && excludedIds.value.size === 0)
+const selectionIndeterminate = computed(() => selectedCount.value > 0 && !allMatchingSelected.value)
+const selectionSummary = computed(() => {
+  if (selectAllMatching.value) {
+    return `已选择当前筛选条件下 ${formatNumber(selectedCount.value)} 条`
+  }
+  return `已选择 ${formatNumber(selectedCount.value)} 条`
+})
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
 
 let filterTimer: number | null = null
@@ -386,9 +421,9 @@ function buildFilters(): AdminDataShareSessionFilters {
     sort_order: sortState.sort_order
   }
   if (filters.search.trim()) out.search = filters.search.trim()
-  if (filters.user_id) out.user_id = filters.user_id
-  if (filters.api_key_id) out.api_key_id = filters.api_key_id
-  if (filters.group_id) out.group_id = filters.group_id
+  if (filters.user_name.trim()) out.user_name = filters.user_name.trim()
+  if (filters.api_key_name.trim()) out.api_key_name = filters.api_key_name.trim()
+  if (filters.group_name.trim()) out.group_name = filters.group_name.trim()
   if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date
@@ -449,6 +484,7 @@ function refreshAll() {
 
 function handleFilterChange() {
   pagination.page = 1
+  clearSelection()
   if (filterTimer) window.clearTimeout(filterTimer)
   filterTimer = window.setTimeout(refreshAll, 250)
 }
@@ -471,7 +507,27 @@ function handlePageSizeChange(pageSize: number) {
   loadSessions()
 }
 
+function clearSelection() {
+  selectedIds.value = new Set()
+  excludedIds.value = new Set()
+  selectAllMatching.value = false
+}
+
+function isSelected(id: number) {
+  return selectAllMatching.value ? !excludedIds.value.has(id) : selectedIds.value.has(id)
+}
+
 function toggleSelect(id: number) {
+  if (selectAllMatching.value) {
+    const next = new Set(excludedIds.value)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    excludedIds.value = next
+    return
+  }
   const next = new Set(selectedIds.value)
   if (next.has(id)) {
     next.delete(id)
@@ -481,14 +537,28 @@ function toggleSelect(id: number) {
   selectedIds.value = next
 }
 
-function toggleSelectAll() {
-  const next = new Set(selectedIds.value)
-  if (allCurrentSelected.value) {
-    sessions.value.forEach(item => next.delete(item.id))
-  } else {
-    sessions.value.forEach(item => next.add(item.id))
+function toggleSelectAll(event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  if (!checked) {
+    clearSelection()
+    return
   }
-  selectedIds.value = next
+  selectedIds.value = new Set()
+  excludedIds.value = new Set()
+  selectAllMatching.value = true
+}
+
+function buildSelectionFilters(): AdminDataShareSessionFilters {
+  const out = buildFilters()
+  if (selectAllMatching.value) {
+    out.select_all = true
+    const excluded = Array.from(excludedIds.value)
+    if (excluded.length) out.exclude_ids = excluded.join(',')
+    return out
+  }
+  const ids = Array.from(selectedIds.value)
+  if (ids.length) out.ids = ids.join(',')
+  return out
 }
 
 async function openDetail(row: DataShareSession) {
@@ -508,7 +578,9 @@ async function deleteOne(row: DataShareSession) {
   if (!window.confirm(`确定删除 session ${row.session_id} 吗？`)) return
   try {
     await adminDataSharingAPI.deleteSession(row.id)
-    selectedIds.value.delete(row.id)
+    if (!selectAllMatching.value) {
+      selectedIds.value.delete(row.id)
+    }
     appStore.showSuccess('数据已删除')
     refreshAll()
   } catch (error) {
@@ -517,12 +589,14 @@ async function deleteOne(row: DataShareSession) {
 }
 
 async function batchDelete() {
-  const ids = Array.from(selectedIds.value)
-  if (!ids.length) return
-  if (!window.confirm(`确定删除已选 ${ids.length} 条数据吗？`)) return
+  if (selectedCount.value === 0) return
+  const count = selectedCount.value
+  const ids = selectAllMatching.value ? [] : Array.from(selectedIds.value)
+  const params = selectAllMatching.value ? buildSelectionFilters() : buildFilters()
+  if (!window.confirm(`确定删除已选 ${formatNumber(count)} 条数据吗？`)) return
   try {
-    await adminDataSharingAPI.batchDeleteSessions(ids, buildFilters())
-    selectedIds.value = new Set()
+    await adminDataSharingAPI.batchDeleteSessions(ids, params)
+    clearSelection()
     appStore.showSuccess('已删除选中数据')
     refreshAll()
   } catch (error) {
@@ -530,16 +604,38 @@ async function batchDelete() {
   }
 }
 
-async function downloadCurrent() {
+async function downloadSelected() {
+  if (selectedCount.value === 0) return
   exporting.value = true
   try {
-    const blob = await adminDataSharingAPI.exportSessions(buildFilters())
+    const blob = await adminDataSharingAPI.exportSessions(buildSelectionFilters())
     dataSharingAPI.downloadBlob(blob, `admin-data-sharing-${Date.now()}.jsonl`)
   } catch (error) {
     appStore.showError('导出失败')
   } finally {
     exporting.value = false
   }
+}
+
+async function downloadOne(row: DataShareSession) {
+  try {
+    const blob = await adminDataSharingAPI.exportSessions({ ids: String(row.id) })
+    dataSharingAPI.downloadBlob(blob, `admin-data-sharing-session-${row.id}.jsonl`)
+  } catch (error) {
+    appStore.showError('下载失败')
+  }
+}
+
+function displayUser(row: DataShareSession) {
+  return row.user_name || row.user_email || `#${row.user_id}`
+}
+
+function displayAPIKey(row: DataShareSession) {
+  return row.api_key_name || `#${row.api_key_id}`
+}
+
+function displayGroup(row: DataShareSession) {
+  return row.group_name || `#${row.group_id}`
 }
 
 function formatDate(value?: string | null) {

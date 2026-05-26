@@ -30,7 +30,6 @@ const (
 var (
 	ErrDataShareSessionNotFound = infraerrors.NotFound("DATA_SHARE_SESSION_NOT_FOUND", "data share session not found")
 	ErrDataShareNoticeMissing   = infraerrors.BadRequest("DATA_SHARE_NOTICE_MISSING", "data sharing notice content is required")
-	ErrDataShareSessionInvalid  = infraerrors.BadRequest("DATA_SHARE_SESSION_INVALID", "data share session is invalid and cannot be exported")
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
@@ -67,8 +66,12 @@ type DataShareSession struct {
 	OutputTokens       int64
 	TotalTokens        int64
 	UserID             int64
+	UserName           string
+	UserEmail          string
 	APIKeyID           int64
+	APIKeyName         string
 	GroupID            int64
+	GroupName          string
 	CreatedAt          time.Time
 	EndedAt            *time.Time
 	UpdatedAt          time.Time
@@ -76,9 +79,16 @@ type DataShareSession struct {
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。
 type DataShareSessionFilters struct {
+	IDs        []int64
+	ExcludeIDs []int64
+	// SelectAll 表示批量操作覆盖当前筛选条件下的全集，ExcludeIDs 用于排除用户取消勾选的记录。
+	SelectAll     bool
 	UserID        int64
+	UserName      string
 	APIKeyID      int64
+	APIKeyName    string
 	GroupID       int64
+	GroupName     string
 	Provider      string
 	Model         string
 	Exportable    *bool
@@ -263,7 +273,7 @@ func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSession
 	return s.repo.Stats(ctx, filters)
 }
 
-// ExportJSONL 按附件要求导出 JSONL；默认导出完整和可裁切的部分完整记录。
+// ExportJSONL 导出选中的数据共享 session；显式选中的记录保留原始快照，不再因质量状态跳过。
 func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool) error {
 	_ = includeNonExportable
 	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
@@ -273,10 +283,7 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 			return err
 		}
 		for i := range items {
-			payload, qualityStatus, qualityErrors := exportPayloadAndQualityFromSession(&items[i])
-			if qualityStatus == DataShareQualityInvalid || len(qualityErrors) > 0 {
-				continue
-			}
+			payload := exportPayloadFromSession(&items[i])
 			line, err := json.Marshal(payload)
 			if err != nil {
 				return err
@@ -627,10 +634,25 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 		"ip_address":         input.IPAddress,
 	}
 	if input.APIKey != nil {
+		meta["user_id"] = input.APIKey.UserID
 		meta["api_key_id"] = input.APIKey.ID
+		meta["api_key_name"] = input.APIKey.Name
 		if input.APIKey.GroupID != nil {
 			meta["group_id"] = *input.APIKey.GroupID
 		}
+		if input.APIKey.User != nil {
+			meta["user_name"] = input.APIKey.User.Username
+			meta["user_email"] = input.APIKey.User.Email
+		}
+		if input.APIKey.Group != nil {
+			meta["group_id"] = input.APIKey.Group.ID
+			meta["group_name"] = input.APIKey.Group.Name
+		}
+	}
+	if input.User != nil {
+		meta["user_id"] = input.User.ID
+		meta["user_name"] = input.User.Username
+		meta["user_email"] = input.User.Email
 	}
 	if input.Account != nil {
 		meta["account_id"] = input.Account.ID
@@ -1279,16 +1301,6 @@ func exportPayloadAndQualityFromSession(session *DataShareSession) (map[string]a
 	tools := mapsFromAny(payload["tools"])
 	usage := normalizeDataShareUsage(mapAnyFromAny(payload["usage"]))
 	qualityStatus := DataSharePayloadQualityStatus(model, systemPrompt, messages, tools, usage)
-	if qualityStatus == DataShareQualityPartial {
-		cropped, errs := exportableDataShareMessages(model, systemPrompt, messages, tools, usage)
-		if len(errs) == 0 {
-			payload["messages"] = cropped
-			payload["status"] = DataShareStatusCompleted
-			payload["is_final_snapshot"] = true
-			return payload, qualityStatus, nil
-		}
-		return payload, DataShareQualityInvalid, errs
-	}
 	return payload, qualityStatus, validateDataSharePayloadQuality(payload)
 }
 
@@ -1602,16 +1614,13 @@ func intFromAny(v any) int {
 	}
 }
 
-// WriteSingleSessionJSONL 输出单条 session 的 JSONL，供详情页下载使用。
+// WriteSingleSessionJSONL 输出单条 session 的原始 JSONL，供详情页下载和问题排查使用。
 func WriteSingleSessionJSONL(w io.Writer, session *DataShareSession) error {
 	if session == nil {
 		return ErrDataShareSessionNotFound
 	}
 	var buf bytes.Buffer
-	payload, qualityStatus, qualityErrors := exportPayloadAndQualityFromSession(session)
-	if qualityStatus == DataShareQualityInvalid || len(qualityErrors) > 0 {
-		return ErrDataShareSessionInvalid
-	}
+	payload := exportPayloadFromSession(session)
 	line, err := json.Marshal(payload)
 	if err != nil {
 		return err
