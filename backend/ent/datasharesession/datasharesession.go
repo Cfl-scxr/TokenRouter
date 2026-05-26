@@ -43,6 +43,8 @@ const (
 	FieldSessionJSON = "session_json"
 	// FieldExportable holds the string denoting the exportable field in the database.
 	FieldExportable = "exportable"
+	// FieldQualityStatus holds the string denoting the quality_status field in the database.
+	FieldQualityStatus = "quality_status"
 	// FieldQualityErrors holds the string denoting the quality_errors field in the database.
 	FieldQualityErrors = "quality_errors"
 	// FieldStorageBytes holds the string denoting the storage_bytes field in the database.
@@ -87,6 +89,7 @@ var Columns = []string{
 	FieldMeta,
 	FieldSessionJSON,
 	FieldExportable,
+	FieldQualityStatus,
 	FieldQualityErrors,
 	FieldStorageBytes,
 	FieldInputTokens,
@@ -131,6 +134,10 @@ var (
 	DefaultSourceRequestCount int
 	// DefaultExportable holds the default value on creation for the "exportable" field.
 	DefaultExportable bool
+	// DefaultQualityStatus holds the default value on creation for the "quality_status" field.
+	DefaultQualityStatus string
+	// QualityStatusValidator is a validator for the "quality_status" field. It is called by the builders before save.
+	QualityStatusValidator func(string) error
 	// DefaultStorageBytes holds the default value on creation for the "storage_bytes" field.
 	DefaultStorageBytes int64
 	// DefaultInputTokens holds the default value on creation for the "input_tokens" field.
@@ -203,6 +210,11 @@ func BySystemPrompt(opts ...sql.OrderTermOption) OrderOption {
 // ByExportable orders the results by the exportable field.
 func ByExportable(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExportable, opts...).ToFunc()
+}
+
+// ByQualityStatus orders the results by the quality_status field.
+func ByQualityStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQualityStatus, opts...).ToFunc()
 }
 
 // ByStorageBytes orders the results by the storage_bytes field.

@@ -19,6 +19,9 @@ export interface DataShareStats {
   session_count: number
   exportable_count: number
   non_exportable_count: number
+  complete_count: number
+  partial_count: number
+  invalid_count: number
   total_storage_bytes: number
   total_tokens: number
   avg_tokens_per_session: number
@@ -73,7 +76,7 @@ export async function batchDeleteSessions(
   return data
 }
 
-export async function exportSessions(filters?: AdminDataShareSessionFilters & { include_non_exportable?: boolean }): Promise<Blob> {
+export async function exportSessions(filters?: AdminDataShareSessionFilters): Promise<Blob> {
   const { data } = await apiClient.get<Blob>('/admin/data-sharing/export', {
     params: filters,
     responseType: 'blob'

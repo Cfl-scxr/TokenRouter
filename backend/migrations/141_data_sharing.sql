@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS data_share_sessions (
     meta JSONB NOT NULL DEFAULT '{}'::jsonb,
     session_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     exportable BOOLEAN NOT NULL DEFAULT FALSE,
+    quality_status VARCHAR(20) NOT NULL DEFAULT 'invalid',
     quality_errors JSONB NOT NULL DEFAULT '[]'::jsonb,
     storage_bytes BIGINT NOT NULL DEFAULT 0,
     input_tokens BIGINT NOT NULL DEFAULT 0,
@@ -56,6 +57,8 @@ CREATE INDEX IF NOT EXISTS idx_data_share_sessions_model
     ON data_share_sessions (model);
 CREATE INDEX IF NOT EXISTS idx_data_share_sessions_exportable
     ON data_share_sessions (exportable);
+CREATE INDEX IF NOT EXISTS idx_data_share_sessions_quality_status
+    ON data_share_sessions (quality_status);
 CREATE INDEX IF NOT EXISTS idx_data_share_sessions_created_at
     ON data_share_sessions (created_at);
 CREATE INDEX IF NOT EXISTS idx_data_share_sessions_updated_at

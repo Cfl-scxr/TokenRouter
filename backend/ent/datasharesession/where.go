@@ -104,6 +104,11 @@ func Exportable(v bool) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldExportable, v))
 }
 
+// QualityStatus applies equality check predicate on the "quality_status" field. It's identical to QualityStatusEQ.
+func QualityStatus(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldQualityStatus, v))
+}
+
 // StorageBytes applies equality check predicate on the "storage_bytes" field. It's identical to StorageBytesEQ.
 func StorageBytes(v int64) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldStorageBytes, v))
@@ -727,6 +732,71 @@ func ExportableEQ(v bool) predicate.DataShareSession {
 // ExportableNEQ applies the NEQ predicate on the "exportable" field.
 func ExportableNEQ(v bool) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldNEQ(FieldExportable, v))
+}
+
+// QualityStatusEQ applies the EQ predicate on the "quality_status" field.
+func QualityStatusEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldQualityStatus, v))
+}
+
+// QualityStatusNEQ applies the NEQ predicate on the "quality_status" field.
+func QualityStatusNEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldQualityStatus, v))
+}
+
+// QualityStatusIn applies the In predicate on the "quality_status" field.
+func QualityStatusIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldQualityStatus, vs...))
+}
+
+// QualityStatusNotIn applies the NotIn predicate on the "quality_status" field.
+func QualityStatusNotIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldQualityStatus, vs...))
+}
+
+// QualityStatusGT applies the GT predicate on the "quality_status" field.
+func QualityStatusGT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldQualityStatus, v))
+}
+
+// QualityStatusGTE applies the GTE predicate on the "quality_status" field.
+func QualityStatusGTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldQualityStatus, v))
+}
+
+// QualityStatusLT applies the LT predicate on the "quality_status" field.
+func QualityStatusLT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldQualityStatus, v))
+}
+
+// QualityStatusLTE applies the LTE predicate on the "quality_status" field.
+func QualityStatusLTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldQualityStatus, v))
+}
+
+// QualityStatusContains applies the Contains predicate on the "quality_status" field.
+func QualityStatusContains(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContains(FieldQualityStatus, v))
+}
+
+// QualityStatusHasPrefix applies the HasPrefix predicate on the "quality_status" field.
+func QualityStatusHasPrefix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasPrefix(FieldQualityStatus, v))
+}
+
+// QualityStatusHasSuffix applies the HasSuffix predicate on the "quality_status" field.
+func QualityStatusHasSuffix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasSuffix(FieldQualityStatus, v))
+}
+
+// QualityStatusEqualFold applies the EqualFold predicate on the "quality_status" field.
+func QualityStatusEqualFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEqualFold(FieldQualityStatus, v))
+}
+
+// QualityStatusContainsFold applies the ContainsFold predicate on the "quality_status" field.
+func QualityStatusContainsFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContainsFold(FieldQualityStatus, v))
 }
 
 // QualityErrorsIsNil applies the IsNil predicate on the "quality_errors" field.

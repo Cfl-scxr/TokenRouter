@@ -254,6 +254,20 @@ func (_u *DataShareSessionUpdate) SetNillableExportable(v *bool) *DataShareSessi
 	return _u
 }
 
+// SetQualityStatus sets the "quality_status" field.
+func (_u *DataShareSessionUpdate) SetQualityStatus(v string) *DataShareSessionUpdate {
+	_u.mutation.SetQualityStatus(v)
+	return _u
+}
+
+// SetNillableQualityStatus sets the "quality_status" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillableQualityStatus(v *string) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetQualityStatus(*v)
+	}
+	return _u
+}
+
 // SetQualityErrors sets the "quality_errors" field.
 func (_u *DataShareSessionUpdate) SetQualityErrors(v []string) *DataShareSessionUpdate {
 	_u.mutation.SetQualityErrors(v)
@@ -518,6 +532,11 @@ func (_u *DataShareSessionUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.QualityStatus(); ok {
+		if err := datasharesession.QualityStatusValidator(v); err != nil {
+			return &ValidationError{Name: "quality_status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.quality_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -608,6 +627,9 @@ func (_u *DataShareSessionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QualityStatus(); ok {
+		_spec.SetField(datasharesession.FieldQualityStatus, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.QualityErrors(); ok {
 		_spec.SetField(datasharesession.FieldQualityErrors, field.TypeJSON, value)
@@ -916,6 +938,20 @@ func (_u *DataShareSessionUpdateOne) SetNillableExportable(v *bool) *DataShareSe
 	return _u
 }
 
+// SetQualityStatus sets the "quality_status" field.
+func (_u *DataShareSessionUpdateOne) SetQualityStatus(v string) *DataShareSessionUpdateOne {
+	_u.mutation.SetQualityStatus(v)
+	return _u
+}
+
+// SetNillableQualityStatus sets the "quality_status" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillableQualityStatus(v *string) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetQualityStatus(*v)
+	}
+	return _u
+}
+
 // SetQualityErrors sets the "quality_errors" field.
 func (_u *DataShareSessionUpdateOne) SetQualityErrors(v []string) *DataShareSessionUpdateOne {
 	_u.mutation.SetQualityErrors(v)
@@ -1193,6 +1229,11 @@ func (_u *DataShareSessionUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.QualityStatus(); ok {
+		if err := datasharesession.QualityStatusValidator(v); err != nil {
+			return &ValidationError{Name: "quality_status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.quality_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1300,6 +1341,9 @@ func (_u *DataShareSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSh
 	}
 	if value, ok := _u.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.QualityStatus(); ok {
+		_spec.SetField(datasharesession.FieldQualityStatus, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.QualityErrors(); ok {
 		_spec.SetField(datasharesession.FieldQualityErrors, field.TypeJSON, value)

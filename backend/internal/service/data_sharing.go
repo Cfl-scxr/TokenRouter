@@ -19,13 +19,18 @@ import (
 )
 
 const (
-	DataShareStatusCompleted = "completed"
-	defaultDataShareDataset  = "tokenrouter-agent"
+	DataShareStatusCompleted  = "completed"
+	DataShareStatusTerminated = "terminated"
+	DataShareQualityComplete  = "complete"
+	DataShareQualityPartial   = "partial"
+	DataShareQualityInvalid   = "invalid"
+	defaultDataShareDataset   = "tokenrouter-agent"
 )
 
 var (
 	ErrDataShareSessionNotFound = infraerrors.NotFound("DATA_SHARE_SESSION_NOT_FOUND", "data share session not found")
 	ErrDataShareNoticeMissing   = infraerrors.BadRequest("DATA_SHARE_NOTICE_MISSING", "data sharing notice content is required")
+	ErrDataShareSessionInvalid  = infraerrors.BadRequest("DATA_SHARE_SESSION_INVALID", "data share session is invalid and cannot be exported")
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
@@ -55,6 +60,7 @@ type DataShareSession struct {
 	Meta               map[string]any
 	SessionJSON        map[string]any
 	Exportable         bool
+	QualityStatus      string
 	QualityErrors      []string
 	StorageBytes       int64
 	InputTokens        int64
@@ -70,15 +76,16 @@ type DataShareSession struct {
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。
 type DataShareSessionFilters struct {
-	UserID     int64
-	APIKeyID   int64
-	GroupID    int64
-	Provider   string
-	Model      string
-	Exportable *bool
-	StartTime  *time.Time
-	EndTime    *time.Time
-	Search     string
+	UserID        int64
+	APIKeyID      int64
+	GroupID       int64
+	Provider      string
+	Model         string
+	Exportable    *bool
+	QualityStatus string
+	StartTime     *time.Time
+	EndTime       *time.Time
+	Search        string
 }
 
 // DataShareStoragePoint 用于管理端展示空间增长趋势。
@@ -101,6 +108,9 @@ type DataShareStats struct {
 	SessionCount          int64                        `json:"session_count"`
 	ExportableCount       int64                        `json:"exportable_count"`
 	NonExportableCount    int64                        `json:"non_exportable_count"`
+	CompleteCount         int64                        `json:"complete_count"`
+	PartialCount          int64                        `json:"partial_count"`
+	InvalidCount          int64                        `json:"invalid_count"`
 	TotalStorageBytes     int64                        `json:"total_storage_bytes"`
 	TotalTokens           int64                        `json:"total_tokens"`
 	AvgTokensPerSession   float64                      `json:"avg_tokens_per_session"`
@@ -253,12 +263,9 @@ func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSession
 	return s.repo.Stats(ctx, filters)
 }
 
-// ExportJSONL 按附件要求导出 JSONL。默认只导出 exportable=true 的记录。
+// ExportJSONL 按附件要求导出 JSONL；默认导出完整和可裁切的部分完整记录。
 func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool) error {
-	if !includeNonExportable && filters.Exportable == nil {
-		v := true
-		filters.Exportable = &v
-	}
+	_ = includeNonExportable
 	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
 	for {
 		items, result, err := s.repo.List(ctx, params, filters)
@@ -266,7 +273,11 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 			return err
 		}
 		for i := range items {
-			line, err := json.Marshal(exportPayloadFromSession(&items[i]))
+			payload, qualityStatus, qualityErrors := exportPayloadAndQualityFromSession(&items[i])
+			if qualityStatus == DataShareQualityInvalid || len(qualityErrors) > 0 {
+				continue
+			}
+			line, err := json.Marshal(payload)
 			if err != nil {
 				return err
 			}
@@ -330,7 +341,12 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	if systemPrompt == "" {
 		systemPrompt = extractSystemPromptFromRequest(input.RequestBody)
 	}
-	qualityErrors := validateDataShareQuality(model, messages, tools, usage)
+	if systemPrompt == "" {
+		systemPrompt = extractSystemPromptFromMessages(messages)
+	}
+	qualityErrors := ValidateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
+	qualityStatus := DataSharePayloadQualityStatus(model, systemPrompt, messages, tools, usage)
+	status, finalSnapshot := dataShareCompletionState(qualityStatus)
 	sessionJSON := map[string]any{
 		"trajectory_id":        trajectoryID,
 		"session_id":           sessionID,
@@ -339,9 +355,10 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		"model":                model,
 		"created_at":           now.Format(time.RFC3339Nano),
 		"ended_at":             now.Format(time.RFC3339Nano),
-		"status":               DataShareStatusCompleted,
-		"is_final_snapshot":    true,
+		"status":               status,
+		"is_final_snapshot":    finalSnapshot,
 		"source_request_count": 1,
+		"quality_status":       qualityStatus,
 		"system_prompt":        systemPrompt,
 		"tools":                tools,
 		"messages":             messages,
@@ -361,8 +378,8 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		Dataset:            defaultDataShareDataset,
 		Provider:           provider,
 		Model:              model,
-		Status:             DataShareStatusCompleted,
-		IsFinalSnapshot:    true,
+		Status:             status,
+		IsFinalSnapshot:    finalSnapshot,
 		SourceRequestCount: 1,
 		SystemPrompt:       sysPtr,
 		Tools:              tools,
@@ -370,7 +387,8 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		Usage:              usage,
 		Meta:               meta,
 		SessionJSON:        sessionJSON,
-		Exportable:         len(qualityErrors) == 0,
+		Exportable:         DataShareQualityExportable(qualityStatus),
+		QualityStatus:      qualityStatus,
 		QualityErrors:      qualityErrors,
 		StorageBytes:       storageBytes,
 		InputTokens:        inputTokens,
@@ -396,7 +414,7 @@ func normalizeCaptureMessages(input DataShareCaptureInput) []map[string]any {
 	if len(input.ResponseBody) > 0 {
 		out = appendAssistantMessageFromResponse(out, input.ResponseBody)
 	}
-	return out
+	return normalizeDataShareMessages(out)
 }
 
 func appendAnyMessages(out []map[string]any, messages []any) []map[string]any {
@@ -469,19 +487,10 @@ func normalizeResponsesInputItem(item gjson.Result) map[string]any {
 	switch itemType {
 	case "function_call":
 		// 工具调用在对话中等价于 assistant 发起的 tool_call。
-		msg["role"] = "assistant"
-		if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
-			msg["tool_call_id"] = callID
-		}
+		return normalizeResponsesFunctionCallMessage(msg)
 	case "function_call_output":
 		// 工具执行结果按 tool 消息保存，便于后续训练流水线识别。
-		msg["role"] = "tool"
-		if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
-			msg["tool_call_id"] = callID
-		}
-		if output := item.Get("output"); output.Exists() {
-			msg["content"] = responseInputContentValue(output)
-		}
+		return normalizeToolResultMessage(msg)
 	case "input_text", "text":
 		msg["role"] = "user"
 		if text := item.Get("text"); text.Exists() {
@@ -523,7 +532,7 @@ func responseInputContentValue(value gjson.Result) any {
 	if value.Type == gjson.String {
 		return value.String()
 	}
-	return rawJSONToAny(value.Raw)
+	return normalizeDataShareContentValue(rawJSONToAny(value.Raw))
 }
 
 func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map[string]any {
@@ -531,10 +540,14 @@ func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map
 		out = append(out, rawJSONToMap(msg.Raw))
 	}
 	if output := gjson.GetBytes(body, "output"); output.IsArray() {
-		out = append(out, map[string]any{"role": "assistant", "content": rawJSONToAny(output.Raw)})
+		for _, item := range output.Array() {
+			if item.IsObject() {
+				out = append(out, normalizeResponsesOutputItem(item))
+			}
+		}
 	}
 	if content := gjson.GetBytes(body, "content"); content.IsArray() {
-		out = append(out, map[string]any{"role": "assistant", "content": rawJSONToAny(content.Raw)})
+		out = append(out, map[string]any{"role": "assistant", "content": responseInputContentValue(content)})
 	}
 	if candidates := gjson.GetBytes(body, "candidates.0.content"); candidates.Exists() {
 		msg := rawJSONToMap(candidates.Raw)
@@ -544,9 +557,32 @@ func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map
 	return out
 }
 
+func normalizeResponsesOutputItem(item gjson.Result) map[string]any {
+	msg := rawJSONToMap(item.Raw)
+	switch strings.TrimSpace(item.Get("type").String()) {
+	case "function_call":
+		// Responses API 的 output 也可能直接携带工具调用，需要转成统一 tool_calls。
+		return normalizeResponsesFunctionCallMessage(msg)
+	case "function_call_output":
+		return normalizeToolResultMessage(msg)
+	case "message":
+		role := normalizeResponsesInputRole(item.Get("role").String(), item.Get("type").String())
+		if strings.TrimSpace(item.Get("role").String()) == "" {
+			role = "assistant"
+		}
+		out := map[string]any{"role": role}
+		if content := item.Get("content"); content.Exists() {
+			out["content"] = responseInputContentValue(content)
+		}
+		return out
+	default:
+		return normalizeDataShareMessage(msg)
+	}
+}
+
 func normalizeCaptureTools(input DataShareCaptureInput) []map[string]any {
 	if len(input.Tools) > 0 {
-		return input.Tools
+		return normalizeDataShareTools(input.Tools)
 	}
 	body := input.RequestBody
 	var out []map[string]any
@@ -557,32 +593,38 @@ func normalizeCaptureTools(input DataShareCaptureInput) []map[string]any {
 			}
 		}
 	}
-	return out
+	return normalizeDataShareTools(out)
 }
 
 func buildCaptureUsage(input DataShareCaptureInput) map[string]any {
 	totalInput := input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens
 	total := totalInput + input.OutputTokens
 	return map[string]any{
-		"input_tokens":          input.InputTokens,
-		"output_tokens":         input.OutputTokens,
-		"cache_read_tokens":     input.CacheReadTokens,
-		"cache_creation_tokens": input.CacheCreateTokens,
-		"total_tokens":          total,
+		"input_tokens":                input.InputTokens,
+		"output_tokens":               input.OutputTokens,
+		"cache_read_input_tokens":     input.CacheReadTokens,
+		"cache_creation_input_tokens": input.CacheCreateTokens,
+		"total_tokens":                total,
 	}
 }
 
 func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
+	requestID := resolveDataShareRequestID(input)
+	sourceRequestIDs := []string{}
+	if requestID != "" {
+		sourceRequestIDs = append(sourceRequestIDs, requestID)
+	}
 	meta := map[string]any{
-		"api_key_id":        int64(0),
-		"group_id":          int64(0),
-		"account_id":        int64(0),
-		"request_id":        input.RequestID,
-		"requested_model":   firstNonBlank(input.Model, gjson.GetBytes(input.RequestBody, "model").String()),
-		"inbound_endpoint":  input.InboundEndpoint,
-		"upstream_endpoint": input.UpstreamEndpoint,
-		"user_agent":        input.UserAgent,
-		"ip_address":        input.IPAddress,
+		"api_key_id":         int64(0),
+		"group_id":           int64(0),
+		"account_id":         int64(0),
+		"request_id":         requestID,
+		"source_request_ids": sourceRequestIDs,
+		"requested_model":    firstNonBlank(input.Model, gjson.GetBytes(input.RequestBody, "model").String()),
+		"inbound_endpoint":   input.InboundEndpoint,
+		"upstream_endpoint":  input.UpstreamEndpoint,
+		"user_agent":         input.UserAgent,
+		"ip_address":         input.IPAddress,
 	}
 	if input.APIKey != nil {
 		meta["api_key_id"] = input.APIKey.ID
@@ -596,24 +638,76 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 	return meta
 }
 
+func resolveDataShareRequestID(input DataShareCaptureInput) string {
+	return firstNonBlank(
+		input.RequestID,
+		gjson.GetBytes(input.ResponseBody, "id").String(),
+		gjson.GetBytes(input.RequestBody, "request_id").String(),
+		gjson.GetBytes(input.RequestBody, "metadata.request_id").String(),
+	)
+}
+
 func resolveDataShareActualModel(input DataShareCaptureInput) string {
 	// 正式交付要求 model 等于实际生成模型；映射后的上游模型优先，客户端请求模型只放入 meta。
 	return firstNonBlank(input.UpstreamModel, input.Model, gjson.GetBytes(input.RequestBody, "model").String())
 }
 
-func validateDataShareQuality(model string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
+// ValidateDataShareSessionQuality 按附件交付规则检查 session 是否可进入正式导出。
+func ValidateDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
 	var errs []string
-	if len(messages) < 2 {
-		errs = append(errs, "effective_turns_lt_2")
+	seenErrs := map[string]struct{}{}
+	addErr := func(code string) {
+		if _, ok := seenErrs[code]; ok {
+			return
+		}
+		seenErrs[code] = struct{}{}
+		errs = append(errs, code)
 	}
-	if len(tools) == 0 {
-		errs = append(errs, "missing_structured_tool_call")
+	systemPrompt = firstNonBlank(systemPrompt, extractSystemPromptFromMessages(messages))
+	messages = CompactDataShareMessages(messages)
+	if strings.TrimSpace(systemPrompt) == "" {
+		addErr("missing_system_prompt")
+	}
+	if len(messages) < 2 {
+		addErr("effective_turns_lt_2")
+	}
+	toolDefs, invalidToolCount := collectDataShareToolDefinitions(tools)
+	if len(toolDefs) == 0 {
+		addErr("missing_tool_definitions")
+	}
+	if invalidToolCount > 0 {
+		addErr("invalid_tool_definition")
+	}
+	toolCalls := collectDataShareToolCalls(messages)
+	toolResults := collectDataShareToolResults(messages)
+	if len(toolCalls) == 0 {
+		addErr("missing_structured_tool_call")
+	}
+	for _, call := range toolCalls {
+		if call.id == "" || call.name == "" {
+			addErr("invalid_tool_call")
+			continue
+		}
+		if _, ok := toolDefs[call.name]; !ok {
+			addErr("tool_definition_missing")
+		}
+		if toolResults[call.id] != 1 {
+			addErr("tool_call_result_unpaired")
+		}
+	}
+	for id, count := range toolResults {
+		if id == "" || count != 1 {
+			addErr("tool_result_unpaired")
+		}
+	}
+	if len(toolCalls) > 0 && !hasFinalAssistantMessage(messages) {
+		addErr("missing_final_assistant")
 	}
 	if !dataShareModelAllowed(model) {
-		errs = append(errs, "model_not_allowed")
+		addErr("model_not_allowed")
 	}
 	if intFromAny(usage["total_tokens"]) <= 0 {
-		errs = append(errs, "missing_usage_tokens")
+		addErr("missing_usage_tokens")
 	}
 	return errs
 }
@@ -628,14 +722,597 @@ func dataShareModelAllowed(model string) bool {
 		strings.Contains(model, "gemini-3")
 }
 
+type dataShareToolCall struct {
+	id   string
+	name string
+}
+
+func collectDataShareToolDefinitions(tools []map[string]any) (map[string]struct{}, int) {
+	defs := make(map[string]struct{}, len(tools))
+	invalid := 0
+	for _, tool := range tools {
+		name := strings.TrimSpace(stringFromAny(tool["name"]))
+		description := strings.TrimSpace(stringFromAny(tool["description"]))
+		parameters, ok := mapFromAny(tool["parameters"])
+		if name == "" || description == "" || !ok || len(parameters) == 0 {
+			invalid++
+			continue
+		}
+		defs[name] = struct{}{}
+	}
+	return defs, invalid
+}
+
+func collectDataShareToolCalls(messages []map[string]any) []dataShareToolCall {
+	var out []dataShareToolCall
+	for _, msg := range messages {
+		for _, call := range anySlice(msg["tool_calls"]) {
+			m, ok := mapFromAny(call)
+			if !ok {
+				continue
+			}
+			out = append(out, dataShareToolCall{
+				id:   strings.TrimSpace(stringFromAny(m["id"])),
+				name: strings.TrimSpace(stringFromAny(m["name"])),
+			})
+		}
+	}
+	return out
+}
+
+func collectDataShareToolResults(messages []map[string]any) map[string]int {
+	out := map[string]int{}
+	for _, msg := range messages {
+		if strings.TrimSpace(stringFromAny(msg["role"])) != "tool" {
+			continue
+		}
+		id := strings.TrimSpace(stringFromAny(msg["tool_call_id"]))
+		out[id]++
+	}
+	return out
+}
+
+func hasFinalAssistantMessage(messages []map[string]any) bool {
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		role := strings.TrimSpace(stringFromAny(msg["role"]))
+		if role == "" {
+			continue
+		}
+		if role != "assistant" {
+			return false
+		}
+		if len(anySlice(msg["tool_calls"])) > 0 {
+			return false
+		}
+		return strings.TrimSpace(dataShareContentText(msg["content"])) != ""
+	}
+	return false
+}
+
+func normalizeDataShareMessages(messages []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	for _, msg := range messages {
+		normalized := normalizeDataShareMessage(msg)
+		if len(normalized) == 0 {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	return out
+}
+
+// CompactDataShareMessages 压缩 Responses/Codex 每轮请求重复携带的历史消息。
+func CompactDataShareMessages(messages []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	seenToolCalls := map[string]struct{}{}
+	seenToolResults := map[string]struct{}{}
+	for i := 0; i < len(messages); {
+		if len(out) > 0 {
+			if prefix := dataShareCommonPrefixLen(out, messages[i:]); prefix >= 2 {
+				i += prefix
+				continue
+			}
+		}
+		msg := messages[i]
+		if dataShareMessageAlreadySeen(msg, seenToolCalls, seenToolResults) {
+			i++
+			continue
+		}
+		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
+		out = append(out, msg)
+		i++
+	}
+	return out
+}
+
+func dataShareMessageAlreadySeen(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
+	if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" {
+		id := strings.TrimSpace(stringFromAny(msg["tool_call_id"]))
+		if id == "" {
+			return false
+		}
+		_, ok := seenToolResults[id]
+		return ok
+	}
+	callIDs := dataShareToolCallIDs(msg)
+	if len(callIDs) == 0 {
+		return false
+	}
+	for _, id := range callIDs {
+		if _, ok := seenToolCalls[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func rememberDataShareMessage(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) {
+	if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" {
+		if id := strings.TrimSpace(stringFromAny(msg["tool_call_id"])); id != "" {
+			seenToolResults[id] = struct{}{}
+		}
+		return
+	}
+	for _, id := range dataShareToolCallIDs(msg) {
+		seenToolCalls[id] = struct{}{}
+	}
+}
+
+func dataShareToolCallIDs(msg map[string]any) []string {
+	calls := anySlice(msg["tool_calls"])
+	out := make([]string, 0, len(calls))
+	for _, raw := range calls {
+		call, ok := mapFromAny(raw)
+		if !ok {
+			continue
+		}
+		if id := strings.TrimSpace(stringFromAny(call["id"])); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func dataShareMessageIdentity(msg map[string]any) string {
+	role := strings.TrimSpace(stringFromAny(msg["role"]))
+	if role == "" {
+		return string(mustJSON(msg))
+	}
+	if role == "tool" {
+		if id := strings.TrimSpace(stringFromAny(msg["tool_call_id"])); id != "" {
+			return "tool:" + id
+		}
+	}
+	if role == "assistant" {
+		if calls := anySlice(msg["tool_calls"]); len(calls) > 0 {
+			return "assistant_tool_calls:" + string(mustJSON(calls))
+		}
+	}
+	return role + ":" + string(mustJSON(msg))
+}
+
+func dataShareCommonPrefixLen(left, right []map[string]any) int {
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
+	for i := 0; i < limit; i++ {
+		if dataShareMessageIdentity(left[i]) != dataShareMessageIdentity(right[i]) {
+			return i
+		}
+	}
+	return limit
+}
+
+func normalizeDataShareMessage(msg map[string]any) map[string]any {
+	if msg == nil {
+		return nil
+	}
+	msgType := strings.TrimSpace(stringFromAny(msg["type"]))
+	switch msgType {
+	case "function_call":
+		return normalizeResponsesFunctionCallMessage(msg)
+	case "function_call_output":
+		return normalizeToolResultMessage(msg)
+	}
+	out := cloneDataShareMap(msg)
+	role := normalizeResponsesInputRole(stringFromAny(out["role"]), msgType)
+	if role != "" {
+		out["role"] = role
+	}
+	if role == "tool" {
+		return normalizeToolResultMessage(out)
+	}
+	if role == "assistant" {
+		if calls := normalizeToolCalls(out["tool_calls"]); len(calls) > 0 {
+			out["tool_calls"] = calls
+			if _, ok := out["finish_reason"]; !ok {
+				out["finish_reason"] = "tool_calls"
+			}
+		} else {
+			delete(out, "tool_calls")
+		}
+	}
+	if content, ok := out["content"]; ok {
+		out["content"] = normalizeDataShareContentValue(content)
+	} else if text := strings.TrimSpace(stringFromAny(out["text"])); text != "" {
+		out["content"] = text
+	}
+	delete(out, "type")
+	return out
+}
+
+func normalizeResponsesFunctionCallMessage(msg map[string]any) map[string]any {
+	functionMap, _ := mapFromAny(msg["function"])
+	call := map[string]any{
+		"id":        firstNonBlank(stringFromAny(msg["call_id"]), stringFromAny(msg["id"]), stringFromAny(msg["tool_call_id"])),
+		"name":      firstNonBlank(stringFromAny(msg["name"]), stringFromAny(functionMap["name"])),
+		"arguments": normalizeToolArguments(firstPresentAny(msg["arguments"], functionMap["arguments"], msg["input"])),
+	}
+	return map[string]any{
+		"role":          "assistant",
+		"content":       normalizeDataShareContentValue(msg["content"]),
+		"tool_calls":    []map[string]any{call},
+		"finish_reason": "tool_calls",
+	}
+}
+
+func normalizeToolResultMessage(msg map[string]any) map[string]any {
+	callID := firstNonBlank(
+		stringFromAny(msg["tool_call_id"]),
+		stringFromAny(msg["call_id"]),
+		stringFromAny(msg["tool_use_id"]),
+		stringFromAny(msg["id"]),
+	)
+	content := normalizeDataShareContentValue(firstPresentAny(msg["content"], msg["output"], msg["result"], msg["error"]))
+	isError := boolFromAny(msg["is_error"]) || dataShareStatusIsError(stringFromAny(msg["status"])) || dataShareToolContentLooksError(content) || msg["error"] != nil
+	status := strings.TrimSpace(stringFromAny(msg["status"]))
+	if status == "" {
+		if isError {
+			status = "error"
+		} else {
+			status = "success"
+		}
+	}
+	out := map[string]any{
+		"role":         "tool",
+		"tool_call_id": callID,
+		"content":      content,
+		"status":       status,
+		"is_error":     isError,
+	}
+	if errMsg := strings.TrimSpace(stringFromAny(msg["error_message"])); errMsg != "" {
+		out["error_message"] = errMsg
+	}
+	return out
+}
+
+func normalizeToolCalls(value any) []map[string]any {
+	rawCalls := anySlice(value)
+	out := make([]map[string]any, 0, len(rawCalls))
+	for _, raw := range rawCalls {
+		call, ok := mapFromAny(raw)
+		if !ok {
+			continue
+		}
+		functionMap, _ := mapFromAny(call["function"])
+		arguments := firstPresentAny(call["arguments"], functionMap["arguments"], call["input"])
+		if arguments == nil && len(functionMap) > 0 {
+			arguments = functionMap
+		}
+		out = append(out, map[string]any{
+			"id":        firstNonBlank(stringFromAny(call["id"]), stringFromAny(call["call_id"]), stringFromAny(call["tool_call_id"])),
+			"name":      firstNonBlank(stringFromAny(call["name"]), stringFromAny(functionMap["name"]), stringFromAny(call["type"])),
+			"arguments": normalizeToolArguments(arguments),
+		})
+	}
+	return out
+}
+
+func normalizeToolArguments(value any) any {
+	value = firstPresentAny(value)
+	if value == nil {
+		return map[string]any{}
+	}
+	if raw, ok := value.(string); ok {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return map[string]any{}
+		}
+		var parsed any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return parsed
+		}
+		return raw
+	}
+	return value
+}
+
+func dataShareStatusIsError(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "error", "failed", "failure":
+		return true
+	default:
+		return false
+	}
+}
+
+func dataShareToolContentLooksError(content any) bool {
+	text := dataShareContentText(content)
+	if !strings.Contains(text, "Process exited with code ") {
+		return false
+	}
+	return !strings.Contains(text, "Process exited with code 0")
+}
+
+func normalizeDataShareTools(tools []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(tools))
+	seen := map[string]struct{}{}
+	var visit func(map[string]any)
+	visit = func(tool map[string]any) {
+		if nested := mapsFromAny(tool["tools"]); len(nested) > 0 {
+			for _, item := range nested {
+				visit(item)
+			}
+		}
+		normalized, ok := normalizeDataShareTool(tool)
+		if !ok {
+			return
+		}
+		name := stringFromAny(normalized["name"])
+		if _, exists := seen[name]; exists {
+			return
+		}
+		seen[name] = struct{}{}
+		out = append(out, normalized)
+	}
+	for _, tool := range tools {
+		visit(tool)
+	}
+	return out
+}
+
+func normalizeDataShareTool(tool map[string]any) (map[string]any, bool) {
+	if tool == nil {
+		return nil, false
+	}
+	functionMap, _ := mapFromAny(tool["function"])
+	name := firstNonBlank(stringFromAny(tool["name"]), stringFromAny(functionMap["name"]), dataShareToolNameFromType(stringFromAny(tool["type"])))
+	description := firstNonBlank(stringFromAny(tool["description"]), stringFromAny(functionMap["description"]), defaultDataShareToolDescription(name, stringFromAny(tool["type"])))
+	parameters := firstPresentAny(tool["parameters"], functionMap["parameters"], defaultDataShareToolParameters(name, stringFromAny(tool["type"])))
+	parameterMap, ok := mapFromAny(parameters)
+	if strings.TrimSpace(name) == "" || strings.TrimSpace(description) == "" || !ok || len(parameterMap) == 0 {
+		return nil, false
+	}
+	out := map[string]any{
+		"name":        strings.TrimSpace(name),
+		"description": strings.TrimSpace(description),
+		"parameters":  parameterMap,
+	}
+	if toolType := normalizeDataShareToolType(stringFromAny(tool["type"])); toolType != "" {
+		out["type"] = toolType
+	}
+	if strict, ok := tool["strict"]; ok {
+		out["strict"] = strict
+	}
+	return out, true
+}
+
+func dataShareToolNameFromType(toolType string) string {
+	switch strings.TrimSpace(toolType) {
+	case "tool_search":
+		return "tool_search"
+	case "web_search", "web_search_preview", "web_search_20250305":
+		return "web_search"
+	default:
+		return ""
+	}
+}
+
+func defaultDataShareToolDescription(name string, toolType string) string {
+	switch firstNonBlank(name, toolType) {
+	case "apply_patch":
+		return "Apply a structured patch to files in the workspace."
+	case "tool_search":
+		return "Search available deferred tools by text query."
+	case "web_search", "web_search_preview", "web_search_20250305":
+		return "Search the web for relevant information."
+	default:
+		return ""
+	}
+}
+
+func defaultDataShareToolParameters(name string, toolType string) map[string]any {
+	switch firstNonBlank(name, dataShareToolNameFromType(toolType)) {
+	case "apply_patch":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"patch": map[string]any{"type": "string", "description": "符合 apply_patch 语法的补丁内容。"},
+			},
+			"required": []string{"patch"},
+		}
+	case "web_search":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "搜索关键词。"},
+			},
+			"required": []string{"query"},
+		}
+	default:
+		return nil
+	}
+}
+
+func normalizeDataShareToolType(toolType string) string {
+	switch strings.TrimSpace(toolType) {
+	case "function", "custom", "namespace":
+		return strings.TrimSpace(toolType)
+	case "tool_search", "web_search", "web_search_preview", "web_search_20250305":
+		return "function"
+	default:
+		return ""
+	}
+}
+
+func normalizeDataShareContentValue(value any) any {
+	if value == nil {
+		return ""
+	}
+	if text := dataShareContentText(value); text != "" {
+		return text
+	}
+	return value
+}
+
+func dataShareContentText(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := dataShareContentText(item); strings.TrimSpace(text) != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	case []map[string]any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := dataShareContentText(item); strings.TrimSpace(text) != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	case map[string]any:
+		for _, key := range []string{"text", "content", "output", "summary"} {
+			if text := dataShareContentText(v[key]); strings.TrimSpace(text) != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func extractSystemPromptFromMessages(messages []map[string]any) string {
+	for _, msg := range messages {
+		role := strings.TrimSpace(stringFromAny(msg["role"]))
+		if role == "system" || role == "developer" {
+			if text := strings.TrimSpace(dataShareContentText(msg["content"])); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeDataShareUsage(usage map[string]any) map[string]any {
+	out := cloneDataShareMap(usage)
+	inputTokens := intFromAny(out["input_tokens"])
+	outputTokens := intFromAny(out["output_tokens"])
+	cacheReadTokens := intFromAny(firstPresentAny(out["cache_read_input_tokens"], out["cache_read_tokens"]))
+	cacheCreateTokens := intFromAny(firstPresentAny(out["cache_creation_input_tokens"], out["cache_creation_tokens"]))
+	totalTokens := intFromAny(out["total_tokens"])
+	if totalTokens <= 0 {
+		totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens
+	}
+	return map[string]any{
+		"input_tokens":                inputTokens,
+		"output_tokens":               outputTokens,
+		"total_tokens":                totalTokens,
+		"cache_creation_input_tokens": cacheCreateTokens,
+		"cache_read_input_tokens":     cacheReadTokens,
+	}
+}
+
+func normalizeDataShareMeta(meta map[string]any) map[string]any {
+	out := cloneDataShareMap(meta)
+	sourceIDs := appendStringValues(nil, stringsFromAny(out["source_request_ids"])...)
+	sourceIDs = appendStringValues(sourceIDs, stringsFromAny(out["request_ids"])...)
+	sourceIDs = appendStringValues(sourceIDs, stringFromAny(out["request_id"]))
+	out["source_request_ids"] = sourceIDs
+	delete(out, "request_ids")
+	return out
+}
+
+func validateDataSharePayloadQuality(payload map[string]any) []string {
+	return ValidateDataShareSessionQuality(
+		stringFromAny(payload["model"]),
+		stringFromAny(payload["system_prompt"]),
+		mapsFromAny(payload["messages"]),
+		mapsFromAny(payload["tools"]),
+		normalizeDataShareUsage(mapAnyFromAny(payload["usage"])),
+	)
+}
+
+// DataSharePayloadQualityStatus 把附件质量规则归纳成完整、部分完整、无效三态。
+func DataSharePayloadQualityStatus(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) string {
+	if len(ValidateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)) == 0 {
+		return DataShareQualityComplete
+	}
+	if _, errs := exportableDataShareMessages(model, systemPrompt, messages, tools, usage); len(errs) == 0 {
+		return DataShareQualityPartial
+	}
+	return DataShareQualityInvalid
+}
+
+func dataShareCompletionState(qualityStatus string) (string, bool) {
+	if qualityStatus == DataShareQualityComplete {
+		return DataShareStatusCompleted, true
+	}
+	return DataShareStatusTerminated, false
+}
+
+// DataShareQualityExportable 表示默认导出是否应包含该质量状态。
+func DataShareQualityExportable(qualityStatus string) bool {
+	return qualityStatus == DataShareQualityComplete || qualityStatus == DataShareQualityPartial
+}
+
+func exportPayloadAndQualityFromSession(session *DataShareSession) (map[string]any, string, []string) {
+	payload := exportPayloadFromSession(session)
+	model := stringFromAny(payload["model"])
+	systemPrompt := stringFromAny(payload["system_prompt"])
+	messages := mapsFromAny(payload["messages"])
+	tools := mapsFromAny(payload["tools"])
+	usage := normalizeDataShareUsage(mapAnyFromAny(payload["usage"]))
+	qualityStatus := DataSharePayloadQualityStatus(model, systemPrompt, messages, tools, usage)
+	if qualityStatus == DataShareQualityPartial {
+		cropped, errs := exportableDataShareMessages(model, systemPrompt, messages, tools, usage)
+		if len(errs) == 0 {
+			payload["messages"] = cropped
+			payload["status"] = DataShareStatusCompleted
+			payload["is_final_snapshot"] = true
+			return payload, qualityStatus, nil
+		}
+		return payload, DataShareQualityInvalid, errs
+	}
+	return payload, qualityStatus, validateDataSharePayloadQuality(payload)
+}
+
+// exportableDataShareMessages 仅裁掉尾部未闭合工具链，裁切后仍需完整通过同一套交付校验。
+func exportableDataShareMessages(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) ([]map[string]any, []string) {
+	compact := CompactDataShareMessages(normalizeDataShareMessages(messages))
+	for end := len(compact); end >= 0; end-- {
+		candidate := compact[:end]
+		if !hasFinalAssistantMessage(candidate) {
+			continue
+		}
+		errs := ValidateDataShareSessionQuality(model, systemPrompt, candidate, tools, usage)
+		if len(errs) == 0 {
+			return append([]map[string]any{}, candidate...), nil
+		}
+	}
+	return nil, ValidateDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+}
+
 func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	if session == nil {
 		return map[string]any{}
 	}
-	payload := session.SessionJSON
-	if payload == nil {
-		payload = map[string]any{}
-	}
+	payload := cloneDataShareMap(session.SessionJSON)
 	payload["trajectory_id"] = session.TrajectoryID
 	payload["session_id"] = session.SessionID
 	payload["dataset"] = session.Dataset
@@ -648,13 +1325,17 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	payload["status"] = session.Status
 	payload["is_final_snapshot"] = session.IsFinalSnapshot
 	payload["source_request_count"] = session.SourceRequestCount
-	if session.SystemPrompt != nil {
-		payload["system_prompt"] = *session.SystemPrompt
-	}
-	payload["tools"] = session.Tools
-	payload["messages"] = session.Messages
-	payload["usage"] = session.Usage
-	payload["meta"] = session.Meta
+	messages := CompactDataShareMessages(normalizeDataShareMessages(firstNonEmptyMaps(session.Messages, mapsFromAny(payload["messages"]))))
+	tools := normalizeDataShareTools(firstNonEmptyMaps(session.Tools, mapsFromAny(payload["tools"])))
+	usage := normalizeDataShareUsage(firstNonEmptyMap(session.Usage, mapAnyFromAny(payload["usage"])))
+	meta := normalizeDataShareMeta(firstNonEmptyMap(session.Meta, mapAnyFromAny(payload["meta"])))
+	systemPrompt := firstNonBlank(optionalStringValue(session.SystemPrompt), stringFromAny(payload["system_prompt"]), extractSystemPromptFromMessages(messages))
+	payload["system_prompt"] = systemPrompt
+	payload["tools"] = tools
+	payload["messages"] = messages
+	payload["usage"] = usage
+	payload["meta"] = meta
+	delete(payload, "quality_status")
 	return payload
 }
 
@@ -719,6 +1400,168 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
+func optionalStringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func firstPresentAny(values ...any) any {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+func stringFromAny(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case fmt.Stringer:
+		return x.String()
+	default:
+		return ""
+	}
+}
+
+func boolFromAny(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return strings.EqualFold(strings.TrimSpace(x), "true")
+	default:
+		return false
+	}
+}
+
+func mapFromAny(v any) (map[string]any, bool) {
+	switch x := v.(type) {
+	case map[string]any:
+		return x, true
+	default:
+		return nil, false
+	}
+}
+
+func mapAnyFromAny(v any) map[string]any {
+	if m, ok := mapFromAny(v); ok {
+		return m
+	}
+	return nil
+}
+
+func mapsFromAny(v any) []map[string]any {
+	switch x := v.(type) {
+	case []map[string]any:
+		return x
+	case []any:
+		out := make([]map[string]any, 0, len(x))
+		for _, item := range x {
+			if m, ok := mapFromAny(item); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func anySlice(v any) []any {
+	switch x := v.(type) {
+	case []any:
+		return x
+	case []map[string]any:
+		out := make([]any, 0, len(x))
+		for _, item := range x {
+			out = append(out, item)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func stringsFromAny(v any) []string {
+	switch x := v.(type) {
+	case []string:
+		return x
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, item := range x {
+			if text := strings.TrimSpace(stringFromAny(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	case string:
+		if strings.TrimSpace(x) == "" {
+			return nil
+		}
+		return []string{x}
+	default:
+		return nil
+	}
+}
+
+func appendStringValues(existing []string, values ...string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(values))
+	out := make([]string, 0, len(existing)+len(values))
+	for _, item := range existing {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	for _, item := range values {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func cloneDataShareMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func firstNonEmptyMaps(values ...[]map[string]any) []map[string]any {
+	for _, v := range values {
+		if len(v) > 0 {
+			return v
+		}
+	}
+	return nil
+}
+
+func firstNonEmptyMap(values ...map[string]any) map[string]any {
+	for _, v := range values {
+		if len(v) > 0 {
+			return v
+		}
+	}
+	return nil
+}
+
 func rawJSONToMap(raw string) map[string]any {
 	var out map[string]any
 	if err := json.Unmarshal([]byte(raw), &out); err != nil || out == nil {
@@ -765,7 +1608,11 @@ func WriteSingleSessionJSONL(w io.Writer, session *DataShareSession) error {
 		return ErrDataShareSessionNotFound
 	}
 	var buf bytes.Buffer
-	line, err := json.Marshal(exportPayloadFromSession(session))
+	payload, qualityStatus, qualityErrors := exportPayloadAndQualityFromSession(session)
+	if qualityStatus == DataShareQualityInvalid || len(qualityErrors) > 0 {
+		return ErrDataShareSessionInvalid
+	}
+	line, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}

@@ -39,6 +39,7 @@ func (DataShareSession) Fields() []ent.Field {
 		field.JSON("meta", map[string]any{}).Optional().SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("session_json", map[string]any{}).Optional().SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Bool("exportable").Default(false),
+		field.String("quality_status").MaxLen(20).Default("invalid"),
 		field.JSON("quality_errors", []string{}).Optional().SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.Int64("storage_bytes").Default(0),
 		field.Int64("input_tokens").Default(0),
@@ -62,6 +63,7 @@ func (DataShareSession) Indexes() []ent.Index {
 		index.Fields("provider"),
 		index.Fields("model"),
 		index.Fields("exportable"),
+		index.Fields("quality_status"),
 		index.Fields("created_at"),
 		index.Fields("updated_at"),
 	}

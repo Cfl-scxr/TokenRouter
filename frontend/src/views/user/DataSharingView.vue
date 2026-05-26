@@ -54,7 +54,7 @@
                   @input="handleFilterChange"
                 />
               </div>
-              <Select v-model="filters.exportable" :options="exportableOptions" class="w-40" @change="handleFilterChange" />
+              <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
               <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
               <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
             </div>
@@ -89,9 +89,9 @@
             <template #cell-model="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
             </template>
-            <template #cell-exportable="{ value, row }">
-              <span :class="['badge', value ? 'badge-success' : 'badge-warning']">
-                {{ value ? '合格' : `待处理 ${row.quality_errors?.length || 0}` }}
+            <template #cell-quality_status="{ value, row }">
+              <span :class="['badge', qualityBadgeClass(value)]">
+                {{ qualityLabel(value) }}<span v-if="value === 'invalid' && row.quality_errors?.length"> {{ row.quality_errors.length }}</span>
               </span>
             </template>
             <template #cell-storage_bytes="{ value }">
@@ -191,22 +191,23 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const filters = reactive({
   search: '',
-  exportable: 'all' as 'all' | 'true' | 'false',
+  quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
 })
 
-const exportableOptions = [
-  { value: 'all', label: '全部状态' },
-  { value: 'true', label: '仅合格' },
-  { value: 'false', label: '待处理' }
+const qualityOptions = [
+  { value: 'all', label: '全部质量' },
+  { value: 'complete', label: '完整' },
+  { value: 'partial', label: '部分完整' },
+  { value: 'invalid', label: '无效' }
 ]
 
 const columns: Column[] = [
   { key: 'session_id', label: 'Session', sortable: true },
   { key: 'provider', label: 'Provider', sortable: true },
   { key: 'model', label: '模型', sortable: true },
-  { key: 'exportable', label: '质量', sortable: true },
+  { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
   { key: 'total_tokens', label: 'Token', sortable: true },
   { key: 'created_at', label: '创建时间', sortable: true },
@@ -226,7 +227,7 @@ function buildFilters(): DataShareSessionFilters {
     sort_order: sortState.sort_order
   }
   if (filters.search.trim()) out.search = filters.search.trim()
-  if (filters.exportable !== 'all') out.exportable = filters.exportable === 'true'
+  if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date
   return out
@@ -311,6 +312,18 @@ function formatDate(value?: string | null) {
 
 function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
+}
+
+function qualityLabel(value?: string) {
+  if (value === 'complete') return '完整'
+  if (value === 'partial') return '部分完整'
+  return '无效'
+}
+
+function qualityBadgeClass(value?: string) {
+  if (value === 'complete') return 'badge-success'
+  if (value === 'partial') return 'badge-warning'
+  return 'badge-danger'
 }
 
 function formatBytes(value?: number | null) {

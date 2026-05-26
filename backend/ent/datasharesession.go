@@ -48,6 +48,8 @@ type DataShareSession struct {
 	SessionJSON map[string]interface{} `json:"session_json,omitempty"`
 	// Exportable holds the value of the "exportable" field.
 	Exportable bool `json:"exportable,omitempty"`
+	// QualityStatus holds the value of the "quality_status" field.
+	QualityStatus string `json:"quality_status,omitempty"`
 	// QualityErrors holds the value of the "quality_errors" field.
 	QualityErrors []string `json:"quality_errors,omitempty"`
 	// StorageBytes holds the value of the "storage_bytes" field.
@@ -84,7 +86,7 @@ func (*DataShareSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case datasharesession.FieldID, datasharesession.FieldSourceRequestCount, datasharesession.FieldStorageBytes, datasharesession.FieldInputTokens, datasharesession.FieldOutputTokens, datasharesession.FieldTotalTokens, datasharesession.FieldUserID, datasharesession.FieldAPIKeyID, datasharesession.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt:
+		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldQualityStatus:
 			values[i] = new(sql.NullString)
 		case datasharesession.FieldCreatedAt, datasharesession.FieldEndedAt, datasharesession.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -209,6 +211,12 @@ func (_m *DataShareSession) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field exportable", values[i])
 			} else if value.Valid {
 				_m.Exportable = value.Bool
+			}
+		case datasharesession.FieldQualityStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field quality_status", values[i])
+			} else if value.Valid {
+				_m.QualityStatus = value.String
 			}
 		case datasharesession.FieldQualityErrors:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -361,6 +369,9 @@ func (_m *DataShareSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("exportable=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Exportable))
+	builder.WriteString(", ")
+	builder.WriteString("quality_status=")
+	builder.WriteString(_m.QualityStatus)
 	builder.WriteString(", ")
 	builder.WriteString("quality_errors=")
 	builder.WriteString(fmt.Sprintf("%v", _m.QualityErrors))

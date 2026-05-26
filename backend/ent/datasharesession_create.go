@@ -152,6 +152,20 @@ func (_c *DataShareSessionCreate) SetNillableExportable(v *bool) *DataShareSessi
 	return _c
 }
 
+// SetQualityStatus sets the "quality_status" field.
+func (_c *DataShareSessionCreate) SetQualityStatus(v string) *DataShareSessionCreate {
+	_c.mutation.SetQualityStatus(v)
+	return _c
+}
+
+// SetNillableQualityStatus sets the "quality_status" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillableQualityStatus(v *string) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetQualityStatus(*v)
+	}
+	return _c
+}
+
 // SetQualityErrors sets the "quality_errors" field.
 func (_c *DataShareSessionCreate) SetQualityErrors(v []string) *DataShareSessionCreate {
 	_c.mutation.SetQualityErrors(v)
@@ -325,6 +339,10 @@ func (_c *DataShareSessionCreate) defaults() {
 		v := datasharesession.DefaultExportable
 		_c.mutation.SetExportable(v)
 	}
+	if _, ok := _c.mutation.QualityStatus(); !ok {
+		v := datasharesession.DefaultQualityStatus
+		_c.mutation.SetQualityStatus(v)
+	}
 	if _, ok := _c.mutation.StorageBytes(); !ok {
 		v := datasharesession.DefaultStorageBytes
 		_c.mutation.SetStorageBytes(v)
@@ -409,6 +427,14 @@ func (_c *DataShareSessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.Exportable(); !ok {
 		return &ValidationError{Name: "exportable", err: errors.New(`ent: missing required field "DataShareSession.exportable"`)}
+	}
+	if _, ok := _c.mutation.QualityStatus(); !ok {
+		return &ValidationError{Name: "quality_status", err: errors.New(`ent: missing required field "DataShareSession.quality_status"`)}
+	}
+	if v, ok := _c.mutation.QualityStatus(); ok {
+		if err := datasharesession.QualityStatusValidator(v); err != nil {
+			return &ValidationError{Name: "quality_status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.quality_status": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.StorageBytes(); !ok {
 		return &ValidationError{Name: "storage_bytes", err: errors.New(`ent: missing required field "DataShareSession.storage_bytes"`)}
@@ -523,6 +549,10 @@ func (_c *DataShareSessionCreate) createSpec() (*DataShareSession, *sqlgraph.Cre
 	if value, ok := _c.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)
 		_node.Exportable = value
+	}
+	if value, ok := _c.mutation.QualityStatus(); ok {
+		_spec.SetField(datasharesession.FieldQualityStatus, field.TypeString, value)
+		_node.QualityStatus = value
 	}
 	if value, ok := _c.mutation.QualityErrors(); ok {
 		_spec.SetField(datasharesession.FieldQualityErrors, field.TypeJSON, value)
@@ -839,6 +869,18 @@ func (u *DataShareSessionUpsert) SetExportable(v bool) *DataShareSessionUpsert {
 // UpdateExportable sets the "exportable" field to the value that was provided on create.
 func (u *DataShareSessionUpsert) UpdateExportable() *DataShareSessionUpsert {
 	u.SetExcluded(datasharesession.FieldExportable)
+	return u
+}
+
+// SetQualityStatus sets the "quality_status" field.
+func (u *DataShareSessionUpsert) SetQualityStatus(v string) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldQualityStatus, v)
+	return u
+}
+
+// UpdateQualityStatus sets the "quality_status" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdateQualityStatus() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldQualityStatus)
 	return u
 }
 
@@ -1317,6 +1359,20 @@ func (u *DataShareSessionUpsertOne) SetExportable(v bool) *DataShareSessionUpser
 func (u *DataShareSessionUpsertOne) UpdateExportable() *DataShareSessionUpsertOne {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateExportable()
+	})
+}
+
+// SetQualityStatus sets the "quality_status" field.
+func (u *DataShareSessionUpsertOne) SetQualityStatus(v string) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetQualityStatus(v)
+	})
+}
+
+// UpdateQualityStatus sets the "quality_status" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdateQualityStatus() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateQualityStatus()
 	})
 }
 
@@ -1990,6 +2046,20 @@ func (u *DataShareSessionUpsertBulk) SetExportable(v bool) *DataShareSessionUpse
 func (u *DataShareSessionUpsertBulk) UpdateExportable() *DataShareSessionUpsertBulk {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateExportable()
+	})
+}
+
+// SetQualityStatus sets the "quality_status" field.
+func (u *DataShareSessionUpsertBulk) SetQualityStatus(v string) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetQualityStatus(v)
+	})
+}
+
+// UpdateQualityStatus sets the "quality_status" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdateQualityStatus() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateQualityStatus()
 	})
 }
 

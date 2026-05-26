@@ -62,6 +62,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetMeta(session.Meta).
 			SetSessionJSON(session.SessionJSON).
 			SetExportable(session.Exportable).
+			SetQualityStatus(session.QualityStatus).
 			SetQualityErrors(session.QualityErrors).
 			SetStorageBytes(session.StorageBytes).
 			SetInputTokens(session.InputTokens).
@@ -77,7 +78,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		return err
 	}
 
-	messages := append(existing.Messages, session.Messages...)
+	messages := mergeDataShareMessages(existing.Messages, session.Messages)
 	tools := mergeDataShareTools(existing.Tools, session.Tools)
 	usage := mergeDataShareUsage(existing.Usage, session.Usage)
 	meta := mergeDataShareMeta(existing.Meta, session.Meta)
@@ -97,22 +98,29 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	sessionJSON["created_at"] = existing.CreatedAt.Format(time.RFC3339Nano)
 	sessionJSON["ended_at"] = now.Format(time.RFC3339Nano)
 	storageBytes := int64(len(mustRepositoryJSON(sessionJSON)))
+	systemPrompt := firstSystemPrompt(existing.SystemPrompt, session.SystemPrompt)
 	// 每次合并后都重新评估质量，避免早期空消息请求留下的错误阻止后续导出。
-	qualityErrors := validateRepositoryQuality(session.Model, messages, tools, usage)
+	qualityErrors := validateRepositoryQuality(session.Model, systemPrompt, messages, tools, usage)
+	qualityStatus := repositoryQualityStatus(session.Model, systemPrompt, messages, tools, usage)
+	status, finalSnapshot := repositoryCompletionState(qualityStatus)
+	sessionJSON["status"] = status
+	sessionJSON["is_final_snapshot"] = finalSnapshot
+	sessionJSON["quality_status"] = qualityStatus
 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
 		SetModel(session.Model).
-		SetStatus(session.Status).
-		SetIsFinalSnapshot(session.IsFinalSnapshot).
+		SetStatus(status).
+		SetIsFinalSnapshot(finalSnapshot).
 		SetSourceRequestCount(sourceRequestCount).
-		SetNillableSystemPrompt(firstSystemPrompt(existing.SystemPrompt, session.SystemPrompt)).
+		SetNillableSystemPrompt(systemPrompt).
 		SetTools(tools).
 		SetMessages(messages).
 		SetUsage(usage).
 		SetMeta(meta).
 		SetSessionJSON(sessionJSON).
-		SetExportable(len(qualityErrors) == 0).
+		SetExportable(service.DataShareQualityExportable(qualityStatus)).
+		SetQualityStatus(qualityStatus).
 		SetQualityErrors(qualityErrors).
 		SetStorageBytes(storageBytes).
 		SetInputTokens(inputTokens).
@@ -190,6 +198,9 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 			COUNT(*),
 			COUNT(*) FILTER (WHERE exportable = TRUE),
 			COUNT(*) FILTER (WHERE exportable = FALSE),
+			COUNT(*) FILTER (WHERE quality_status = 'complete'),
+			COUNT(*) FILTER (WHERE quality_status = 'partial'),
+			COUNT(*) FILTER (WHERE quality_status = 'invalid'),
 			COALESCE(SUM(storage_bytes), 0),
 			COALESCE(SUM(total_tokens), 0)
 		FROM data_share_sessions
@@ -198,6 +209,9 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		&stats.SessionCount,
 		&stats.ExportableCount,
 		&stats.NonExportableCount,
+		&stats.CompleteCount,
+		&stats.PartialCount,
+		&stats.InvalidCount,
 		&stats.TotalStorageBytes,
 		&stats.TotalTokens,
 	); err != nil {
@@ -281,6 +295,7 @@ func prefixDataShareWhereAlias(whereSQL, alias string) string {
 		"provider", alias+".provider",
 		"model", alias+".model",
 		"exportable", alias+".exportable",
+		"quality_status", alias+".quality_status",
 		"created_at", alias+".created_at",
 		"trajectory_id", alias+".trajectory_id",
 		"session_id", alias+".session_id",
@@ -315,6 +330,9 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 	}
 	if filters.Exportable != nil {
 		preds = append(preds, datasharesession.ExportableEQ(*filters.Exportable))
+	}
+	if filters.QualityStatus != "" {
+		preds = append(preds, datasharesession.QualityStatusEQ(filters.QualityStatus))
 	}
 	if filters.StartTime != nil {
 		preds = append(preds, datasharesession.CreatedAtGTE(*filters.StartTime))
@@ -357,6 +375,9 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 	if filters.Exportable != nil {
 		add("exportable = $%d", *filters.Exportable)
 	}
+	if filters.QualityStatus != "" {
+		add("quality_status = $%d", filters.QualityStatus)
+	}
 	if filters.StartTime != nil {
 		add("created_at >= $%d", *filters.StartTime)
 	}
@@ -388,6 +409,8 @@ func dataShareListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 		field = datasharesession.FieldUpdatedAt
 	case "model":
 		field = datasharesession.FieldModel
+	case "quality_status":
+		field = datasharesession.FieldQualityStatus
 	case "provider":
 		field = datasharesession.FieldProvider
 	case "id":
@@ -420,6 +443,7 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		Meta:               m.Meta,
 		SessionJSON:        m.SessionJSON,
 		Exportable:         m.Exportable,
+		QualityStatus:      m.QualityStatus,
 		QualityErrors:      m.QualityErrors,
 		StorageBytes:       m.StorageBytes,
 		InputTokens:        m.InputTokens,
@@ -451,6 +475,122 @@ func mergeDataShareTools(existing, incoming []map[string]any) []map[string]any {
 	return out
 }
 
+func mergeDataShareMessages(existing, incoming []map[string]any) []map[string]any {
+	out := append([]map[string]any{}, existing...)
+	seenToolCalls := map[string]struct{}{}
+	seenToolResults := map[string]struct{}{}
+	for _, msg := range out {
+		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
+	}
+	for len(incoming) > 0 {
+		if prefix := dataShareCommonPrefixLen(out, incoming); prefix >= 2 {
+			incoming = incoming[prefix:]
+			continue
+		}
+		msg := incoming[0]
+		if !dataShareMessageAlreadySeen(msg, seenToolCalls, seenToolResults) {
+			rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
+			out = append(out, msg)
+		}
+		incoming = incoming[1:]
+	}
+	return out
+}
+
+func dataShareMessageAlreadySeen(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
+	if strings.TrimSpace(stringFromRepositoryAny(msg["role"])) == "tool" {
+		id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"]))
+		if id == "" {
+			return false
+		}
+		_, ok := seenToolResults[id]
+		return ok
+	}
+	callIDs := dataShareToolCallIDs(msg)
+	if len(callIDs) == 0 {
+		return false
+	}
+	for _, id := range callIDs {
+		if _, ok := seenToolCalls[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func rememberDataShareMessage(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) {
+	if strings.TrimSpace(stringFromRepositoryAny(msg["role"])) == "tool" {
+		if id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"])); id != "" {
+			seenToolResults[id] = struct{}{}
+		}
+		return
+	}
+	for _, id := range dataShareToolCallIDs(msg) {
+		seenToolCalls[id] = struct{}{}
+	}
+}
+
+func dataShareToolCallIDs(msg map[string]any) []string {
+	switch calls := msg["tool_calls"].(type) {
+	case []map[string]any:
+		out := make([]string, 0, len(calls))
+		for _, call := range calls {
+			if id := strings.TrimSpace(stringFromRepositoryAny(call["id"])); id != "" {
+				out = append(out, id)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(calls))
+		for _, raw := range calls {
+			call, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id := strings.TrimSpace(stringFromRepositoryAny(call["id"])); id != "" {
+				out = append(out, id)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func dataShareMessageIdentity(msg map[string]any) string {
+	role := strings.TrimSpace(stringFromRepositoryAny(msg["role"]))
+	if role == "" {
+		return string(mustRepositoryJSON(msg))
+	}
+	if role == "tool" {
+		if id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"])); id != "" {
+			return "tool:" + id
+		}
+	}
+	if role == "assistant" {
+		if calls, ok := msg["tool_calls"].([]any); ok && len(calls) > 0 {
+			return "assistant_tool_calls:" + string(mustRepositoryJSON(calls))
+		}
+		if calls, ok := msg["tool_calls"].([]map[string]any); ok && len(calls) > 0 {
+			return "assistant_tool_calls:" + string(mustRepositoryJSON(calls))
+		}
+	}
+	return role + ":" + string(mustRepositoryJSON(msg))
+}
+
+func dataShareCommonPrefixLen(left, right []map[string]any) int {
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
+	for i := 0; i < limit; i++ {
+		if dataShareMessageIdentity(left[i]) != dataShareMessageIdentity(right[i]) {
+			return i
+		}
+	}
+	return limit
+}
+
 func mergeDataShareUsage(existing, incoming map[string]any) map[string]any {
 	out := make(map[string]any, len(existing)+len(incoming))
 	for k, v := range existing {
@@ -470,11 +610,13 @@ func mergeDataShareMeta(existing, incoming map[string]any) map[string]any {
 	for k, v := range incoming {
 		out[k] = v
 	}
-	if existingID, ok := existing["request_id"].(string); ok {
-		if incomingID, ok := incoming["request_id"].(string); ok && incomingID != "" && incomingID != existingID {
-			out["request_ids"] = appendStringAny(out["request_ids"], existingID, incomingID)
-		}
-	}
+	sourceIDs := appendStringAny(nil, stringsFromRepositoryAny(existing["source_request_ids"])...)
+	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(existing["request_ids"])...)
+	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(incoming["source_request_ids"])...)
+	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(incoming["request_ids"])...)
+	sourceIDs = appendStringAny(sourceIDs, stringFromRepositoryAny(existing["request_id"]), stringFromRepositoryAny(incoming["request_id"]))
+	out["source_request_ids"] = sourceIDs
+	delete(out, "request_ids")
 	return out
 }
 
@@ -503,6 +645,35 @@ func appendStringAny(v any, values ...string) []string {
 	return out
 }
 
+func stringsFromRepositoryAny(v any) []string {
+	switch x := v.(type) {
+	case []string:
+		return x
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, item := range x {
+			if text := strings.TrimSpace(stringFromRepositoryAny(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	case string:
+		if strings.TrimSpace(x) == "" {
+			return nil
+		}
+		return []string{x}
+	default:
+		return nil
+	}
+}
+
+func stringFromRepositoryAny(v any) string {
+	if text, ok := v.(string); ok {
+		return text
+	}
+	return ""
+}
+
 func firstSystemPrompt(existing, incoming *string) *string {
 	if existing != nil && strings.TrimSpace(*existing) != "" {
 		return existing
@@ -510,32 +681,27 @@ func firstSystemPrompt(existing, incoming *string) *string {
 	return incoming
 }
 
-func validateRepositoryQuality(model string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
-	var errs []string
-	if len(messages) < 2 {
-		errs = append(errs, "effective_turns_lt_2")
+func validateRepositoryQuality(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
+	prompt := ""
+	if systemPrompt != nil {
+		prompt = *systemPrompt
 	}
-	if len(tools) == 0 {
-		errs = append(errs, "missing_structured_tool_call")
-	}
-	if !dataShareRepositoryModelAllowed(model) {
-		errs = append(errs, "model_not_allowed")
-	}
-	if int64FromAny(usage["total_tokens"]) <= 0 {
-		errs = append(errs, "missing_usage_tokens")
-	}
-	return errs
+	return service.ValidateDataShareSessionQuality(model, prompt, messages, tools, usage)
 }
 
-func dataShareRepositoryModelAllowed(model string) bool {
-	model = strings.ToLower(strings.TrimSpace(model))
-	if model == "" {
-		return false
+func repositoryQualityStatus(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) string {
+	prompt := ""
+	if systemPrompt != nil {
+		prompt = *systemPrompt
 	}
-	// 与 service 层数据共享导出白名单保持一致，避免 upsert 合并后放宽质量门槛。
-	return strings.Contains(model, "gpt-5") ||
-		strings.Contains(model, "claude") && (strings.Contains(model, "4.5") || strings.Contains(model, "4-5")) ||
-		strings.Contains(model, "gemini-3")
+	return service.DataSharePayloadQualityStatus(model, prompt, messages, tools, usage)
+}
+
+func repositoryCompletionState(qualityStatus string) (string, bool) {
+	if qualityStatus == service.DataShareQualityComplete {
+		return service.DataShareStatusCompleted, true
+	}
+	return service.DataShareStatusTerminated, false
 }
 
 func int64FromAny(v any) int64 {

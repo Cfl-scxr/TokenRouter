@@ -24,6 +24,7 @@ export interface DataShareSession {
   meta?: Record<string, unknown>
   session_json?: Record<string, unknown>
   exportable: boolean
+  quality_status: 'complete' | 'partial' | 'invalid'
   quality_errors: string[]
   storage_bytes: number
   input_tokens: number
@@ -44,6 +45,7 @@ export interface DataShareSessionFilters {
   provider?: string
   model?: string
   exportable?: boolean | 'all'
+  quality_status?: 'complete' | 'partial' | 'invalid' | 'all'
   start_date?: string
   end_date?: string
   sort_by?: string

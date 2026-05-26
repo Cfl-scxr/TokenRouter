@@ -9031,6 +9031,7 @@ type DataShareSessionMutation struct {
 	meta                    *map[string]interface{}
 	session_json            *map[string]interface{}
 	exportable              *bool
+	quality_status          *string
 	quality_errors          *[]string
 	appendquality_errors    []string
 	storage_bytes           *int64
@@ -9824,6 +9825,42 @@ func (m *DataShareSessionMutation) ResetExportable() {
 	m.exportable = nil
 }
 
+// SetQualityStatus sets the "quality_status" field.
+func (m *DataShareSessionMutation) SetQualityStatus(s string) {
+	m.quality_status = &s
+}
+
+// QualityStatus returns the value of the "quality_status" field in the mutation.
+func (m *DataShareSessionMutation) QualityStatus() (r string, exists bool) {
+	v := m.quality_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQualityStatus returns the old "quality_status" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldQualityStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQualityStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQualityStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQualityStatus: %w", err)
+	}
+	return oldValue.QualityStatus, nil
+}
+
+// ResetQualityStatus resets all changes to the "quality_status" field.
+func (m *DataShareSessionMutation) ResetQualityStatus() {
+	m.quality_status = nil
+}
+
 // SetQualityErrors sets the "quality_errors" field.
 func (m *DataShareSessionMutation) SetQualityErrors(s []string) {
 	m.quality_errors = &s
@@ -10436,7 +10473,7 @@ func (m *DataShareSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataShareSessionMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.trajectory_id != nil {
 		fields = append(fields, datasharesession.FieldTrajectoryID)
 	}
@@ -10481,6 +10518,9 @@ func (m *DataShareSessionMutation) Fields() []string {
 	}
 	if m.exportable != nil {
 		fields = append(fields, datasharesession.FieldExportable)
+	}
+	if m.quality_status != nil {
+		fields = append(fields, datasharesession.FieldQualityStatus)
 	}
 	if m.quality_errors != nil {
 		fields = append(fields, datasharesession.FieldQualityErrors)
@@ -10553,6 +10593,8 @@ func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionJSON()
 	case datasharesession.FieldExportable:
 		return m.Exportable()
+	case datasharesession.FieldQualityStatus:
+		return m.QualityStatus()
 	case datasharesession.FieldQualityErrors:
 		return m.QualityErrors()
 	case datasharesession.FieldStorageBytes:
@@ -10614,6 +10656,8 @@ func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldSessionJSON(ctx)
 	case datasharesession.FieldExportable:
 		return m.OldExportable(ctx)
+	case datasharesession.FieldQualityStatus:
+		return m.OldQualityStatus(ctx)
 	case datasharesession.FieldQualityErrors:
 		return m.OldQualityErrors(ctx)
 	case datasharesession.FieldStorageBytes:
@@ -10749,6 +10793,13 @@ func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetExportable(v)
+		return nil
+	case datasharesession.FieldQualityStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQualityStatus(v)
 		return nil
 	case datasharesession.FieldQualityErrors:
 		v, ok := value.([]string)
@@ -11070,6 +11121,9 @@ func (m *DataShareSessionMutation) ResetField(name string) error {
 		return nil
 	case datasharesession.FieldExportable:
 		m.ResetExportable()
+		return nil
+	case datasharesession.FieldQualityStatus:
+		m.ResetQualityStatus()
 		return nil
 	case datasharesession.FieldQualityErrors:
 		m.ResetQualityErrors()

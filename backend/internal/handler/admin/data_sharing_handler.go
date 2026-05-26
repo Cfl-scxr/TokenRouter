@@ -51,6 +51,7 @@ type adminDataShareSessionResponse struct {
 	Meta               map[string]any   `json:"meta,omitempty"`
 	SessionJSON        map[string]any   `json:"session_json,omitempty"`
 	Exportable         bool             `json:"exportable"`
+	QualityStatus      string           `json:"quality_status"`
 	QualityErrors      []string         `json:"quality_errors"`
 	StorageBytes       int64            `json:"storage_bytes"`
 	InputTokens        int64            `json:"input_tokens"`
@@ -172,9 +173,8 @@ func (h *DataSharingHandler) ExportSessions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	includeNonExportable := parseAdminDataShareBoolDefault(c.Query("include_non_exportable"), false)
 	var buf bytes.Buffer
-	if err := h.dataSharingService.ExportJSONL(c.Request.Context(), &buf, filters, includeNonExportable); err != nil {
+	if err := h.dataSharingService.ExportJSONL(c.Request.Context(), &buf, filters, false); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -223,6 +223,9 @@ func parseAdminDataShareFilters(c *gin.Context) (service.DataShareSessionFilters
 	filters.Provider = strings.TrimSpace(c.Query("provider"))
 	filters.Model = strings.TrimSpace(c.Query("model"))
 	filters.Search = strings.TrimSpace(c.Query("search"))
+	if raw := strings.TrimSpace(c.Query("quality_status")); raw != "" && raw != "all" {
+		filters.QualityStatus = raw
+	}
 	if raw := strings.TrimSpace(c.Query("exportable")); raw != "" && raw != "all" {
 		v, err := strconv.ParseBool(raw)
 		if err != nil {
@@ -269,18 +272,6 @@ func parseAdminDataShareTimeQuery(c *gin.Context, keys ...string) (*time.Time, e
 	return nil, fmt.Errorf("invalid time")
 }
 
-func parseAdminDataShareBoolDefault(raw string, def bool) bool {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return def
-	}
-	v, err := strconv.ParseBool(raw)
-	if err != nil {
-		return def
-	}
-	return v
-}
-
 func adminDataShareSessionToResponse(session *service.DataShareSession, includePayload bool) adminDataShareSessionResponse {
 	if session == nil {
 		return adminDataShareSessionResponse{}
@@ -297,6 +288,7 @@ func adminDataShareSessionToResponse(session *service.DataShareSession, includeP
 		SourceRequestCount: session.SourceRequestCount,
 		SystemPrompt:       session.SystemPrompt,
 		Exportable:         session.Exportable,
+		QualityStatus:      session.QualityStatus,
 		QualityErrors:      session.QualityErrors,
 		StorageBytes:       session.StorageBytes,
 		InputTokens:        session.InputTokens,

@@ -544,28 +544,34 @@ func init() {
 	datasharesessionDescExportable := datasharesessionFields[14].Descriptor()
 	// datasharesession.DefaultExportable holds the default value on creation for the exportable field.
 	datasharesession.DefaultExportable = datasharesessionDescExportable.Default.(bool)
+	// datasharesessionDescQualityStatus is the schema descriptor for quality_status field.
+	datasharesessionDescQualityStatus := datasharesessionFields[15].Descriptor()
+	// datasharesession.DefaultQualityStatus holds the default value on creation for the quality_status field.
+	datasharesession.DefaultQualityStatus = datasharesessionDescQualityStatus.Default.(string)
+	// datasharesession.QualityStatusValidator is a validator for the "quality_status" field. It is called by the builders before save.
+	datasharesession.QualityStatusValidator = datasharesessionDescQualityStatus.Validators[0].(func(string) error)
 	// datasharesessionDescStorageBytes is the schema descriptor for storage_bytes field.
-	datasharesessionDescStorageBytes := datasharesessionFields[16].Descriptor()
+	datasharesessionDescStorageBytes := datasharesessionFields[17].Descriptor()
 	// datasharesession.DefaultStorageBytes holds the default value on creation for the storage_bytes field.
 	datasharesession.DefaultStorageBytes = datasharesessionDescStorageBytes.Default.(int64)
 	// datasharesessionDescInputTokens is the schema descriptor for input_tokens field.
-	datasharesessionDescInputTokens := datasharesessionFields[17].Descriptor()
+	datasharesessionDescInputTokens := datasharesessionFields[18].Descriptor()
 	// datasharesession.DefaultInputTokens holds the default value on creation for the input_tokens field.
 	datasharesession.DefaultInputTokens = datasharesessionDescInputTokens.Default.(int64)
 	// datasharesessionDescOutputTokens is the schema descriptor for output_tokens field.
-	datasharesessionDescOutputTokens := datasharesessionFields[18].Descriptor()
+	datasharesessionDescOutputTokens := datasharesessionFields[19].Descriptor()
 	// datasharesession.DefaultOutputTokens holds the default value on creation for the output_tokens field.
 	datasharesession.DefaultOutputTokens = datasharesessionDescOutputTokens.Default.(int64)
 	// datasharesessionDescTotalTokens is the schema descriptor for total_tokens field.
-	datasharesessionDescTotalTokens := datasharesessionFields[19].Descriptor()
+	datasharesessionDescTotalTokens := datasharesessionFields[20].Descriptor()
 	// datasharesession.DefaultTotalTokens holds the default value on creation for the total_tokens field.
 	datasharesession.DefaultTotalTokens = datasharesessionDescTotalTokens.Default.(int64)
 	// datasharesessionDescCreatedAt is the schema descriptor for created_at field.
-	datasharesessionDescCreatedAt := datasharesessionFields[23].Descriptor()
+	datasharesessionDescCreatedAt := datasharesessionFields[24].Descriptor()
 	// datasharesession.DefaultCreatedAt holds the default value on creation for the created_at field.
 	datasharesession.DefaultCreatedAt = datasharesessionDescCreatedAt.Default.(func() time.Time)
 	// datasharesessionDescUpdatedAt is the schema descriptor for updated_at field.
-	datasharesessionDescUpdatedAt := datasharesessionFields[25].Descriptor()
+	datasharesessionDescUpdatedAt := datasharesessionFields[26].Descriptor()
 	// datasharesession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	datasharesession.DefaultUpdatedAt = datasharesessionDescUpdatedAt.Default.(func() time.Time)
 	// datasharesession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

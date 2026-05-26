@@ -1,18 +1,22 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div class="grid gap-4 md:grid-cols-5">
+      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">Session 总数</p>
           <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(stats?.session_count) }}</p>
         </div>
         <div class="card p-4">
-          <p class="text-xs text-gray-500 dark:text-gray-400">合格数据</p>
-          <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ formatNumber(stats?.exportable_count) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">完整</p>
+          <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ formatNumber(stats?.complete_count) }}</p>
         </div>
         <div class="card p-4">
-          <p class="text-xs text-gray-500 dark:text-gray-400">待处理</p>
-          <p class="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">{{ formatNumber(stats?.non_exportable_count) }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">部分完整</p>
+          <p class="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">{{ formatNumber(stats?.partial_count) }}</p>
+        </div>
+        <div class="card p-4">
+          <p class="text-xs text-gray-500 dark:text-gray-400">无效</p>
+          <p class="mt-2 text-2xl font-semibold text-red-600 dark:text-red-400">{{ formatNumber(stats?.invalid_count) }}</p>
         </div>
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">占用空间</p>
@@ -86,15 +90,11 @@
                 <input v-model.number="filters.user_id" type="number" min="1" class="input w-32" placeholder="用户 ID" @input="handleFilterChange" />
                 <input v-model.number="filters.api_key_id" type="number" min="1" class="input w-32" placeholder="Key ID" @input="handleFilterChange" />
                 <input v-model.number="filters.group_id" type="number" min="1" class="input w-32" placeholder="分组 ID" @input="handleFilterChange" />
-                <Select v-model="filters.exportable" :options="exportableOptions" class="w-40" @change="handleFilterChange" />
+                <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
                 <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
                 <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
               </div>
               <div class="flex flex-wrap justify-end gap-3">
-                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                  <input v-model="includeNonExportable" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                  导出包含待处理
-                </label>
                 <button class="btn btn-secondary" :disabled="loading" @click="refreshAll">
                   <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
                 </button>
@@ -136,9 +136,9 @@
             <template #cell-model="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
             </template>
-            <template #cell-exportable="{ value, row }">
-              <span :class="['badge', value ? 'badge-success' : 'badge-warning']">
-                {{ value ? '合格' : `待处理 ${row.quality_errors?.length || 0}` }}
+            <template #cell-quality_status="{ value, row }">
+              <span :class="['badge', qualityBadgeClass(value)]">
+                {{ qualityLabel(value) }}<span v-if="value === 'invalid' && row.quality_errors?.length"> {{ row.quality_errors.length }}</span>
               </span>
             </template>
             <template #cell-storage_bytes="{ value }">{{ formatBytes(value) }}</template>
@@ -184,8 +184,8 @@
           <span class="badge badge-gray">用户 {{ selectedSession.user_id }}</span>
           <span class="badge badge-gray">Key {{ selectedSession.api_key_id }}</span>
           <span class="badge badge-gray">分组 {{ selectedSession.group_id }}</span>
-          <span :class="['badge', selectedSession.exportable ? 'badge-success' : 'badge-warning']">
-            {{ selectedSession.exportable ? '合格' : '待处理' }}
+          <span :class="['badge', qualityBadgeClass(selectedSession.quality_status)]">
+            {{ qualityLabel(selectedSession.quality_status) }}
           </span>
         </div>
         <div v-if="selectedSession.quality_errors?.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
@@ -242,7 +242,6 @@ const savingNotice = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
-const includeNonExportable = ref(false)
 
 const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
@@ -251,15 +250,16 @@ const filters = reactive({
   user_id: null as number | null,
   api_key_id: null as number | null,
   group_id: null as number | null,
-  exportable: 'all' as 'all' | 'true' | 'false',
+  quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
 })
 
-const exportableOptions = [
+const qualityOptions = [
   { value: 'all', label: '全部质量' },
-  { value: 'true', label: '仅合格' },
-  { value: 'false', label: '待处理' }
+  { value: 'complete', label: '完整' },
+  { value: 'partial', label: '部分完整' },
+  { value: 'invalid', label: '无效' }
 ]
 
 const columns: Column[] = [
@@ -267,7 +267,7 @@ const columns: Column[] = [
   { key: 'session_id', label: 'Session', sortable: true },
   { key: 'provider', label: 'Provider', sortable: true },
   { key: 'model', label: '模型', sortable: true },
-  { key: 'exportable', label: '质量', sortable: true },
+  { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
   { key: 'total_tokens', label: 'Token', sortable: true },
   { key: 'created_at', label: '创建时间', sortable: true },
@@ -389,7 +389,7 @@ function buildFilters(): AdminDataShareSessionFilters {
   if (filters.user_id) out.user_id = filters.user_id
   if (filters.api_key_id) out.api_key_id = filters.api_key_id
   if (filters.group_id) out.group_id = filters.group_id
-  if (filters.exportable !== 'all') out.exportable = filters.exportable === 'true'
+  if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date
   return out
@@ -533,10 +533,7 @@ async function batchDelete() {
 async function downloadCurrent() {
   exporting.value = true
   try {
-    const blob = await adminDataSharingAPI.exportSessions({
-      ...buildFilters(),
-      include_non_exportable: includeNonExportable.value
-    })
+    const blob = await adminDataSharingAPI.exportSessions(buildFilters())
     dataSharingAPI.downloadBlob(blob, `admin-data-sharing-${Date.now()}.jsonl`)
   } catch (error) {
     appStore.showError('导出失败')
@@ -552,6 +549,18 @@ function formatDate(value?: string | null) {
 
 function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
+}
+
+function qualityLabel(value?: string) {
+  if (value === 'complete') return '完整'
+  if (value === 'partial') return '部分完整'
+  return '无效'
+}
+
+function qualityBadgeClass(value?: string) {
+  if (value === 'complete') return 'badge-success'
+  if (value === 'partial') return 'badge-warning'
+  return 'badge-danger'
 }
 
 function formatBytes(value?: number | null) {

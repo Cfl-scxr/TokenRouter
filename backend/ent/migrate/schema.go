@@ -447,6 +447,7 @@ var (
 		{Name: "meta", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "session_json", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "exportable", Type: field.TypeBool, Default: false},
+		{Name: "quality_status", Type: field.TypeString, Size: 20, Default: "invalid"},
 		{Name: "quality_errors", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "storage_bytes", Type: field.TypeInt64, Default: 0},
 		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
@@ -473,17 +474,17 @@ var (
 			{
 				Name:    "datasharesession_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[21]},
+				Columns: []*schema.Column{DataShareSessionsColumns[22]},
 			},
 			{
 				Name:    "datasharesession_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[22]},
+				Columns: []*schema.Column{DataShareSessionsColumns[23]},
 			},
 			{
 				Name:    "datasharesession_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[23]},
+				Columns: []*schema.Column{DataShareSessionsColumns[24]},
 			},
 			{
 				Name:    "datasharesession_provider",
@@ -501,14 +502,19 @@ var (
 				Columns: []*schema.Column{DataShareSessionsColumns[15]},
 			},
 			{
+				Name:    "datasharesession_quality_status",
+				Unique:  false,
+				Columns: []*schema.Column{DataShareSessionsColumns[16]},
+			},
+			{
 				Name:    "datasharesession_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[24]},
+				Columns: []*schema.Column{DataShareSessionsColumns[25]},
 			},
 			{
 				Name:    "datasharesession_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[26]},
+				Columns: []*schema.Column{DataShareSessionsColumns[27]},
 			},
 		},
 	}
