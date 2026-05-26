@@ -20,6 +20,8 @@ type Group struct {
 	IsDefault      bool
 	Status         string
 	Hydrated       bool // indicates the group was loaded from a trusted repository source
+	// DataSharingEnabled 表示该分组产生的 Agent session 是否进入数据共享采集流程。
+	DataSharingEnabled bool
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration bool

@@ -21,13 +21,14 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyNotFound             = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed            = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists               = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort             = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars         = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited          = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern           = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrDataSharingConsentRequired = infraerrors.Forbidden("DATA_SHARING_CONSENT_REQUIRED", "switching to a data sharing group requires confirmation")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -164,6 +165,10 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// 数据共享确认字段：创建时直接选择数据共享分组也必须确认。
+	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
+	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -185,12 +190,21 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	// 数据共享确认字段：用户切换到数据共享分组时必须由弹窗确认后提交。
+	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
+	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
 }
 
 // APIKeyService API Key服务
 // RateLimitCacheInvalidator invalidates rate limit cache entries on manual reset.
 type RateLimitCacheInvalidator interface {
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+}
+
+// DataSharingNoticeReader 提供当前数据共享须知版本，用于 API Key 切组校验。
+type DataSharingNoticeReader interface {
+	GetNotice(ctx context.Context) (*DataShareNotice, error)
 }
 
 type APIKeyService struct {
@@ -207,6 +221,7 @@ type APIKeyService struct {
 	authGroup             singleflight.Group
 	lastUsedTouchL1       sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF       singleflight.Group
+	dataSharingNotice     DataSharingNoticeReader
 }
 
 // NewAPIKeyService 创建API Key服务实例
@@ -236,6 +251,11 @@ func NewAPIKeyService(
 // Called after construction (e.g. in wire) to avoid circular dependencies.
 func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidator) {
 	s.rateLimitCacheInvalid = inv
+}
+
+// SetDataSharingNoticeReader 注入数据共享须知读取器，避免 API Key 服务直接耦合 settings 存储细节。
+func (s *APIKeyService) SetDataSharingNoticeReader(reader DataSharingNoticeReader) {
+	s.dataSharingNotice = reader
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
@@ -342,6 +362,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	}
 
 	// 验证分组权限（如果指定了分组）
+	var dataSharingNoticeVersion int
+	var dataSharingConfirmedGroupID *int64
+	var dataSharingConfirmedAt *time.Time
 	if req.GroupID != nil {
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
@@ -351,6 +374,15 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		// 检查用户是否可以绑定该分组
 		if !s.canUserBindGroup(ctx, user, group) {
 			return nil, ErrGroupNotAllowed
+		}
+		if group.DataSharingEnabled {
+			version, confirmedAt, err := s.validateCurrentDataSharingConsent(ctx, group, req.DataSharingConfirmed, req.DataSharingNoticeVersion)
+			if err != nil {
+				return nil, err
+			}
+			dataSharingNoticeVersion = version
+			dataSharingConfirmedGroupID = &group.ID
+			dataSharingConfirmedAt = &confirmedAt
 		}
 	}
 
@@ -391,18 +423,21 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        req.Name,
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:                      userID,
+		Key:                         key,
+		Name:                        req.Name,
+		GroupID:                     req.GroupID,
+		Status:                      StatusActive,
+		IPWhitelist:                 req.IPWhitelist,
+		IPBlacklist:                 req.IPBlacklist,
+		Quota:                       req.Quota,
+		QuotaUsed:                   0,
+		RateLimit5h:                 req.RateLimit5h,
+		RateLimit1d:                 req.RateLimit1d,
+		RateLimit7d:                 req.RateLimit7d,
+		DataSharingNoticeVersion:    dataSharingNoticeVersion,
+		DataSharingConfirmedGroupID: dataSharingConfirmedGroupID,
+		DataSharingConfirmedAt:      dataSharingConfirmedAt,
 	}
 
 	// Set expiration time if specified
@@ -668,6 +703,10 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			return nil, ErrGroupNotAllowed
 		}
 
+		changingGroup := apiKey.GroupID == nil || *apiKey.GroupID != group.ID
+		if err := s.validateDataSharingConsent(ctx, apiKey, group, req, changingGroup); err != nil {
+			return nil, err
+		}
 		apiKey.GroupID = req.GroupID
 	}
 
@@ -745,6 +784,40 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	return apiKey, nil
+}
+
+// validateDataSharingConsent 校验用户是否已在当前切组请求中确认数据共享须知。
+func (s *APIKeyService) validateDataSharingConsent(ctx context.Context, apiKey *APIKey, group *Group, req UpdateAPIKeyRequest, changingGroup bool) error {
+	if group == nil || !group.DataSharingEnabled || !changingGroup {
+		return nil
+	}
+	version, confirmedAt, err := s.validateCurrentDataSharingConsent(ctx, group, req.DataSharingConfirmed, req.DataSharingNoticeVersion)
+	if err != nil {
+		return err
+	}
+	gid := group.ID
+	apiKey.DataSharingNoticeVersion = version
+	apiKey.DataSharingConfirmedGroupID = &gid
+	apiKey.DataSharingConfirmedAt = &confirmedAt
+	return nil
+}
+
+// validateCurrentDataSharingConsent 要求确认信息必须随当前请求提交，防止复用历史确认绕过弹窗。
+func (s *APIKeyService) validateCurrentDataSharingConsent(ctx context.Context, group *Group, confirmed bool, version int) (int, time.Time, error) {
+	if group == nil || !group.DataSharingEnabled {
+		return 0, time.Time{}, nil
+	}
+	if !confirmed || s.dataSharingNotice == nil {
+		return 0, time.Time{}, ErrDataSharingConsentRequired
+	}
+	notice, err := s.dataSharingNotice.GetNotice(ctx)
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("get data sharing notice: %w", err)
+	}
+	if version <= 0 || version != notice.Version {
+		return 0, time.Time{}, ErrDataSharingConsentRequired
+	}
+	return version, time.Now(), nil
 }
 
 // Delete 删除API Key

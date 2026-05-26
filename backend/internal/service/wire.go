@@ -464,9 +464,11 @@ func ProvideAPIKeyService(
 	cache APIKeyCache,
 	cfg *config.Config,
 	billingCacheService *BillingCacheService,
+	dataSharingService *DataSharingService,
 ) *APIKeyService {
 	svc := NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, userGroupRateRepo, cache, cfg)
 	svc.SetRateLimitCacheInvalidator(billingCacheService)
+	svc.SetDataSharingNoticeReader(dataSharingService)
 	return svc
 }
 
@@ -484,6 +486,7 @@ var ProviderSet = wire.NewSet(
 	NewAffiliateService,
 	NewPromoService,
 	NewUsageService,
+	NewDataSharingService,
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,

@@ -101,6 +101,15 @@ export async function create(
 }
 
 /**
+ * 使用已组装好的请求体创建 API Key。
+ * 表单需要附加数据共享确认字段时会走这里。
+ */
+export async function createWithPayload(payload: CreateApiKeyRequest): Promise<ApiKey> {
+  const { data } = await apiClient.post<ApiKey>('/keys', payload)
+  return data
+}
+
+/**
  * Update API key
  * @param id - API key ID
  * @param updates - Fields to update
@@ -135,6 +144,7 @@ export const keysAPI = {
   list,
   getById,
   create,
+  createWithPayload,
   update,
   delete: deleteKey,
   toggleStatus

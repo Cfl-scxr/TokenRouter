@@ -188,6 +188,8 @@ type CreateGroupInput struct {
 	RateMultiplier float64
 	IsExclusive    bool
 	IsDefault      bool
+	// DataSharingEnabled 将新建分组标记为数据共享分组。
+	DataSharingEnabled bool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -226,7 +228,9 @@ type UpdateGroupInput struct {
 	RateMultiplier *float64 // 使用指针以支持设置为0
 	IsExclusive    *bool
 	IsDefault      *bool
-	Status         string
+	// DataSharingEnabled 控制分组是否进入数据共享采集流程。
+	DataSharingEnabled *bool
+	Status             string
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -1539,6 +1543,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RateMultiplier:                  input.RateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		IsDefault:                       input.IsDefault,
+		DataSharingEnabled:              input.DataSharingEnabled,
 		Status:                          StatusActive,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
@@ -1776,6 +1781,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.IsDefault != nil {
 		group.IsDefault = *input.IsDefault
+	}
+	if input.DataSharingEnabled != nil {
+		group.DataSharingEnabled = *input.DataSharingEnabled
 	}
 	if input.Status != "" {
 		group.Status = input.Status

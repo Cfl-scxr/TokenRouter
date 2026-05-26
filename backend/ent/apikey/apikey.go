@@ -61,6 +61,12 @@ const (
 	FieldWindow1dStart = "window_1d_start"
 	// FieldWindow7dStart holds the string denoting the window_7d_start field in the database.
 	FieldWindow7dStart = "window_7d_start"
+	// FieldDataSharingNoticeVersion holds the string denoting the data_sharing_notice_version field in the database.
+	FieldDataSharingNoticeVersion = "data_sharing_notice_version"
+	// FieldDataSharingConfirmedGroupID holds the string denoting the data_sharing_confirmed_group_id field in the database.
+	FieldDataSharingConfirmedGroupID = "data_sharing_confirmed_group_id"
+	// FieldDataSharingConfirmedAt holds the string denoting the data_sharing_confirmed_at field in the database.
+	FieldDataSharingConfirmedAt = "data_sharing_confirmed_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -118,6 +124,9 @@ var Columns = []string{
 	FieldWindow5hStart,
 	FieldWindow1dStart,
 	FieldWindow7dStart,
+	FieldDataSharingNoticeVersion,
+	FieldDataSharingConfirmedGroupID,
+	FieldDataSharingConfirmedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -168,6 +177,8 @@ var (
 	DefaultUsage1d float64
 	// DefaultUsage7d holds the default value on creation for the "usage_7d" field.
 	DefaultUsage7d float64
+	// DefaultDataSharingNoticeVersion holds the default value on creation for the "data_sharing_notice_version" field.
+	DefaultDataSharingNoticeVersion int
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -281,6 +292,21 @@ func ByWindow1dStart(opts ...sql.OrderTermOption) OrderOption {
 // ByWindow7dStart orders the results by the window_7d_start field.
 func ByWindow7dStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWindow7dStart, opts...).ToFunc()
+}
+
+// ByDataSharingNoticeVersion orders the results by the data_sharing_notice_version field.
+func ByDataSharingNoticeVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDataSharingNoticeVersion, opts...).ToFunc()
+}
+
+// ByDataSharingConfirmedGroupID orders the results by the data_sharing_confirmed_group_id field.
+func ByDataSharingConfirmedGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDataSharingConfirmedGroupID, opts...).ToFunc()
+}
+
+// ByDataSharingConfirmedAt orders the results by the data_sharing_confirmed_at field.
+func ByDataSharingConfirmedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDataSharingConfirmedAt, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

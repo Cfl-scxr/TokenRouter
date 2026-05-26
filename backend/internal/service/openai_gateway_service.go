@@ -393,6 +393,7 @@ type OpenAIGatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	dataSharingService    *DataSharingService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -438,6 +439,7 @@ func NewOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	dataSharingService *DataSharingService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -470,6 +472,7 @@ func NewOpenAIGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		dataSharingService:    dataSharingService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -5481,6 +5484,8 @@ type OpenAIRecordUsageInput struct {
 	UserAgent          string // 请求的 User-Agent
 	IPAddress          string // 请求的客户端 IP 地址
 	RequestPayloadHash string
+	RequestBody        []byte // 原始请求体，用于数据共享 session 归一化采集
+	SessionID          string // 当前请求的会话标识，用于数据共享聚合
 	APIKeyService      APIKeyQuotaUpdater
 	ChannelUsageFields
 }
@@ -5706,8 +5711,38 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+	s.captureOpenAIDataSharingBestEffort(ctx, input, result, requestedModel, actualInputTokens)
 
 	return nil
+}
+
+// captureOpenAIDataSharingBestEffort 在 OpenAI 使用记录成功后旁路采集数据共享 session。
+func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(ctx context.Context, input *OpenAIRecordUsageInput, result *OpenAIForwardResult, requestedModel string, actualInputTokens int) {
+	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
+		return
+	}
+	err := s.dataSharingService.CaptureOpenAIRequest(ctx, DataShareCaptureInput{
+		APIKey:            input.APIKey,
+		User:              input.User,
+		Account:           input.Account,
+		Provider:          PlatformFromAPIKey(input.APIKey),
+		Model:             requestedModel,
+		UpstreamModel:     result.UpstreamModel,
+		SessionID:         input.SessionID,
+		RequestID:         result.RequestID,
+		RequestBody:       cloneDataSharingRequestBody(input.RequestBody),
+		InputTokens:       actualInputTokens,
+		OutputTokens:      result.Usage.OutputTokens,
+		CacheReadTokens:   result.Usage.CacheReadInputTokens,
+		CacheCreateTokens: result.Usage.CacheCreationInputTokens,
+		UserAgent:         input.UserAgent,
+		IPAddress:         input.IPAddress,
+		InboundEndpoint:   input.InboundEndpoint,
+		UpstreamEndpoint:  input.UpstreamEndpoint,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.openai_gateway", "data sharing capture failed: %v", err)
+	}
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(

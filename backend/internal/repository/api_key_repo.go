@@ -52,7 +52,10 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetNillableExpiresAt(key.ExpiresAt).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d)
+		SetRateLimit7d(key.RateLimit7d).
+		SetDataSharingNoticeVersion(key.DataSharingNoticeVersion).
+		SetNillableDataSharingConfirmedGroupID(key.DataSharingConfirmedGroupID).
+		SetNillableDataSharingConfirmedAt(key.DataSharingConfirmedAt)
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -182,6 +185,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldRpmLimit,
+				group.FieldDataSharingEnabled,
 			)
 		}).
 		Only(ctx)
@@ -214,11 +218,24 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetUsage5h(key.Usage5h).
 		SetUsage1d(key.Usage1d).
 		SetUsage7d(key.Usage7d).
+		SetDataSharingNoticeVersion(key.DataSharingNoticeVersion).
 		SetUpdatedAt(now)
 	if key.GroupID != nil {
 		builder.SetGroupID(*key.GroupID)
 	} else {
 		builder.ClearGroupID()
+	}
+
+	// 数据共享确认信息与分组切换同事务保存，保证“确认后才切组”的语义。
+	if key.DataSharingConfirmedGroupID != nil {
+		builder.SetDataSharingConfirmedGroupID(*key.DataSharingConfirmedGroupID)
+	} else {
+		builder.ClearDataSharingConfirmedGroupID()
+	}
+	if key.DataSharingConfirmedAt != nil {
+		builder.SetDataSharingConfirmedAt(*key.DataSharingConfirmedAt)
+	} else {
+		builder.ClearDataSharingConfirmedAt()
 	}
 
 	// Expiration time
@@ -725,6 +742,10 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Window5hStart: m.Window5hStart,
 		Window1dStart: m.Window1dStart,
 		Window7dStart: m.Window7dStart,
+		// 数据共享确认信息随 API Key 返回，用户端可判断是否需要重新确认须知。
+		DataSharingNoticeVersion:    m.DataSharingNoticeVersion,
+		DataSharingConfirmedGroupID: m.DataSharingConfirmedGroupID,
+		DataSharingConfirmedAt:      m.DataSharingConfirmedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -785,6 +806,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		IsDefault:                       g.IsDefault,
 		Status:                          g.Status,
 		Hydrated:                        true,
+		DataSharingEnabled:              g.DataSharingEnabled,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

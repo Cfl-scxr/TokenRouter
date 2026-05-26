@@ -596,6 +596,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	dataSharingService    *DataSharingService
 }
 
 // NewGatewayService creates a new GatewayService
@@ -627,6 +628,7 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	dataSharingService *DataSharingService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -663,6 +665,7 @@ func NewGatewayService(
 		resolver:              resolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		dataSharingService:    dataSharingService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7985,6 +7988,8 @@ type RecordUsageInput struct {
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RequestBody        []byte             // 原始请求体，用于数据共享 session 归一化采集
+	SessionID          string             // 当前请求的会话标识，用于数据共享聚合
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
@@ -8441,6 +8446,8 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
 		RequestPayloadHash: input.RequestPayloadHash,
+		RequestBody:        input.RequestBody,
+		SessionID:          input.SessionID,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
@@ -8462,6 +8469,8 @@ type RecordUsageLongContextInput struct {
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RequestBody           []byte             // 原始请求体，用于数据共享 session 归一化采集
+	SessionID             string             // 当前请求的会话标识，用于数据共享聚合
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
@@ -8484,6 +8493,8 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
 		RequestPayloadHash: input.RequestPayloadHash,
+		RequestBody:        input.RequestBody,
+		SessionID:          input.SessionID,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
@@ -8506,6 +8517,8 @@ type recordUsageCoreInput struct {
 	UserAgent          string
 	IPAddress          string
 	RequestPayloadHash string
+	RequestBody        []byte
+	SessionID          string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
@@ -8630,8 +8643,39 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	s.captureDataSharingBestEffort(ctx, input, result, requestedModel)
 
 	return nil
+}
+
+// captureDataSharingBestEffort 在使用记录成功后异步旁路采集数据共享 session，失败不影响网关主链路。
+func (s *GatewayService) captureDataSharingBestEffort(ctx context.Context, input *recordUsageCoreInput, result *ForwardResult, requestedModel string) {
+	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
+		return
+	}
+	err := s.dataSharingService.CaptureClaudeRequest(ctx, DataShareCaptureInput{
+		APIKey:            input.APIKey,
+		User:              input.User,
+		Account:           input.Account,
+		Provider:          PlatformFromAPIKey(input.APIKey),
+		Model:             requestedModel,
+		UpstreamModel:     result.UpstreamModel,
+		SessionID:         input.SessionID,
+		RequestID:         result.RequestID,
+		RequestBody:       cloneDataSharingRequestBody(input.RequestBody),
+		SystemPrompt:      extractSystemPromptFromRequest(input.RequestBody),
+		InputTokens:       result.Usage.InputTokens,
+		OutputTokens:      result.Usage.OutputTokens,
+		CacheReadTokens:   result.Usage.CacheReadInputTokens,
+		CacheCreateTokens: result.Usage.CacheCreationInputTokens,
+		UserAgent:         input.UserAgent,
+		IPAddress:         input.IPAddress,
+		InboundEndpoint:   input.InboundEndpoint,
+		UpstreamEndpoint:  input.UpstreamEndpoint,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "data sharing capture failed: %v", err)
+	}
 }
 
 // calculateRecordUsageCost 根据请求类型和选项计算费用。

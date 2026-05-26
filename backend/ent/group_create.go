@@ -437,6 +437,20 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (_c *GroupCreate) SetDataSharingEnabled(v bool) *GroupCreate {
+	_c.mutation.SetDataSharingEnabled(v)
+	return _c
+}
+
+// SetNillableDataSharingEnabled sets the "data_sharing_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDataSharingEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetDataSharingEnabled(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -628,6 +642,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.DataSharingEnabled(); !ok {
+		v := group.DefaultDataSharingEnabled
+		_c.mutation.SetDataSharingEnabled(v)
+	}
 	return nil
 }
 
@@ -726,6 +744,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.DataSharingEnabled(); !ok {
+		return &ValidationError{Name: "data_sharing_enabled", err: errors.New(`ent: missing required field "Group.data_sharing_enabled"`)}
 	}
 	return nil
 }
@@ -877,6 +898,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.DataSharingEnabled(); ok {
+		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
+		_node.DataSharingEnabled = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1464,6 +1489,18 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (u *GroupUpsert) SetDataSharingEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldDataSharingEnabled, v)
+	return u
+}
+
+// UpdateDataSharingEnabled sets the "data_sharing_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDataSharingEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldDataSharingEnabled)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2045,6 +2082,20 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (u *GroupUpsertOne) SetDataSharingEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDataSharingEnabled(v)
+	})
+}
+
+// UpdateDataSharingEnabled sets the "data_sharing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDataSharingEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDataSharingEnabled()
 	})
 }
 
@@ -2795,6 +2846,20 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (u *GroupUpsertBulk) SetDataSharingEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDataSharingEnabled(v)
+	})
+}
+
+// UpdateDataSharingEnabled sets the "data_sharing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDataSharingEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDataSharingEnabled()
 	})
 }
 

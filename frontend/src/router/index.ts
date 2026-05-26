@@ -237,6 +237,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/data-sharing',
+    name: 'DataSharing',
+    component: () => import('@/views/user/DataSharingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Data Sharing'
+    }
+  },
+  {
     path: '/usage-ranking',
     name: 'UsageRanking',
     component: () => import('@/views/user/UsageRankingView.vue'),
@@ -565,6 +575,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
+    }
+  },
+  {
+    path: '/admin/data-sharing',
+    name: 'AdminDataSharing',
+    component: () => import('@/views/admin/DataSharingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Data Sharing'
     }
   },
   {

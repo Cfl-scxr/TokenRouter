@@ -547,6 +547,20 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (_u *GroupUpdate) SetDataSharingEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetDataSharingEnabled(v)
+	return _u
+}
+
+// SetNillableDataSharingEnabled sets the "data_sharing_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDataSharingEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetDataSharingEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -925,6 +939,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DataSharingEnabled(); ok {
+		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1663,6 +1680,20 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (_u *GroupUpdateOne) SetDataSharingEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetDataSharingEnabled(v)
+	return _u
+}
+
+// SetNillableDataSharingEnabled sets the "data_sharing_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDataSharingEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDataSharingEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2071,6 +2102,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DataSharingEnabled(); ok {
+		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

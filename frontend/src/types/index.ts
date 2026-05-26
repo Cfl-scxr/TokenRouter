@@ -587,6 +587,7 @@ export interface Group {
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
   is_default?: boolean
+  data_sharing_enabled: boolean
   status: 'active' | 'inactive'
   // 图片生成计费配置
   allow_image_generation: boolean
@@ -661,6 +662,9 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  data_sharing_notice_version?: number
+  data_sharing_confirmed_group_id?: number | null
+  data_sharing_confirmed_at?: string | null
 }
 
 export interface CreateApiKeyRequest {
@@ -674,6 +678,8 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  data_sharing_confirmed?: boolean
+  data_sharing_notice_version?: number
 }
 
 export interface UpdateApiKeyRequest {
@@ -689,6 +695,8 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  data_sharing_confirmed?: boolean
+  data_sharing_notice_version?: number
 }
 
 export interface CreateGroupRequest {
@@ -700,6 +708,7 @@ export interface CreateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   is_default?: boolean
+  data_sharing_enabled?: boolean
   allow_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
@@ -726,6 +735,7 @@ export interface UpdateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   is_default?: boolean
+  data_sharing_enabled?: boolean
   status?: 'active' | 'inactive'
   allow_image_generation?: boolean
   image_rate_independent?: boolean

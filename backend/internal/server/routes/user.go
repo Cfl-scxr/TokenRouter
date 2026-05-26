@@ -72,13 +72,24 @@ func RegisterUserRoutes(
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 
+		// 数据共享：用户查看和下载自己被采集的 Agent session。
+		dataSharing := authenticated.Group("/data-sharing")
+		{
+			dataSharing.GET("/notice", h.DataSharing.GetNotice)
+			dataSharing.POST("/confirm", h.DataSharing.ConfirmNotice)
+			dataSharing.GET("/sessions", h.DataSharing.ListSessions)
+			dataSharing.GET("/sessions/:id", h.DataSharing.GetSession)
+			dataSharing.GET("/sessions/:id/export", h.DataSharing.ExportSession)
+			dataSharing.GET("/export", h.DataSharing.ExportSessions)
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{
 			usage.GET("", h.Usage.List)
 			usage.GET("/ranking", h.Usage.Ranking)
 			usage.GET("/stats", h.Usage.Stats)
-			// User dashboard endpoints
+			// 用户仪表盘接口
 			usage.GET("/dashboard/stats", h.Usage.DashboardStats)
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)
 			usage.GET("/dashboard/models", h.Usage.DashboardModels)

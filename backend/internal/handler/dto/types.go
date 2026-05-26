@@ -62,6 +62,10 @@ type APIKey struct {
 	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	// 数据共享确认记录，用于前端判断切换分组时是否需要重新弹窗。
+	DataSharingNoticeVersion    int        `json:"data_sharing_notice_version"`
+	DataSharingConfirmedGroupID *int64     `json:"data_sharing_confirmed_group_id"`
+	DataSharingConfirmedAt      *time.Time `json:"data_sharing_confirmed_at"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
@@ -92,6 +96,8 @@ type Group struct {
 	IsExclusive    bool           `json:"is_exclusive"`
 	IsDefault      bool           `json:"is_default"`
 	Status         string         `json:"status"`
+	// 数据共享分组会采集符合规则的 Agent session，用户切换前必须确认须知。
+	DataSharingEnabled bool `json:"data_sharing_enabled"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool     `json:"allow_image_generation"`

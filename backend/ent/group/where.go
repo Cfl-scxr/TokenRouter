@@ -195,6 +195,11 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// DataSharingEnabled applies equality check predicate on the "data_sharing_enabled" field. It's identical to DataSharingEnabledEQ.
+func DataSharingEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDataSharingEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1243,6 +1248,16 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// DataSharingEnabledEQ applies the EQ predicate on the "data_sharing_enabled" field.
+func DataSharingEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDataSharingEnabled, v))
+}
+
+// DataSharingEnabledNEQ applies the NEQ predicate on the "data_sharing_enabled" field.
+func DataSharingEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDataSharingEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

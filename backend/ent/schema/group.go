@@ -149,6 +149,11 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 数据共享开关：开启后该分组产生的 Agent session 会进入数据共享采集流程。
+		field.Bool("data_sharing_enabled").
+			Default(false).
+			Comment("是否为数据共享分组"),
 	}
 }
 
@@ -176,5 +181,6 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("is_default"),
 		index.Fields("deleted_at"),
 		index.Fields("sort_order"),
+		index.Fields("data_sharing_enabled"),
 	}
 }

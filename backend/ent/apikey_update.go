@@ -438,6 +438,74 @@ func (_u *APIKeyUpdate) ClearWindow7dStart() *APIKeyUpdate {
 	return _u
 }
 
+// SetDataSharingNoticeVersion sets the "data_sharing_notice_version" field.
+func (_u *APIKeyUpdate) SetDataSharingNoticeVersion(v int) *APIKeyUpdate {
+	_u.mutation.ResetDataSharingNoticeVersion()
+	_u.mutation.SetDataSharingNoticeVersion(v)
+	return _u
+}
+
+// SetNillableDataSharingNoticeVersion sets the "data_sharing_notice_version" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableDataSharingNoticeVersion(v *int) *APIKeyUpdate {
+	if v != nil {
+		_u.SetDataSharingNoticeVersion(*v)
+	}
+	return _u
+}
+
+// AddDataSharingNoticeVersion adds value to the "data_sharing_notice_version" field.
+func (_u *APIKeyUpdate) AddDataSharingNoticeVersion(v int) *APIKeyUpdate {
+	_u.mutation.AddDataSharingNoticeVersion(v)
+	return _u
+}
+
+// SetDataSharingConfirmedGroupID sets the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdate) SetDataSharingConfirmedGroupID(v int64) *APIKeyUpdate {
+	_u.mutation.ResetDataSharingConfirmedGroupID()
+	_u.mutation.SetDataSharingConfirmedGroupID(v)
+	return _u
+}
+
+// SetNillableDataSharingConfirmedGroupID sets the "data_sharing_confirmed_group_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableDataSharingConfirmedGroupID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetDataSharingConfirmedGroupID(*v)
+	}
+	return _u
+}
+
+// AddDataSharingConfirmedGroupID adds value to the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdate) AddDataSharingConfirmedGroupID(v int64) *APIKeyUpdate {
+	_u.mutation.AddDataSharingConfirmedGroupID(v)
+	return _u
+}
+
+// ClearDataSharingConfirmedGroupID clears the value of the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdate) ClearDataSharingConfirmedGroupID() *APIKeyUpdate {
+	_u.mutation.ClearDataSharingConfirmedGroupID()
+	return _u
+}
+
+// SetDataSharingConfirmedAt sets the "data_sharing_confirmed_at" field.
+func (_u *APIKeyUpdate) SetDataSharingConfirmedAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetDataSharingConfirmedAt(v)
+	return _u
+}
+
+// SetNillableDataSharingConfirmedAt sets the "data_sharing_confirmed_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableDataSharingConfirmedAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetDataSharingConfirmedAt(*v)
+	}
+	return _u
+}
+
+// ClearDataSharingConfirmedAt clears the value of the "data_sharing_confirmed_at" field.
+func (_u *APIKeyUpdate) ClearDataSharingConfirmedAt() *APIKeyUpdate {
+	_u.mutation.ClearDataSharingConfirmedAt()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -695,6 +763,27 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DataSharingNoticeVersion(); ok {
+		_spec.SetField(apikey.FieldDataSharingNoticeVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDataSharingNoticeVersion(); ok {
+		_spec.AddField(apikey.FieldDataSharingNoticeVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DataSharingConfirmedGroupID(); ok {
+		_spec.SetField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedDataSharingConfirmedGroupID(); ok {
+		_spec.AddField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.DataSharingConfirmedGroupIDCleared() {
+		_spec.ClearField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.DataSharingConfirmedAt(); ok {
+		_spec.SetField(apikey.FieldDataSharingConfirmedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DataSharingConfirmedAtCleared() {
+		_spec.ClearField(apikey.FieldDataSharingConfirmedAt, field.TypeTime)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1225,6 +1314,74 @@ func (_u *APIKeyUpdateOne) ClearWindow7dStart() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetDataSharingNoticeVersion sets the "data_sharing_notice_version" field.
+func (_u *APIKeyUpdateOne) SetDataSharingNoticeVersion(v int) *APIKeyUpdateOne {
+	_u.mutation.ResetDataSharingNoticeVersion()
+	_u.mutation.SetDataSharingNoticeVersion(v)
+	return _u
+}
+
+// SetNillableDataSharingNoticeVersion sets the "data_sharing_notice_version" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableDataSharingNoticeVersion(v *int) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetDataSharingNoticeVersion(*v)
+	}
+	return _u
+}
+
+// AddDataSharingNoticeVersion adds value to the "data_sharing_notice_version" field.
+func (_u *APIKeyUpdateOne) AddDataSharingNoticeVersion(v int) *APIKeyUpdateOne {
+	_u.mutation.AddDataSharingNoticeVersion(v)
+	return _u
+}
+
+// SetDataSharingConfirmedGroupID sets the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdateOne) SetDataSharingConfirmedGroupID(v int64) *APIKeyUpdateOne {
+	_u.mutation.ResetDataSharingConfirmedGroupID()
+	_u.mutation.SetDataSharingConfirmedGroupID(v)
+	return _u
+}
+
+// SetNillableDataSharingConfirmedGroupID sets the "data_sharing_confirmed_group_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableDataSharingConfirmedGroupID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetDataSharingConfirmedGroupID(*v)
+	}
+	return _u
+}
+
+// AddDataSharingConfirmedGroupID adds value to the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdateOne) AddDataSharingConfirmedGroupID(v int64) *APIKeyUpdateOne {
+	_u.mutation.AddDataSharingConfirmedGroupID(v)
+	return _u
+}
+
+// ClearDataSharingConfirmedGroupID clears the value of the "data_sharing_confirmed_group_id" field.
+func (_u *APIKeyUpdateOne) ClearDataSharingConfirmedGroupID() *APIKeyUpdateOne {
+	_u.mutation.ClearDataSharingConfirmedGroupID()
+	return _u
+}
+
+// SetDataSharingConfirmedAt sets the "data_sharing_confirmed_at" field.
+func (_u *APIKeyUpdateOne) SetDataSharingConfirmedAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetDataSharingConfirmedAt(v)
+	return _u
+}
+
+// SetNillableDataSharingConfirmedAt sets the "data_sharing_confirmed_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableDataSharingConfirmedAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetDataSharingConfirmedAt(*v)
+	}
+	return _u
+}
+
+// ClearDataSharingConfirmedAt clears the value of the "data_sharing_confirmed_at" field.
+func (_u *APIKeyUpdateOne) ClearDataSharingConfirmedAt() *APIKeyUpdateOne {
+	_u.mutation.ClearDataSharingConfirmedAt()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1512,6 +1669,27 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DataSharingNoticeVersion(); ok {
+		_spec.SetField(apikey.FieldDataSharingNoticeVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDataSharingNoticeVersion(); ok {
+		_spec.AddField(apikey.FieldDataSharingNoticeVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DataSharingConfirmedGroupID(); ok {
+		_spec.SetField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedDataSharingConfirmedGroupID(); ok {
+		_spec.AddField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.DataSharingConfirmedGroupIDCleared() {
+		_spec.ClearField(apikey.FieldDataSharingConfirmedGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.DataSharingConfirmedAt(); ok {
+		_spec.SetField(apikey.FieldDataSharingConfirmedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DataSharingConfirmedAtCleared() {
+		_spec.ClearField(apikey.FieldDataSharingConfirmedAt, field.TypeTime)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

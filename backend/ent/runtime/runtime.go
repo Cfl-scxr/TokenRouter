@@ -12,6 +12,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/apikey"
 	"github.com/TokenFlux/TokenRouter/ent/authidentity"
 	"github.com/TokenFlux/TokenRouter/ent/authidentitychannel"
+	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
 	"github.com/TokenFlux/TokenRouter/ent/group"
 	"github.com/TokenFlux/TokenRouter/ent/idempotencyrecord"
@@ -138,6 +139,10 @@ func init() {
 	apikeyDescUsage7d := apikeyFields[16].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
+	// apikeyDescDataSharingNoticeVersion is the schema descriptor for data_sharing_notice_version field.
+	apikeyDescDataSharingNoticeVersion := apikeyFields[20].Descriptor()
+	// apikey.DefaultDataSharingNoticeVersion holds the default value on creation for the data_sharing_notice_version field.
+	apikey.DefaultDataSharingNoticeVersion = apikeyDescDataSharingNoticeVersion.Default.(int)
 	accountMixin := schema.Account{}.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -429,6 +434,142 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	datasharesessionFields := schema.DataShareSession{}.Fields()
+	_ = datasharesessionFields
+	// datasharesessionDescTrajectoryID is the schema descriptor for trajectory_id field.
+	datasharesessionDescTrajectoryID := datasharesessionFields[0].Descriptor()
+	// datasharesession.TrajectoryIDValidator is a validator for the "trajectory_id" field. It is called by the builders before save.
+	datasharesession.TrajectoryIDValidator = func() func(string) error {
+		validators := datasharesessionDescTrajectoryID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(trajectory_id string) error {
+			for _, fn := range fns {
+				if err := fn(trajectory_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// datasharesessionDescSessionID is the schema descriptor for session_id field.
+	datasharesessionDescSessionID := datasharesessionFields[1].Descriptor()
+	// datasharesession.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	datasharesession.SessionIDValidator = func() func(string) error {
+		validators := datasharesessionDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// datasharesessionDescDataset is the schema descriptor for dataset field.
+	datasharesessionDescDataset := datasharesessionFields[2].Descriptor()
+	// datasharesession.DatasetValidator is a validator for the "dataset" field. It is called by the builders before save.
+	datasharesession.DatasetValidator = func() func(string) error {
+		validators := datasharesessionDescDataset.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(dataset string) error {
+			for _, fn := range fns {
+				if err := fn(dataset); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// datasharesessionDescProvider is the schema descriptor for provider field.
+	datasharesessionDescProvider := datasharesessionFields[3].Descriptor()
+	// datasharesession.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	datasharesession.ProviderValidator = func() func(string) error {
+		validators := datasharesessionDescProvider.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider string) error {
+			for _, fn := range fns {
+				if err := fn(provider); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// datasharesessionDescModel is the schema descriptor for model field.
+	datasharesessionDescModel := datasharesessionFields[4].Descriptor()
+	// datasharesession.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	datasharesession.ModelValidator = func() func(string) error {
+		validators := datasharesessionDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// datasharesessionDescStatus is the schema descriptor for status field.
+	datasharesessionDescStatus := datasharesessionFields[5].Descriptor()
+	// datasharesession.DefaultStatus holds the default value on creation for the status field.
+	datasharesession.DefaultStatus = datasharesessionDescStatus.Default.(string)
+	// datasharesession.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	datasharesession.StatusValidator = datasharesessionDescStatus.Validators[0].(func(string) error)
+	// datasharesessionDescIsFinalSnapshot is the schema descriptor for is_final_snapshot field.
+	datasharesessionDescIsFinalSnapshot := datasharesessionFields[6].Descriptor()
+	// datasharesession.DefaultIsFinalSnapshot holds the default value on creation for the is_final_snapshot field.
+	datasharesession.DefaultIsFinalSnapshot = datasharesessionDescIsFinalSnapshot.Default.(bool)
+	// datasharesessionDescSourceRequestCount is the schema descriptor for source_request_count field.
+	datasharesessionDescSourceRequestCount := datasharesessionFields[7].Descriptor()
+	// datasharesession.DefaultSourceRequestCount holds the default value on creation for the source_request_count field.
+	datasharesession.DefaultSourceRequestCount = datasharesessionDescSourceRequestCount.Default.(int)
+	// datasharesessionDescExportable is the schema descriptor for exportable field.
+	datasharesessionDescExportable := datasharesessionFields[14].Descriptor()
+	// datasharesession.DefaultExportable holds the default value on creation for the exportable field.
+	datasharesession.DefaultExportable = datasharesessionDescExportable.Default.(bool)
+	// datasharesessionDescStorageBytes is the schema descriptor for storage_bytes field.
+	datasharesessionDescStorageBytes := datasharesessionFields[16].Descriptor()
+	// datasharesession.DefaultStorageBytes holds the default value on creation for the storage_bytes field.
+	datasharesession.DefaultStorageBytes = datasharesessionDescStorageBytes.Default.(int64)
+	// datasharesessionDescInputTokens is the schema descriptor for input_tokens field.
+	datasharesessionDescInputTokens := datasharesessionFields[17].Descriptor()
+	// datasharesession.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	datasharesession.DefaultInputTokens = datasharesessionDescInputTokens.Default.(int64)
+	// datasharesessionDescOutputTokens is the schema descriptor for output_tokens field.
+	datasharesessionDescOutputTokens := datasharesessionFields[18].Descriptor()
+	// datasharesession.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	datasharesession.DefaultOutputTokens = datasharesessionDescOutputTokens.Default.(int64)
+	// datasharesessionDescTotalTokens is the schema descriptor for total_tokens field.
+	datasharesessionDescTotalTokens := datasharesessionFields[19].Descriptor()
+	// datasharesession.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	datasharesession.DefaultTotalTokens = datasharesessionDescTotalTokens.Default.(int64)
+	// datasharesessionDescCreatedAt is the schema descriptor for created_at field.
+	datasharesessionDescCreatedAt := datasharesessionFields[23].Descriptor()
+	// datasharesession.DefaultCreatedAt holds the default value on creation for the created_at field.
+	datasharesession.DefaultCreatedAt = datasharesessionDescCreatedAt.Default.(func() time.Time)
+	// datasharesessionDescUpdatedAt is the schema descriptor for updated_at field.
+	datasharesessionDescUpdatedAt := datasharesessionFields[25].Descriptor()
+	// datasharesession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	datasharesession.DefaultUpdatedAt = datasharesessionDescUpdatedAt.Default.(func() time.Time)
+	// datasharesession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	datasharesession.UpdateDefaultUpdatedAt = datasharesessionDescUpdatedAt.UpdateDefault.(func() time.Time)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -613,6 +754,10 @@ func init() {
 	groupDescRpmLimit := groupFields[27].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	// groupDescDataSharingEnabled is the schema descriptor for data_sharing_enabled field.
+	groupDescDataSharingEnabled := groupFields[28].Descriptor()
+	// group.DefaultDataSharingEnabled holds the default value on creation for the data_sharing_enabled field.
+	group.DefaultDataSharingEnabled = groupDescDataSharingEnabled.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

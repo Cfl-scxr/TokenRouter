@@ -38,6 +38,8 @@ type CreateGroupRequest struct {
 	RateMultiplier float64 `json:"rate_multiplier"`
 	IsExclusive    bool    `json:"is_exclusive"`
 	IsDefault      bool    `json:"is_default"`
+	// 数据共享分组会采集符合规则的 Agent session。
+	DataSharingEnabled bool `json:"data_sharing_enabled"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -76,7 +78,9 @@ type UpdateGroupRequest struct {
 	RateMultiplier *float64 `json:"rate_multiplier"`
 	IsExclusive    *bool    `json:"is_exclusive"`
 	IsDefault      *bool    `json:"is_default"`
-	Status         string   `json:"status" binding:"omitempty,oneof=active inactive"`
+	// nil 表示不修改数据共享开关。
+	DataSharingEnabled *bool  `json:"data_sharing_enabled"`
+	Status             string `json:"status" binding:"omitempty,oneof=active inactive"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -202,6 +206,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		IsDefault:                       req.IsDefault,
+		DataSharingEnabled:              req.DataSharingEnabled,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
@@ -255,6 +260,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		IsDefault:                       req.IsDefault,
+		DataSharingEnabled:              req.DataSharingEnabled,
 		Status:                          req.Status,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,

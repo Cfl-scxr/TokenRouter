@@ -978,6 +978,43 @@
       </template>
     </BaseDialog>
 
+    <BaseDialog
+      :show="dataSharingNoticeDialog.show"
+      title="数据共享须知"
+      width="normal"
+      :close-on-click-outside="false"
+      @close="closeDataSharingNotice"
+    >
+      <div class="space-y-4">
+        <div class="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200">
+          {{ dataSharingNoticeDialog.notice?.content || '正在加载数据共享须知...' }}
+        </div>
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          只有点击确认后，API Key 才会切换到该数据共享分组。
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeDataSharingNotice">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="dataSharingNoticeDialog.loading || dataSharingNoticeDialog.countdown > 0"
+            @click="confirmDataSharingNotice"
+          >
+            <Icon v-if="dataSharingNoticeDialog.countdown <= 0" name="check" size="md" class="mr-2" />
+            {{
+              dataSharingNoticeDialog.countdown > 0
+                ? `请等待 ${dataSharingNoticeDialog.countdown}s`
+                : '我已阅读并确认'
+            }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Group Selector Dropdown (Teleported to body to avoid overflow clipping) -->
     <Teleport to="body">
       <div
@@ -1056,7 +1093,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 
 const { t } = useI18n()
-import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { keysAPI, authAPI, usageAPI, userGroupsAPI, dataSharingAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import DataTable from '@/components/common/DataTable.vue'
@@ -1074,6 +1111,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import type { ApiKey, Group, PublicSettings, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
+import type { DataShareNotice } from '@/api/dataSharing'
 import { formatDateTime } from '@/utils/format'
 import {
   buildCcSwitchImportDeeplink,
@@ -1168,8 +1206,27 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
+let dataSharingCountdownTimer: number | null = null
 
-// Get the currently selected key for group change
+const dataSharingNoticeDialog = ref<{
+  show: boolean
+  loading: boolean
+  countdown: number
+  notice: DataShareNotice | null
+  key: ApiKey | null
+  targetGroupId: number | null
+  mode: 'row' | 'form' | null
+}>({
+  show: false,
+  loading: false,
+  countdown: 0,
+  notice: null,
+  key: null,
+  targetGroupId: null,
+  mode: null
+})
+
+// 获取当前正在切换分组的 API Key。
 const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
@@ -1226,7 +1283,7 @@ const statusOptions = computed(() => [
   { value: 'inactive', label: t('common.inactive') }
 ])
 
-// Filter dropdown options
+// 筛选下拉选项。
 const groupFilterOptions = computed(() => [
   { value: '', label: t('keys.allGroups') },
   { value: 0, label: t('keys.noGroup') },
@@ -1256,7 +1313,7 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
   onFilterChange()
 }
 
-// Convert groups to Select options format with rate multiplier
+// 将分组转换为带倍率信息的下拉选项。
 const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
@@ -1266,11 +1323,12 @@ const groupOptions = computed(() =>
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     platform: group.platform,
-    capacity: group.capacity
+    capacity: group.capacity,
+    dataSharingEnabled: group.data_sharing_enabled
   }))
 )
 
-// Group dropdown search
+// 分组下拉搜索。
 const groupSearchQuery = ref('')
 const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
@@ -1310,7 +1368,7 @@ const loadApiKeys = async () => {
   const { signal } = controller
   loading.value = true
   try {
-    // Build filters
+    // 构建筛选条件。
     const filters: {
       search?: string
       status?: string
@@ -1332,7 +1390,7 @@ const loadApiKeys = async () => {
     pagination.value.total = response.total
     pagination.value.pages = response.pages
 
-    // Load usage stats for all API keys in the list
+    // 为当前列表中的 API Key 加载用量统计。
     if (response.items.length > 0) {
       const keyIds = response.items.map((k) => k.id)
       try {
@@ -1456,18 +1514,18 @@ const openGroupSelector = (key: ApiKey) => {
     const buttonEl = groupButtonRefs.value.get(key.id)
     if (buttonEl) {
       const rect = buttonEl.getBoundingClientRect()
-      const dropdownEstHeight = 400 // estimated max dropdown height
+      const dropdownEstHeight = 400 // 预估下拉框最大高度
       const spaceBelow = window.innerHeight - rect.bottom
       const spaceAbove = rect.top
 
       if (spaceBelow < dropdownEstHeight && spaceAbove > spaceBelow) {
-        // Not enough space below, pop upward
+        // 下方空间不足时向上弹出。
         dropdownPosition.value = {
           bottom: window.innerHeight - rect.top + 4,
           left: rect.left
         }
       } else {
-        // Default: pop downward
+        // 默认向下弹出。
         dropdownPosition.value = {
           top: rect.bottom + 4,
           left: rect.left
@@ -1479,15 +1537,120 @@ const openGroupSelector = (key: ApiKey) => {
   }
 }
 
+const getGroupById = (groupId: number | null) => {
+  if (!groupId) return null
+  return groups.value.find(group => group.id === groupId) || null
+}
+
+const groupRequiresDataSharingNotice = (groupId: number | null) => {
+  return getGroupById(groupId)?.data_sharing_enabled === true
+}
+
+const clearDataSharingCountdown = () => {
+  if (dataSharingCountdownTimer) {
+    window.clearInterval(dataSharingCountdownTimer)
+    dataSharingCountdownTimer = null
+  }
+}
+
+const startDataSharingCountdown = () => {
+  clearDataSharingCountdown()
+  dataSharingNoticeDialog.value.countdown = 10
+  dataSharingCountdownTimer = window.setInterval(() => {
+    dataSharingNoticeDialog.value.countdown = Math.max(0, dataSharingNoticeDialog.value.countdown - 1)
+    if (dataSharingNoticeDialog.value.countdown <= 0) {
+      clearDataSharingCountdown()
+    }
+  }, 1000)
+}
+
+const closeDataSharingNotice = () => {
+  clearDataSharingCountdown()
+  dataSharingNoticeDialog.value = {
+    show: false,
+    loading: false,
+    countdown: 0,
+    notice: null,
+    key: null,
+    targetGroupId: null,
+    mode: null
+  }
+}
+
+const openDataSharingNotice = async (
+  targetGroupId: number,
+  mode: 'row' | 'form',
+  key: ApiKey | null = null
+) => {
+  dataSharingNoticeDialog.value = {
+    show: true,
+    loading: true,
+    countdown: 10,
+    notice: null,
+    key,
+    targetGroupId,
+    mode
+  }
+  startDataSharingCountdown()
+  try {
+    const notice = await dataSharingAPI.getNotice(targetGroupId)
+    dataSharingNoticeDialog.value.notice = notice
+  } catch (error) {
+    closeDataSharingNotice()
+    appStore.showError('加载数据共享须知失败')
+  } finally {
+    dataSharingNoticeDialog.value.loading = false
+  }
+}
+
+const confirmDataSharingNotice = async () => {
+  const state = dataSharingNoticeDialog.value
+  if (!state.notice || !state.targetGroupId || state.countdown > 0) return
+
+  state.loading = true
+  try {
+    await dataSharingAPI.confirmNotice(state.targetGroupId, state.notice.version)
+    if (state.mode === 'row' && state.key) {
+      await submitGroupChange(state.key, state.targetGroupId, {
+        data_sharing_confirmed: true,
+        data_sharing_notice_version: state.notice.version
+      })
+    } else if (state.mode === 'form') {
+      await submitKeyForm({
+        data_sharing_confirmed: true,
+        data_sharing_notice_version: state.notice.version
+      })
+    }
+    closeDataSharingNotice()
+  } catch (error: any) {
+    const errorMsg = error?.message || '确认数据共享须知失败'
+    appStore.showError(errorMsg)
+  } finally {
+    state.loading = false
+  }
+}
+
+const submitGroupChange = async (
+  key: ApiKey,
+  newGroupId: number | null,
+  consent?: { data_sharing_confirmed: boolean; data_sharing_notice_version: number }
+) => {
+  await keysAPI.update(key.id, { group_id: newGroupId, ...consent })
+  appStore.showSuccess(t('keys.groupChangedSuccess'))
+  loadApiKeys()
+}
+
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
   if (key.group_id === newGroupId) return
+  if (groupRequiresDataSharingNotice(newGroupId)) {
+    await openDataSharingNotice(newGroupId!, 'row', key)
+    return
+  }
 
   try {
-    await keysAPI.update(key.id, { group_id: newGroupId })
-    appStore.showSuccess(t('keys.groupChangedSuccess'))
-    loadApiKeys()
+    await submitGroupChange(key, newGroupId)
   } catch (error) {
     appStore.showError(t('keys.failedToChangeGroup'))
   }
@@ -1495,7 +1658,7 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
 
 const closeGroupSelector = (event: MouseEvent) => {
   const target = event.target as HTMLElement
-  // Check if click is inside the dropdown or the trigger button
+  // 判断点击是否发生在下拉框或触发按钮内。
   if (!target.closest('.group\\/dropdown') && !dropdownRef.value?.contains(target)) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -1507,60 +1670,49 @@ const confirmDelete = (key: ApiKey) => {
   showDeleteDialog.value = true
 }
 
-const handleSubmit = async () => {
-  // Validate group_id is required
-  if (formData.value.group_id === null) {
-    appStore.showError(t('keys.groupRequired'))
-    return
-  }
-
-  // Validate custom key if enabled
-  if (!showEditModal.value && formData.value.use_custom_key) {
-    if (!formData.value.custom_key) {
-      appStore.showError(t('keys.customKeyRequired'))
-      return
-    }
-    if (customKeyError.value) {
-      appStore.showError(customKeyError.value)
-      return
-    }
-  }
-
-  // Parse IP lists only if IP restriction is enabled
+const buildKeyFormPayload = () => {
+  // 仅在启用 IP 限制时解析名单。
   const parseIPList = (text: string): string[] =>
     text.split('\n').map(ip => ip.trim()).filter(ip => ip.length > 0)
   const ipWhitelist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_whitelist) : []
   const ipBlacklist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_blacklist) : []
 
-  // Calculate quota value (null/empty/0 = unlimited, stored as 0)
+  // 计算额度值，空值和 0 都按不限额处理。
   const quota = formData.value.quota && formData.value.quota > 0 ? formData.value.quota : 0
 
-  // Calculate expiration
+  // 计算过期时间。
   let expiresInDays: number | undefined
   let expiresAt: string | null | undefined
   if (formData.value.enable_expiration && formData.value.expiration_date) {
     if (!showEditModal.value) {
-      // Create mode: calculate days from date
+      // 创建模式：按选择日期换算剩余天数。
       const expDate = new Date(formData.value.expiration_date)
       const now = new Date()
       const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
       expiresInDays = diffDays > 0 ? diffDays : 1
     } else {
-      // Edit mode: use custom date directly
+      // 编辑模式：直接提交自定义日期。
       expiresAt = new Date(formData.value.expiration_date).toISOString()
     }
   } else if (showEditModal.value) {
-    // Edit mode: if expiration disabled or date cleared, send empty string to clear
+    // 编辑模式：关闭过期或清空日期时发送空字符串以清除。
     expiresAt = ''
   }
 
-  // Calculate rate limit values (send 0 when toggle is off)
+  // 计算限速值，关闭开关时提交 0。
   const rateLimitData = formData.value.enable_rate_limit ? {
     rate_limit_5h: formData.value.rate_limit_5h && formData.value.rate_limit_5h > 0 ? formData.value.rate_limit_5h : 0,
     rate_limit_1d: formData.value.rate_limit_1d && formData.value.rate_limit_1d > 0 ? formData.value.rate_limit_1d : 0,
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  return { ipWhitelist, ipBlacklist, quota, expiresInDays, expiresAt, rateLimitData }
+}
+
+const submitKeyForm = async (
+  consent?: { data_sharing_confirmed: boolean; data_sharing_notice_version: number }
+) => {
+  const { ipWhitelist, ipBlacklist, quota, expiresInDays, expiresAt, rateLimitData } = buildKeyFormPayload()
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
@@ -1575,22 +1727,27 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
+        ...consent
       })
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(
-        formData.value.name,
-        formData.value.group_id,
-        customKey,
-        ipWhitelist,
-        ipBlacklist,
+      const payload = {
+        name: formData.value.name,
+        group_id: formData.value.group_id,
+        custom_key: customKey,
+        ip_whitelist: ipWhitelist,
+        ip_blacklist: ipBlacklist,
         quota,
-        expiresInDays,
-        rateLimitData
-      )
+        expires_in_days: expiresInDays,
+        rate_limit_5h: rateLimitData.rate_limit_5h,
+        rate_limit_1d: rateLimitData.rate_limit_1d,
+        rate_limit_7d: rateLimitData.rate_limit_7d,
+        ...consent
+      }
+      await keysAPI.createWithPayload(payload)
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
-      // Only advance tour if active, on submit step, and creation succeeded
+      // 仅在引导进行到提交步骤且创建成功后推进引导。
       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
         onboardingStore.nextStep(500)
       }
@@ -1600,10 +1757,38 @@ const handleSubmit = async () => {
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
     appStore.showError(errorMsg)
-    // Don't advance tour on error
+    // 创建失败时不推进引导。
   } finally {
     submitting.value = false
   }
+}
+
+const handleSubmit = async () => {
+  // 分组是必填项。
+  if (formData.value.group_id === null) {
+    appStore.showError(t('keys.groupRequired'))
+    return
+  }
+
+  // 启用自定义 Key 时校验输入。
+  if (!showEditModal.value && formData.value.use_custom_key) {
+    if (!formData.value.custom_key) {
+      appStore.showError(t('keys.customKeyRequired'))
+      return
+    }
+    if (customKeyError.value) {
+      appStore.showError(customKeyError.value)
+      return
+    }
+  }
+
+  const changingGroup = !showEditModal.value || selectedKey.value?.group_id !== formData.value.group_id
+  if (changingGroup && groupRequiresDataSharingNotice(formData.value.group_id)) {
+    await openDataSharingNotice(formData.value.group_id!, 'form', selectedKey.value)
+    return
+  }
+
+  await submitKeyForm()
 }
 
 /**
@@ -1651,12 +1836,12 @@ const closeModals = () => {
   }
 }
 
-// Show reset quota confirmation dialog
+// 展示重置额度确认弹窗。
 const confirmResetQuota = () => {
   showResetQuotaDialog.value = true
 }
 
-// Set expiration date based on quick select days
+// 根据快捷天数设置过期日期。
 const setExpirationDays = (days: number) => {
   formData.value.expiration_preset = days.toString() as '7' | '30' | '90'
   const expDate = new Date()
@@ -1664,14 +1849,14 @@ const setExpirationDays = (days: number) => {
   formData.value.expiration_date = formatDateTimeLocal(expDate.toISOString())
 }
 
-// Reset quota used for an API key
+// 重置 API Key 已用额度。
 const resetQuotaUsed = async () => {
   if (!selectedKey.value) return
   showResetQuotaDialog.value = false
   try {
     await keysAPI.update(selectedKey.value.id, { reset_quota: true })
     appStore.showSuccess(t('keys.quotaResetSuccess'))
-    // Update local state
+    // 同步更新本地状态。
     if (selectedKey.value) {
       selectedKey.value.quota_used = 0
     }
@@ -1681,27 +1866,27 @@ const resetQuotaUsed = async () => {
   }
 }
 
-// Show reset rate limit confirmation dialog (from edit modal)
+// 从编辑弹窗展示重置限速确认弹窗。
 const confirmResetRateLimit = () => {
   showResetRateLimitDialog.value = true
 }
 
-// Show reset rate limit confirmation dialog (from table row)
+// 从表格行展示重置限速确认弹窗。
 const confirmResetRateLimitFromTable = (row: ApiKey) => {
   selectedKey.value = row
   showResetRateLimitDialog.value = true
 }
 
-// Reset rate limit usage for an API key
+// 重置 API Key 限速用量。
 const resetRateLimitUsage = async () => {
   if (!selectedKey.value) return
   showResetRateLimitDialog.value = false
   try {
     await keysAPI.update(selectedKey.value.id, { reset_rate_limit_usage: true })
     appStore.showSuccess(t('keys.rateLimitResetSuccess'))
-    // Refresh key data
+    // 刷新 Key 数据。
     await loadApiKeys()
-    // Update the editing key with fresh data
+    // 用刷新后的数据更新当前编辑对象。
     const refreshedKey = apiKeys.value.find(k => k.id === selectedKey.value!.id)
     if (refreshedKey) {
       selectedKey.value = refreshedKey
@@ -1715,14 +1900,14 @@ const resetRateLimitUsage = async () => {
 const importToCcswitch = (row: ApiKey) => {
   const platform = row.group?.platform || 'anthropic'
 
-  // For antigravity platform, show client selection dialog
+  // Antigravity 平台需要先选择客户端。
   if (platform === 'antigravity') {
     pendingCcsRow.value = row
     showCcsClientSelect.value = true
     return
   }
 
-  // For other platforms, execute directly
+  // 其他平台直接执行导入。
   executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
 }
 
@@ -1767,10 +1952,10 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   try {
     window.open(deeplink, '_self')
 
-    // Check if the protocol handler worked by detecting if we're still focused
+    // 通过窗口焦点粗略判断协议处理器是否拉起成功。
     setTimeout(() => {
       if (document.hasFocus()) {
-        // Still focused means the protocol handler likely failed
+        // 仍然聚焦通常说明协议处理器未成功拉起。
         appStore.showError(t('keys.ccSwitchNotInstalled'))
       }
     }, 100)
@@ -1815,6 +2000,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)
+  abortController?.abort()
+  clearDataSharingCountdown()
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>

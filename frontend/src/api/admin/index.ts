@@ -28,6 +28,7 @@ import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
 import adminPaymentAPI from './payment'
 import riskControlAPI from './riskControl'
+import adminDataSharingAPI from './dataSharing'
 
 /**
  * Unified admin API object for convenient access
@@ -57,7 +58,8 @@ export const adminAPI = {
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
   payment: adminPaymentAPI,
-  riskControl: riskControlAPI
+  riskControl: riskControlAPI,
+  dataSharing: adminDataSharingAPI
 }
 
 export {
@@ -85,7 +87,8 @@ export {
   tlsFingerprintProfileAPI,
   channelsAPI,
   adminPaymentAPI,
-  riskControlAPI
+  riskControlAPI,
+  adminDataSharingAPI
 }
 
 export default adminAPI
@@ -96,3 +99,4 @@ export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from 
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
+export type { DataShareStats, AdminDataShareSessionFilters } from './dataSharing'

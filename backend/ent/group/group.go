@@ -78,6 +78,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldDataSharingEnabled holds the string denoting the data_sharing_enabled field in the database.
+	FieldDataSharingEnabled = "data_sharing_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
@@ -166,6 +168,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldRpmLimit,
+	FieldDataSharingEnabled,
 }
 
 var (
@@ -251,6 +254,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultDataSharingEnabled holds the default value on creation for the "data_sharing_enabled" field.
+	DefaultDataSharingEnabled bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -399,6 +404,11 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByDataSharingEnabled orders the results by the data_sharing_enabled field.
+func ByDataSharingEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDataSharingEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

@@ -44,6 +44,12 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
+	// DataSharingNoticeVersion 记录当前 Key 最近确认的数据共享须知版本。
+	DataSharingNoticeVersion int
+	// DataSharingConfirmedGroupID 记录最近一次确认对应的数据共享分组。
+	DataSharingConfirmedGroupID *int64
+	// DataSharingConfirmedAt 记录最近一次用户点击确认的时间。
+	DataSharingConfirmedAt *time.Time
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

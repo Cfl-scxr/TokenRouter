@@ -1476,6 +1476,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		nil,
 		nil,
 		nil, // userPlatformQuotaRepo
+		nil, // dataSharingService
 	)
 
 	cache := &concurrencyCacheMock{

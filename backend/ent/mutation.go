@@ -19,6 +19,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/apikey"
 	"github.com/TokenFlux/TokenRouter/ent/authidentity"
 	"github.com/TokenFlux/TokenRouter/ent/authidentitychannel"
+	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
 	"github.com/TokenFlux/TokenRouter/ent/group"
 	"github.com/TokenFlux/TokenRouter/ent/idempotencyrecord"
@@ -64,6 +65,7 @@ const (
 	TypeAnnouncementRead         = "AnnouncementRead"
 	TypeAuthIdentity             = "AuthIdentity"
 	TypeAuthIdentityChannel      = "AuthIdentityChannel"
+	TypeDataShareSession         = "DataShareSession"
 	TypeErrorPassthroughRule     = "ErrorPassthroughRule"
 	TypeGroup                    = "Group"
 	TypeIdempotencyRecord        = "IdempotencyRecord"
@@ -94,51 +96,56 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                                 Op
+	typ                                string
+	id                                 *int64
+	created_at                         *time.Time
+	updated_at                         *time.Time
+	deleted_at                         *time.Time
+	key                                *string
+	name                               *string
+	status                             *string
+	last_used_at                       *time.Time
+	ip_whitelist                       *[]string
+	appendip_whitelist                 []string
+	ip_blacklist                       *[]string
+	appendip_blacklist                 []string
+	quota                              *float64
+	addquota                           *float64
+	quota_used                         *float64
+	addquota_used                      *float64
+	expires_at                         *time.Time
+	rate_limit_5h                      *float64
+	addrate_limit_5h                   *float64
+	rate_limit_1d                      *float64
+	addrate_limit_1d                   *float64
+	rate_limit_7d                      *float64
+	addrate_limit_7d                   *float64
+	usage_5h                           *float64
+	addusage_5h                        *float64
+	usage_1d                           *float64
+	addusage_1d                        *float64
+	usage_7d                           *float64
+	addusage_7d                        *float64
+	window_5h_start                    *time.Time
+	window_1d_start                    *time.Time
+	window_7d_start                    *time.Time
+	data_sharing_notice_version        *int
+	adddata_sharing_notice_version     *int
+	data_sharing_confirmed_group_id    *int64
+	adddata_sharing_confirmed_group_id *int64
+	data_sharing_confirmed_at          *time.Time
+	clearedFields                      map[string]struct{}
+	user                               *int64
+	cleareduser                        bool
+	group                              *int64
+	clearedgroup                       bool
+	usage_logs                         map[int64]struct{}
+	removedusage_logs                  map[int64]struct{}
+	clearedusage_logs                  bool
+	done                               bool
+	oldValue                           func(context.Context) (*APIKey, error)
+	predicates                         []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -1376,6 +1383,181 @@ func (m *APIKeyMutation) ResetWindow7dStart() {
 	delete(m.clearedFields, apikey.FieldWindow7dStart)
 }
 
+// SetDataSharingNoticeVersion sets the "data_sharing_notice_version" field.
+func (m *APIKeyMutation) SetDataSharingNoticeVersion(i int) {
+	m.data_sharing_notice_version = &i
+	m.adddata_sharing_notice_version = nil
+}
+
+// DataSharingNoticeVersion returns the value of the "data_sharing_notice_version" field in the mutation.
+func (m *APIKeyMutation) DataSharingNoticeVersion() (r int, exists bool) {
+	v := m.data_sharing_notice_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataSharingNoticeVersion returns the old "data_sharing_notice_version" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldDataSharingNoticeVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataSharingNoticeVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataSharingNoticeVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataSharingNoticeVersion: %w", err)
+	}
+	return oldValue.DataSharingNoticeVersion, nil
+}
+
+// AddDataSharingNoticeVersion adds i to the "data_sharing_notice_version" field.
+func (m *APIKeyMutation) AddDataSharingNoticeVersion(i int) {
+	if m.adddata_sharing_notice_version != nil {
+		*m.adddata_sharing_notice_version += i
+	} else {
+		m.adddata_sharing_notice_version = &i
+	}
+}
+
+// AddedDataSharingNoticeVersion returns the value that was added to the "data_sharing_notice_version" field in this mutation.
+func (m *APIKeyMutation) AddedDataSharingNoticeVersion() (r int, exists bool) {
+	v := m.adddata_sharing_notice_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDataSharingNoticeVersion resets all changes to the "data_sharing_notice_version" field.
+func (m *APIKeyMutation) ResetDataSharingNoticeVersion() {
+	m.data_sharing_notice_version = nil
+	m.adddata_sharing_notice_version = nil
+}
+
+// SetDataSharingConfirmedGroupID sets the "data_sharing_confirmed_group_id" field.
+func (m *APIKeyMutation) SetDataSharingConfirmedGroupID(i int64) {
+	m.data_sharing_confirmed_group_id = &i
+	m.adddata_sharing_confirmed_group_id = nil
+}
+
+// DataSharingConfirmedGroupID returns the value of the "data_sharing_confirmed_group_id" field in the mutation.
+func (m *APIKeyMutation) DataSharingConfirmedGroupID() (r int64, exists bool) {
+	v := m.data_sharing_confirmed_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataSharingConfirmedGroupID returns the old "data_sharing_confirmed_group_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldDataSharingConfirmedGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataSharingConfirmedGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataSharingConfirmedGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataSharingConfirmedGroupID: %w", err)
+	}
+	return oldValue.DataSharingConfirmedGroupID, nil
+}
+
+// AddDataSharingConfirmedGroupID adds i to the "data_sharing_confirmed_group_id" field.
+func (m *APIKeyMutation) AddDataSharingConfirmedGroupID(i int64) {
+	if m.adddata_sharing_confirmed_group_id != nil {
+		*m.adddata_sharing_confirmed_group_id += i
+	} else {
+		m.adddata_sharing_confirmed_group_id = &i
+	}
+}
+
+// AddedDataSharingConfirmedGroupID returns the value that was added to the "data_sharing_confirmed_group_id" field in this mutation.
+func (m *APIKeyMutation) AddedDataSharingConfirmedGroupID() (r int64, exists bool) {
+	v := m.adddata_sharing_confirmed_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearDataSharingConfirmedGroupID clears the value of the "data_sharing_confirmed_group_id" field.
+func (m *APIKeyMutation) ClearDataSharingConfirmedGroupID() {
+	m.data_sharing_confirmed_group_id = nil
+	m.adddata_sharing_confirmed_group_id = nil
+	m.clearedFields[apikey.FieldDataSharingConfirmedGroupID] = struct{}{}
+}
+
+// DataSharingConfirmedGroupIDCleared returns if the "data_sharing_confirmed_group_id" field was cleared in this mutation.
+func (m *APIKeyMutation) DataSharingConfirmedGroupIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldDataSharingConfirmedGroupID]
+	return ok
+}
+
+// ResetDataSharingConfirmedGroupID resets all changes to the "data_sharing_confirmed_group_id" field.
+func (m *APIKeyMutation) ResetDataSharingConfirmedGroupID() {
+	m.data_sharing_confirmed_group_id = nil
+	m.adddata_sharing_confirmed_group_id = nil
+	delete(m.clearedFields, apikey.FieldDataSharingConfirmedGroupID)
+}
+
+// SetDataSharingConfirmedAt sets the "data_sharing_confirmed_at" field.
+func (m *APIKeyMutation) SetDataSharingConfirmedAt(t time.Time) {
+	m.data_sharing_confirmed_at = &t
+}
+
+// DataSharingConfirmedAt returns the value of the "data_sharing_confirmed_at" field in the mutation.
+func (m *APIKeyMutation) DataSharingConfirmedAt() (r time.Time, exists bool) {
+	v := m.data_sharing_confirmed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataSharingConfirmedAt returns the old "data_sharing_confirmed_at" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldDataSharingConfirmedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataSharingConfirmedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataSharingConfirmedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataSharingConfirmedAt: %w", err)
+	}
+	return oldValue.DataSharingConfirmedAt, nil
+}
+
+// ClearDataSharingConfirmedAt clears the value of the "data_sharing_confirmed_at" field.
+func (m *APIKeyMutation) ClearDataSharingConfirmedAt() {
+	m.data_sharing_confirmed_at = nil
+	m.clearedFields[apikey.FieldDataSharingConfirmedAt] = struct{}{}
+}
+
+// DataSharingConfirmedAtCleared returns if the "data_sharing_confirmed_at" field was cleared in this mutation.
+func (m *APIKeyMutation) DataSharingConfirmedAtCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldDataSharingConfirmedAt]
+	return ok
+}
+
+// ResetDataSharingConfirmedAt resets all changes to the "data_sharing_confirmed_at" field.
+func (m *APIKeyMutation) ResetDataSharingConfirmedAt() {
+	m.data_sharing_confirmed_at = nil
+	delete(m.clearedFields, apikey.FieldDataSharingConfirmedAt)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1518,7 +1700,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1588,6 +1770,15 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.window_7d_start != nil {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.data_sharing_notice_version != nil {
+		fields = append(fields, apikey.FieldDataSharingNoticeVersion)
+	}
+	if m.data_sharing_confirmed_group_id != nil {
+		fields = append(fields, apikey.FieldDataSharingConfirmedGroupID)
+	}
+	if m.data_sharing_confirmed_at != nil {
+		fields = append(fields, apikey.FieldDataSharingConfirmedAt)
+	}
 	return fields
 }
 
@@ -1642,6 +1833,12 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Window1dStart()
 	case apikey.FieldWindow7dStart:
 		return m.Window7dStart()
+	case apikey.FieldDataSharingNoticeVersion:
+		return m.DataSharingNoticeVersion()
+	case apikey.FieldDataSharingConfirmedGroupID:
+		return m.DataSharingConfirmedGroupID()
+	case apikey.FieldDataSharingConfirmedAt:
+		return m.DataSharingConfirmedAt()
 	}
 	return nil, false
 }
@@ -1697,6 +1894,12 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldWindow1dStart(ctx)
 	case apikey.FieldWindow7dStart:
 		return m.OldWindow7dStart(ctx)
+	case apikey.FieldDataSharingNoticeVersion:
+		return m.OldDataSharingNoticeVersion(ctx)
+	case apikey.FieldDataSharingConfirmedGroupID:
+		return m.OldDataSharingConfirmedGroupID(ctx)
+	case apikey.FieldDataSharingConfirmedAt:
+		return m.OldDataSharingConfirmedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1867,6 +2070,27 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWindow7dStart(v)
 		return nil
+	case apikey.FieldDataSharingNoticeVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataSharingNoticeVersion(v)
+		return nil
+	case apikey.FieldDataSharingConfirmedGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataSharingConfirmedGroupID(v)
+		return nil
+	case apikey.FieldDataSharingConfirmedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataSharingConfirmedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1899,6 +2123,12 @@ func (m *APIKeyMutation) AddedFields() []string {
 	if m.addusage_7d != nil {
 		fields = append(fields, apikey.FieldUsage7d)
 	}
+	if m.adddata_sharing_notice_version != nil {
+		fields = append(fields, apikey.FieldDataSharingNoticeVersion)
+	}
+	if m.adddata_sharing_confirmed_group_id != nil {
+		fields = append(fields, apikey.FieldDataSharingConfirmedGroupID)
+	}
 	return fields
 }
 
@@ -1923,6 +2153,10 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedUsage1d()
 	case apikey.FieldUsage7d:
 		return m.AddedUsage7d()
+	case apikey.FieldDataSharingNoticeVersion:
+		return m.AddedDataSharingNoticeVersion()
+	case apikey.FieldDataSharingConfirmedGroupID:
+		return m.AddedDataSharingConfirmedGroupID()
 	}
 	return nil, false
 }
@@ -1988,6 +2222,20 @@ func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddUsage7d(v)
 		return nil
+	case apikey.FieldDataSharingNoticeVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDataSharingNoticeVersion(v)
+		return nil
+	case apikey.FieldDataSharingConfirmedGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDataSharingConfirmedGroupID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey numeric field %s", name)
 }
@@ -2022,6 +2270,12 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(apikey.FieldWindow7dStart) {
 		fields = append(fields, apikey.FieldWindow7dStart)
+	}
+	if m.FieldCleared(apikey.FieldDataSharingConfirmedGroupID) {
+		fields = append(fields, apikey.FieldDataSharingConfirmedGroupID)
+	}
+	if m.FieldCleared(apikey.FieldDataSharingConfirmedAt) {
+		fields = append(fields, apikey.FieldDataSharingConfirmedAt)
 	}
 	return fields
 }
@@ -2063,6 +2317,12 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ClearWindow7dStart()
+		return nil
+	case apikey.FieldDataSharingConfirmedGroupID:
+		m.ClearDataSharingConfirmedGroupID()
+		return nil
+	case apikey.FieldDataSharingConfirmedAt:
+		m.ClearDataSharingConfirmedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey nullable field %s", name)
@@ -2140,6 +2400,15 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ResetWindow7dStart()
+		return nil
+	case apikey.FieldDataSharingNoticeVersion:
+		m.ResetDataSharingNoticeVersion()
+		return nil
+	case apikey.FieldDataSharingConfirmedGroupID:
+		m.ResetDataSharingConfirmedGroupID()
+		return nil
+	case apikey.FieldDataSharingConfirmedAt:
+		m.ResetDataSharingConfirmedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -8738,6 +9007,2155 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuthIdentityChannel edge %s", name)
 }
 
+// DataShareSessionMutation represents an operation that mutates the DataShareSession nodes in the graph.
+type DataShareSessionMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	trajectory_id           *string
+	session_id              *string
+	dataset                 *string
+	provider                *string
+	model                   *string
+	status                  *string
+	is_final_snapshot       *bool
+	source_request_count    *int
+	addsource_request_count *int
+	system_prompt           *string
+	tools                   *[]map[string]interface{}
+	appendtools             []map[string]interface{}
+	messages                *[]map[string]interface{}
+	appendmessages          []map[string]interface{}
+	usage                   *map[string]interface{}
+	meta                    *map[string]interface{}
+	session_json            *map[string]interface{}
+	exportable              *bool
+	quality_errors          *[]string
+	appendquality_errors    []string
+	storage_bytes           *int64
+	addstorage_bytes        *int64
+	input_tokens            *int64
+	addinput_tokens         *int64
+	output_tokens           *int64
+	addoutput_tokens        *int64
+	total_tokens            *int64
+	addtotal_tokens         *int64
+	user_id                 *int64
+	adduser_id              *int64
+	api_key_id              *int64
+	addapi_key_id           *int64
+	group_id                *int64
+	addgroup_id             *int64
+	created_at              *time.Time
+	ended_at                *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*DataShareSession, error)
+	predicates              []predicate.DataShareSession
+}
+
+var _ ent.Mutation = (*DataShareSessionMutation)(nil)
+
+// datasharesessionOption allows management of the mutation configuration using functional options.
+type datasharesessionOption func(*DataShareSessionMutation)
+
+// newDataShareSessionMutation creates new mutation for the DataShareSession entity.
+func newDataShareSessionMutation(c config, op Op, opts ...datasharesessionOption) *DataShareSessionMutation {
+	m := &DataShareSessionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDataShareSession,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDataShareSessionID sets the ID field of the mutation.
+func withDataShareSessionID(id int64) datasharesessionOption {
+	return func(m *DataShareSessionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DataShareSession
+		)
+		m.oldValue = func(ctx context.Context) (*DataShareSession, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DataShareSession.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDataShareSession sets the old DataShareSession of the mutation.
+func withDataShareSession(node *DataShareSession) datasharesessionOption {
+	return func(m *DataShareSessionMutation) {
+		m.oldValue = func(context.Context) (*DataShareSession, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DataShareSessionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DataShareSessionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DataShareSessionMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DataShareSessionMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DataShareSession.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTrajectoryID sets the "trajectory_id" field.
+func (m *DataShareSessionMutation) SetTrajectoryID(s string) {
+	m.trajectory_id = &s
+}
+
+// TrajectoryID returns the value of the "trajectory_id" field in the mutation.
+func (m *DataShareSessionMutation) TrajectoryID() (r string, exists bool) {
+	v := m.trajectory_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrajectoryID returns the old "trajectory_id" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldTrajectoryID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrajectoryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrajectoryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrajectoryID: %w", err)
+	}
+	return oldValue.TrajectoryID, nil
+}
+
+// ResetTrajectoryID resets all changes to the "trajectory_id" field.
+func (m *DataShareSessionMutation) ResetTrajectoryID() {
+	m.trajectory_id = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *DataShareSessionMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *DataShareSessionMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *DataShareSessionMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetDataset sets the "dataset" field.
+func (m *DataShareSessionMutation) SetDataset(s string) {
+	m.dataset = &s
+}
+
+// Dataset returns the value of the "dataset" field in the mutation.
+func (m *DataShareSessionMutation) Dataset() (r string, exists bool) {
+	v := m.dataset
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataset returns the old "dataset" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldDataset(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataset is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataset requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataset: %w", err)
+	}
+	return oldValue.Dataset, nil
+}
+
+// ResetDataset resets all changes to the "dataset" field.
+func (m *DataShareSessionMutation) ResetDataset() {
+	m.dataset = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *DataShareSessionMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *DataShareSessionMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *DataShareSessionMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetModel sets the "model" field.
+func (m *DataShareSessionMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *DataShareSessionMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *DataShareSessionMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *DataShareSessionMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *DataShareSessionMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *DataShareSessionMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetIsFinalSnapshot sets the "is_final_snapshot" field.
+func (m *DataShareSessionMutation) SetIsFinalSnapshot(b bool) {
+	m.is_final_snapshot = &b
+}
+
+// IsFinalSnapshot returns the value of the "is_final_snapshot" field in the mutation.
+func (m *DataShareSessionMutation) IsFinalSnapshot() (r bool, exists bool) {
+	v := m.is_final_snapshot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsFinalSnapshot returns the old "is_final_snapshot" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldIsFinalSnapshot(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsFinalSnapshot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsFinalSnapshot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsFinalSnapshot: %w", err)
+	}
+	return oldValue.IsFinalSnapshot, nil
+}
+
+// ResetIsFinalSnapshot resets all changes to the "is_final_snapshot" field.
+func (m *DataShareSessionMutation) ResetIsFinalSnapshot() {
+	m.is_final_snapshot = nil
+}
+
+// SetSourceRequestCount sets the "source_request_count" field.
+func (m *DataShareSessionMutation) SetSourceRequestCount(i int) {
+	m.source_request_count = &i
+	m.addsource_request_count = nil
+}
+
+// SourceRequestCount returns the value of the "source_request_count" field in the mutation.
+func (m *DataShareSessionMutation) SourceRequestCount() (r int, exists bool) {
+	v := m.source_request_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceRequestCount returns the old "source_request_count" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldSourceRequestCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceRequestCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceRequestCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceRequestCount: %w", err)
+	}
+	return oldValue.SourceRequestCount, nil
+}
+
+// AddSourceRequestCount adds i to the "source_request_count" field.
+func (m *DataShareSessionMutation) AddSourceRequestCount(i int) {
+	if m.addsource_request_count != nil {
+		*m.addsource_request_count += i
+	} else {
+		m.addsource_request_count = &i
+	}
+}
+
+// AddedSourceRequestCount returns the value that was added to the "source_request_count" field in this mutation.
+func (m *DataShareSessionMutation) AddedSourceRequestCount() (r int, exists bool) {
+	v := m.addsource_request_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSourceRequestCount resets all changes to the "source_request_count" field.
+func (m *DataShareSessionMutation) ResetSourceRequestCount() {
+	m.source_request_count = nil
+	m.addsource_request_count = nil
+}
+
+// SetSystemPrompt sets the "system_prompt" field.
+func (m *DataShareSessionMutation) SetSystemPrompt(s string) {
+	m.system_prompt = &s
+}
+
+// SystemPrompt returns the value of the "system_prompt" field in the mutation.
+func (m *DataShareSessionMutation) SystemPrompt() (r string, exists bool) {
+	v := m.system_prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPrompt returns the old "system_prompt" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldSystemPrompt(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPrompt: %w", err)
+	}
+	return oldValue.SystemPrompt, nil
+}
+
+// ClearSystemPrompt clears the value of the "system_prompt" field.
+func (m *DataShareSessionMutation) ClearSystemPrompt() {
+	m.system_prompt = nil
+	m.clearedFields[datasharesession.FieldSystemPrompt] = struct{}{}
+}
+
+// SystemPromptCleared returns if the "system_prompt" field was cleared in this mutation.
+func (m *DataShareSessionMutation) SystemPromptCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldSystemPrompt]
+	return ok
+}
+
+// ResetSystemPrompt resets all changes to the "system_prompt" field.
+func (m *DataShareSessionMutation) ResetSystemPrompt() {
+	m.system_prompt = nil
+	delete(m.clearedFields, datasharesession.FieldSystemPrompt)
+}
+
+// SetTools sets the "tools" field.
+func (m *DataShareSessionMutation) SetTools(value []map[string]interface{}) {
+	m.tools = &value
+	m.appendtools = nil
+}
+
+// Tools returns the value of the "tools" field in the mutation.
+func (m *DataShareSessionMutation) Tools() (r []map[string]interface{}, exists bool) {
+	v := m.tools
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTools returns the old "tools" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldTools(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTools is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTools requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTools: %w", err)
+	}
+	return oldValue.Tools, nil
+}
+
+// AppendTools adds value to the "tools" field.
+func (m *DataShareSessionMutation) AppendTools(value []map[string]interface{}) {
+	m.appendtools = append(m.appendtools, value...)
+}
+
+// AppendedTools returns the list of values that were appended to the "tools" field in this mutation.
+func (m *DataShareSessionMutation) AppendedTools() ([]map[string]interface{}, bool) {
+	if len(m.appendtools) == 0 {
+		return nil, false
+	}
+	return m.appendtools, true
+}
+
+// ClearTools clears the value of the "tools" field.
+func (m *DataShareSessionMutation) ClearTools() {
+	m.tools = nil
+	m.appendtools = nil
+	m.clearedFields[datasharesession.FieldTools] = struct{}{}
+}
+
+// ToolsCleared returns if the "tools" field was cleared in this mutation.
+func (m *DataShareSessionMutation) ToolsCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldTools]
+	return ok
+}
+
+// ResetTools resets all changes to the "tools" field.
+func (m *DataShareSessionMutation) ResetTools() {
+	m.tools = nil
+	m.appendtools = nil
+	delete(m.clearedFields, datasharesession.FieldTools)
+}
+
+// SetMessages sets the "messages" field.
+func (m *DataShareSessionMutation) SetMessages(value []map[string]interface{}) {
+	m.messages = &value
+	m.appendmessages = nil
+}
+
+// Messages returns the value of the "messages" field in the mutation.
+func (m *DataShareSessionMutation) Messages() (r []map[string]interface{}, exists bool) {
+	v := m.messages
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMessages returns the old "messages" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldMessages(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMessages is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMessages requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMessages: %w", err)
+	}
+	return oldValue.Messages, nil
+}
+
+// AppendMessages adds value to the "messages" field.
+func (m *DataShareSessionMutation) AppendMessages(value []map[string]interface{}) {
+	m.appendmessages = append(m.appendmessages, value...)
+}
+
+// AppendedMessages returns the list of values that were appended to the "messages" field in this mutation.
+func (m *DataShareSessionMutation) AppendedMessages() ([]map[string]interface{}, bool) {
+	if len(m.appendmessages) == 0 {
+		return nil, false
+	}
+	return m.appendmessages, true
+}
+
+// ClearMessages clears the value of the "messages" field.
+func (m *DataShareSessionMutation) ClearMessages() {
+	m.messages = nil
+	m.appendmessages = nil
+	m.clearedFields[datasharesession.FieldMessages] = struct{}{}
+}
+
+// MessagesCleared returns if the "messages" field was cleared in this mutation.
+func (m *DataShareSessionMutation) MessagesCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldMessages]
+	return ok
+}
+
+// ResetMessages resets all changes to the "messages" field.
+func (m *DataShareSessionMutation) ResetMessages() {
+	m.messages = nil
+	m.appendmessages = nil
+	delete(m.clearedFields, datasharesession.FieldMessages)
+}
+
+// SetUsage sets the "usage" field.
+func (m *DataShareSessionMutation) SetUsage(value map[string]interface{}) {
+	m.usage = &value
+}
+
+// Usage returns the value of the "usage" field in the mutation.
+func (m *DataShareSessionMutation) Usage() (r map[string]interface{}, exists bool) {
+	v := m.usage
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsage returns the old "usage" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldUsage(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsage: %w", err)
+	}
+	return oldValue.Usage, nil
+}
+
+// ClearUsage clears the value of the "usage" field.
+func (m *DataShareSessionMutation) ClearUsage() {
+	m.usage = nil
+	m.clearedFields[datasharesession.FieldUsage] = struct{}{}
+}
+
+// UsageCleared returns if the "usage" field was cleared in this mutation.
+func (m *DataShareSessionMutation) UsageCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldUsage]
+	return ok
+}
+
+// ResetUsage resets all changes to the "usage" field.
+func (m *DataShareSessionMutation) ResetUsage() {
+	m.usage = nil
+	delete(m.clearedFields, datasharesession.FieldUsage)
+}
+
+// SetMeta sets the "meta" field.
+func (m *DataShareSessionMutation) SetMeta(value map[string]interface{}) {
+	m.meta = &value
+}
+
+// Meta returns the value of the "meta" field in the mutation.
+func (m *DataShareSessionMutation) Meta() (r map[string]interface{}, exists bool) {
+	v := m.meta
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMeta returns the old "meta" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldMeta(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMeta is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMeta requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMeta: %w", err)
+	}
+	return oldValue.Meta, nil
+}
+
+// ClearMeta clears the value of the "meta" field.
+func (m *DataShareSessionMutation) ClearMeta() {
+	m.meta = nil
+	m.clearedFields[datasharesession.FieldMeta] = struct{}{}
+}
+
+// MetaCleared returns if the "meta" field was cleared in this mutation.
+func (m *DataShareSessionMutation) MetaCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldMeta]
+	return ok
+}
+
+// ResetMeta resets all changes to the "meta" field.
+func (m *DataShareSessionMutation) ResetMeta() {
+	m.meta = nil
+	delete(m.clearedFields, datasharesession.FieldMeta)
+}
+
+// SetSessionJSON sets the "session_json" field.
+func (m *DataShareSessionMutation) SetSessionJSON(value map[string]interface{}) {
+	m.session_json = &value
+}
+
+// SessionJSON returns the value of the "session_json" field in the mutation.
+func (m *DataShareSessionMutation) SessionJSON() (r map[string]interface{}, exists bool) {
+	v := m.session_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionJSON returns the old "session_json" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldSessionJSON(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionJSON: %w", err)
+	}
+	return oldValue.SessionJSON, nil
+}
+
+// ClearSessionJSON clears the value of the "session_json" field.
+func (m *DataShareSessionMutation) ClearSessionJSON() {
+	m.session_json = nil
+	m.clearedFields[datasharesession.FieldSessionJSON] = struct{}{}
+}
+
+// SessionJSONCleared returns if the "session_json" field was cleared in this mutation.
+func (m *DataShareSessionMutation) SessionJSONCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldSessionJSON]
+	return ok
+}
+
+// ResetSessionJSON resets all changes to the "session_json" field.
+func (m *DataShareSessionMutation) ResetSessionJSON() {
+	m.session_json = nil
+	delete(m.clearedFields, datasharesession.FieldSessionJSON)
+}
+
+// SetExportable sets the "exportable" field.
+func (m *DataShareSessionMutation) SetExportable(b bool) {
+	m.exportable = &b
+}
+
+// Exportable returns the value of the "exportable" field in the mutation.
+func (m *DataShareSessionMutation) Exportable() (r bool, exists bool) {
+	v := m.exportable
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExportable returns the old "exportable" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldExportable(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExportable is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExportable requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExportable: %w", err)
+	}
+	return oldValue.Exportable, nil
+}
+
+// ResetExportable resets all changes to the "exportable" field.
+func (m *DataShareSessionMutation) ResetExportable() {
+	m.exportable = nil
+}
+
+// SetQualityErrors sets the "quality_errors" field.
+func (m *DataShareSessionMutation) SetQualityErrors(s []string) {
+	m.quality_errors = &s
+	m.appendquality_errors = nil
+}
+
+// QualityErrors returns the value of the "quality_errors" field in the mutation.
+func (m *DataShareSessionMutation) QualityErrors() (r []string, exists bool) {
+	v := m.quality_errors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQualityErrors returns the old "quality_errors" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldQualityErrors(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQualityErrors is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQualityErrors requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQualityErrors: %w", err)
+	}
+	return oldValue.QualityErrors, nil
+}
+
+// AppendQualityErrors adds s to the "quality_errors" field.
+func (m *DataShareSessionMutation) AppendQualityErrors(s []string) {
+	m.appendquality_errors = append(m.appendquality_errors, s...)
+}
+
+// AppendedQualityErrors returns the list of values that were appended to the "quality_errors" field in this mutation.
+func (m *DataShareSessionMutation) AppendedQualityErrors() ([]string, bool) {
+	if len(m.appendquality_errors) == 0 {
+		return nil, false
+	}
+	return m.appendquality_errors, true
+}
+
+// ClearQualityErrors clears the value of the "quality_errors" field.
+func (m *DataShareSessionMutation) ClearQualityErrors() {
+	m.quality_errors = nil
+	m.appendquality_errors = nil
+	m.clearedFields[datasharesession.FieldQualityErrors] = struct{}{}
+}
+
+// QualityErrorsCleared returns if the "quality_errors" field was cleared in this mutation.
+func (m *DataShareSessionMutation) QualityErrorsCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldQualityErrors]
+	return ok
+}
+
+// ResetQualityErrors resets all changes to the "quality_errors" field.
+func (m *DataShareSessionMutation) ResetQualityErrors() {
+	m.quality_errors = nil
+	m.appendquality_errors = nil
+	delete(m.clearedFields, datasharesession.FieldQualityErrors)
+}
+
+// SetStorageBytes sets the "storage_bytes" field.
+func (m *DataShareSessionMutation) SetStorageBytes(i int64) {
+	m.storage_bytes = &i
+	m.addstorage_bytes = nil
+}
+
+// StorageBytes returns the value of the "storage_bytes" field in the mutation.
+func (m *DataShareSessionMutation) StorageBytes() (r int64, exists bool) {
+	v := m.storage_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStorageBytes returns the old "storage_bytes" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldStorageBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStorageBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStorageBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStorageBytes: %w", err)
+	}
+	return oldValue.StorageBytes, nil
+}
+
+// AddStorageBytes adds i to the "storage_bytes" field.
+func (m *DataShareSessionMutation) AddStorageBytes(i int64) {
+	if m.addstorage_bytes != nil {
+		*m.addstorage_bytes += i
+	} else {
+		m.addstorage_bytes = &i
+	}
+}
+
+// AddedStorageBytes returns the value that was added to the "storage_bytes" field in this mutation.
+func (m *DataShareSessionMutation) AddedStorageBytes() (r int64, exists bool) {
+	v := m.addstorage_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetStorageBytes resets all changes to the "storage_bytes" field.
+func (m *DataShareSessionMutation) ResetStorageBytes() {
+	m.storage_bytes = nil
+	m.addstorage_bytes = nil
+}
+
+// SetInputTokens sets the "input_tokens" field.
+func (m *DataShareSessionMutation) SetInputTokens(i int64) {
+	m.input_tokens = &i
+	m.addinput_tokens = nil
+}
+
+// InputTokens returns the value of the "input_tokens" field in the mutation.
+func (m *DataShareSessionMutation) InputTokens() (r int64, exists bool) {
+	v := m.input_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputTokens returns the old "input_tokens" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldInputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputTokens: %w", err)
+	}
+	return oldValue.InputTokens, nil
+}
+
+// AddInputTokens adds i to the "input_tokens" field.
+func (m *DataShareSessionMutation) AddInputTokens(i int64) {
+	if m.addinput_tokens != nil {
+		*m.addinput_tokens += i
+	} else {
+		m.addinput_tokens = &i
+	}
+}
+
+// AddedInputTokens returns the value that was added to the "input_tokens" field in this mutation.
+func (m *DataShareSessionMutation) AddedInputTokens() (r int64, exists bool) {
+	v := m.addinput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetInputTokens resets all changes to the "input_tokens" field.
+func (m *DataShareSessionMutation) ResetInputTokens() {
+	m.input_tokens = nil
+	m.addinput_tokens = nil
+}
+
+// SetOutputTokens sets the "output_tokens" field.
+func (m *DataShareSessionMutation) SetOutputTokens(i int64) {
+	m.output_tokens = &i
+	m.addoutput_tokens = nil
+}
+
+// OutputTokens returns the value of the "output_tokens" field in the mutation.
+func (m *DataShareSessionMutation) OutputTokens() (r int64, exists bool) {
+	v := m.output_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputTokens returns the old "output_tokens" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldOutputTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputTokens: %w", err)
+	}
+	return oldValue.OutputTokens, nil
+}
+
+// AddOutputTokens adds i to the "output_tokens" field.
+func (m *DataShareSessionMutation) AddOutputTokens(i int64) {
+	if m.addoutput_tokens != nil {
+		*m.addoutput_tokens += i
+	} else {
+		m.addoutput_tokens = &i
+	}
+}
+
+// AddedOutputTokens returns the value that was added to the "output_tokens" field in this mutation.
+func (m *DataShareSessionMutation) AddedOutputTokens() (r int64, exists bool) {
+	v := m.addoutput_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOutputTokens resets all changes to the "output_tokens" field.
+func (m *DataShareSessionMutation) ResetOutputTokens() {
+	m.output_tokens = nil
+	m.addoutput_tokens = nil
+}
+
+// SetTotalTokens sets the "total_tokens" field.
+func (m *DataShareSessionMutation) SetTotalTokens(i int64) {
+	m.total_tokens = &i
+	m.addtotal_tokens = nil
+}
+
+// TotalTokens returns the value of the "total_tokens" field in the mutation.
+func (m *DataShareSessionMutation) TotalTokens() (r int64, exists bool) {
+	v := m.total_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalTokens returns the old "total_tokens" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldTotalTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalTokens: %w", err)
+	}
+	return oldValue.TotalTokens, nil
+}
+
+// AddTotalTokens adds i to the "total_tokens" field.
+func (m *DataShareSessionMutation) AddTotalTokens(i int64) {
+	if m.addtotal_tokens != nil {
+		*m.addtotal_tokens += i
+	} else {
+		m.addtotal_tokens = &i
+	}
+}
+
+// AddedTotalTokens returns the value that was added to the "total_tokens" field in this mutation.
+func (m *DataShareSessionMutation) AddedTotalTokens() (r int64, exists bool) {
+	v := m.addtotal_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalTokens resets all changes to the "total_tokens" field.
+func (m *DataShareSessionMutation) ResetTotalTokens() {
+	m.total_tokens = nil
+	m.addtotal_tokens = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *DataShareSessionMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *DataShareSessionMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *DataShareSessionMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *DataShareSessionMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *DataShareSessionMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *DataShareSessionMutation) SetAPIKeyID(i int64) {
+	m.api_key_id = &i
+	m.addapi_key_id = nil
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *DataShareSessionMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// AddAPIKeyID adds i to the "api_key_id" field.
+func (m *DataShareSessionMutation) AddAPIKeyID(i int64) {
+	if m.addapi_key_id != nil {
+		*m.addapi_key_id += i
+	} else {
+		m.addapi_key_id = &i
+	}
+}
+
+// AddedAPIKeyID returns the value that was added to the "api_key_id" field in this mutation.
+func (m *DataShareSessionMutation) AddedAPIKeyID() (r int64, exists bool) {
+	v := m.addapi_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *DataShareSessionMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+	m.addapi_key_id = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *DataShareSessionMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *DataShareSessionMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *DataShareSessionMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *DataShareSessionMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *DataShareSessionMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DataShareSessionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DataShareSessionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DataShareSessionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetEndedAt sets the "ended_at" field.
+func (m *DataShareSessionMutation) SetEndedAt(t time.Time) {
+	m.ended_at = &t
+}
+
+// EndedAt returns the value of the "ended_at" field in the mutation.
+func (m *DataShareSessionMutation) EndedAt() (r time.Time, exists bool) {
+	v := m.ended_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndedAt returns the old "ended_at" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldEndedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndedAt: %w", err)
+	}
+	return oldValue.EndedAt, nil
+}
+
+// ClearEndedAt clears the value of the "ended_at" field.
+func (m *DataShareSessionMutation) ClearEndedAt() {
+	m.ended_at = nil
+	m.clearedFields[datasharesession.FieldEndedAt] = struct{}{}
+}
+
+// EndedAtCleared returns if the "ended_at" field was cleared in this mutation.
+func (m *DataShareSessionMutation) EndedAtCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldEndedAt]
+	return ok
+}
+
+// ResetEndedAt resets all changes to the "ended_at" field.
+func (m *DataShareSessionMutation) ResetEndedAt() {
+	m.ended_at = nil
+	delete(m.clearedFields, datasharesession.FieldEndedAt)
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *DataShareSessionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *DataShareSessionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *DataShareSessionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the DataShareSessionMutation builder.
+func (m *DataShareSessionMutation) Where(ps ...predicate.DataShareSession) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DataShareSessionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DataShareSessionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DataShareSession, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DataShareSessionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DataShareSessionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DataShareSession).
+func (m *DataShareSessionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DataShareSessionMutation) Fields() []string {
+	fields := make([]string, 0, 26)
+	if m.trajectory_id != nil {
+		fields = append(fields, datasharesession.FieldTrajectoryID)
+	}
+	if m.session_id != nil {
+		fields = append(fields, datasharesession.FieldSessionID)
+	}
+	if m.dataset != nil {
+		fields = append(fields, datasharesession.FieldDataset)
+	}
+	if m.provider != nil {
+		fields = append(fields, datasharesession.FieldProvider)
+	}
+	if m.model != nil {
+		fields = append(fields, datasharesession.FieldModel)
+	}
+	if m.status != nil {
+		fields = append(fields, datasharesession.FieldStatus)
+	}
+	if m.is_final_snapshot != nil {
+		fields = append(fields, datasharesession.FieldIsFinalSnapshot)
+	}
+	if m.source_request_count != nil {
+		fields = append(fields, datasharesession.FieldSourceRequestCount)
+	}
+	if m.system_prompt != nil {
+		fields = append(fields, datasharesession.FieldSystemPrompt)
+	}
+	if m.tools != nil {
+		fields = append(fields, datasharesession.FieldTools)
+	}
+	if m.messages != nil {
+		fields = append(fields, datasharesession.FieldMessages)
+	}
+	if m.usage != nil {
+		fields = append(fields, datasharesession.FieldUsage)
+	}
+	if m.meta != nil {
+		fields = append(fields, datasharesession.FieldMeta)
+	}
+	if m.session_json != nil {
+		fields = append(fields, datasharesession.FieldSessionJSON)
+	}
+	if m.exportable != nil {
+		fields = append(fields, datasharesession.FieldExportable)
+	}
+	if m.quality_errors != nil {
+		fields = append(fields, datasharesession.FieldQualityErrors)
+	}
+	if m.storage_bytes != nil {
+		fields = append(fields, datasharesession.FieldStorageBytes)
+	}
+	if m.input_tokens != nil {
+		fields = append(fields, datasharesession.FieldInputTokens)
+	}
+	if m.output_tokens != nil {
+		fields = append(fields, datasharesession.FieldOutputTokens)
+	}
+	if m.total_tokens != nil {
+		fields = append(fields, datasharesession.FieldTotalTokens)
+	}
+	if m.user_id != nil {
+		fields = append(fields, datasharesession.FieldUserID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, datasharesession.FieldAPIKeyID)
+	}
+	if m.group_id != nil {
+		fields = append(fields, datasharesession.FieldGroupID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, datasharesession.FieldCreatedAt)
+	}
+	if m.ended_at != nil {
+		fields = append(fields, datasharesession.FieldEndedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, datasharesession.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case datasharesession.FieldTrajectoryID:
+		return m.TrajectoryID()
+	case datasharesession.FieldSessionID:
+		return m.SessionID()
+	case datasharesession.FieldDataset:
+		return m.Dataset()
+	case datasharesession.FieldProvider:
+		return m.Provider()
+	case datasharesession.FieldModel:
+		return m.Model()
+	case datasharesession.FieldStatus:
+		return m.Status()
+	case datasharesession.FieldIsFinalSnapshot:
+		return m.IsFinalSnapshot()
+	case datasharesession.FieldSourceRequestCount:
+		return m.SourceRequestCount()
+	case datasharesession.FieldSystemPrompt:
+		return m.SystemPrompt()
+	case datasharesession.FieldTools:
+		return m.Tools()
+	case datasharesession.FieldMessages:
+		return m.Messages()
+	case datasharesession.FieldUsage:
+		return m.Usage()
+	case datasharesession.FieldMeta:
+		return m.Meta()
+	case datasharesession.FieldSessionJSON:
+		return m.SessionJSON()
+	case datasharesession.FieldExportable:
+		return m.Exportable()
+	case datasharesession.FieldQualityErrors:
+		return m.QualityErrors()
+	case datasharesession.FieldStorageBytes:
+		return m.StorageBytes()
+	case datasharesession.FieldInputTokens:
+		return m.InputTokens()
+	case datasharesession.FieldOutputTokens:
+		return m.OutputTokens()
+	case datasharesession.FieldTotalTokens:
+		return m.TotalTokens()
+	case datasharesession.FieldUserID:
+		return m.UserID()
+	case datasharesession.FieldAPIKeyID:
+		return m.APIKeyID()
+	case datasharesession.FieldGroupID:
+		return m.GroupID()
+	case datasharesession.FieldCreatedAt:
+		return m.CreatedAt()
+	case datasharesession.FieldEndedAt:
+		return m.EndedAt()
+	case datasharesession.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case datasharesession.FieldTrajectoryID:
+		return m.OldTrajectoryID(ctx)
+	case datasharesession.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case datasharesession.FieldDataset:
+		return m.OldDataset(ctx)
+	case datasharesession.FieldProvider:
+		return m.OldProvider(ctx)
+	case datasharesession.FieldModel:
+		return m.OldModel(ctx)
+	case datasharesession.FieldStatus:
+		return m.OldStatus(ctx)
+	case datasharesession.FieldIsFinalSnapshot:
+		return m.OldIsFinalSnapshot(ctx)
+	case datasharesession.FieldSourceRequestCount:
+		return m.OldSourceRequestCount(ctx)
+	case datasharesession.FieldSystemPrompt:
+		return m.OldSystemPrompt(ctx)
+	case datasharesession.FieldTools:
+		return m.OldTools(ctx)
+	case datasharesession.FieldMessages:
+		return m.OldMessages(ctx)
+	case datasharesession.FieldUsage:
+		return m.OldUsage(ctx)
+	case datasharesession.FieldMeta:
+		return m.OldMeta(ctx)
+	case datasharesession.FieldSessionJSON:
+		return m.OldSessionJSON(ctx)
+	case datasharesession.FieldExportable:
+		return m.OldExportable(ctx)
+	case datasharesession.FieldQualityErrors:
+		return m.OldQualityErrors(ctx)
+	case datasharesession.FieldStorageBytes:
+		return m.OldStorageBytes(ctx)
+	case datasharesession.FieldInputTokens:
+		return m.OldInputTokens(ctx)
+	case datasharesession.FieldOutputTokens:
+		return m.OldOutputTokens(ctx)
+	case datasharesession.FieldTotalTokens:
+		return m.OldTotalTokens(ctx)
+	case datasharesession.FieldUserID:
+		return m.OldUserID(ctx)
+	case datasharesession.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case datasharesession.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case datasharesession.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case datasharesession.FieldEndedAt:
+		return m.OldEndedAt(ctx)
+	case datasharesession.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown DataShareSession field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case datasharesession.FieldTrajectoryID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrajectoryID(v)
+		return nil
+	case datasharesession.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case datasharesession.FieldDataset:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataset(v)
+		return nil
+	case datasharesession.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case datasharesession.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case datasharesession.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case datasharesession.FieldIsFinalSnapshot:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsFinalSnapshot(v)
+		return nil
+	case datasharesession.FieldSourceRequestCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceRequestCount(v)
+		return nil
+	case datasharesession.FieldSystemPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPrompt(v)
+		return nil
+	case datasharesession.FieldTools:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTools(v)
+		return nil
+	case datasharesession.FieldMessages:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMessages(v)
+		return nil
+	case datasharesession.FieldUsage:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsage(v)
+		return nil
+	case datasharesession.FieldMeta:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMeta(v)
+		return nil
+	case datasharesession.FieldSessionJSON:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionJSON(v)
+		return nil
+	case datasharesession.FieldExportable:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExportable(v)
+		return nil
+	case datasharesession.FieldQualityErrors:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQualityErrors(v)
+		return nil
+	case datasharesession.FieldStorageBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStorageBytes(v)
+		return nil
+	case datasharesession.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputTokens(v)
+		return nil
+	case datasharesession.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputTokens(v)
+		return nil
+	case datasharesession.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalTokens(v)
+		return nil
+	case datasharesession.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case datasharesession.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case datasharesession.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case datasharesession.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case datasharesession.FieldEndedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndedAt(v)
+		return nil
+	case datasharesession.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DataShareSession field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DataShareSessionMutation) AddedFields() []string {
+	var fields []string
+	if m.addsource_request_count != nil {
+		fields = append(fields, datasharesession.FieldSourceRequestCount)
+	}
+	if m.addstorage_bytes != nil {
+		fields = append(fields, datasharesession.FieldStorageBytes)
+	}
+	if m.addinput_tokens != nil {
+		fields = append(fields, datasharesession.FieldInputTokens)
+	}
+	if m.addoutput_tokens != nil {
+		fields = append(fields, datasharesession.FieldOutputTokens)
+	}
+	if m.addtotal_tokens != nil {
+		fields = append(fields, datasharesession.FieldTotalTokens)
+	}
+	if m.adduser_id != nil {
+		fields = append(fields, datasharesession.FieldUserID)
+	}
+	if m.addapi_key_id != nil {
+		fields = append(fields, datasharesession.FieldAPIKeyID)
+	}
+	if m.addgroup_id != nil {
+		fields = append(fields, datasharesession.FieldGroupID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DataShareSessionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case datasharesession.FieldSourceRequestCount:
+		return m.AddedSourceRequestCount()
+	case datasharesession.FieldStorageBytes:
+		return m.AddedStorageBytes()
+	case datasharesession.FieldInputTokens:
+		return m.AddedInputTokens()
+	case datasharesession.FieldOutputTokens:
+		return m.AddedOutputTokens()
+	case datasharesession.FieldTotalTokens:
+		return m.AddedTotalTokens()
+	case datasharesession.FieldUserID:
+		return m.AddedUserID()
+	case datasharesession.FieldAPIKeyID:
+		return m.AddedAPIKeyID()
+	case datasharesession.FieldGroupID:
+		return m.AddedGroupID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DataShareSessionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case datasharesession.FieldSourceRequestCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSourceRequestCount(v)
+		return nil
+	case datasharesession.FieldStorageBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddStorageBytes(v)
+		return nil
+	case datasharesession.FieldInputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputTokens(v)
+		return nil
+	case datasharesession.FieldOutputTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputTokens(v)
+		return nil
+	case datasharesession.FieldTotalTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalTokens(v)
+		return nil
+	case datasharesession.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case datasharesession.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyID(v)
+		return nil
+	case datasharesession.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DataShareSession numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DataShareSessionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(datasharesession.FieldSystemPrompt) {
+		fields = append(fields, datasharesession.FieldSystemPrompt)
+	}
+	if m.FieldCleared(datasharesession.FieldTools) {
+		fields = append(fields, datasharesession.FieldTools)
+	}
+	if m.FieldCleared(datasharesession.FieldMessages) {
+		fields = append(fields, datasharesession.FieldMessages)
+	}
+	if m.FieldCleared(datasharesession.FieldUsage) {
+		fields = append(fields, datasharesession.FieldUsage)
+	}
+	if m.FieldCleared(datasharesession.FieldMeta) {
+		fields = append(fields, datasharesession.FieldMeta)
+	}
+	if m.FieldCleared(datasharesession.FieldSessionJSON) {
+		fields = append(fields, datasharesession.FieldSessionJSON)
+	}
+	if m.FieldCleared(datasharesession.FieldQualityErrors) {
+		fields = append(fields, datasharesession.FieldQualityErrors)
+	}
+	if m.FieldCleared(datasharesession.FieldEndedAt) {
+		fields = append(fields, datasharesession.FieldEndedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DataShareSessionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DataShareSessionMutation) ClearField(name string) error {
+	switch name {
+	case datasharesession.FieldSystemPrompt:
+		m.ClearSystemPrompt()
+		return nil
+	case datasharesession.FieldTools:
+		m.ClearTools()
+		return nil
+	case datasharesession.FieldMessages:
+		m.ClearMessages()
+		return nil
+	case datasharesession.FieldUsage:
+		m.ClearUsage()
+		return nil
+	case datasharesession.FieldMeta:
+		m.ClearMeta()
+		return nil
+	case datasharesession.FieldSessionJSON:
+		m.ClearSessionJSON()
+		return nil
+	case datasharesession.FieldQualityErrors:
+		m.ClearQualityErrors()
+		return nil
+	case datasharesession.FieldEndedAt:
+		m.ClearEndedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DataShareSession nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DataShareSessionMutation) ResetField(name string) error {
+	switch name {
+	case datasharesession.FieldTrajectoryID:
+		m.ResetTrajectoryID()
+		return nil
+	case datasharesession.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case datasharesession.FieldDataset:
+		m.ResetDataset()
+		return nil
+	case datasharesession.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case datasharesession.FieldModel:
+		m.ResetModel()
+		return nil
+	case datasharesession.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case datasharesession.FieldIsFinalSnapshot:
+		m.ResetIsFinalSnapshot()
+		return nil
+	case datasharesession.FieldSourceRequestCount:
+		m.ResetSourceRequestCount()
+		return nil
+	case datasharesession.FieldSystemPrompt:
+		m.ResetSystemPrompt()
+		return nil
+	case datasharesession.FieldTools:
+		m.ResetTools()
+		return nil
+	case datasharesession.FieldMessages:
+		m.ResetMessages()
+		return nil
+	case datasharesession.FieldUsage:
+		m.ResetUsage()
+		return nil
+	case datasharesession.FieldMeta:
+		m.ResetMeta()
+		return nil
+	case datasharesession.FieldSessionJSON:
+		m.ResetSessionJSON()
+		return nil
+	case datasharesession.FieldExportable:
+		m.ResetExportable()
+		return nil
+	case datasharesession.FieldQualityErrors:
+		m.ResetQualityErrors()
+		return nil
+	case datasharesession.FieldStorageBytes:
+		m.ResetStorageBytes()
+		return nil
+	case datasharesession.FieldInputTokens:
+		m.ResetInputTokens()
+		return nil
+	case datasharesession.FieldOutputTokens:
+		m.ResetOutputTokens()
+		return nil
+	case datasharesession.FieldTotalTokens:
+		m.ResetTotalTokens()
+		return nil
+	case datasharesession.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case datasharesession.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case datasharesession.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case datasharesession.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case datasharesession.FieldEndedAt:
+		m.ResetEndedAt()
+		return nil
+	case datasharesession.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DataShareSession field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DataShareSessionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DataShareSessionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DataShareSessionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DataShareSessionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DataShareSessionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DataShareSessionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DataShareSessionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown DataShareSession unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DataShareSessionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown DataShareSession edge %s", name)
+}
+
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.
 type ErrorPassthroughRuleMutation struct {
 	config
@@ -10105,6 +12523,7 @@ type GroupMutation struct {
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	data_sharing_enabled                    *bool
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -11641,6 +14060,42 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetDataSharingEnabled sets the "data_sharing_enabled" field.
+func (m *GroupMutation) SetDataSharingEnabled(b bool) {
+	m.data_sharing_enabled = &b
+}
+
+// DataSharingEnabled returns the value of the "data_sharing_enabled" field in the mutation.
+func (m *GroupMutation) DataSharingEnabled() (r bool, exists bool) {
+	v := m.data_sharing_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDataSharingEnabled returns the old "data_sharing_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDataSharingEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDataSharingEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDataSharingEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDataSharingEnabled: %w", err)
+	}
+	return oldValue.DataSharingEnabled, nil
+}
+
+// ResetDataSharingEnabled resets all changes to the "data_sharing_enabled" field.
+func (m *GroupMutation) ResetDataSharingEnabled() {
+	m.data_sharing_enabled = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -11891,7 +14346,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -11985,6 +14440,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.data_sharing_enabled != nil {
+		fields = append(fields, group.FieldDataSharingEnabled)
+	}
 	return fields
 }
 
@@ -12055,6 +14513,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldDataSharingEnabled:
+		return m.DataSharingEnabled()
 	}
 	return nil, false
 }
@@ -12126,6 +14586,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldDataSharingEnabled:
+		return m.OldDataSharingEnabled(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -12351,6 +14813,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRpmLimit(v)
+		return nil
+	case group.FieldDataSharingEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDataSharingEnabled(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -12655,6 +15124,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldDataSharingEnabled:
+		m.ResetDataSharingEnabled()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

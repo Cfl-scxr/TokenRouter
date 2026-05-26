@@ -37,6 +37,7 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
+	dataSharingHandler *admin.DataSharingHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:             dashboardHandler,
@@ -67,6 +68,7 @@ func ProvideAdminHandlers(
 		ContentModeration:     contentModerationHandler,
 		Payment:               paymentHandler,
 		Affiliate:             affiliateHandler,
+		DataSharing:           dataSharingHandler,
 	}
 }
 
@@ -113,6 +115,7 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
+	dataSharingHandler *DataSharingHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -132,6 +135,7 @@ func ProvideHandlers(
 		Totp:             totpHandler,
 		Payment:          paymentHandler,
 		PaymentWebhook:   paymentWebhookHandler,
+		DataSharing:      dataSharingHandler,
 	}
 }
 
@@ -152,6 +156,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSettingHandler,
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
+	NewDataSharingHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -182,6 +187,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
+	admin.NewDataSharingHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

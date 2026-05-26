@@ -5,7 +5,7 @@
         <div
           class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
         >
-          <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
+          <!-- 左侧：模糊搜索和筛选项，可自动换行。 -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
             <div class="relative w-full sm:w-64">
               <Icon
@@ -44,7 +44,7 @@
             />
           </div>
 
-          <!-- Right: actions -->
+          <!-- 右侧：刷新、排序和创建等操作。 -->
           <div
             class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto"
           >
@@ -141,6 +141,12 @@
               {{
                 value ? t("admin.groups.exclusive") : t("admin.groups.public")
               }}
+            </span>
+          </template>
+
+          <template #cell-data_sharing_enabled="{ value }">
+            <span :class="['badge', value ? 'badge-success' : 'badge-gray']">
+              {{ value ? '已启用' : '未启用' }}
             </span>
           </template>
 
@@ -582,6 +588,35 @@
             </span>
           </div>
           <p class="input-hint">{{ t("admin.groups.defaultGroup.hint") }}</p>
+        </div>
+
+        <div>
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              数据共享分组
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="createForm.data_sharing_enabled = !createForm.data_sharing_enabled"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.data_sharing_enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.data_sharing_enabled ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{ createForm.data_sharing_enabled ? '采集对话数据' : '不采集对话数据' }}
+            </span>
+          </div>
+          <p class="input-hint">开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。</p>
         </div>
 
         <!-- 图片生成计费配置 -->
@@ -1759,6 +1794,48 @@
           <p class="input-hint">{{ t("admin.groups.defaultGroup.hint") }}</p>
         </div>
 
+        <div>
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              数据共享分组
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                editForm.data_sharing_enabled =
+                  !editForm.data_sharing_enabled
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.data_sharing_enabled
+                  ? 'bg-blue-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.data_sharing_enabled
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.data_sharing_enabled
+                  ? "采集对话数据"
+                  : "不采集对话数据"
+              }}
+            </span>
+          </div>
+          <p class="input-hint">
+            开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。
+          </p>
+        </div>
+
         <!-- 图片生成计费配置 -->
         <div
           v-if="
@@ -2832,6 +2909,11 @@ const columns = computed<Column[]>(() => [
     sortable: true,
   },
   {
+    key: "data_sharing_enabled",
+    label: t("nav.dataSharing"),
+    sortable: true,
+  },
+  {
     key: "account_count",
     label: t("admin.groups.columns.accounts"),
     sortable: true,
@@ -3040,6 +3122,8 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
+  // 数据共享分组开关
+  data_sharing_enabled: false,
   // 图片生成计费配置
   allow_image_generation: false,
   image_rate_independent: false,
@@ -3323,6 +3407,8 @@ const editForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
+  // 数据共享分组开关
+  data_sharing_enabled: false,
   status: "active" as "active" | "inactive",
   // 图片生成计费配置
   allow_image_generation: false,
@@ -3576,6 +3662,7 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.is_default = false;
+  createForm.data_sharing_enabled = false;
   createForm.allow_image_generation = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
@@ -3665,6 +3752,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.is_default = group.is_default ?? false;
+  editForm.data_sharing_enabled = group.data_sharing_enabled ?? false;
   editForm.status = group.status;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
@@ -3714,6 +3802,7 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.is_default = false;
+  editForm.data_sharing_enabled = false;
   editForm.copy_accounts_from_group_ids = [];
   resetMessagesDispatchFormState(editForm);
 };
