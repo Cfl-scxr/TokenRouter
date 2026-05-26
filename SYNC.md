@@ -431,6 +431,9 @@
   - 同步方式：cherry-pick PR head `fc66cd704a996928bc3f1c3d879bbc4feb12f23d`，无冲突；补充新增 helper 的中文注释。
   - 决策：保留 fork 现有 OpenAI WS v2 ingress、store=false 续链和 previous_response_id 自动修复策略，仅把 Codex 的 `tool_search_output`、`custom_tool_call_output`、`mcp_tool_call_output` 等工具输出纳入续链识别，避免工具输出续轮丢失上一轮响应锚点。
   - 测试：`go test ./internal/service -run 'Test(NeedsToolContinuationSignals|HasFunctionCallOutput|HasToolCallContext|FunctionCallOutputCallIDs|HasFunctionCallOutputMissingCallID|OpenAIWSRawPayloadHasToolCallOutput|BuildOpenAIWSReplayInputSequence|OpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabled(ToolSearchOutput|FunctionCallOutput))'`；`git diff --check`；`git diff --cached --check`。
-fix(openai): emit response.failed when /v1/responses SSE aborted post-flush: https://github.com/Wei-Shaw/sub2api/pull/2732
+✅ fix(openai): emit response.failed when /v1/responses SSE aborted post-flush: https://github.com/Wei-Shaw/sub2api/pull/2732
+  - 同步方式：按 PR 分支提交顺序 cherry-pick `5e5c2062`、`cff2f291`、`b34cc71b`，无冲突；将 upstream 模块路径改为本 fork 路径，并把新增英文注释改为中文。
+  - 决策：保留 fork 现有 Gateway/OpenAI handler 的 legacy 非 Responses 流式错误格式；仅对 `/v1/responses`、裸 `/responses` 和 codex direct `/responses` 路径，在流已开始或 Writer 已写过后追加协议合规的 `response.failed`，避免 Codex CLI 收到 silent EOF。
+  - 测试：`go test ./internal/handler -run 'Test(OpenAIHandleStreamingAwareError|GatewayHandleStreamingAwareError|InboundIsResponses|SynthesizeResponseID|MapResponsesErrorCode|OpenAIEnsureForwardErrorResponse|OpenAIRecoverResponsesPanic|GatewayEnsureForwardErrorResponse)'`；`git diff --check`；`git diff --cached --check`。
 style: fix lint errors in response.failed SSE writer: https://github.com/TokenFlux/TokenRouter/commit/53acde1efd236e54b629f2122b7dec6469945508
 chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/2f70d965bf5b046ad6e9474a77a493bf4fb60801
