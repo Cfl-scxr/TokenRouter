@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 10 // v10：重新加载快照以执行分组可用性检查
+const apiKeyAuthSnapshotVersion = 11 // v11：重新加载快照以包含数据共享分组开关
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -252,6 +252,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Platform:                        apiKey.Group.Platform,
 			Status:                          apiKey.Group.Status,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
+			DataSharingEnabled:              apiKey.Group.DataSharingEnabled,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
@@ -318,6 +319,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
+			DataSharingEnabled:              snapshot.Group.DataSharingEnabled,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			ImageRateMultiplier:             snapshot.Group.ImageRateMultiplier,

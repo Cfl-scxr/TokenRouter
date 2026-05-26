@@ -412,6 +412,7 @@ func appendAnyMessages(out []map[string]any, messages []any) []map[string]any {
 }
 
 func appendRequestMessages(out []map[string]any, body []byte) []map[string]any {
+	startLen := len(out)
 	if arr := gjson.GetBytes(body, "messages"); arr.IsArray() {
 		for _, item := range arr.Array() {
 			out = append(out, rawJSONToMap(item.Raw))
@@ -426,7 +427,103 @@ func appendRequestMessages(out []map[string]any, body []byte) []map[string]any {
 			out = append(out, msg)
 		}
 	}
+	if len(out) == startLen {
+		// OpenAI Responses 使用 input 承载对话上下文，Codex CLI 会走这条协议。
+		out = appendResponsesInputMessages(out, gjson.GetBytes(body, "input"))
+	}
 	return out
+}
+
+func appendResponsesInputMessages(out []map[string]any, input gjson.Result) []map[string]any {
+	if !input.Exists() {
+		return out
+	}
+	if input.Type == gjson.String {
+		return append(out, map[string]any{"role": "user", "content": input.String()})
+	}
+	if input.IsObject() {
+		return append(out, normalizeResponsesInputItem(input))
+	}
+	if !input.IsArray() {
+		return out
+	}
+	for _, item := range input.Array() {
+		if item.Type == gjson.String {
+			out = append(out, map[string]any{"role": "user", "content": item.String()})
+			continue
+		}
+		if item.IsObject() {
+			out = append(out, normalizeResponsesInputItem(item))
+		}
+	}
+	return out
+}
+
+func normalizeResponsesInputItem(item gjson.Result) map[string]any {
+	msg := rawJSONToMap(item.Raw)
+	role := normalizeResponsesInputRole(item.Get("role").String(), item.Get("type").String())
+	if role != "" {
+		msg["role"] = role
+	}
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "function_call":
+		// 工具调用在对话中等价于 assistant 发起的 tool_call。
+		msg["role"] = "assistant"
+		if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+			msg["tool_call_id"] = callID
+		}
+	case "function_call_output":
+		// 工具执行结果按 tool 消息保存，便于后续训练流水线识别。
+		msg["role"] = "tool"
+		if callID := strings.TrimSpace(item.Get("call_id").String()); callID != "" {
+			msg["tool_call_id"] = callID
+		}
+		if output := item.Get("output"); output.Exists() {
+			msg["content"] = responseInputContentValue(output)
+		}
+	case "input_text", "text":
+		msg["role"] = "user"
+		if text := item.Get("text"); text.Exists() {
+			msg["content"] = text.String()
+		}
+	}
+	if _, ok := msg["content"]; !ok {
+		if content := item.Get("content"); content.Exists() {
+			msg["content"] = responseInputContentValue(content)
+		} else if text := item.Get("text"); text.Exists() {
+			msg["content"] = text.String()
+		}
+	}
+	return msg
+}
+
+func normalizeResponsesInputRole(role string, itemType string) string {
+	role = strings.TrimSpace(role)
+	switch role {
+	case "developer":
+		return "system"
+	case "model":
+		return "assistant"
+	case "":
+		switch strings.TrimSpace(itemType) {
+		case "function_call":
+			return "assistant"
+		case "function_call_output":
+			return "tool"
+		default:
+			return "user"
+		}
+	default:
+		return role
+	}
+}
+
+func responseInputContentValue(value gjson.Result) any {
+	if value.Type == gjson.String {
+		return value.String()
+	}
+	return rawJSONToAny(value.Raw)
 }
 
 func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map[string]any {

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
@@ -2055,6 +2056,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
+	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
 	wroteDownstream := false
 	needModelReplace := originalModel != mappedModel
 	var mappedModelBytes []byte
@@ -2234,6 +2236,10 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
+		var responseEvent apicompat.ResponsesStreamEvent
+		if err := json.Unmarshal(message, &responseEvent); err == nil {
+			responseAccumulator.ProcessEvent(&responseEvent)
+		}
 		imageCounter.AddSSEData(message)
 		if warning := buildOpenAIWSUpstreamWarning(eventType, message); warning != nil {
 			upstreamWarning = warning
@@ -2318,6 +2324,17 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if reqStream {
+			if responseField.Exists() && responseField.Type == gjson.JSON {
+				finalResponse = []byte(responseField.Raw)
+				// 流式也保存最终 response，供数据共享采集 assistant 输出。
+				if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 && responseAccumulator.HasContent() {
+					if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+						if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
+							finalResponse = patched
+						}
+					}
+				}
+			}
 			// 在首个 token 前先缓冲事件（如 response.created），
 			// 以便上游早期断连时仍可安全回退到 HTTP，不给下游发送半截流。
 			shouldBuffer := firstTokenMs == nil && !isTokenEvent && !isTerminalEvent
@@ -2344,6 +2361,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		} else {
 			if responseField.Exists() && responseField.Type == gjson.JSON {
 				finalResponse = []byte(responseField.Raw)
+				// 终端 response 可能只有 usage 而 output 为空，用前序 delta 还原输出。
+				if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 && responseAccumulator.HasContent() {
+					if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+						if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
+							finalResponse = patched
+						}
+					}
+				}
 			}
 		}
 
@@ -2434,6 +2459,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Stream:           reqStream,
 		OpenAIWSMode:     true,
 		ResponseHeaders:  lease.HandshakeHeaders(),
+		ResponseBody:     cloneDataSharingRequestBody(finalResponse),
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
 		UpstreamWarning:  upstreamWarning,

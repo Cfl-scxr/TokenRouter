@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAPIKeyService_SnapshotRoundTrip_PreservesImageGenerationControls(t *testing.T) {
+func TestAPIKeyService_SnapshotRoundTrip_PreservesGroupCaptureControls(t *testing.T) {
 	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, nil)
 	groupID := int64(9)
 	apiKey := &APIKey{
@@ -29,6 +29,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesImageGenerationControls(t *tes
 			Platform:             PlatformOpenAI,
 			Status:               StatusActive,
 			RateMultiplier:       1,
+			DataSharingEnabled:   true,
 			AllowImageGeneration: true,
 			ImageRateIndependent: true,
 			ImageRateMultiplier:  0.5,
@@ -40,6 +41,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesImageGenerationControls(t *tes
 
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
+	require.True(t, roundTrip.Group.DataSharingEnabled)
 	require.True(t, roundTrip.Group.AllowImageGeneration)
 	require.True(t, roundTrip.Group.ImageRateIndependent)
 	require.InDelta(t, 0.5, roundTrip.Group.ImageRateMultiplier, 1e-12)

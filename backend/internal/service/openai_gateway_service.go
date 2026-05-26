@@ -281,6 +281,7 @@ type OpenAIForwardResult struct {
 	Stream             bool
 	OpenAIWSMode       bool
 	ResponseHeaders    http.Header
+	ResponseBody       []byte // 成功响应体，用于数据共享提取 assistant 输出。
 	Duration           time.Duration
 	FirstTokenMs       *int
 	ImageCount         int
@@ -2926,6 +2927,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenMs *int
 		imageCount := 0
 		var imageOutputSizes []string
+		var responseBody []byte
 		if reqStream {
 			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 			if err != nil {
@@ -2935,6 +2937,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			firstTokenMs = streamResult.firstTokenMs
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			responseBody = streamResult.responseBody
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -2943,6 +2946,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = nonStreamResult.usage
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			responseBody = nonStreamResult.responseBody
 		}
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
@@ -2965,6 +2969,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ReasoningEffort: reasoningEffort,
 			Stream:          reqStream,
 			OpenAIWSMode:    false,
+			ResponseBody:    cloneDataSharingRequestBody(responseBody),
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
 		}
@@ -3182,6 +3187,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	imageCount := 0
 	var imageOutputSizes []string
+	var responseBody []byte
 	if reqStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3191,6 +3197,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		firstTokenMs = result.firstTokenMs
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		responseBody = result.responseBody
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3199,6 +3206,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		responseBody = result.responseBody
 	}
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
@@ -3218,6 +3226,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
+		ResponseBody:    cloneDataSharingRequestBody(responseBody),
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
 	}
@@ -3525,6 +3534,7 @@ type openaiStreamingResultPassthrough struct {
 	firstTokenMs     *int
 	imageCount       int
 	imageOutputSizes []string
+	responseBody     []byte
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3532,6 +3542,7 @@ type openaiNonStreamingResultPassthrough struct {
 	usage            *OpenAIUsage
 	imageCount       int
 	imageOutputSizes []string
+	responseBody     []byte
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -3703,12 +3714,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	defer putSSEScannerBuf64K(scanBuf)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
+	var finalResponseBody []byte
+	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
 			firstTokenMs:     firstTokenMs,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			responseBody:     cloneDataSharingRequestBody(finalResponseBody),
 		}
 	}
 
@@ -3741,6 +3755,23 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			if openAIStreamEventIsTerminal(trimmedData) {
 				sawTerminalEvent = true
+			}
+			var responseEvent apicompat.ResponsesStreamEvent
+			if err := json.Unmarshal(dataBytes, &responseEvent); err == nil {
+				responseAccumulator.ProcessEvent(&responseEvent)
+			}
+			if eventType == "response.completed" || eventType == "response.done" {
+				if response := gjson.GetBytes(dataBytes, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
+					finalResponseBody = []byte(response.Raw)
+					// 终端事件 output 为空时，用前面累积的 delta 补出 assistant 输出。
+					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 && responseAccumulator.HasContent() {
+						if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+							if patched, err := sjson.SetRawBytes(finalResponseBody, "output", outputJSON); err == nil {
+								finalResponseBody = patched
+							}
+						}
+					}
+				}
 			}
 			imageCounter.AddSSEData(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
@@ -3870,6 +3901,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage:            usage,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }
 
@@ -3933,6 +3965,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		usage:            usage,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }
 
@@ -4381,6 +4414,7 @@ type openaiStreamingResult struct {
 	firstTokenMs     *int
 	imageCount       int
 	imageOutputSizes []string
+	responseBody     []byte
 }
 
 type openaiNonStreamingResult struct {
@@ -4388,6 +4422,7 @@ type openaiNonStreamingResult struct {
 	usage            *OpenAIUsage
 	imageCount       int
 	imageOutputSizes []string
+	responseBody     []byte
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -4499,12 +4534,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	needModelReplace := originalModel != mappedModel
+	var finalResponseBody []byte
+	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
 			firstTokenMs:     firstTokenMs,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			responseBody:     cloneDataSharingRequestBody(finalResponseBody),
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -4608,6 +4646,23 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				data = string(correctedData)
 				line = "data: " + data
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
+			var responseEvent apicompat.ResponsesStreamEvent
+			if err := json.Unmarshal(dataBytes, &responseEvent); err == nil {
+				responseAccumulator.ProcessEvent(&responseEvent)
+			}
+			if eventType == "response.completed" || eventType == "response.done" {
+				if response := gjson.GetBytes(dataBytes, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
+					finalResponseBody = []byte(response.Raw)
+					// 终端事件 output 为空时，用前面累积的 delta 补出 assistant 输出。
+					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 && responseAccumulator.HasContent() {
+						if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+							if patched, err := sjson.SetRawBytes(finalResponseBody, "output", outputJSON); err == nil {
+								finalResponseBody = patched
+							}
+						}
+					}
+				}
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 
@@ -5008,6 +5063,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		usage:            usage,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }
 
@@ -5073,6 +5129,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		usage:            usage,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }
 
@@ -5731,6 +5788,7 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(ctx context.Co
 		SessionID:         input.SessionID,
 		RequestID:         result.RequestID,
 		RequestBody:       cloneDataSharingRequestBody(input.RequestBody),
+		ResponseBody:      cloneDataSharingRequestBody(result.ResponseBody),
 		InputTokens:       actualInputTokens,
 		OutputTokens:      result.Usage.OutputTokens,
 		CacheReadTokens:   result.Usage.CacheReadInputTokens,

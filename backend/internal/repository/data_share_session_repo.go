@@ -97,10 +97,8 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	sessionJSON["created_at"] = existing.CreatedAt.Format(time.RFC3339Nano)
 	sessionJSON["ended_at"] = now.Format(time.RFC3339Nano)
 	storageBytes := int64(len(mustRepositoryJSON(sessionJSON)))
-	qualityErrors := session.QualityErrors
-	if len(qualityErrors) == 0 {
-		qualityErrors = validateRepositoryQuality(session.Model, messages, tools, usage)
-	}
+	// 每次合并后都重新评估质量，避免早期空消息请求留下的错误阻止后续导出。
+	qualityErrors := validateRepositoryQuality(session.Model, messages, tools, usage)
 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
@@ -520,13 +518,24 @@ func validateRepositoryQuality(model string, messages []map[string]any, tools []
 	if len(tools) == 0 {
 		errs = append(errs, "missing_structured_tool_call")
 	}
-	if strings.TrimSpace(model) == "" {
+	if !dataShareRepositoryModelAllowed(model) {
 		errs = append(errs, "model_not_allowed")
 	}
 	if int64FromAny(usage["total_tokens"]) <= 0 {
 		errs = append(errs, "missing_usage_tokens")
 	}
 	return errs
+}
+
+func dataShareRepositoryModelAllowed(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	// 与 service 层数据共享导出白名单保持一致，避免 upsert 合并后放宽质量门槛。
+	return strings.Contains(model, "gpt-5") ||
+		strings.Contains(model, "claude") && (strings.Contains(model, "4.5") || strings.Contains(model, "4-5")) ||
+		strings.Contains(model, "gemini-3")
 }
 
 func int64FromAny(v any) int64 {
