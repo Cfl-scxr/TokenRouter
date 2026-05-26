@@ -435,5 +435,8 @@
   - 同步方式：按 PR 分支提交顺序 cherry-pick `5e5c2062`、`cff2f291`、`b34cc71b`，无冲突；将 upstream 模块路径改为本 fork 路径，并把新增英文注释改为中文。
   - 决策：保留 fork 现有 Gateway/OpenAI handler 的 legacy 非 Responses 流式错误格式；仅对 `/v1/responses`、裸 `/responses` 和 codex direct `/responses` 路径，在流已开始或 Writer 已写过后追加协议合规的 `response.failed`，避免 Codex CLI 收到 silent EOF。
   - 测试：`go test ./internal/handler -run 'Test(OpenAIHandleStreamingAwareError|GatewayHandleStreamingAwareError|InboundIsResponses|SynthesizeResponseID|MapResponsesErrorCode|OpenAIEnsureForwardErrorResponse|OpenAIRecoverResponsesPanic|GatewayEnsureForwardErrorResponse)'`；`git diff --check`；`git diff --cached --check`。
-style: fix lint errors in response.failed SSE writer: https://github.com/TokenFlux/TokenRouter/commit/53acde1efd236e54b629f2122b7dec6469945508
+✅ style: fix lint errors in response.failed SSE writer: https://github.com/TokenFlux/TokenRouter/commit/53acde1efd236e54b629f2122b7dec6469945508
+  - 同步方式：cherry-pick direct commit `53acde1efd236e54b629f2122b7dec6469945508`，手动解决 `stream_error_event.go` 与上一条中文注释/模块路径适配冲突。
+  - 决策：保留本 fork 模块路径与中文注释；采用 upstream 的 typed struct + `json.Marshal` 写法，避免手写 `strings.Builder` 带来的 errcheck/lint 问题，并继续保证 `output` 序列化为 `[]`。
+  - 测试：`go test ./internal/handler -run 'Test(OpenAIHandleStreamingAwareError|GatewayHandleStreamingAwareError|InboundIsResponses|SynthesizeResponseID|MapResponsesErrorCode|OpenAIEnsureForwardErrorResponse|OpenAIRecoverResponsesPanic|GatewayEnsureForwardErrorResponse)'`；`git diff --check`；`git diff --cached --check`。
 chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/2f70d965bf5b046ad6e9474a77a493bf4fb60801
