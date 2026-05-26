@@ -443,3 +443,10 @@
   - 同步方式：检查并尝试 cherry-pick direct commit `2f70d965bf5b046ad6e9474a77a493bf4fb60801`，随后手动清理冲突，未应用代码或文档内容。
   - 决策：保留 fork 当前中文 `README.md` 主文档结构，以及 `README_CN.md`、`README_JA.md` 已删除状态；upstream sponsor 更新目标是 upstream 英文 README 与多语言 README 文件，当前 fork 没有对应 sponsor 表结构，避免恢复已删除文档或引入孤立 logo。
   - 测试：`git ls-files -u`；`git diff --check`；`git diff --cached --check`。
+✅ 修复 OpenAI/Codex HTTP/2 响应头超时: https://github.com/Wei-Shaw/sub2api/pull/2776
+  - 同步方式：cherry-pick PR 中新增提交 `33ac8eb27d799c85a9a8c86849d069c13a212b75`；该 PR 分支包含已同步的 PR 2747、PR 2732、lint 与 sponsors 提交，未重复应用。
+  - 决策：保留 fork 已有 OpenAI WS v2、store=false 续链和 response.failed 处理；新增 OpenAI HTTP upstream profile，将 OpenAI/Codex 请求的响应头超时默认设为 0，并保留可配置 `gateway.openai_response_header_timeout` 以及 OpenAI HTTP/2 代理兼容回退策略。
+  - 决策：解决 `http_upstream_test.go` 冲突时保留 fork 模块路径 `github.com/TokenFlux/TokenRouter`，并将新增 Go 注释改为中文。
+  - 测试：`go test ./internal/config ./internal/repository ./internal/service -run 'Test(Gateway|Config|HTTPUpstream|WithHTTPUpstreamProfile|OpenAI|AccountTestService)'`；`git diff --check`；`git diff --cached --check`。
+feat: 支持内容审计风险阈值配置: https://github.com/Wei-Shaw/sub2api/pull/2777
+feat(quota): 用户 × 平台 USD 配额: https://github.com/Wei-Shaw/sub2api/pull/2766
