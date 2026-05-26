@@ -427,3 +427,10 @@
   - 决策：仅转义中英文注册邮箱白名单 placeholder 里的 `@` 为 Vue I18n 安全写法，保留上一条邮箱通配符同步后的 `*.edu.cn` 示例和 fork 的邮箱归一化设置文案。
   - 测试：`pnpm test:run src/views/admin/__tests__/SettingsView.spec.ts src/utils/__tests__/registrationEmailPolicy.spec.ts`；`pnpm typecheck`；`git diff --cached --check`；`git diff --check`。
   - 备注：Vitest 输出 Node `localStorage` warning 和既有 `router-link` stub warning，未影响断言。
+✅ 修复 WS 协议下工具输出续链识别问题: https://github.com/Wei-Shaw/sub2api/pull/2747
+  - 同步方式：cherry-pick PR head `fc66cd704a996928bc3f1c3d879bbc4feb12f23d`，无冲突；补充新增 helper 的中文注释。
+  - 决策：保留 fork 现有 OpenAI WS v2 ingress、store=false 续链和 previous_response_id 自动修复策略，仅把 Codex 的 `tool_search_output`、`custom_tool_call_output`、`mcp_tool_call_output` 等工具输出纳入续链识别，避免工具输出续轮丢失上一轮响应锚点。
+  - 测试：`go test ./internal/service -run 'Test(NeedsToolContinuationSignals|HasFunctionCallOutput|HasToolCallContext|FunctionCallOutputCallIDs|HasFunctionCallOutputMissingCallID|OpenAIWSRawPayloadHasToolCallOutput|BuildOpenAIWSReplayInputSequence|OpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabled(ToolSearchOutput|FunctionCallOutput))'`；`git diff --check`；`git diff --cached --check`。
+fix(openai): emit response.failed when /v1/responses SSE aborted post-flush: https://github.com/Wei-Shaw/sub2api/pull/2732
+style: fix lint errors in response.failed SSE writer: https://github.com/TokenFlux/TokenRouter/commit/53acde1efd236e54b629f2122b7dec6469945508
+chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/2f70d965bf5b046ad6e9474a77a493bf4fb60801
