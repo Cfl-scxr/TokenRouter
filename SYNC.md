@@ -439,4 +439,7 @@
   - 同步方式：cherry-pick direct commit `53acde1efd236e54b629f2122b7dec6469945508`，手动解决 `stream_error_event.go` 与上一条中文注释/模块路径适配冲突。
   - 决策：保留本 fork 模块路径与中文注释；采用 upstream 的 typed struct + `json.Marshal` 写法，避免手写 `strings.Builder` 带来的 errcheck/lint 问题，并继续保证 `output` 序列化为 `[]`。
   - 测试：`go test ./internal/handler -run 'Test(OpenAIHandleStreamingAwareError|GatewayHandleStreamingAwareError|InboundIsResponses|SynthesizeResponseID|MapResponsesErrorCode|OpenAIEnsureForwardErrorResponse|OpenAIRecoverResponsesPanic|GatewayEnsureForwardErrorResponse)'`；`git diff --check`；`git diff --cached --check`。
-chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/2f70d965bf5b046ad6e9474a77a493bf4fb60801
+✅ chore: update sponsors: https://github.com/TokenFlux/TokenRouter/commit/2f70d965bf5b046ad6e9474a77a493bf4fb60801
+  - 同步方式：检查并尝试 cherry-pick direct commit `2f70d965bf5b046ad6e9474a77a493bf4fb60801`，随后手动清理冲突，未应用代码或文档内容。
+  - 决策：保留 fork 当前中文 `README.md` 主文档结构，以及 `README_CN.md`、`README_JA.md` 已删除状态；upstream sponsor 更新目标是 upstream 英文 README 与多语言 README 文件，当前 fork 没有对应 sponsor 表结构，避免恢复已删除文档或引入孤立 logo。
+  - 测试：`git ls-files -u`；`git diff --check`；`git diff --cached --check`。
