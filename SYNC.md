@@ -448,5 +448,9 @@
   - 决策：保留 fork 已有 OpenAI WS v2、store=false 续链和 response.failed 处理；新增 OpenAI HTTP upstream profile，将 OpenAI/Codex 请求的响应头超时默认设为 0，并保留可配置 `gateway.openai_response_header_timeout` 以及 OpenAI HTTP/2 代理兼容回退策略。
   - 决策：解决 `http_upstream_test.go` 冲突时保留 fork 模块路径 `github.com/TokenFlux/TokenRouter`，并将新增 Go 注释改为中文。
   - 测试：`go test ./internal/config ./internal/repository ./internal/service -run 'Test(Gateway|Config|HTTPUpstream|WithHTTPUpstreamProfile|OpenAI|AccountTestService)'`；`git diff --check`；`git diff --cached --check`。
-feat: 支持内容审计风险阈值配置: https://github.com/Wei-Shaw/sub2api/pull/2777
+✅ feat: 支持内容审计风险阈值配置: https://github.com/Wei-Shaw/sub2api/pull/2777
+  - 同步方式：cherry-pick PR head 提交 `23f3d426c6b700e0e66141b4cdd678a8e1e02b4f`；前端 i18n 与风险控制页存在冲突，已手动合并。
+  - 决策：保留 fork 现有 OpenAI Cyber 警告记录、列表和自动封禁配置；在同一内容审计设置弹窗中新增“风险阈值”Tab，仅扩展 OpenAI Moderations 分类阈值配置，不改变 Cyber 警告策略。
+  - 决策：保留 fork 当前 `channelMonitor`、备份和中文/英文 locale 结构，未引入 upstream 位置中重复的完整 `riskControl/channelMonitor` 文案块。
+  - 测试：`go test ./internal/service ./internal/handler/admin -run 'Test(ContentModeration|UpdateContentModeration|Moderation)'`；`pnpm test:run src/views/admin/__tests__/RiskControlView.spec.ts`；`git diff --check`；`git diff --cached --check`。
 feat(quota): 用户 × 平台 USD 配额: https://github.com/Wei-Shaw/sub2api/pull/2766
