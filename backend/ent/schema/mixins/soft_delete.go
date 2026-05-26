@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/ent/intercept"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
@@ -80,17 +82,13 @@ func SkipSoftDelete(parent context.Context) context.Context {
 // 确保软删除的记录不会出现在普通查询结果中。
 func (d SoftDeleteMixin) Interceptors() []ent.Interceptor {
 	return []ent.Interceptor{
-		ent.TraverseFunc(func(ctx context.Context, q ent.Query) error {
+		intercept.TraverseFunc(func(ctx context.Context, q intercept.Query) error {
 			// 检查是否需要跳过软删除过滤
 			if skip, _ := ctx.Value(softDeleteKey{}).(bool); skip {
 				return nil
 			}
-			// 为查询添加 deleted_at IS NULL 条件
-			w, ok := q.(interface{ WhereP(...func(*sql.Selector)) })
-			if !ok {
-				return fmt.Errorf("soft delete: unexpected query type %T", q)
-			}
-			d.applyPredicate(w)
+			// 生成的 intercept.Query 包装层提供 WhereP，可对不同实体统一追加 SQL 谓词。
+			d.applyPredicate(q)
 			return nil
 		}),
 	}
