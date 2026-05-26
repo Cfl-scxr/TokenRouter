@@ -319,7 +319,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		apiKeyID = input.APIKey.ID
 	}
 	provider := normalizeDataShareProvider(input.Provider, input.APIKey)
-	model := firstNonBlank(input.Model, input.UpstreamModel, gjson.GetBytes(input.RequestBody, "model").String())
+	model := resolveDataShareActualModel(input)
 	sessionID := normalizeDataShareSessionID(input.SessionID, input.RequestID, input.RequestBody, apiKeyID)
 	trajectoryID := buildTrajectoryID(provider, sessionID, apiKeyID, groupID)
 	messages := normalizeCaptureMessages(input)
@@ -481,6 +481,7 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 		"group_id":          int64(0),
 		"account_id":        int64(0),
 		"request_id":        input.RequestID,
+		"requested_model":   firstNonBlank(input.Model, gjson.GetBytes(input.RequestBody, "model").String()),
 		"inbound_endpoint":  input.InboundEndpoint,
 		"upstream_endpoint": input.UpstreamEndpoint,
 		"user_agent":        input.UserAgent,
@@ -496,6 +497,11 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 		meta["account_id"] = input.Account.ID
 	}
 	return meta
+}
+
+func resolveDataShareActualModel(input DataShareCaptureInput) string {
+	// 正式交付要求 model 等于实际生成模型；映射后的上游模型优先，客户端请求模型只放入 meta。
+	return firstNonBlank(input.UpstreamModel, input.Model, gjson.GetBytes(input.RequestBody, "model").String())
 }
 
 func validateDataShareQuality(model string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
