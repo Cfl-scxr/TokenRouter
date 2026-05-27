@@ -2868,6 +2868,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				switch dialErr.StatusCode {
 				case http.StatusTooManyRequests:
 					s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
+					return nil, &UpstreamFailoverError{
+						StatusCode:      http.StatusTooManyRequests,
+						ResponseHeaders: cloneHeader(dialErr.ResponseHeaders),
+					}
 				case http.StatusForbidden:
 					s.persistOpenAIWSForbiddenSignal(ctx, account, dialErr.ResponseHeaders, []byte(strings.TrimSpace(acquireErr.Error())))
 				}
@@ -3065,6 +3069,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						errors.New(errMsg),
 						false,
 					)
+				}
+				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+					lease.MarkBroken()
+					return nil, &UpstreamFailoverError{
+						StatusCode:      http.StatusTooManyRequests,
+						ResponseBody:    append([]byte(nil), upstreamMessage...),
+						ResponseHeaders: cloneHeader(lease.HandshakeHeaders()),
+					}
 				}
 			}
 			if warning := buildOpenAIWSUpstreamWarning(eventType, upstreamMessage); warning != nil && hooks != nil && hooks.OnUpstreamError != nil {
