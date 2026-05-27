@@ -360,6 +360,75 @@ func TestDataShareSessionRepository_CompressesPayloadAndOmitsListPayload(t *test
 	require.Equal(t, tools, payloadItems[0].Tools)
 }
 
+func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedIncrement(t *testing.T) {
+	repo, client := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	session := func(trajectoryID string, content string) *service.DataShareSession {
+		return &service.DataShareSession{
+			TrajectoryID:       trajectoryID,
+			SessionID:          trajectoryID,
+			Dataset:            "tokenrouter-agent",
+			Provider:           service.PlatformOpenAI,
+			Model:              "gpt-5.5",
+			RequestPath:        "/v1/responses",
+			UserAgent:          "codex-cli",
+			Status:             service.DataShareStatusTerminated,
+			IsFinalSnapshot:    false,
+			SourceRequestCount: 1,
+			Tools:              []map[string]any{},
+			Messages:           []map[string]any{{"role": "user", "content": content}},
+			Usage:              map[string]any{"total_tokens": 1},
+			Meta:               map[string]any{"request_path": "/v1/responses"},
+			SessionJSON:        map[string]any{"messages": []map[string]any{{"role": "user", "content": content}}},
+			QualityStatus:      service.DataShareQualityInvalid,
+			QualityErrors:      []string{},
+			TotalTokens:        1,
+			CreatedAt:          now,
+			EndedAt:            &now,
+			UpdatedAt:          now,
+		}
+	}
+
+	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", strings.Repeat("a", 64))))
+	total, err := repo.TotalStorageBytes(ctx)
+	require.NoError(t, err)
+	require.Greater(t, total, int64(0))
+
+	// 新 session 超过阈值时直接跳过采集，避免继续扩大数据共享表空间。
+	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-2", strings.Repeat("b", 64)), service.DataShareUpsertOptions{StorageLimitBytes: total}))
+	count, err := client.DataShareSession.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// 已有 session 的小增量在阈值仍有余量时允许，避免正常任务无法闭合。
+	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", strings.Repeat("c", 64)), service.DataShareUpsertOptions{StorageLimitBytes: total + 4096}))
+	stored, err := client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-limit-1")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, stored.SourceRequestCount)
+
+	currentTotal, err := repo.TotalStorageBytes(ctx)
+	require.NoError(t, err)
+	require.Greater(t, currentTotal, total)
+
+	// 已有 session 的大增量超过阈值时也会跳过，避免单 session 持续追加打爆磁盘。
+	limit := currentTotal + 8
+	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", deterministicDataShareTestContent(4096)), service.DataShareUpsertOptions{StorageLimitBytes: limit}))
+	stored, err = client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-limit-1")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, stored.SourceRequestCount)
+}
+
+func deterministicDataShareTestContent(lines int) string {
+	var b strings.Builder
+	for i := 0; i < lines; i++ {
+		// 生成不完全重复的文本，避免压缩率过高导致大增量测试失真。
+		_, _ = fmt.Fprintf(&b, "line-%04d-%08x-%08x\n", i, i*2654435761, (i+17)*1103515245)
+	}
+	return b.String()
+}
+
 func TestDataShareSessionRepository_LegacyPayloadLazyCompression(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()

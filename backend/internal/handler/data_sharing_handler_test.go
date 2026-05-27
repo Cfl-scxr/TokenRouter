@@ -61,7 +61,7 @@ func (s *dataShareHandlerSettingRepoStub) Delete(_ context.Context, key string) 
 	return nil
 }
 
-func (r *dataShareHandlerRepoStub) UpsertCapture(context.Context, *service.DataShareSession) error {
+func (r *dataShareHandlerRepoStub) UpsertCapture(context.Context, *service.DataShareSession, ...service.DataShareUpsertOptions) error {
 	panic("unexpected UpsertCapture call")
 }
 
@@ -106,6 +106,10 @@ func (r *dataShareHandlerRepoStub) BatchDelete(context.Context, []int64, service
 
 func (r *dataShareHandlerRepoStub) Stats(context.Context, service.DataShareSessionFilters) (*service.DataShareStats, error) {
 	panic("unexpected Stats call")
+}
+
+func (r *dataShareHandlerRepoStub) TotalStorageBytes(context.Context) (int64, error) {
+	return 0, nil
 }
 
 func TestParseDataShareSessionFiltersIncludesRequestPath(t *testing.T) {

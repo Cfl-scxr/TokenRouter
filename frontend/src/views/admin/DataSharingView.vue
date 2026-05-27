@@ -3,7 +3,7 @@
     <div class="space-y-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white">数据概览</h2>
-        <button class="btn btn-secondary btn-sm self-start sm:self-auto" :disabled="statsLoading" title="刷新统计图表" @click="loadStats">
+        <button class="btn btn-secondary btn-sm self-start sm:self-auto" :disabled="statsLoading || storageLimitLoading" title="刷新统计图表" @click="refreshStats">
           <Icon name="refresh" size="sm" :class="statsLoading ? 'animate-spin' : ''" />
           <span class="ml-1">刷新统计</span>
         </button>
@@ -93,6 +93,54 @@
             </div>
             <Doughnut v-else-if="userAgentChartData" :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
             <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无 User Agent 数据</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">采集空间保护</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">超过阈值后停止记录新的数据共享采集，已有记录仍可查看和导出。</p>
+          </div>
+          <button class="btn btn-primary btn-sm" :disabled="savingStorageLimit || storageLimitLoading" @click="saveStorageLimit">
+            <Icon name="check" size="sm" class="mr-1" />
+            保存阈值
+          </button>
+        </div>
+        <div v-if="storageLimitLoading" class="flex h-24 items-center justify-center">
+          <LoadingSpinner />
+        </div>
+        <div v-else class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
+          <div>
+            <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>当前占用 {{ formatBytes(storageLimit?.current_storage_bytes) }}</span>
+              <span>{{ storageLimitStatusText }}</span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                class="h-full rounded-full transition-all"
+                :class="storageLimit?.exceeded ? 'bg-red-500' : 'bg-primary-500'"
+                :style="{ width: `${storageLimitProgress}%` }"
+              ></div>
+            </div>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              阈值按压缩后的 session payload 统计；设置为 0 表示不限制。
+            </p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+            <div>
+              <label class="input-label">空间阈值</label>
+              <input v-model="storageLimitInput" type="number" min="0" step="0.01" class="input" placeholder="0" />
+            </div>
+            <div>
+              <label class="input-label">单位</label>
+              <select v-model="storageLimitUnit" class="input">
+                <option value="MB">MB</option>
+                <option value="GB">GB</option>
+                <option value="TB">TB</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -434,6 +482,7 @@ import {
   type AdminDataShareSessionFilters,
   type DataShareCaptureSkipRule,
   type DataShareCaptureSkipRuleFieldScope,
+  type DataShareStorageLimit,
   type DataShareStats
 } from '@/api/admin/dataSharing'
 import { dataSharingAPI, type DataShareNotice, type DataShareSession } from '@/api/dataSharing'
@@ -447,6 +496,9 @@ const appStore = useAppStore()
 const notice = ref<DataShareNotice | null>(null)
 const noticeContent = ref('')
 const skipRules = ref<DataShareCaptureSkipRule[]>([])
+const storageLimit = ref<DataShareStorageLimit | null>(null)
+const storageLimitInput = ref('')
+const storageLimitUnit = ref<'MB' | 'GB' | 'TB'>('GB')
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
@@ -462,6 +514,8 @@ const statsLoading = ref(false)
 const savingNotice = ref(false)
 const skipRulesLoading = ref(false)
 const savingSkipRules = ref(false)
+const storageLimitLoading = ref(false)
+const savingStorageLimit = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -734,6 +788,18 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 
+const storageLimitProgress = computed(() => {
+  if (!storageLimit.value?.enabled) return 0
+  return Math.min(Math.max(storageLimit.value.usage_ratio * 100, 0), 100)
+})
+
+const storageLimitStatusText = computed(() => {
+  if (!storageLimit.value?.enabled) return '未设置阈值'
+  const limit = formatBytes(storageLimit.value.limit_bytes)
+  if (storageLimit.value.exceeded) return `已超过 ${limit}`
+  return `阈值 ${limit} · ${storageLimitProgress.value.toFixed(1)}%`
+})
+
 const requestPathOptions = computed(() => {
   const values = new Set<string>()
   for (const point of stats.value?.request_path_breakdown || []) {
@@ -843,6 +909,68 @@ async function loadSkipRules() {
   } finally {
     skipRulesLoading.value = false
   }
+}
+
+async function loadStorageLimit() {
+  storageLimitLoading.value = true
+  try {
+    storageLimit.value = await adminDataSharingAPI.getStorageLimit()
+    applyStorageLimitToForm(storageLimit.value.limit_bytes)
+  } catch (error) {
+    appStore.showError('加载采集空间阈值失败')
+  } finally {
+    storageLimitLoading.value = false
+  }
+}
+
+async function saveStorageLimit() {
+  savingStorageLimit.value = true
+  try {
+    storageLimit.value = await adminDataSharingAPI.updateStorageLimit(storageLimitBytesFromForm())
+    applyStorageLimitToForm(storageLimit.value.limit_bytes)
+    await loadStats()
+    appStore.showSuccess('采集空间阈值已保存')
+  } catch (error) {
+    appStore.showError('保存采集空间阈值失败')
+  } finally {
+    savingStorageLimit.value = false
+  }
+}
+
+function applyStorageLimitToForm(limitBytes: number) {
+  if (!limitBytes || limitBytes <= 0) {
+    storageLimitInput.value = ''
+    storageLimitUnit.value = 'GB'
+    return
+  }
+  const tb = 1024 ** 4
+  const gb = 1024 ** 3
+  const mb = 1024 ** 2
+  if (limitBytes % tb === 0) {
+    storageLimitUnit.value = 'TB'
+    storageLimitInput.value = String(limitBytes / tb)
+  } else if (limitBytes % gb === 0) {
+    storageLimitUnit.value = 'GB'
+    storageLimitInput.value = String(limitBytes / gb)
+  } else {
+    storageLimitUnit.value = 'MB'
+    storageLimitInput.value = trimDecimal(limitBytes / mb)
+  }
+}
+
+function storageLimitBytesFromForm() {
+  const raw = Number(storageLimitInput.value)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  const multiplier = storageLimitUnit.value === 'TB'
+    ? 1024 ** 4
+    : storageLimitUnit.value === 'GB'
+      ? 1024 ** 3
+      : 1024 ** 2
+  return Math.round(raw * multiplier)
+}
+
+function trimDecimal(value: number) {
+  return value.toFixed(2).replace(/\.?0+$/, '')
 }
 
 async function saveSkipRules() {
@@ -992,6 +1120,11 @@ async function loadStats() {
   }
 }
 
+function refreshStats() {
+  loadStats()
+  loadStorageLimit()
+}
+
 async function loadSessions() {
   loading.value = true
   try {
@@ -1009,6 +1142,7 @@ async function loadSessions() {
 function refreshAll() {
   loadSessions()
   loadStats()
+  loadStorageLimit()
 }
 
 function handleFilterChange() {

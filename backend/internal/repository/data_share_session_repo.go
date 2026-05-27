@@ -39,7 +39,7 @@ func (r *dataShareSessionRepository) sqlExecutorFromContext(ctx context.Context)
 	return r.sql
 }
 
-func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session *service.DataShareSession) error {
+func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session *service.DataShareSession, opts ...service.DataShareUpsertOptions) error {
 	if session == nil {
 		return nil
 	}
@@ -56,6 +56,16 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		compressed, payloadBytes, err := encodeDataSharePayload(payload)
 		if err != nil {
 			return err
+		}
+		// 新 session 写入前做容量保护，避免数据共享采集把磁盘持续打满。
+		if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
+			currentBytes, err := r.TotalStorageBytes(ctx)
+			if err != nil {
+				return err
+			}
+			if currentBytes+int64(len(compressed)) > limitBytes {
+				return nil
+			}
 		}
 		builder := client.DataShareSession.Create().
 			SetTrajectoryID(session.TrajectoryID).
@@ -138,6 +148,17 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	if err != nil {
 		return err
 	}
+	// 已有 session 的增量也需要容量保护，避免单个任务持续追加时突破磁盘阈值。
+	if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
+		currentBytes, err := r.TotalStorageBytes(ctx)
+		if err != nil {
+			return err
+		}
+		nextBytes := currentBytes - existing.StorageBytes + int64(len(compressed))
+		if nextBytes > limitBytes {
+			return nil
+		}
+	}
 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
@@ -167,6 +188,13 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		SetUpdatedAt(now).
 		Save(ctx)
 	return err
+}
+
+func resolveDataShareStorageLimit(opts []service.DataShareUpsertOptions) int64 {
+	if len(opts) == 0 || opts[0].StorageLimitBytes <= 0 {
+		return 0
+	}
+	return opts[0].StorageLimitBytes
 }
 
 func (r *dataShareSessionRepository) List(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {
@@ -322,6 +350,13 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 	}
 	stats.UserAgentBreakdown = userAgentBreakdown
 	return stats, nil
+}
+
+func (r *dataShareSessionRepository) TotalStorageBytes(ctx context.Context) (int64, error) {
+	sqlq := r.sqlExecutorFromContext(ctx)
+	total := int64(0)
+	err := scanSingleRow(ctx, sqlq, `SELECT COALESCE(SUM(storage_bytes), 0) FROM data_share_sessions`, nil, &total)
+	return total, err
 }
 
 func (r *dataShareSessionRepository) loadStorageTrend(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareStoragePoint, error) {

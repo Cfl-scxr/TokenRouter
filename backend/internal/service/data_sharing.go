@@ -44,6 +44,7 @@ const dataShareExportTicketTTL = 5 * time.Minute
 var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES_INVALID", "data sharing capture skip rules are invalid")
 var ErrDataShareExportTicketInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_TICKET_INVALID", "data sharing export ticket is invalid")
 var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT_TICKET_FORBIDDEN", "data sharing export ticket scope is not allowed")
+var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
 
 const (
 	dataShareSkipRuleMatchContains = "contains"
@@ -68,6 +69,15 @@ type DataShareCaptureSkipRule struct {
 	Patterns       []string `json:"patterns"`
 	CaseSensitive  bool     `json:"case_sensitive"`
 	MatchMode      string   `json:"match_mode"`
+}
+
+// DataShareStorageLimit 描述管理端配置的数据共享采集空间保护阈值。
+type DataShareStorageLimit struct {
+	LimitBytes          int64   `json:"limit_bytes"`
+	CurrentStorageBytes int64   `json:"current_storage_bytes"`
+	Enabled             bool    `json:"enabled"`
+	Exceeded            bool    `json:"exceeded"`
+	UsageRatio          float64 `json:"usage_ratio"`
 }
 
 // DataShareSession 保存一条聚合后的 Agent session。
@@ -260,15 +270,22 @@ type DataShareCaptureInput struct {
 	UpstreamEndpoint  string
 }
 
+// DataShareUpsertOptions 是采集写入时的附加保护参数。
+type DataShareUpsertOptions struct {
+	// StorageLimitBytes 为 0 时不限制；大于 0 时 repository 在新建 session 和合并增量前检查容量。
+	StorageLimitBytes int64
+}
+
 // DataShareSessionRepository 定义数据共享 session 的持久化能力。
 type DataShareSessionRepository interface {
-	UpsertCapture(ctx context.Context, session *DataShareSession) error
+	UpsertCapture(ctx context.Context, session *DataShareSession, opts ...DataShareUpsertOptions) error
 	List(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
 	ListWithPayload(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
 	GetByID(ctx context.Context, id int64) (*DataShareSession, error)
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
 	Stats(ctx context.Context, filters DataShareSessionFilters) (*DataShareStats, error)
+	TotalStorageBytes(ctx context.Context) (int64, error)
 }
 
 // DataSharingService 负责数据共享须知、采集、导出和统计。
@@ -355,6 +372,82 @@ func (s *DataSharingService) UpdateCaptureSkipRules(ctx context.Context, rules [
 	}
 	s.clearCaptureSkipRulesCache()
 	return cloneDataShareCaptureSkipRules(normalized), nil
+}
+
+// GetStorageLimit 返回数据共享采集空间阈值和当前压缩后占用。
+func (s *DataSharingService) GetStorageLimit(ctx context.Context) (*DataShareStorageLimit, error) {
+	limitBytes, err := s.loadStorageLimitBytes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	currentBytes := int64(0)
+	if s != nil && s.repo != nil {
+		currentBytes, err = s.repo.TotalStorageBytes(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buildDataShareStorageLimit(limitBytes, currentBytes), nil
+}
+
+// UpdateStorageLimit 保存数据共享采集空间阈值；0 表示关闭容量限制。
+func (s *DataSharingService) UpdateStorageLimit(ctx context.Context, limitBytes int64) (*DataShareStorageLimit, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, ErrSettingNotFound
+	}
+	if limitBytes < 0 {
+		return nil, ErrDataShareStorageLimitInvalid
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingStorageLimit, strconv.FormatInt(limitBytes, 10)); err != nil {
+		return nil, err
+	}
+	return s.GetStorageLimit(ctx)
+}
+
+func (s *DataSharingService) loadStorageLimitBytes(ctx context.Context) (int64, error) {
+	if s == nil || s.settingRepo == nil {
+		return 0, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingStorageLimit)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	limitBytes, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || limitBytes < 0 {
+		return 0, ErrDataShareStorageLimitInvalid
+	}
+	return limitBytes, nil
+}
+
+func buildDataShareStorageLimit(limitBytes, currentBytes int64) *DataShareStorageLimit {
+	if limitBytes < 0 {
+		limitBytes = 0
+	}
+	if currentBytes < 0 {
+		currentBytes = 0
+	}
+	out := &DataShareStorageLimit{
+		LimitBytes:          limitBytes,
+		CurrentStorageBytes: currentBytes,
+		Enabled:             limitBytes > 0,
+		Exceeded:            limitBytes > 0 && currentBytes >= limitBytes,
+	}
+	if limitBytes > 0 {
+		out.UsageRatio = float64(currentBytes) / float64(limitBytes)
+	}
+	return out
+}
+
+func (s *DataSharingService) captureStorageLimitOption(ctx context.Context) DataShareUpsertOptions {
+	limitBytes, err := s.loadStorageLimitBytes(ctx)
+	if err != nil {
+		slog.Warn("data sharing: failed to load storage limit, capture continues without limit", "error", err)
+		return DataShareUpsertOptions{}
+	}
+	return DataShareUpsertOptions{StorageLimitBytes: limitBytes}
 }
 
 func (s *DataSharingService) shouldSkipDataShareCapture(ctx context.Context, input DataShareCaptureInput) bool {
@@ -740,7 +833,7 @@ func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input Dat
 		input.Model = input.UpstreamModel
 	}
 	session := s.buildSession(input)
-	return s.repo.UpsertCapture(ctx, session)
+	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
 }
 
 // CaptureOpenAIRequest 采集 OpenAI 协议成功请求。
@@ -755,7 +848,7 @@ func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input Dat
 		return nil
 	}
 	session := s.buildSession(input)
-	return s.repo.UpsertCapture(ctx, session)
+	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
 }
 
 // ListSessions 查询数据共享 session。

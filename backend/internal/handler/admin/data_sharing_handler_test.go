@@ -124,3 +124,31 @@ func TestDataShareSkipRulesHandlers(t *testing.T) {
 	require.Equal(t, http.StatusOK, putRecorder.Code)
 	require.NotEmpty(t, repo.values[service.SettingKeyDataSharingCaptureSkipRules])
 }
+
+func TestDataShareStorageLimitHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
+	h := NewDataSharingHandler(service.NewDataSharingService(nil, repo))
+
+	getRecorder := httptest.NewRecorder()
+	getCtx, _ := gin.CreateTestContext(getRecorder)
+	getCtx.Request = httptest.NewRequest(http.MethodGet, "/admin/data-sharing/storage-limit", nil)
+	h.GetStorageLimit(getCtx)
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var getEnvelope struct {
+		Code int                           `json:"code"`
+		Data service.DataShareStorageLimit `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &getEnvelope))
+	require.False(t, getEnvelope.Data.Enabled)
+
+	body := bytes.NewBufferString(`{"limit_bytes":1048576}`)
+	putRecorder := httptest.NewRecorder()
+	putCtx, _ := gin.CreateTestContext(putRecorder)
+	putCtx.Request = httptest.NewRequest(http.MethodPut, "/admin/data-sharing/storage-limit", body)
+	putCtx.Request.Header.Set("Content-Type", "application/json")
+	h.UpdateStorageLimit(putCtx)
+	require.Equal(t, http.StatusOK, putRecorder.Code)
+	require.Equal(t, "1048576", repo.values[service.SettingKeyDataSharingStorageLimit])
+}

@@ -35,6 +35,11 @@ type UpdateDataShareSkipRulesRequest struct {
 	Rules []service.DataShareCaptureSkipRule `json:"rules"`
 }
 
+// UpdateDataShareStorageLimitRequest 是管理端更新数据共享空间阈值的请求。
+type UpdateDataShareStorageLimitRequest struct {
+	LimitBytes int64 `json:"limit_bytes"`
+}
+
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
 type BatchDeleteDataShareSessionsRequest struct {
 	IDs []int64 `json:"ids"`
@@ -136,6 +141,31 @@ func (h *DataSharingHandler) UpdateSkipRules(c *gin.Context) {
 		return
 	}
 	response.Success(c, rules)
+}
+
+// GetStorageLimit 返回数据共享采集空间阈值和当前占用。
+func (h *DataSharingHandler) GetStorageLimit(c *gin.Context) {
+	limit, err := h.dataSharingService.GetStorageLimit(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, limit)
+}
+
+// UpdateStorageLimit 保存数据共享采集空间阈值。
+func (h *DataSharingHandler) UpdateStorageLimit(c *gin.Context) {
+	var req UpdateDataShareStorageLimitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	limit, err := h.dataSharingService.UpdateStorageLimit(c.Request.Context(), req.LimitBytes)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, limit)
 }
 
 // ListSessions 查询所有数据共享 session。

@@ -68,6 +68,14 @@ export interface DataShareCaptureSkipRule {
   match_mode: DataShareCaptureSkipRuleMatchMode
 }
 
+export interface DataShareStorageLimit {
+  limit_bytes: number
+  current_storage_bytes: number
+  enabled: boolean
+  exceeded: boolean
+  usage_ratio: number
+}
+
 export interface AdminDataShareSessionFilters extends DataShareSessionFilters {
   user_id?: number
   user_name?: string
@@ -90,6 +98,16 @@ export async function getSkipRules(): Promise<DataShareCaptureSkipRule[]> {
 
 export async function updateSkipRules(rules: DataShareCaptureSkipRule[]): Promise<DataShareCaptureSkipRule[]> {
   const { data } = await apiClient.put<DataShareCaptureSkipRule[]>('/admin/data-sharing/skip-rules', { rules })
+  return data
+}
+
+export async function getStorageLimit(): Promise<DataShareStorageLimit> {
+  const { data } = await apiClient.get<DataShareStorageLimit>('/admin/data-sharing/storage-limit')
+  return data
+}
+
+export async function updateStorageLimit(limitBytes: number): Promise<DataShareStorageLimit> {
+  const { data } = await apiClient.put<DataShareStorageLimit>('/admin/data-sharing/storage-limit', { limit_bytes: limitBytes })
   return data
 }
 
@@ -150,6 +168,8 @@ export const adminDataSharingAPI = {
   updateNotice,
   getSkipRules,
   updateSkipRules,
+  getStorageLimit,
+  updateStorageLimit,
   listSessions,
   getSession,
   deleteSession,
