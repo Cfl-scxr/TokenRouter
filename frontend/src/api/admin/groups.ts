@@ -77,6 +77,23 @@ export async function getById(id: number): Promise<AdminGroup> {
 }
 
 /**
+ * 获取自定义 /v1/models 列表的候选模型。
+ * id=0 表示创建分组流程，仅返回平台默认模型。
+ */
+export async function getModelsListCandidates(
+  id: number,
+  platform?: GroupPlatform
+): Promise<string[]> {
+  const { data } = await apiClient.get<{ models: string[] }>(
+    `/admin/groups/${id}/models-list-candidates`,
+    {
+      params: platform ? { platform } : undefined
+    }
+  )
+  return data.models || []
+}
+
+/**
  * Create new group
  * @param groupData - Group data
  * @returns Created group
@@ -306,6 +323,7 @@ export const groupsAPI = {
   getAll,
   getByPlatform,
   getById,
+  getModelsListCandidates,
   create,
   update,
   delete: deleteGroup,
