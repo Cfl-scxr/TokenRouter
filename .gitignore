@@ -114,6 +114,9 @@ backend/.installed
 # ===================
 # 其他
 # ===================
+# 本地同步和计划文档，不上传到远端
+SYNC.md
+PLAN.md
 tests
 CLAUDE.md
 .claude
