@@ -1,6 +1,14 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white">数据概览</h2>
+        <button class="btn btn-secondary btn-sm self-start sm:self-auto" :disabled="statsLoading" title="刷新统计图表" @click="loadStats">
+          <Icon name="refresh" size="sm" :class="statsLoading ? 'animate-spin' : ''" />
+          <span class="ml-1">刷新统计</span>
+        </button>
+      </div>
+
       <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">Session 总数</p>
@@ -32,12 +40,7 @@
 
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)_minmax(320px,0.65fr)]">
         <div class="card p-4">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">空间增长趋势</h2>
-            <button class="btn btn-secondary btn-sm" :disabled="statsLoading" @click="loadStats">
-              <Icon name="refresh" size="sm" :class="statsLoading ? 'animate-spin' : ''" />
-            </button>
-          </div>
+          <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">空间增长趋势</h2>
           <div class="h-64">
             <div v-if="statsLoading" class="flex h-full items-center justify-center">
               <LoadingSpinner />
