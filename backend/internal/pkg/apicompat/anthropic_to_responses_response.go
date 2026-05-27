@@ -95,10 +95,16 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	}
 
 	// Usage
+	// Anthropic 的 input_tokens 不含 cache_read/cache_creation，而 OpenAI
+	// Responses 的 input_tokens 是包含缓存 token 的总量。转换时补回这些 token，
+	// 确保下游看到 OpenAI 语义。
+	totalInputTokens := resp.Usage.InputTokens +
+		resp.Usage.CacheReadInputTokens +
+		resp.Usage.CacheCreationInputTokens
 	out.Usage = &ResponsesUsage{
-		InputTokens:  resp.Usage.InputTokens,
+		InputTokens:  totalInputTokens,
 		OutputTokens: resp.Usage.OutputTokens,
-		TotalTokens:  resp.Usage.InputTokens + resp.Usage.OutputTokens,
+		TotalTokens:  totalInputTokens + resp.Usage.OutputTokens,
 	}
 	if resp.Usage.CacheReadInputTokens > 0 {
 		out.Usage.InputTokensDetails = &ResponsesInputTokensDetails{
@@ -150,10 +156,12 @@ type AnthropicEventToResponsesState struct {
 	CurrentCallID string
 	CurrentName   string
 
-	// Usage from message_delta
-	InputTokens          int
-	OutputTokens         int
-	CacheReadInputTokens int
+	// message_start / message_delta 中的 Usage。这里的 InputTokens 遵循
+	// Anthropic 语义（不含缓存 token）；输出 OpenAI Responses usage 时再补回。
+	InputTokens              int
+	OutputTokens             int
+	CacheReadInputTokens     int
+	CacheCreationInputTokens int
 }
 
 // NewAnthropicEventToResponsesState returns an initialised stream state.
@@ -224,6 +232,12 @@ func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEven
 		}
 		if evt.Message.Usage.InputTokens > 0 {
 			state.InputTokens = evt.Message.Usage.InputTokens
+		}
+		if evt.Message.Usage.CacheReadInputTokens > 0 {
+			state.CacheReadInputTokens = evt.Message.Usage.CacheReadInputTokens
+		}
+		if evt.Message.Usage.CacheCreationInputTokens > 0 {
+			state.CacheCreationInputTokens = evt.Message.Usage.CacheCreationInputTokens
 		}
 	}
 
@@ -392,8 +406,14 @@ func anthToResHandleMessageDelta(evt *AnthropicStreamEvent, state *AnthropicEven
 	// Update usage
 	if evt.Usage != nil {
 		state.OutputTokens = evt.Usage.OutputTokens
+		if evt.Usage.InputTokens > 0 {
+			state.InputTokens = evt.Usage.InputTokens
+		}
 		if evt.Usage.CacheReadInputTokens > 0 {
 			state.CacheReadInputTokens = evt.Usage.CacheReadInputTokens
+		}
+		if evt.Usage.CacheCreationInputTokens > 0 {
+			state.CacheCreationInputTokens = evt.Usage.CacheCreationInputTokens
 		}
 	}
 
@@ -472,10 +492,13 @@ func makeResponsesCompletedEvent(
 	seq := state.SequenceNumber
 	state.SequenceNumber++
 
+	// Anthropic 的 input_tokens 不含 cache_read/cache_creation；这里补回缓存 token，
+	// 以匹配 OpenAI Responses 中 input_tokens 表示总量的语义。
+	totalInputTokens := state.InputTokens + state.CacheReadInputTokens + state.CacheCreationInputTokens
 	usage := &ResponsesUsage{
-		InputTokens:  state.InputTokens,
+		InputTokens:  totalInputTokens,
 		OutputTokens: state.OutputTokens,
-		TotalTokens:  state.InputTokens + state.OutputTokens,
+		TotalTokens:  totalInputTokens + state.OutputTokens,
 	}
 	if state.CacheReadInputTokens > 0 {
 		usage.InputTokensDetails = &ResponsesInputTokensDetails{

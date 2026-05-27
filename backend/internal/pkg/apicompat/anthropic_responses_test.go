@@ -1597,3 +1597,139 @@ func TestAnthropicToResponses_TemperatureStrippedForAllGpt5Variants(t *testing.T
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AnthropicToResponsesResponse：Anthropic input_tokens 不含缓存 token，
+// OpenAI Responses input_tokens 则是包含缓存 token 的总量。
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponsesResponse_CacheTokensUseOpenAIInputSemantics(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_cache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: "end_turn",
+		Usage: AnthropicUsage{
+			InputTokens:              3318,
+			OutputTokens:             123,
+			CacheReadInputTokens:     50688,
+			CacheCreationInputTokens: 200,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	// 3318（非缓存）+ 50688（cache read）+ 200（cache creation）= 54206
+	assert.Equal(t, 54206, out.Usage.InputTokens)
+	assert.Equal(t, 123, out.Usage.OutputTokens)
+	assert.Equal(t, 54329, out.Usage.TotalTokens)
+	require.NotNil(t, out.Usage.InputTokensDetails)
+	assert.Equal(t, 50688, out.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicToResponsesResponse_NoCacheTokens(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_nocache",
+		Model: "claude-sonnet-4-5-20250929",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "ok"},
+		},
+		StopReason: "end_turn",
+		Usage: AnthropicUsage{
+			InputTokens:  100,
+			OutputTokens: 50,
+		},
+	}
+
+	out := AnthropicToResponsesResponse(resp)
+	require.NotNil(t, out.Usage)
+	assert.Equal(t, 100, out.Usage.InputTokens)
+	assert.Equal(t, 50, out.Usage.OutputTokens)
+	assert.Equal(t, 150, out.Usage.TotalTokens)
+	assert.Nil(t, out.Usage.InputTokensDetails)
+}
+
+func TestAnthropicEventToResponses_CacheTokensRoundTripFromMessageStart(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	// message_start 会在初始 Usage 对象里携带缓存字段。
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_stream_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{
+				InputTokens:              12,
+				CacheReadInputTokens:     9,
+				CacheCreationInputTokens: 3,
+			},
+		},
+	}, state)
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens: 7,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	// 终止 response.completed 事件必须包含 OpenAI 语义的 usage。
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed, "response.completed event must be emitted")
+	require.NotNil(t, completed.Response)
+	require.NotNil(t, completed.Response.Usage)
+	// 12（非缓存）+ 9（cache read）+ 3（cache creation）= 24
+	assert.Equal(t, 24, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 7, completed.Response.Usage.OutputTokens)
+	assert.Equal(t, 31, completed.Response.Usage.TotalTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 9, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_delta_cache",
+			Model: "claude-sonnet-4-5-20250929",
+			Usage: AnthropicUsage{InputTokens: 20},
+		},
+	}, state)
+
+	// 部分上游只在最终 message_delta 上输出缓存字段。
+	AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_delta",
+		Usage: &AnthropicUsage{
+			OutputTokens:             8,
+			CacheReadInputTokens:     11,
+			CacheCreationInputTokens: 4,
+		},
+	}, state)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{Type: "message_stop"}, state)
+
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	require.NotNil(t, completed)
+	require.NotNil(t, completed.Response.Usage)
+	// 20（非缓存）+ 11（cache read）+ 4（cache creation）= 35
+	assert.Equal(t, 35, completed.Response.Usage.InputTokens)
+	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
+	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
+	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
