@@ -395,6 +395,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	acc.SupplementResponseOutput(finalResponse)
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
+	chatRespBody, _ := json.Marshal(chatResp)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -407,6 +408,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		Model:         originalModel,
 		BillingModel:  billingModel,
 		UpstreamModel: upstreamModel,
+		ResponseBody:  cloneDataSharingRequestBody(chatRespBody),
 		Stream:        false,
 		Duration:      time.Since(startTime),
 	}, nil
@@ -449,6 +451,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
+	var finalResponseBody []byte
+	streamAccumulator := newOpenAIChatCompletionsStreamAccumulator(originalModel)
 	firstChunk := true
 	clientDisconnected := false
 	clientOutputStarted := false
@@ -477,6 +481,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	resultWithUsage := func() *OpenAIForwardResult {
+		responseBody := cloneDataSharingRequestBody(finalResponseBody)
+		if len(responseBody) == 0 {
+			responseBody = streamAccumulator.ResponseBody(&usage)
+		}
 		return &OpenAIForwardResult{
 			RequestID:     requestID,
 			Usage:         usage,
@@ -486,6 +494,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:        true,
 			Duration:      time.Since(startTime),
 			FirstTokenMs:  firstTokenMs,
+			ResponseBody:  responseBody,
 		}
 	}
 
@@ -511,11 +520,19 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if isTerminalEvent && event.Response != nil && event.Response.Usage != nil {
 			usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 		}
+		if isTerminalEvent && event.Response != nil && len(event.Response.Output) > 0 {
+			if responseBody, err := json.Marshal(event.Response); err == nil {
+				finalResponseBody = responseBody
+			}
+		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
+		for _, chunk := range chunks {
+			observeOpenAIChatStreamChunk(streamAccumulator, chunk, &usage)
+			refusalDetector.ObserveChatChunk(chunk)
+		}
 		if !clientDisconnected {
 			for _, chunk := range chunks {
-				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
 					logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
@@ -561,9 +578,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
-		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
+		finalChunks := apicompat.FinalizeResponsesChatStream(state)
+		for _, chunk := range finalChunks {
+			observeOpenAIChatStreamChunk(streamAccumulator, chunk, &usage)
+			refusalDetector.ObserveChatChunk(chunk)
+		}
+		if len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
-				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
 					continue

@@ -21,15 +21,16 @@ func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 				DataSharingEnabled: true,
 			},
 		},
-		Provider:      PlatformOpenAI,
-		Model:         "gpt-5-alias",
-		UpstreamModel: "gpt-5-2026-05-01",
-		SessionID:     "session-1",
-		RequestID:     "request-1",
-		RequestBody:   []byte(`{"model":"gpt-5-alias","messages":[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}}]},{"role":"tool","tool_call_id":"call_1","content":"README.md"}],"tools":[{"type":"function","function":{"name":"exec_command","description":"运行命令","parameters":{"type":"object"}}}]}`),
-		ResponseBody:  []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}],"id":"resp_1"}`),
-		InputTokens:   10,
-		OutputTokens:  5,
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5-alias",
+		UpstreamModel:   "gpt-5-2026-05-01",
+		SessionID:       "session-1",
+		RequestID:       "request-1",
+		RequestBody:     []byte(`{"model":"gpt-5-alias","messages":[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}}]},{"role":"tool","tool_call_id":"call_1","content":"README.md"}],"tools":[{"type":"function","function":{"name":"exec_command","description":"运行命令","parameters":{"type":"object"}}}]}`),
+		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}],"id":"resp_1"}`),
+		InboundEndpoint: "v1/chat/completions",
+		InputTokens:     10,
+		OutputTokens:    5,
 	})
 
 	if session.Model != "gpt-5-2026-05-01" {
@@ -40,6 +41,15 @@ func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 	}
 	if got := session.Meta["requested_model"]; got != "gpt-5-alias" {
 		t.Fatalf("meta.requested_model = %v, want client requested model", got)
+	}
+	if got := session.RequestPath; got != "/v1/chat/completions" {
+		t.Fatalf("request_path = %q, want normalized inbound path", got)
+	}
+	if got := session.SessionJSON["request_path"]; got != "/v1/chat/completions" {
+		t.Fatalf("session_json.request_path = %v, want normalized inbound path", got)
+	}
+	if got := session.Meta["inbound_endpoint"]; got != "/v1/chat/completions" {
+		t.Fatalf("meta.inbound_endpoint = %v, want normalized inbound path", got)
 	}
 	if session.Exportable != true {
 		t.Fatalf("exportable = false, quality_errors = %v", session.QualityErrors)
@@ -117,6 +127,109 @@ func TestBuildSessionCapturesOpenAIResponsesInputAndOutput(t *testing.T) {
 	}
 	if session.QualityStatus != DataShareQualityComplete {
 		t.Fatalf("quality_status = %q, want complete", session.QualityStatus)
+	}
+}
+
+func TestBuildSessionCapturesAnthropicResponseBody(t *testing.T) {
+	gid := int64(12)
+	svc := NewDataSharingService(nil, nil)
+
+	session := svc.buildSession(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group: &Group{
+				ID:                 gid,
+				Platform:           PlatformAnthropic,
+				DataSharingEnabled: true,
+			},
+		},
+		Provider: PlatformAnthropic,
+		Model:    "claude-sonnet-4-5-20250929",
+		RequestBody: []byte(`{
+			"model":"claude-sonnet-4-5-20250929",
+			"system":"你是编码助手",
+			"messages":[
+				{"role":"user","content":"列目录"},
+				{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"exec_command","input":{"cmd":"ls"}}]},
+				{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"README.md"}]}
+			],
+			"tools":[{"name":"exec_command","description":"运行命令","input_schema":{"type":"object"}}]
+		}`),
+		ResponseBody: []byte(`{
+			"id":"msg_1",
+			"type":"message",
+			"role":"assistant",
+			"content":[{"type":"text","text":"看到了 README.md"}],
+			"usage":{"input_tokens":10,"output_tokens":5}
+		}`),
+		InboundEndpoint: "/v1/messages",
+		InputTokens:     10,
+		OutputTokens:    5,
+	})
+
+	if got := session.RequestPath; got != "/v1/messages" {
+		t.Fatalf("request_path = %q, want /v1/messages", got)
+	}
+	if len(session.Messages) != 4 {
+		t.Fatalf("message count = %d, want 4: %#v", len(session.Messages), session.Messages)
+	}
+	if got := session.Messages[1]["role"]; got != "assistant" {
+		t.Fatalf("tool_use role = %v, want assistant", got)
+	}
+	calls, ok := session.Messages[1]["tool_calls"].([]map[string]any)
+	if !ok || len(calls) != 1 || calls[0]["id"] != "toolu_1" || calls[0]["name"] != "exec_command" {
+		t.Fatalf("tool_calls not normalized: %#v", session.Messages[1]["tool_calls"])
+	}
+	if got := session.Messages[2]["role"]; got != "tool" {
+		t.Fatalf("tool_result role = %v, want tool", got)
+	}
+	if got := session.Messages[2]["tool_call_id"]; got != "toolu_1" {
+		t.Fatalf("tool_call_id = %v, want toolu_1", got)
+	}
+	if got := session.Messages[3]["role"]; got != "assistant" {
+		t.Fatalf("response role = %v, want assistant", got)
+	}
+	if got := dataShareContentText(session.Messages[3]["content"]); got != "看到了 README.md" {
+		t.Fatalf("response content = %q, want assistant text", got)
+	}
+	if !session.Exportable {
+		t.Fatalf("exportable = false, quality_errors = %v", session.QualityErrors)
+	}
+}
+
+func TestAnthropicStreamAccumulatorBuildsFinalMessage(t *testing.T) {
+	acc := &anthropicStreamResponseAccumulator{}
+	acc.ObserveData("", `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","usage":{"input_tokens":10}}}`)
+	acc.ObserveData("", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"exec_command","input":{}}}`)
+	acc.ObserveData("", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"cmd\""}}`)
+	acc.ObserveData("", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":":\"ls\"}"}}`)
+	acc.ObserveData("", `{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`)
+	acc.ObserveData("", `{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"看到了 README.md"}}`)
+	body := acc.ObserveData("", `{"type":"message_delta","usage":{"output_tokens":5},"delta":{"stop_reason":"end_turn"}}`)
+
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("invalid accumulated body: %v", err)
+	}
+	messages := normalizeDataShareMessages([]map[string]any{got})
+	if len(messages) != 1 {
+		t.Fatalf("message count = %d, want 1: %#v", len(messages), messages)
+	}
+	calls, ok := messages[0]["tool_calls"].([]map[string]any)
+	if !ok || len(calls) != 1 {
+		t.Fatalf("tool_calls not normalized: %#v", messages[0]["tool_calls"])
+	}
+	if calls[0]["id"] != "toolu_1" || calls[0]["name"] != "exec_command" {
+		t.Fatalf("tool call mismatch: %#v", calls[0])
+	}
+	args, ok := calls[0]["arguments"].(map[string]any)
+	if !ok || args["cmd"] != "ls" {
+		t.Fatalf("tool arguments mismatch: %#v", calls[0]["arguments"])
+	}
+	if got := dataShareContentText(got["content"]); got != "看到了 README.md" {
+		t.Fatalf("content text = %q, want assistant text", got)
 	}
 }
 

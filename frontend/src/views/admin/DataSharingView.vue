@@ -30,7 +30,7 @@
         </div>
       </div>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)]">
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)_minmax(320px,0.65fr)]">
         <div class="card p-4">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">空间增长趋势</h2>
@@ -55,6 +55,17 @@
             </div>
             <Bar v-else-if="groupStorageChartData" :data="groupStorageChartData" :options="barChartOptions" />
             <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无分组数据</div>
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">请求路径分布</h2>
+          <div class="h-64">
+            <div v-if="statsLoading" class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+            <Doughnut v-else-if="requestPathChartData" :data="requestPathChartData" :options="doughnutChartOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无路径数据</div>
           </div>
         </div>
       </div>
@@ -90,6 +101,7 @@
                 <input v-model="filters.user_name" type="text" class="input w-36" placeholder="用户名称" @input="handleFilterChange" />
                 <input v-model="filters.api_key_name" type="text" class="input w-36" placeholder="Key 名称" @input="handleFilterChange" />
                 <input v-model="filters.group_name" type="text" class="input w-36" placeholder="分组名称" @input="handleFilterChange" />
+                <Select v-model="filters.request_path" :options="requestPathOptions" class="w-52" @change="handleFilterChange" />
                 <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
                 <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
                 <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
@@ -149,6 +161,9 @@
               </div>
             </template>
             <template #cell-model="{ value }">
+              <span class="badge badge-gray">{{ value || '-' }}</span>
+            </template>
+            <template #cell-request_path="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
             </template>
             <template #cell-quality_status="{ value, row }">
@@ -225,11 +240,12 @@ import {
   PointElement,
   LineElement,
   BarElement,
+  ArcElement,
   Tooltip,
   Legend,
   Filler
 } from 'chart.js'
-import { Bar, Line } from 'vue-chartjs'
+import { Bar, Doughnut, Line } from 'vue-chartjs'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -244,7 +260,7 @@ import { dataSharingAPI, type DataShareNotice, type DataShareSession } from '@/a
 import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend, Filler)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler)
 
 const appStore = useAppStore()
 
@@ -272,6 +288,7 @@ const filters = reactive({
   user_name: '',
   api_key_name: '',
   group_name: '',
+  request_path: 'all',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
@@ -288,6 +305,7 @@ const columns: Column[] = [
   { key: 'select', label: '' },
   { key: 'session_id', label: 'Session', sortable: true },
   { key: 'provider', label: 'Provider', sortable: true },
+  { key: 'request_path', label: '请求路径', sortable: true },
   { key: 'model', label: '模型', sortable: true },
   { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
@@ -304,6 +322,8 @@ const chartColors = computed(() => ({
   sessions: '#10b981',
   group: '#7c3aed'
 }))
+
+const requestPathPalette = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 const storageTrendChartData = computed(() => {
   const points = stats.value?.storage_trend || []
@@ -343,6 +363,22 @@ const groupStorageChartData = computed(() => {
         backgroundColor: `${chartColors.value.group}88`,
         borderColor: chartColors.value.group,
         borderWidth: 1
+      }
+    ]
+  }
+})
+
+const requestPathChartData = computed(() => {
+  const points = stats.value?.request_path_breakdown || []
+  if (!points.length) return null
+  return {
+    labels: points.map(point => point.request_path || '(unknown)'),
+    datasets: [
+      {
+        label: 'Session',
+        data: points.map(point => point.session_count),
+        backgroundColor: points.map((_, index) => requestPathPalette[index % requestPathPalette.length]),
+        borderWidth: 0
       }
     ]
   }
@@ -397,6 +433,37 @@ const barChartOptions = computed(() => ({
   }
 }))
 
+const doughnutChartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { position: 'bottom' as const, labels: { color: chartColors.value.text } },
+    tooltip: {
+      callbacks: {
+        label: (ctx: any) => {
+          const point = stats.value?.request_path_breakdown?.[ctx.dataIndex]
+          if (!point) return `${ctx.label}: ${formatNumber(ctx.raw)}`
+          return `${ctx.label}: ${formatNumber(point.session_count)} · ${formatBytes(point.storage_bytes)} · ${formatNumber(point.total_tokens)} tokens`
+        }
+      }
+    }
+  }
+}))
+
+const requestPathOptions = computed(() => {
+  const values = new Set<string>()
+  for (const point of stats.value?.request_path_breakdown || []) {
+    if (point.request_path && point.request_path !== '(unknown)') values.add(point.request_path)
+  }
+  for (const row of sessions.value) {
+    if (row.request_path) values.add(row.request_path)
+  }
+  return [
+    { value: 'all', label: '全部路径' },
+    ...Array.from(values).sort().map(value => ({ value, label: value }))
+  ]
+})
+
 const selectedCount = computed(() => {
   if (selectAllMatching.value) {
     return Math.max(pagination.total - excludedIds.value.size, 0)
@@ -424,6 +491,7 @@ function buildFilters(): AdminDataShareSessionFilters {
   if (filters.user_name.trim()) out.user_name = filters.user_name.trim()
   if (filters.api_key_name.trim()) out.api_key_name = filters.api_key_name.trim()
   if (filters.group_name.trim()) out.group_name = filters.group_name.trim()
+  if (filters.request_path !== 'all') out.request_path = filters.request_path
   if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date

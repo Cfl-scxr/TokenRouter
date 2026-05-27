@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestExtractCCReasoningEffortFromBody(t *testing.T) {
@@ -51,6 +52,9 @@ func TestHandleCCBufferedFromAnthropic_PreservesMessageStartCacheUsageAndReasoni
 			`event: content_block_start`,
 			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
 			``,
+			`event: content_block_delta`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}`,
+			``,
 			`event: message_delta`,
 			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}`,
 			``,
@@ -67,6 +71,8 @@ func TestHandleCCBufferedFromAnthropic_PreservesMessageStartCacheUsageAndReasoni
 	require.Equal(t, 3, result.Usage.CacheCreationInputTokens)
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "high", *result.ReasoningEffort)
+	require.Equal(t, "hello world", gjson.GetBytes(result.ResponseBody, "choices.0.message.content").String())
+	require.Equal(t, "stop", gjson.GetBytes(result.ResponseBody, "choices.0.finish_reason").String())
 }
 
 func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReasoning(t *testing.T) {
@@ -84,7 +90,10 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 			`data: {"type":"message_start","message":{"id":"msg_2","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":20,"cache_read_input_tokens":11,"cache_creation_input_tokens":4}}}`,
 			``,
 			`event: content_block_start`,
-			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+			``,
+			`event: content_block_delta`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`,
 			``,
 			`event: message_delta`,
 			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}`,
@@ -105,5 +114,49 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.Equal(t, 4, result.Usage.CacheCreationInputTokens)
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "medium", *result.ReasoningEffort)
+	require.Equal(t, "hello", gjson.GetBytes(result.ResponseBody, "choices.0.message.content").String())
 	require.Contains(t, rec.Body.String(), `[DONE]`)
+}
+
+func TestHandleCCBufferedFromAnthropic_ResponseBodyCapturesToolCall(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_cc_tool"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: message_start`,
+			`data: {"type":"message_start","message":{"id":"msg_tool","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":9}}}`,
+			``,
+			`event: content_block_start`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup"}}`,
+			``,
+			`event: content_block_delta`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"q\":\"hi\"}"}}`,
+			``,
+			`event: message_delta`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}`,
+			``,
+		}, "\n"))),
+	}
+
+	svc := &GatewayService{}
+	result, err := svc.handleCCBufferedFromAnthropic(resp, c, "gpt-5", "claude-sonnet-4.5", nil, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.ResponseBody)
+	require.Equal(t, "lookup", gjson.GetBytes(result.ResponseBody, "choices.0.message.tool_calls.0.function.name").String())
+	require.JSONEq(t, `{"q":"hi"}`, gjson.GetBytes(result.ResponseBody, "choices.0.message.tool_calls.0.function.arguments").String())
+}
+
+func TestOpenAIUsageFromClaudeUsage(t *testing.T) {
+	t.Parallel()
+
+	usage := openAIUsageFromClaudeUsage(ClaudeUsage{InputTokens: 3, OutputTokens: 4, CacheReadInputTokens: 2})
+	require.Equal(t, 3, usage.InputTokens)
+	require.Equal(t, 4, usage.OutputTokens)
+	require.Equal(t, 2, usage.CacheReadInputTokens)
 }

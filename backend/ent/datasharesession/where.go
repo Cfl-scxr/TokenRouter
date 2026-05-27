@@ -79,6 +79,11 @@ func Model(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldModel, v))
 }
 
+// RequestPath applies equality check predicate on the "request_path" field. It's identical to RequestPathEQ.
+func RequestPath(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldRequestPath, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldStatus, v))
@@ -482,6 +487,71 @@ func ModelEqualFold(v string) predicate.DataShareSession {
 // ModelContainsFold applies the ContainsFold predicate on the "model" field.
 func ModelContainsFold(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldContainsFold(FieldModel, v))
+}
+
+// RequestPathEQ applies the EQ predicate on the "request_path" field.
+func RequestPathEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldRequestPath, v))
+}
+
+// RequestPathNEQ applies the NEQ predicate on the "request_path" field.
+func RequestPathNEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldRequestPath, v))
+}
+
+// RequestPathIn applies the In predicate on the "request_path" field.
+func RequestPathIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldRequestPath, vs...))
+}
+
+// RequestPathNotIn applies the NotIn predicate on the "request_path" field.
+func RequestPathNotIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldRequestPath, vs...))
+}
+
+// RequestPathGT applies the GT predicate on the "request_path" field.
+func RequestPathGT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldRequestPath, v))
+}
+
+// RequestPathGTE applies the GTE predicate on the "request_path" field.
+func RequestPathGTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldRequestPath, v))
+}
+
+// RequestPathLT applies the LT predicate on the "request_path" field.
+func RequestPathLT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldRequestPath, v))
+}
+
+// RequestPathLTE applies the LTE predicate on the "request_path" field.
+func RequestPathLTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldRequestPath, v))
+}
+
+// RequestPathContains applies the Contains predicate on the "request_path" field.
+func RequestPathContains(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContains(FieldRequestPath, v))
+}
+
+// RequestPathHasPrefix applies the HasPrefix predicate on the "request_path" field.
+func RequestPathHasPrefix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasPrefix(FieldRequestPath, v))
+}
+
+// RequestPathHasSuffix applies the HasSuffix predicate on the "request_path" field.
+func RequestPathHasSuffix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasSuffix(FieldRequestPath, v))
+}
+
+// RequestPathEqualFold applies the EqualFold predicate on the "request_path" field.
+func RequestPathEqualFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEqualFold(FieldRequestPath, v))
+}
+
+// RequestPathContainsFold applies the ContainsFold predicate on the "request_path" field.
+func RequestPathContainsFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContainsFold(FieldRequestPath, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

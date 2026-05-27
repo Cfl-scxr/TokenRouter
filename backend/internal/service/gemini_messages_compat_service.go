@@ -1036,6 +1036,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	var responseBody []byte
 	if req.Stream {
 		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
@@ -1043,6 +1044,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		responseBody = streamRes.responseBody
 	} else {
 		if useUpstreamStream {
 			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
@@ -1051,16 +1053,23 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 			collectedBytes, _ := json.Marshal(collected)
 			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes)
-			c.JSON(http.StatusOK, claudeResp)
+			if body, err := json.Marshal(claudeResp); err == nil {
+				responseBody = cloneDataSharingRequestBody(body)
+				c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+			} else {
+				c.JSON(http.StatusOK, claudeResp)
+			}
 			usage = usageObj2
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
 		} else {
-			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
+			var body []byte
+			usage, body, err = s.handleNonStreamingResponse(c, resp, originalModel)
 			if err != nil {
 				return nil, err
 			}
+			responseBody = body
 		}
 	}
 
@@ -1080,6 +1089,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		Stream:         req.Stream,
 		Duration:       time.Since(startTime),
 		FirstTokenMs:   firstTokenMs,
+		ResponseBody:   cloneDataSharingRequestBody(responseBody),
 		ImageCount:     imageCount,
 		ImageSize:      imageSize,
 		ImageInputSize: imageInputSize,
@@ -1558,6 +1568,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	var responseBody []byte
 
 	if stream {
 		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth)
@@ -1566,6 +1577,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		responseBody = streamRes.responseBody
 	} else {
 		if useUpstreamStream {
 			collected, usageObj, err := collectGeminiSSE(resp.Body, isOAuth)
@@ -1573,14 +1585,16 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
 			}
 			b, _ := json.Marshal(collected)
+			responseBody = cloneDataSharingRequestBody(b)
 			c.Data(http.StatusOK, "application/json", b)
 			usage = usageObj
 		} else {
-			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth)
+			usageResp, body, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth)
 			if err != nil {
 				return nil, err
 			}
 			usage = usageResp
+			responseBody = body
 		}
 	}
 
@@ -1604,6 +1618,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		Stream:         stream,
 		Duration:       time.Since(startTime),
 		FirstTokenMs:   firstTokenMs,
+		ResponseBody:   cloneDataSharingRequestBody(responseBody),
 		ImageCount:     imageCount,
 		ImageSize:      imageSize,
 		ImageInputSize: imageInputSize,
@@ -1923,28 +1938,33 @@ func mapGeminiStatusToClaudeErrorType(status string) string {
 type geminiStreamResult struct {
 	usage        *ClaudeUsage
 	firstTokenMs *int
+	responseBody []byte
 }
 
-func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, []byte, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
+		return nil, nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 	}
 
 	unwrappedBody, err := unwrapGeminiResponse(body)
 	if err != nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 
 	var geminiResp map[string]any
 	if err := json.Unmarshal(unwrappedBody, &geminiResp); err != nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody)
-	c.JSON(http.StatusOK, claudeResp)
+	responseBody, err := json.Marshal(claudeResp)
+	if err != nil {
+		return nil, nil, err
+	}
+	c.Data(http.StatusOK, "application/json; charset=utf-8", responseBody)
 
-	return usage, nil
+	return usage, cloneDataSharingRequestBody(responseBody), nil
 }
 
 func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*geminiStreamResult, error) {
@@ -1960,6 +1980,14 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	}
 
 	messageID := "msg_" + randomHex(12)
+	responseAccumulator := &anthropicStreamResponseAccumulator{}
+	var finalResponseBody []byte
+	writeAnthropicStreamEvent := func(event string, data any) {
+		writeSSE(c.Writer, event, data)
+		if body := observeAnthropicMapEvent(responseAccumulator, event, data); len(body) > 0 {
+			finalResponseBody = body
+		}
+	}
 	messageStart := map[string]any{
 		"type": "message_start",
 		"message": map[string]any{
@@ -1976,7 +2004,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			},
 		},
 	}
-	writeSSE(c.Writer, "message_start", messageStart)
+	writeAnthropicStreamEvent("message_start", messageStart)
 	flusher.Flush()
 
 	var firstTokenMs *int
@@ -2039,7 +2067,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				if openBlockType != "text" {
 					if openBlockIndex >= 0 {
-						writeSSE(c.Writer, "content_block_stop", map[string]any{
+						writeAnthropicStreamEvent("content_block_stop", map[string]any{
 							"type":  "content_block_stop",
 							"index": openBlockIndex,
 						})
@@ -2047,7 +2075,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openBlockType = "text"
 					openBlockIndex = nextBlockIndex
 					nextBlockIndex++
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					writeAnthropicStreamEvent("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openBlockIndex,
 						"content_block": map[string]any{
@@ -2061,7 +2089,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				writeSSE(c.Writer, "content_block_delta", map[string]any{
+				writeAnthropicStreamEvent("content_block_delta", map[string]any{
 					"type":  "content_block_delta",
 					"index": openBlockIndex,
 					"delta": map[string]any{
@@ -2080,9 +2108,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					name = "tool"
 				}
 
-				// Close any open text block before tool_use.
+				// 工具调用前先关闭当前文本块。
 				if openBlockIndex >= 0 {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					writeAnthropicStreamEvent("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openBlockIndex,
 					})
@@ -2090,9 +2118,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openBlockType = ""
 				}
 
-				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
+				// 分片收到工具参数时，保持同一个 tool_use 块并持续发出 delta。
 				if openToolIndex >= 0 && openToolName != name {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					writeAnthropicStreamEvent("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
 					})
@@ -2108,7 +2136,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					nextBlockIndex++
 					sawToolUse = true
 
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					writeAnthropicStreamEvent("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openToolIndex,
 						"content_block": map[string]any{
@@ -2123,7 +2151,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				argsJSONText := "{}"
 				switch v := args.(type) {
 				case nil:
-					// keep default "{}"
+					// 保持默认的 "{}"。
 				case string:
 					if strings.TrimSpace(v) != "" {
 						argsJSONText = v
@@ -2137,7 +2165,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				delta, newSeen := computeGeminiTextDelta(seenToolJSON, argsJSONText)
 				seenToolJSON = newSeen
 				if delta != "" {
-					writeSSE(c.Writer, "content_block_delta", map[string]any{
+					writeAnthropicStreamEvent("content_block_delta", map[string]any{
 						"type":  "content_block_delta",
 						"index": openToolIndex,
 						"delta": map[string]any{
@@ -2154,20 +2182,20 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			usage = *u
 		}
 
-		// Process the final unterminated line at EOF as well.
+		// EOF 前最后一行即使没有换行符也要处理。
 		if errors.Is(err, io.EOF) {
 			break
 		}
 	}
 
 	if openBlockIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		writeAnthropicStreamEvent("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openBlockIndex,
 		})
 	}
 	if openToolIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		writeAnthropicStreamEvent("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openToolIndex,
 		})
@@ -2184,7 +2212,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	if usage.InputTokens > 0 {
 		usageObj["input_tokens"] = usage.InputTokens
 	}
-	writeSSE(c.Writer, "message_delta", map[string]any{
+	writeAnthropicStreamEvent("message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
 			"stop_reason":   stopReason,
@@ -2192,12 +2220,12 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		},
 		"usage": usageObj,
 	})
-	writeSSE(c.Writer, "message_stop", map[string]any{
+	writeAnthropicStreamEvent("message_stop", map[string]any{
 		"type": "message_stop",
 	})
 	flusher.Flush()
 
-	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, responseBody: finalResponseBody}, nil
 }
 
 func writeSSE(w io.Writer, event string, data any) {
@@ -2249,7 +2277,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedTextParts []string // Collect all text parts for aggregation
+	var collectedTextParts []string // 收集文本分片用于聚合完整响应。
 	usage := &ClaudeUsage{}
 
 	for {
@@ -2283,7 +2311,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 						}
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
 							lastWithParts = parsed
-							// Collect text from each part for aggregation
+							// 收集每个 part 的文本用于聚合。
 							for _, part := range parts {
 								if text, ok := part["text"].(string); ok && text != "" {
 									collectedTextParts = append(collectedTextParts, text)
@@ -2316,50 +2344,49 @@ func pickGeminiCollectResult(last map[string]any, lastWithParts map[string]any) 
 	return map[string]any{}
 }
 
-// mergeCollectedTextParts merges all collected text chunks into the final response.
-// This fixes the issue where non-streaming responses only returned the last chunk
-// instead of the complete aggregated text.
+// mergeCollectedTextParts 将收集到的文本分片合并回最终 Gemini 响应。
+// 这样可以避免非流式转换只保留最后一个分片而丢失完整输出。
 func mergeCollectedTextParts(response map[string]any, textParts []string) map[string]any {
 	if len(textParts) == 0 {
 		return response
 	}
 
-	// Join all text parts
+	// 合并所有文本分片。
 	mergedText := strings.Join(textParts, "")
 
-	// Deep copy response
+	// 浅拷贝外层响应，避免直接改动调用方保留的 map。
 	result := make(map[string]any)
 	for k, v := range response {
 		result[k] = v
 	}
 
-	// Get or create candidates
+	// 取出或创建 candidates。
 	candidates, ok := result["candidates"].([]any)
 	if !ok || len(candidates) == 0 {
 		candidates = []any{map[string]any{}}
 	}
 
-	// Get first candidate
+	// 取出第一个 candidate。
 	candidate, ok := candidates[0].(map[string]any)
 	if !ok {
 		candidate = make(map[string]any)
 		candidates[0] = candidate
 	}
 
-	// Get or create content
+	// 取出或创建 content。
 	content, ok := candidate["content"].(map[string]any)
 	if !ok {
 		content = map[string]any{"role": "model"}
 		candidate["content"] = content
 	}
 
-	// Get existing parts
+	// 取出现有 parts。
 	existingParts, ok := content["parts"].([]any)
 	if !ok {
 		existingParts = []any{}
 	}
 
-	// Find and update first text part, or create new one
+	// 更新第一个文本 part；没有文本 part 时在前面补一个。
 	newParts := make([]any, 0, len(existingParts)+1)
 	textUpdated := false
 
@@ -2370,7 +2397,7 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 			continue
 		}
 		if _, hasText := pm["text"]; hasText && !textUpdated {
-			// Replace with merged text
+			// 用完整文本替换第一个文本 part。
 			newPart := make(map[string]any)
 			for k, v := range pm {
 				newPart[k] = v
@@ -2396,6 +2423,7 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 type geminiNativeStreamResult struct {
 	usage        *ClaudeUsage
 	firstTokenMs *int
+	responseBody []byte
 }
 
 func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
@@ -2464,7 +2492,7 @@ type UpstreamHTTPResult struct {
 	Body       []byte
 }
 
-func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, []byte, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2477,7 +2505,7 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if isOAuth {
@@ -2496,9 +2524,9 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	c.Data(resp.StatusCode, contentType, respBody)
 
 	if u := extractGeminiUsage(respBody); u != nil {
-		return u, nil
+		return u, cloneDataSharingRequestBody(respBody), nil
 	}
-	return &ClaudeUsage{}, nil
+	return &ClaudeUsage{}, cloneDataSharingRequestBody(respBody), nil
 }
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
@@ -2535,6 +2563,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	reader := bufio.NewReader(resp.Body)
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	var last map[string]any
+	var lastWithParts map[string]any
+	var collectedTextParts []string
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2542,7 +2573,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-				// Keepalive / done markers
+				// keepalive 和结束标记直接透传。
 				if payload == "" || payload == "[DONE]" {
 					_, _ = io.WriteString(c.Writer, line)
 					flusher.Flush()
@@ -2564,6 +2595,18 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
 					}
+					var parsed map[string]any
+					if err := json.Unmarshal(rawBytes, &parsed); err == nil && parsed != nil {
+						last = parsed
+						if parts := extractGeminiParts(parsed); len(parts) > 0 {
+							lastWithParts = parsed
+							for _, part := range parts {
+								if text, ok := part["text"].(string); ok && text != "" {
+									collectedTextParts = append(collectedTextParts, text)
+								}
+							}
+						}
+					}
 
 					if firstTokenMs == nil {
 						ms := int(time.Since(startTime).Milliseconds())
@@ -2571,10 +2614,10 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					}
 
 					if isOAuth {
-						// SSE format requires double newline (\n\n) to separate events
+						// SSE 格式需要双换行分隔事件。
 						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
 					} else {
-						// Pass-through for AI Studio responses.
+						// AI Studio 响应直接透传。
 						_, _ = io.WriteString(c.Writer, line)
 					}
 					flusher.Flush()
@@ -2593,7 +2636,12 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 		}
 	}
 
-	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+	var responseBody []byte
+	if last != nil || lastWithParts != nil {
+		collected := mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts)
+		responseBody, _ = json.Marshal(collected)
+	}
+	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, responseBody: cloneDataSharingRequestBody(responseBody)}, nil
 }
 
 // ForwardAIStudioGET forwards a GET request to AI Studio (generativelanguage.googleapis.com) for

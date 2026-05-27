@@ -49,6 +49,7 @@ type DataShareSession struct {
 	Dataset            string
 	Provider           string
 	Model              string
+	RequestPath        string
 	Status             string
 	IsFinalSnapshot    bool
 	SourceRequestCount int
@@ -91,6 +92,7 @@ type DataShareSessionFilters struct {
 	GroupName     string
 	Provider      string
 	Model         string
+	RequestPath   string
 	Exportable    *bool
 	QualityStatus string
 	StartTime     *time.Time
@@ -113,6 +115,14 @@ type DataShareGroupStoragePoint struct {
 	SessionCount int64  `json:"session_count"`
 }
 
+// DataShareRequestPathPoint 用于管理端按用户请求路径展示分布。
+type DataShareRequestPathPoint struct {
+	RequestPath  string `json:"request_path"`
+	StorageBytes int64  `json:"storage_bytes"`
+	SessionCount int64  `json:"session_count"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
 	SessionCount          int64                        `json:"session_count"`
@@ -126,6 +136,7 @@ type DataShareStats struct {
 	AvgTokensPerSession   float64                      `json:"avg_tokens_per_session"`
 	StorageTrend          []DataShareStoragePoint      `json:"storage_trend"`
 	GroupStorageBreakdown []DataShareGroupStoragePoint `json:"group_storage_breakdown"`
+	RequestPathBreakdown  []DataShareRequestPathPoint  `json:"request_path_breakdown"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -338,6 +349,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	}
 	provider := normalizeDataShareProvider(input.Provider, input.APIKey)
 	model := resolveDataShareActualModel(input)
+	requestPath := normalizeDataShareRequestPath(input.InboundEndpoint)
 	sessionID := normalizeDataShareSessionID(input.SessionID, input.RequestID, input.RequestBody, apiKeyID)
 	trajectoryID := buildTrajectoryID(provider, sessionID, apiKeyID, groupID)
 	messages := normalizeCaptureMessages(input)
@@ -360,6 +372,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		"dataset":              defaultDataShareDataset,
 		"provider":             provider,
 		"model":                model,
+		"request_path":         requestPath,
 		"created_at":           now.Format(time.RFC3339Nano),
 		"ended_at":             now.Format(time.RFC3339Nano),
 		"status":               status,
@@ -385,6 +398,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		Dataset:            defaultDataShareDataset,
 		Provider:           provider,
 		Model:              model,
+		RequestPath:        requestPath,
 		Status:             status,
 		IsFinalSnapshot:    finalSnapshot,
 		SourceRequestCount: 1,
@@ -617,6 +631,7 @@ func buildCaptureUsage(input DataShareCaptureInput) map[string]any {
 
 func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 	requestID := resolveDataShareRequestID(input)
+	requestPath := normalizeDataShareRequestPath(input.InboundEndpoint)
 	sourceRequestIDs := []string{}
 	if requestID != "" {
 		sourceRequestIDs = append(sourceRequestIDs, requestID)
@@ -628,7 +643,8 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 		"request_id":         requestID,
 		"source_request_ids": sourceRequestIDs,
 		"requested_model":    firstNonBlank(input.Model, gjson.GetBytes(input.RequestBody, "model").String()),
-		"inbound_endpoint":   input.InboundEndpoint,
+		"inbound_endpoint":   requestPath,
+		"request_path":       requestPath,
 		"upstream_endpoint":  input.UpstreamEndpoint,
 		"user_agent":         input.UserAgent,
 		"ip_address":         input.IPAddress,
@@ -815,13 +831,108 @@ func hasFinalAssistantMessage(messages []map[string]any) bool {
 func normalizeDataShareMessages(messages []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
-		normalized := normalizeDataShareMessage(msg)
-		if len(normalized) == 0 {
-			continue
+		for _, expanded := range expandAnthropicDataShareMessage(msg) {
+			normalized := normalizeDataShareMessage(expanded)
+			if len(normalized) == 0 {
+				continue
+			}
+			out = append(out, normalized)
 		}
-		out = append(out, normalized)
 	}
 	return out
+}
+
+// expandAnthropicDataShareMessage 将 Anthropic content block 展开成统一的 message/tool 结构。
+func expandAnthropicDataShareMessage(msg map[string]any) []map[string]any {
+	if msg == nil {
+		return nil
+	}
+	content := anySlice(msg["content"])
+	if len(content) == 0 {
+		return []map[string]any{msg}
+	}
+	role := normalizeResponsesInputRole(stringFromAny(msg["role"]), stringFromAny(msg["type"]))
+	switch role {
+	case "assistant":
+		return expandAnthropicAssistantMessage(msg, content)
+	case "user":
+		return expandAnthropicUserMessage(msg, content)
+	default:
+		return []map[string]any{msg}
+	}
+}
+
+// expandAnthropicAssistantMessage 把 assistant 的 tool_use block 转成标准 tool_calls。
+func expandAnthropicAssistantMessage(msg map[string]any, content []any) []map[string]any {
+	calls := make([]map[string]any, 0)
+	textBlocks := make([]any, 0, len(content))
+	for _, raw := range content {
+		block, ok := mapFromAny(raw)
+		if !ok || strings.TrimSpace(stringFromAny(block["type"])) != "tool_use" {
+			textBlocks = append(textBlocks, raw)
+			continue
+		}
+		calls = append(calls, map[string]any{
+			"id":        firstNonBlank(stringFromAny(block["id"]), stringFromAny(block["tool_use_id"])),
+			"name":      stringFromAny(block["name"]),
+			"arguments": firstPresentAny(block["input"], block["arguments"]),
+		})
+	}
+	if len(calls) == 0 {
+		return []map[string]any{msg}
+	}
+	out := cloneDataShareMap(msg)
+	out["role"] = "assistant"
+	out["tool_calls"] = calls
+	out["finish_reason"] = "tool_calls"
+	out["content"] = contentValueFromAnthropicBlocks(textBlocks)
+	return []map[string]any{out}
+}
+
+// expandAnthropicUserMessage 把 user 消息里的 tool_result block 转成标准 tool 消息。
+func expandAnthropicUserMessage(msg map[string]any, content []any) []map[string]any {
+	out := make([]map[string]any, 0, len(content))
+	textBlocks := make([]any, 0, len(content))
+	sawToolResult := false
+	flushText := func() {
+		if len(textBlocks) == 0 {
+			return
+		}
+		textMsg := cloneDataShareMap(msg)
+		textMsg["role"] = "user"
+		textMsg["content"] = contentValueFromAnthropicBlocks(textBlocks)
+		out = append(out, textMsg)
+		textBlocks = nil
+	}
+	for _, raw := range content {
+		block, ok := mapFromAny(raw)
+		if !ok || strings.TrimSpace(stringFromAny(block["type"])) != "tool_result" {
+			textBlocks = append(textBlocks, raw)
+			continue
+		}
+		sawToolResult = true
+		flushText()
+		out = append(out, map[string]any{
+			"role":         "tool",
+			"tool_call_id": firstNonBlank(stringFromAny(block["tool_use_id"]), stringFromAny(block["tool_call_id"]), stringFromAny(block["id"])),
+			"content":      firstPresentAny(block["content"], block["output"]),
+			"is_error":     firstPresentAny(block["is_error"], block["error"]),
+			"status":       stringFromAny(block["status"]),
+		})
+	}
+	if !sawToolResult {
+		return []map[string]any{msg}
+	}
+	flushText()
+	return out
+}
+
+// contentValueFromAnthropicBlocks 提取 Anthropic 文本块中的可读内容。
+func contentValueFromAnthropicBlocks(blocks []any) any {
+	if len(blocks) == 0 {
+		return ""
+	}
+	return normalizeDataShareContentValue(blocks)
 }
 
 // CompactDataShareMessages 压缩 Responses/Codex 每轮请求重复携带的历史消息。
@@ -1102,7 +1213,7 @@ func normalizeDataShareTool(tool map[string]any) (map[string]any, bool) {
 	functionMap, _ := mapFromAny(tool["function"])
 	name := firstNonBlank(stringFromAny(tool["name"]), stringFromAny(functionMap["name"]), dataShareToolNameFromType(stringFromAny(tool["type"])))
 	description := firstNonBlank(stringFromAny(tool["description"]), stringFromAny(functionMap["description"]), defaultDataShareToolDescription(name, stringFromAny(tool["type"])))
-	parameters := firstPresentAny(tool["parameters"], functionMap["parameters"], defaultDataShareToolParameters(name, stringFromAny(tool["type"])))
+	parameters := firstPresentAny(tool["parameters"], functionMap["parameters"], tool["input_schema"], defaultDataShareToolParameters(name, stringFromAny(tool["type"])))
 	parameterMap, ok := mapFromAny(parameters)
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(description) == "" || !ok || len(parameterMap) == 0 {
 		return nil, false
@@ -1330,6 +1441,7 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	payload["dataset"] = session.Dataset
 	payload["provider"] = session.Provider
 	payload["model"] = session.Model
+	payload["request_path"] = firstNonBlank(session.RequestPath, stringFromAny(payload["request_path"]), stringFromAny(session.Meta["request_path"]), stringFromAny(session.Meta["inbound_endpoint"]))
 	payload["created_at"] = session.CreatedAt.Format(time.RFC3339Nano)
 	if session.EndedAt != nil {
 		payload["ended_at"] = session.EndedAt.Format(time.RFC3339Nano)
@@ -1360,6 +1472,17 @@ func normalizeDataShareProvider(provider string, apiKey *APIKey) string {
 		return apiKey.Group.Platform
 	}
 	return "unknown"
+}
+
+func normalizeDataShareRequestPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return path
 }
 
 func normalizeDataShareSessionID(sessionID string, requestID string, body []byte, apiKeyID int64) string {

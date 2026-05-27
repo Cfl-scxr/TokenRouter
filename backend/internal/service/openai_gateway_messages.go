@@ -452,6 +452,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	acc.SupplementResponseOutput(finalResponse)
 
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	responseBody, _ := json.Marshal(anthropicResp)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -465,6 +466,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		Model:         originalModel,
 		BillingModel:  billingModel,
 		UpstreamModel: upstreamModel,
+		ResponseBody:  cloneDataSharingRequestBody(responseBody),
 		Stream:        false,
 		Duration:      time.Since(startTime),
 	}, nil
@@ -663,6 +665,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	responseAccumulator := &anthropicStreamResponseAccumulator{}
+	var finalResponseBody []byte
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -694,6 +698,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			Model:         originalModel,
 			BillingModel:  billingModel,
 			UpstreamModel: upstreamModel,
+			ResponseBody:  cloneDataSharingRequestBody(finalResponseBody),
 			Stream:        true,
 			Duration:      time.Since(startTime),
 			FirstTokenMs:  firstTokenMs,
@@ -730,6 +735,17 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 		// Convert to Anthropic events
 		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
+		for _, evt := range events {
+			if body := observeAnthropicStreamEvent(responseAccumulator, evt); len(body) > 0 {
+				finalResponseBody = body
+			}
+		}
+		if isTerminalEvent && event.Response != nil && len(event.Response.Output) > 0 {
+			anthropicResp := apicompat.ResponsesToAnthropic(event.Response, originalModel)
+			if body, err := json.Marshal(anthropicResp); err == nil {
+				finalResponseBody = cloneDataSharingRequestBody(body)
+			}
+		}
 		if !clientDisconnected {
 			for _, evt := range events {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
@@ -757,7 +773,13 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// finalizeStream sends any remaining Anthropic events and returns the result.
 	finalizeStream := func() (*OpenAIForwardResult, error) {
-		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
+		finalEvents := apicompat.FinalizeResponsesAnthropicStream(state)
+		for _, evt := range finalEvents {
+			if body := observeAnthropicStreamEvent(responseAccumulator, evt); len(body) > 0 {
+				finalResponseBody = body
+			}
+		}
+		if len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
 				if err != nil {
@@ -966,4 +988,28 @@ func copyOpenAIUsageFromResponsesUsage(usage *apicompat.ResponsesUsage) OpenAIUs
 		result.CacheReadInputTokens = usage.InputTokensDetails.CachedTokens
 	}
 	return result
+}
+
+// observeAnthropicStreamEvent 将转换后的 Anthropic 事件同步给数据共享快照聚合器。
+func observeAnthropicStreamEvent(acc *anthropicStreamResponseAccumulator, evt apicompat.AnthropicStreamEvent) []byte {
+	if acc == nil {
+		return nil
+	}
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		return nil
+	}
+	return acc.ObserveData(evt.Type, string(payload))
+}
+
+// observeAnthropicMapEvent 将手写的 Anthropic SSE 事件同步给数据共享快照聚合器。
+func observeAnthropicMapEvent(acc *anthropicStreamResponseAccumulator, eventName string, event any) []byte {
+	if acc == nil || event == nil {
+		return nil
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return nil
+	}
+	return acc.ObserveData(eventName, string(payload))
 }

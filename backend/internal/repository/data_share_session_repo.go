@@ -53,6 +53,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetDataset(session.Dataset).
 			SetProvider(session.Provider).
 			SetModel(session.Model).
+			SetRequestPath(session.RequestPath).
 			SetStatus(session.Status).
 			SetIsFinalSnapshot(session.IsFinalSnapshot).
 			SetSourceRequestCount(session.SourceRequestCount).
@@ -92,6 +93,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		sessionJSON = map[string]any{}
 	}
 	sessionJSON["source_request_count"] = sourceRequestCount
+	sessionJSON["request_path"] = firstNonBlankRepository(session.RequestPath, existing.RequestPath)
 	sessionJSON["messages"] = messages
 	sessionJSON["tools"] = tools
 	sessionJSON["usage"] = usage
@@ -111,6 +113,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
 		SetModel(session.Model).
+		SetRequestPath(firstNonBlankRepository(session.RequestPath, existing.RequestPath)).
 		SetStatus(status).
 		SetIsFinalSnapshot(finalSnapshot).
 		SetSourceRequestCount(sourceRequestCount).
@@ -247,6 +250,11 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		return nil, err
 	}
 	stats.GroupStorageBreakdown = breakdown
+	pathBreakdown, err := r.loadRequestPathBreakdown(ctx, sqlq, whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	stats.RequestPathBreakdown = pathBreakdown
 	return stats, nil
 }
 
@@ -301,6 +309,33 @@ func (r *dataShareSessionRepository) loadGroupStorageBreakdown(ctx context.Conte
 	return out, rows.Err()
 }
 
+func (r *dataShareSessionRepository) loadRequestPathBreakdown(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareRequestPathPoint, error) {
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(request_path, ''), '(unknown)') AS request_path,
+		       COALESCE(SUM(storage_bytes), 0),
+		       COUNT(*),
+		       COALESCE(SUM(total_tokens), 0)
+		FROM data_share_sessions
+		`+whereSQL+`
+		GROUP BY COALESCE(NULLIF(request_path, ''), '(unknown)')
+		ORDER BY COUNT(*) DESC, COALESCE(SUM(storage_bytes), 0) DESC
+		LIMIT 20
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.DataShareRequestPathPoint
+	for rows.Next() {
+		var p service.DataShareRequestPathPoint
+		if err := rows.Scan(&p.RequestPath, &p.StorageBytes, &p.SessionCount, &p.TotalTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func prefixDataShareWhereAlias(whereSQL, alias string) string {
 	if strings.TrimSpace(whereSQL) == "" {
 		return ""
@@ -311,6 +346,7 @@ func prefixDataShareWhereAlias(whereSQL, alias string) string {
 		"group_id", alias+".group_id",
 		"provider", alias+".provider",
 		"model", alias+".model",
+		"request_path", alias+".request_path",
 		"exportable", alias+".exportable",
 		"quality_status", alias+".quality_status",
 		"created_at", alias+".created_at",
@@ -360,6 +396,9 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 	if filters.Model != "" {
 		preds = append(preds, datasharesession.ModelContainsFold(filters.Model))
 	}
+	if filters.RequestPath != "" {
+		preds = append(preds, datasharesession.RequestPathEQ(filters.RequestPath))
+	}
 	if filters.Exportable != nil {
 		preds = append(preds, datasharesession.ExportableEQ(*filters.Exportable))
 	}
@@ -377,6 +416,7 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 			datasharesession.TrajectoryIDContainsFold(filters.Search),
 			datasharesession.SessionIDContainsFold(filters.Search),
 			datasharesession.ModelContainsFold(filters.Search),
+			datasharesession.RequestPathContainsFold(filters.Search),
 			dataShareRelatedNamePredicate("users", "user_id", []string{"username", "email"}, filters.Search),
 			dataShareRelatedNamePredicate("api_keys", "api_key_id", []string{"name"}, filters.Search),
 			dataShareRelatedNamePredicate("groups", "group_id", []string{"name"}, filters.Search),
@@ -440,6 +480,9 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 	if filters.Model != "" {
 		add("model ILIKE '%%' || $%d || '%%'", filters.Model)
 	}
+	if filters.RequestPath != "" {
+		add("request_path = $%d", filters.RequestPath)
+	}
 	if filters.Exportable != nil {
 		add("exportable = $%d", *filters.Exportable)
 	}
@@ -460,10 +503,11 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 			trajectory_id ILIKE '%%' || $%d || '%%'
 			OR session_id ILIKE '%%' || $%d || '%%'
 			OR model ILIKE '%%' || $%d || '%%'
+			OR request_path ILIKE '%%' || $%d || '%%'
 			OR EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND (u.username ILIKE '%%' || $%d || '%%' OR u.email ILIKE '%%' || $%d || '%%'))
 			OR EXISTS (SELECT 1 FROM api_keys ak WHERE ak.id = api_key_id AND ak.name ILIKE '%%' || $%d || '%%')
 			OR EXISTS (SELECT 1 FROM groups g WHERE g.id = group_id AND g.name ILIKE '%%' || $%d || '%%')
-		)`, idx, idx, idx, idx, idx, idx, idx))
+		)`, idx, idx, idx, idx, idx, idx, idx, idx))
 	}
 	if len(clauses) == 0 {
 		return "", args
@@ -494,6 +538,8 @@ func dataShareListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 		field = datasharesession.FieldUpdatedAt
 	case "model":
 		field = datasharesession.FieldModel
+	case "request_path":
+		field = datasharesession.FieldRequestPath
 	case "quality_status":
 		field = datasharesession.FieldQualityStatus
 	case "provider":
@@ -518,6 +564,7 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		Dataset:            m.Dataset,
 		Provider:           m.Provider,
 		Model:              m.Model,
+		RequestPath:        m.RequestPath,
 		Status:             m.Status,
 		IsFinalSnapshot:    m.IsFinalSnapshot,
 		SourceRequestCount: m.SourceRequestCount,
@@ -904,6 +951,15 @@ func firstSystemPrompt(existing, incoming *string) *string {
 		return existing
 	}
 	return incoming
+}
+
+func firstNonBlankRepository(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func validateRepositoryQuality(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {

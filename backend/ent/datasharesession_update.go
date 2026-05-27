@@ -99,6 +99,20 @@ func (_u *DataShareSessionUpdate) SetNillableModel(v *string) *DataShareSessionU
 	return _u
 }
 
+// SetRequestPath sets the "request_path" field.
+func (_u *DataShareSessionUpdate) SetRequestPath(v string) *DataShareSessionUpdate {
+	_u.mutation.SetRequestPath(v)
+	return _u
+}
+
+// SetNillableRequestPath sets the "request_path" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillableRequestPath(v *string) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetRequestPath(*v)
+	}
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *DataShareSessionUpdate) SetStatus(v string) *DataShareSessionUpdate {
 	_u.mutation.SetStatus(v)
@@ -527,6 +541,11 @@ func (_u *DataShareSessionUpdate) check() error {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RequestPath(); ok {
+		if err := datasharesession.RequestPathValidator(v); err != nil {
+			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := datasharesession.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
@@ -566,6 +585,9 @@ func (_u *DataShareSessionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(datasharesession.FieldModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RequestPath(); ok {
+		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)
@@ -779,6 +801,20 @@ func (_u *DataShareSessionUpdateOne) SetModel(v string) *DataShareSessionUpdateO
 func (_u *DataShareSessionUpdateOne) SetNillableModel(v *string) *DataShareSessionUpdateOne {
 	if v != nil {
 		_u.SetModel(*v)
+	}
+	return _u
+}
+
+// SetRequestPath sets the "request_path" field.
+func (_u *DataShareSessionUpdateOne) SetRequestPath(v string) *DataShareSessionUpdateOne {
+	_u.mutation.SetRequestPath(v)
+	return _u
+}
+
+// SetNillableRequestPath sets the "request_path" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillableRequestPath(v *string) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetRequestPath(*v)
 	}
 	return _u
 }
@@ -1224,6 +1260,11 @@ func (_u *DataShareSessionUpdateOne) check() error {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RequestPath(); ok {
+		if err := datasharesession.RequestPathValidator(v); err != nil {
+			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := datasharesession.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
@@ -1280,6 +1321,9 @@ func (_u *DataShareSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSh
 	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(datasharesession.FieldModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RequestPath(); ok {
+		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)

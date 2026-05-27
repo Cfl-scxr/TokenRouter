@@ -320,8 +320,10 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 	// Marshal then bytes-replace so tool name mapping is reversed at byte level
 	// (parity with Parrot non-stream flow that marshals → restore → emit).
+	var responseBody []byte
 	if respBytes, err := json.Marshal(ccResp); err == nil {
 		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		responseBody = cloneDataSharingRequestBody(respBytes)
 		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
 	} else {
 		c.JSON(http.StatusOK, ccResp)
@@ -333,6 +335,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		Model:           originalModel,
 		UpstreamModel:   mappedModel,
 		ReasoningEffort: reasoningEffort,
+		ResponseBody:    responseBody,
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
@@ -370,6 +373,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	streamAccumulator := newOpenAIChatCompletionsStreamAccumulator(originalModel)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -385,6 +389,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			Model:           originalModel,
 			UpstreamModel:   mappedModel,
 			ReasoningEffort: reasoningEffort,
+			ResponseBody:    streamAccumulator.ResponseBody(openAIUsageFromClaudeUsage(usage)),
 			Stream:          true,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
@@ -392,14 +397,15 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	}
 
 	writeChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
-		sse, err := apicompat.ChatChunkToSSE(chunk)
+		payload, err := json.Marshal(chunk)
 		if err != nil {
 			return false
 		}
+		payload = reverseToolNamesIfPresent(c, payload)
+		observeOpenAIChatStreamPayload(streamAccumulator, payload, openAIUsageFromClaudeUsage(usage))
 		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
-		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
-		if _, err := fmt.Fprint(c.Writer, out); err != nil {
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
 			return true // client disconnected
 		}
 		return false
@@ -498,4 +504,13 @@ func writeGatewayCCError(c *gin.Context, statusCode int, errType, message string
 			"message": message,
 		},
 	})
+}
+
+// openAIUsageFromClaudeUsage 把通用 usage 映射成 Chat Completions 快照需要的 usage。
+func openAIUsageFromClaudeUsage(usage ClaudeUsage) *OpenAIUsage {
+	return &OpenAIUsage{
+		InputTokens:          usage.InputTokens,
+		OutputTokens:         usage.OutputTokens,
+		CacheReadInputTokens: usage.CacheReadInputTokens,
+	}
 }

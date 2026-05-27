@@ -52,6 +52,20 @@ func (_c *DataShareSessionCreate) SetModel(v string) *DataShareSessionCreate {
 	return _c
 }
 
+// SetRequestPath sets the "request_path" field.
+func (_c *DataShareSessionCreate) SetRequestPath(v string) *DataShareSessionCreate {
+	_c.mutation.SetRequestPath(v)
+	return _c
+}
+
+// SetNillableRequestPath sets the "request_path" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillableRequestPath(v *string) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetRequestPath(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *DataShareSessionCreate) SetStatus(v string) *DataShareSessionCreate {
 	_c.mutation.SetStatus(v)
@@ -323,6 +337,10 @@ func (_c *DataShareSessionCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *DataShareSessionCreate) defaults() {
+	if _, ok := _c.mutation.RequestPath(); !ok {
+		v := datasharesession.DefaultRequestPath
+		_c.mutation.SetRequestPath(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := datasharesession.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -409,6 +427,14 @@ func (_c *DataShareSessionCreate) check() error {
 	if v, ok := _c.mutation.Model(); ok {
 		if err := datasharesession.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.model": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RequestPath(); !ok {
+		return &ValidationError{Name: "request_path", err: errors.New(`ent: missing required field "DataShareSession.request_path"`)}
+	}
+	if v, ok := _c.mutation.RequestPath(); ok {
+		if err := datasharesession.RequestPathValidator(v); err != nil {
+			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
@@ -509,6 +535,10 @@ func (_c *DataShareSessionCreate) createSpec() (*DataShareSession, *sqlgraph.Cre
 	if value, ok := _c.mutation.Model(); ok {
 		_spec.SetField(datasharesession.FieldModel, field.TypeString, value)
 		_node.Model = value
+	}
+	if value, ok := _c.mutation.RequestPath(); ok {
+		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
+		_node.RequestPath = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)
@@ -707,6 +737,18 @@ func (u *DataShareSessionUpsert) SetModel(v string) *DataShareSessionUpsert {
 // UpdateModel sets the "model" field to the value that was provided on create.
 func (u *DataShareSessionUpsert) UpdateModel() *DataShareSessionUpsert {
 	u.SetExcluded(datasharesession.FieldModel)
+	return u
+}
+
+// SetRequestPath sets the "request_path" field.
+func (u *DataShareSessionUpsert) SetRequestPath(v string) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldRequestPath, v)
+	return u
+}
+
+// UpdateRequestPath sets the "request_path" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdateRequestPath() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldRequestPath)
 	return u
 }
 
@@ -1170,6 +1212,20 @@ func (u *DataShareSessionUpsertOne) SetModel(v string) *DataShareSessionUpsertOn
 func (u *DataShareSessionUpsertOne) UpdateModel() *DataShareSessionUpsertOne {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateModel()
+	})
+}
+
+// SetRequestPath sets the "request_path" field.
+func (u *DataShareSessionUpsertOne) SetRequestPath(v string) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetRequestPath(v)
+	})
+}
+
+// UpdateRequestPath sets the "request_path" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdateRequestPath() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateRequestPath()
 	})
 }
 
@@ -1857,6 +1913,20 @@ func (u *DataShareSessionUpsertBulk) SetModel(v string) *DataShareSessionUpsertB
 func (u *DataShareSessionUpsertBulk) UpdateModel() *DataShareSessionUpsertBulk {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateModel()
+	})
+}
+
+// SetRequestPath sets the "request_path" field.
+func (u *DataShareSessionUpsertBulk) SetRequestPath(v string) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetRequestPath(v)
+	})
+}
+
+// UpdateRequestPath sets the "request_path" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdateRequestPath() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateRequestPath()
 	})
 }
 

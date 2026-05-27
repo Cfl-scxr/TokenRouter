@@ -55,6 +55,7 @@
                 />
               </div>
               <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
+              <Select v-model="filters.request_path" :options="requestPathOptions" class="w-52" @change="handleFilterChange" />
               <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
               <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
             </div>
@@ -108,6 +109,9 @@
             <template #cell-model="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
             </template>
+            <template #cell-request_path="{ value }">
+              <span class="badge badge-gray">{{ value || '-' }}</span>
+            </template>
             <template #cell-quality_status="{ value, row }">
               <span :class="['badge', qualityBadgeClass(value)]">
                 {{ qualityLabel(value) }}<span v-if="value === 'invalid' && row.quality_errors?.length"> {{ row.quality_errors.length }}</span>
@@ -158,7 +162,7 @@
         <LoadingSpinner />
       </div>
       <div v-else-if="selectedSession" class="space-y-4">
-        <div class="grid gap-3 md:grid-cols-4">
+        <div class="grid gap-3 md:grid-cols-5">
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">Session</p>
             <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ selectedSession.session_id }}</p>
@@ -166,6 +170,10 @@
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">模型</p>
             <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ selectedSession.model || '-' }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">请求路径</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ selectedSession.request_path || '-' }}</p>
           </div>
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">Token</p>
@@ -214,6 +222,7 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const filters = reactive({
   search: '',
+  request_path: 'all',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
@@ -230,6 +239,7 @@ const columns: Column[] = [
   { key: 'select', label: '' },
   { key: 'session_id', label: 'Session', sortable: true },
   { key: 'provider', label: 'Provider', sortable: true },
+  { key: 'request_path', label: '请求路径', sortable: true },
   { key: 'model', label: '模型', sortable: true },
   { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
@@ -256,6 +266,16 @@ const selectionSummary = computed(() => {
   return `已选择 ${formatNumber(selectedCount.value)} 条`
 })
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
+const requestPathOptions = computed(() => {
+  const values = new Set<string>()
+  for (const row of sessions.value) {
+    if (row.request_path) values.add(row.request_path)
+  }
+  return [
+    { value: 'all', label: '全部路径' },
+    ...Array.from(values).sort().map(value => ({ value, label: value }))
+  ]
+})
 
 let filterTimer: number | null = null
 
@@ -265,6 +285,7 @@ function buildFilters(): DataShareSessionFilters {
     sort_order: sortState.sort_order
   }
   if (filters.search.trim()) out.search = filters.search.trim()
+  if (filters.request_path !== 'all') out.request_path = filters.request_path
   if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date

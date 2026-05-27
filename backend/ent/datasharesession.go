@@ -28,6 +28,8 @@ type DataShareSession struct {
 	Provider string `json:"provider,omitempty"`
 	// Model holds the value of the "model" field.
 	Model string `json:"model,omitempty"`
+	// RequestPath holds the value of the "request_path" field.
+	RequestPath string `json:"request_path,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// IsFinalSnapshot holds the value of the "is_final_snapshot" field.
@@ -86,7 +88,7 @@ func (*DataShareSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case datasharesession.FieldID, datasharesession.FieldSourceRequestCount, datasharesession.FieldStorageBytes, datasharesession.FieldInputTokens, datasharesession.FieldOutputTokens, datasharesession.FieldTotalTokens, datasharesession.FieldUserID, datasharesession.FieldAPIKeyID, datasharesession.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldQualityStatus:
+		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldRequestPath, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldQualityStatus:
 			values[i] = new(sql.NullString)
 		case datasharesession.FieldCreatedAt, datasharesession.FieldEndedAt, datasharesession.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -140,6 +142,12 @@ func (_m *DataShareSession) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field model", values[i])
 			} else if value.Valid {
 				_m.Model = value.String
+			}
+		case datasharesession.FieldRequestPath:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field request_path", values[i])
+			} else if value.Valid {
+				_m.RequestPath = value.String
 			}
 		case datasharesession.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -337,6 +345,9 @@ func (_m *DataShareSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("model=")
 	builder.WriteString(_m.Model)
+	builder.WriteString(", ")
+	builder.WriteString("request_path=")
+	builder.WriteString(_m.RequestPath)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

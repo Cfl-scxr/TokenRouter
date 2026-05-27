@@ -9018,6 +9018,7 @@ type DataShareSessionMutation struct {
 	dataset                 *string
 	provider                *string
 	model                   *string
+	request_path            *string
 	status                  *string
 	is_final_snapshot       *bool
 	source_request_count    *int
@@ -9333,6 +9334,42 @@ func (m *DataShareSessionMutation) OldModel(ctx context.Context) (v string, err 
 // ResetModel resets all changes to the "model" field.
 func (m *DataShareSessionMutation) ResetModel() {
 	m.model = nil
+}
+
+// SetRequestPath sets the "request_path" field.
+func (m *DataShareSessionMutation) SetRequestPath(s string) {
+	m.request_path = &s
+}
+
+// RequestPath returns the value of the "request_path" field in the mutation.
+func (m *DataShareSessionMutation) RequestPath() (r string, exists bool) {
+	v := m.request_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestPath returns the old "request_path" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldRequestPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestPath: %w", err)
+	}
+	return oldValue.RequestPath, nil
+}
+
+// ResetRequestPath resets all changes to the "request_path" field.
+func (m *DataShareSessionMutation) ResetRequestPath() {
+	m.request_path = nil
 }
 
 // SetStatus sets the "status" field.
@@ -10473,7 +10510,7 @@ func (m *DataShareSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataShareSessionMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.trajectory_id != nil {
 		fields = append(fields, datasharesession.FieldTrajectoryID)
 	}
@@ -10488,6 +10525,9 @@ func (m *DataShareSessionMutation) Fields() []string {
 	}
 	if m.model != nil {
 		fields = append(fields, datasharesession.FieldModel)
+	}
+	if m.request_path != nil {
+		fields = append(fields, datasharesession.FieldRequestPath)
 	}
 	if m.status != nil {
 		fields = append(fields, datasharesession.FieldStatus)
@@ -10573,6 +10613,8 @@ func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.Provider()
 	case datasharesession.FieldModel:
 		return m.Model()
+	case datasharesession.FieldRequestPath:
+		return m.RequestPath()
 	case datasharesession.FieldStatus:
 		return m.Status()
 	case datasharesession.FieldIsFinalSnapshot:
@@ -10636,6 +10678,8 @@ func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldProvider(ctx)
 	case datasharesession.FieldModel:
 		return m.OldModel(ctx)
+	case datasharesession.FieldRequestPath:
+		return m.OldRequestPath(ctx)
 	case datasharesession.FieldStatus:
 		return m.OldStatus(ctx)
 	case datasharesession.FieldIsFinalSnapshot:
@@ -10723,6 +10767,13 @@ func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModel(v)
+		return nil
+	case datasharesession.FieldRequestPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestPath(v)
 		return nil
 	case datasharesession.FieldStatus:
 		v, ok := value.(string)
@@ -11091,6 +11142,9 @@ func (m *DataShareSessionMutation) ResetField(name string) error {
 		return nil
 	case datasharesession.FieldModel:
 		m.ResetModel()
+		return nil
+	case datasharesession.FieldRequestPath:
+		m.ResetRequestPath()
 		return nil
 	case datasharesession.FieldStatus:
 		m.ResetStatus()

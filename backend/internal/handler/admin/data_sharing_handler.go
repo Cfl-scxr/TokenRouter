@@ -41,6 +41,7 @@ type adminDataShareSessionResponse struct {
 	Dataset            string           `json:"dataset"`
 	Provider           string           `json:"provider"`
 	Model              string           `json:"model"`
+	RequestPath        string           `json:"request_path"`
 	Status             string           `json:"status"`
 	IsFinalSnapshot    bool             `json:"is_final_snapshot"`
 	SourceRequestCount int              `json:"source_request_count"`
@@ -243,6 +244,7 @@ func parseAdminDataShareFilters(c *gin.Context) (service.DataShareSessionFilters
 	}
 	filters.Provider = strings.TrimSpace(c.Query("provider"))
 	filters.Model = strings.TrimSpace(c.Query("model"))
+	filters.RequestPath = strings.TrimSpace(c.Query("request_path"))
 	filters.Search = strings.TrimSpace(c.Query("search"))
 	filters.UserName = strings.TrimSpace(c.Query("user_name"))
 	filters.APIKeyName = strings.TrimSpace(c.Query("api_key_name"))
@@ -359,6 +361,7 @@ func adminDataShareSessionToResponse(session *service.DataShareSession, includeP
 		Dataset:            session.Dataset,
 		Provider:           session.Provider,
 		Model:              session.Model,
+		RequestPath:        session.RequestPath,
 		Status:             session.Status,
 		IsFinalSnapshot:    session.IsFinalSnapshot,
 		SourceRequestCount: session.SourceRequestCount,
