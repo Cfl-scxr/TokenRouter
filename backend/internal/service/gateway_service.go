@@ -7841,36 +7841,6 @@ func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
 	}
 }
 
-func anthropicResponseBodyFromStreamEvent(eventName string, event map[string]any) []byte {
-	eventType, _ := event["type"].(string)
-	if eventType == "" {
-		eventType = eventName
-	}
-	switch eventType {
-	case "message_start":
-		if msg, ok := event["message"].(map[string]any); ok && len(msg) > 0 {
-			body, _ := json.Marshal(msg)
-			return body
-		}
-	case "message_stop":
-		body, _ := json.Marshal(event)
-		return body
-	}
-	return nil
-}
-
-func anthropicResponseBodyFromStreamData(eventName string, data string) []byte {
-	data = strings.TrimSpace(data)
-	if data == "" || data == "[DONE]" {
-		return nil
-	}
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return nil
-	}
-	return anthropicResponseBodyFromStreamEvent(eventName, event)
-}
-
 type sseUsagePatch struct {
 	inputTokens              int
 	hasInputTokens           bool

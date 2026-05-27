@@ -244,6 +244,9 @@ func TestAPIContracts(t *testing.T) {
 					"window_5h_start": null,
 					"window_1d_start": null,
 					"window_7d_start": null,
+					"data_sharing_confirmed_group_id": null,
+					"data_sharing_confirmed_at": null,
+					"data_sharing_notice_version": 0,
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z"
@@ -293,6 +296,9 @@ func TestAPIContracts(t *testing.T) {
 							"window_5h_start": null,
 							"window_1d_start": null,
 							"window_7d_start": null,
+							"data_sharing_confirmed_group_id": null,
+							"data_sharing_confirmed_at": null,
+							"data_sharing_notice_version": 0,
 							"expires_at": null,
 							"created_at": "2025-01-02T03:04:05Z",
 							"updated_at": "2025-01-02T03:04:05Z"
@@ -355,6 +361,7 @@ func TestAPIContracts(t *testing.T) {
 						"is_default": false,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
+						"data_sharing_enabled": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,

@@ -1857,17 +1857,6 @@ func DataShareQualityExportable(qualityStatus string) bool {
 	return qualityStatus == DataShareQualityComplete || qualityStatus == DataShareQualityPartial
 }
 
-func exportPayloadAndQualityFromSession(session *DataShareSession) (map[string]any, string, []string) {
-	payload := exportPayloadFromSession(session)
-	model := stringFromAny(payload["model"])
-	systemPrompt := stringFromAny(payload["system_prompt"])
-	messages := mapsFromAny(payload["messages"])
-	tools := mapsFromAny(payload["tools"])
-	usage := normalizeDataShareUsage(mapAnyFromAny(payload["usage"]))
-	qualityStatus := DataSharePayloadQualityStatus(model, systemPrompt, messages, tools, usage)
-	return payload, qualityStatus, validateDataSharePayloadQuality(payload)
-}
-
 // exportableDataShareMessages 仅裁掉尾部未闭合工具链，裁切后仍需完整通过同一套交付校验。
 func exportableDataShareMessages(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) ([]map[string]any, []string) {
 	compact := CompactDataShareMessages(normalizeDataShareMessages(messages))
@@ -2214,8 +2203,12 @@ func WriteSingleSessionJSONL(w io.Writer, session *DataShareSession) error {
 	if err != nil {
 		return err
 	}
-	buf.Write(line)
-	buf.WriteByte('\n')
+	if _, err := buf.Write(line); err != nil {
+		return err
+	}
+	if err := buf.WriteByte('\n'); err != nil {
+		return err
+	}
 	_, err = w.Write(buf.Bytes())
 	return err
 }

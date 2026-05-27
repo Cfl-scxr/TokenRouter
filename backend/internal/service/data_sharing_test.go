@@ -537,22 +537,37 @@ func TestExportPayloadNormalizesLegacyRecord(t *testing.T) {
 	if got := payload["system_prompt"]; got != "你是编码助手" {
 		t.Fatalf("system_prompt = %v", got)
 	}
-	tools := payload["tools"].([]map[string]any)
+	tools, ok := payload["tools"].([]map[string]any)
+	if !ok {
+		t.Fatalf("tools type = %T", payload["tools"])
+	}
 	for _, tool := range tools {
 		if tool["name"] == "" || tool["description"] == "" || tool["parameters"] == nil {
 			t.Fatalf("invalid tool after normalize: %#v", tool)
 		}
 	}
-	messages := payload["messages"].([]map[string]any)
-	calls := messages[2]["tool_calls"].([]map[string]any)
+	messages, ok := payload["messages"].([]map[string]any)
+	if !ok {
+		t.Fatalf("messages type = %T", payload["messages"])
+	}
+	calls, ok := messages[2]["tool_calls"].([]map[string]any)
+	if !ok {
+		t.Fatalf("tool_calls type = %T", messages[2]["tool_calls"])
+	}
 	if calls[0]["id"] != "call_1" || calls[0]["name"] != "exec_command" {
 		t.Fatalf("tool call not normalized: %#v", calls[0])
 	}
 	if messages[3]["status"] != "success" || messages[3]["is_error"] != false {
 		t.Fatalf("tool result not normalized: %#v", messages[3])
 	}
-	meta := payload["meta"].(map[string]any)
-	sourceIDs := meta["source_request_ids"].([]string)
+	meta, ok := payload["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta type = %T", payload["meta"])
+	}
+	sourceIDs, ok := meta["source_request_ids"].([]string)
+	if !ok {
+		t.Fatalf("source_request_ids type = %T", meta["source_request_ids"])
+	}
 	if len(sourceIDs) != 1 || sourceIDs[0] != "req_1" {
 		t.Fatalf("source_request_ids = %#v", sourceIDs)
 	}
@@ -590,7 +605,10 @@ func TestExportPayloadDedupesRepeatedResponsesHistory(t *testing.T) {
 	}
 
 	payload := exportPayloadFromSession(session)
-	messages := payload["messages"].([]map[string]any)
+	messages, ok := payload["messages"].([]map[string]any)
+	if !ok {
+		t.Fatalf("messages type = %T", payload["messages"])
+	}
 	callCount := 0
 	resultCount := 0
 	for _, msg := range messages {
