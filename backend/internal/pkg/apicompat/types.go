@@ -367,11 +367,15 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 // ResponsesInputTokensDetails breaks down input token usage.
 type ResponsesInputTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitempty"`
+	AudioTokens  int `json:"audio_tokens,omitempty"`
 }
 
 // ResponsesOutputTokensDetails breaks down output token usage.
 type ResponsesOutputTokensDetails struct {
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -522,15 +526,26 @@ type ChatChoice struct {
 
 // ChatUsage holds token counts in Chat Completions format.
 type ChatUsage struct {
-	PromptTokens        int               `json:"prompt_tokens"`
-	CompletionTokens    int               `json:"completion_tokens"`
-	TotalTokens         int               `json:"total_tokens"`
-	PromptTokensDetails *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	PromptTokens            int               `json:"prompt_tokens"`
+	CompletionTokens        int               `json:"completion_tokens"`
+	TotalTokens             int               `json:"total_tokens"`
+	PromptTokensDetails     *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *ChatTokenDetails `json:"completion_tokens_details,omitempty"`
 }
 
-// ChatTokenDetails provides a breakdown of token usage.
+// ChatTokenDetails 提供 token 使用明细。prompt_tokens_details 与
+// completion_tokens_details 复用同一结构；未设置字段会被省略，因此两侧只输出各自适用的字段。
+//
+// 字段集合对齐 OpenAI 官方 CompletionUsage schema：
+//   - prompt_tokens_details: cached_tokens, audio_tokens
+//   - completion_tokens_details: reasoning_tokens, audio_tokens,
+//     accepted_prediction_tokens, rejected_prediction_tokens
 type ChatTokenDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens             int `json:"cached_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.

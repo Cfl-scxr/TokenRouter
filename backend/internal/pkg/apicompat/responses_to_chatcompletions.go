@@ -81,19 +81,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 		FinishReason: finishReason,
 	}}
 
-	if resp.Usage != nil {
-		usage := &ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
-		}
-		if resp.Usage.InputTokensDetails != nil && resp.Usage.InputTokensDetails.CachedTokens > 0 {
-			usage.PromptTokensDetails = &ChatTokenDetails{
-				CachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
-			}
-		}
-		out.Usage = usage
-	}
+	out.Usage = chatUsageFromResponsesUsage(resp.Usage)
 
 	return out
 }
@@ -341,12 +329,45 @@ func chatUsageFromResponsesUsage(u *ResponsesUsage) *ChatUsage {
 		CompletionTokens: u.OutputTokens,
 		TotalTokens:      u.InputTokens + u.OutputTokens,
 	}
-	if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens > 0 {
-		usage.PromptTokensDetails = &ChatTokenDetails{
-			CachedTokens: u.InputTokensDetails.CachedTokens,
-		}
-	}
+	usage.PromptTokensDetails = promptDetailsFromResponses(u.InputTokensDetails)
+	usage.CompletionTokensDetails = completionDetailsFromResponses(u.OutputTokensDetails)
 	return usage
+}
+
+// promptDetailsFromResponses 将 Responses API 的 input_tokens_details 映射为
+// Chat Completions 的 prompt_tokens_details；没有可输出字段时返回 nil，
+// 避免不拆分 prompt usage 的上游输出空明细。
+func promptDetailsFromResponses(src *ResponsesInputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.CachedTokens == 0 && src.AudioTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		CachedTokens: src.CachedTokens,
+		AudioTokens:  src.AudioTokens,
+	}
+}
+
+// completionDetailsFromResponses 将 Responses API 的 output_tokens_details 映射为
+// Chat Completions 的 completion_tokens_details；字段集合对齐 OpenAI 官方
+// CompletionUsage schema，包括 reasoning_tokens、audio_tokens 以及预测输出的
+// accepted/rejected 计数。没有可输出字段时返回 nil，避免污染非推理、非音频响应。
+func completionDetailsFromResponses(src *ResponsesOutputTokensDetails) *ChatTokenDetails {
+	if src == nil {
+		return nil
+	}
+	if src.ReasoningTokens == 0 && src.AudioTokens == 0 &&
+		src.AcceptedPredictionTokens == 0 && src.RejectedPredictionTokens == 0 {
+		return nil
+	}
+	return &ChatTokenDetails{
+		ReasoningTokens:          src.ReasoningTokens,
+		AudioTokens:              src.AudioTokens,
+		AcceptedPredictionTokens: src.AcceptedPredictionTokens,
+		RejectedPredictionTokens: src.RejectedPredictionTokens,
+	}
 }
 
 func makeChatDeltaChunk(state *ResponsesEventToChatState, delta ChatDelta) ChatCompletionsChunk {
