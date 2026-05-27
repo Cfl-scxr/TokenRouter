@@ -82,6 +82,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	)
 
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
