@@ -82,7 +82,7 @@
             @sort="handleSort"
           >
             <template #header-select>
-              <div class="flex flex-col items-center gap-1 normal-case">
+              <div class="flex min-w-[3.5rem] flex-col items-start gap-1 normal-case tracking-normal">
                 <span v-if="selectedCount > 0" class="whitespace-nowrap text-[11px] font-medium leading-none text-primary-600 dark:text-primary-400" :title="selectionSummary">
                   已选 {{ formatNumber(selectedCount) }}
                 </span>
@@ -261,9 +261,9 @@ const allMatchingSelected = computed(() => selectAllMatching.value && pagination
 const selectionIndeterminate = computed(() => selectedCount.value > 0 && !allMatchingSelected.value)
 const selectionSummary = computed(() => {
   if (selectAllMatching.value) {
-    return `已选择当前筛选条件下 ${formatNumber(selectedCount.value)} 条`
+    return `已选择当前筛选条件下 ${formatNumber(selectedCount.value)} 条数据`
   }
-  return `已选择 ${formatNumber(selectedCount.value)} 条`
+  return `已选择 ${formatNumber(selectedCount.value)} 条数据`
 })
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
 const requestPathOptions = computed(() => {
