@@ -9032,6 +9032,10 @@ type DataShareSessionMutation struct {
 	usage                   *map[string]interface{}
 	meta                    *map[string]interface{}
 	session_json            *map[string]interface{}
+	payload_compressed      *[]byte
+	payload_encoding        *string
+	payload_bytes           *int64
+	addpayload_bytes        *int64
 	exportable              *bool
 	quality_status          *string
 	quality_errors          *[]string
@@ -9863,6 +9867,147 @@ func (m *DataShareSessionMutation) ResetSessionJSON() {
 	delete(m.clearedFields, datasharesession.FieldSessionJSON)
 }
 
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (m *DataShareSessionMutation) SetPayloadCompressed(b []byte) {
+	m.payload_compressed = &b
+}
+
+// PayloadCompressed returns the value of the "payload_compressed" field in the mutation.
+func (m *DataShareSessionMutation) PayloadCompressed() (r []byte, exists bool) {
+	v := m.payload_compressed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadCompressed returns the old "payload_compressed" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldPayloadCompressed(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadCompressed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadCompressed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadCompressed: %w", err)
+	}
+	return oldValue.PayloadCompressed, nil
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (m *DataShareSessionMutation) ClearPayloadCompressed() {
+	m.payload_compressed = nil
+	m.clearedFields[datasharesession.FieldPayloadCompressed] = struct{}{}
+}
+
+// PayloadCompressedCleared returns if the "payload_compressed" field was cleared in this mutation.
+func (m *DataShareSessionMutation) PayloadCompressedCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldPayloadCompressed]
+	return ok
+}
+
+// ResetPayloadCompressed resets all changes to the "payload_compressed" field.
+func (m *DataShareSessionMutation) ResetPayloadCompressed() {
+	m.payload_compressed = nil
+	delete(m.clearedFields, datasharesession.FieldPayloadCompressed)
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (m *DataShareSessionMutation) SetPayloadEncoding(s string) {
+	m.payload_encoding = &s
+}
+
+// PayloadEncoding returns the value of the "payload_encoding" field in the mutation.
+func (m *DataShareSessionMutation) PayloadEncoding() (r string, exists bool) {
+	v := m.payload_encoding
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadEncoding returns the old "payload_encoding" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldPayloadEncoding(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadEncoding is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadEncoding requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadEncoding: %w", err)
+	}
+	return oldValue.PayloadEncoding, nil
+}
+
+// ResetPayloadEncoding resets all changes to the "payload_encoding" field.
+func (m *DataShareSessionMutation) ResetPayloadEncoding() {
+	m.payload_encoding = nil
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (m *DataShareSessionMutation) SetPayloadBytes(i int64) {
+	m.payload_bytes = &i
+	m.addpayload_bytes = nil
+}
+
+// PayloadBytes returns the value of the "payload_bytes" field in the mutation.
+func (m *DataShareSessionMutation) PayloadBytes() (r int64, exists bool) {
+	v := m.payload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadBytes returns the old "payload_bytes" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldPayloadBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadBytes: %w", err)
+	}
+	return oldValue.PayloadBytes, nil
+}
+
+// AddPayloadBytes adds i to the "payload_bytes" field.
+func (m *DataShareSessionMutation) AddPayloadBytes(i int64) {
+	if m.addpayload_bytes != nil {
+		*m.addpayload_bytes += i
+	} else {
+		m.addpayload_bytes = &i
+	}
+}
+
+// AddedPayloadBytes returns the value that was added to the "payload_bytes" field in this mutation.
+func (m *DataShareSessionMutation) AddedPayloadBytes() (r int64, exists bool) {
+	v := m.addpayload_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPayloadBytes resets all changes to the "payload_bytes" field.
+func (m *DataShareSessionMutation) ResetPayloadBytes() {
+	m.payload_bytes = nil
+	m.addpayload_bytes = nil
+}
+
 // SetExportable sets the "exportable" field.
 func (m *DataShareSessionMutation) SetExportable(b bool) {
 	m.exportable = &b
@@ -10547,7 +10692,7 @@ func (m *DataShareSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataShareSessionMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 32)
 	if m.trajectory_id != nil {
 		fields = append(fields, datasharesession.FieldTrajectoryID)
 	}
@@ -10595,6 +10740,15 @@ func (m *DataShareSessionMutation) Fields() []string {
 	}
 	if m.session_json != nil {
 		fields = append(fields, datasharesession.FieldSessionJSON)
+	}
+	if m.payload_compressed != nil {
+		fields = append(fields, datasharesession.FieldPayloadCompressed)
+	}
+	if m.payload_encoding != nil {
+		fields = append(fields, datasharesession.FieldPayloadEncoding)
+	}
+	if m.payload_bytes != nil {
+		fields = append(fields, datasharesession.FieldPayloadBytes)
 	}
 	if m.exportable != nil {
 		fields = append(fields, datasharesession.FieldExportable)
@@ -10675,6 +10829,12 @@ func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.Meta()
 	case datasharesession.FieldSessionJSON:
 		return m.SessionJSON()
+	case datasharesession.FieldPayloadCompressed:
+		return m.PayloadCompressed()
+	case datasharesession.FieldPayloadEncoding:
+		return m.PayloadEncoding()
+	case datasharesession.FieldPayloadBytes:
+		return m.PayloadBytes()
 	case datasharesession.FieldExportable:
 		return m.Exportable()
 	case datasharesession.FieldQualityStatus:
@@ -10742,6 +10902,12 @@ func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldMeta(ctx)
 	case datasharesession.FieldSessionJSON:
 		return m.OldSessionJSON(ctx)
+	case datasharesession.FieldPayloadCompressed:
+		return m.OldPayloadCompressed(ctx)
+	case datasharesession.FieldPayloadEncoding:
+		return m.OldPayloadEncoding(ctx)
+	case datasharesession.FieldPayloadBytes:
+		return m.OldPayloadBytes(ctx)
 	case datasharesession.FieldExportable:
 		return m.OldExportable(ctx)
 	case datasharesession.FieldQualityStatus:
@@ -10889,6 +11055,27 @@ func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetSessionJSON(v)
 		return nil
+	case datasharesession.FieldPayloadCompressed:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadCompressed(v)
+		return nil
+	case datasharesession.FieldPayloadEncoding:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadEncoding(v)
+		return nil
+	case datasharesession.FieldPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadBytes(v)
+		return nil
 	case datasharesession.FieldExportable:
 		v, ok := value.(bool)
 		if !ok {
@@ -10991,6 +11178,9 @@ func (m *DataShareSessionMutation) AddedFields() []string {
 	if m.addsource_request_count != nil {
 		fields = append(fields, datasharesession.FieldSourceRequestCount)
 	}
+	if m.addpayload_bytes != nil {
+		fields = append(fields, datasharesession.FieldPayloadBytes)
+	}
 	if m.addstorage_bytes != nil {
 		fields = append(fields, datasharesession.FieldStorageBytes)
 	}
@@ -11022,6 +11212,8 @@ func (m *DataShareSessionMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case datasharesession.FieldSourceRequestCount:
 		return m.AddedSourceRequestCount()
+	case datasharesession.FieldPayloadBytes:
+		return m.AddedPayloadBytes()
 	case datasharesession.FieldStorageBytes:
 		return m.AddedStorageBytes()
 	case datasharesession.FieldInputTokens:
@@ -11051,6 +11243,13 @@ func (m *DataShareSessionMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddSourceRequestCount(v)
+		return nil
+	case datasharesession.FieldPayloadBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPayloadBytes(v)
 		return nil
 	case datasharesession.FieldStorageBytes:
 		v, ok := value.(int64)
@@ -11127,6 +11326,9 @@ func (m *DataShareSessionMutation) ClearedFields() []string {
 	if m.FieldCleared(datasharesession.FieldSessionJSON) {
 		fields = append(fields, datasharesession.FieldSessionJSON)
 	}
+	if m.FieldCleared(datasharesession.FieldPayloadCompressed) {
+		fields = append(fields, datasharesession.FieldPayloadCompressed)
+	}
 	if m.FieldCleared(datasharesession.FieldQualityErrors) {
 		fields = append(fields, datasharesession.FieldQualityErrors)
 	}
@@ -11164,6 +11366,9 @@ func (m *DataShareSessionMutation) ClearField(name string) error {
 		return nil
 	case datasharesession.FieldSessionJSON:
 		m.ClearSessionJSON()
+		return nil
+	case datasharesession.FieldPayloadCompressed:
+		m.ClearPayloadCompressed()
 		return nil
 	case datasharesession.FieldQualityErrors:
 		m.ClearQualityErrors()
@@ -11226,6 +11431,15 @@ func (m *DataShareSessionMutation) ResetField(name string) error {
 		return nil
 	case datasharesession.FieldSessionJSON:
 		m.ResetSessionJSON()
+		return nil
+	case datasharesession.FieldPayloadCompressed:
+		m.ResetPayloadCompressed()
+		return nil
+	case datasharesession.FieldPayloadEncoding:
+		m.ResetPayloadEncoding()
+		return nil
+	case datasharesession.FieldPayloadBytes:
+		m.ResetPayloadBytes()
 		return nil
 	case datasharesession.FieldExportable:
 		m.ResetExportable()

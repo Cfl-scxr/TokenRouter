@@ -45,6 +45,12 @@ const (
 	FieldMeta = "meta"
 	// FieldSessionJSON holds the string denoting the session_json field in the database.
 	FieldSessionJSON = "session_json"
+	// FieldPayloadCompressed holds the string denoting the payload_compressed field in the database.
+	FieldPayloadCompressed = "payload_compressed"
+	// FieldPayloadEncoding holds the string denoting the payload_encoding field in the database.
+	FieldPayloadEncoding = "payload_encoding"
+	// FieldPayloadBytes holds the string denoting the payload_bytes field in the database.
+	FieldPayloadBytes = "payload_bytes"
 	// FieldExportable holds the string denoting the exportable field in the database.
 	FieldExportable = "exportable"
 	// FieldQualityStatus holds the string denoting the quality_status field in the database.
@@ -94,6 +100,9 @@ var Columns = []string{
 	FieldUsage,
 	FieldMeta,
 	FieldSessionJSON,
+	FieldPayloadCompressed,
+	FieldPayloadEncoding,
+	FieldPayloadBytes,
 	FieldExportable,
 	FieldQualityStatus,
 	FieldQualityErrors,
@@ -146,6 +155,12 @@ var (
 	DefaultIsFinalSnapshot bool
 	// DefaultSourceRequestCount holds the default value on creation for the "source_request_count" field.
 	DefaultSourceRequestCount int
+	// DefaultPayloadEncoding holds the default value on creation for the "payload_encoding" field.
+	DefaultPayloadEncoding string
+	// PayloadEncodingValidator is a validator for the "payload_encoding" field. It is called by the builders before save.
+	PayloadEncodingValidator func(string) error
+	// DefaultPayloadBytes holds the default value on creation for the "payload_bytes" field.
+	DefaultPayloadBytes int64
 	// DefaultExportable holds the default value on creation for the "exportable" field.
 	DefaultExportable bool
 	// DefaultQualityStatus holds the default value on creation for the "quality_status" field.
@@ -229,6 +244,16 @@ func BySourceRequestCount(opts ...sql.OrderTermOption) OrderOption {
 // BySystemPrompt orders the results by the system_prompt field.
 func BySystemPrompt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSystemPrompt, opts...).ToFunc()
+}
+
+// ByPayloadEncoding orders the results by the payload_encoding field.
+func ByPayloadEncoding(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadEncoding, opts...).ToFunc()
+}
+
+// ByPayloadBytes orders the results by the payload_bytes field.
+func ByPayloadBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadBytes, opts...).ToFunc()
 }
 
 // ByExportable orders the results by the exportable field.

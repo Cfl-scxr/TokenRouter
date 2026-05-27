@@ -27,12 +27,16 @@ func TestParseDataShareSessionFiltersIncludesRequestPath(t *testing.T) {
 
 func TestDataShareSessionToResponseIncludesRequestPathAndUserAgent(t *testing.T) {
 	resp := dataShareSessionToResponse(&service.DataShareSession{
-		ID:          1,
-		SessionID:   "sess_1",
-		RequestPath: "/v1/chat/completions",
-		UserAgent:   "codex-cli/1.0",
+		ID:              1,
+		SessionID:       "sess_1",
+		RequestPath:     "/v1/chat/completions",
+		UserAgent:       "codex-cli/1.0",
+		PayloadEncoding: "zstd",
+		PayloadBytes:    1234,
 	}, false)
 
 	require.Equal(t, "/v1/chat/completions", resp.RequestPath)
 	require.Equal(t, "codex-cli/1.0", resp.UserAgent)
+	require.Equal(t, "zstd", resp.PayloadEncoding)
+	require.Equal(t, int64(1234), resp.PayloadBytes)
 }

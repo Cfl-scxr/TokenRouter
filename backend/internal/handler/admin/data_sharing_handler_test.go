@@ -83,14 +83,18 @@ func TestParseAdminDataShareFiltersIncludesRequestPath(t *testing.T) {
 
 func TestAdminDataShareSessionToResponseIncludesRequestPathAndUserAgent(t *testing.T) {
 	resp := adminDataShareSessionToResponse(&service.DataShareSession{
-		ID:          1,
-		SessionID:   "sess_1",
-		RequestPath: "/v1/messages",
-		UserAgent:   "claude-code/2.0",
+		ID:              1,
+		SessionID:       "sess_1",
+		RequestPath:     "/v1/messages",
+		UserAgent:       "claude-code/2.0",
+		PayloadEncoding: "zstd",
+		PayloadBytes:    5678,
 	}, false)
 
 	require.Equal(t, "/v1/messages", resp.RequestPath)
 	require.Equal(t, "claude-code/2.0", resp.UserAgent)
+	require.Equal(t, "zstd", resp.PayloadEncoding)
+	require.Equal(t, int64(5678), resp.PayloadBytes)
 }
 
 func TestDataShareSkipRulesHandlers(t *testing.T) {

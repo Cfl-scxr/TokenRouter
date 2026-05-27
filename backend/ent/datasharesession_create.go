@@ -166,6 +166,40 @@ func (_c *DataShareSessionCreate) SetSessionJSON(v map[string]interface{}) *Data
 	return _c
 }
 
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (_c *DataShareSessionCreate) SetPayloadCompressed(v []byte) *DataShareSessionCreate {
+	_c.mutation.SetPayloadCompressed(v)
+	return _c
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (_c *DataShareSessionCreate) SetPayloadEncoding(v string) *DataShareSessionCreate {
+	_c.mutation.SetPayloadEncoding(v)
+	return _c
+}
+
+// SetNillablePayloadEncoding sets the "payload_encoding" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillablePayloadEncoding(v *string) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetPayloadEncoding(*v)
+	}
+	return _c
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (_c *DataShareSessionCreate) SetPayloadBytes(v int64) *DataShareSessionCreate {
+	_c.mutation.SetPayloadBytes(v)
+	return _c
+}
+
+// SetNillablePayloadBytes sets the "payload_bytes" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillablePayloadBytes(v *int64) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetPayloadBytes(*v)
+	}
+	return _c
+}
+
 // SetExportable sets the "exportable" field.
 func (_c *DataShareSessionCreate) SetExportable(v bool) *DataShareSessionCreate {
 	_c.mutation.SetExportable(v)
@@ -371,6 +405,14 @@ func (_c *DataShareSessionCreate) defaults() {
 		v := datasharesession.DefaultSourceRequestCount
 		_c.mutation.SetSourceRequestCount(v)
 	}
+	if _, ok := _c.mutation.PayloadEncoding(); !ok {
+		v := datasharesession.DefaultPayloadEncoding
+		_c.mutation.SetPayloadEncoding(v)
+	}
+	if _, ok := _c.mutation.PayloadBytes(); !ok {
+		v := datasharesession.DefaultPayloadBytes
+		_c.mutation.SetPayloadBytes(v)
+	}
 	if _, ok := _c.mutation.Exportable(); !ok {
 		v := datasharesession.DefaultExportable
 		_c.mutation.SetExportable(v)
@@ -476,6 +518,17 @@ func (_c *DataShareSessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.SourceRequestCount(); !ok {
 		return &ValidationError{Name: "source_request_count", err: errors.New(`ent: missing required field "DataShareSession.source_request_count"`)}
+	}
+	if _, ok := _c.mutation.PayloadEncoding(); !ok {
+		return &ValidationError{Name: "payload_encoding", err: errors.New(`ent: missing required field "DataShareSession.payload_encoding"`)}
+	}
+	if v, ok := _c.mutation.PayloadEncoding(); ok {
+		if err := datasharesession.PayloadEncodingValidator(v); err != nil {
+			return &ValidationError{Name: "payload_encoding", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.payload_encoding": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PayloadBytes(); !ok {
+		return &ValidationError{Name: "payload_bytes", err: errors.New(`ent: missing required field "DataShareSession.payload_bytes"`)}
 	}
 	if _, ok := _c.mutation.Exportable(); !ok {
 		return &ValidationError{Name: "exportable", err: errors.New(`ent: missing required field "DataShareSession.exportable"`)}
@@ -605,6 +658,18 @@ func (_c *DataShareSessionCreate) createSpec() (*DataShareSession, *sqlgraph.Cre
 	if value, ok := _c.mutation.SessionJSON(); ok {
 		_spec.SetField(datasharesession.FieldSessionJSON, field.TypeJSON, value)
 		_node.SessionJSON = value
+	}
+	if value, ok := _c.mutation.PayloadCompressed(); ok {
+		_spec.SetField(datasharesession.FieldPayloadCompressed, field.TypeBytes, value)
+		_node.PayloadCompressed = &value
+	}
+	if value, ok := _c.mutation.PayloadEncoding(); ok {
+		_spec.SetField(datasharesession.FieldPayloadEncoding, field.TypeString, value)
+		_node.PayloadEncoding = value
+	}
+	if value, ok := _c.mutation.PayloadBytes(); ok {
+		_spec.SetField(datasharesession.FieldPayloadBytes, field.TypeInt64, value)
+		_node.PayloadBytes = value
 	}
 	if value, ok := _c.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)
@@ -941,6 +1006,54 @@ func (u *DataShareSessionUpsert) UpdateSessionJSON() *DataShareSessionUpsert {
 // ClearSessionJSON clears the value of the "session_json" field.
 func (u *DataShareSessionUpsert) ClearSessionJSON() *DataShareSessionUpsert {
 	u.SetNull(datasharesession.FieldSessionJSON)
+	return u
+}
+
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (u *DataShareSessionUpsert) SetPayloadCompressed(v []byte) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldPayloadCompressed, v)
+	return u
+}
+
+// UpdatePayloadCompressed sets the "payload_compressed" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdatePayloadCompressed() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldPayloadCompressed)
+	return u
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (u *DataShareSessionUpsert) ClearPayloadCompressed() *DataShareSessionUpsert {
+	u.SetNull(datasharesession.FieldPayloadCompressed)
+	return u
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (u *DataShareSessionUpsert) SetPayloadEncoding(v string) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldPayloadEncoding, v)
+	return u
+}
+
+// UpdatePayloadEncoding sets the "payload_encoding" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdatePayloadEncoding() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldPayloadEncoding)
+	return u
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (u *DataShareSessionUpsert) SetPayloadBytes(v int64) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldPayloadBytes, v)
+	return u
+}
+
+// UpdatePayloadBytes sets the "payload_bytes" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdatePayloadBytes() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldPayloadBytes)
+	return u
+}
+
+// AddPayloadBytes adds v to the "payload_bytes" field.
+func (u *DataShareSessionUpsert) AddPayloadBytes(v int64) *DataShareSessionUpsert {
+	u.Add(datasharesession.FieldPayloadBytes, v)
 	return u
 }
 
@@ -1457,6 +1570,62 @@ func (u *DataShareSessionUpsertOne) UpdateSessionJSON() *DataShareSessionUpsertO
 func (u *DataShareSessionUpsertOne) ClearSessionJSON() *DataShareSessionUpsertOne {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.ClearSessionJSON()
+	})
+}
+
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (u *DataShareSessionUpsertOne) SetPayloadCompressed(v []byte) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadCompressed(v)
+	})
+}
+
+// UpdatePayloadCompressed sets the "payload_compressed" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdatePayloadCompressed() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadCompressed()
+	})
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (u *DataShareSessionUpsertOne) ClearPayloadCompressed() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.ClearPayloadCompressed()
+	})
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (u *DataShareSessionUpsertOne) SetPayloadEncoding(v string) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadEncoding(v)
+	})
+}
+
+// UpdatePayloadEncoding sets the "payload_encoding" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdatePayloadEncoding() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadEncoding()
+	})
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (u *DataShareSessionUpsertOne) SetPayloadBytes(v int64) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadBytes(v)
+	})
+}
+
+// AddPayloadBytes adds v to the "payload_bytes" field.
+func (u *DataShareSessionUpsertOne) AddPayloadBytes(v int64) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.AddPayloadBytes(v)
+	})
+}
+
+// UpdatePayloadBytes sets the "payload_bytes" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdatePayloadBytes() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadBytes()
 	})
 }
 
@@ -2172,6 +2341,62 @@ func (u *DataShareSessionUpsertBulk) UpdateSessionJSON() *DataShareSessionUpsert
 func (u *DataShareSessionUpsertBulk) ClearSessionJSON() *DataShareSessionUpsertBulk {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.ClearSessionJSON()
+	})
+}
+
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (u *DataShareSessionUpsertBulk) SetPayloadCompressed(v []byte) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadCompressed(v)
+	})
+}
+
+// UpdatePayloadCompressed sets the "payload_compressed" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdatePayloadCompressed() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadCompressed()
+	})
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (u *DataShareSessionUpsertBulk) ClearPayloadCompressed() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.ClearPayloadCompressed()
+	})
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (u *DataShareSessionUpsertBulk) SetPayloadEncoding(v string) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadEncoding(v)
+	})
+}
+
+// UpdatePayloadEncoding sets the "payload_encoding" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdatePayloadEncoding() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadEncoding()
+	})
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (u *DataShareSessionUpsertBulk) SetPayloadBytes(v int64) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetPayloadBytes(v)
+	})
+}
+
+// AddPayloadBytes adds v to the "payload_bytes" field.
+func (u *DataShareSessionUpsertBulk) AddPayloadBytes(v int64) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.AddPayloadBytes(v)
+	})
+}
+
+// UpdatePayloadBytes sets the "payload_bytes" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdatePayloadBytes() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdatePayloadBytes()
 	})
 }
 

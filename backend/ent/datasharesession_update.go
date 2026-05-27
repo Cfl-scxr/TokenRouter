@@ -268,6 +268,53 @@ func (_u *DataShareSessionUpdate) ClearSessionJSON() *DataShareSessionUpdate {
 	return _u
 }
 
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (_u *DataShareSessionUpdate) SetPayloadCompressed(v []byte) *DataShareSessionUpdate {
+	_u.mutation.SetPayloadCompressed(v)
+	return _u
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (_u *DataShareSessionUpdate) ClearPayloadCompressed() *DataShareSessionUpdate {
+	_u.mutation.ClearPayloadCompressed()
+	return _u
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (_u *DataShareSessionUpdate) SetPayloadEncoding(v string) *DataShareSessionUpdate {
+	_u.mutation.SetPayloadEncoding(v)
+	return _u
+}
+
+// SetNillablePayloadEncoding sets the "payload_encoding" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillablePayloadEncoding(v *string) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetPayloadEncoding(*v)
+	}
+	return _u
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (_u *DataShareSessionUpdate) SetPayloadBytes(v int64) *DataShareSessionUpdate {
+	_u.mutation.ResetPayloadBytes()
+	_u.mutation.SetPayloadBytes(v)
+	return _u
+}
+
+// SetNillablePayloadBytes sets the "payload_bytes" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillablePayloadBytes(v *int64) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetPayloadBytes(*v)
+	}
+	return _u
+}
+
+// AddPayloadBytes adds value to the "payload_bytes" field.
+func (_u *DataShareSessionUpdate) AddPayloadBytes(v int64) *DataShareSessionUpdate {
+	_u.mutation.AddPayloadBytes(v)
+	return _u
+}
+
 // SetExportable sets the "exportable" field.
 func (_u *DataShareSessionUpdate) SetExportable(v bool) *DataShareSessionUpdate {
 	_u.mutation.SetExportable(v)
@@ -570,6 +617,11 @@ func (_u *DataShareSessionUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PayloadEncoding(); ok {
+		if err := datasharesession.PayloadEncodingValidator(v); err != nil {
+			return &ValidationError{Name: "payload_encoding", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.payload_encoding": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.QualityStatus(); ok {
 		if err := datasharesession.QualityStatusValidator(v); err != nil {
 			return &ValidationError{Name: "quality_status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.quality_status": %w`, err)}
@@ -668,6 +720,21 @@ func (_u *DataShareSessionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if _u.mutation.SessionJSONCleared() {
 		_spec.ClearField(datasharesession.FieldSessionJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PayloadCompressed(); ok {
+		_spec.SetField(datasharesession.FieldPayloadCompressed, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCompressedCleared() {
+		_spec.ClearField(datasharesession.FieldPayloadCompressed, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadEncoding(); ok {
+		_spec.SetField(datasharesession.FieldPayloadEncoding, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PayloadBytes(); ok {
+		_spec.SetField(datasharesession.FieldPayloadBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadBytes(); ok {
+		_spec.AddField(datasharesession.FieldPayloadBytes, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)
@@ -996,6 +1063,53 @@ func (_u *DataShareSessionUpdateOne) ClearSessionJSON() *DataShareSessionUpdateO
 	return _u
 }
 
+// SetPayloadCompressed sets the "payload_compressed" field.
+func (_u *DataShareSessionUpdateOne) SetPayloadCompressed(v []byte) *DataShareSessionUpdateOne {
+	_u.mutation.SetPayloadCompressed(v)
+	return _u
+}
+
+// ClearPayloadCompressed clears the value of the "payload_compressed" field.
+func (_u *DataShareSessionUpdateOne) ClearPayloadCompressed() *DataShareSessionUpdateOne {
+	_u.mutation.ClearPayloadCompressed()
+	return _u
+}
+
+// SetPayloadEncoding sets the "payload_encoding" field.
+func (_u *DataShareSessionUpdateOne) SetPayloadEncoding(v string) *DataShareSessionUpdateOne {
+	_u.mutation.SetPayloadEncoding(v)
+	return _u
+}
+
+// SetNillablePayloadEncoding sets the "payload_encoding" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillablePayloadEncoding(v *string) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetPayloadEncoding(*v)
+	}
+	return _u
+}
+
+// SetPayloadBytes sets the "payload_bytes" field.
+func (_u *DataShareSessionUpdateOne) SetPayloadBytes(v int64) *DataShareSessionUpdateOne {
+	_u.mutation.ResetPayloadBytes()
+	_u.mutation.SetPayloadBytes(v)
+	return _u
+}
+
+// SetNillablePayloadBytes sets the "payload_bytes" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillablePayloadBytes(v *int64) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetPayloadBytes(*v)
+	}
+	return _u
+}
+
+// AddPayloadBytes adds value to the "payload_bytes" field.
+func (_u *DataShareSessionUpdateOne) AddPayloadBytes(v int64) *DataShareSessionUpdateOne {
+	_u.mutation.AddPayloadBytes(v)
+	return _u
+}
+
 // SetExportable sets the "exportable" field.
 func (_u *DataShareSessionUpdateOne) SetExportable(v bool) *DataShareSessionUpdateOne {
 	_u.mutation.SetExportable(v)
@@ -1311,6 +1425,11 @@ func (_u *DataShareSessionUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PayloadEncoding(); ok {
+		if err := datasharesession.PayloadEncodingValidator(v); err != nil {
+			return &ValidationError{Name: "payload_encoding", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.payload_encoding": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.QualityStatus(); ok {
 		if err := datasharesession.QualityStatusValidator(v); err != nil {
 			return &ValidationError{Name: "quality_status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.quality_status": %w`, err)}
@@ -1426,6 +1545,21 @@ func (_u *DataShareSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSh
 	}
 	if _u.mutation.SessionJSONCleared() {
 		_spec.ClearField(datasharesession.FieldSessionJSON, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PayloadCompressed(); ok {
+		_spec.SetField(datasharesession.FieldPayloadCompressed, field.TypeBytes, value)
+	}
+	if _u.mutation.PayloadCompressedCleared() {
+		_spec.ClearField(datasharesession.FieldPayloadCompressed, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PayloadEncoding(); ok {
+		_spec.SetField(datasharesession.FieldPayloadEncoding, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PayloadBytes(); ok {
+		_spec.SetField(datasharesession.FieldPayloadBytes, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPayloadBytes(); ok {
+		_spec.AddField(datasharesession.FieldPayloadBytes, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Exportable(); ok {
 		_spec.SetField(datasharesession.FieldExportable, field.TypeBool, value)

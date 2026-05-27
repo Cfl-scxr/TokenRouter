@@ -109,6 +109,21 @@ func SystemPrompt(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldSystemPrompt, v))
 }
 
+// PayloadCompressed applies equality check predicate on the "payload_compressed" field. It's identical to PayloadCompressedEQ.
+func PayloadCompressed(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadCompressed, v))
+}
+
+// PayloadEncoding applies equality check predicate on the "payload_encoding" field. It's identical to PayloadEncodingEQ.
+func PayloadEncoding(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadEncoding, v))
+}
+
+// PayloadBytes applies equality check predicate on the "payload_bytes" field. It's identical to PayloadBytesEQ.
+func PayloadBytes(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadBytes, v))
+}
+
 // Exportable applies equality check predicate on the "exportable" field. It's identical to ExportableEQ.
 func Exportable(v bool) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldExportable, v))
@@ -862,6 +877,161 @@ func SessionJSONIsNil() predicate.DataShareSession {
 // SessionJSONNotNil applies the NotNil predicate on the "session_json" field.
 func SessionJSONNotNil() predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldNotNull(FieldSessionJSON))
+}
+
+// PayloadCompressedEQ applies the EQ predicate on the "payload_compressed" field.
+func PayloadCompressedEQ(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedNEQ applies the NEQ predicate on the "payload_compressed" field.
+func PayloadCompressedNEQ(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedIn applies the In predicate on the "payload_compressed" field.
+func PayloadCompressedIn(vs ...[]byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldPayloadCompressed, vs...))
+}
+
+// PayloadCompressedNotIn applies the NotIn predicate on the "payload_compressed" field.
+func PayloadCompressedNotIn(vs ...[]byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldPayloadCompressed, vs...))
+}
+
+// PayloadCompressedGT applies the GT predicate on the "payload_compressed" field.
+func PayloadCompressedGT(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedGTE applies the GTE predicate on the "payload_compressed" field.
+func PayloadCompressedGTE(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedLT applies the LT predicate on the "payload_compressed" field.
+func PayloadCompressedLT(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedLTE applies the LTE predicate on the "payload_compressed" field.
+func PayloadCompressedLTE(v []byte) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldPayloadCompressed, v))
+}
+
+// PayloadCompressedIsNil applies the IsNil predicate on the "payload_compressed" field.
+func PayloadCompressedIsNil() predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIsNull(FieldPayloadCompressed))
+}
+
+// PayloadCompressedNotNil applies the NotNil predicate on the "payload_compressed" field.
+func PayloadCompressedNotNil() predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotNull(FieldPayloadCompressed))
+}
+
+// PayloadEncodingEQ applies the EQ predicate on the "payload_encoding" field.
+func PayloadEncodingEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingNEQ applies the NEQ predicate on the "payload_encoding" field.
+func PayloadEncodingNEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingIn applies the In predicate on the "payload_encoding" field.
+func PayloadEncodingIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldPayloadEncoding, vs...))
+}
+
+// PayloadEncodingNotIn applies the NotIn predicate on the "payload_encoding" field.
+func PayloadEncodingNotIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldPayloadEncoding, vs...))
+}
+
+// PayloadEncodingGT applies the GT predicate on the "payload_encoding" field.
+func PayloadEncodingGT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingGTE applies the GTE predicate on the "payload_encoding" field.
+func PayloadEncodingGTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingLT applies the LT predicate on the "payload_encoding" field.
+func PayloadEncodingLT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingLTE applies the LTE predicate on the "payload_encoding" field.
+func PayloadEncodingLTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingContains applies the Contains predicate on the "payload_encoding" field.
+func PayloadEncodingContains(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContains(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingHasPrefix applies the HasPrefix predicate on the "payload_encoding" field.
+func PayloadEncodingHasPrefix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasPrefix(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingHasSuffix applies the HasSuffix predicate on the "payload_encoding" field.
+func PayloadEncodingHasSuffix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasSuffix(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingEqualFold applies the EqualFold predicate on the "payload_encoding" field.
+func PayloadEncodingEqualFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEqualFold(FieldPayloadEncoding, v))
+}
+
+// PayloadEncodingContainsFold applies the ContainsFold predicate on the "payload_encoding" field.
+func PayloadEncodingContainsFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContainsFold(FieldPayloadEncoding, v))
+}
+
+// PayloadBytesEQ applies the EQ predicate on the "payload_bytes" field.
+func PayloadBytesEQ(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldPayloadBytes, v))
+}
+
+// PayloadBytesNEQ applies the NEQ predicate on the "payload_bytes" field.
+func PayloadBytesNEQ(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldPayloadBytes, v))
+}
+
+// PayloadBytesIn applies the In predicate on the "payload_bytes" field.
+func PayloadBytesIn(vs ...int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldPayloadBytes, vs...))
+}
+
+// PayloadBytesNotIn applies the NotIn predicate on the "payload_bytes" field.
+func PayloadBytesNotIn(vs ...int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldPayloadBytes, vs...))
+}
+
+// PayloadBytesGT applies the GT predicate on the "payload_bytes" field.
+func PayloadBytesGT(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldPayloadBytes, v))
+}
+
+// PayloadBytesGTE applies the GTE predicate on the "payload_bytes" field.
+func PayloadBytesGTE(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldPayloadBytes, v))
+}
+
+// PayloadBytesLT applies the LT predicate on the "payload_bytes" field.
+func PayloadBytesLT(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldPayloadBytes, v))
+}
+
+// PayloadBytesLTE applies the LTE predicate on the "payload_bytes" field.
+func PayloadBytesLTE(v int64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldPayloadBytes, v))
 }
 
 // ExportableEQ applies the EQ predicate on the "exportable" field.

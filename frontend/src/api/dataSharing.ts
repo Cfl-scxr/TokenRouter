@@ -25,6 +25,8 @@ export interface DataShareSession {
   usage?: Record<string, unknown>
   meta?: Record<string, unknown>
   session_json?: Record<string, unknown>
+  payload_encoding?: string
+  payload_bytes?: number
   exportable: boolean
   quality_status: 'complete' | 'partial' | 'invalid'
   quality_errors: string[]

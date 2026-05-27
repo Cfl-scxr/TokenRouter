@@ -44,6 +44,8 @@ type dataShareSessionResponse struct {
 	Usage              map[string]any   `json:"usage,omitempty"`
 	Meta               map[string]any   `json:"meta,omitempty"`
 	SessionJSON        map[string]any   `json:"session_json,omitempty"`
+	PayloadEncoding    string           `json:"payload_encoding,omitempty"`
+	PayloadBytes       int64            `json:"payload_bytes,omitempty"`
 	Exportable         bool             `json:"exportable"`
 	QualityStatus      string           `json:"quality_status"`
 	QualityErrors      []string         `json:"quality_errors"`
@@ -359,6 +361,8 @@ func dataShareSessionToResponse(session *service.DataShareSession, includePayloa
 		IsFinalSnapshot:    session.IsFinalSnapshot,
 		SourceRequestCount: session.SourceRequestCount,
 		SystemPrompt:       session.SystemPrompt,
+		PayloadEncoding:    session.PayloadEncoding,
+		PayloadBytes:       session.PayloadBytes,
 		Exportable:         session.Exportable,
 		QualityStatus:      session.QualityStatus,
 		QualityErrors:      session.QualityErrors,

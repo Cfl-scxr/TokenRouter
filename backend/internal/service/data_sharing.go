@@ -83,6 +83,9 @@ type DataShareSession struct {
 	Usage              map[string]any
 	Meta               map[string]any
 	SessionJSON        map[string]any
+	PayloadCompressed  []byte
+	PayloadEncoding    string
+	PayloadBytes       int64
 	Exportable         bool
 	QualityStatus      string
 	QualityErrors      []string
@@ -211,6 +214,7 @@ type DataShareCaptureInput struct {
 type DataShareSessionRepository interface {
 	UpsertCapture(ctx context.Context, session *DataShareSession) error
 	List(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
+	ListWithPayload(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
 	GetByID(ctx context.Context, id int64) (*DataShareSession, error)
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
@@ -738,7 +742,7 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 	_ = includeNonExportable
 	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
 	for {
-		items, result, err := s.repo.List(ctx, params, filters)
+		items, result, err := s.repo.ListWithPayload(ctx, params, filters)
 		if err != nil {
 			return err
 		}
@@ -1904,6 +1908,11 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	payload["meta"] = meta
 	delete(payload, "quality_status")
 	return payload
+}
+
+// BuildDataShareSessionPayload 生成可导出、可压缩持久化的规范 session payload。
+func BuildDataShareSessionPayload(session *DataShareSession) map[string]any {
+	return exportPayloadFromSession(session)
 }
 
 func normalizeDataShareProvider(provider string, apiKey *APIKey) string {

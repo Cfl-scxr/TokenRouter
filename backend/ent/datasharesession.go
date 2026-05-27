@@ -50,6 +50,12 @@ type DataShareSession struct {
 	Meta map[string]interface{} `json:"meta,omitempty"`
 	// SessionJSON holds the value of the "session_json" field.
 	SessionJSON map[string]interface{} `json:"session_json,omitempty"`
+	// PayloadCompressed holds the value of the "payload_compressed" field.
+	PayloadCompressed *[]byte `json:"payload_compressed,omitempty"`
+	// PayloadEncoding holds the value of the "payload_encoding" field.
+	PayloadEncoding string `json:"payload_encoding,omitempty"`
+	// PayloadBytes holds the value of the "payload_bytes" field.
+	PayloadBytes int64 `json:"payload_bytes,omitempty"`
 	// Exportable holds the value of the "exportable" field.
 	Exportable bool `json:"exportable,omitempty"`
 	// QualityStatus holds the value of the "quality_status" field.
@@ -84,13 +90,13 @@ func (*DataShareSession) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case datasharesession.FieldTools, datasharesession.FieldMessages, datasharesession.FieldUsage, datasharesession.FieldMeta, datasharesession.FieldSessionJSON, datasharesession.FieldQualityErrors:
+		case datasharesession.FieldTools, datasharesession.FieldMessages, datasharesession.FieldUsage, datasharesession.FieldMeta, datasharesession.FieldSessionJSON, datasharesession.FieldPayloadCompressed, datasharesession.FieldQualityErrors:
 			values[i] = new([]byte)
 		case datasharesession.FieldIsFinalSnapshot, datasharesession.FieldExportable:
 			values[i] = new(sql.NullBool)
-		case datasharesession.FieldID, datasharesession.FieldSourceRequestCount, datasharesession.FieldStorageBytes, datasharesession.FieldInputTokens, datasharesession.FieldOutputTokens, datasharesession.FieldTotalTokens, datasharesession.FieldUserID, datasharesession.FieldAPIKeyID, datasharesession.FieldGroupID:
+		case datasharesession.FieldID, datasharesession.FieldSourceRequestCount, datasharesession.FieldPayloadBytes, datasharesession.FieldStorageBytes, datasharesession.FieldInputTokens, datasharesession.FieldOutputTokens, datasharesession.FieldTotalTokens, datasharesession.FieldUserID, datasharesession.FieldAPIKeyID, datasharesession.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldRequestPath, datasharesession.FieldUserAgent, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldQualityStatus:
+		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldRequestPath, datasharesession.FieldUserAgent, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldPayloadEncoding, datasharesession.FieldQualityStatus:
 			values[i] = new(sql.NullString)
 		case datasharesession.FieldCreatedAt, datasharesession.FieldEndedAt, datasharesession.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -221,6 +227,24 @@ func (_m *DataShareSession) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.SessionJSON); err != nil {
 					return fmt.Errorf("unmarshal field session_json: %w", err)
 				}
+			}
+		case datasharesession.FieldPayloadCompressed:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_compressed", values[i])
+			} else if value != nil {
+				_m.PayloadCompressed = value
+			}
+		case datasharesession.FieldPayloadEncoding:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_encoding", values[i])
+			} else if value.Valid {
+				_m.PayloadEncoding = value.String
+			}
+		case datasharesession.FieldPayloadBytes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_bytes", values[i])
+			} else if value.Valid {
+				_m.PayloadBytes = value.Int64
 			}
 		case datasharesession.FieldExportable:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -388,6 +412,17 @@ func (_m *DataShareSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("session_json=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SessionJSON))
+	builder.WriteString(", ")
+	if v := _m.PayloadCompressed; v != nil {
+		builder.WriteString("payload_compressed=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("payload_encoding=")
+	builder.WriteString(_m.PayloadEncoding)
+	builder.WriteString(", ")
+	builder.WriteString("payload_bytes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PayloadBytes))
 	builder.WriteString(", ")
 	builder.WriteString("exportable=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Exportable))

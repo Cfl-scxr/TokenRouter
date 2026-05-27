@@ -448,6 +448,9 @@ var (
 		{Name: "usage", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "meta", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "session_json", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "payload_compressed", Type: field.TypeBytes, Nullable: true, SchemaType: map[string]string{"postgres": "bytea"}},
+		{Name: "payload_encoding", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "payload_bytes", Type: field.TypeInt64, Default: 0},
 		{Name: "exportable", Type: field.TypeBool, Default: false},
 		{Name: "quality_status", Type: field.TypeString, Size: 20, Default: "invalid"},
 		{Name: "quality_errors", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
@@ -476,17 +479,17 @@ var (
 			{
 				Name:    "datasharesession_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[24]},
+				Columns: []*schema.Column{DataShareSessionsColumns[27]},
 			},
 			{
 				Name:    "datasharesession_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[25]},
+				Columns: []*schema.Column{DataShareSessionsColumns[28]},
 			},
 			{
 				Name:    "datasharesession_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[26]},
+				Columns: []*schema.Column{DataShareSessionsColumns[29]},
 			},
 			{
 				Name:    "datasharesession_provider",
@@ -511,22 +514,22 @@ var (
 			{
 				Name:    "datasharesession_exportable",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[17]},
+				Columns: []*schema.Column{DataShareSessionsColumns[20]},
 			},
 			{
 				Name:    "datasharesession_quality_status",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[18]},
+				Columns: []*schema.Column{DataShareSessionsColumns[21]},
 			},
 			{
 				Name:    "datasharesession_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[27]},
+				Columns: []*schema.Column{DataShareSessionsColumns[30]},
 			},
 			{
 				Name:    "datasharesession_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[29]},
+				Columns: []*schema.Column{DataShareSessionsColumns[32]},
 			},
 		},
 	}
@@ -643,7 +646,7 @@ var (
 			{
 				Name:    "group_data_sharing_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[32]},
+				Columns: []*schema.Column{GroupsColumns[33]},
 			},
 		},
 	}

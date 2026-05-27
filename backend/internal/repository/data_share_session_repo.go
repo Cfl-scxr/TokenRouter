@@ -1,10 +1,12 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/predicate"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/TokenFlux/TokenRouter/internal/service"
+	"github.com/klauspost/compress/zstd"
 	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -22,6 +25,8 @@ type dataShareSessionRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
 }
+
+const dataSharePayloadEncodingZstd = "zstd"
 
 func NewDataShareSessionRepository(client *dbent.Client, sqlDB *sql.DB) service.DataShareSessionRepository {
 	return &dataShareSessionRepository{client: client, sql: sqlDB}
@@ -47,6 +52,11 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		return err
 	}
 	if dbent.IsNotFound(err) || existing == nil {
+		payload := service.BuildDataShareSessionPayload(session)
+		compressed, payloadBytes, err := encodeDataSharePayload(payload)
+		if err != nil {
+			return err
+		}
 		builder := client.DataShareSession.Create().
 			SetTrajectoryID(session.TrajectoryID).
 			SetSessionID(session.SessionID).
@@ -58,16 +68,18 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetStatus(session.Status).
 			SetIsFinalSnapshot(session.IsFinalSnapshot).
 			SetSourceRequestCount(session.SourceRequestCount).
-			SetNillableSystemPrompt(session.SystemPrompt).
-			SetTools(session.Tools).
-			SetMessages(session.Messages).
-			SetUsage(session.Usage).
-			SetMeta(session.Meta).
-			SetSessionJSON(session.SessionJSON).
+			SetTools([]map[string]any{}).
+			SetMessages([]map[string]any{}).
+			SetUsage(map[string]any{}).
+			SetMeta(map[string]any{}).
+			SetSessionJSON(map[string]any{}).
+			SetPayloadCompressed(compressed).
+			SetPayloadEncoding(dataSharePayloadEncodingZstd).
+			SetPayloadBytes(payloadBytes).
 			SetExportable(session.Exportable).
 			SetQualityStatus(session.QualityStatus).
 			SetQualityErrors(session.QualityErrors).
-			SetStorageBytes(session.StorageBytes).
+			SetStorageBytes(int64(len(compressed))).
 			SetInputTokens(session.InputTokens).
 			SetOutputTokens(session.OutputTokens).
 			SetTotalTokens(session.TotalTokens).
@@ -77,40 +89,55 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetCreatedAt(now).
 			SetNillableEndedAt(session.EndedAt).
 			SetUpdatedAt(now)
-		_, err := builder.Save(ctx)
+		_, err = builder.Save(ctx)
 		return err
 	}
 
-	messages := mergeDataShareMessages(existing.Messages, session.Messages)
-	tools := mergeDataShareTools(existing.Tools, session.Tools)
-	usage := mergeDataShareUsage(existing.Usage, session.Usage)
-	meta := mergeDataShareMeta(existing.Meta, session.Meta)
+	existingSession := dataShareSessionEntityToService(existing)
+	if err := populateDataShareSessionPayload(existingSession); err != nil {
+		return err
+	}
+	messages := mergeDataShareMessages(existingSession.Messages, session.Messages)
+	tools := mergeDataShareTools(existingSession.Tools, session.Tools)
+	usage := mergeDataShareUsage(existingSession.Usage, session.Usage)
+	meta := mergeDataShareMeta(existingSession.Meta, session.Meta)
 	sourceRequestCount := existing.SourceRequestCount + 1
 	inputTokens := existing.InputTokens + session.InputTokens
 	outputTokens := existing.OutputTokens + session.OutputTokens
 	totalTokens := existing.TotalTokens + session.TotalTokens
-	sessionJSON := session.SessionJSON
-	if sessionJSON == nil {
-		sessionJSON = map[string]any{}
+	systemPrompt := firstSystemPrompt(existingSession.SystemPrompt, session.SystemPrompt)
+	merged := &service.DataShareSession{
+		TrajectoryID:       existing.TrajectoryID,
+		SessionID:          existing.SessionID,
+		Dataset:            firstNonBlankRepository(existing.Dataset, session.Dataset),
+		Provider:           firstNonBlankRepository(existing.Provider, session.Provider),
+		Model:              session.Model,
+		RequestPath:        firstNonBlankRepository(session.RequestPath, existing.RequestPath),
+		UserAgent:          firstNonBlankRepository(session.UserAgent, existing.UserAgent),
+		SourceRequestCount: sourceRequestCount,
+		SystemPrompt:       systemPrompt,
+		Tools:              tools,
+		Messages:           messages,
+		Usage:              usage,
+		Meta:               meta,
+		CreatedAt:          existing.CreatedAt,
+		EndedAt:            session.EndedAt,
 	}
-	sessionJSON["source_request_count"] = sourceRequestCount
-	sessionJSON["request_path"] = firstNonBlankRepository(session.RequestPath, existing.RequestPath)
-	sessionJSON["user_agent"] = firstNonBlankRepository(session.UserAgent, existing.UserAgent)
-	sessionJSON["messages"] = messages
-	sessionJSON["tools"] = tools
-	sessionJSON["usage"] = usage
-	sessionJSON["meta"] = meta
-	sessionJSON["created_at"] = existing.CreatedAt.Format(time.RFC3339Nano)
-	sessionJSON["ended_at"] = now.Format(time.RFC3339Nano)
-	storageBytes := int64(len(mustRepositoryJSON(sessionJSON)))
-	systemPrompt := firstSystemPrompt(existing.SystemPrompt, session.SystemPrompt)
+	if merged.EndedAt == nil {
+		merged.EndedAt = &now
+	}
 	// 每次合并后都重新评估质量，避免早期空消息请求留下的错误阻止后续导出。
 	qualityErrors := validateRepositoryQuality(session.Model, systemPrompt, messages, tools, usage)
 	qualityStatus := repositoryQualityStatus(session.Model, systemPrompt, messages, tools, usage)
 	status, finalSnapshot := repositoryCompletionState(qualityStatus)
-	sessionJSON["status"] = status
-	sessionJSON["is_final_snapshot"] = finalSnapshot
-	sessionJSON["quality_status"] = qualityStatus
+	merged.Status = status
+	merged.IsFinalSnapshot = finalSnapshot
+	merged.QualityStatus = qualityStatus
+	payload := service.BuildDataShareSessionPayload(merged)
+	compressed, payloadBytes, err := encodeDataSharePayload(payload)
+	if err != nil {
+		return err
+	}
 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
@@ -120,16 +147,19 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		SetStatus(status).
 		SetIsFinalSnapshot(finalSnapshot).
 		SetSourceRequestCount(sourceRequestCount).
-		SetNillableSystemPrompt(systemPrompt).
-		SetTools(tools).
-		SetMessages(messages).
-		SetUsage(usage).
-		SetMeta(meta).
-		SetSessionJSON(sessionJSON).
+		ClearSystemPrompt().
+		SetTools([]map[string]any{}).
+		SetMessages([]map[string]any{}).
+		SetUsage(map[string]any{}).
+		SetMeta(map[string]any{}).
+		SetSessionJSON(map[string]any{}).
+		SetPayloadCompressed(compressed).
+		SetPayloadEncoding(dataSharePayloadEncodingZstd).
+		SetPayloadBytes(payloadBytes).
 		SetExportable(service.DataShareQualityExportable(qualityStatus)).
 		SetQualityStatus(qualityStatus).
 		SetQualityErrors(qualityErrors).
-		SetStorageBytes(storageBytes).
+		SetStorageBytes(int64(len(compressed))).
 		SetInputTokens(inputTokens).
 		SetOutputTokens(outputTokens).
 		SetTotalTokens(totalTokens).
@@ -140,23 +170,38 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 }
 
 func (r *dataShareSessionRepository) List(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {
+	return r.listSessions(ctx, params, filters, false)
+}
+
+func (r *dataShareSessionRepository) ListWithPayload(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {
+	return r.listSessions(ctx, params, filters, true)
+}
+
+func (r *dataShareSessionRepository) listSessions(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters, includePayload bool) ([]service.DataShareSession, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	query := q.Offset(params.Offset()).Limit(params.Limit())
-	for _, order := range dataShareListOrder(params) {
-		query = query.Order(order)
-	}
-	items, err := query.All(ctx)
+	items, err := listDataShareEntities(ctx, q, params, includePayload)
 	if err != nil {
 		return nil, nil, err
 	}
 	out := make([]service.DataShareSession, 0, len(items))
 	for i := range items {
-		out = append(out, *dataShareSessionEntityToService(items[i]))
+		item := dataShareSessionEntityToService(items[i])
+		if includePayload {
+			if err := populateDataShareSessionPayload(item); err != nil {
+				return nil, nil, err
+			}
+			if len(item.PayloadCompressed) == 0 && len(item.SessionJSON) > 0 {
+				if err := r.persistCompressedPayload(ctx, item); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+		out = append(out, *item)
 	}
 	if err := r.hydrateDisplayNames(ctx, out); err != nil {
 		return nil, nil, err
@@ -174,6 +219,14 @@ func (r *dataShareSessionRepository) GetByID(ctx context.Context, id int64) (*se
 	out := dataShareSessionEntityToService(item)
 	if out == nil {
 		return nil, service.ErrDataShareSessionNotFound
+	}
+	if err := populateDataShareSessionPayload(out); err != nil {
+		return nil, err
+	}
+	if len(out.PayloadCompressed) == 0 && len(out.SessionJSON) > 0 {
+		if err := r.persistCompressedPayload(ctx, out); err != nil {
+			return nil, err
+		}
 	}
 	items := []service.DataShareSession{*out}
 	if err := r.hydrateDisplayNames(ctx, items); err != nil {
@@ -631,6 +684,50 @@ func dataShareListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(datasharesession.FieldID)}
 }
 
+func dataShareMetadataFields() []string {
+	return []string{
+		datasharesession.FieldID,
+		datasharesession.FieldTrajectoryID,
+		datasharesession.FieldSessionID,
+		datasharesession.FieldDataset,
+		datasharesession.FieldProvider,
+		datasharesession.FieldModel,
+		datasharesession.FieldRequestPath,
+		datasharesession.FieldUserAgent,
+		datasharesession.FieldStatus,
+		datasharesession.FieldIsFinalSnapshot,
+		datasharesession.FieldSourceRequestCount,
+		datasharesession.FieldPayloadEncoding,
+		datasharesession.FieldPayloadBytes,
+		datasharesession.FieldExportable,
+		datasharesession.FieldQualityStatus,
+		datasharesession.FieldQualityErrors,
+		datasharesession.FieldStorageBytes,
+		datasharesession.FieldInputTokens,
+		datasharesession.FieldOutputTokens,
+		datasharesession.FieldTotalTokens,
+		datasharesession.FieldUserID,
+		datasharesession.FieldAPIKeyID,
+		datasharesession.FieldGroupID,
+		datasharesession.FieldEndedAt,
+		datasharesession.FieldCreatedAt,
+		datasharesession.FieldUpdatedAt,
+	}
+}
+
+func listDataShareEntities(ctx context.Context, q *dbent.DataShareSessionQuery, params pagination.PaginationParams, includePayload bool) ([]*dbent.DataShareSession, error) {
+	query := q.Offset(params.Offset()).Limit(params.Limit())
+	for _, order := range dataShareListOrder(params) {
+		query = query.Order(order)
+	}
+	if includePayload {
+		return query.All(ctx)
+	}
+	var rows []*dbent.DataShareSession
+	err := query.Select(dataShareMetadataFields()...).Scan(ctx, &rows)
+	return rows, err
+}
+
 func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataShareSession {
 	if m == nil {
 		return nil
@@ -653,6 +750,9 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		Usage:              m.Usage,
 		Meta:               m.Meta,
 		SessionJSON:        m.SessionJSON,
+		PayloadCompressed:  dataSharePayloadCompressedValue(m.PayloadCompressed),
+		PayloadEncoding:    m.PayloadEncoding,
+		PayloadBytes:       m.PayloadBytes,
 		Exportable:         m.Exportable,
 		QualityStatus:      m.QualityStatus,
 		QualityErrors:      m.QualityErrors,
@@ -671,6 +771,13 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		EndedAt:            m.EndedAt,
 		UpdatedAt:          m.UpdatedAt,
 	}
+}
+
+func dataSharePayloadCompressedValue(value *[]byte) []byte {
+	if value == nil {
+		return nil
+	}
+	return append([]byte(nil), (*value)...)
 }
 
 func (r *dataShareSessionRepository) hydrateDisplayNames(ctx context.Context, items []service.DataShareSession) error {
@@ -807,6 +914,116 @@ func uniqueInt64s(values []int64) []int64 {
 		out = append(out, value)
 	}
 	return out
+}
+
+func encodeDataSharePayload(payload map[string]any) ([]byte, int64, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, 0, err
+	}
+	enc, err := zstd.NewWriter(nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	compressed := enc.EncodeAll(data, nil)
+	if err := enc.Close(); err != nil {
+		return nil, 0, err
+	}
+	return compressed, int64(len(data)), nil
+}
+
+func decodeDataSharePayload(compressed []byte, encoding string) (map[string]any, error) {
+	if len(compressed) == 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(encoding) != dataSharePayloadEncodingZstd {
+		return nil, fmt.Errorf("unsupported data share payload encoding: %s", encoding)
+	}
+	dec, err := zstd.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
+	defer dec.Close()
+	data, err := io.ReadAll(dec)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func populateDataShareSessionPayload(session *service.DataShareSession) error {
+	if session == nil {
+		return nil
+	}
+	payload, err := decodeDataSharePayload(session.PayloadCompressed, session.PayloadEncoding)
+	if err != nil {
+		return err
+	}
+	if payload == nil {
+		payload = service.BuildDataShareSessionPayload(session)
+	}
+	applyDataSharePayloadToSession(session, payload)
+	return nil
+}
+
+func applyDataSharePayloadToSession(session *service.DataShareSession, payload map[string]any) {
+	if session == nil || payload == nil {
+		return
+	}
+	session.SessionJSON = payload
+	if session.SystemPrompt == nil {
+		if prompt := strings.TrimSpace(stringFromRepositoryAny(payload["system_prompt"])); prompt != "" {
+			session.SystemPrompt = &prompt
+		}
+	}
+	if messages := mapsFromRepositoryAny(payload["messages"]); len(messages) > 0 {
+		session.Messages = messages
+	}
+	if tools := mapsFromRepositoryAny(payload["tools"]); len(tools) > 0 {
+		session.Tools = tools
+	}
+	if usage := mapFromRepositoryAny(payload["usage"]); len(usage) > 0 {
+		session.Usage = usage
+	}
+	if meta := mapFromRepositoryAny(payload["meta"]); len(meta) > 0 {
+		session.Meta = meta
+	}
+}
+
+func (r *dataShareSessionRepository) persistCompressedPayload(ctx context.Context, session *service.DataShareSession) error {
+	if session == nil || session.ID <= 0 {
+		return nil
+	}
+	payload := service.BuildDataShareSessionPayload(session)
+	compressed, payloadBytes, err := encodeDataSharePayload(payload)
+	if err != nil {
+		return err
+	}
+	_, err = clientFromContext(ctx, r.client).DataShareSession.Update().
+		Where(datasharesession.IDEQ(session.ID)).
+		ClearSystemPrompt().
+		SetTools([]map[string]any{}).
+		SetMessages([]map[string]any{}).
+		SetUsage(map[string]any{}).
+		SetMeta(map[string]any{}).
+		SetSessionJSON(map[string]any{}).
+		SetPayloadCompressed(compressed).
+		SetPayloadEncoding(dataSharePayloadEncodingZstd).
+		SetPayloadBytes(payloadBytes).
+		SetStorageBytes(int64(len(compressed))).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	session.PayloadCompressed = compressed
+	session.PayloadEncoding = dataSharePayloadEncodingZstd
+	session.PayloadBytes = payloadBytes
+	session.StorageBytes = int64(len(compressed))
+	return nil
 }
 
 func mergeDataShareTools(existing, incoming []map[string]any) []map[string]any {
@@ -1014,6 +1231,30 @@ func stringsFromRepositoryAny(v any) []string {
 			return nil
 		}
 		return []string{x}
+	default:
+		return nil
+	}
+}
+
+func mapFromRepositoryAny(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+func mapsFromRepositoryAny(v any) []map[string]any {
+	switch x := v.(type) {
+	case []map[string]any:
+		return x
+	case []any:
+		out := make([]map[string]any, 0, len(x))
+		for _, item := range x {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
 	default:
 		return nil
 	}
