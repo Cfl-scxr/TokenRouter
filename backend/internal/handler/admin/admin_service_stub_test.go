@@ -29,6 +29,9 @@ type stubAdminService struct {
 	updateAccountErr     error
 	bulkUpdateAccountErr error
 	checkMixedErr        error
+	updateAccountInput   *service.UpdateAccountInput
+	updateExtraCalls     []map[string]any
+	clearAccountErrorIDs []int64
 	lastMixedCheck       struct {
 		accountID int64
 		platform  string
@@ -318,7 +321,7 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
-	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
+	account := service.Account{ID: id, Name: "account", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}
 	return &account, nil
 }
 
@@ -346,8 +349,14 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 	if s.updateAccountErr != nil {
 		return nil, s.updateAccountErr
 	}
-	account := service.Account{ID: id, Name: input.Name, Status: service.StatusActive}
+	s.updateAccountInput = input
+	account := service.Account{ID: id, Name: input.Name, Platform: service.PlatformAnthropic, Type: input.Type, Status: service.StatusActive, Credentials: input.Credentials}
 	return &account, nil
+}
+
+func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	s.updateExtraCalls = append(s.updateExtraCalls, updates)
+	return nil
 }
 
 func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
@@ -360,7 +369,8 @@ func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *stubAdminService) ClearAccountError(ctx context.Context, id int64) (*service.Account, error) {
-	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
+	s.clearAccountErrorIDs = append(s.clearAccountErrorIDs, id)
+	account := service.Account{ID: id, Name: "account", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth, Status: service.StatusActive}
 	return &account, nil
 }
 

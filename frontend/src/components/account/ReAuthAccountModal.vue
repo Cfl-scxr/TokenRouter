@@ -216,7 +216,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  reauthorized: []
+  reauthorized: [account?: Account]
 }>()
 
 const appStore = useAppStore()
@@ -366,23 +366,19 @@ const handleExchangeCode = async () => {
     )
     if (!tokenInfo) return
 
-    // Build credentials and extra info
+    // 构建新的 OAuth 凭据和可增量合并的账号 Extra。
     const credentials = oauthClient.buildCredentials(tokenInfo)
     const extra = oauthClient.buildExtraInfo(tokenInfo)
 
     try {
-      // Update account with new credentials
-      await adminAPI.accounts.update(props.account.id, {
-        type: 'oauth', // OpenAI OAuth is always 'oauth' type
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: 'oauth',
         credentials,
         extra
       })
 
-      // Clear error status after successful re-authorization
-      await adminAPI.accounts.clearError(props.account.id)
-
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized')
+      emit('reauthorized', updatedAccount)
       handleClose()
     } catch (error: any) {
       oauthClient.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
@@ -476,18 +472,14 @@ const handleExchangeCode = async () => {
 
       const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-      // Update account with new credentials and type
-      await adminAPI.accounts.update(props.account.id, {
-        type: addMethod.value, // Update type based on selected method
-        credentials: tokenInfo,
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: addMethod.value as 'oauth' | 'setup-token',
+        credentials: tokenInfo as unknown as Record<string, unknown>,
         extra
       })
 
-      // Clear error status after successful re-authorization
-      await adminAPI.accounts.clearError(props.account.id)
-
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized')
+      emit('reauthorized', updatedAccount)
       handleClose()
     } catch (error: any) {
       claudeOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
@@ -519,18 +511,14 @@ const handleCookieAuth = async (sessionKey: string) => {
 
     const extra = claudeOAuth.buildExtraInfo(tokenInfo)
 
-    // Update account with new credentials and type
-    await adminAPI.accounts.update(props.account.id, {
-      type: addMethod.value, // Update type based on selected method
-      credentials: tokenInfo,
+    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: addMethod.value as 'oauth' | 'setup-token',
+      credentials: tokenInfo as unknown as Record<string, unknown>,
       extra
     })
 
-    // Clear error status after successful re-authorization
-    await adminAPI.accounts.clearError(props.account.id)
-
     appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-    emit('reauthorized')
+    emit('reauthorized', updatedAccount)
     handleClose()
   } catch (error: any) {
     claudeOAuth.error.value =
