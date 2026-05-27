@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { DataShareNotice, DataShareSession, DataShareSessionFilters } from '../dataSharing'
+import type { DataShareExportTicket, DataShareNotice, DataShareSession, DataShareSessionFilters } from '../dataSharing'
 import type { PaginatedResponse } from '@/types'
 
 export interface DataShareStoragePoint {
@@ -126,11 +126,15 @@ export async function batchDeleteSessions(
   return data
 }
 
-export async function exportSessions(filters?: AdminDataShareSessionFilters): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>('/admin/data-sharing/export', {
-    params: filters,
-    responseType: 'blob'
+export async function createExportTicket(filters?: AdminDataShareSessionFilters): Promise<DataShareExportTicket> {
+  const { data } = await apiClient.post<DataShareExportTicket>('/admin/data-sharing/export-ticket', null, {
+    params: filters
   })
+  return data
+}
+
+export async function createSessionExportTicket(id: number): Promise<DataShareExportTicket> {
+  const { data } = await apiClient.post<DataShareExportTicket>(`/admin/data-sharing/sessions/${id}/export-ticket`)
   return data
 }
 
@@ -150,7 +154,8 @@ export const adminDataSharingAPI = {
   getSession,
   deleteSession,
   batchDeleteSessions,
-  exportSessions,
+  createExportTicket,
+  createSessionExportTicket,
   getStats
 }
 

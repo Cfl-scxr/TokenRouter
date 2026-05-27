@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"bytes"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/klauspost/compress/zstd"
 )
 
 // DataSharingHandler 处理用户侧数据共享须知、session 查询和导出。
@@ -69,6 +70,15 @@ type dataShareSessionResponse struct {
 type dataShareConfirmRequest struct {
 	GroupID int64 `json:"group_id"`
 	Version int   `json:"version" binding:"required"`
+}
+
+// dataShareExportTicketResponse 是前端触发浏览器原生下载所需的票据。
+type dataShareExportTicketResponse struct {
+	Token       string    `json:"token"`
+	DownloadURL string    `json:"download_url"`
+	Filename    string    `json:"filename"`
+	Encoding    string    `json:"encoding"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 // GetNotice 返回当前数据共享须知。
@@ -156,8 +166,8 @@ func (h *DataSharingHandler) GetSession(c *gin.Context) {
 	response.Success(c, dataShareSessionToResponse(session, true))
 }
 
-// ExportSessions 导出当前用户自己的数据共享 session。
-func (h *DataSharingHandler) ExportSessions(c *gin.Context) {
+// CreateExportTicket 为当前用户自己的数据共享 session 签发短期下载票据。
+func (h *DataSharingHandler) CreateExportTicket(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
@@ -174,16 +184,21 @@ func (h *DataSharingHandler) ExportSessions(c *gin.Context) {
 		response.BadRequest(c, "ids or select_all is required")
 		return
 	}
-	var buf bytes.Buffer
-	if err := h.dataSharingService.ExportJSONL(c.Request.Context(), &buf, filters, false); err != nil {
+	ticket, err := h.dataSharingService.CreateExportTicket(c.Request.Context(), service.DataShareExportTicketRequest{
+		Scope:    service.DataShareExportScopeUser,
+		UserID:   subject.UserID,
+		Filters:  filters,
+		Filename: fmt.Sprintf("my-data-sharing-%s", time.Now().Format("20060102-150405")),
+	})
+	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	writeDataShareJSONL(c, "my-data-sharing", buf.Bytes())
+	response.Success(c, dataShareExportTicketToResponse(ticket))
 }
 
-// ExportSession 导出当前用户自己的单条 session。
-func (h *DataSharingHandler) ExportSession(c *gin.Context) {
+// CreateSessionExportTicket 为当前用户自己的单条 session 签发短期下载票据。
+func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
@@ -194,17 +209,36 @@ func (h *DataSharingHandler) ExportSession(c *gin.Context) {
 		response.BadRequest(c, "Invalid session ID")
 		return
 	}
-	session, err := h.dataSharingService.GetSession(c.Request.Context(), id, subject.UserID)
+	ticket, err := h.dataSharingService.CreateExportTicket(c.Request.Context(), service.DataShareExportTicketRequest{
+		Scope:    service.DataShareExportScopeUser,
+		UserID:   subject.UserID,
+		Filters:  service.DataShareSessionFilters{IDs: []int64{id}, UserID: subject.UserID},
+		Filename: fmt.Sprintf("data-sharing-session-%d", id),
+		Encoding: service.DataShareExportEncodingJSONL,
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	var buf bytes.Buffer
-	if err := service.WriteSingleSessionJSONL(&buf, session); err != nil {
+	response.Success(c, dataShareExportTicketToResponse(ticket))
+}
+
+// DownloadExport 使用短期票据下载 JSONL 或 zstd 压缩后的 JSONL。
+func (h *DataSharingHandler) DownloadExport(c *gin.Context) {
+	claims, err := h.dataSharingService.ParseExportTicket(c.Request.Context(), service.DataShareExportScopeUser, strings.TrimSpace(c.Query("ticket")))
+	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	writeDataShareJSONL(c, fmt.Sprintf("data-sharing-session-%d", id), buf.Bytes())
+	if claims.Encoding == service.DataShareExportEncodingJSONL {
+		writeDataSharePlainJSONL(c, claims.Filename, func() error {
+			return h.dataSharingService.ExportJSONL(c.Request.Context(), c.Writer, claims.Filters, false)
+		})
+		return
+	}
+	writeDataShareZstdJSONL(c, claims.Filename, func(zw *zstd.Encoder) error {
+		return h.dataSharingService.ExportJSONL(c.Request.Context(), zw, claims.Filters, false)
+	})
 }
 
 func parseDataShareIDParam(c *gin.Context) (int64, error) {
@@ -391,9 +425,55 @@ func dataShareSessionToResponse(session *service.DataShareSession, includePayloa
 	return resp
 }
 
-func writeDataShareJSONL(c *gin.Context, prefix string, data []byte) {
-	filename := fmt.Sprintf("%s-%s.jsonl", prefix, time.Now().Format("20060102-150405"))
+func dataShareExportTicketToResponse(ticket *service.DataShareExportTicket) dataShareExportTicketResponse {
+	if ticket == nil {
+		return dataShareExportTicketResponse{}
+	}
+	return dataShareExportTicketResponse{
+		Token:       ticket.Token,
+		DownloadURL: ticket.DownloadURL,
+		Filename:    ticket.Filename,
+		Encoding:    ticket.Encoding,
+		ExpiresAt:   ticket.ExpiresAt,
+	}
+}
+
+func writeDataSharePlainJSONL(c *gin.Context, filename string, write func() error) {
+	if filename == "" {
+		filename = fmt.Sprintf("data-sharing-%s.jsonl", time.Now().Format("20060102-150405"))
+	}
 	c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Data(200, "application/x-ndjson; charset=utf-8", data)
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	if err := write(); err != nil {
+		_ = c.Error(err)
+	}
+}
+
+func writeDataShareZstdJSONL(c *gin.Context, filename string, write func(*zstd.Encoder) error) {
+	if filename == "" {
+		filename = fmt.Sprintf("data-sharing-%s.jsonl.zst", time.Now().Format("20060102-150405"))
+	}
+	c.Header("Content-Type", "application/zstd")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	zw, err := zstd.NewWriter(c.Writer)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := write(zw); err != nil {
+		_ = zw.Close()
+		_ = c.Error(err)
+		return
+	}
+	if err := zw.Close(); err != nil {
+		_ = c.Error(err)
+		return
+	}
 }

@@ -67,6 +67,14 @@ export interface DataShareSessionFilters {
   sort_order?: 'asc' | 'desc'
 }
 
+export interface DataShareExportTicket {
+  token: string
+  download_url: string
+  filename: string
+  encoding: 'jsonl' | 'zstd'
+  expires_at: string
+}
+
 export async function getNotice(groupId?: number | null): Promise<DataShareNotice> {
   const { data } = await apiClient.get<DataShareNotice>('/data-sharing/notice', {
     params: groupId ? { group_id: groupId } : undefined
@@ -103,30 +111,36 @@ export async function getSession(id: number): Promise<DataShareSession> {
   return data
 }
 
-export async function exportSessions(filters?: DataShareSessionFilters): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>('/data-sharing/export', {
-    params: filters,
-    responseType: 'blob'
+export async function createExportTicket(filters?: DataShareSessionFilters): Promise<DataShareExportTicket> {
+  const { data } = await apiClient.post<DataShareExportTicket>('/data-sharing/export-ticket', null, {
+    params: filters
   })
   return data
 }
 
-export async function exportSession(id: number): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>(`/data-sharing/sessions/${id}/export`, {
-    responseType: 'blob'
-  })
+export async function createSessionExportTicket(id: number): Promise<DataShareExportTicket> {
+  const { data } = await apiClient.post<DataShareExportTicket>(`/data-sharing/sessions/${id}/export-ticket`)
   return data
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
+export function startTicketDownload(ticket: DataShareExportTicket) {
+  if (!ticket.download_url) return
   const link = document.createElement('a')
-  link.href = url
-  link.download = filename
+  link.href = resolveDownloadURL(ticket.download_url)
+  link.download = ticket.filename || ''
+  link.rel = 'noopener'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+}
+
+function resolveDownloadURL(downloadURL: string): string {
+  if (/^https?:\/\//i.test(downloadURL)) return downloadURL
+  const apiBase = (apiClient.defaults.baseURL || '/api/v1').replace(/\/$/, '')
+  const path = downloadURL.startsWith('/api/v1/')
+    ? downloadURL.slice('/api/v1'.length)
+    : downloadURL
+  return apiBase + (path.startsWith('/') ? path : `/${path}`)
 }
 
 export const dataSharingAPI = {
@@ -134,9 +148,9 @@ export const dataSharingAPI = {
   confirmNotice,
   listSessions,
   getSession,
-  exportSessions,
-  exportSession,
-  downloadBlob
+  createExportTicket,
+  createSessionExportTicket,
+  startTicketDownload
 }
 
 export default dataSharingAPI

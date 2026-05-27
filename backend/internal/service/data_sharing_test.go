@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -499,6 +500,105 @@ func TestCaptureSkipRulesFallbackAndUpdate(t *testing.T) {
 		RequestBody:     []byte(`{"model":"gpt-5.5","input":"Warmup"}`),
 	}) {
 		t.Fatalf("custom warmup rule should skip matching request")
+	}
+}
+
+func TestDataShareExportTicketRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	svc := NewDataSharingService(nil, repo)
+
+	ticket, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:    DataShareExportScopeUser,
+		UserID:   42,
+		Filters:  DataShareSessionFilters{UserID: 42, IDs: []int64{1, 2}},
+		Filename: "my-export",
+	})
+	if err != nil {
+		t.Fatalf("CreateExportTicket error = %v", err)
+	}
+	if !strings.HasSuffix(ticket.Filename, ".jsonl.zst") {
+		t.Fatalf("filename = %q, want .jsonl.zst suffix", ticket.Filename)
+	}
+	if !strings.Contains(ticket.DownloadURL, "/data-sharing/export/download?ticket=") {
+		t.Fatalf("download_url = %q", ticket.DownloadURL)
+	}
+	if repo.values[SettingKeyDataSharingExportTicketKey] == "" {
+		t.Fatalf("ticket signing key was not persisted")
+	}
+
+	claims, err := svc.ParseExportTicket(ctx, DataShareExportScopeUser, ticket.Token)
+	if err != nil {
+		t.Fatalf("ParseExportTicket error = %v", err)
+	}
+	if claims.UserID != 42 || len(claims.Filters.IDs) != 2 {
+		t.Fatalf("claims mismatch: %#v", claims)
+	}
+}
+
+func TestDataShareExportTicketFilenameEncoding(t *testing.T) {
+	ctx := context.Background()
+	svc := NewDataSharingService(nil, &dataShareSettingRepoStub{values: map[string]string{}})
+
+	zstdTicket, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:    DataShareExportScopeAdmin,
+		Filters:  DataShareSessionFilters{IDs: []int64{1}},
+		Filename: "admin-data-sharing.jsonl",
+	})
+	if err != nil {
+		t.Fatalf("CreateExportTicket zstd error = %v", err)
+	}
+	if zstdTicket.Filename != "admin-data-sharing.jsonl.zst" {
+		t.Fatalf("zstd filename = %q, want admin-data-sharing.jsonl.zst", zstdTicket.Filename)
+	}
+	if zstdTicket.Encoding != string(DataShareExportEncodingZstd) {
+		t.Fatalf("zstd encoding = %q", zstdTicket.Encoding)
+	}
+
+	plainTicket, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:    DataShareExportScopeAdmin,
+		Filters:  DataShareSessionFilters{IDs: []int64{1}},
+		Filename: "admin-data-sharing-session-1.jsonl.zst",
+		Encoding: DataShareExportEncodingJSONL,
+	})
+	if err != nil {
+		t.Fatalf("CreateExportTicket jsonl error = %v", err)
+	}
+	if plainTicket.Filename != "admin-data-sharing-session-1.jsonl" {
+		t.Fatalf("plain filename = %q, want admin-data-sharing-session-1.jsonl", plainTicket.Filename)
+	}
+	if plainTicket.Encoding != string(DataShareExportEncodingJSONL) {
+		t.Fatalf("plain encoding = %q", plainTicket.Encoding)
+	}
+}
+
+func TestDataShareExportTicketRejectsScopeMismatch(t *testing.T) {
+	ctx := context.Background()
+	svc := NewDataSharingService(nil, &dataShareSettingRepoStub{values: map[string]string{}})
+
+	ticket, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:   DataShareExportScopeAdmin,
+		Filters: DataShareSessionFilters{IDs: []int64{1}},
+	})
+	if err != nil {
+		t.Fatalf("CreateExportTicket error = %v", err)
+	}
+	if _, err := svc.ParseExportTicket(ctx, DataShareExportScopeUser, ticket.Token); err == nil {
+		t.Fatalf("ParseExportTicket should reject scope mismatch")
+	}
+}
+
+func TestDataShareExportTicketRejectsUserFilterMismatch(t *testing.T) {
+	ctx := context.Background()
+	svc := NewDataSharingService(nil, &dataShareSettingRepoStub{values: map[string]string{}})
+
+	_, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:   DataShareExportScopeUser,
+		UserID:  42,
+		Filters: DataShareSessionFilters{UserID: 7, IDs: []int64{1}},
+	})
+	if err == nil {
+		t.Fatalf("CreateExportTicket should reject mismatched user filter")
 	}
 }
 

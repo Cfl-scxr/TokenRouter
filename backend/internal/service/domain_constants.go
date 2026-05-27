@@ -164,6 +164,7 @@ const (
 	SettingKeyDataSharingNoticeContent    = "data_sharing_notice_content"     // 数据共享须知正文
 	SettingKeyDataSharingNoticeVersion    = "data_sharing_notice_version"     // 数据共享须知版本号
 	SettingKeyDataSharingCaptureSkipRules = "data_sharing_capture_skip_rules" // 数据共享采集跳过规则
+	SettingKeyDataSharingExportTicketKey  = "data_sharing_export_ticket_key"  // 数据共享导出下载票据签名密钥
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能

@@ -1134,8 +1134,9 @@ async function downloadSelected() {
   if (selectedCount.value === 0) return
   exporting.value = true
   try {
-    const blob = await adminDataSharingAPI.exportSessions(buildSelectionFilters())
-    dataSharingAPI.downloadBlob(blob, `admin-data-sharing-${Date.now()}.jsonl`)
+    const ticket = await adminDataSharingAPI.createExportTicket(buildSelectionFilters())
+    dataSharingAPI.startTicketDownload(ticket)
+    appStore.showSuccess('下载已开始')
   } catch (error) {
     appStore.showError('导出失败')
   } finally {
@@ -1145,8 +1146,9 @@ async function downloadSelected() {
 
 async function downloadOne(row: DataShareSession) {
   try {
-    const blob = await adminDataSharingAPI.exportSessions({ ids: String(row.id) })
-    dataSharingAPI.downloadBlob(blob, `admin-data-sharing-session-${row.id}.jsonl`)
+    const ticket = await adminDataSharingAPI.createSessionExportTicket(row.id)
+    dataSharingAPI.startTicketDownload(ticket)
+    appStore.showSuccess('下载已开始')
   } catch (error) {
     appStore.showError('下载失败')
   }

@@ -3,7 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -36,8 +39,11 @@ var (
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
 const dataShareSkipRulesCacheTTL = 30 * time.Second
+const dataShareExportTicketTTL = 5 * time.Minute
 
 var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES_INVALID", "data sharing capture skip rules are invalid")
+var ErrDataShareExportTicketInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_TICKET_INVALID", "data sharing export ticket is invalid")
+var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT_TICKET_FORBIDDEN", "data sharing export ticket scope is not allowed")
 
 const (
 	dataShareSkipRuleMatchContains = "contains"
@@ -126,6 +132,50 @@ type DataShareSessionFilters struct {
 	StartTime     *time.Time
 	EndTime       *time.Time
 	Search        string
+}
+
+// DataShareExportScope 表示数据共享导出下载票据的权限范围。
+type DataShareExportScope string
+
+const (
+	DataShareExportScopeUser  DataShareExportScope = "user"
+	DataShareExportScopeAdmin DataShareExportScope = "admin"
+)
+
+// DataShareExportEncoding 表示下载票据期望的导出文件编码。
+type DataShareExportEncoding string
+
+const (
+	DataShareExportEncodingJSONL DataShareExportEncoding = "jsonl"
+	DataShareExportEncodingZstd  DataShareExportEncoding = "zstd"
+)
+
+// DataShareExportTicketRequest 描述一次下载票据签发请求。
+type DataShareExportTicketRequest struct {
+	Scope    DataShareExportScope
+	UserID   int64
+	Filters  DataShareSessionFilters
+	Filename string
+	Encoding DataShareExportEncoding
+}
+
+// DataShareExportTicket 是前端触发原生下载所需的短期票据响应。
+type DataShareExportTicket struct {
+	Token       string    `json:"token"`
+	DownloadURL string    `json:"download_url"`
+	Filename    string    `json:"filename"`
+	Encoding    string    `json:"encoding"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// DataShareExportTicketClaims 是签名票据中保存的导出上下文。
+type DataShareExportTicketClaims struct {
+	Scope     DataShareExportScope    `json:"scope"`
+	UserID    int64                   `json:"user_id,omitempty"`
+	Filters   DataShareSessionFilters `json:"filters"`
+	Filename  string                  `json:"filename"`
+	Encoding  DataShareExportEncoding `json:"encoding,omitempty"`
+	ExpiresAt int64                   `json:"expires_at"`
 }
 
 // DataShareStoragePoint 用于管理端展示空间增长趋势。
@@ -737,6 +787,68 @@ func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSession
 	return s.repo.Stats(ctx, filters)
 }
 
+// CreateExportTicket 为大文件下载签发短期票据，避免浏览器用 Blob 缓存完整导出文件。
+func (s *DataSharingService) CreateExportTicket(ctx context.Context, req DataShareExportTicketRequest) (*DataShareExportTicket, error) {
+	if err := validateDataShareExportTicketRequest(req); err != nil {
+		return nil, err
+	}
+	key, err := s.exportTicketSigningKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	expiresAt := time.Now().Add(dataShareExportTicketTTL)
+	encoding := normalizeDataShareExportEncoding(req.Encoding)
+	claims := DataShareExportTicketClaims{
+		Scope:     req.Scope,
+		UserID:    req.UserID,
+		Filters:   req.Filters,
+		Filename:  normalizeDataShareExportFilename(req.Filename, encoding),
+		Encoding:  encoding,
+		ExpiresAt: expiresAt.Unix(),
+	}
+	token, err := signDataShareExportTicket(claims, key)
+	if err != nil {
+		return nil, err
+	}
+	return &DataShareExportTicket{
+		Token:       token,
+		DownloadURL: dataShareExportDownloadURL(req.Scope, token),
+		Filename:    claims.Filename,
+		Encoding:    string(claims.Encoding),
+		ExpiresAt:   expiresAt,
+	}, nil
+}
+
+// ParseExportTicket 校验短期下载票据并返回导出上下文。
+func (s *DataSharingService) ParseExportTicket(ctx context.Context, scope DataShareExportScope, token string) (*DataShareExportTicketClaims, error) {
+	key, err := s.exportTicketSigningKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	claims, err := parseDataShareExportTicket(token, key)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Scope != scope {
+		return nil, ErrDataShareExportTicketForbidden
+	}
+	if claims.ExpiresAt <= 0 || time.Now().Unix() > claims.ExpiresAt {
+		return nil, ErrDataShareExportTicketInvalid
+	}
+	if err := validateDataShareExportTicketRequest(DataShareExportTicketRequest{
+		Scope:    claims.Scope,
+		UserID:   claims.UserID,
+		Filters:  claims.Filters,
+		Filename: claims.Filename,
+		Encoding: claims.Encoding,
+	}); err != nil {
+		return nil, err
+	}
+	claims.Encoding = normalizeDataShareExportEncoding(claims.Encoding)
+	claims.Filename = normalizeDataShareExportFilename(claims.Filename, claims.Encoding)
+	return claims, nil
+}
+
 // ExportJSONL 导出选中的数据共享 session；显式选中的记录保留原始快照，不再因质量状态跳过。
 func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool) error {
 	_ = includeNonExportable
@@ -761,6 +873,116 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 		}
 		params.Page++
 	}
+}
+
+func validateDataShareExportTicketRequest(req DataShareExportTicketRequest) error {
+	switch req.Scope {
+	case DataShareExportScopeUser:
+		if req.UserID <= 0 {
+			return ErrDataShareExportTicketInvalid
+		}
+		if req.Filters.UserID != 0 && req.Filters.UserID != req.UserID {
+			return ErrDataShareExportTicketForbidden
+		}
+	case DataShareExportScopeAdmin:
+	default:
+		return ErrDataShareExportTicketInvalid
+	}
+	if req.Filters.SelectAll {
+		return nil
+	}
+	if len(req.Filters.IDs) == 0 {
+		return ErrDataShareExportTicketInvalid
+	}
+	return nil
+}
+
+func (s *DataSharingService) exportTicketSigningKey(ctx context.Context) ([]byte, error) {
+	if s == nil || s.settingRepo == nil {
+		return []byte("tokenrouter-data-sharing-export-ticket-dev-key"), nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingExportTicketKey)
+	if err == nil && strings.TrimSpace(raw) != "" {
+		return []byte(strings.TrimSpace(raw)), nil
+	}
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return nil, err
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return nil, err
+	}
+	secret := base64.RawURLEncoding.EncodeToString(buf)
+	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingExportTicketKey, secret); err != nil {
+		return nil, err
+	}
+	return []byte(secret), nil
+}
+
+func signDataShareExportTicket(claims DataShareExportTicketClaims, key []byte) (string, error) {
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	return encodedPayload + "." + signDataShareExportTicketPayload(encodedPayload, key), nil
+}
+
+func parseDataShareExportTicket(token string, key []byte) (*DataShareExportTicketClaims, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, ErrDataShareExportTicketInvalid
+	}
+	expected := signDataShareExportTicketPayload(parts[0], key)
+	if !hmac.Equal([]byte(parts[1]), []byte(expected)) {
+		return nil, ErrDataShareExportTicketInvalid
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, ErrDataShareExportTicketInvalid
+	}
+	var claims DataShareExportTicketClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, ErrDataShareExportTicketInvalid
+	}
+	return &claims, nil
+}
+
+func signDataShareExportTicketPayload(payload string, key []byte) string {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func dataShareExportDownloadURL(scope DataShareExportScope, token string) string {
+	if scope == DataShareExportScopeAdmin {
+		return "/api/v1/admin/data-sharing/export/download?ticket=" + token
+	}
+	return "/api/v1/data-sharing/export/download?ticket=" + token
+}
+
+func normalizeDataShareExportEncoding(encoding DataShareExportEncoding) DataShareExportEncoding {
+	switch encoding {
+	case DataShareExportEncodingJSONL:
+		return DataShareExportEncodingJSONL
+	default:
+		return DataShareExportEncodingZstd
+	}
+}
+
+func normalizeDataShareExportFilename(filename string, encoding DataShareExportEncoding) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		filename = "data-sharing-" + time.Now().Format("20060102-150405")
+	}
+	filename = strings.TrimSuffix(filename, ".jsonl.zst")
+	filename = strings.TrimSuffix(filename, ".jsonl")
+	filename = strings.TrimSuffix(filename, ".zst")
+	filename = strings.NewReplacer("/", "-", "\\", "-", "\x00", "").Replace(filename)
+	if normalizeDataShareExportEncoding(encoding) == DataShareExportEncodingJSONL {
+		return filename + ".jsonl"
+	}
+	return filename + ".jsonl.zst"
 }
 
 func defaultDataSharingNotice(ctx context.Context, repo SettingRepository) (*DataShareNotice, error) {
