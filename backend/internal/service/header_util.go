@@ -109,6 +109,19 @@ func addHeaderRaw(h http.Header, key, value string) {
 	h[key] = append(h[key], value)
 }
 
+// deleteHeaderAllForms 删除同一 header 的常见 key 形式（raw、wire casing、canonical），
+// 避免后续 setHeaderRaw 与不同大小写下的透传值并存。
+func deleteHeaderAllForms(h http.Header, key string) {
+	if h == nil || key == "" {
+		return
+	}
+	h.Del(key) // canonical
+	delete(h, key)
+	if wk := resolveWireCasing(key); wk != key {
+		delete(h, wk)
+	}
+}
+
 // getHeaderRaw reads a header value, trying multiple key forms to handle the mismatch
 // between Go canonical keys, wire casing keys, and raw keys:
 //  1. exact key as provided
