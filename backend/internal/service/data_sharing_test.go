@@ -291,6 +291,30 @@ func TestBuildSessionFiltersOrdinaryResponsesChat(t *testing.T) {
 	}
 }
 
+func TestShouldSkipDataShareCaptureForClaudeCodeTitleRequest(t *testing.T) {
+	input := DataShareCaptureInput{
+		UserAgent:       "claude-cli/2.1.142 (external, cli)",
+		InboundEndpoint: "/v1/messages",
+		RequestBody: []byte(`{
+			"model":"gpt-5.5",
+			"system":[
+				{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},
+				{"type":"text","text":"Generate a concise, sentence-case title (3-7 words) that captures the main topic."}
+			],
+			"messages":[{"role":"user","content":"<session>看看 Documents 里面有什么</session>"}]
+		}`),
+	}
+
+	if !shouldSkipDataShareCapture(input) {
+		t.Fatalf("Claude Code title request should be skipped")
+	}
+
+	input.RequestBody = []byte(`{"model":"gpt-5.5","system":"You are Claude Code.","messages":[{"role":"user","content":"列目录"}]}`)
+	if shouldSkipDataShareCapture(input) {
+		t.Fatalf("normal Claude Code request should not be skipped")
+	}
+}
+
 func TestExportPayloadNormalizesLegacyRecord(t *testing.T) {
 	sys := ""
 	session := &DataShareSession{

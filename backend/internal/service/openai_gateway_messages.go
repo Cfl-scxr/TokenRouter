@@ -372,6 +372,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
+		result.DataShareSessionID = dataShareSessionIDFromCompatPromptCacheKey(promptCacheKey)
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
 		}
@@ -396,6 +397,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	return result, handleErr
+}
+
+func dataShareSessionIDFromCompatPromptCacheKey(promptCacheKey string) string {
+	promptCacheKey = strings.TrimSpace(promptCacheKey)
+	if promptCacheKey == "" {
+		return ""
+	}
+	return "openai-compat:" + hashSensitiveValueForLog(promptCacheKey)
 }
 
 func ensureCodexOAuthInstructionsField(reqBody map[string]any) {

@@ -33,6 +33,7 @@ var (
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
+const claudeCodeTitlePromptMarker = "Generate a concise, sentence-case title"
 
 // DataShareNotice 是用户切换到数据共享分组前需要确认的须知。
 type DataShareNotice struct {
@@ -256,6 +257,9 @@ func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input Dat
 	if s == nil || s.repo == nil {
 		return nil
 	}
+	if shouldSkipDataShareCapture(input) {
+		return nil
+	}
 	if input.Model == "" && input.UpstreamModel != "" {
 		input.Model = input.UpstreamModel
 	}
@@ -271,8 +275,32 @@ func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input Dat
 	if s == nil || s.repo == nil {
 		return nil
 	}
+	if shouldSkipDataShareCapture(input) {
+		return nil
+	}
 	session := s.buildSession(input)
 	return s.repo.UpsertCapture(ctx, session)
+}
+
+func shouldSkipDataShareCapture(input DataShareCaptureInput) bool {
+	return isClaudeCodeTitleGenerationRequest(input)
+}
+
+func isClaudeCodeTitleGenerationRequest(input DataShareCaptureInput) bool {
+	if normalizeDataShareUserAgent(input.UserAgent) != "claude-cli" {
+		return false
+	}
+	if normalizeDataShareRequestPath(input.InboundEndpoint) != "/v1/messages" {
+		return false
+	}
+	system := gjson.GetBytes(input.RequestBody, "system")
+	if !system.Exists() {
+		return false
+	}
+	if system.Type == gjson.String {
+		return strings.Contains(system.String(), claudeCodeTitlePromptMarker)
+	}
+	return strings.Contains(system.Raw, claudeCodeTitlePromptMarker)
 }
 
 // ListSessions 查询数据共享 session。

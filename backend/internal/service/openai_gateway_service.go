@@ -282,6 +282,7 @@ type OpenAIForwardResult struct {
 	OpenAIWSMode       bool
 	ResponseHeaders    http.Header
 	ResponseBody       []byte // 成功响应体，用于数据共享提取 assistant 输出。
+	DataShareSessionID string // 数据共享聚合使用的稳定会话标识。
 	Duration           time.Duration
 	FirstTokenMs       *int
 	ImageCount         int
@@ -5785,7 +5786,7 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(ctx context.Co
 		Provider:          PlatformFromAPIKey(input.APIKey),
 		Model:             requestedModel,
 		UpstreamModel:     result.UpstreamModel,
-		SessionID:         input.SessionID,
+		SessionID:         firstNonBlank(result.DataShareSessionID, input.SessionID),
 		RequestID:         result.RequestID,
 		RequestBody:       cloneDataSharingRequestBody(input.RequestBody),
 		ResponseBody:      cloneDataSharingRequestBody(result.ResponseBody),

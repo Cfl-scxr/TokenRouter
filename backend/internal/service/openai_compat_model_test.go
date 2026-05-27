@@ -331,6 +331,7 @@ func TestForwardAsAnthropic_AutoDerivesPromptCacheKeyWhenMessagesDispatchHasNoSe
 	require.NotEmpty(t, cacheKey)
 	require.True(t, strings.HasPrefix(cacheKey, "anthropic-digest-"))
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, cacheKey)), upstream.lastReq.Header.Get("session_id"))
+	require.Equal(t, dataShareSessionIDFromCompatPromptCacheKey(cacheKey), result.DataShareSessionID)
 }
 
 func TestForwardAsAnthropic_DoesNotAutoDerivePromptCacheKeyForNonCodexModel(t *testing.T) {
