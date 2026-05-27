@@ -161,8 +161,9 @@ const (
 	SettingKeyAPIKeyACLTrustForwardedIP = "api_key_acl_trust_forwarded_ip" // API Key IP 白/黑名单是否信任转发 IP
 
 	// 数据共享须知设置
-	SettingKeyDataSharingNoticeContent = "data_sharing_notice_content" // 数据共享须知正文
-	SettingKeyDataSharingNoticeVersion = "data_sharing_notice_version" // 数据共享须知版本号
+	SettingKeyDataSharingNoticeContent    = "data_sharing_notice_content"     // 数据共享须知正文
+	SettingKeyDataSharingNoticeVersion    = "data_sharing_notice_version"     // 数据共享须知版本号
+	SettingKeyDataSharingCaptureSkipRules = "data_sharing_capture_skip_rules" // 数据共享采集跳过规则
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能

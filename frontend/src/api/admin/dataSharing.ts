@@ -53,6 +53,21 @@ export interface DataShareStats {
   user_agent_breakdown: DataShareUserAgentPoint[]
 }
 
+export type DataShareCaptureSkipRuleMatchMode = 'contains' | 'equals'
+export type DataShareCaptureSkipRuleFieldScope = 'system' | 'messages' | 'input' | 'instructions'
+
+export interface DataShareCaptureSkipRule {
+  id: string
+  name: string
+  enabled: boolean
+  client_families: string[]
+  request_paths: string[]
+  field_scopes: DataShareCaptureSkipRuleFieldScope[]
+  patterns: string[]
+  case_sensitive: boolean
+  match_mode: DataShareCaptureSkipRuleMatchMode
+}
+
 export interface AdminDataShareSessionFilters extends DataShareSessionFilters {
   user_id?: number
   user_name?: string
@@ -65,6 +80,16 @@ export async function getNotice(): Promise<DataShareNotice> {
 
 export async function updateNotice(content: string): Promise<DataShareNotice> {
   const { data } = await apiClient.put<DataShareNotice>('/admin/data-sharing/notice', { content })
+  return data
+}
+
+export async function getSkipRules(): Promise<DataShareCaptureSkipRule[]> {
+  const { data } = await apiClient.get<DataShareCaptureSkipRule[]>('/admin/data-sharing/skip-rules')
+  return data
+}
+
+export async function updateSkipRules(rules: DataShareCaptureSkipRule[]): Promise<DataShareCaptureSkipRule[]> {
+  const { data } = await apiClient.put<DataShareCaptureSkipRule[]>('/admin/data-sharing/skip-rules', { rules })
   return data
 }
 
@@ -119,6 +144,8 @@ export async function getStats(filters?: AdminDataShareSessionFilters): Promise<
 export const adminDataSharingAPI = {
   getNotice,
   updateNotice,
+  getSkipRules,
+  updateSkipRules,
   listSessions,
   getSession,
   deleteSession,

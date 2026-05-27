@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +12,58 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type adminDataShareSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *adminDataShareSettingRepoStub) Get(context.Context, string) (*service.Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *adminDataShareSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if v, ok := s.values[key]; ok {
+		return v, nil
+	}
+	return "", service.ErrSettingNotFound
+}
+
+func (s *adminDataShareSettingRepoStub) Set(_ context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *adminDataShareSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if v, ok := s.values[key]; ok {
+			out[key] = v
+		}
+	}
+	return out, nil
+}
+
+func (s *adminDataShareSettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	for key, value := range settings {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *adminDataShareSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *adminDataShareSettingRepoStub) Delete(_ context.Context, key string) error {
+	delete(s.values, key)
+	return nil
+}
 
 func TestParseAdminDataShareFiltersIncludesRequestPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -36,4 +91,32 @@ func TestAdminDataShareSessionToResponseIncludesRequestPathAndUserAgent(t *testi
 
 	require.Equal(t, "/v1/messages", resp.RequestPath)
 	require.Equal(t, "claude-code/2.0", resp.UserAgent)
+}
+
+func TestDataShareSkipRulesHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
+	h := NewDataSharingHandler(service.NewDataSharingService(nil, repo))
+
+	getRecorder := httptest.NewRecorder()
+	getCtx, _ := gin.CreateTestContext(getRecorder)
+	getCtx.Request = httptest.NewRequest(http.MethodGet, "/admin/data-sharing/skip-rules", nil)
+	h.GetSkipRules(getCtx)
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var getEnvelope struct {
+		Code int                                `json:"code"`
+		Data []service.DataShareCaptureSkipRule `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &getEnvelope))
+	require.NotEmpty(t, getEnvelope.Data)
+
+	body := bytes.NewBufferString(`{"rules":[{"id":"custom","name":"自定义","enabled":true,"request_paths":["v1/responses"],"field_scopes":["input"],"patterns":["Warmup"],"match_mode":"equals"}]}`)
+	putRecorder := httptest.NewRecorder()
+	putCtx, _ := gin.CreateTestContext(putRecorder)
+	putCtx.Request = httptest.NewRequest(http.MethodPut, "/admin/data-sharing/skip-rules", body)
+	putCtx.Request.Header.Set("Content-Type", "application/json")
+	h.UpdateSkipRules(putCtx)
+	require.Equal(t, http.StatusOK, putRecorder.Code)
+	require.NotEmpty(t, repo.values[service.SettingKeyDataSharingCaptureSkipRules])
 }

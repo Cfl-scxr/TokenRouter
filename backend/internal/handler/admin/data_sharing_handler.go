@@ -29,6 +29,11 @@ type UpdateDataSharingNoticeRequest struct {
 	Content string `json:"content" binding:"required"`
 }
 
+// UpdateDataShareSkipRulesRequest 是管理端更新采集跳过规则的请求。
+type UpdateDataShareSkipRulesRequest struct {
+	Rules []service.DataShareCaptureSkipRule `json:"rules"`
+}
+
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
 type BatchDeleteDataShareSessionsRequest struct {
 	IDs []int64 `json:"ids"`
@@ -94,6 +99,31 @@ func (h *DataSharingHandler) UpdateNotice(c *gin.Context) {
 		return
 	}
 	response.Success(c, notice)
+}
+
+// GetSkipRules 返回当前生效的数据共享采集跳过规则。
+func (h *DataSharingHandler) GetSkipRules(c *gin.Context) {
+	rules, err := h.dataSharingService.GetCaptureSkipRules(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, rules)
+}
+
+// UpdateSkipRules 保存管理端维护的数据共享采集跳过规则。
+func (h *DataSharingHandler) UpdateSkipRules(c *gin.Context) {
+	var req UpdateDataShareSkipRulesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	rules, err := h.dataSharingService.UpdateCaptureSkipRules(c.Request.Context(), req.Rules)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, rules)
 }
 
 // ListSessions 查询所有数据共享 session。

@@ -113,6 +113,147 @@
         ></textarea>
       </div>
 
+      <div class="card p-4">
+        <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">采集跳过规则</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">命中启用规则的辅助请求不会进入数据共享 session。</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn btn-secondary btn-sm" :disabled="skipRulesLoading || savingSkipRules" @click="restoreDefaultSkipRules">
+              恢复默认规则
+            </button>
+            <button class="btn btn-secondary btn-sm" :disabled="skipRulesLoading || savingSkipRules" @click="addSkipRule">
+              <Icon name="plus" size="sm" class="mr-1" />
+              新增规则
+            </button>
+            <button class="btn btn-primary btn-sm" :disabled="skipRulesLoading || savingSkipRules" @click="saveSkipRules">
+              <Icon name="check" size="sm" class="mr-1" />
+              保存规则
+            </button>
+          </div>
+        </div>
+
+        <div v-if="skipRulesLoading" class="flex h-32 items-center justify-center">
+          <LoadingSpinner />
+        </div>
+        <div v-else-if="skipRules.length === 0" class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          暂无跳过规则
+        </div>
+        <div v-else class="space-y-3">
+          <div
+            v-for="(rule, index) in skipRules"
+            :key="rule.id || index"
+            class="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input v-model="rule.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                启用规则
+              </label>
+              <button class="btn btn-ghost btn-sm text-red-600 hover:text-red-700" @click="removeSkipRule(index)">
+                <Icon name="trash" size="sm" class="mr-1" />
+                删除
+              </button>
+            </div>
+
+            <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label class="input-label">规则 ID</label>
+                <input v-model="rule.id" type="text" class="input font-mono text-sm" placeholder="custom_rule" />
+              </div>
+              <div>
+                <label class="input-label">规则名称</label>
+                <input v-model="rule.name" type="text" class="input" placeholder="辅助请求跳过规则" />
+              </div>
+              <div>
+                <label class="input-label">客户端</label>
+                <input
+                  :value="joinList(rule.client_families)"
+                  type="text"
+                  class="input"
+                  placeholder="opencode, claude-cli"
+                  @input="setSkipRuleList(rule, 'client_families', eventValue($event))"
+                />
+              </div>
+              <div>
+                <label class="input-label">请求路径</label>
+                <div class="relative" :ref="el => setSkipRulePathMenuRef(rule.id || String(index), el)">
+                  <button type="button" class="input flex items-center justify-between gap-2 text-left" @click="toggleSkipRulePathMenu(rule.id || String(index))">
+                    <span class="truncate">{{ formatSkipRulePaths(rule.request_paths) }}</span>
+                    <Icon name="chevronDown" size="sm" class="text-gray-400" />
+                  </button>
+                  <div
+                    v-if="openSkipRulePathMenu === (rule.id || String(index))"
+                    class="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <label
+                      v-for="option in skipRuleRequestPathOptions"
+                      :key="option.value"
+                      class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      <input
+                        :checked="rule.request_paths.includes(option.value)"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-primary-600"
+                        @change="toggleSkipRulePath(rule, option.value, $event)"
+                      />
+                      <span>{{ option.label }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+              <div>
+                <label class="input-label">匹配字段</label>
+                <div class="flex flex-wrap gap-2">
+                  <label
+                    v-for="scope in skipRuleScopeOptions"
+                    :key="scope.value"
+                    class="inline-flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                  >
+                    <input
+                      :checked="rule.field_scopes.includes(scope.value)"
+                      type="checkbox"
+                      class="rounded border-gray-300 text-primary-600"
+                      @change="toggleSkipRuleScope(rule, scope.value, $event)"
+                    />
+                    {{ scope.label }}
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label class="input-label">匹配方式</label>
+                <select v-model="rule.match_mode" class="input">
+                  <option value="contains">包含</option>
+                  <option value="equals">等于</option>
+                </select>
+              </div>
+              <div>
+                <label class="input-label">大小写</label>
+                <label class="flex h-10 items-center gap-2 rounded border border-gray-200 px-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                  <input v-model="rule.case_sensitive" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                  区分大小写
+                </label>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="input-label">关键词（一行一条）</label>
+              <textarea
+                :value="joinLines(rule.patterns)"
+                rows="3"
+                class="input font-mono text-sm"
+                placeholder="Generate a title for this conversation:"
+                @input="setSkipRulePatterns(rule, eventValue($event))"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <TablePageLayout>
         <template #filters>
           <div class="flex flex-col gap-4">
@@ -262,7 +403,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, type ComponentPublicInstance } from 'vue'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -285,7 +426,13 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { adminDataSharingAPI, type AdminDataShareSessionFilters, type DataShareStats } from '@/api/admin/dataSharing'
+import {
+  adminDataSharingAPI,
+  type AdminDataShareSessionFilters,
+  type DataShareCaptureSkipRule,
+  type DataShareCaptureSkipRuleFieldScope,
+  type DataShareStats
+} from '@/api/admin/dataSharing'
 import { dataSharingAPI, type DataShareNotice, type DataShareSession } from '@/api/dataSharing'
 import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
@@ -296,9 +443,12 @@ const appStore = useAppStore()
 
 const notice = ref<DataShareNotice | null>(null)
 const noticeContent = ref('')
+const skipRules = ref<DataShareCaptureSkipRule[]>([])
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
+const openSkipRulePathMenu = ref<string | null>(null)
+const skipRulePathMenuRefs = new Map<string, HTMLElement>()
 // 选中状态支持两种模式：显式 ID 列表，以及“当前筛选条件全集 + 排除列表”。
 const selectedIds = ref<Set<number>>(new Set())
 const excludedIds = ref<Set<number>>(new Set())
@@ -307,6 +457,8 @@ const selectAllMatching = ref(false)
 const loading = ref(false)
 const statsLoading = ref(false)
 const savingNotice = ref(false)
+const skipRulesLoading = ref(false)
+const savingSkipRules = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -331,6 +483,92 @@ const qualityOptions = [
   { value: 'complete', label: '完整' },
   { value: 'partial', label: '部分完整' },
   { value: 'invalid', label: '无效' }
+]
+
+const skipRuleScopeOptions: Array<{ value: DataShareCaptureSkipRuleFieldScope; label: string }> = [
+  { value: 'system', label: 'System' },
+  { value: 'messages', label: 'Messages' },
+  { value: 'input', label: 'Input' },
+  { value: 'instructions', label: 'Instructions' }
+]
+
+const skipRuleRequestPathOptions = [
+  { value: '/v1/messages', label: '/v1/messages' },
+  { value: '/v1/chat/completions', label: '/v1/chat/completions' },
+  { value: '/v1/responses', label: '/v1/responses' }
+]
+
+const defaultSkipRules: DataShareCaptureSkipRule[] = [
+  {
+    id: 'claude_code_title',
+    name: 'Claude Code 标题生成',
+    enabled: true,
+    client_families: ['claude-cli'],
+    request_paths: ['/v1/messages'],
+    field_scopes: ['system'],
+    patterns: ['Generate a concise, sentence-case title'],
+    case_sensitive: false,
+    match_mode: 'contains'
+  },
+  {
+    id: 'opencode_title_system',
+    name: 'opencode 标题生成系统提示',
+    enabled: true,
+    client_families: ['opencode'],
+    request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    field_scopes: ['system'],
+    patterns: [
+      'You are a title generator. You output ONLY a thread title. Nothing else.',
+      'Generate a brief title that would help the user find this conversation later.',
+      'NEVER respond to questions, just generate a title for the conversation'
+    ],
+    case_sensitive: false,
+    match_mode: 'contains'
+  },
+  {
+    id: 'opencode_title_user_prompt',
+    name: 'opencode 标题生成用户提示',
+    enabled: true,
+    client_families: ['opencode'],
+    request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    field_scopes: ['messages', 'input'],
+    patterns: ['Generate a title for this conversation:'],
+    case_sensitive: false,
+    match_mode: 'contains'
+  },
+  {
+    id: 'agent_title_from_messages',
+    name: 'Agent 会话标题生成',
+    enabled: true,
+    client_families: [],
+    request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    field_scopes: ['messages', 'input'],
+    patterns: ['Please write a 5-10 word title for the following conversation:'],
+    case_sensitive: false,
+    match_mode: 'contains'
+  },
+  {
+    id: 'agent_topic_title',
+    name: 'Agent 主题标题提取',
+    enabled: true,
+    client_families: [],
+    request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    field_scopes: ['system', 'instructions'],
+    patterns: ['extract a 2-3 word title'],
+    case_sensitive: false,
+    match_mode: 'contains'
+  },
+  {
+    id: 'agent_warmup',
+    name: 'Agent 预热请求',
+    enabled: true,
+    client_families: [],
+    request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    field_scopes: ['messages', 'input'],
+    patterns: ['Warmup'],
+    case_sensitive: false,
+    match_mode: 'equals'
+  }
 ]
 
 const columns: Column[] = [
@@ -591,6 +829,153 @@ async function saveNotice() {
   } finally {
     savingNotice.value = false
   }
+}
+
+async function loadSkipRules() {
+  skipRulesLoading.value = true
+  try {
+    skipRules.value = cloneSkipRules(await adminDataSharingAPI.getSkipRules())
+  } catch (error) {
+    appStore.showError('加载采集跳过规则失败')
+  } finally {
+    skipRulesLoading.value = false
+  }
+}
+
+async function saveSkipRules() {
+  savingSkipRules.value = true
+  try {
+    skipRules.value = cloneSkipRules(await adminDataSharingAPI.updateSkipRules(normalizeSkipRulesForSave()))
+    appStore.showSuccess('采集跳过规则已保存')
+  } catch (error) {
+    appStore.showError('保存采集跳过规则失败')
+  } finally {
+    savingSkipRules.value = false
+  }
+}
+
+function restoreDefaultSkipRules() {
+  skipRules.value = cloneSkipRules(defaultSkipRules)
+}
+
+function addSkipRule() {
+  skipRules.value = [
+    ...skipRules.value,
+    {
+      id: `custom_${Date.now()}`,
+      name: '自定义跳过规则',
+      enabled: true,
+      client_families: [],
+      request_paths: [],
+      field_scopes: ['messages'],
+      patterns: [],
+      case_sensitive: false,
+      match_mode: 'contains'
+    }
+  ]
+}
+
+function removeSkipRule(index: number) {
+  skipRules.value = skipRules.value.filter((_, i) => i !== index)
+}
+
+function toggleSkipRuleScope(rule: DataShareCaptureSkipRule, scope: DataShareCaptureSkipRuleFieldScope, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  const values = new Set(rule.field_scopes)
+  if (checked) {
+    values.add(scope)
+  } else {
+    values.delete(scope)
+  }
+  rule.field_scopes = Array.from(values)
+}
+
+function toggleSkipRulePathMenu(key: string) {
+  openSkipRulePathMenu.value = openSkipRulePathMenu.value === key ? null : key
+}
+
+function setSkipRulePathMenuRef(key: string, el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLElement) {
+    skipRulePathMenuRefs.set(key, el)
+  } else {
+    skipRulePathMenuRefs.delete(key)
+  }
+}
+
+function closeSkipRulePathMenuOnOutsideClick(event: MouseEvent) {
+  const key = openSkipRulePathMenu.value
+  if (!key) return
+  const container = skipRulePathMenuRefs.get(key)
+  if (container && event.target instanceof Node && container.contains(event.target)) {
+    return
+  }
+  openSkipRulePathMenu.value = null
+}
+
+function toggleSkipRulePath(rule: DataShareCaptureSkipRule, path: string, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  const values = new Set(rule.request_paths)
+  if (checked) {
+    values.add(path)
+  } else {
+    values.delete(path)
+  }
+  rule.request_paths = Array.from(values)
+}
+
+function formatSkipRulePaths(paths: string[]) {
+  if (!paths.length) return '不限路径'
+  return paths.join(', ')
+}
+
+function eventValue(event: Event) {
+  return (event.target as HTMLInputElement | HTMLTextAreaElement).value
+}
+
+function joinList(values: string[]) {
+  return values.join(', ')
+}
+
+function joinLines(values: string[]) {
+  return values.join('\n')
+}
+
+function splitList(value: string) {
+  return value.split(',').map(item => item.trim()).filter(Boolean)
+}
+
+function splitLines(value: string) {
+  return value.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
+}
+
+function setSkipRuleList(rule: DataShareCaptureSkipRule, key: 'client_families' | 'request_paths', value: string) {
+  rule[key] = splitList(value)
+}
+
+function setSkipRulePatterns(rule: DataShareCaptureSkipRule, value: string) {
+  rule.patterns = splitLines(value)
+}
+
+function cloneSkipRules(rules: DataShareCaptureSkipRule[]) {
+  return rules.map(rule => ({
+    ...rule,
+    client_families: [...(rule.client_families || [])],
+    request_paths: [...(rule.request_paths || [])],
+    field_scopes: [...(rule.field_scopes || [])],
+    patterns: [...(rule.patterns || [])]
+  }))
+}
+
+function normalizeSkipRulesForSave() {
+  return cloneSkipRules(skipRules.value).map(rule => ({
+    ...rule,
+    id: rule.id.trim(),
+    name: rule.name.trim(),
+    client_families: rule.client_families.map(item => item.trim()).filter(Boolean),
+    request_paths: rule.request_paths.map(item => item.trim()).filter(Boolean),
+    field_scopes: rule.field_scopes.filter(scope => skipRuleScopeOptions.some(option => option.value === scope)),
+    patterns: rule.patterns.map(item => item.trim()).filter(Boolean)
+  }))
 }
 
 async function loadStats() {
@@ -854,7 +1239,13 @@ function formatBytes(value?: number | null) {
 }
 
 onMounted(() => {
+  document.addEventListener('click', closeSkipRulePathMenuOnOutsideClick)
   loadNotice()
+  loadSkipRules()
   refreshAll()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeSkipRulePathMenuOnOutsideClick)
 })
 </script>

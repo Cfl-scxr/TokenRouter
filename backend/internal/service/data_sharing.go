@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
@@ -33,13 +35,33 @@ var (
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
-const claudeCodeTitlePromptMarker = "Generate a concise, sentence-case title"
+const dataShareSkipRulesCacheTTL = 30 * time.Second
+
+var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES_INVALID", "data sharing capture skip rules are invalid")
+
+const (
+	dataShareSkipRuleMatchContains = "contains"
+	dataShareSkipRuleMatchEquals   = "equals"
+)
 
 // DataShareNotice 是用户切换到数据共享分组前需要确认的须知。
 type DataShareNotice struct {
 	Content   string    `json:"content"`
 	Version   int       `json:"version"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// DataShareCaptureSkipRule 描述数据共享采集前需要跳过的辅助请求模式。
+type DataShareCaptureSkipRule struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Enabled        bool     `json:"enabled"`
+	ClientFamilies []string `json:"client_families"`
+	RequestPaths   []string `json:"request_paths"`
+	FieldScopes    []string `json:"field_scopes"`
+	Patterns       []string `json:"patterns"`
+	CaseSensitive  bool     `json:"case_sensitive"`
+	MatchMode      string   `json:"match_mode"`
 }
 
 // DataShareSession 保存一条聚合后的 Agent session。
@@ -197,8 +219,11 @@ type DataShareSessionRepository interface {
 
 // DataSharingService 负责数据共享须知、采集、导出和统计。
 type DataSharingService struct {
-	repo        DataShareSessionRepository
-	settingRepo SettingRepository
+	repo                    DataShareSessionRepository
+	settingRepo             SettingRepository
+	skipRulesMu             sync.RWMutex
+	skipRulesCache          []DataShareCaptureSkipRule
+	skipRulesCacheExpiresAt time.Time
 }
 
 func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository) *DataSharingService {
@@ -249,6 +274,403 @@ func (s *DataSharingService) ConfirmNotice(ctx context.Context, version int) (*D
 	return notice, nil
 }
 
+// GetCaptureSkipRules 返回当前生效的数据共享采集跳过规则。
+func (s *DataSharingService) GetCaptureSkipRules(ctx context.Context) ([]DataShareCaptureSkipRule, error) {
+	rules, err := s.loadCaptureSkipRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cloneDataShareCaptureSkipRules(rules), nil
+}
+
+// UpdateCaptureSkipRules 保存管理端维护的数据共享采集跳过规则。
+func (s *DataSharingService) UpdateCaptureSkipRules(ctx context.Context, rules []DataShareCaptureSkipRule) ([]DataShareCaptureSkipRule, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, ErrSettingNotFound
+	}
+	normalized, err := normalizeDataShareCaptureSkipRules(rules)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingCaptureSkipRules, string(data)); err != nil {
+		return nil, err
+	}
+	s.clearCaptureSkipRulesCache()
+	return cloneDataShareCaptureSkipRules(normalized), nil
+}
+
+func (s *DataSharingService) shouldSkipDataShareCapture(ctx context.Context, input DataShareCaptureInput) bool {
+	rules, err := s.loadCaptureSkipRules(ctx)
+	if err != nil {
+		slog.Warn("data sharing: failed to load capture skip rules", "error", err)
+		return false
+	}
+	return dataShareCaptureSkipRulesMatch(input, rules)
+}
+
+func (s *DataSharingService) loadCaptureSkipRules(ctx context.Context) ([]DataShareCaptureSkipRule, error) {
+	if s == nil || s.settingRepo == nil {
+		return defaultDataShareCaptureSkipRules(), nil
+	}
+	now := time.Now()
+	s.skipRulesMu.RLock()
+	if now.Before(s.skipRulesCacheExpiresAt) && s.skipRulesCache != nil {
+		cached := cloneDataShareCaptureSkipRules(s.skipRulesCache)
+		s.skipRulesMu.RUnlock()
+		return cached, nil
+	}
+	s.skipRulesMu.RUnlock()
+
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingCaptureSkipRules)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			rules := defaultDataShareCaptureSkipRules()
+			s.storeCaptureSkipRulesCache(rules)
+			return rules, nil
+		}
+		return nil, err
+	}
+	var rules []DataShareCaptureSkipRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		slog.Warn("data sharing: invalid capture skip rules json, fallback to defaults", "error", err)
+		rules = defaultDataShareCaptureSkipRules()
+		s.storeCaptureSkipRulesCache(rules)
+		return rules, nil
+	}
+	normalized, err := normalizeDataShareCaptureSkipRules(rules)
+	if err != nil {
+		slog.Warn("data sharing: invalid capture skip rules config, fallback to defaults", "error", err)
+		normalized = defaultDataShareCaptureSkipRules()
+	}
+	s.storeCaptureSkipRulesCache(normalized)
+	return cloneDataShareCaptureSkipRules(normalized), nil
+}
+
+func (s *DataSharingService) storeCaptureSkipRulesCache(rules []DataShareCaptureSkipRule) {
+	if s == nil {
+		return
+	}
+	s.skipRulesMu.Lock()
+	defer s.skipRulesMu.Unlock()
+	s.skipRulesCache = cloneDataShareCaptureSkipRules(rules)
+	s.skipRulesCacheExpiresAt = time.Now().Add(dataShareSkipRulesCacheTTL)
+}
+
+func (s *DataSharingService) clearCaptureSkipRulesCache() {
+	if s == nil {
+		return
+	}
+	s.skipRulesMu.Lock()
+	defer s.skipRulesMu.Unlock()
+	s.skipRulesCache = nil
+	s.skipRulesCacheExpiresAt = time.Time{}
+}
+
+func defaultDataShareCaptureSkipRules() []DataShareCaptureSkipRule {
+	return []DataShareCaptureSkipRule{
+		{
+			ID:             "claude_code_title",
+			Name:           "Claude Code 标题生成",
+			Enabled:        true,
+			ClientFamilies: []string{"claude-cli"},
+			RequestPaths:   []string{"/v1/messages"},
+			FieldScopes:    []string{"system"},
+			Patterns:       []string{"Generate a concise, sentence-case title"},
+			MatchMode:      dataShareSkipRuleMatchContains,
+		},
+		{
+			ID:             "opencode_title_system",
+			Name:           "opencode 标题生成系统提示",
+			Enabled:        true,
+			ClientFamilies: []string{"opencode"},
+			RequestPaths:   []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"},
+			FieldScopes:    []string{"system"},
+			Patterns: []string{
+				"You are a title generator. You output ONLY a thread title. Nothing else.",
+				"Generate a brief title that would help the user find this conversation later.",
+				"NEVER respond to questions, just generate a title for the conversation",
+			},
+			MatchMode: dataShareSkipRuleMatchContains,
+		},
+		{
+			ID:             "opencode_title_user_prompt",
+			Name:           "opencode 标题生成用户提示",
+			Enabled:        true,
+			ClientFamilies: []string{"opencode"},
+			RequestPaths:   []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"},
+			FieldScopes:    []string{"messages", "input"},
+			Patterns:       []string{"Generate a title for this conversation:"},
+			MatchMode:      dataShareSkipRuleMatchContains,
+		},
+		{
+			ID:           "agent_title_from_messages",
+			Name:         "Agent 会话标题生成",
+			Enabled:      true,
+			RequestPaths: []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"},
+			FieldScopes:  []string{"messages", "input"},
+			Patterns:     []string{"Please write a 5-10 word title for the following conversation:"},
+			MatchMode:    dataShareSkipRuleMatchContains,
+		},
+		{
+			ID:           "agent_topic_title",
+			Name:         "Agent 主题标题提取",
+			Enabled:      true,
+			RequestPaths: []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"},
+			FieldScopes:  []string{"system", "instructions"},
+			Patterns:     []string{"extract a 2-3 word title"},
+			MatchMode:    dataShareSkipRuleMatchContains,
+		},
+		{
+			ID:           "agent_warmup",
+			Name:         "Agent 预热请求",
+			Enabled:      true,
+			RequestPaths: []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"},
+			FieldScopes:  []string{"messages", "input"},
+			Patterns:     []string{"Warmup"},
+			MatchMode:    dataShareSkipRuleMatchEquals,
+		},
+	}
+}
+
+func normalizeDataShareCaptureSkipRules(rules []DataShareCaptureSkipRule) ([]DataShareCaptureSkipRule, error) {
+	out := make([]DataShareCaptureSkipRule, 0, len(rules))
+	seenIDs := map[string]struct{}{}
+	for _, rule := range rules {
+		normalized, err := normalizeDataShareCaptureSkipRule(rule)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seenIDs[normalized.ID]; ok {
+			return nil, ErrDataShareSkipRulesInvalid
+		}
+		seenIDs[normalized.ID] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out, nil
+}
+
+func normalizeDataShareCaptureSkipRule(rule DataShareCaptureSkipRule) (DataShareCaptureSkipRule, error) {
+	rule.ID = strings.TrimSpace(rule.ID)
+	rule.Name = strings.TrimSpace(rule.Name)
+	rule.MatchMode = strings.ToLower(strings.TrimSpace(rule.MatchMode))
+	if rule.MatchMode == "" {
+		rule.MatchMode = dataShareSkipRuleMatchContains
+	}
+	if rule.ID == "" || rule.Name == "" {
+		return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
+	}
+	if rule.MatchMode != dataShareSkipRuleMatchContains && rule.MatchMode != dataShareSkipRuleMatchEquals {
+		return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
+	}
+	rule.ClientFamilies = uniqueTrimmedStrings(rule.ClientFamilies, func(v string) string {
+		return strings.ToLower(normalizeDataShareUserAgent(v))
+	})
+	rule.RequestPaths = uniqueTrimmedStrings(rule.RequestPaths, func(v string) string {
+		return strings.ToLower(normalizeDataShareRequestPath(v))
+	})
+	rule.FieldScopes = uniqueTrimmedStrings(rule.FieldScopes, func(v string) string {
+		return strings.ToLower(strings.TrimSpace(v))
+	})
+	rule.Patterns = uniqueTrimmedStrings(rule.Patterns, strings.TrimSpace)
+	if len(rule.FieldScopes) == 0 || len(rule.Patterns) == 0 {
+		return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
+	}
+	for _, scope := range rule.FieldScopes {
+		if !isDataShareSkipScope(scope) {
+			return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
+		}
+	}
+	return rule, nil
+}
+
+func uniqueTrimmedStrings(values []string, normalize func(string) string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = normalize(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func isDataShareSkipScope(scope string) bool {
+	switch scope {
+	case "system", "messages", "input", "instructions":
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneDataShareCaptureSkipRules(rules []DataShareCaptureSkipRule) []DataShareCaptureSkipRule {
+	out := make([]DataShareCaptureSkipRule, 0, len(rules))
+	for _, rule := range rules {
+		cloned := rule
+		cloned.ClientFamilies = append([]string(nil), rule.ClientFamilies...)
+		cloned.RequestPaths = append([]string(nil), rule.RequestPaths...)
+		cloned.FieldScopes = append([]string(nil), rule.FieldScopes...)
+		cloned.Patterns = append([]string(nil), rule.Patterns...)
+		out = append(out, cloned)
+	}
+	return out
+}
+
+func dataShareCaptureSkipRulesMatch(input DataShareCaptureInput, rules []DataShareCaptureSkipRule) bool {
+	texts := dataShareSkipCandidateTexts(input.RequestBody)
+	clientFamily := strings.ToLower(normalizeDataShareUserAgent(input.UserAgent))
+	requestPath := strings.ToLower(normalizeDataShareRequestPath(input.InboundEndpoint))
+	for _, rule := range rules {
+		if !rule.Enabled || !dataShareSkipRuleApplies(rule.ClientFamilies, clientFamily) || !dataShareSkipRuleApplies(rule.RequestPaths, requestPath) {
+			continue
+		}
+		for _, scope := range rule.FieldScopes {
+			for _, text := range texts[scope] {
+				if dataShareSkipRuleTextMatches(rule, text) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func dataShareSkipRuleApplies(allowed []string, value string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, item := range allowed {
+		if strings.EqualFold(strings.TrimSpace(item), strings.TrimSpace(value)) {
+			return true
+		}
+	}
+	return false
+}
+
+func dataShareSkipRuleTextMatches(rule DataShareCaptureSkipRule, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	for _, pattern := range rule.Patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		left, right := text, pattern
+		if !rule.CaseSensitive {
+			left = strings.ToLower(left)
+			right = strings.ToLower(right)
+		}
+		switch rule.MatchMode {
+		case dataShareSkipRuleMatchEquals:
+			if left == right {
+				return true
+			}
+		default:
+			if strings.Contains(left, right) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func dataShareSkipCandidateTexts(body []byte) map[string][]string {
+	out := map[string][]string{
+		"system":       {},
+		"messages":     {},
+		"input":        {},
+		"instructions": {},
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return out
+	}
+	add := func(scope string, value any) {
+		if text := strings.TrimSpace(dataShareContentText(value)); text != "" {
+			out[scope] = append(out[scope], text)
+		}
+	}
+	add("system", payload["system"])
+	add("system", payload["system_instruction"])
+	add("instructions", payload["instructions"])
+	add("instructions", payload["system_instruction"])
+	add("input", payload["input"])
+	appendDataShareSkipResponsesInput(out, payload["input"])
+	appendDataShareSkipMessages(out, payload["messages"])
+	appendDataShareSkipContents(out, payload["contents"])
+	return out
+}
+
+func appendDataShareSkipResponsesInput(out map[string][]string, raw any) {
+	for _, item := range anySlice(raw) {
+		msg, ok := mapFromAny(item)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(dataShareContentText(firstPresentAny(msg["content"], msg["text"])))
+		if text == "" {
+			continue
+		}
+		role := strings.TrimSpace(strings.ToLower(stringFromAny(msg["role"])))
+		if role == "system" || role == "developer" {
+			out["system"] = append(out["system"], text)
+		}
+	}
+}
+
+func appendDataShareSkipMessages(out map[string][]string, raw any) {
+	for _, item := range anySlice(raw) {
+		msg, ok := mapFromAny(item)
+		if !ok {
+			if text := strings.TrimSpace(dataShareContentText(item)); text != "" {
+				out["messages"] = append(out["messages"], text)
+			}
+			continue
+		}
+		text := strings.TrimSpace(dataShareContentText(firstPresentAny(msg["content"], msg["text"])))
+		if text == "" {
+			continue
+		}
+		role := strings.TrimSpace(strings.ToLower(stringFromAny(msg["role"])))
+		if role == "system" || role == "developer" {
+			out["system"] = append(out["system"], text)
+			continue
+		}
+		out["messages"] = append(out["messages"], text)
+	}
+}
+
+func appendDataShareSkipContents(out map[string][]string, raw any) {
+	for _, item := range anySlice(raw) {
+		msg, ok := mapFromAny(item)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(dataShareContentText(firstPresentAny(msg["parts"], msg["content"], msg["text"])))
+		if text == "" {
+			continue
+		}
+		role := strings.TrimSpace(strings.ToLower(stringFromAny(msg["role"])))
+		if role == "system" || role == "developer" {
+			out["system"] = append(out["system"], text)
+			continue
+		}
+		out["messages"] = append(out["messages"], text)
+	}
+}
+
 // CaptureClaudeRequest 采集 Claude/Gemini 兼容协议成功请求。
 func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input DataShareCaptureInput) error {
 	if input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
@@ -257,7 +679,7 @@ func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input Dat
 	if s == nil || s.repo == nil {
 		return nil
 	}
-	if shouldSkipDataShareCapture(input) {
+	if s.shouldSkipDataShareCapture(ctx, input) {
 		return nil
 	}
 	if input.Model == "" && input.UpstreamModel != "" {
@@ -275,32 +697,11 @@ func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input Dat
 	if s == nil || s.repo == nil {
 		return nil
 	}
-	if shouldSkipDataShareCapture(input) {
+	if s.shouldSkipDataShareCapture(ctx, input) {
 		return nil
 	}
 	session := s.buildSession(input)
 	return s.repo.UpsertCapture(ctx, session)
-}
-
-func shouldSkipDataShareCapture(input DataShareCaptureInput) bool {
-	return isClaudeCodeTitleGenerationRequest(input)
-}
-
-func isClaudeCodeTitleGenerationRequest(input DataShareCaptureInput) bool {
-	if normalizeDataShareUserAgent(input.UserAgent) != "claude-cli" {
-		return false
-	}
-	if normalizeDataShareRequestPath(input.InboundEndpoint) != "/v1/messages" {
-		return false
-	}
-	system := gjson.GetBytes(input.RequestBody, "system")
-	if !system.Exists() {
-		return false
-	}
-	if system.Type == gjson.String {
-		return strings.Contains(system.String(), claudeCodeTitlePromptMarker)
-	}
-	return strings.Contains(system.Raw, claudeCodeTitlePromptMarker)
 }
 
 // ListSessions 查询数据共享 session。
@@ -1373,7 +1774,7 @@ func dataShareContentText(value any) string {
 		}
 		return strings.Join(parts, "\n")
 	case map[string]any:
-		for _, key := range []string{"text", "content", "output", "summary"} {
+		for _, key := range []string{"text", "content", "parts", "output", "summary"} {
 			if text := dataShareContentText(v[key]); strings.TrimSpace(text) != "" {
 				return text
 			}

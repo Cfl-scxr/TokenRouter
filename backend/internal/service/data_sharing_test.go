@@ -2,9 +2,78 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 )
+
+type dataShareSettingRepoStub struct {
+	values map[string]string
+	err    error
+}
+
+func (s *dataShareSettingRepoStub) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *dataShareSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	if v, ok := s.values[key]; ok {
+		return v, nil
+	}
+	return "", ErrSettingNotFound
+}
+
+func (s *dataShareSettingRepoStub) Set(_ context.Context, key, value string) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	s.values[key] = value
+	return nil
+}
+
+func (s *dataShareSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if v, ok := s.values[key]; ok {
+			out[key] = v
+		}
+	}
+	return out, nil
+}
+
+func (s *dataShareSettingRepoStub) SetMultiple(_ context.Context, settings map[string]string) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	for key, value := range settings {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *dataShareSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *dataShareSettingRepoStub) Delete(_ context.Context, key string) error {
+	if s.err != nil {
+		return s.err
+	}
+	delete(s.values, key)
+	return nil
+}
 
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 	gid := int64(12)
@@ -291,27 +360,145 @@ func TestBuildSessionFiltersOrdinaryResponsesChat(t *testing.T) {
 	}
 }
 
-func TestShouldSkipDataShareCaptureForClaudeCodeTitleRequest(t *testing.T) {
-	input := DataShareCaptureInput{
-		UserAgent:       "claude-cli/2.1.142 (external, cli)",
-		InboundEndpoint: "/v1/messages",
-		RequestBody: []byte(`{
-			"model":"gpt-5.5",
-			"system":[
-				{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},
-				{"type":"text","text":"Generate a concise, sentence-case title (3-7 words) that captures the main topic."}
-			],
-			"messages":[{"role":"user","content":"<session>看看 Documents 里面有什么</session>"}]
-		}`),
+func TestCaptureSkipRulesDefaultMatching(t *testing.T) {
+	ctx := context.Background()
+	svc := NewDataSharingService(nil, &dataShareSettingRepoStub{values: map[string]string{}})
+
+	cases := []struct {
+		name  string
+		input DataShareCaptureInput
+		want  bool
+	}{
+		{
+			name: "Claude Code title generator",
+			input: DataShareCaptureInput{
+				UserAgent:       "claude-cli/2.1.142 (external, cli)",
+				InboundEndpoint: "/v1/messages",
+				RequestBody: []byte(`{
+					"model":"gpt-5.5",
+					"system":[
+						{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."},
+						{"type":"text","text":"Generate a concise, sentence-case title (3-7 words) that captures the main topic."}
+					],
+					"messages":[{"role":"user","content":"<session>看看 Documents 里面有什么</session>"}]
+				}`),
+			},
+			want: true,
+		},
+		{
+			name: "opencode chat completions title generator",
+			input: DataShareCaptureInput{
+				UserAgent:       "opencode/0.7.0",
+				InboundEndpoint: "/v1/chat/completions",
+				RequestBody: []byte(`{
+					"model":"claude-sonnet-4-5",
+					"messages":[
+						{"role":"system","content":"You are a title generator. You output ONLY a thread title. Nothing else.\nGenerate a brief title that would help the user find this conversation later.\nNEVER respond to questions, just generate a title for the conversation"},
+						{"role":"user","content":"Generate a title for this conversation:"},
+						{"role":"user","content":"hi"}
+					]
+				}`),
+			},
+			want: true,
+		},
+		{
+			name: "opencode messages title generator",
+			input: DataShareCaptureInput{
+				UserAgent:       "opencode/0.7.0",
+				InboundEndpoint: "/v1/messages",
+				RequestBody: []byte(`{
+					"model":"claude-sonnet-4-5",
+					"system":"You are a title generator. You output ONLY a thread title. Nothing else.",
+					"messages":[{"role":"user","content":"Generate a title for this conversation:\n\nhi"}]
+				}`),
+			},
+			want: true,
+		},
+		{
+			name: "opencode responses title generator",
+			input: DataShareCaptureInput{
+				UserAgent:       "opencode/1.15.11 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
+				InboundEndpoint: "/v1/responses",
+				RequestBody: []byte(`{
+					"model":"gpt-5.5",
+					"input":[
+						{"role":"system","content":"You are a title generator. You output ONLY a thread title. Nothing else.\n\n<task>\nGenerate a brief title that would help the user find this conversation later.\n</task>\n\n<rules>\n- NEVER respond to questions, just generate a title for the conversation\n</rules>"},
+						{"role":"user","content":"Generate a title for this conversation:\n"},
+						{"role":"user","content":"hi"}
+					]
+				}`),
+			},
+			want: true,
+		},
+		{
+			name: "opencode normal task",
+			input: DataShareCaptureInput{
+				UserAgent:       "opencode/0.7.0",
+				InboundEndpoint: "/v1/messages",
+				RequestBody:     []byte(`{"model":"claude-sonnet-4-5","system":"你是编码助手","messages":[{"role":"user","content":"帮我检查这个函数"}]}`),
+			},
+			want: false,
+		},
+		{
+			name: "ordinary title request",
+			input: DataShareCaptureInput{
+				UserAgent:       "curl/8.0",
+				InboundEndpoint: "/v1/chat/completions",
+				RequestBody:     []byte(`{"model":"gpt-5.5","messages":[{"role":"system","content":"你是写作助手"},{"role":"user","content":"帮我写一个标题"}]}`),
+			},
+			want: false,
+		},
 	}
 
-	if !shouldSkipDataShareCapture(input) {
-		t.Fatalf("Claude Code title request should be skipped")
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := svc.shouldSkipDataShareCapture(ctx, tt.input); got != tt.want {
+				t.Fatalf("shouldSkipDataShareCapture = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCaptureSkipRulesFallbackAndUpdate(t *testing.T) {
+	ctx := context.Background()
+	repo := &dataShareSettingRepoStub{values: map[string]string{
+		SettingKeyDataSharingCaptureSkipRules: "{not-json",
+	}}
+	svc := NewDataSharingService(nil, repo)
+
+	rules, err := svc.GetCaptureSkipRules(ctx)
+	if err != nil {
+		t.Fatalf("GetCaptureSkipRules error = %v", err)
+	}
+	if len(rules) == 0 || rules[0].ID != "claude_code_title" {
+		t.Fatalf("rules fallback mismatch: %#v", rules)
 	}
 
-	input.RequestBody = []byte(`{"model":"gpt-5.5","system":"You are Claude Code.","messages":[{"role":"user","content":"列目录"}]}`)
-	if shouldSkipDataShareCapture(input) {
-		t.Fatalf("normal Claude Code request should not be skipped")
+	custom := []DataShareCaptureSkipRule{{
+		ID:           "custom_warmup",
+		Name:         "自定义预热",
+		Enabled:      true,
+		RequestPaths: []string{"v1/responses"},
+		FieldScopes:  []string{"input"},
+		Patterns:     []string{"Warmup"},
+		MatchMode:    "equals",
+	}}
+	updated, err := svc.UpdateCaptureSkipRules(ctx, custom)
+	if err != nil {
+		t.Fatalf("UpdateCaptureSkipRules error = %v", err)
+	}
+	if len(updated) != 1 || updated[0].RequestPaths[0] != "/v1/responses" {
+		t.Fatalf("updated rules mismatch: %#v", updated)
+	}
+	if repo.values[SettingKeyDataSharingCaptureSkipRules] == "" {
+		t.Fatalf("rules were not persisted")
+	}
+	if !svc.shouldSkipDataShareCapture(ctx, DataShareCaptureInput{
+		UserAgent:       "custom-client/1.0",
+		InboundEndpoint: "/v1/responses",
+		RequestBody:     []byte(`{"model":"gpt-5.5","input":"Warmup"}`),
+	}) {
+		t.Fatalf("custom warmup rule should skip matching request")
 	}
 }
 

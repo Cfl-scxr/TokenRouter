@@ -106,6 +106,8 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		dataSharing.GET("/notice", h.Admin.DataSharing.GetNotice)
 		dataSharing.PUT("/notice", h.Admin.DataSharing.UpdateNotice)
+		dataSharing.GET("/skip-rules", h.Admin.DataSharing.GetSkipRules)
+		dataSharing.PUT("/skip-rules", h.Admin.DataSharing.UpdateSkipRules)
 		dataSharing.GET("/sessions", h.Admin.DataSharing.ListSessions)
 		dataSharing.GET("/sessions/:id", h.Admin.DataSharing.GetSession)
 		dataSharing.DELETE("/sessions/:id", h.Admin.DataSharing.DeleteSession)
