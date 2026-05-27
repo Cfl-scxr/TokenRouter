@@ -22,6 +22,20 @@ export interface DataShareRequestPathPoint {
   total_tokens: number
 }
 
+export interface DataShareModelPoint {
+  model: string
+  storage_bytes: number
+  session_count: number
+  total_tokens: number
+}
+
+export interface DataShareUserAgentPoint {
+  user_agent: string
+  storage_bytes: number
+  session_count: number
+  total_tokens: number
+}
+
 export interface DataShareStats {
   session_count: number
   exportable_count: number
@@ -35,6 +49,8 @@ export interface DataShareStats {
   storage_trend: DataShareStoragePoint[]
   group_storage_breakdown: DataShareGroupStoragePoint[]
   request_path_breakdown: DataShareRequestPathPoint[]
+  model_breakdown: DataShareModelPoint[]
+  user_agent_breakdown: DataShareUserAgentPoint[]
 }
 
 export interface AdminDataShareSessionFilters extends DataShareSessionFilters {

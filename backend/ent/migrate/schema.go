@@ -438,6 +438,7 @@ var (
 		{Name: "provider", Type: field.TypeString, Size: 50},
 		{Name: "model", Type: field.TypeString, Size: 100},
 		{Name: "request_path", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "user_agent", Type: field.TypeString, Size: 512, Default: ""},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "completed"},
 		{Name: "is_final_snapshot", Type: field.TypeBool, Default: true},
 		{Name: "source_request_count", Type: field.TypeInt, Default: 0},
@@ -475,17 +476,17 @@ var (
 			{
 				Name:    "datasharesession_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[23]},
+				Columns: []*schema.Column{DataShareSessionsColumns[24]},
 			},
 			{
 				Name:    "datasharesession_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[24]},
+				Columns: []*schema.Column{DataShareSessionsColumns[25]},
 			},
 			{
 				Name:    "datasharesession_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[25]},
+				Columns: []*schema.Column{DataShareSessionsColumns[26]},
 			},
 			{
 				Name:    "datasharesession_provider",
@@ -503,24 +504,29 @@ var (
 				Columns: []*schema.Column{DataShareSessionsColumns[6]},
 			},
 			{
-				Name:    "datasharesession_exportable",
+				Name:    "datasharesession_user_agent",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[16]},
+				Columns: []*schema.Column{DataShareSessionsColumns[7]},
 			},
 			{
-				Name:    "datasharesession_quality_status",
+				Name:    "datasharesession_exportable",
 				Unique:  false,
 				Columns: []*schema.Column{DataShareSessionsColumns[17]},
 			},
 			{
+				Name:    "datasharesession_quality_status",
+				Unique:  false,
+				Columns: []*schema.Column{DataShareSessionsColumns[18]},
+			},
+			{
 				Name:    "datasharesession_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[26]},
+				Columns: []*schema.Column{DataShareSessionsColumns[27]},
 			},
 			{
 				Name:    "datasharesession_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[28]},
+				Columns: []*schema.Column{DataShareSessionsColumns[29]},
 			},
 		},
 	}

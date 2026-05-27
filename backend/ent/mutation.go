@@ -9019,6 +9019,7 @@ type DataShareSessionMutation struct {
 	provider                *string
 	model                   *string
 	request_path            *string
+	user_agent              *string
 	status                  *string
 	is_final_snapshot       *bool
 	source_request_count    *int
@@ -9370,6 +9371,42 @@ func (m *DataShareSessionMutation) OldRequestPath(ctx context.Context) (v string
 // ResetRequestPath resets all changes to the "request_path" field.
 func (m *DataShareSessionMutation) ResetRequestPath() {
 	m.request_path = nil
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (m *DataShareSessionMutation) SetUserAgent(s string) {
+	m.user_agent = &s
+}
+
+// UserAgent returns the value of the "user_agent" field in the mutation.
+func (m *DataShareSessionMutation) UserAgent() (r string, exists bool) {
+	v := m.user_agent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserAgent returns the old "user_agent" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldUserAgent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserAgent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserAgent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserAgent: %w", err)
+	}
+	return oldValue.UserAgent, nil
+}
+
+// ResetUserAgent resets all changes to the "user_agent" field.
+func (m *DataShareSessionMutation) ResetUserAgent() {
+	m.user_agent = nil
 }
 
 // SetStatus sets the "status" field.
@@ -10510,7 +10547,7 @@ func (m *DataShareSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataShareSessionMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.trajectory_id != nil {
 		fields = append(fields, datasharesession.FieldTrajectoryID)
 	}
@@ -10528,6 +10565,9 @@ func (m *DataShareSessionMutation) Fields() []string {
 	}
 	if m.request_path != nil {
 		fields = append(fields, datasharesession.FieldRequestPath)
+	}
+	if m.user_agent != nil {
+		fields = append(fields, datasharesession.FieldUserAgent)
 	}
 	if m.status != nil {
 		fields = append(fields, datasharesession.FieldStatus)
@@ -10615,6 +10655,8 @@ func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.Model()
 	case datasharesession.FieldRequestPath:
 		return m.RequestPath()
+	case datasharesession.FieldUserAgent:
+		return m.UserAgent()
 	case datasharesession.FieldStatus:
 		return m.Status()
 	case datasharesession.FieldIsFinalSnapshot:
@@ -10680,6 +10722,8 @@ func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldModel(ctx)
 	case datasharesession.FieldRequestPath:
 		return m.OldRequestPath(ctx)
+	case datasharesession.FieldUserAgent:
+		return m.OldUserAgent(ctx)
 	case datasharesession.FieldStatus:
 		return m.OldStatus(ctx)
 	case datasharesession.FieldIsFinalSnapshot:
@@ -10774,6 +10818,13 @@ func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequestPath(v)
+		return nil
+	case datasharesession.FieldUserAgent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserAgent(v)
 		return nil
 	case datasharesession.FieldStatus:
 		v, ok := value.(string)
@@ -11145,6 +11196,9 @@ func (m *DataShareSessionMutation) ResetField(name string) error {
 		return nil
 	case datasharesession.FieldRequestPath:
 		m.ResetRequestPath()
+		return nil
+	case datasharesession.FieldUserAgent:
+		m.ResetUserAgent()
 		return nil
 	case datasharesession.FieldStatus:
 		m.ResetStatus()

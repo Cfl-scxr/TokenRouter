@@ -113,6 +113,20 @@ func (_u *DataShareSessionUpdate) SetNillableRequestPath(v *string) *DataShareSe
 	return _u
 }
 
+// SetUserAgent sets the "user_agent" field.
+func (_u *DataShareSessionUpdate) SetUserAgent(v string) *DataShareSessionUpdate {
+	_u.mutation.SetUserAgent(v)
+	return _u
+}
+
+// SetNillableUserAgent sets the "user_agent" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillableUserAgent(v *string) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetUserAgent(*v)
+	}
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *DataShareSessionUpdate) SetStatus(v string) *DataShareSessionUpdate {
 	_u.mutation.SetStatus(v)
@@ -546,6 +560,11 @@ func (_u *DataShareSessionUpdate) check() error {
 			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserAgent(); ok {
+		if err := datasharesession.UserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.user_agent": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := datasharesession.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
@@ -588,6 +607,9 @@ func (_u *DataShareSessionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.RequestPath(); ok {
 		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UserAgent(); ok {
+		_spec.SetField(datasharesession.FieldUserAgent, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)
@@ -815,6 +837,20 @@ func (_u *DataShareSessionUpdateOne) SetRequestPath(v string) *DataShareSessionU
 func (_u *DataShareSessionUpdateOne) SetNillableRequestPath(v *string) *DataShareSessionUpdateOne {
 	if v != nil {
 		_u.SetRequestPath(*v)
+	}
+	return _u
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (_u *DataShareSessionUpdateOne) SetUserAgent(v string) *DataShareSessionUpdateOne {
+	_u.mutation.SetUserAgent(v)
+	return _u
+}
+
+// SetNillableUserAgent sets the "user_agent" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillableUserAgent(v *string) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetUserAgent(*v)
 	}
 	return _u
 }
@@ -1265,6 +1301,11 @@ func (_u *DataShareSessionUpdateOne) check() error {
 			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserAgent(); ok {
+		if err := datasharesession.UserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.user_agent": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := datasharesession.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.status": %w`, err)}
@@ -1324,6 +1365,9 @@ func (_u *DataShareSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSh
 	}
 	if value, ok := _u.mutation.RequestPath(); ok {
 		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UserAgent(); ok {
+		_spec.SetField(datasharesession.FieldUserAgent, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)

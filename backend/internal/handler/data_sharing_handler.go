@@ -34,6 +34,7 @@ type dataShareSessionResponse struct {
 	Provider           string           `json:"provider"`
 	Model              string           `json:"model"`
 	RequestPath        string           `json:"request_path"`
+	UserAgent          string           `json:"user_agent"`
 	Status             string           `json:"status"`
 	IsFinalSnapshot    bool             `json:"is_final_snapshot"`
 	SourceRequestCount int              `json:"source_request_count"`
@@ -236,6 +237,7 @@ func parseDataShareSessionFilters(c *gin.Context) (service.DataShareSessionFilte
 	filters.Provider = strings.TrimSpace(c.Query("provider"))
 	filters.Model = strings.TrimSpace(c.Query("model"))
 	filters.RequestPath = strings.TrimSpace(c.Query("request_path"))
+	filters.UserAgent = strings.TrimSpace(c.Query("user_agent"))
 	filters.Search = strings.TrimSpace(c.Query("search"))
 	filters.APIKeyName = strings.TrimSpace(c.Query("api_key_name"))
 	filters.GroupName = strings.TrimSpace(c.Query("group_name"))
@@ -352,6 +354,7 @@ func dataShareSessionToResponse(session *service.DataShareSession, includePayloa
 		Provider:           session.Provider,
 		Model:              session.Model,
 		RequestPath:        session.RequestPath,
+		UserAgent:          session.UserAgent,
 		Status:             session.Status,
 		IsFinalSnapshot:    session.IsFinalSnapshot,
 		SourceRequestCount: session.SourceRequestCount,

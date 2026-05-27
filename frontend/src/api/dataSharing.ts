@@ -15,6 +15,7 @@ export interface DataShareSession {
   provider: string
   model: string
   request_path: string
+  user_agent: string
   status: string
   is_final_snapshot: boolean
   source_request_count: number
@@ -53,6 +54,7 @@ export interface DataShareSessionFilters {
   group_id?: number
   group_name?: string
   request_path?: string
+  user_agent?: string
   provider?: string
   model?: string
   exportable?: boolean | 'all'

@@ -66,6 +66,20 @@ func (_c *DataShareSessionCreate) SetNillableRequestPath(v *string) *DataShareSe
 	return _c
 }
 
+// SetUserAgent sets the "user_agent" field.
+func (_c *DataShareSessionCreate) SetUserAgent(v string) *DataShareSessionCreate {
+	_c.mutation.SetUserAgent(v)
+	return _c
+}
+
+// SetNillableUserAgent sets the "user_agent" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillableUserAgent(v *string) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetUserAgent(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *DataShareSessionCreate) SetStatus(v string) *DataShareSessionCreate {
 	_c.mutation.SetStatus(v)
@@ -341,6 +355,10 @@ func (_c *DataShareSessionCreate) defaults() {
 		v := datasharesession.DefaultRequestPath
 		_c.mutation.SetRequestPath(v)
 	}
+	if _, ok := _c.mutation.UserAgent(); !ok {
+		v := datasharesession.DefaultUserAgent
+		_c.mutation.SetUserAgent(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := datasharesession.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -435,6 +453,14 @@ func (_c *DataShareSessionCreate) check() error {
 	if v, ok := _c.mutation.RequestPath(); ok {
 		if err := datasharesession.RequestPathValidator(v); err != nil {
 			return &ValidationError{Name: "request_path", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.request_path": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.UserAgent(); !ok {
+		return &ValidationError{Name: "user_agent", err: errors.New(`ent: missing required field "DataShareSession.user_agent"`)}
+	}
+	if v, ok := _c.mutation.UserAgent(); ok {
+		if err := datasharesession.UserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "DataShareSession.user_agent": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
@@ -539,6 +565,10 @@ func (_c *DataShareSessionCreate) createSpec() (*DataShareSession, *sqlgraph.Cre
 	if value, ok := _c.mutation.RequestPath(); ok {
 		_spec.SetField(datasharesession.FieldRequestPath, field.TypeString, value)
 		_node.RequestPath = value
+	}
+	if value, ok := _c.mutation.UserAgent(); ok {
+		_spec.SetField(datasharesession.FieldUserAgent, field.TypeString, value)
+		_node.UserAgent = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(datasharesession.FieldStatus, field.TypeString, value)
@@ -749,6 +779,18 @@ func (u *DataShareSessionUpsert) SetRequestPath(v string) *DataShareSessionUpser
 // UpdateRequestPath sets the "request_path" field to the value that was provided on create.
 func (u *DataShareSessionUpsert) UpdateRequestPath() *DataShareSessionUpsert {
 	u.SetExcluded(datasharesession.FieldRequestPath)
+	return u
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (u *DataShareSessionUpsert) SetUserAgent(v string) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldUserAgent, v)
+	return u
+}
+
+// UpdateUserAgent sets the "user_agent" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdateUserAgent() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldUserAgent)
 	return u
 }
 
@@ -1226,6 +1268,20 @@ func (u *DataShareSessionUpsertOne) SetRequestPath(v string) *DataShareSessionUp
 func (u *DataShareSessionUpsertOne) UpdateRequestPath() *DataShareSessionUpsertOne {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateRequestPath()
+	})
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (u *DataShareSessionUpsertOne) SetUserAgent(v string) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetUserAgent(v)
+	})
+}
+
+// UpdateUserAgent sets the "user_agent" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdateUserAgent() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateUserAgent()
 	})
 }
 
@@ -1927,6 +1983,20 @@ func (u *DataShareSessionUpsertBulk) SetRequestPath(v string) *DataShareSessionU
 func (u *DataShareSessionUpsertBulk) UpdateRequestPath() *DataShareSessionUpsertBulk {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateRequestPath()
+	})
+}
+
+// SetUserAgent sets the "user_agent" field.
+func (u *DataShareSessionUpsertBulk) SetUserAgent(v string) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetUserAgent(v)
+	})
+}
+
+// UpdateUserAgent sets the "user_agent" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdateUserAgent() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateUserAgent()
 	})
 }
 

@@ -50,6 +50,7 @@ type DataShareSession struct {
 	Provider           string
 	Model              string
 	RequestPath        string
+	UserAgent          string
 	Status             string
 	IsFinalSnapshot    bool
 	SourceRequestCount int
@@ -93,6 +94,7 @@ type DataShareSessionFilters struct {
 	Provider      string
 	Model         string
 	RequestPath   string
+	UserAgent     string
 	Exportable    *bool
 	QualityStatus string
 	StartTime     *time.Time
@@ -123,6 +125,22 @@ type DataShareRequestPathPoint struct {
 	TotalTokens  int64  `json:"total_tokens"`
 }
 
+// DataShareModelPoint 用于管理端按模型展示分布。
+type DataShareModelPoint struct {
+	Model        string `json:"model"`
+	StorageBytes int64  `json:"storage_bytes"`
+	SessionCount int64  `json:"session_count"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
+// DataShareUserAgentPoint 用于管理端按客户端 User-Agent 展示分布。
+type DataShareUserAgentPoint struct {
+	UserAgent    string `json:"user_agent"`
+	StorageBytes int64  `json:"storage_bytes"`
+	SessionCount int64  `json:"session_count"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
 	SessionCount          int64                        `json:"session_count"`
@@ -137,6 +155,8 @@ type DataShareStats struct {
 	StorageTrend          []DataShareStoragePoint      `json:"storage_trend"`
 	GroupStorageBreakdown []DataShareGroupStoragePoint `json:"group_storage_breakdown"`
 	RequestPathBreakdown  []DataShareRequestPathPoint  `json:"request_path_breakdown"`
+	ModelBreakdown        []DataShareModelPoint        `json:"model_breakdown"`
+	UserAgentBreakdown    []DataShareUserAgentPoint    `json:"user_agent_breakdown"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -350,6 +370,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	provider := normalizeDataShareProvider(input.Provider, input.APIKey)
 	model := resolveDataShareActualModel(input)
 	requestPath := normalizeDataShareRequestPath(input.InboundEndpoint)
+	userAgent := normalizeDataShareUserAgent(input.UserAgent)
 	sessionID := normalizeDataShareSessionID(input.SessionID, input.RequestID, input.RequestBody, apiKeyID)
 	trajectoryID := buildTrajectoryID(provider, sessionID, apiKeyID, groupID)
 	messages := normalizeCaptureMessages(input)
@@ -373,6 +394,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		"provider":             provider,
 		"model":                model,
 		"request_path":         requestPath,
+		"user_agent":           userAgent,
 		"created_at":           now.Format(time.RFC3339Nano),
 		"ended_at":             now.Format(time.RFC3339Nano),
 		"status":               status,
@@ -399,6 +421,7 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		Provider:           provider,
 		Model:              model,
 		RequestPath:        requestPath,
+		UserAgent:          userAgent,
 		Status:             status,
 		IsFinalSnapshot:    finalSnapshot,
 		SourceRequestCount: 1,
@@ -647,6 +670,7 @@ func buildCaptureMeta(input DataShareCaptureInput) map[string]any {
 		"request_path":       requestPath,
 		"upstream_endpoint":  input.UpstreamEndpoint,
 		"user_agent":         input.UserAgent,
+		"user_agent_family":  normalizeDataShareUserAgent(input.UserAgent),
 		"ip_address":         input.IPAddress,
 	}
 	if input.APIKey != nil {
@@ -1442,6 +1466,7 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	payload["provider"] = session.Provider
 	payload["model"] = session.Model
 	payload["request_path"] = firstNonBlank(session.RequestPath, stringFromAny(payload["request_path"]), stringFromAny(session.Meta["request_path"]), stringFromAny(session.Meta["inbound_endpoint"]))
+	payload["user_agent"] = firstNonBlank(session.UserAgent, stringFromAny(payload["user_agent"]), stringFromAny(session.Meta["user_agent"]))
 	payload["created_at"] = session.CreatedAt.Format(time.RFC3339Nano)
 	if session.EndedAt != nil {
 		payload["ended_at"] = session.EndedAt.Format(time.RFC3339Nano)
@@ -1483,6 +1508,18 @@ func normalizeDataShareRequestPath(path string) string {
 		path = "/" + path
 	}
 	return path
+}
+
+func normalizeDataShareUserAgent(userAgent string) string {
+	userAgent = strings.TrimSpace(userAgent)
+	// 统计维度只保留客户端产品名，避免版本号、系统架构把同一客户端打散成大量分组。
+	if idx := strings.Index(userAgent, "/"); idx > 0 {
+		userAgent = strings.TrimSpace(userAgent[:idx])
+	}
+	if len(userAgent) > 512 {
+		return userAgent[:512]
+	}
+	return userAgent
 }
 
 func normalizeDataShareSessionID(sessionID string, requestID string, body []byte, apiKeyID int64) string {

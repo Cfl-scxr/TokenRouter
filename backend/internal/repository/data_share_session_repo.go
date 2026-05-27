@@ -54,6 +54,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetProvider(session.Provider).
 			SetModel(session.Model).
 			SetRequestPath(session.RequestPath).
+			SetUserAgent(session.UserAgent).
 			SetStatus(session.Status).
 			SetIsFinalSnapshot(session.IsFinalSnapshot).
 			SetSourceRequestCount(session.SourceRequestCount).
@@ -94,6 +95,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	}
 	sessionJSON["source_request_count"] = sourceRequestCount
 	sessionJSON["request_path"] = firstNonBlankRepository(session.RequestPath, existing.RequestPath)
+	sessionJSON["user_agent"] = firstNonBlankRepository(session.UserAgent, existing.UserAgent)
 	sessionJSON["messages"] = messages
 	sessionJSON["tools"] = tools
 	sessionJSON["usage"] = usage
@@ -114,6 +116,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		Where(datasharesession.IDEQ(existing.ID)).
 		SetModel(session.Model).
 		SetRequestPath(firstNonBlankRepository(session.RequestPath, existing.RequestPath)).
+		SetUserAgent(firstNonBlankRepository(session.UserAgent, existing.UserAgent)).
 		SetStatus(status).
 		SetIsFinalSnapshot(finalSnapshot).
 		SetSourceRequestCount(sourceRequestCount).
@@ -255,6 +258,16 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		return nil, err
 	}
 	stats.RequestPathBreakdown = pathBreakdown
+	modelBreakdown, err := r.loadModelBreakdown(ctx, sqlq, whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	stats.ModelBreakdown = modelBreakdown
+	userAgentBreakdown, err := r.loadUserAgentBreakdown(ctx, sqlq, whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	stats.UserAgentBreakdown = userAgentBreakdown
 	return stats, nil
 }
 
@@ -336,6 +349,60 @@ func (r *dataShareSessionRepository) loadRequestPathBreakdown(ctx context.Contex
 	return out, rows.Err()
 }
 
+func (r *dataShareSessionRepository) loadModelBreakdown(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareModelPoint, error) {
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(model, ''), '(unknown)') AS model,
+		       COALESCE(SUM(storage_bytes), 0),
+		       COUNT(*),
+		       COALESCE(SUM(total_tokens), 0)
+		FROM data_share_sessions
+		`+whereSQL+`
+		GROUP BY COALESCE(NULLIF(model, ''), '(unknown)')
+		ORDER BY COUNT(*) DESC, COALESCE(SUM(storage_bytes), 0) DESC
+		LIMIT 20
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.DataShareModelPoint
+	for rows.Next() {
+		var p service.DataShareModelPoint
+		if err := rows.Scan(&p.Model, &p.StorageBytes, &p.SessionCount, &p.TotalTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *dataShareSessionRepository) loadUserAgentBreakdown(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareUserAgentPoint, error) {
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(user_agent, ''), '(unknown)') AS user_agent,
+		       COALESCE(SUM(storage_bytes), 0),
+		       COUNT(*),
+		       COALESCE(SUM(total_tokens), 0)
+		FROM data_share_sessions
+		`+whereSQL+`
+		GROUP BY COALESCE(NULLIF(user_agent, ''), '(unknown)')
+		ORDER BY COUNT(*) DESC, COALESCE(SUM(storage_bytes), 0) DESC
+		LIMIT 20
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.DataShareUserAgentPoint
+	for rows.Next() {
+		var p service.DataShareUserAgentPoint
+		if err := rows.Scan(&p.UserAgent, &p.StorageBytes, &p.SessionCount, &p.TotalTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func prefixDataShareWhereAlias(whereSQL, alias string) string {
 	if strings.TrimSpace(whereSQL) == "" {
 		return ""
@@ -347,6 +414,7 @@ func prefixDataShareWhereAlias(whereSQL, alias string) string {
 		"provider", alias+".provider",
 		"model", alias+".model",
 		"request_path", alias+".request_path",
+		"user_agent", alias+".user_agent",
 		"exportable", alias+".exportable",
 		"quality_status", alias+".quality_status",
 		"created_at", alias+".created_at",
@@ -394,10 +462,13 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 		preds = append(preds, datasharesession.ProviderEQ(filters.Provider))
 	}
 	if filters.Model != "" {
-		preds = append(preds, datasharesession.ModelContainsFold(filters.Model))
+		preds = append(preds, datasharesession.ModelEQ(filters.Model))
 	}
 	if filters.RequestPath != "" {
 		preds = append(preds, datasharesession.RequestPathEQ(filters.RequestPath))
+	}
+	if filters.UserAgent != "" {
+		preds = append(preds, datasharesession.UserAgentEQ(filters.UserAgent))
 	}
 	if filters.Exportable != nil {
 		preds = append(preds, datasharesession.ExportableEQ(*filters.Exportable))
@@ -417,6 +488,7 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 			datasharesession.SessionIDContainsFold(filters.Search),
 			datasharesession.ModelContainsFold(filters.Search),
 			datasharesession.RequestPathContainsFold(filters.Search),
+			datasharesession.UserAgentContainsFold(filters.Search),
 			dataShareRelatedNamePredicate("users", "user_id", []string{"username", "email"}, filters.Search),
 			dataShareRelatedNamePredicate("api_keys", "api_key_id", []string{"name"}, filters.Search),
 			dataShareRelatedNamePredicate("groups", "group_id", []string{"name"}, filters.Search),
@@ -478,10 +550,13 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 		add("provider = $%d", filters.Provider)
 	}
 	if filters.Model != "" {
-		add("model ILIKE '%%' || $%d || '%%'", filters.Model)
+		add("model = $%d", filters.Model)
 	}
 	if filters.RequestPath != "" {
 		add("request_path = $%d", filters.RequestPath)
+	}
+	if filters.UserAgent != "" {
+		add("user_agent = $%d", filters.UserAgent)
 	}
 	if filters.Exportable != nil {
 		add("exportable = $%d", *filters.Exportable)
@@ -504,10 +579,11 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 			OR session_id ILIKE '%%' || $%d || '%%'
 			OR model ILIKE '%%' || $%d || '%%'
 			OR request_path ILIKE '%%' || $%d || '%%'
+			OR user_agent ILIKE '%%' || $%d || '%%'
 			OR EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND (u.username ILIKE '%%' || $%d || '%%' OR u.email ILIKE '%%' || $%d || '%%'))
 			OR EXISTS (SELECT 1 FROM api_keys ak WHERE ak.id = api_key_id AND ak.name ILIKE '%%' || $%d || '%%')
 			OR EXISTS (SELECT 1 FROM groups g WHERE g.id = group_id AND g.name ILIKE '%%' || $%d || '%%')
-		)`, idx, idx, idx, idx, idx, idx, idx, idx))
+		)`, idx, idx, idx, idx, idx, idx, idx, idx, idx))
 	}
 	if len(clauses) == 0 {
 		return "", args
@@ -540,6 +616,8 @@ func dataShareListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 		field = datasharesession.FieldModel
 	case "request_path":
 		field = datasharesession.FieldRequestPath
+	case "user_agent":
+		field = datasharesession.FieldUserAgent
 	case "quality_status":
 		field = datasharesession.FieldQualityStatus
 	case "provider":
@@ -565,6 +643,7 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		Provider:           m.Provider,
 		Model:              m.Model,
 		RequestPath:        m.RequestPath,
+		UserAgent:          m.UserAgent,
 		Status:             m.Status,
 		IsFinalSnapshot:    m.IsFinalSnapshot,
 		SourceRequestCount: m.SourceRequestCount,
@@ -888,6 +967,7 @@ func mergeDataShareMeta(existing, incoming map[string]any) map[string]any {
 	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(incoming["request_ids"])...)
 	sourceIDs = appendStringAny(sourceIDs, stringFromRepositoryAny(existing["request_id"]), stringFromRepositoryAny(incoming["request_id"]))
 	out["source_request_ids"] = sourceIDs
+	out["user_agent"] = firstNonBlankRepository(stringFromRepositoryAny(incoming["user_agent"]), stringFromRepositoryAny(existing["user_agent"]))
 	delete(out, "request_ids")
 	return out
 }

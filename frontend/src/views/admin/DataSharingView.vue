@@ -70,6 +70,30 @@
         </div>
       </div>
 
+      <div class="grid gap-6 lg:grid-cols-2">
+        <div class="card p-4">
+          <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">模型分布</h2>
+          <div class="h-64">
+            <div v-if="statsLoading" class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+            <Doughnut v-else-if="modelChartData" :data="modelChartData" :options="modelDoughnutChartOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无模型数据</div>
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">User Agent 分布</h2>
+          <div class="h-64">
+            <div v-if="statsLoading" class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+            <Doughnut v-else-if="userAgentChartData" :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无 User Agent 数据</div>
+          </div>
+        </div>
+      </div>
+
       <div class="card p-4">
         <div class="mb-3 flex items-center justify-between gap-3">
           <div>
@@ -96,12 +120,14 @@
               <div class="flex flex-1 flex-wrap items-center gap-3">
                 <div class="relative w-full sm:w-64">
                   <Icon name="search" size="md" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input v-model="filters.search" type="text" class="input pl-10" placeholder="搜索 session、轨迹或模型" @input="handleFilterChange" />
+                  <input v-model="filters.search" type="text" class="input pl-10" placeholder="搜索 session、轨迹、模型或 UA" @input="handleFilterChange" />
                 </div>
                 <input v-model="filters.user_name" type="text" class="input w-36" placeholder="用户名称" @input="handleFilterChange" />
                 <input v-model="filters.api_key_name" type="text" class="input w-36" placeholder="Key 名称" @input="handleFilterChange" />
                 <input v-model="filters.group_name" type="text" class="input w-36" placeholder="分组名称" @input="handleFilterChange" />
+                <Select v-model="filters.model" :options="modelOptions" class="w-56" searchable @change="handleFilterChange" />
                 <Select v-model="filters.request_path" :options="requestPathOptions" class="w-52" @change="handleFilterChange" />
+                <Select v-model="filters.user_agent" :options="userAgentOptions" class="w-56" searchable @change="handleFilterChange" />
                 <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
                 <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
                 <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
@@ -165,6 +191,10 @@
             </template>
             <template #cell-request_path="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
+            </template>
+            <template #cell-user_agent="{ value }">
+              <span v-if="value" class="block max-w-[260px] truncate text-sm text-gray-600 dark:text-gray-400" :title="value">{{ formatUserAgent(value) }}</span>
+              <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
             </template>
             <template #cell-quality_status="{ value, row }">
               <span :class="['badge', qualityBadgeClass(value)]">
@@ -289,6 +319,8 @@ const filters = reactive({
   api_key_name: '',
   group_name: '',
   request_path: 'all',
+  user_agent: 'all',
+  model: 'all',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
@@ -307,6 +339,7 @@ const columns: Column[] = [
   { key: 'provider', label: 'Provider', sortable: true },
   { key: 'request_path', label: '请求路径', sortable: true },
   { key: 'model', label: '模型', sortable: true },
+  { key: 'user_agent', label: 'User Agent', sortable: true },
   { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
   { key: 'total_tokens', label: 'Token', sortable: true },
@@ -323,7 +356,7 @@ const chartColors = computed(() => ({
   group: '#7c3aed'
 }))
 
-const requestPathPalette = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const doughnutPalette = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 const storageTrendChartData = computed(() => {
   const points = stats.value?.storage_trend || []
@@ -377,12 +410,19 @@ const requestPathChartData = computed(() => {
       {
         label: 'Session',
         data: points.map(point => point.session_count),
-        backgroundColor: points.map((_, index) => requestPathPalette[index % requestPathPalette.length]),
+        backgroundColor: points.map((_, index) => doughnutPalette[index % doughnutPalette.length]),
         borderWidth: 0
       }
     ]
   }
 })
+
+const modelChartData = computed(() => buildBreakdownChartData(stats.value?.model_breakdown || [], point => point.model || '(unknown)'))
+
+const userAgentChartData = computed(() => buildBreakdownChartData(
+  stats.value?.user_agent_breakdown || [],
+  point => formatUserAgent(point.user_agent || '(unknown)')
+))
 
 const lineChartOptions = computed(() => ({
   responsive: true,
@@ -450,6 +490,9 @@ const doughnutChartOptions = computed(() => ({
   }
 }))
 
+const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
+const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
+
 const requestPathOptions = computed(() => {
   const values = new Set<string>()
   for (const point of stats.value?.request_path_breakdown || []) {
@@ -461,6 +504,34 @@ const requestPathOptions = computed(() => {
   return [
     { value: 'all', label: '全部路径' },
     ...Array.from(values).sort().map(value => ({ value, label: value }))
+  ]
+})
+
+const modelOptions = computed(() => {
+  const values = new Set<string>()
+  for (const point of stats.value?.model_breakdown || []) {
+    if (point.model && point.model !== '(unknown)') values.add(point.model)
+  }
+  for (const row of sessions.value) {
+    if (row.model) values.add(row.model)
+  }
+  return [
+    { value: 'all', label: '全部模型' },
+    ...Array.from(values).sort().map(value => ({ value, label: value }))
+  ]
+})
+
+const userAgentOptions = computed(() => {
+  const values = new Set<string>()
+  for (const point of stats.value?.user_agent_breakdown || []) {
+    if (point.user_agent && point.user_agent !== '(unknown)') values.add(point.user_agent)
+  }
+  for (const row of sessions.value) {
+    if (row.user_agent) values.add(row.user_agent)
+  }
+  return [
+    { value: 'all', label: '全部 User Agent' },
+    ...Array.from(values).sort().map(value => ({ value, label: formatUserAgent(value) }))
   ]
 })
 
@@ -491,7 +562,9 @@ function buildFilters(): AdminDataShareSessionFilters {
   if (filters.user_name.trim()) out.user_name = filters.user_name.trim()
   if (filters.api_key_name.trim()) out.api_key_name = filters.api_key_name.trim()
   if (filters.group_name.trim()) out.group_name = filters.group_name.trim()
+  if (filters.model !== 'all') out.model = filters.model
   if (filters.request_path !== 'all') out.request_path = filters.request_path
+  if (filters.user_agent !== 'all') out.user_agent = filters.user_agent
   if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date
@@ -713,6 +786,46 @@ function formatDate(value?: string | null) {
 
 function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
+}
+
+function formatUserAgent(value?: string | null) {
+  const userAgent = (value || '').trim()
+  if (!userAgent || userAgent === '(unknown)') return userAgent || '-'
+  return userAgent.length > 56 ? `${userAgent.slice(0, 56)}...` : userAgent
+}
+
+function buildBreakdownChartData<T extends { session_count: number }>(points: T[], labelOf: (point: T) => string) {
+  if (!points.length) return null
+  return {
+    labels: points.map(labelOf),
+    datasets: [
+      {
+        label: 'Session',
+        data: points.map(point => point.session_count),
+        backgroundColor: points.map((_, index) => doughnutPalette[index % doughnutPalette.length]),
+        borderWidth: 0
+      }
+    ]
+  }
+}
+
+function buildDoughnutChartOptions(points: Array<{ storage_bytes: number; session_count: number; total_tokens: number }>) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' as const, labels: { color: chartColors.value.text } },
+      tooltip: {
+        callbacks: {
+          label: (ctx: any) => {
+            const point = points[ctx.dataIndex]
+            if (!point) return `${ctx.label}: ${formatNumber(ctx.raw)}`
+            return `${ctx.label}: ${formatNumber(point.session_count)} · ${formatBytes(point.storage_bytes)} · ${formatNumber(point.total_tokens)} tokens`
+          }
+        }
+      }
+    }
+  }
 }
 
 function qualityLabel(value?: string) {

@@ -29,6 +29,7 @@ func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 		RequestBody:     []byte(`{"model":"gpt-5-alias","messages":[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}}]},{"role":"tool","tool_call_id":"call_1","content":"README.md"}],"tools":[{"type":"function","function":{"name":"exec_command","description":"运行命令","parameters":{"type":"object"}}}]}`),
 		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}],"id":"resp_1"}`),
 		InboundEndpoint: "v1/chat/completions",
+		UserAgent:       "codex-cli/1.0",
 		InputTokens:     10,
 		OutputTokens:    5,
 	})
@@ -50,6 +51,18 @@ func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 	}
 	if got := session.Meta["inbound_endpoint"]; got != "/v1/chat/completions" {
 		t.Fatalf("meta.inbound_endpoint = %v, want normalized inbound path", got)
+	}
+	if got := session.UserAgent; got != "codex-cli" {
+		t.Fatalf("user_agent = %q, want captured client user agent", got)
+	}
+	if got := session.SessionJSON["user_agent"]; got != "codex-cli" {
+		t.Fatalf("session_json.user_agent = %v, want captured client user agent", got)
+	}
+	if got := session.Meta["user_agent"]; got != "codex-cli/1.0" {
+		t.Fatalf("meta.user_agent = %v, want captured client user agent", got)
+	}
+	if got := session.Meta["user_agent_family"]; got != "codex-cli" {
+		t.Fatalf("meta.user_agent_family = %v, want normalized client family", got)
 	}
 	if session.Exportable != true {
 		t.Fatalf("exportable = false, quality_errors = %v", session.QualityErrors)

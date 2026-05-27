@@ -50,12 +50,14 @@
                   v-model="filters.search"
                   type="text"
                   class="input pl-10"
-                  placeholder="搜索 session、轨迹或模型"
+                  placeholder="搜索 session、轨迹、模型或 UA"
                   @input="handleFilterChange"
                 />
               </div>
               <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
+              <Select v-model="filters.model" :options="modelOptions" class="w-56" searchable @change="handleFilterChange" />
               <Select v-model="filters.request_path" :options="requestPathOptions" class="w-52" @change="handleFilterChange" />
+              <Select v-model="filters.user_agent" :options="userAgentOptions" class="w-56" searchable @change="handleFilterChange" />
               <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
               <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
             </div>
@@ -112,6 +114,10 @@
             <template #cell-request_path="{ value }">
               <span class="badge badge-gray">{{ value || '-' }}</span>
             </template>
+            <template #cell-user_agent="{ value }">
+              <span v-if="value" class="block max-w-[260px] truncate text-sm text-gray-600 dark:text-gray-400" :title="value">{{ formatUserAgent(value) }}</span>
+              <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+            </template>
             <template #cell-quality_status="{ value, row }">
               <span :class="['badge', qualityBadgeClass(value)]">
                 {{ qualityLabel(value) }}<span v-if="value === 'invalid' && row.quality_errors?.length"> {{ row.quality_errors.length }}</span>
@@ -162,7 +168,7 @@
         <LoadingSpinner />
       </div>
       <div v-else-if="selectedSession" class="space-y-4">
-        <div class="grid gap-3 md:grid-cols-5">
+        <div class="grid gap-3 md:grid-cols-6">
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">Session</p>
             <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ selectedSession.session_id }}</p>
@@ -174,6 +180,10 @@
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">请求路径</p>
             <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ selectedSession.request_path || '-' }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">User Agent</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="selectedSession.user_agent">{{ formatUserAgent(selectedSession.user_agent) }}</p>
           </div>
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">Token</p>
@@ -223,6 +233,8 @@ const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' 
 const filters = reactive({
   search: '',
   request_path: 'all',
+  user_agent: 'all',
+  model: 'all',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
   start_date: '',
   end_date: ''
@@ -241,6 +253,7 @@ const columns: Column[] = [
   { key: 'provider', label: 'Provider', sortable: true },
   { key: 'request_path', label: '请求路径', sortable: true },
   { key: 'model', label: '模型', sortable: true },
+  { key: 'user_agent', label: 'User Agent', sortable: true },
   { key: 'quality_status', label: '质量', sortable: true },
   { key: 'storage_bytes', label: '空间', sortable: true },
   { key: 'total_tokens', label: 'Token', sortable: true },
@@ -276,6 +289,26 @@ const requestPathOptions = computed(() => {
     ...Array.from(values).sort().map(value => ({ value, label: value }))
   ]
 })
+const modelOptions = computed(() => {
+  const values = new Set<string>()
+  for (const row of sessions.value) {
+    if (row.model) values.add(row.model)
+  }
+  return [
+    { value: 'all', label: '全部模型' },
+    ...Array.from(values).sort().map(value => ({ value, label: value }))
+  ]
+})
+const userAgentOptions = computed(() => {
+  const values = new Set<string>()
+  for (const row of sessions.value) {
+    if (row.user_agent) values.add(row.user_agent)
+  }
+  return [
+    { value: 'all', label: '全部 User Agent' },
+    ...Array.from(values).sort().map(value => ({ value, label: formatUserAgent(value) }))
+  ]
+})
 
 let filterTimer: number | null = null
 
@@ -285,7 +318,9 @@ function buildFilters(): DataShareSessionFilters {
     sort_order: sortState.sort_order
   }
   if (filters.search.trim()) out.search = filters.search.trim()
+  if (filters.model !== 'all') out.model = filters.model
   if (filters.request_path !== 'all') out.request_path = filters.request_path
+  if (filters.user_agent !== 'all') out.user_agent = filters.user_agent
   if (filters.quality_status !== 'all') out.quality_status = filters.quality_status
   if (filters.start_date) out.start_date = filters.start_date
   if (filters.end_date) out.end_date = filters.end_date
@@ -427,6 +462,12 @@ function formatDate(value?: string | null) {
 
 function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
+}
+
+function formatUserAgent(value?: string | null) {
+  const userAgent = (value || '').trim()
+  if (!userAgent) return '-'
+  return userAgent.length > 56 ? `${userAgent.slice(0, 56)}...` : userAgent
 }
 
 function qualityLabel(value?: string) {

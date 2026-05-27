@@ -25,6 +25,8 @@ const (
 	FieldModel = "model"
 	// FieldRequestPath holds the string denoting the request_path field in the database.
 	FieldRequestPath = "request_path"
+	// FieldUserAgent holds the string denoting the user_agent field in the database.
+	FieldUserAgent = "user_agent"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldIsFinalSnapshot holds the string denoting the is_final_snapshot field in the database.
@@ -82,6 +84,7 @@ var Columns = []string{
 	FieldProvider,
 	FieldModel,
 	FieldRequestPath,
+	FieldUserAgent,
 	FieldStatus,
 	FieldIsFinalSnapshot,
 	FieldSourceRequestCount,
@@ -131,6 +134,10 @@ var (
 	DefaultRequestPath string
 	// RequestPathValidator is a validator for the "request_path" field. It is called by the builders before save.
 	RequestPathValidator func(string) error
+	// DefaultUserAgent holds the default value on creation for the "user_agent" field.
+	DefaultUserAgent string
+	// UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	UserAgentValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -197,6 +204,11 @@ func ByModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRequestPath orders the results by the request_path field.
 func ByRequestPath(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequestPath, opts...).ToFunc()
+}
+
+// ByUserAgent orders the results by the user_agent field.
+func ByUserAgent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserAgent, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

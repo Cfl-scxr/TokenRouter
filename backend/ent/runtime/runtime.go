@@ -532,52 +532,58 @@ func init() {
 	datasharesession.DefaultRequestPath = datasharesessionDescRequestPath.Default.(string)
 	// datasharesession.RequestPathValidator is a validator for the "request_path" field. It is called by the builders before save.
 	datasharesession.RequestPathValidator = datasharesessionDescRequestPath.Validators[0].(func(string) error)
+	// datasharesessionDescUserAgent is the schema descriptor for user_agent field.
+	datasharesessionDescUserAgent := datasharesessionFields[6].Descriptor()
+	// datasharesession.DefaultUserAgent holds the default value on creation for the user_agent field.
+	datasharesession.DefaultUserAgent = datasharesessionDescUserAgent.Default.(string)
+	// datasharesession.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	datasharesession.UserAgentValidator = datasharesessionDescUserAgent.Validators[0].(func(string) error)
 	// datasharesessionDescStatus is the schema descriptor for status field.
-	datasharesessionDescStatus := datasharesessionFields[6].Descriptor()
+	datasharesessionDescStatus := datasharesessionFields[7].Descriptor()
 	// datasharesession.DefaultStatus holds the default value on creation for the status field.
 	datasharesession.DefaultStatus = datasharesessionDescStatus.Default.(string)
 	// datasharesession.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	datasharesession.StatusValidator = datasharesessionDescStatus.Validators[0].(func(string) error)
 	// datasharesessionDescIsFinalSnapshot is the schema descriptor for is_final_snapshot field.
-	datasharesessionDescIsFinalSnapshot := datasharesessionFields[7].Descriptor()
+	datasharesessionDescIsFinalSnapshot := datasharesessionFields[8].Descriptor()
 	// datasharesession.DefaultIsFinalSnapshot holds the default value on creation for the is_final_snapshot field.
 	datasharesession.DefaultIsFinalSnapshot = datasharesessionDescIsFinalSnapshot.Default.(bool)
 	// datasharesessionDescSourceRequestCount is the schema descriptor for source_request_count field.
-	datasharesessionDescSourceRequestCount := datasharesessionFields[8].Descriptor()
+	datasharesessionDescSourceRequestCount := datasharesessionFields[9].Descriptor()
 	// datasharesession.DefaultSourceRequestCount holds the default value on creation for the source_request_count field.
 	datasharesession.DefaultSourceRequestCount = datasharesessionDescSourceRequestCount.Default.(int)
 	// datasharesessionDescExportable is the schema descriptor for exportable field.
-	datasharesessionDescExportable := datasharesessionFields[15].Descriptor()
+	datasharesessionDescExportable := datasharesessionFields[16].Descriptor()
 	// datasharesession.DefaultExportable holds the default value on creation for the exportable field.
 	datasharesession.DefaultExportable = datasharesessionDescExportable.Default.(bool)
 	// datasharesessionDescQualityStatus is the schema descriptor for quality_status field.
-	datasharesessionDescQualityStatus := datasharesessionFields[16].Descriptor()
+	datasharesessionDescQualityStatus := datasharesessionFields[17].Descriptor()
 	// datasharesession.DefaultQualityStatus holds the default value on creation for the quality_status field.
 	datasharesession.DefaultQualityStatus = datasharesessionDescQualityStatus.Default.(string)
 	// datasharesession.QualityStatusValidator is a validator for the "quality_status" field. It is called by the builders before save.
 	datasharesession.QualityStatusValidator = datasharesessionDescQualityStatus.Validators[0].(func(string) error)
 	// datasharesessionDescStorageBytes is the schema descriptor for storage_bytes field.
-	datasharesessionDescStorageBytes := datasharesessionFields[18].Descriptor()
+	datasharesessionDescStorageBytes := datasharesessionFields[19].Descriptor()
 	// datasharesession.DefaultStorageBytes holds the default value on creation for the storage_bytes field.
 	datasharesession.DefaultStorageBytes = datasharesessionDescStorageBytes.Default.(int64)
 	// datasharesessionDescInputTokens is the schema descriptor for input_tokens field.
-	datasharesessionDescInputTokens := datasharesessionFields[19].Descriptor()
+	datasharesessionDescInputTokens := datasharesessionFields[20].Descriptor()
 	// datasharesession.DefaultInputTokens holds the default value on creation for the input_tokens field.
 	datasharesession.DefaultInputTokens = datasharesessionDescInputTokens.Default.(int64)
 	// datasharesessionDescOutputTokens is the schema descriptor for output_tokens field.
-	datasharesessionDescOutputTokens := datasharesessionFields[20].Descriptor()
+	datasharesessionDescOutputTokens := datasharesessionFields[21].Descriptor()
 	// datasharesession.DefaultOutputTokens holds the default value on creation for the output_tokens field.
 	datasharesession.DefaultOutputTokens = datasharesessionDescOutputTokens.Default.(int64)
 	// datasharesessionDescTotalTokens is the schema descriptor for total_tokens field.
-	datasharesessionDescTotalTokens := datasharesessionFields[21].Descriptor()
+	datasharesessionDescTotalTokens := datasharesessionFields[22].Descriptor()
 	// datasharesession.DefaultTotalTokens holds the default value on creation for the total_tokens field.
 	datasharesession.DefaultTotalTokens = datasharesessionDescTotalTokens.Default.(int64)
 	// datasharesessionDescCreatedAt is the schema descriptor for created_at field.
-	datasharesessionDescCreatedAt := datasharesessionFields[25].Descriptor()
+	datasharesessionDescCreatedAt := datasharesessionFields[26].Descriptor()
 	// datasharesession.DefaultCreatedAt holds the default value on creation for the created_at field.
 	datasharesession.DefaultCreatedAt = datasharesessionDescCreatedAt.Default.(func() time.Time)
 	// datasharesessionDescUpdatedAt is the schema descriptor for updated_at field.
-	datasharesessionDescUpdatedAt := datasharesessionFields[27].Descriptor()
+	datasharesessionDescUpdatedAt := datasharesessionFields[28].Descriptor()
 	// datasharesession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	datasharesession.DefaultUpdatedAt = datasharesessionDescUpdatedAt.Default.(func() time.Time)
 	// datasharesession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -84,6 +84,11 @@ func RequestPath(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldRequestPath, v))
 }
 
+// UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
+func UserAgent(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldUserAgent, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldStatus, v))
@@ -552,6 +557,71 @@ func RequestPathEqualFold(v string) predicate.DataShareSession {
 // RequestPathContainsFold applies the ContainsFold predicate on the "request_path" field.
 func RequestPathContainsFold(v string) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldContainsFold(FieldRequestPath, v))
+}
+
+// UserAgentEQ applies the EQ predicate on the "user_agent" field.
+func UserAgentEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldUserAgent, v))
+}
+
+// UserAgentNEQ applies the NEQ predicate on the "user_agent" field.
+func UserAgentNEQ(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldUserAgent, v))
+}
+
+// UserAgentIn applies the In predicate on the "user_agent" field.
+func UserAgentIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldUserAgent, vs...))
+}
+
+// UserAgentNotIn applies the NotIn predicate on the "user_agent" field.
+func UserAgentNotIn(vs ...string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldUserAgent, vs...))
+}
+
+// UserAgentGT applies the GT predicate on the "user_agent" field.
+func UserAgentGT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldUserAgent, v))
+}
+
+// UserAgentGTE applies the GTE predicate on the "user_agent" field.
+func UserAgentGTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldUserAgent, v))
+}
+
+// UserAgentLT applies the LT predicate on the "user_agent" field.
+func UserAgentLT(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldUserAgent, v))
+}
+
+// UserAgentLTE applies the LTE predicate on the "user_agent" field.
+func UserAgentLTE(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldUserAgent, v))
+}
+
+// UserAgentContains applies the Contains predicate on the "user_agent" field.
+func UserAgentContains(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContains(FieldUserAgent, v))
+}
+
+// UserAgentHasPrefix applies the HasPrefix predicate on the "user_agent" field.
+func UserAgentHasPrefix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasPrefix(FieldUserAgent, v))
+}
+
+// UserAgentHasSuffix applies the HasSuffix predicate on the "user_agent" field.
+func UserAgentHasSuffix(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldHasSuffix(FieldUserAgent, v))
+}
+
+// UserAgentEqualFold applies the EqualFold predicate on the "user_agent" field.
+func UserAgentEqualFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEqualFold(FieldUserAgent, v))
+}
+
+// UserAgentContainsFold applies the ContainsFold predicate on the "user_agent" field.
+func UserAgentContainsFold(v string) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldContainsFold(FieldUserAgent, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
