@@ -73,7 +73,7 @@
         </div>
       </div>
 
-      <div class="grid gap-6 lg:grid-cols-2">
+      <div class="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">模型分布</h2>
           <div class="h-64">
@@ -93,6 +93,17 @@
             </div>
             <Doughnut v-else-if="userAgentChartData" :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
             <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无 User Agent 数据</div>
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dataSharing.qualityErrorDistribution') }}</h2>
+          <div class="h-64">
+            <div v-if="statsLoading" class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+            <Doughnut v-else-if="qualityErrorChartData" :data="qualityErrorChartData" :options="qualityErrorDoughnutChartOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.dataSharing.noQualityErrorData') }}</div>
           </div>
         </div>
       </div>
@@ -455,7 +466,7 @@
           </span>
         </div>
         <div v-if="selectedSession.quality_errors?.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-          {{ selectedSession.quality_errors.join(', ') }}
+          {{ selectedSession.quality_errors.map(qualityErrorLabel).join(', ') }}
         </div>
         <pre class="max-h-[60vh] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{{ prettySession }}</pre>
       </div>
@@ -478,6 +489,7 @@ import {
   Filler
 } from 'chart.js'
 import { Bar, Doughnut, Line } from 'vue-chartjs'
+import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -502,6 +514,7 @@ import type { Column } from '@/components/common/types'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler)
 
 const appStore = useAppStore()
+const { t, te } = useI18n()
 
 const notice = ref<DataShareNotice | null>(null)
 const noticeContent = ref('')
@@ -747,6 +760,11 @@ const userAgentChartData = computed(() => buildBreakdownChartData(
   point => formatUserAgent(point.user_agent || '(unknown)')
 ))
 
+const qualityErrorChartData = computed(() => buildBreakdownChartData(
+  stats.value?.quality_error_breakdown || [],
+  point => qualityErrorLabel(point.error_code)
+))
+
 const lineChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -815,6 +833,7 @@ const doughnutChartOptions = computed(() => ({
 
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
+const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
 
 const storageLimitProgress = computed(() => {
   if (!storageLimit.value?.enabled) return 0
@@ -1381,6 +1400,32 @@ function buildDoughnutChartOptions(points: Array<{ storage_bytes: number; sessio
       }
     }
   }
+}
+
+function buildSessionCountDoughnutChartOptions(points: Array<{ session_count: number }>) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' as const, labels: { color: chartColors.value.text } },
+      tooltip: {
+        callbacks: {
+          label: (ctx: any) => {
+            const point = points[ctx.dataIndex]
+            const count = point?.session_count ?? Number(ctx.raw || 0)
+            return `${ctx.label}: ${formatNumber(count)} ${t('admin.dataSharing.sessions')}`
+          }
+        }
+      }
+    }
+  }
+}
+
+function qualityErrorLabel(code?: string | null) {
+  const raw = (code || '').trim()
+  const normalized = !raw || raw === '(unknown)' ? 'unknown' : raw
+  const key = `admin.dataSharing.qualityErrors.${normalized}`
+  return te(key) ? t(key) : normalized
 }
 
 function qualityLabel(value?: string) {

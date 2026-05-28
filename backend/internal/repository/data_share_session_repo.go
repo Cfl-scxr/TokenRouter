@@ -349,6 +349,11 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		return nil, err
 	}
 	stats.UserAgentBreakdown = userAgentBreakdown
+	qualityErrorBreakdown, err := r.loadQualityErrorBreakdown(ctx, sqlq, whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	stats.QualityErrorBreakdown = qualityErrorBreakdown
 	return stats, nil
 }
 
@@ -484,6 +489,40 @@ func (r *dataShareSessionRepository) loadUserAgentBreakdown(ctx context.Context,
 	for rows.Next() {
 		var p service.DataShareUserAgentPoint
 		if err := rows.Scan(&p.UserAgent, &p.StorageBytes, &p.SessionCount, &p.TotalTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *dataShareSessionRepository) loadQualityErrorBreakdown(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareQualityErrorPoint, error) {
+	whereSQL = prefixDataShareWhereAlias(whereSQL, "d")
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(err.error_code, ''), '(unknown)') AS error_code,
+		       COUNT(DISTINCT d.id) AS session_count
+		FROM data_share_sessions d
+		CROSS JOIN LATERAL jsonb_array_elements_text(
+			CASE
+				-- 历史脏数据可能把 quality_errors 写成标量，统计时只展开可识别的数组或字符串。
+				WHEN jsonb_typeof(d.quality_errors) = 'array' THEN d.quality_errors
+				WHEN jsonb_typeof(d.quality_errors) = 'string' THEN jsonb_build_array(d.quality_errors #>> '{}')
+				ELSE '[]'::jsonb
+			END
+		) AS err(error_code)
+		`+whereSQL+`
+		GROUP BY COALESCE(NULLIF(err.error_code, ''), '(unknown)')
+		ORDER BY COUNT(DISTINCT d.id) DESC, error_code ASC
+		LIMIT 20
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.DataShareQualityErrorPoint
+	for rows.Next() {
+		var p service.DataShareQualityErrorPoint
+		if err := rows.Scan(&p.ErrorCode, &p.SessionCount); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

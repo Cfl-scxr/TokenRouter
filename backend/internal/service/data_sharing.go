@@ -229,6 +229,12 @@ type DataShareUserAgentPoint struct {
 	TotalTokens  int64  `json:"total_tokens"`
 }
 
+// DataShareQualityErrorPoint 用于管理端展示质量错误原因分布。
+type DataShareQualityErrorPoint struct {
+	ErrorCode    string `json:"error_code"`
+	SessionCount int64  `json:"session_count"`
+}
+
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
 	SessionCount          int64                        `json:"session_count"`
@@ -245,6 +251,7 @@ type DataShareStats struct {
 	RequestPathBreakdown  []DataShareRequestPathPoint  `json:"request_path_breakdown"`
 	ModelBreakdown        []DataShareModelPoint        `json:"model_breakdown"`
 	UserAgentBreakdown    []DataShareUserAgentPoint    `json:"user_agent_breakdown"`
+	QualityErrorBreakdown []DataShareQualityErrorPoint `json:"quality_error_breakdown"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。

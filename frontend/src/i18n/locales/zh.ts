@@ -1449,6 +1449,27 @@ export default {
       failedToLoad: '加载仪表盘数据失败'
     },
 
+    dataSharing: {
+      qualityErrorDistribution: '错误原因占比',
+      noQualityErrorData: '暂无错误原因数据',
+      sessions: '个 Session',
+      qualityErrors: {
+        missing_system_prompt: '缺少系统提示词',
+        effective_turns_lt_2: '有效轮次不足',
+        missing_tool_definitions: '缺少工具定义',
+        invalid_tool_definition: '工具定义不完整',
+        missing_structured_tool_call: '缺少结构化工具调用',
+        invalid_tool_call: '工具调用不完整',
+        tool_definition_missing: '工具调用缺少对应工具定义',
+        tool_call_result_unpaired: '工具调用与返回未配对',
+        tool_result_unpaired: '工具返回缺少对应调用',
+        missing_final_assistant: '缺少最终助手回复',
+        model_not_allowed: '模型不在交付范围',
+        missing_usage_tokens: '缺少用量 token',
+        unknown: '未知错误原因'
+      }
+    },
+
     riskControl: {
       title: '风控中心',
       description: '配置内容审计策略并查看审核记录',

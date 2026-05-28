@@ -36,6 +36,11 @@ export interface DataShareUserAgentPoint {
   total_tokens: number
 }
 
+export interface DataShareQualityErrorPoint {
+  error_code: string
+  session_count: number
+}
+
 export interface DataShareStats {
   session_count: number
   exportable_count: number
@@ -51,6 +56,7 @@ export interface DataShareStats {
   request_path_breakdown: DataShareRequestPathPoint[]
   model_breakdown: DataShareModelPoint[]
   user_agent_breakdown: DataShareUserAgentPoint[]
+  quality_error_breakdown: DataShareQualityErrorPoint[]
 }
 
 export type DataShareCaptureSkipRuleMatchMode = 'contains' | 'equals'

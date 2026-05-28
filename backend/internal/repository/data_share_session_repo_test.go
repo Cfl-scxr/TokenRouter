@@ -159,6 +159,10 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"user_agent", "storage_bytes", "session_count", "total_tokens"}).
 			AddRow("codex-cli/1.0", int64(100), int64(1), int64(10)).
 			AddRow("claude-code/2.0", int64(200), int64(1), int64(20)))
+	mock.ExpectQuery(`CROSS JOIN LATERAL jsonb_array_elements_text\(.+jsonb_typeof\(d\.quality_errors\) = 'array'.+jsonb_typeof\(d\.quality_errors\) = 'string'.+jsonb_build_array`).
+		WillReturnRows(sqlmock.NewRows([]string{"error_code", "session_count"}).
+			AddRow("missing_structured_tool_call", int64(2)).
+			AddRow("tool_call_result_unpaired", int64(1)))
 
 	stats, err := repo.Stats(ctx, service.DataShareSessionFilters{})
 	require.NoError(t, err)
@@ -172,6 +176,9 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 	require.Equal(t, "gpt-5.5", stats.ModelBreakdown[0].Model)
 	require.Len(t, stats.UserAgentBreakdown, 2)
 	require.Equal(t, "codex-cli/1.0", stats.UserAgentBreakdown[0].UserAgent)
+	require.Len(t, stats.QualityErrorBreakdown, 2)
+	require.Equal(t, "missing_structured_tool_call", stats.QualityErrorBreakdown[0].ErrorCode)
+	require.Equal(t, int64(2), stats.QualityErrorBreakdown[0].SessionCount)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
