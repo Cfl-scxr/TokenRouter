@@ -169,8 +169,10 @@ func reserveTLSFingerprintCollectorPort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port
+	defer func() { _ = ln.Close() }()
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	return addr.Port
 }
 
 func newTLSFingerprintCollectorTestClient(t *testing.T, caPEM string) *http.Client {
@@ -179,7 +181,7 @@ func newTLSFingerprintCollectorTestClient(t *testing.T, caPEM string) *http.Clie
 	require.True(t, pool.AppendCertsFromPEM([]byte(caPEM)))
 	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig:       &tls.Config{RootCAs: pool},
+			TLSClientConfig:       &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
 			ForceAttemptHTTP2:     false,
 			ResponseHeaderTimeout: time.Second,
 		},

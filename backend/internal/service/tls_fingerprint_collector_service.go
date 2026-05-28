@@ -163,6 +163,7 @@ func (s *TLSFingerprintCollectorService) Start(ctx context.Context) (TLSFingerpr
 		},
 		TLSConfig: &tls.Config{
 			// 收集器只需要采集客户端声明的 ALPN，实际响应固定走 HTTP/1.1，避免 h2 请求解析复杂度。
+			MinVersion: tls.VersionTLS12,
 			NextProtos: []string{"http/1.1"},
 		},
 	}
@@ -526,6 +527,7 @@ func (c *tlsFingerprintCaptureConn) ensureHandshake() error {
 		}
 		tlsConn := tls.Server(&readerConn{Conn: c.Conn, reader: c.reader}, &tls.Config{
 			Certificates: []tls.Certificate{*c.cert},
+			MinVersion:   tls.VersionTLS12,
 			NextProtos:   []string{"http/1.1"},
 		})
 		if err := tlsConn.Handshake(); err != nil {
@@ -732,7 +734,7 @@ func tlsFingerprintProfileToYAML(profile *model.TLSFingerprintProfile) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("captured_profile:\n")
+	fmt.Fprint(&b, "captured_profile:\n")
 	writeYAMLString(&b, "name", profile.Name)
 	if profile.Description != nil {
 		writeYAMLString(&b, "description", *profile.Description)
@@ -759,23 +761,23 @@ func writeYAMLNumberArray[T ~uint16](b *strings.Builder, key string, values []T)
 	fmt.Fprintf(b, "  %s: [", key)
 	for i, value := range values {
 		if i > 0 {
-			b.WriteString(", ")
+			fmt.Fprint(b, ", ")
 		}
 		fmt.Fprintf(b, "%d", value)
 	}
-	b.WriteString("]\n")
+	fmt.Fprint(b, "]\n")
 }
 
 func writeYAMLStringArray(b *strings.Builder, key string, values []string) {
 	fmt.Fprintf(b, "  %s: [", key)
 	for i, value := range values {
 		if i > 0 {
-			b.WriteString(", ")
+			fmt.Fprint(b, ", ")
 		}
 		escaped := strings.ReplaceAll(value, `"`, `\"`)
 		fmt.Fprintf(b, "\"%s\"", escaped)
 	}
-	b.WriteString("]\n")
+	fmt.Fprint(b, "]\n")
 }
 
 func summarizeTLSFingerprintHeaders(headers http.Header) map[string]string {

@@ -27,14 +27,14 @@ func TestParseCapturedClientHelloFromUTLSDialer(t *testing.T) {
 	recordCh := make(chan []byte, 1)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		reader := bufio.NewReader(conn)
 		header, err := reader.Peek(5)
 		if err != nil {
