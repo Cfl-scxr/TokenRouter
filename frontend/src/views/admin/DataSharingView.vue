@@ -458,15 +458,63 @@
       </div>
       <div v-else-if="selectedSession" class="space-y-4">
         <div class="flex flex-wrap gap-2">
-          <span class="badge badge-gray">用户 {{ displayUser(selectedSession) }}</span>
-          <span class="badge badge-gray">Key {{ displayAPIKey(selectedSession) }}</span>
-          <span class="badge badge-gray">分组 {{ displayGroup(selectedSession) }}</span>
           <span :class="['badge', qualityBadgeClass(selectedSession.quality_status)]">
             {{ qualityLabel(selectedSession.quality_status) }}
           </span>
+          <span v-if="!selectedSession.is_final_snapshot" class="badge badge-warning">非最终快照</span>
         </div>
-        <div v-if="selectedSession.quality_errors?.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-          {{ selectedSession.quality_errors.map(qualityErrorLabel).join(', ') }}
+        <div class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">用户</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayUser(selectedSession)">{{ displayUser(selectedSession) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">Key</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayAPIKey(selectedSession)">{{ displayAPIKey(selectedSession) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">分组</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="displayGroup(selectedSession)">{{ displayGroup(selectedSession) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">Session</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="selectedSession.session_id">{{ selectedSession.session_id }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">模型</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="selectedSession.model">{{ selectedSession.model || '-' }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">请求路径</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="selectedSession.request_path">{{ selectedSession.request_path || '-' }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">User Agent</p>
+            <p class="truncate text-sm font-medium text-gray-900 dark:text-white" :title="selectedSession.user_agent">{{ formatUserAgent(selectedSession.user_agent) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">Token</p>
+            <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatNumber(selectedSession.total_tokens) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500">空间</p>
+            <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatBytes(selectedSession.storage_bytes) }}</p>
+          </div>
+        </div>
+        <div
+          v-if="selectedSession.quality_errors?.length"
+          class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">错误类型</p>
+          <div class="flex flex-wrap gap-2">
+            <span
+              v-for="code in selectedSession.quality_errors"
+              :key="code"
+              class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-100"
+            >
+              {{ qualityErrorLabel(code) }}
+            </span>
+          </div>
         </div>
         <pre class="max-h-[60vh] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{{ prettySession }}</pre>
       </div>
@@ -1277,9 +1325,9 @@ function buildSelectionFilters(): AdminDataShareSessionFilters {
 async function openDetail(row: DataShareSession) {
   detailOpen.value = true
   detailLoading.value = true
-  selectedSession.value = null
+  selectedSession.value = row
   try {
-    selectedSession.value = await adminDataSharingAPI.getSession(row.id)
+    selectedSession.value = { ...row, ...(await adminDataSharingAPI.getSession(row.id)) }
   } catch (error) {
     appStore.showError('加载详情失败')
   } finally {

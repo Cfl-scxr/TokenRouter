@@ -168,6 +168,12 @@
         <LoadingSpinner />
       </div>
       <div v-else-if="selectedSession" class="space-y-4">
+        <div class="flex flex-wrap gap-2">
+          <span :class="['badge', qualityBadgeClass(selectedSession.quality_status)]">
+            {{ qualityLabel(selectedSession.quality_status) }}
+          </span>
+          <span v-if="!selectedSession.is_final_snapshot" class="badge badge-warning">非最终快照</span>
+        </div>
         <div class="grid gap-3 md:grid-cols-6">
           <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
             <p class="text-xs text-gray-500">Session</p>
@@ -194,6 +200,21 @@
             <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatBytes(selectedSession.storage_bytes) }}</p>
           </div>
         </div>
+        <div
+          v-if="selectedSession.quality_errors?.length"
+          class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">错误类型</p>
+          <div class="flex flex-wrap gap-2">
+            <span
+              v-for="code in selectedSession.quality_errors"
+              :key="code"
+              class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-100"
+            >
+              {{ qualityErrorLabel(code) }}
+            </span>
+          </div>
+        </div>
         <pre class="max-h-[60vh] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{{ prettySession }}</pre>
       </div>
     </BaseDialog>
@@ -202,6 +223,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -216,6 +238,7 @@ import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
 
 const appStore = useAppStore()
+const { t, te } = useI18n()
 
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
@@ -423,9 +446,9 @@ function buildSelectionFilters(): DataShareSessionFilters {
 async function openDetail(row: DataShareSession) {
   detailOpen.value = true
   detailLoading.value = true
-  selectedSession.value = null
+  selectedSession.value = row
   try {
-    selectedSession.value = await dataSharingAPI.getSession(row.id)
+    selectedSession.value = { ...row, ...(await dataSharingAPI.getSession(row.id)) }
   } catch (error) {
     appStore.showError('加载详情失败')
   } finally {
@@ -470,6 +493,14 @@ function formatUserAgent(value?: string | null) {
   const userAgent = (value || '').trim()
   if (!userAgent) return '-'
   return userAgent.length > 56 ? `${userAgent.slice(0, 56)}...` : userAgent
+}
+
+// 复用管理端质量错误文案，避免用户端详情只暴露原始错误码。
+function qualityErrorLabel(code?: string | null) {
+  const raw = (code || '').trim()
+  const normalized = !raw || raw === '(unknown)' ? 'unknown' : raw
+  const key = `admin.dataSharing.qualityErrors.${normalized}`
+  return te(key) ? t(key) : normalized
 }
 
 function qualityLabel(value?: string) {
