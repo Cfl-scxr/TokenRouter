@@ -9,7 +9,7 @@ import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
-import { formatNumber } from '@/utils/format'
+import { formatBytes, formatNumber } from '@/utils/format'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -540,6 +540,23 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
         action: t('admin.ops.diagnosis.memoryHighAction')
       })
     }
+
+    const diskPct = sm.disk_usage_percent ?? 0
+    if (diskPct > 95) {
+      report.push({
+        type: 'critical',
+        message: t('admin.ops.diagnosis.diskCritical', { usage: diskPct.toFixed(1) }),
+        impact: t('admin.ops.diagnosis.diskCriticalImpact'),
+        action: t('admin.ops.diagnosis.diskCriticalAction')
+      })
+    } else if (diskPct > 85) {
+      report.push({
+        type: 'warning',
+        message: t('admin.ops.diagnosis.diskHigh', { usage: diskPct.toFixed(1) }),
+        impact: t('admin.ops.diagnosis.diskHighImpact'),
+        action: t('admin.ops.diagnosis.diskHighAction')
+      })
+    }
   }
 
   const ttftP99 = ov.ttft?.p99_ms ?? 0
@@ -668,6 +685,27 @@ const memPercentClass = computed(() => {
   if (v >= 95) return 'text-rose-600 dark:text-rose-400'
   if (v >= 85) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-emerald-600 dark:text-emerald-400'
+})
+
+const diskPercentValue = computed<number | null>(() => {
+  const v = systemMetrics.value?.disk_usage_percent
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+})
+
+const diskPercentClass = computed(() => {
+  const v = diskPercentValue.value
+  if (v == null) return 'text-gray-900 dark:text-white'
+  if (v >= 95) return 'text-rose-600 dark:text-rose-400'
+  if (v >= 85) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+})
+
+const diskUsageLabel = computed(() => {
+  const used = systemMetrics.value?.disk_used_mb
+  const total = systemMetrics.value?.disk_total_mb
+  if (used == null || total == null) return '-'
+  // 后端按 MB 存储，这里转回字节后复用统一容量格式化逻辑。
+  return `${formatBytes(used * 1024 * 1024, 1)} / ${formatBytes(total * 1024 * 1024, 1)}`
 })
 
 const dbConnActiveValue = computed<number | null>(() => {
@@ -1433,7 +1471,7 @@ function handleToolbarRefresh() {
 
     <!-- Integrated: System health (cards) -->
     <div v-if="overview" class="mt-2 border-t border-gray-100 pt-4 dark:border-dark-700">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <!-- CPU -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-950">
           <div class="flex items-center gap-1">
@@ -1463,6 +1501,20 @@ function handleToolbarRefresh() {
                 ? '-'
                 : `${formatNumber(systemMetrics.memory_used_mb)} / ${formatNumber(systemMetrics.memory_total_mb)} MB`
             }}
+          </div>
+        </div>
+
+        <!-- 磁盘 -->
+        <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-950">
+          <div class="flex items-center gap-1">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.disk') }}</div>
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.disk')" />
+          </div>
+          <div class="mt-1 text-lg font-black" :class="diskPercentClass">
+            {{ diskPercentValue == null ? '-' : `${diskPercentValue.toFixed(1)}%` }}
+          </div>
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+            {{ diskUsageLabel }}
           </div>
         </div>
 

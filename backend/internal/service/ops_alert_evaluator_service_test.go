@@ -145,10 +145,21 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 	tests := []struct {
 		name       string
 		metricType string
+		system     *OpsSystemMetricsSnapshot
 		groupID    *int64
 		wantValue  float64
 		wantOK     bool
 	}{
+		{
+			name:       "disk_usage_percent",
+			metricType: "disk_usage_percent",
+			system: &OpsSystemMetricsSnapshot{
+				DiskUsagePercent: float64Ptr(92.5),
+			},
+			groupID:   nil,
+			wantValue: 92.5,
+			wantOK:    true,
+		},
 		{
 			name:       "group_available_accounts",
 			metricType: "group_available_accounts",
@@ -201,7 +212,7 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 			rule := &OpsAlertRule{
 				MetricType: tt.metricType,
 			}
-			gotValue, gotOK := svc.computeRuleMetric(ctx, rule, nil, start, end, platform, tt.groupID)
+			gotValue, gotOK := svc.computeRuleMetric(ctx, rule, tt.system, start, end, platform, tt.groupID)
 			require.Equal(t, tt.wantOK, gotOK)
 			if !tt.wantOK {
 				return

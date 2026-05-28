@@ -208,6 +208,7 @@ func TestOpsAlertRuleValidation(t *testing.T) {
 	require.Error(t, err)
 
 	require.True(t, isPercentOrRateMetric("error_rate"))
+	require.True(t, isPercentOrRateMetric("disk_usage_percent"))
 	require.False(t, isPercentOrRateMetric("concurrency_queue_depth"))
 }
 
