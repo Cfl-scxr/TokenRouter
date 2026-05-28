@@ -1571,9 +1571,8 @@ func ValidateDataShareSessionQuality(model string, systemPrompt string, messages
 	if !dataShareModelAllowed(model) {
 		addErr("model_not_allowed")
 	}
-	if intFromAny(usage["total_tokens"]) <= 0 {
-		addErr("missing_usage_tokens")
-	}
+	// 交付文档允许 token 用量无法聚合时为空或保留在 meta，因此 usage 不能作为 session 可用性的硬门槛。
+	_ = usage
 	return errs
 }
 

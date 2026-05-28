@@ -804,6 +804,29 @@ func TestCompactDataShareMessagesKeepsUnfinishedTail(t *testing.T) {
 	}
 }
 
+func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md", "status": "success", "is_error": false},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+	usage := map[string]any{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+	// 交付说明允许 token 用量无法聚合时为空/为 0，不能因此误判完整工具 session 无效。
+	if errs := ValidateDataShareSessionQuality("gpt-5.5", sys, messages, tools, usage); len(errs) != 0 {
+		t.Fatalf("quality_errors = %v, want none", errs)
+	}
+	if status := DataSharePayloadQualityStatus("gpt-5.5", sys, messages, tools, usage); status != DataShareQualityComplete {
+		t.Fatalf("quality_status = %q, want complete", status)
+	}
+}
+
 func TestPartialSessionExportsRawSnapshot(t *testing.T) {
 	sys := "你是编码助手"
 	session := &DataShareSession{
