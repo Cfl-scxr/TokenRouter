@@ -208,7 +208,7 @@
               </button>
             </div>
 
-            <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <label class="input-label">规则 ID</label>
                 <input v-model="rule.id" type="text" class="input font-mono text-sm" placeholder="custom_rule" />
@@ -225,6 +225,16 @@
                   class="input"
                   placeholder="opencode, claude-cli"
                   @input="setSkipRuleList(rule, 'client_families', eventValue($event))"
+                />
+              </div>
+              <div>
+                <label class="input-label">模型</label>
+                <input
+                  :value="joinList(rule.models)"
+                  type="text"
+                  class="input font-mono text-sm"
+                  placeholder="gpt-5.4-mini, codex-auto-review"
+                  @input="setSkipRuleList(rule, 'models', eventValue($event))"
                 />
               </div>
               <div>
@@ -562,6 +572,7 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: ['claude-cli'],
     request_paths: ['/v1/messages'],
+    models: [],
     field_scopes: ['system'],
     patterns: ['Generate a concise, sentence-case title'],
     case_sensitive: false,
@@ -573,6 +584,7 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: ['opencode'],
     request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    models: [],
     field_scopes: ['system'],
     patterns: [
       'You are a title generator. You output ONLY a thread title. Nothing else.',
@@ -588,6 +600,7 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: ['opencode'],
     request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    models: [],
     field_scopes: ['messages', 'input'],
     patterns: ['Generate a title for this conversation:'],
     case_sensitive: false,
@@ -599,6 +612,7 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: [],
     request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    models: [],
     field_scopes: ['messages', 'input'],
     patterns: ['Please write a 5-10 word title for the following conversation:'],
     case_sensitive: false,
@@ -610,6 +624,7 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: [],
     request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    models: [],
     field_scopes: ['system', 'instructions'],
     patterns: ['extract a 2-3 word title'],
     case_sensitive: false,
@@ -621,8 +636,21 @@ const defaultSkipRules: DataShareCaptureSkipRule[] = [
     enabled: true,
     client_families: [],
     request_paths: ['/v1/messages', '/v1/chat/completions', '/v1/responses'],
+    models: [],
     field_scopes: ['messages', 'input'],
     patterns: ['Warmup'],
+    case_sensitive: false,
+    match_mode: 'equals'
+  },
+  {
+    id: 'excluded_models',
+    name: '默认排除模型',
+    enabled: true,
+    client_families: [],
+    request_paths: [],
+    models: ['gpt-5.4-mini', 'codex-auto-review'],
+    field_scopes: [],
+    patterns: [],
     case_sensitive: false,
     match_mode: 'equals'
   }
@@ -998,6 +1026,7 @@ function addSkipRule() {
       enabled: true,
       client_families: [],
       request_paths: [],
+      models: [],
       field_scopes: ['messages'],
       patterns: [],
       case_sensitive: false,
@@ -1079,7 +1108,7 @@ function splitLines(value: string) {
   return value.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 }
 
-function setSkipRuleList(rule: DataShareCaptureSkipRule, key: 'client_families' | 'request_paths', value: string) {
+function setSkipRuleList(rule: DataShareCaptureSkipRule, key: 'client_families' | 'request_paths' | 'models', value: string) {
   rule[key] = splitList(value)
 }
 
@@ -1092,6 +1121,7 @@ function cloneSkipRules(rules: DataShareCaptureSkipRule[]) {
     ...rule,
     client_families: [...(rule.client_families || [])],
     request_paths: [...(rule.request_paths || [])],
+    models: [...(rule.models || [])],
     field_scopes: [...(rule.field_scopes || [])],
     patterns: [...(rule.patterns || [])]
   }))
@@ -1104,6 +1134,7 @@ function normalizeSkipRulesForSave() {
     name: rule.name.trim(),
     client_families: rule.client_families.map(item => item.trim()).filter(Boolean),
     request_paths: rule.request_paths.map(item => item.trim()).filter(Boolean),
+    models: rule.models.map(item => item.trim()).filter(Boolean),
     field_scopes: rule.field_scopes.filter(scope => skipRuleScopeOptions.some(option => option.value === scope)),
     patterns: rule.patterns.map(item => item.trim()).filter(Boolean)
   }))

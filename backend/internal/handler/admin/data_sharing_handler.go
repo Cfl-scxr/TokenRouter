@@ -275,7 +275,7 @@ func (h *DataSharingHandler) CreateExportTicket(c *gin.Context) {
 	response.Success(c, adminDataShareExportTicketToResponse(ticket))
 }
 
-// CreateSessionExportTicket 为管理端单条 session 签发未压缩 JSONL 下载票据。
+// CreateSessionExportTicket 为管理端单条 session 签发未压缩 JSON 下载票据。
 func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
 	id, err := parseAdminDataShareIDParam(c)
 	if err != nil {
@@ -286,7 +286,7 @@ func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
 		Scope:    service.DataShareExportScopeAdmin,
 		Filters:  service.DataShareSessionFilters{IDs: []int64{id}},
 		Filename: fmt.Sprintf("admin-data-sharing-session-%d", id),
-		Encoding: service.DataShareExportEncodingJSONL,
+		Encoding: service.DataShareExportEncodingJSON,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -300,6 +300,12 @@ func (h *DataSharingHandler) DownloadExport(c *gin.Context) {
 	claims, err := h.dataSharingService.ParseExportTicket(c.Request.Context(), service.DataShareExportScopeAdmin, strings.TrimSpace(c.Query("ticket")))
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if claims.Encoding == service.DataShareExportEncodingJSON {
+		writeAdminDataSharePlainJSON(c, claims.Filename, func() error {
+			return h.dataSharingService.ExportJSONL(c.Request.Context(), c.Writer, claims.Filters, false)
+		})
 		return
 	}
 	if claims.Encoding == service.DataShareExportEncodingJSONL {
@@ -523,6 +529,20 @@ func adminDataShareExportTicketToResponse(ticket *service.DataShareExportTicket)
 		Filename:    ticket.Filename,
 		Encoding:    ticket.Encoding,
 		ExpiresAt:   ticket.ExpiresAt,
+	}
+}
+
+func writeAdminDataSharePlainJSON(c *gin.Context, filename string, write func() error) {
+	if filename == "" {
+		filename = fmt.Sprintf("admin-data-sharing-%s.json", time.Now().Format("20060102-150405"))
+	}
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	if err := write(); err != nil {
+		_ = c.Error(err)
 	}
 }
 

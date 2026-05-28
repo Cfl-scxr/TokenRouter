@@ -71,7 +71,7 @@ export interface DataShareExportTicket {
   token: string
   download_url: string
   filename: string
-  encoding: 'jsonl' | 'zstd'
+  encoding: 'json' | 'jsonl' | 'zstd'
   expires_at: string
 }
 

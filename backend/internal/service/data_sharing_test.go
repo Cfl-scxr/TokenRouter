@@ -441,6 +441,26 @@ func TestCaptureSkipRulesDefaultMatching(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "default excluded requested model",
+			input: DataShareCaptureInput{
+				UserAgent:       "codex-cli/1.0",
+				InboundEndpoint: "/v1/responses",
+				Model:           "gpt-5.4-mini",
+				UpstreamModel:   "gpt-5.4-mini-openai-compact",
+				RequestBody:     []byte(`{"model":"gpt-5.4-mini","input":"帮我检查这个函数"}`),
+			},
+			want: true,
+		},
+		{
+			name: "default excluded model from request body",
+			input: DataShareCaptureInput{
+				UserAgent:       "codex-cli/1.0",
+				InboundEndpoint: "/v1/responses",
+				RequestBody:     []byte(`{"model":"codex-auto-review","input":"review this change"}`),
+			},
+			want: true,
+		},
+		{
 			name: "ordinary title request",
 			input: DataShareCaptureInput{
 				UserAgent:       "curl/8.0",
@@ -500,6 +520,27 @@ func TestCaptureSkipRulesFallbackAndUpdate(t *testing.T) {
 		RequestBody:     []byte(`{"model":"gpt-5.5","input":"Warmup"}`),
 	}) {
 		t.Fatalf("custom warmup rule should skip matching request")
+	}
+
+	modelOnly := []DataShareCaptureSkipRule{{
+		ID:      "custom_model",
+		Name:    "自定义模型",
+		Enabled: true,
+		Models:  []string{"codex-auto-review"},
+	}}
+	updated, err = svc.UpdateCaptureSkipRules(ctx, modelOnly)
+	if err != nil {
+		t.Fatalf("UpdateCaptureSkipRules model-only error = %v", err)
+	}
+	if len(updated) != 1 || len(updated[0].Models) != 1 || updated[0].Models[0] != "codex-auto-review" {
+		t.Fatalf("model-only rule mismatch: %#v", updated)
+	}
+	if !svc.shouldSkipDataShareCapture(ctx, DataShareCaptureInput{
+		UserAgent:       "custom-client/1.0",
+		InboundEndpoint: "/v1/responses",
+		RequestBody:     []byte(`{"model":"codex-auto-review","input":"real task"}`),
+	}) {
+		t.Fatalf("custom model-only rule should skip matching request")
 	}
 }
 
@@ -569,6 +610,22 @@ func TestDataShareExportTicketFilenameEncoding(t *testing.T) {
 	}
 	if plainTicket.Encoding != string(DataShareExportEncodingJSONL) {
 		t.Fatalf("plain encoding = %q", plainTicket.Encoding)
+	}
+
+	jsonTicket, err := svc.CreateExportTicket(ctx, DataShareExportTicketRequest{
+		Scope:    DataShareExportScopeAdmin,
+		Filters:  DataShareSessionFilters{IDs: []int64{1}},
+		Filename: "admin-data-sharing-session-1.jsonl.zst",
+		Encoding: DataShareExportEncodingJSON,
+	})
+	if err != nil {
+		t.Fatalf("CreateExportTicket json error = %v", err)
+	}
+	if jsonTicket.Filename != "admin-data-sharing-session-1.json" {
+		t.Fatalf("json filename = %q, want admin-data-sharing-session-1.json", jsonTicket.Filename)
+	}
+	if jsonTicket.Encoding != string(DataShareExportEncodingJSON) {
+		t.Fatalf("json encoding = %q", jsonTicket.Encoding)
 	}
 }
 

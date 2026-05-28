@@ -189,7 +189,7 @@ func TestDownloadExportReturnsZstdJSONL(t *testing.T) {
 	require.Equal(t, "sess", payload["session_id"])
 }
 
-func TestDownloadExportReturnsPlainJSONLForSingleSessionTicket(t *testing.T) {
+func TestDownloadExportReturnsPlainJSONForSingleSessionTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	settingRepo := &dataShareHandlerSettingRepoStub{values: map[string]string{}}
 	svc := service.NewDataSharingService(&dataShareHandlerRepoStub{items: []service.DataShareSession{{
@@ -214,7 +214,7 @@ func TestDownloadExportReturnsPlainJSONLForSingleSessionTicket(t *testing.T) {
 		UserID:   42,
 		Filters:  service.DataShareSessionFilters{IDs: []int64{1}, UserID: 42},
 		Filename: "data-sharing-session-1",
-		Encoding: service.DataShareExportEncodingJSONL,
+		Encoding: service.DataShareExportEncodingJSON,
 	})
 	require.NoError(t, err)
 
@@ -224,8 +224,9 @@ func TestDownloadExportReturnsPlainJSONLForSingleSessionTicket(t *testing.T) {
 	h.DownloadExport(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "application/x-ndjson; charset=utf-8", recorder.Header().Get("Content-Type"))
-	require.Contains(t, recorder.Header().Get("Content-Disposition"), "data-sharing-session-1.jsonl")
+	require.Equal(t, "application/json; charset=utf-8", recorder.Header().Get("Content-Type"))
+	require.Contains(t, recorder.Header().Get("Content-Disposition"), "data-sharing-session-1.json")
+	require.NotContains(t, recorder.Header().Get("Content-Disposition"), ".jsonl")
 	require.NotContains(t, recorder.Header().Get("Content-Disposition"), ".zst")
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(bytes.TrimSpace(recorder.Body.Bytes()), &payload))

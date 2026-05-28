@@ -125,6 +125,30 @@ func TestDataShareSkipRulesHandlers(t *testing.T) {
 	require.NotEmpty(t, repo.values[service.SettingKeyDataSharingCaptureSkipRules])
 }
 
+func TestCreateSessionExportTicketReturnsJSONFilename(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
+	h := NewDataSharingHandler(service.NewDataSharingService(nil, repo))
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "7"}}
+	c.Request = httptest.NewRequest(http.MethodPost, "/admin/data-sharing/sessions/7/export-ticket", nil)
+	h.CreateSessionExportTicket(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var envelope struct {
+		Code int `json:"code"`
+		Data struct {
+			Filename string `json:"filename"`
+			Encoding string `json:"encoding"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
+	require.Equal(t, "admin-data-sharing-session-7.json", envelope.Data.Filename)
+	require.Equal(t, string(service.DataShareExportEncodingJSON), envelope.Data.Encoding)
+}
+
 func TestDataShareStorageLimitHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}

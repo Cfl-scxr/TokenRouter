@@ -214,7 +214,7 @@ func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
 		UserID:   subject.UserID,
 		Filters:  service.DataShareSessionFilters{IDs: []int64{id}, UserID: subject.UserID},
 		Filename: fmt.Sprintf("data-sharing-session-%d", id),
-		Encoding: service.DataShareExportEncodingJSONL,
+		Encoding: service.DataShareExportEncodingJSON,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -228,6 +228,12 @@ func (h *DataSharingHandler) DownloadExport(c *gin.Context) {
 	claims, err := h.dataSharingService.ParseExportTicket(c.Request.Context(), service.DataShareExportScopeUser, strings.TrimSpace(c.Query("ticket")))
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if claims.Encoding == service.DataShareExportEncodingJSON {
+		writeDataSharePlainJSON(c, claims.Filename, func() error {
+			return h.dataSharingService.ExportJSONL(c.Request.Context(), c.Writer, claims.Filters, false)
+		})
 		return
 	}
 	if claims.Encoding == service.DataShareExportEncodingJSONL {
@@ -435,6 +441,20 @@ func dataShareExportTicketToResponse(ticket *service.DataShareExportTicket) data
 		Filename:    ticket.Filename,
 		Encoding:    ticket.Encoding,
 		ExpiresAt:   ticket.ExpiresAt,
+	}
+}
+
+func writeDataSharePlainJSON(c *gin.Context, filename string, write func() error) {
+	if filename == "" {
+		filename = fmt.Sprintf("data-sharing-%s.json", time.Now().Format("20060102-150405"))
+	}
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	if err := write(); err != nil {
+		_ = c.Error(err)
 	}
 }
 

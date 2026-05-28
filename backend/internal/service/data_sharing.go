@@ -65,6 +65,7 @@ type DataShareCaptureSkipRule struct {
 	Enabled        bool     `json:"enabled"`
 	ClientFamilies []string `json:"client_families"`
 	RequestPaths   []string `json:"request_paths"`
+	Models         []string `json:"models"`
 	FieldScopes    []string `json:"field_scopes"`
 	Patterns       []string `json:"patterns"`
 	CaseSensitive  bool     `json:"case_sensitive"`
@@ -156,6 +157,7 @@ const (
 type DataShareExportEncoding string
 
 const (
+	DataShareExportEncodingJSON  DataShareExportEncoding = "json"
 	DataShareExportEncodingJSONL DataShareExportEncoding = "jsonl"
 	DataShareExportEncodingZstd  DataShareExportEncoding = "zstd"
 )
@@ -580,6 +582,13 @@ func defaultDataShareCaptureSkipRules() []DataShareCaptureSkipRule {
 			Patterns:     []string{"Warmup"},
 			MatchMode:    dataShareSkipRuleMatchEquals,
 		},
+		{
+			ID:        "excluded_models",
+			Name:      "默认排除模型",
+			Enabled:   true,
+			Models:    []string{"gpt-5.4-mini", "codex-auto-review"},
+			MatchMode: dataShareSkipRuleMatchEquals,
+		},
 	}
 }
 
@@ -619,11 +628,17 @@ func normalizeDataShareCaptureSkipRule(rule DataShareCaptureSkipRule) (DataShare
 	rule.RequestPaths = uniqueTrimmedStrings(rule.RequestPaths, func(v string) string {
 		return strings.ToLower(normalizeDataShareRequestPath(v))
 	})
+	rule.Models = uniqueTrimmedStrings(rule.Models, func(v string) string {
+		return strings.ToLower(strings.TrimSpace(v))
+	})
 	rule.FieldScopes = uniqueTrimmedStrings(rule.FieldScopes, func(v string) string {
 		return strings.ToLower(strings.TrimSpace(v))
 	})
 	rule.Patterns = uniqueTrimmedStrings(rule.Patterns, strings.TrimSpace)
-	if len(rule.FieldScopes) == 0 || len(rule.Patterns) == 0 {
+	if len(rule.Models) == 0 && len(rule.Patterns) == 0 {
+		return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
+	}
+	if len(rule.Patterns) > 0 && len(rule.FieldScopes) == 0 {
 		return DataShareCaptureSkipRule{}, ErrDataShareSkipRulesInvalid
 	}
 	for _, scope := range rule.FieldScopes {
@@ -666,6 +681,7 @@ func cloneDataShareCaptureSkipRules(rules []DataShareCaptureSkipRule) []DataShar
 		cloned := rule
 		cloned.ClientFamilies = append([]string(nil), rule.ClientFamilies...)
 		cloned.RequestPaths = append([]string(nil), rule.RequestPaths...)
+		cloned.Models = append([]string(nil), rule.Models...)
 		cloned.FieldScopes = append([]string(nil), rule.FieldScopes...)
 		cloned.Patterns = append([]string(nil), rule.Patterns...)
 		out = append(out, cloned)
@@ -677,9 +693,16 @@ func dataShareCaptureSkipRulesMatch(input DataShareCaptureInput, rules []DataSha
 	texts := dataShareSkipCandidateTexts(input.RequestBody)
 	clientFamily := strings.ToLower(normalizeDataShareUserAgent(input.UserAgent))
 	requestPath := strings.ToLower(normalizeDataShareRequestPath(input.InboundEndpoint))
+	models := dataShareSkipCandidateModels(input)
 	for _, rule := range rules {
-		if !rule.Enabled || !dataShareSkipRuleApplies(rule.ClientFamilies, clientFamily) || !dataShareSkipRuleApplies(rule.RequestPaths, requestPath) {
+		if !rule.Enabled ||
+			!dataShareSkipRuleApplies(rule.ClientFamilies, clientFamily) ||
+			!dataShareSkipRuleApplies(rule.RequestPaths, requestPath) ||
+			!dataShareSkipRuleModelsApply(rule.Models, models) {
 			continue
+		}
+		if len(rule.Patterns) == 0 && len(rule.Models) > 0 {
+			return true
 		}
 		for _, scope := range rule.FieldScopes {
 			for _, text := range texts[scope] {
@@ -692,6 +715,17 @@ func dataShareCaptureSkipRulesMatch(input DataShareCaptureInput, rules []DataSha
 	return false
 }
 
+func dataShareSkipCandidateModels(input DataShareCaptureInput) []string {
+	candidates := []string{
+		input.UpstreamModel,
+		input.Model,
+		gjson.GetBytes(input.RequestBody, "model").String(),
+	}
+	return uniqueTrimmedStrings(candidates, func(v string) string {
+		return strings.ToLower(strings.TrimSpace(v))
+	})
+}
+
 func dataShareSkipRuleApplies(allowed []string, value string) bool {
 	if len(allowed) == 0 {
 		return true
@@ -699,6 +733,20 @@ func dataShareSkipRuleApplies(allowed []string, value string) bool {
 	for _, item := range allowed {
 		if strings.EqualFold(strings.TrimSpace(item), strings.TrimSpace(value)) {
 			return true
+		}
+	}
+	return false
+}
+
+func dataShareSkipRuleModelsApply(allowed []string, models []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, allowedModel := range allowed {
+		for _, model := range models {
+			if strings.EqualFold(strings.TrimSpace(allowedModel), strings.TrimSpace(model)) {
+				return true
+			}
 		}
 	}
 	return false
@@ -1056,6 +1104,8 @@ func dataShareExportDownloadURL(scope DataShareExportScope, token string) string
 
 func normalizeDataShareExportEncoding(encoding DataShareExportEncoding) DataShareExportEncoding {
 	switch encoding {
+	case DataShareExportEncodingJSON:
+		return DataShareExportEncodingJSON
 	case DataShareExportEncodingJSONL:
 		return DataShareExportEncodingJSONL
 	default:
@@ -1070,12 +1120,17 @@ func normalizeDataShareExportFilename(filename string, encoding DataShareExportE
 	}
 	filename = strings.TrimSuffix(filename, ".jsonl.zst")
 	filename = strings.TrimSuffix(filename, ".jsonl")
+	filename = strings.TrimSuffix(filename, ".json")
 	filename = strings.TrimSuffix(filename, ".zst")
 	filename = strings.NewReplacer("/", "-", "\\", "-", "\x00", "").Replace(filename)
-	if normalizeDataShareExportEncoding(encoding) == DataShareExportEncodingJSONL {
+	switch normalizeDataShareExportEncoding(encoding) {
+	case DataShareExportEncodingJSON:
+		return filename + ".json"
+	case DataShareExportEncodingJSONL:
 		return filename + ".jsonl"
+	default:
+		return filename + ".jsonl.zst"
 	}
-	return filename + ".jsonl.zst"
 }
 
 func defaultDataSharingNotice(ctx context.Context, repo SettingRepository) (*DataShareNotice, error) {

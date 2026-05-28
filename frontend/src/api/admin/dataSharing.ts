@@ -62,6 +62,7 @@ export interface DataShareCaptureSkipRule {
   enabled: boolean
   client_families: string[]
   request_paths: string[]
+  models: string[]
   field_scopes: DataShareCaptureSkipRuleFieldScope[]
   patterns: string[]
   case_sensitive: boolean
