@@ -642,6 +642,15 @@ func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	profiles := admin.Group("/tls-fingerprint-profiles")
 	{
+		collector := profiles.Group("/collector")
+		{
+			collector.GET("/status", h.Admin.TLSFingerprintProfile.CollectorStatus)
+			collector.POST("/start", h.Admin.TLSFingerprintProfile.StartCollector)
+			collector.POST("/stop", h.Admin.TLSFingerprintProfile.StopCollector)
+			collector.POST("/sessions", h.Admin.TLSFingerprintProfile.CreateCollectorSession)
+			collector.GET("/sessions/:token/captures", h.Admin.TLSFingerprintProfile.ListCollectorCaptures)
+			collector.DELETE("/sessions/:token", h.Admin.TLSFingerprintProfile.DeleteCollectorSession)
+		}
 		profiles.GET("", h.Admin.TLSFingerprintProfile.List)
 		profiles.GET("/:id", h.Admin.TLSFingerprintProfile.GetByID)
 		profiles.POST("", h.Admin.TLSFingerprintProfile.Create)

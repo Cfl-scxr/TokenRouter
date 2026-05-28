@@ -548,15 +548,27 @@ type PricingConfig struct {
 }
 
 type ServerConfig struct {
-	Host               string    `mapstructure:"host"`
-	Port               int       `mapstructure:"port"`
-	Mode               string    `mapstructure:"mode"`                  // debug/release
-	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
-	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
-	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
-	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
-	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
-	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
+	Host                    string                        `mapstructure:"host"`
+	Port                    int                           `mapstructure:"port"`
+	Mode                    string                        `mapstructure:"mode"`                      // debug/release
+	FrontendURL             string                        `mapstructure:"frontend_url"`              // 前端基础 URL，用于生成邮件中的外部链接
+	ReadHeaderTimeout       int                           `mapstructure:"read_header_timeout"`       // 读取请求头超时（秒）
+	IdleTimeout             int                           `mapstructure:"idle_timeout"`              // 空闲连接超时（秒）
+	TrustedProxies          []string                      `mapstructure:"trusted_proxies"`           // 可信代理列表（CIDR/IP）
+	MaxRequestBodySize      int64                         `mapstructure:"max_request_body_size"`     // 全局最大请求体限制
+	H2C                     H2CConfig                     `mapstructure:"h2c"`                       // HTTP/2 Cleartext 配置
+	TLSFingerprintCollector TLSFingerprintCollectorConfig `mapstructure:"tls_fingerprint_collector"` // TLS 指纹收集器配置
+}
+
+// TLSFingerprintCollectorConfig TLS 指纹收集器配置。
+type TLSFingerprintCollectorConfig struct {
+	Host                 string `mapstructure:"host"`                    // 收集器监听地址
+	Port                 int    `mapstructure:"port"`                    // 收集器监听端口
+	PublicBaseURL        string `mapstructure:"public_base_url"`         // 客户端可访问的采集 URL 前缀
+	CertFile             string `mapstructure:"cert_file"`               // 可选服务端证书路径
+	KeyFile              string `mapstructure:"key_file"`                // 可选服务端私钥路径
+	SessionTTLSeconds    int    `mapstructure:"session_ttl_seconds"`     // 采集会话有效期
+	MaxRecordsPerSession int    `mapstructure:"max_records_per_session"` // 每个会话保留的最大采集记录数
 }
 
 // H2CConfig HTTP/2 Cleartext 配置
@@ -1513,6 +1525,14 @@ func setDefaults() {
 	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
 	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
 	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
+	// TLS 指纹收集器默认不随主服务启动，只提供页面启停时使用的监听参数。
+	viper.SetDefault("server.tls_fingerprint_collector.host", "0.0.0.0")
+	viper.SetDefault("server.tls_fingerprint_collector.port", 8443)
+	viper.SetDefault("server.tls_fingerprint_collector.public_base_url", "")
+	viper.SetDefault("server.tls_fingerprint_collector.cert_file", "")
+	viper.SetDefault("server.tls_fingerprint_collector.key_file", "")
+	viper.SetDefault("server.tls_fingerprint_collector.session_ttl_seconds", 1800)
+	viper.SetDefault("server.tls_fingerprint_collector.max_records_per_session", 20)
 
 	// Log
 	viper.SetDefault("log.level", "info")

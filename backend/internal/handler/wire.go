@@ -91,6 +91,11 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+// ProvideTLSFingerprintProfileHandler 注入页面可控的 TLS 指纹收集器。
+func ProvideTLSFingerprintProfileHandler(profileService *service.TLSFingerprintProfileService, collector *service.TLSFingerprintCollectorService) *admin.TLSFingerprintProfileHandler {
+	return admin.NewTLSFingerprintProfileHandler(profileService, collector)
+}
+
 // ProvideAPIKeyHandler creates APIKeyHandler and injects optional group capacity display data.
 func ProvideAPIKeyHandler(apiKeyService *service.APIKeyService, groupCapacityService *service.GroupCapacityService) *APIKeyHandler {
 	handler := NewAPIKeyHandler(apiKeyService)
@@ -180,7 +185,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewUsageHandler,
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,
-	admin.NewTLSFingerprintProfileHandler,
+	ProvideTLSFingerprintProfileHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
