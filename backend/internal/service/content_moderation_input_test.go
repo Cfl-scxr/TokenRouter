@@ -150,6 +150,23 @@ func TestExtractContentModerationInput_ResponsesAgentToolLoopSkipsAudit(t *testi
 	require.Empty(t, input.Images)
 }
 
+func TestExtractContentModerationPromptExcerpt_ResponsesFallsBackToLatestUserBeforeToolOutput(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"检查这段高风险请求 sk-proj-1234567890abcdef"}]},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"我先看一下"}]},
+			{"type":"function_call","call_id":"call_1","name":"run_tests","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"all passed"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+	excerpt := ExtractContentModerationPromptExcerpt(ContentModerationProtocolOpenAIResponses, body)
+
+	require.Empty(t, input.Text)
+	require.Equal(t, "检查这段高风险请求 sk-proj-1234567890abcdef", excerpt)
+}
+
 func TestExtractContentModerationInput_ResponsesLastUserMessageExtracted(t *testing.T) {
 	body := []byte(`{
 		"input":[

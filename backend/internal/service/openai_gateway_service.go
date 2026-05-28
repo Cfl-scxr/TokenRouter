@@ -224,6 +224,47 @@ type OpenAIUpstreamWarningCarrier interface {
 	OpenAIUpstreamWarning() *OpenAIUpstreamWarning
 }
 
+type openAIUpstreamWarningError struct {
+	warning *OpenAIUpstreamWarning
+	err     error
+}
+
+func (e *openAIUpstreamWarningError) Error() string {
+	if e == nil || e.err == nil {
+		return "openai upstream warning"
+	}
+	return e.err.Error()
+}
+
+func (e *openAIUpstreamWarningError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *openAIUpstreamWarningError) OpenAIUpstreamWarning() *OpenAIUpstreamWarning {
+	if e == nil {
+		return nil
+	}
+	return e.warning
+}
+
+func wrapOpenAIUpstreamWarningIfCyber(statusCode int, responseBody []byte, message string, err error) error {
+	if err == nil {
+		return nil
+	}
+	warning := &OpenAIUpstreamWarning{
+		StatusCode:   statusCode,
+		ResponseBody: append([]byte(nil), responseBody...),
+		Message:      strings.TrimSpace(message),
+	}
+	if !openAIUpstreamWarningIsCyber(warning) {
+		return err
+	}
+	return &openAIUpstreamWarningError{warning: warning, err: err}
+}
+
 // ExtractOpenAIUpstreamWarning 从转发错误链中提取上游 cyber 风控警告。
 func ExtractOpenAIUpstreamWarning(err error) (*OpenAIUpstreamWarning, bool) {
 	if err == nil {
@@ -3601,6 +3642,9 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
 	}
+	if IsOpenAICyberWarningText(message) || IsOpenAICyberWarningText(string(payload)) {
+		return false
+	}
 	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
 	if code == "" {
 		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
@@ -3714,6 +3758,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
+	var failedPayload []byte
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
@@ -3768,6 +3813,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				failedPayload = append(failedPayload[:0], dataBytes...)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					return resultWithUsage(),
 						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
@@ -3831,7 +3877,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+			err := fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, failedPayload, failedMessage, err)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
@@ -3860,7 +3907,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
 	}
 	if sawFailedEvent {
-		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+		err := fmt.Errorf("upstream response failed: %s", failedMessage)
+		return resultWithUsage(), wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, failedPayload, failedMessage, err)
 	}
 	if !clientDisconnected && !sawDone && !sawTerminalEvent && ctx.Err() == nil {
 		logger.FromContext(ctx).With(
@@ -3965,7 +4013,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			err := s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, terminalPayload, msg, err)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
@@ -4546,6 +4595,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
+	var failedPayload []byte
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamFailoverErr error
@@ -4598,7 +4648,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+			err := fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, failedPayload, failedMessage, err)
 		}
 		if !clientDisconnected {
 			hadBufferedData := bufferedWriter.Buffered() > 0
@@ -4621,7 +4672,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return resultWithUsage(), nil, true
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage), true
+			err := fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, failedPayload, failedMessage, err), true
 		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
@@ -4668,6 +4720,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				failedPayload = append(failedPayload[:0], dataBytes...)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					sawFailedEvent = true
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
@@ -5144,7 +5197,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			err := s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, terminalPayload, msg, err)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != mappedModel {

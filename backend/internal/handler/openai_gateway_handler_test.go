@@ -1002,6 +1002,54 @@ func TestOpenAIRecordCyberWarning_UsesExplicitPromptExcerpt(t *testing.T) {
 	require.Equal(t, "first turn prompt", repo.cyberWarnings[0].PromptExcerpt)
 }
 
+func TestOpenAIRecordCyberWarning_RequestSnapshotFallsBackToLatestUserPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := service.ContentModerationConfig{
+		CyberWarningEnabled: true,
+		CyberWindowHours:    720,
+	}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationHandlerTestRepo{}
+	settingRepo := &contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyRiskControlEnabled:      "true",
+		service.SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	moderationSvc := service.NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil)
+	h := &OpenAIGatewayHandler{contentModerationService: moderationSvc}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, []byte(`{
+		"model":"gpt-5.1",
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"latest cyber prompt"}]},
+			{"type":"function_call","call_id":"call_1","name":"run_tests","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"done"}
+		]
+	}`))
+
+	apiKey := &service.APIKey{ID: 101, Name: "test-key", UserID: 1001, User: &service.User{ID: 1001, Email: "user@example.com"}}
+	account := &service.Account{ID: 2001, Name: "openai-1"}
+
+	h.recordOpenAICyberWarning(
+		c,
+		nil,
+		apiKey,
+		account,
+		"gpt-5.1",
+		http.StatusOK,
+		[]byte(`{"type":"response.failed","error":{"message":"This request has been flagged for potentially high-risk cyber activity."}}`),
+		"",
+	)
+
+	require.Len(t, repo.cyberWarnings, 1)
+	require.Equal(t, "latest cyber prompt", repo.cyberWarnings[0].PromptExcerpt)
+	require.Equal(t, http.StatusOK, repo.cyberWarnings[0].UpstreamStatus)
+}
+
 func TestOpenAIRecordForwardResultCyberWarning_RecordsWSV2TerminalWarning(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

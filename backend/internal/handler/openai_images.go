@@ -281,7 +281,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if v, ok := getContextInt64(c, service.OpsUpstreamStatusCodeKey); ok {
 					statusCode = int(v)
 				}
-				h.recordOpenAICyberWarning(c, reqLog, apiKey, account, parsed.Model, statusCode, nil, err.Error())
+				if !h.recordOpenAIForwardErrorCyberWarning(c, reqLog, apiKey, account, parsed.Model, statusCode, err) {
+					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, parsed.Model, statusCode, nil, err.Error())
+				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				fields := []zap.Field{

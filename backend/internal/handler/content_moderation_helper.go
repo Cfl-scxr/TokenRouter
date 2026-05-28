@@ -142,7 +142,7 @@ func setOpenAICyberWarningRequestSnapshot(c *gin.Context, protocol string, body 
 		return
 	}
 	// Cyber 警告只需要提示词摘要，立即提取可避免在上下文里复制和长期持有完整请求体。
-	excerpt := service.ExtractContentModerationInput(protocol, body).ExcerptText()
+	excerpt := service.ExtractContentModerationPromptExcerpt(protocol, body)
 	setOpenAICyberWarningPromptExcerpt(c, excerpt)
 }
 

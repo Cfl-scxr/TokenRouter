@@ -258,7 +258,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				if v, ok := getContextInt64(c, service.OpsUpstreamStatusCodeKey); ok {
 					statusCode = int(v)
 				}
-				h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, nil, err.Error())
+				if !h.recordOpenAIForwardErrorCyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, err) {
+					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, nil, err.Error())
+				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				reqLog.Warn("openai_chat_completions.forward_failed",
