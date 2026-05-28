@@ -31,6 +31,8 @@ import (
 const (
 	tlsFingerprintCollectorDefaultTTL        = 30 * time.Minute
 	tlsFingerprintCollectorDefaultMaxRecords = 20
+	// TLS 记录长度字段最大为 65535，Peek 时还需要包含 5 字节记录头。
+	tlsFingerprintCollectorClientHelloBufferSize = 64*1024 + 5
 )
 
 // TLSFingerprintCollectorStatus 表示收集器当前运行状态。
@@ -491,7 +493,7 @@ func newTLSFingerprintCaptureConn(conn net.Conn, cert *tls.Certificate) *tlsFing
 	return &tlsFingerprintCaptureConn{
 		Conn:   conn,
 		cert:   cert,
-		reader: bufio.NewReader(conn),
+		reader: bufio.NewReaderSize(conn, tlsFingerprintCollectorClientHelloBufferSize),
 	}
 }
 
@@ -688,6 +690,28 @@ func captureTokenFromRequest(r *http.Request) string {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) >= 2 && parts[0] == "capture" {
 		return strings.TrimSpace(parts[1])
+	}
+	// Claude Code 通过 ANTHROPIC_AUTH_TOKEN 发送鉴权信息，采集器复用该值作为会话 token。
+	if token := bearerTokenFromAuthorization(r.Header.Get("Authorization")); token != "" {
+		return token
+	}
+	if token := strings.TrimSpace(r.Header.Get("X-Api-Key")); token != "" {
+		return token
+	}
+	return ""
+}
+
+func bearerTokenFromAuthorization(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	fields := strings.Fields(value)
+	if len(fields) == 2 && strings.EqualFold(fields[0], "Bearer") {
+		return strings.TrimSpace(fields[1])
+	}
+	if len(fields) == 1 {
+		return strings.TrimSpace(fields[0])
 	}
 	return ""
 }

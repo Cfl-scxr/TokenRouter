@@ -123,8 +123,8 @@
               </div>
             </div>
 
-            <div class="grid gap-3 lg:grid-cols-2">
-              <div>
+            <div class="grid gap-3 lg:grid-cols-3">
+              <div class="min-w-0">
                 <div class="mb-1 flex items-center justify-between">
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.claudeCommand') }}</span>
                   <button type="button" class="btn btn-secondary btn-xs" @click="copyText(claudeCommand)">
@@ -132,17 +132,27 @@
                     {{ t('common.copy') }}
                   </button>
                 </div>
-                <pre class="max-h-28 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100">{{ claudeCommand }}</pre>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ claudeCommand }}</pre>
               </div>
-              <div>
+              <div class="min-w-0">
                 <div class="mb-1 flex items-center justify-between">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.codexConfig') }}</span>
-                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(codexSnippet)">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.codexCommand') }}</span>
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(codexCommand)">
                     <Icon name="copy" size="xs" class="mr-1" />
                     {{ t('common.copy') }}
                   </button>
                 </div>
-                <pre class="max-h-28 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100">{{ codexSnippet }}</pre>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ codexCommand }}</pre>
+              </div>
+              <div class="min-w-0">
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.tlsFingerprintProfiles.collector.codexConfig') }}</span>
+                  <button type="button" class="btn btn-secondary btn-xs" @click="copyText(codexConfigSnippet)">
+                    <Icon name="copy" size="xs" class="mr-1" />
+                    {{ t('common.copy') }}
+                  </button>
+                </div>
+                <pre class="max-h-32 overflow-y-auto whitespace-pre-wrap break-all rounded bg-gray-900 p-2 text-xs leading-relaxed text-gray-100">{{ codexConfigSnippet }}</pre>
               </div>
             </div>
 
@@ -583,19 +593,28 @@ const isCollectorRunning = computed(() => Boolean(collectorStatus.value?.running
 const activeCAPEM = computed(() => collectorSession.value?.ca_pem || collectorStatus.value?.ca_pem || '')
 const claudeCommand = computed(() => {
   if (!collectorSession.value) return ''
-  const caPrefix = activeCAPEM.value ? 'NODE_EXTRA_CA_CERTS=/path/to/tokenrouter-tls-collector-ca.pem ' : ''
-  return `${caPrefix}ANTHROPIC_BASE_URL=${collectorSession.value.capture_url} claude`
+  const tlsPrefix = activeCAPEM.value ? 'NODE_TLS_REJECT_UNAUTHORIZED=0 ' : ''
+  const settings = {
+    env: {
+      ANTHROPIC_BASE_URL: collectorSession.value.capture_url,
+      ANTHROPIC_AUTH_TOKEN: collectorSession.value.token
+    }
+  }
+  // Claude Code 会优先读取自身 settings.env，因此用 --settings 保证采集地址覆盖全局配置。
+  return `${tlsPrefix}claude --settings '${JSON.stringify(settings)}' "test"`
 })
-const codexSnippet = computed(() => {
+const codexCommand = computed(() => {
   if (!collectorSession.value) return ''
-  const lines = [
+  const caPrefix = activeCAPEM.value ? 'CODEX_CA_CERTIFICATE=/path/to/tokenrouter-tls-collector-ca.pem ' : ''
+  const captureURL = collectorSession.value.capture_url
+  return `${caPrefix}codex -c 'openai_base_url="${captureURL}"' -c 'chatgpt_base_url="${captureURL}"'`
+})
+const codexConfigSnippet = computed(() => {
+  if (!collectorSession.value) return ''
+  return [
     `openai_base_url = "${collectorSession.value.capture_url}"`,
     `chatgpt_base_url = "${collectorSession.value.capture_url}"`
-  ]
-  if (activeCAPEM.value) {
-    lines.unshift('CODEX_CA_CERTIFICATE=/path/to/tokenrouter-tls-collector-ca.pem')
-  }
-  return lines.join('\n')
+  ].join('\n')
 })
 
 // 弹窗打开时刷新模板列表与收集器状态。

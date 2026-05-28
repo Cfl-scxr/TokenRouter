@@ -211,7 +211,11 @@ describe('TLSFingerprintProfilesModal', () => {
     expect(createCollectorSessionMock).toHaveBeenCalledTimes(1)
     expect(listCollectorCapturesMock).toHaveBeenCalledWith('token-1')
     expect(wrapper.text()).toContain('codex-cli/0.1.0')
-    expect(wrapper.text()).toContain('CODEX_CA_CERTIFICATE=/path/to/tokenrouter-tls-collector-ca.pem')
+    expect(wrapper.text()).toContain('claude --settings')
+    expect(wrapper.text()).toContain('"ANTHROPIC_BASE_URL":"https://collector.example:8443/capture/token-1"')
+    expect(wrapper.text()).toContain('"ANTHROPIC_AUTH_TOKEN":"token-1"')
+    expect(wrapper.text()).toContain('CODEX_CA_CERTIFICATE=/path/to/tokenrouter-tls-collector-ca.pem codex -c')
+    expect(wrapper.text()).toContain('openai_base_url = "https://collector.example:8443/capture/token-1"')
 
     const applyButton = wrapper.findAll('button').find(button =>
       button.text().includes('admin.tlsFingerprintProfiles.collector.applyCapture')
@@ -224,4 +228,3 @@ describe('TLSFingerprintProfilesModal', () => {
     expect(wrapper.find('textarea').element.value).toContain('captured_profile:')
   })
 })
-
