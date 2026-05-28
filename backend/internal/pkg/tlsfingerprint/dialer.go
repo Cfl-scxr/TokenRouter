@@ -213,11 +213,14 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
 	if strings.EqualFold(d.proxyURL.Scheme, "https") {
 		// HTTPS 代理需要先和代理本身完成标准 TLS 握手，再在加密通道内发送 CONNECT。
-		proxyTLSConfig := &stdtls.Config{ServerName: d.proxyURL.Hostname()}
+		proxyTLSConfig := &stdtls.Config{ServerName: d.proxyURL.Hostname(), MinVersion: stdtls.VersionTLS12}
 		if d.proxyTLSConfig != nil {
 			proxyTLSConfig = d.proxyTLSConfig.Clone()
 			if proxyTLSConfig.ServerName == "" {
 				proxyTLSConfig.ServerName = d.proxyURL.Hostname()
+			}
+			if proxyTLSConfig.MinVersion == 0 {
+				proxyTLSConfig.MinVersion = stdtls.VersionTLS12
 			}
 		}
 		tlsConn := stdtls.Client(conn, proxyTLSConfig)
