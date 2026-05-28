@@ -304,7 +304,7 @@ func (s *TLSFingerprintCollectorService) buildCaptureRecord(r *http.Request, cap
 	clientKind := detectTLSFingerprintClientKind(r)
 	profile := &model.TLSFingerprintProfile{
 		Name:                defaultTLSFingerprintProfileName(clientKind, now),
-		Description:         stringPtr("由内置 TLS 指纹收集器采集"),
+		Description:         tlsFingerprintCollectorStringPtr("由内置 TLS 指纹收集器采集"),
 		EnableGREASE:        ch.EnableGREASE,
 		CipherSuites:        ch.CipherSuites,
 		Curves:              ch.Curves,
@@ -830,7 +830,7 @@ func hostFromURL(raw string) string {
 	return host
 }
 
-func stringPtr(v string) *string {
+func tlsFingerprintCollectorStringPtr(v string) *string {
 	return &v
 }
 
