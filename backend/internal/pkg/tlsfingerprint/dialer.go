@@ -5,12 +5,15 @@ package tlsfingerprint
 import (
 	"bufio"
 	"context"
+	stdtls "crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
@@ -41,8 +44,9 @@ type Dialer struct {
 // HTTPProxyDialer creates TLS connections through HTTP/HTTPS proxies with custom fingerprints.
 // It handles the CONNECT tunnel establishment before performing TLS handshake.
 type HTTPProxyDialer struct {
-	profile  *Profile
-	proxyURL *url.URL
+	profile        *Profile
+	proxyURL       *url.URL
+	proxyTLSConfig *stdtls.Config
 }
 
 // SOCKS5ProxyDialer creates TLS connections through SOCKS5 proxies with custom fingerprints.
@@ -182,6 +186,9 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
 // Flow: TCP connect to proxy -> CONNECT tunnel -> TLS handshake with utls
 func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if d == nil || d.proxyURL == nil {
+		return nil, errors.New("HTTP proxy dialer missing proxy URL")
+	}
 	slog.Debug("tls_fingerprint_http_proxy_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
 	// Step 1: TCP connect to proxy server
@@ -204,6 +211,24 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 	}
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
+	if strings.EqualFold(d.proxyURL.Scheme, "https") {
+		// HTTPS 代理需要先和代理本身完成标准 TLS 握手，再在加密通道内发送 CONNECT。
+		proxyTLSConfig := &stdtls.Config{ServerName: d.proxyURL.Hostname()}
+		if d.proxyTLSConfig != nil {
+			proxyTLSConfig = d.proxyTLSConfig.Clone()
+			if proxyTLSConfig.ServerName == "" {
+				proxyTLSConfig.ServerName = d.proxyURL.Hostname()
+			}
+		}
+		tlsConn := stdtls.Client(conn, proxyTLSConfig)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			slog.Debug("tls_fingerprint_https_proxy_handshake_failed", "error", err)
+			return nil, fmt.Errorf("handshake with HTTPS proxy: %w", err)
+		}
+		conn = tlsConn
+		slog.Debug("tls_fingerprint_https_proxy_handshake_success", "proxy_addr", proxyAddr)
+	}
 
 	// Step 2: Send CONNECT request to establish tunnel
 	req := &http.Request{

@@ -135,6 +135,80 @@ func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 	})
 }
 
+func TestAccount_IsTLSFingerprintEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{
+			name: "Anthropic OAuth 开启",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"enable_tls_fingerprint": true},
+			},
+			want: true,
+		},
+		{
+			name: "Anthropic SetupToken 开启",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeSetupToken,
+				Extra:    map[string]any{"enable_tls_fingerprint": true},
+			},
+			want: true,
+		},
+		{
+			name: "OpenAI OAuth 开启",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"enable_tls_fingerprint": true},
+			},
+			want: true,
+		},
+		{
+			name: "OpenAI API Key 不支持",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra:    map[string]any{"enable_tls_fingerprint": true},
+			},
+			want: false,
+		},
+		{
+			name: "非法类型按关闭处理",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"enable_tls_fingerprint": "true"},
+			},
+			want: false,
+		},
+		{
+			name: "字段缺失按关闭处理",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{},
+			},
+			want: false,
+		},
+		{
+			name:    "nil 账号按关闭处理",
+			account: nil,
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.IsTLSFingerprintEnabled())
+		})
+	}
+}
+
 func TestAccount_IsOpenAIResponsesWebSocketV2Enabled(t *testing.T) {
 	t.Run("OAuth使用OAuth专用开关", func(t *testing.T) {
 		account := &Account{

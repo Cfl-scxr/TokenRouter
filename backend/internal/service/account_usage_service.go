@@ -267,6 +267,7 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	httpUpstream            HTTPUpstream
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -279,6 +280,7 @@ func NewAccountUsageService(
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	httpUpstream HTTPUpstream,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -289,6 +291,7 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
+		httpUpstream:            httpUpstream,
 	}
 }
 
@@ -638,15 +641,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	client, err := httppool.GetClient(httppool.Options{
-		ProxyURL:              proxyURL,
-		Timeout:               15 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build openai probe client: %w", err)
-	}
-	resp, err := client.Do(req)
+	resp, err := s.doOpenAICodexProbeRequest(req, account, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("openai codex probe request failed: %w", err)
 	}
@@ -661,6 +656,30 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 		return updates, nil
 	}
 	return nil, nil
+}
+
+func (s *AccountUsageService) doOpenAICodexProbeRequest(req *http.Request, account *Account, proxyURL string) (*http.Response, error) {
+	if s != nil && s.httpUpstream != nil {
+		// Codex 后台快照探测也要复用网关上游链路，确保代理、OpenAI HTTP/2 策略和 TLS 指纹与用户请求一致。
+		req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+		return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build openai probe client: %w", err)
+	}
+	return client.Do(req)
+}
+
+func (s *AccountUsageService) resolveTLSProfile(account *Account) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
 }
 
 func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any) {
@@ -1148,7 +1167,7 @@ func (s *AccountUsageService) fetchOAuthUsageRaw(ctx context.Context, account *A
 		AccessToken: accessToken,
 		ProxyURL:    proxyURL,
 		AccountID:   account.ID,
-		TLSProfile:  s.tlsFPProfileService.ResolveTLSProfile(account),
+		TLSProfile:  s.resolveTLSProfile(account),
 	}
 
 	// 尝试获取缓存的 Fingerprint（包含 User-Agent 等信息）

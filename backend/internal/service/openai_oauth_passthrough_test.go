@@ -31,6 +31,8 @@ type httpUpstreamRecorder struct {
 	resp      *http.Response
 	responses []*http.Response
 	err       error
+
+	lastTLSProfile *tlsfingerprint.Profile
 }
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -55,6 +57,7 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 }
 
 func (u *httpUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	u.lastTLSProfile = profile
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
@@ -178,6 +181,80 @@ func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstruction
 	require.Empty(t, upstream.lastReq.Header.Get("Conversation_Id"))
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.Empty(t, upstream.lastReq.Header.Get("originator"))
+}
+
+func TestOpenAIGatewayService_OpenAIOAuthHTTPForwardsTLSProfile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tc := range []struct {
+		name        string
+		accountType string
+		extra       map[string]any
+		wantProfile bool
+	}{
+		{
+			name:        "OpenAI OAuth 启用 TLS 时传入 profile",
+			accountType: AccountTypeOAuth,
+			extra:       map[string]any{"enable_tls_fingerprint": true},
+			wantProfile: true,
+		},
+		{
+			name:        "OpenAI OAuth 关闭 TLS 时不传 profile",
+			accountType: AccountTypeOAuth,
+			extra:       map[string]any{"enable_tls_fingerprint": false},
+			wantProfile: false,
+		},
+		{
+			name:        "OpenAI API Key 手写 extra 也不传 profile",
+			accountType: AccountTypeAPIKey,
+			extra:       map[string]any{"enable_tls_fingerprint": true},
+			wantProfile: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			body := []byte(`{"model":"gpt-5.1","stream":false,"input":"hello"}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"stop"}}`)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg:                 &config.Config{},
+				httpUpstream:        upstream,
+				tlsFPProfileService: &TLSFingerprintProfileService{},
+			}
+			account := &Account{
+				ID:          321,
+				Name:        "acc",
+				Platform:    PlatformOpenAI,
+				Type:        tc.accountType,
+				Concurrency: 1,
+				Extra:       tc.extra,
+				Status:      StatusActive,
+				Schedulable: true,
+			}
+			if tc.accountType == AccountTypeAPIKey {
+				account.Credentials = map[string]any{"api_key": "sk-test"}
+			} else {
+				account.Credentials = map[string]any{
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-acc",
+				}
+			}
+
+			_, _ = svc.Forward(context.Background(), c, account, body)
+			if tc.wantProfile {
+				require.NotNil(t, upstream.lastTLSProfile)
+				return
+			}
+			require.Nil(t, upstream.lastTLSProfile)
+		})
+	}
 }
 
 type openAIPassthroughFailoverRepo struct {

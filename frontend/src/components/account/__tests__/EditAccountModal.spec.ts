@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, getWebSearchEmulationConfigMock, getSettingsMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, getWebSearchEmulationConfigMock, getSettingsMock, listTLSProfilesMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   getWebSearchEmulationConfigMock: vi.fn(),
-  getSettingsMock: vi.fn()
+  getSettingsMock: vi.fn(),
+  listTLSProfilesMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -34,7 +35,7 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     tlsFingerprintProfiles: {
-      list: vi.fn().mockResolvedValue([])
+      list: listTLSProfilesMock
     }
   }
 }))
@@ -189,15 +190,20 @@ function mountModal(account = buildAccount()) {
 }
 
 describe('EditAccountModal', () => {
-  it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
-    const account = buildAccount()
+  beforeEach(() => {
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     getWebSearchEmulationConfigMock.mockReset()
     getSettingsMock.mockReset()
+    listTLSProfilesMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     getSettingsMock.mockResolvedValue({ account_quota_notify_enabled: false })
     getWebSearchEmulationConfigMock.mockResolvedValue({ enabled: false, providers: [] })
+    listTLSProfilesMock.mockResolvedValue([])
+  })
+
+  it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
+    const account = buildAccount()
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
@@ -228,13 +234,6 @@ describe('EditAccountModal', () => {
         'gpt-latest': 'gpt-5.2'
       }
     }
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    getWebSearchEmulationConfigMock.mockReset()
-    getSettingsMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    getSettingsMock.mockResolvedValue({ account_quota_notify_enabled: false })
-    getWebSearchEmulationConfigMock.mockResolvedValue({ enabled: false, providers: [] })
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
@@ -344,6 +343,38 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+  })
+
+  it('loads and submits OpenAI OAuth TLS fingerprint settings', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.name = 'OpenAI OAuth'
+    account.credentials = {
+      access_token: 'oauth-token',
+      chatgpt_account_id: 'chatgpt-acc'
+    }
+    account.extra = {
+      enable_tls_fingerprint: true,
+      tls_fingerprint_profile_id: -1
+    }
+    account.enable_tls_fingerprint = true
+    account.tls_fingerprint_profile_id = -1
+    listTLSProfilesMock.mockResolvedValue([{ id: 7, name: 'Profile 7' }])
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="edit-openai-tls-fingerprint-profile"]').exists()).toBe(true)
+    expect((wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]').element as HTMLSelectElement).value).toBe('-1')
+
+    await wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]').setValue('7')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.enable_tls_fingerprint).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.tls_fingerprint_profile_id).toBe(7)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

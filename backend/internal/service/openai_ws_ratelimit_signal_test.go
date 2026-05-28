@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -119,7 +120,7 @@ type openAIWSStatusErrorDialer struct {
 	err    error
 }
 
-func (d *openAIWSStatusErrorDialer) Dial(context.Context, string, http.Header, string) (openAIWSClientConn, int, http.Header, error) {
+func (d *openAIWSStatusErrorDialer) Dial(context.Context, string, http.Header, string, *tlsfingerprint.Profile) (openAIWSClientConn, int, http.Header, error) {
 	err := d.err
 	if err == nil {
 		err = errors.New("openai ws dial failed")

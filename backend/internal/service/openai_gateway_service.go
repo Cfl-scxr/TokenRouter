@@ -26,6 +26,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
 	"github.com/TokenFlux/TokenRouter/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -386,6 +387,7 @@ type OpenAIGatewayService struct {
 	billingCacheService   *BillingCacheService
 	userGroupRateResolver *userGroupRateResolver
 	httpUpstream          HTTPUpstream
+	tlsFPProfileService   *TLSFingerprintProfileService
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	toolCorrector         *CodexToolCorrector
@@ -434,6 +436,7 @@ func NewOpenAIGatewayService(
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
 	httpUpstream HTTPUpstream,
+	tlsFPProfileService *TLSFingerprintProfileService,
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
 	resolver *ModelPricingResolver,
@@ -465,6 +468,7 @@ func NewOpenAIGatewayService(
 			"service.openai_gateway",
 		),
 		httpUpstream:          httpUpstream,
+		tlsFPProfileService:   tlsFPProfileService,
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		toolCorrector:         NewCodexToolCorrector(),
@@ -511,6 +515,28 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 		return ChannelMappingResult{MappedModel: model}, false
 	}
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+}
+
+func (s *OpenAIGatewayService) resolveOpenAITLSProfile(account *Account) *tlsfingerprint.Profile {
+	if s == nil || s.tlsFPProfileService == nil {
+		return nil
+	}
+	// ResolveTLSProfile 内部会按账号类型兜底，OpenAI API Key 即使手写 extra 也不会生效。
+	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
+func (s *OpenAIGatewayService) resolveOpenAIWSTLSProfile(account *Account) (*tlsfingerprint.Profile, string) {
+	profile := s.resolveOpenAITLSProfile(account)
+	if profile == nil {
+		return nil, ""
+	}
+	// Responses WebSocket 是 HTTP/1.1 Upgrade，连接池键也按剥离 h2 后的模板隔离。
+	profile = tlsfingerprint.HTTP1OnlyProfile(profile)
+	if account != nil && account.GetTLSFingerprintProfileID() == -1 {
+		// WS 连接需要在多轮 continuation 间保持同一连接可复用，随机模板使用稳定配置键隔离连接池。
+		return profile, "tls-random"
+	}
+	return profile, tlsfingerprint.CacheKey(profile)
 }
 
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
@@ -2850,7 +2876,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
@@ -3145,7 +3171,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())

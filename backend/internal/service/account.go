@@ -1574,15 +1574,28 @@ const (
 // IsAnthropicOAuthOrSetupToken 判断是否为 Anthropic OAuth 或 SetupToken 类型账号
 // 仅这两类账号支持 5h 窗口额度控制和会话数量控制
 func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
+	if a == nil {
+		return false
+	}
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
+// SupportsTLSFingerprint 返回账号是否支持 TLS 指纹伪装。
+// 当前仅 Anthropic OAuth/SetupToken 与 OpenAI OAuth 支持，OpenAI API Key 不开放。
+func (a *Account) SupportsTLSFingerprint() bool {
+	if a == nil {
+		return false
+	}
+	if a.IsAnthropicOAuthOrSetupToken() {
+		return true
+	}
+	return a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth
+}
+
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
-// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+// 仅适用于支持 TLS 指纹伪装的账号，启用后模拟 Node.js/Claude Code/Codex CLI 客户端握手特征。
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if !a.SupportsTLSFingerprint() {
 		return false
 	}
 	if a.Extra == nil {

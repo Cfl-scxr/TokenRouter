@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 )
 
 type accountUsageCodexProbeRepo struct {
@@ -29,6 +33,34 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 		r.rateLimitCh <- resetAt
 	}
 	return nil
+}
+
+type accountUsageHTTPUpstreamStub struct {
+	tlsProfile *tlsfingerprint.Profile
+	req        *http.Request
+	proxyURL   string
+	accountID  int64
+}
+
+func (s *accountUsageHTTPUpstreamStub) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	return s.DoWithTLS(req, proxyURL, accountID, accountConcurrency, nil)
+}
+
+func (s *accountUsageHTTPUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, _ int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	s.req = req
+	s.proxyURL = proxyURL
+	s.accountID = accountID
+	s.tlsProfile = profile
+	headers := make(http.Header)
+	headers.Set("x-codex-primary-used-percent", "7")
+	headers.Set("x-codex-primary-window-minutes", "10080")
+	headers.Set("x-codex-secondary-used-percent", "3")
+	headers.Set("x-codex-secondary-window-minutes", "300")
+	return &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     headers,
+		Body:       io.NopCloser(strings.NewReader("")),
+	}, nil
 }
 
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
@@ -81,6 +113,69 @@ func TestAccountUsageService_ShouldProbeOpenAICodexSnapshot_ForceBypassesCache(t
 	}
 	if !svc.shouldProbeOpenAICodexSnapshot(accountID, now.Add(2*time.Minute), true) {
 		t.Fatal("强制刷新应该绕过探测缓存")
+	}
+}
+
+func TestAccountUsageService_ProbeOpenAICodexSnapshotUsesHTTPUpstreamTLSProfile(t *testing.T) {
+	t.Parallel()
+
+	upstream := &accountUsageHTTPUpstreamStub{}
+	svc := &AccountUsageService{
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+	account := &Account{
+		ID:          456,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 9,
+		Credentials: map[string]any{"access_token": "token"},
+		Extra:       map[string]any{"enable_tls_fingerprint": true},
+	}
+
+	updates, err := svc.probeOpenAICodexSnapshot(context.Background(), account)
+	if err != nil {
+		t.Fatalf("probeOpenAICodexSnapshot() error = %v", err)
+	}
+	if len(updates) == 0 {
+		t.Fatal("expected codex usage updates")
+	}
+	if upstream.tlsProfile == nil {
+		t.Fatal("expected non-nil TLS profile")
+	}
+	if upstream.req == nil || HTTPUpstreamProfileFromContext(upstream.req.Context()) != HTTPUpstreamProfileOpenAI {
+		t.Fatal("expected OpenAI upstream profile on probe request")
+	}
+	if upstream.accountID != account.ID {
+		t.Fatalf("accountID = %d, want %d", upstream.accountID, account.ID)
+	}
+}
+
+func TestAccountUsageService_ProbeOpenAICodexSnapshotSkipsTLSProfileWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	upstream := &accountUsageHTTPUpstreamStub{}
+	svc := &AccountUsageService{
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+	account := &Account{
+		ID:          789,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "token"},
+		Extra:       map[string]any{"enable_tls_fingerprint": false},
+	}
+
+	updates, err := svc.probeOpenAICodexSnapshot(context.Background(), account)
+	if err != nil {
+		t.Fatalf("probeOpenAICodexSnapshot() error = %v", err)
+	}
+	if len(updates) == 0 {
+		t.Fatal("expected codex usage updates")
+	}
+	if upstream.tlsProfile != nil {
+		t.Fatal("关闭 TLS 指纹时不应传入 profile")
 	}
 }
 

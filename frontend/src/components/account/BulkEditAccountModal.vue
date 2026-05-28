@@ -1012,6 +1012,66 @@
         </div>
       </div>
 
+      <!-- TLS 指纹伪装 -->
+      <div v-if="allTLSFingerprintCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-tls-fingerprint-label"
+            class="input-label mb-0"
+            for="bulk-edit-tls-fingerprint-enabled"
+          >
+            {{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}
+          </label>
+          <input
+            v-model="enableTLSFingerprint"
+            id="bulk-edit-tls-fingerprint-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-tls-fingerprint-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-tls-fingerprint-body"
+          :class="!enableTLSFingerprint && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-tls-fingerprint-label"
+        >
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-sm text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}
+            </span>
+            <button
+              id="bulk-edit-tls-fingerprint-toggle"
+              type="button"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <select
+            v-if="tlsFingerprintEnabled"
+            v-model.number="tlsFingerprintProfileId"
+            id="bulk-edit-tls-fingerprint-profile"
+            data-testid="bulk-edit-tls-fingerprint-profile"
+            class="input"
+          >
+            <option :value="0">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+            <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+            <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Groups -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1189,6 +1249,26 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
   )
 })
 
+const isTLSFingerprintCapableTarget = (platform: AccountPlatform, type: AccountType) => {
+  // TLS 指纹伪装支持 Anthropic OAuth/SetupToken 与 OpenAI OAuth，OpenAI API Key 不开放。
+  return (
+    (platform === 'anthropic' && (type === 'oauth' || type === 'setup-token')) ||
+    (platform === 'openai' && type === 'oauth')
+  )
+}
+
+const allTLSFingerprintCapable = computed(() => {
+  const platforms = targetSelectedPlatforms.value
+  const types = targetSelectedTypes.value
+  if (platforms.length === 0 || types.length === 0) return false
+  if (!platforms.every(platform => platform === 'anthropic' || platform === 'openai')) return false
+  if (!types.every(type => type === 'oauth' || type === 'setup-token')) return false
+  if (platforms.length === 1) {
+    return types.every(type => isTLSFingerprintCapableTarget(platforms[0], type))
+  }
+  return platforms.includes('openai') && platforms.includes('anthropic')
+})
+
 const filteredPresets = computed(() => {
   if (targetSelectedPlatforms.value.length === 0) return []
 
@@ -1236,6 +1316,7 @@ const enableCodexCLIOnly = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const enableTLSFingerprint = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -1267,6 +1348,9 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+const tlsFingerprintEnabled = ref(false)
+const tlsFingerprintProfileId = ref(0)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const modelRestrictionPrefillSeq = ref(0)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
@@ -1409,6 +1493,15 @@ const hydrateModelRestrictionDraftFromAccounts = (accounts: Account[]) => {
   modelRestrictionMode.value = firstState.mode
   allowedModels.value = [...firstState.allowedModels]
   modelMappings.value = cloneModelMappings(firstState.modelMappings)
+}
+
+const loadTLSFingerprintProfiles = async () => {
+  try {
+    const profiles = await adminAPI.tlsFingerprintProfiles.list()
+    tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name }))
+  } catch {
+    tlsFingerprintProfiles.value = []
+  }
 }
 
 const loadSelectedAccountDefaults = async () => {
@@ -1630,6 +1723,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_cli_only = codexCLIOnlyEnabled.value
   }
 
+  if (enableTLSFingerprint.value) {
+    const extra = ensureExtra()
+    extra.enable_tls_fingerprint = tlsFingerprintEnabled.value
+    extra.tls_fingerprint_profile_id = tlsFingerprintEnabled.value ? tlsFingerprintProfileId.value : 0
+  }
+
   if (enableOpenAICompactMode.value) {
     const extra = ensureExtra()
     extra.openai_compact_mode = openAICompactMode.value
@@ -1736,6 +1835,7 @@ const handleSubmit = async () => {
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
+    enableTLSFingerprint.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -1842,6 +1942,7 @@ const resetBulkEditFormState = () => {
   enableOpenAICompactMode.value = false
   enableOpenAICompactModelMapping.value = false
   enableRpmLimit.value = false
+  enableTLSFingerprint.value = false
 
   baseUrl.value = ''
   openaiPassthroughEnabled.value = false
@@ -1866,6 +1967,8 @@ const resetBulkEditFormState = () => {
   bulkRpmStrategy.value = 'tiered'
   bulkRpmStickyBuffer.value = null
   userMsgQueueMode.value = null
+  tlsFingerprintEnabled.value = false
+  tlsFingerprintProfileId.value = 0
 
   showMixedChannelWarning.value = false
   mixedChannelWarningMessage.value = ''
@@ -1882,6 +1985,9 @@ watch(
   ],
   ([newShow]) => {
     if (newShow) {
+      if (allTLSFingerprintCapable.value) {
+        void loadTLSFingerprintProfiles()
+      }
       void loadSelectedAccountDefaults()
       return
     }

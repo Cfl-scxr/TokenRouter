@@ -18,6 +18,9 @@ vi.mock('@/api/admin', () => ({
       getById: vi.fn(),
       bulkUpdate: vi.fn(),
       checkMixedChannelRisk: vi.fn()
+    },
+    tlsFingerprintProfiles: {
+      list: vi.fn()
     }
   }
 }))
@@ -121,6 +124,10 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockResolvedValue({
       has_risk: false
     } as any)
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockReset()
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockResolvedValue([
+      { id: 7, name: 'Profile 7' }
+    ] as any)
   })
 
   it('批量编辑打开时，相同模型白名单会回填到选择器', async () => {
@@ -323,6 +330,70 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
         codex_cli_only: true
+      }
+    })
+  })
+
+  it('OpenAI OAuth 批量编辑可启用 TLS 指纹伪装', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    await flushPromises()
+
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-tls-fingerprint-toggle').trigger('click')
+    await wrapper.get('[data-testid="bulk-edit-tls-fingerprint-profile"]').setValue('-1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: true,
+        tls_fingerprint_profile_id: -1
+      }
+    })
+  })
+
+  it('OpenAI OAuth 和 Anthropic OAuth 混选时可批量启用 TLS 指纹伪装', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai', 'anthropic'],
+      selectedTypes: ['oauth', 'setup-token']
+    })
+    await flushPromises()
+
+    expect(wrapper.find('#bulk-edit-tls-fingerprint-enabled').exists()).toBe(true)
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-tls-fingerprint-toggle').trigger('click')
+    await wrapper.get('[data-testid="bulk-edit-tls-fingerprint-profile"]').setValue('-1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: true,
+        tls_fingerprint_profile_id: -1
+      }
+    })
+  })
+
+  it('OpenAI OAuth 批量编辑可关闭 TLS 指纹伪装', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-tls-fingerprint-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        enable_tls_fingerprint: false,
+        tls_fingerprint_profile_id: 0
       }
     })
   })

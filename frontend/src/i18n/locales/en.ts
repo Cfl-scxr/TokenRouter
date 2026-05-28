@@ -3423,7 +3423,7 @@ export default {
         },
         tlsFingerprint: {
           label: 'TLS Fingerprint Simulation',
-          hint: 'Simulate Node.js/Claude Code client TLS fingerprint',
+          hint: 'Simulate Node.js/Claude Code/Codex CLI client TLS fingerprint',
           defaultProfile: 'Built-in Default',
           randomProfile: 'Random'
         },

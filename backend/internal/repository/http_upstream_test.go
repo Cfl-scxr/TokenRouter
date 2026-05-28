@@ -13,6 +13,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/net/http2"
 )
 
 // HTTPUpstreamSuite HTTP 上游服务测试套件
@@ -130,6 +131,131 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode, "未声明 h2 的 TLS 模板应保持 HTTP/1.1")
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintUsesHTTP2WhenALPNAllowsH2() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{
+		Name:          "h2-profile",
+		ALPNProtocols: []string{"h2", "http/1.1"},
+	}, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*http2.Transport)
+	require.True(s.T(), ok, "声明 h2 的 TLS 模板应启用 HTTP/2 transport")
+	require.NotNil(s.T(), transport.DialTLSContext)
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintHTTP2HeaderTimeout() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIResponseHeaderTimeout: 1,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{
+		Name:              "h2-profile",
+		ALPNProtocols:     []string{"h2", "http/1.1"},
+		SupportedVersions: []uint16{0x0304},
+	}, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*responseHeaderTimeoutRoundTripper)
+	require.True(s.T(), ok, "TLS+h2 路径应包装响应头超时")
+	require.Equal(s.T(), time.Second, transport.timeout)
+	_, ok = transport.base.(*http2.Transport)
+	require.True(s.T(), ok, "响应头超时包装内层应保持 HTTP/2 transport")
+}
+
+func TestResponseHeaderTimeoutRoundTripperTimesOut(t *testing.T) {
+	transport := &responseHeaderTimeoutRoundTripper{
+		base:    blockingHeaderRoundTripper{},
+		timeout: 10 * time.Millisecond,
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/v1/responses", nil)
+	require.NoError(t, err)
+
+	startedAt := time.Now()
+	resp, err := transport.RoundTrip(req)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timeout awaiting response headers")
+	require.Less(t, time.Since(startedAt), time.Second)
+}
+
+type blockingHeaderRoundTripper struct{}
+
+func (blockingHeaderRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// 模拟上游迟迟不返回响应头，直到请求上下文被取消。
+	<-req.Context().Done()
+	return nil, req.Context().Err()
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintProfileHashSplitsClientCache() {
+	svc := s.newService()
+	profileA := &tlsfingerprint.Profile{Name: "profile-a", CipherSuites: []uint16{0x1301}}
+	profileB := &tlsfingerprint.Profile{Name: "profile-b", CipherSuites: []uint16{0x1302}}
+
+	entryA, err := svc.getClientEntryWithTLS("", 1, 1, profileA, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	entryAAgain, err := svc.getClientEntryWithTLS("", 1, 1, profileA, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	entryB, err := svc.getClientEntryWithTLS("", 1, 1, profileB, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+
+	require.Same(s.T(), entryA, entryAAgain, "相同 TLS profile 应复用缓存客户端")
+	require.NotSame(s.T(), entryA, entryB, "不同 TLS profile hash 不应复用旧 Transport")
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintHTTP2FallbackSplitsClientCache() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled:                   true,
+			AllowProxyFallbackToHTTP1: true,
+			FallbackErrorThreshold:    1,
+			FallbackWindowSeconds:     60,
+			FallbackTTLSeconds:        600,
+		},
+	}
+	svc := s.newService()
+	proxyURL := "http://proxy.local:8080"
+	profile := &tlsfingerprint.Profile{Name: "h2-profile", ALPNProtocols: []string{"h2", "http/1.1"}}
+
+	entryH2, err := svc.getClientEntryWithTLS(proxyURL, 1, 1, profile, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	svc.recordOpenAIHTTP2Failure(service.HTTPUpstreamProfileOpenAI, upstreamProtocolModeOpenAIH2, entryH2.proxyKey, errors.New("http2: protocol error"))
+	entryH1, err := svc.getClientEntryWithTLS(proxyURL, 1, 1, profile, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+
+	require.NotSame(s.T(), entryH2, entryH1, "H2 回退后应重建 TLS 指纹客户端")
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH1Fallback, entryH1.protocolMode)
+	transport, ok := entryH1.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "回退到 HTTP/1.1 时应使用普通 http.Transport")
+	require.False(s.T(), transport.ForceAttemptHTTP2)
+	require.Contains(s.T(), entryH1.poolKey, "proto:"+upstreamProtocolModeOpenAIH1Fallback)
+}
+
+func (s *HTTPUpstreamSuite) TestTLSFingerprintDefaultProfileStripsH2ALPNOutsideOpenAIH2Mode() {
+	svc := s.newService()
+	profile := &tlsfingerprint.Profile{Name: "h2-profile", ALPNProtocols: []string{"h2", "http/1.1"}}
+
+	entry, err := svc.getClientEntryWithTLS("", 1, 1, profile, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+
+	require.Equal(s.T(), upstreamProtocolModeDefault, entry.protocolMode)
+	transport, ok := entry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "非 OpenAI H2 模式应保持 HTTP/1.1 transport")
+	require.False(s.T(), transport.ForceAttemptHTTP2)
+	require.NotContains(s.T(), entry.poolKey, tlsfingerprint.CacheKey(profile), "缓存键应使用剥离 h2 后的 profile hash")
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {

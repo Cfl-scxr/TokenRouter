@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -3071,11 +3072,13 @@ func (d *openAIWSQueueDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	profile *tlsfingerprint.Profile,
 ) (openAIWSClientConn, int, http.Header, error) {
 	_ = ctx
 	_ = wsURL
 	_ = headers
 	_ = proxyURL
+	_ = profile
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.dialCount++

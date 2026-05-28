@@ -12,12 +12,16 @@ package tlsfingerprint
 
 import (
 	"context"
+	stdtls "crypto/tls"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -208,6 +212,37 @@ func TestHTTPProxyDialerBasic(t *testing.T) {
 	}
 	if dialer.proxyURL != proxyURL {
 		t.Error("expected proxyURL to be set")
+	}
+}
+
+func TestHTTPProxyDialerSupportsHTTPSProxyCONNECT(t *testing.T) {
+	var connectSeen atomic.Bool
+	proxyServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodConnect && r.Host == "upstream.example:443" {
+			connectSeen.Store(true)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(w, "unexpected request", http.StatusBadRequest)
+	}))
+	defer proxyServer.Close()
+
+	proxyURL := mustParseURL(proxyServer.URL)
+	dialer := NewHTTPProxyDialer(&Profile{Name: "Test Profile"}, proxyURL)
+	dialer.proxyTLSConfig = &stdtls.Config{InsecureSkipVerify: true}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, err := dialer.DialTLSContext(ctx, "tcp", net.JoinHostPort("upstream.example", "443"))
+	if conn != nil {
+		_ = conn.Close()
+	}
+
+	if !connectSeen.Load() {
+		t.Fatal("expected HTTPS proxy to receive CONNECT request")
+	}
+	if err == nil || !strings.Contains(err.Error(), "TLS handshake failed") {
+		t.Fatalf("expected target TLS handshake failure after CONNECT, got %v", err)
 	}
 }
 
