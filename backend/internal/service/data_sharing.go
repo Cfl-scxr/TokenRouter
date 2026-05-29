@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
@@ -244,21 +245,22 @@ type DataShareQualityErrorPoint struct {
 
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
-	SessionCount          int64                        `json:"session_count"`
-	ExportableCount       int64                        `json:"exportable_count"`
-	NonExportableCount    int64                        `json:"non_exportable_count"`
-	CompleteCount         int64                        `json:"complete_count"`
-	PartialCount          int64                        `json:"partial_count"`
-	InvalidCount          int64                        `json:"invalid_count"`
-	TotalStorageBytes     int64                        `json:"total_storage_bytes"`
-	TotalTokens           int64                        `json:"total_tokens"`
-	AvgTokensPerSession   float64                      `json:"avg_tokens_per_session"`
-	StorageTrend          []DataShareStoragePoint      `json:"storage_trend"`
-	GroupStorageBreakdown []DataShareGroupStoragePoint `json:"group_storage_breakdown"`
-	RequestPathBreakdown  []DataShareRequestPathPoint  `json:"request_path_breakdown"`
-	ModelBreakdown        []DataShareModelPoint        `json:"model_breakdown"`
-	UserAgentBreakdown    []DataShareUserAgentPoint    `json:"user_agent_breakdown"`
-	QualityErrorBreakdown []DataShareQualityErrorPoint `json:"quality_error_breakdown"`
+	SessionCount          int64                             `json:"session_count"`
+	ExportableCount       int64                             `json:"exportable_count"`
+	NonExportableCount    int64                             `json:"non_exportable_count"`
+	CompleteCount         int64                             `json:"complete_count"`
+	PartialCount          int64                             `json:"partial_count"`
+	InvalidCount          int64                             `json:"invalid_count"`
+	TotalStorageBytes     int64                             `json:"total_storage_bytes"`
+	TotalTokens           int64                             `json:"total_tokens"`
+	AvgTokensPerSession   float64                           `json:"avg_tokens_per_session"`
+	StorageTrend          []DataShareStoragePoint           `json:"storage_trend"`
+	GroupStorageBreakdown []DataShareGroupStoragePoint      `json:"group_storage_breakdown"`
+	RequestPathBreakdown  []DataShareRequestPathPoint       `json:"request_path_breakdown"`
+	ModelBreakdown        []DataShareModelPoint             `json:"model_breakdown"`
+	UserAgentBreakdown    []DataShareUserAgentPoint         `json:"user_agent_breakdown"`
+	QualityErrorBreakdown []DataShareQualityErrorPoint      `json:"quality_error_breakdown"`
+	CaptureWorker         DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -307,15 +309,25 @@ type DataShareSessionRepository interface {
 
 // DataSharingService 负责数据共享须知、采集、导出和统计。
 type DataSharingService struct {
-	repo                    DataShareSessionRepository
-	settingRepo             SettingRepository
-	skipRulesMu             sync.RWMutex
-	skipRulesCache          []DataShareCaptureSkipRule
-	skipRulesCacheExpiresAt time.Time
+	repo                     DataShareSessionRepository
+	settingRepo              SettingRepository
+	captureWorker            *DataSharingCaptureWorkerPool
+	captureWorkerNilDropped  atomic.Uint64
+	captureWorkerNilLogNanos atomic.Int64
+	skipRulesMu              sync.RWMutex
+	skipRulesCache           []DataShareCaptureSkipRule
+	skipRulesCacheExpiresAt  time.Time
 }
 
-func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository) *DataSharingService {
-	return &DataSharingService{repo: repo, settingRepo: settingRepo}
+func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository, captureWorker ...*DataSharingCaptureWorkerPool) *DataSharingService {
+	svc := &DataSharingService{repo: repo, settingRepo: settingRepo}
+	if len(captureWorker) > 0 {
+		svc.captureWorker = captureWorker[0]
+	}
+	if svc.captureWorker != nil {
+		svc.captureWorker.SetHandler(svc.handleCaptureJob)
+	}
+	return svc
 }
 
 // GetNotice 返回当前数据共享须知；未配置时返回默认模板和版本 1。
@@ -899,6 +911,11 @@ func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input Dat
 	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
 }
 
+// CaptureClaudeRequestAsync 异步提交 Claude/Gemini 兼容协议数据共享采集。
+func (s *DataSharingService) CaptureClaudeRequestAsync(input DataShareCaptureInput) DataSharingCaptureSubmitMode {
+	return s.submitCaptureJob(DataSharingCaptureProtocolClaude, input)
+}
+
 // CaptureOpenAIRequest 采集 OpenAI 协议成功请求。
 func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input DataShareCaptureInput) error {
 	if input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
@@ -912,6 +929,91 @@ func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input Dat
 	}
 	session := s.buildSession(input)
 	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
+}
+
+// CaptureOpenAIRequestAsync 异步提交 OpenAI 协议数据共享采集。
+func (s *DataSharingService) CaptureOpenAIRequestAsync(input DataShareCaptureInput) DataSharingCaptureSubmitMode {
+	return s.submitCaptureJob(DataSharingCaptureProtocolOpenAI, input)
+}
+
+func (s *DataSharingService) submitCaptureJob(protocol DataSharingCaptureProtocol, input DataShareCaptureInput) DataSharingCaptureSubmitMode {
+	if s == nil || s.repo == nil {
+		return DataSharingCaptureSubmitModeDropped
+	}
+	if input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
+		return DataSharingCaptureSubmitModeDropped
+	}
+	if input.Model == "" && input.UpstreamModel != "" {
+		input.Model = input.UpstreamModel
+	}
+	metadata := dataShareCaptureMetadata(input)
+	if s.captureWorker == nil {
+		s.recordMissingCaptureWorkerDrop(metadata)
+		return DataSharingCaptureSubmitModeDropped
+	}
+	return s.captureWorker.Submit(DataSharingCaptureJob{
+		Protocol: protocol,
+		Input:    input,
+		Metadata: metadata,
+	})
+}
+
+func (s *DataSharingService) handleCaptureJob(ctx context.Context, job DataSharingCaptureJob) error {
+	if s == nil {
+		return nil
+	}
+	switch job.Protocol {
+	case DataSharingCaptureProtocolOpenAI:
+		return s.CaptureOpenAIRequest(ctx, job.Input)
+	default:
+		return s.CaptureClaudeRequest(ctx, job.Input)
+	}
+}
+
+func (s *DataSharingService) recordMissingCaptureWorkerDrop(metadata DataSharingCaptureJobMetadata) {
+	if s == nil {
+		return
+	}
+	s.captureWorkerNilDropped.Add(1)
+	now := time.Now().UnixNano()
+	last := s.captureWorkerNilLogNanos.Load()
+	if now-last < int64(dataSharingCaptureDropLogInterval) {
+		return
+	}
+	if !s.captureWorkerNilLogNanos.CompareAndSwap(last, now) {
+		return
+	}
+	slog.Warn(
+		"data_sharing.capture_dropped",
+		"reason", "missing_worker",
+		"provider", metadata.Provider,
+		"model", metadata.Model,
+		"request_id", metadata.RequestID,
+		"api_key_id", metadata.APIKeyID,
+		"account_id", metadata.AccountID,
+		"group_id", metadata.GroupID,
+		"dropped_total", s.captureWorkerNilDropped.Load(),
+	)
+}
+
+func dataShareCaptureMetadata(input DataShareCaptureInput) DataSharingCaptureJobMetadata {
+	metadata := DataSharingCaptureJobMetadata{
+		Provider:  input.Provider,
+		Model:     firstNonBlank(input.UpstreamModel, input.Model),
+		RequestID: input.RequestID,
+	}
+	if input.APIKey != nil {
+		metadata.APIKeyID = input.APIKey.ID
+		if input.APIKey.GroupID != nil {
+			metadata.GroupID = *input.APIKey.GroupID
+		} else if input.APIKey.Group != nil {
+			metadata.GroupID = input.APIKey.Group.ID
+		}
+	}
+	if input.Account != nil {
+		metadata.AccountID = input.Account.ID
+	}
+	return metadata
 }
 
 // ListSessions 查询数据共享 session。
@@ -940,7 +1042,28 @@ func (s *DataSharingService) BatchDeleteSessions(ctx context.Context, ids []int6
 }
 
 func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSessionFilters) (*DataShareStats, error) {
-	return s.repo.Stats(ctx, filters)
+	stats, err := s.repo.Stats(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	if stats == nil {
+		stats = &DataShareStats{}
+	}
+	stats.CaptureWorker = s.CaptureWorkerStats()
+	return stats, nil
+}
+
+// CaptureWorkerStats 返回数据共享采集池运行时统计。
+func (s *DataSharingService) CaptureWorkerStats() DataSharingCaptureWorkerPoolStats {
+	if s == nil {
+		return DataSharingCaptureWorkerPoolStats{}
+	}
+	if s.captureWorker == nil {
+		return DataSharingCaptureWorkerPoolStats{
+			DroppedTotal: s.captureWorkerNilDropped.Load(),
+		}
+	}
+	return s.captureWorker.Stats()
 }
 
 func (s *DataSharingService) FilterOptions(ctx context.Context, filters DataShareSessionFilters) (*DataShareSessionFilterOptions, error) {

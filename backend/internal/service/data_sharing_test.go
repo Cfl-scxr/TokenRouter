@@ -5,7 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
+	"github.com/stretchr/testify/require"
 )
 
 type dataShareSettingRepoStub struct {
@@ -74,6 +79,162 @@ func (s *dataShareSettingRepoStub) Delete(_ context.Context, key string) error {
 	}
 	delete(s.values, key)
 	return nil
+}
+
+type dataShareCaptureRepoStub struct {
+	mu       sync.Mutex
+	upserts  int
+	sessions []*DataShareSession
+	stats    *DataShareStats
+	err      error
+}
+
+func (r *dataShareCaptureRepoStub) UpsertCapture(ctx context.Context, session *DataShareSession, opts ...DataShareUpsertOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.upserts++
+	r.sessions = append(r.sessions, session)
+	if r.err != nil {
+		return r.err
+	}
+	return ctx.Err()
+}
+
+func (r *dataShareCaptureRepoStub) List(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (r *dataShareCaptureRepoStub) ListWithPayload(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithPayload call")
+}
+
+func (r *dataShareCaptureRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
+	panic("unexpected GetByID call")
+}
+
+func (r *dataShareCaptureRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *dataShareCaptureRepoStub) BatchDelete(context.Context, []int64, DataShareSessionFilters) (int64, error) {
+	panic("unexpected BatchDelete call")
+}
+
+func (r *dataShareCaptureRepoStub) Stats(context.Context, DataShareSessionFilters) (*DataShareStats, error) {
+	if r.stats != nil {
+		return r.stats, r.err
+	}
+	return &DataShareStats{SessionCount: 2}, r.err
+}
+
+func (r *dataShareCaptureRepoStub) FilterOptions(context.Context, DataShareSessionFilters) (*DataShareSessionFilterOptions, error) {
+	panic("unexpected FilterOptions call")
+}
+
+func (r *dataShareCaptureRepoStub) TotalStorageBytes(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (r *dataShareCaptureRepoStub) upsertCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.upserts
+}
+
+func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(repo, nil, pool)
+
+	mode := svc.CaptureOpenAIRequestAsync(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: true},
+		},
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5-alias",
+		UpstreamModel:   "gpt-5-2026-05-01",
+		SessionID:       "session-async",
+		RequestID:       "request-async",
+		RequestBody:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+		InboundEndpoint: "/v1/chat/completions",
+	})
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, mode)
+
+	require.Eventually(t, func() bool {
+		return repo.upsertCount() == 1 && svc.CaptureWorkerStats().CompletedTotal == 1
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestDataSharingService_CaptureAsyncDisabledGroupDoesNotSubmit(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(repo, nil, pool)
+
+	mode := svc.CaptureClaudeRequestAsync(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: false},
+		},
+	})
+
+	require.Equal(t, DataSharingCaptureSubmitModeDropped, mode)
+	require.Equal(t, uint64(0), svc.CaptureWorkerStats().SubmittedTotal)
+	require.Equal(t, 0, repo.upsertCount())
+}
+
+func TestDataSharingService_CaptureAsyncMissingPoolDoesNotSyncFallback(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+
+	mode := svc.CaptureOpenAIRequestAsync(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: true},
+		},
+		Provider: PlatformOpenAI,
+		Model:    "gpt-5",
+	})
+
+	require.Equal(t, DataSharingCaptureSubmitModeDropped, mode)
+	require.Equal(t, 0, repo.upsertCount())
+	require.Equal(t, uint64(1), svc.CaptureWorkerStats().DroppedTotal)
+}
+
+func TestDataSharingService_StatsIncludesCaptureWorker(t *testing.T) {
+	repo := &dataShareCaptureRepoStub{stats: &DataShareStats{SessionCount: 3}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   7,
+		TaskTimeout: time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(repo, nil, pool)
+
+	stats, err := svc.Stats(context.Background(), DataShareSessionFilters{})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), stats.SessionCount)
+	require.Equal(t, 7, stats.CaptureWorker.QueueCapacity)
 }
 
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {

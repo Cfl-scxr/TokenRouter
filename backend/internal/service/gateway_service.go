@@ -8836,17 +8836,17 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-	s.captureDataSharingBestEffort(ctx, input, result, requestedModel)
+	s.captureDataSharingBestEffort(input, result, requestedModel)
 
 	return nil
 }
 
 // captureDataSharingBestEffort 在使用记录成功后异步旁路采集数据共享 session，失败不影响网关主链路。
-func (s *GatewayService) captureDataSharingBestEffort(ctx context.Context, input *recordUsageCoreInput, result *ForwardResult, requestedModel string) {
+func (s *GatewayService) captureDataSharingBestEffort(input *recordUsageCoreInput, result *ForwardResult, requestedModel string) {
 	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
 		return
 	}
-	err := s.dataSharingService.CaptureClaudeRequest(ctx, DataShareCaptureInput{
+	s.dataSharingService.CaptureClaudeRequestAsync(DataShareCaptureInput{
 		APIKey:            input.APIKey,
 		User:              input.User,
 		Account:           input.Account,
@@ -8867,9 +8867,6 @@ func (s *GatewayService) captureDataSharingBestEffort(ctx context.Context, input
 		InboundEndpoint:   input.InboundEndpoint,
 		UpstreamEndpoint:  input.UpstreamEndpoint,
 	})
-	if err != nil {
-		logger.LegacyPrintf("service.gateway", "data sharing capture failed: %v", err)
-	}
 }
 
 // calculateRecordUsageCost 根据请求类型和选项计算费用。

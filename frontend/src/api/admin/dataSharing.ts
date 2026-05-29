@@ -41,6 +41,18 @@ export interface DataShareQualityErrorPoint {
   session_count: number
 }
 
+export interface DataShareCaptureWorkerStats {
+  queue_depth: number
+  queue_capacity: number
+  running_workers: number
+  submitted_total: number
+  completed_total: number
+  failed_total: number
+  timeout_total: number
+  dropped_total: number
+  last_error: string
+}
+
 export interface DataShareStats {
   session_count: number
   exportable_count: number
@@ -57,6 +69,7 @@ export interface DataShareStats {
   model_breakdown: DataShareModelPoint[]
   user_agent_breakdown: DataShareUserAgentPoint[]
   quality_error_breakdown: DataShareQualityErrorPoint[]
+  capture_worker?: DataShareCaptureWorkerStats | null
 }
 
 export type DataShareCaptureSkipRuleMatchMode = 'contains' | 'equals'

@@ -9,7 +9,7 @@
         </button>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">Session 总数</p>
           <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(stats?.session_count) }}</p>
@@ -34,6 +34,19 @@
           <p class="text-xs text-gray-500 dark:text-gray-400">单 session 平均 token</p>
           <p class="mt-2 text-2xl font-semibold text-purple-600 dark:text-purple-400">
             {{ formatNumber(Math.round(stats?.avg_tokens_per_session || 0)) }}
+          </p>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs text-gray-500 dark:text-gray-400">采集队列</p>
+            <span :class="['badge', captureWorkerBadgeClass]">{{ captureWorkerStatusText }}</span>
+          </div>
+          <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ captureWorkerQueueText }}</p>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            失败 {{ formatNumber(captureWorkerFailedTotal) }} · 超时 {{ formatNumber(captureWorkerTimeoutTotal) }} · 丢弃 {{ formatNumber(captureWorkerDroppedTotal) }}
+          </p>
+          <p v-if="stats?.capture_worker?.last_error" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_worker.last_error">
+            {{ stats.capture_worker.last_error }}
           </p>
         </div>
       </div>
@@ -899,6 +912,29 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+const captureWorkerQueueText = computed(() => {
+  const worker = stats.value?.capture_worker
+  if (!worker) return '-'
+  return `${formatNumber(worker.queue_depth)}/${formatNumber(worker.queue_capacity)}`
+})
+const captureWorkerFailedTotal = computed(() => stats.value?.capture_worker?.failed_total || 0)
+const captureWorkerTimeoutTotal = computed(() => stats.value?.capture_worker?.timeout_total || 0)
+const captureWorkerDroppedTotal = computed(() => stats.value?.capture_worker?.dropped_total || 0)
+const captureWorkerStatusText = computed(() => {
+  const worker = stats.value?.capture_worker
+  if (!worker) return '未启用'
+  if (worker.dropped_total > 0) return '有丢弃'
+  if (worker.timeout_total > 0) return '有超时'
+  if (worker.failed_total > 0) return '有失败'
+  return '正常'
+})
+const captureWorkerBadgeClass = computed(() => {
+  const worker = stats.value?.capture_worker
+  if (!worker) return 'badge-gray'
+  if (worker.dropped_total > 0 || worker.timeout_total > 0) return 'badge-danger'
+  if (worker.failed_total > 0) return 'badge-warning'
+  return 'badge-success'
+})
 const skipRulesSummary = computed(() => {
   const total = skipRules.value.length
   const enabled = skipRules.value.filter(rule => rule.enabled).length

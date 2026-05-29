@@ -5862,17 +5862,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-	s.captureOpenAIDataSharingBestEffort(ctx, input, result, requestedModel, actualInputTokens)
+	s.captureOpenAIDataSharingBestEffort(input, result, requestedModel, actualInputTokens)
 
 	return nil
 }
 
 // captureOpenAIDataSharingBestEffort 在 OpenAI 使用记录成功后旁路采集数据共享 session。
-func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(ctx context.Context, input *OpenAIRecordUsageInput, result *OpenAIForwardResult, requestedModel string, actualInputTokens int) {
+func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIRecordUsageInput, result *OpenAIForwardResult, requestedModel string, actualInputTokens int) {
 	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
 		return
 	}
-	err := s.dataSharingService.CaptureOpenAIRequest(ctx, DataShareCaptureInput{
+	s.dataSharingService.CaptureOpenAIRequestAsync(DataShareCaptureInput{
 		APIKey:            input.APIKey,
 		User:              input.User,
 		Account:           input.Account,
@@ -5892,9 +5892,6 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(ctx context.Co
 		InboundEndpoint:   input.InboundEndpoint,
 		UpstreamEndpoint:  input.UpstreamEndpoint,
 	})
-	if err != nil {
-		logger.LegacyPrintf("service.openai_gateway", "data sharing capture failed: %v", err)
-	}
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(

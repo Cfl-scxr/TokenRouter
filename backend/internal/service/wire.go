@@ -472,6 +472,15 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideDataSharingService 注入数据共享服务并绑定独立采集 worker。
+func ProvideDataSharingService(
+	repo DataShareSessionRepository,
+	settingRepo SettingRepository,
+	captureWorker *DataSharingCaptureWorkerPool,
+) *DataSharingService {
+	return NewDataSharingService(repo, settingRepo, captureWorker)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -486,7 +495,7 @@ var ProviderSet = wire.NewSet(
 	NewAffiliateService,
 	NewPromoService,
 	NewUsageService,
-	NewDataSharingService,
+	ProvideDataSharingService,
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,
@@ -533,6 +542,7 @@ var ProviderSet = wire.NewSet(
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
+	NewDataSharingCaptureWorkerPool,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,
