@@ -65,7 +65,6 @@ type dataSharingCaptureBufferEntry struct {
 	lastUpdated           time.Time
 	timer                 *time.Timer
 	flushing              bool
-	flushQueued           bool
 	lastFlushed           *DataShareSession
 	lastFlushedEventCount int
 }
@@ -235,17 +234,6 @@ func (b *DataSharingCaptureBuffer) Stats() DataSharingCaptureBufferStats {
 	return stats
 }
 
-func (b *DataSharingCaptureBuffer) resetEntryTimerLocked(entry *dataSharingCaptureBufferEntry) {
-	if b == nil || entry == nil || !b.enabled || b.stopped {
-		return
-	}
-	if b.idleFlush <= 0 {
-		b.idleFlush = time.Duration(defaultDataSharingCaptureBufferIdleSeconds) * time.Second
-	}
-	entry.lastUpdated = time.Now()
-	b.scheduleEntryTimerLocked(entry, b.idleFlush)
-}
-
 func (b *DataSharingCaptureBuffer) scheduleEntryTimerLocked(entry *dataSharingCaptureBufferEntry, delay time.Duration) {
 	if b == nil || entry == nil || !b.enabled || b.stopped || entry.flushing {
 		return
@@ -269,7 +257,7 @@ func (b *DataSharingCaptureBuffer) remainingIdleFlushLocked(entry *dataSharingCa
 	if entry.lastUpdated.IsZero() {
 		return b.idleFlush
 	}
-	return entry.lastUpdated.Add(b.idleFlush).Sub(time.Now())
+	return time.Until(entry.lastUpdated.Add(b.idleFlush))
 }
 
 func (b *DataSharingCaptureBuffer) flushByKey(key string) {
