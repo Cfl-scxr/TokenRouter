@@ -484,6 +484,23 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
   return data
 }
 
+export interface SyncUpstreamPreviewParams {
+  platform: string
+  type: string
+  base_url?: string
+  api_key: string
+}
+
+/**
+ * 使用创建流程中的临时凭证预览上游支持模型。
+ * @param params - 连接凭证
+ * @returns 上游返回的模型 ID 列表
+ */
+export async function syncUpstreamModelsPreview(params: SyncUpstreamPreviewParams): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>('/admin/accounts/models/sync-upstream-preview', params)
+  return data
+}
+
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -700,6 +717,7 @@ export const accountsAPI = {
   setSchedulable,
   getAvailableModels,
   syncUpstreamModels,
+  syncUpstreamModelsPreview,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
