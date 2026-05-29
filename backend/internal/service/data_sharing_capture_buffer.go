@@ -154,15 +154,18 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 			shouldHydrate = true
 		}
 	}
-	b.mu.Unlock()
-
 	if shouldHydrate {
+		b.mu.Unlock()
 		b.hydrateEntry(ctx, entry, key)
+		b.mu.Lock()
 	}
 
-	b.mu.Lock()
 	for entry.hydrating && !b.stopped {
 		entry.cond.Wait()
+	}
+	if b.entries[key] != entry {
+		b.mu.Unlock()
+		return b.Submit(ctx, session)
 	}
 	if entry.hydrateErr != nil {
 		err := entry.hydrateErr
@@ -194,13 +197,25 @@ func (b *DataSharingCaptureBuffer) FlushAll(ctx context.Context) {
 	for {
 		b.mu.Lock()
 		var selected *dataSharingCaptureBufferEntry
+		var hydrating *dataSharingCaptureBufferEntry
 		for _, entry := range b.entries {
 			if !entry.flushing && !entry.hydrating {
 				selected = entry
 				break
 			}
+			if entry.hydrating && hydrating == nil {
+				hydrating = entry
+			}
 		}
 		if selected == nil {
+			if hydrating != nil {
+				b.waitHydrateLocked(ctx, hydrating)
+				b.mu.Unlock()
+				if ctx != nil && ctx.Err() != nil {
+					return
+				}
+				continue
+			}
 			b.mu.Unlock()
 			b.flushWG.Wait()
 			b.mu.Lock()
@@ -220,6 +235,32 @@ func (b *DataSharingCaptureBuffer) FlushAll(ctx context.Context) {
 		if err != nil {
 			return
 		}
+	}
+}
+
+func (b *DataSharingCaptureBuffer) waitHydrateLocked(ctx context.Context, entry *dataSharingCaptureBufferEntry) {
+	if b == nil || entry == nil || entry.cond == nil {
+		return
+	}
+	if ctx == nil {
+		for entry.hydrating {
+			entry.cond.Wait()
+		}
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			b.mu.Lock()
+			entry.cond.Broadcast()
+			b.mu.Unlock()
+		case <-done:
+		}
+	}()
+	defer close(done)
+	for entry.hydrating && ctx.Err() == nil {
+		entry.cond.Wait()
 	}
 }
 
@@ -502,6 +543,10 @@ func (b *DataSharingCaptureBuffer) finishFlushLocked(key string, err error) {
 			b.scheduleEntryTimerLocked(entry, b.idleFlush)
 		}
 		return
+	}
+	if entry.eventCount > 0 {
+		// 成功落库后若同 session 又进了新增量，保留已落库快照作为下一次覆盖保存的基线。
+		entry.session = mergeBufferedDataShareSession(entry.lastFlushed, entry.session)
 	}
 	entry.lastFlushed = nil
 	entry.lastFlushedEventCount = 0

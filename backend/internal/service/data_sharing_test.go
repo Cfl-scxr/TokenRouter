@@ -783,6 +783,77 @@ func TestDataSharingCaptureBuffer_HydratesColdSessionBeforeMerge(t *testing.T) {
 	require.Len(t, got.Messages, 2)
 }
 
+func TestDataSharingCaptureBuffer_FlushAllWaitsForHydrate(t *testing.T) {
+	hydrateStarted := make(chan struct{})
+	releaseHydrate := make(chan struct{})
+	flushDone := make(chan struct{})
+	var flushed *DataShareSession
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Hydrate: func(_ context.Context, key string) (*DataShareSession, error) {
+			require.Equal(t, "traj-wait-hydrate", key)
+			close(hydrateStarted)
+			<-releaseHydrate
+			return nil, ErrDataShareSessionNotFound
+		},
+		Flush: func(_ context.Context, session *DataShareSession) error {
+			flushed = cloneBufferedDataShareSession(session)
+			close(flushDone)
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	submitDone := make(chan error, 1)
+	go func() {
+		submitDone <- buffer.Submit(context.Background(), &DataShareSession{
+			TrajectoryID:       "traj-wait-hydrate",
+			SessionID:          "sess-wait-hydrate",
+			Dataset:            defaultDataShareDataset,
+			Provider:           PlatformOpenAI,
+			Model:              "gpt-5",
+			SourceRequestCount: 1,
+			Messages:           []map[string]any{{"role": "user", "content": "after hydrate"}},
+		})
+	}()
+	<-hydrateStarted
+
+	flushAllDone := make(chan struct{})
+	go func() {
+		buffer.FlushAll(context.Background())
+		close(flushAllDone)
+	}()
+
+	select {
+	case <-flushAllDone:
+		t.Fatal("FlushAll returned before hydrate completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseHydrate)
+	require.NoError(t, <-submitDone)
+	select {
+	case <-flushDone:
+	case <-time.After(time.Second):
+		t.Fatal("FlushAll did not flush after hydrate completed")
+	}
+	select {
+	case <-flushAllDone:
+	case <-time.After(time.Second):
+		t.Fatal("FlushAll did not return after flush")
+	}
+	require.NotNil(t, flushed)
+	require.Equal(t, "after hydrate", flushed.Messages[0]["content"])
+}
+
 func TestDataSharingCaptureBuffer_MergesNewEventsWhileFlushInFlight(t *testing.T) {
 	flushStarted := make(chan struct{})
 	releaseFlush := make(chan struct{})
@@ -845,7 +916,10 @@ func TestDataSharingCaptureBuffer_MergesNewEventsWhileFlushInFlight(t *testing.T
 	require.Equal(t, 1, stats.PendingEvents)
 	buffer.FlushAll(context.Background())
 	require.Len(t, flushed, 2)
-	require.Equal(t, "second", flushed[1].Messages[0]["content"])
+	require.Equal(t, 2, flushed[1].SourceRequestCount)
+	require.Len(t, flushed[1].Messages, 2)
+	require.Equal(t, "first", flushed[1].Messages[0]["content"])
+	require.Equal(t, "second", flushed[1].Messages[1]["content"])
 }
 
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
