@@ -974,6 +974,12 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
 		return false
 	}
+	// 配额自动暂停也必须在初始过滤阶段执行。否则 TopK 候选池可能被已暂停账号占满，
+	// 后续 fresh/DB 复查无法触达落在 TopK 之外的健康账号，最终在存在健康账号时
+	// 仍表现为“无可用账号”。
+	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return false
+	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}

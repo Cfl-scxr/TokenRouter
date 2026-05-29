@@ -1484,8 +1484,8 @@ func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, re
 		return false
 	}
 	if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
-		// Debug level: this fires per-candidate on the scheduling hot path, so Info
-		// would amplify into log spam once several accounts cross the threshold.
+		// 调度热路径会对每个候选账号触发该日志；多个账号越过阈值时，
+		// Info 级别会放大为日志噪声，因此保持 Debug。
 		slog.Debug("account_auto_paused_by_quota",
 			"account_id", account.ID,
 			"window", reason.window,
@@ -1516,19 +1516,56 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{}
 	}
+	// 账号级显式禁用标记优先于全局默认值。否则账号阈值留空会表示“使用全局默认”，
+	// 一旦存在全局默认值，管理员就无法让单个账号豁免自动暂停。
+	// 禁用标记按窗口拆分，因此账号可以只退出 5h 或只退出 7d 自动暂停。
+	disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
+	disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
 	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
 	now := time.Now()
-	if threshold5h > 0 {
+	if !disabled5h && threshold5h > 0 {
 		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
 			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilization}
 		}
 	}
-	if threshold7d > 0 {
+	if !disabled7d && threshold7d > 0 {
 		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilization}
 		}
 	}
 	return false, openAIQuotaAutoPauseDecision{}
+}
+
+// resolveAccountExtraBool 从账号 extra 中读取类 bool 值，并兼容 JSON 反序列化
+// 可能产生的几种形态（bool、"true"/"false" 字符串、0/1 数字）。
+func resolveAccountExtraBool(extra map[string]any, key string) bool {
+	if len(extra) == 0 {
+		return false
+	}
+	value, ok := extra[key]
+	if !ok || value == nil {
+		return false
+	}
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(v))
+		return err == nil && parsed
+	case float64:
+		return v != 0
+	case float32:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i != 0
+		}
+	}
+	return false
 }
 
 func resolveOpenAIQuotaAutoPauseThresholds(ctx context.Context, account *Account) (float64, float64) {
@@ -1582,13 +1619,10 @@ func resolveAccountExtraNumber(extra map[string]any, keys ...string) (float64, b
 	return 0, false
 }
 
-// resolveOpenAIQuotaUtilization returns the current utilization ratio (0..1) for the
-// given Codex usage window. ok=false means there is no usable signal to pause on:
-// either no snapshot exists, or the window has already rolled over so the cached
-// percentage is stale. The stale guard matters because a paused account stops
-// receiving requests, so its snapshot is never refreshed from upstream headers —
-// without this check an old used_percent would keep the account paused forever even
-// after the real window reset.
+// resolveOpenAIQuotaUtilization 返回指定 Codex 用量窗口当前使用率（0..1）。
+// ok=false 表示没有可用于暂停的信号：可能没有快照，也可能窗口已经滚动导致缓存百分比过期。
+// 过期保护很重要：暂停账号不会继续收到请求，它的快照也不会从上游 header 刷新；
+// 如果不做该检查，旧 used_percent 会在真实窗口重置后仍让账号永久暂停。
 func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time.Time) (float64, bool) {
 	usedPercent := readOpenAIQuotaUsedPercent(extra, window)
 	if usedPercent <= 0 {
@@ -1600,10 +1634,10 @@ func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time
 	return usedPercent / 100, true
 }
 
-// openAIQuotaWindowReset reports whether the Codex usage window's reset time has
-// already passed relative to now. It prefers the absolute codex_<window>_reset_at
-// timestamp and falls back to codex_<window>_reset_after_seconds anchored at
-// codex_usage_updated_at, mirroring AccountUsageService's window-progress logic.
+// openAIQuotaWindowReset 判断 Codex 用量窗口的重置时间相对 now 是否已过。
+// 优先使用绝对时间戳 codex_<window>_reset_at；否则回退到以
+// codex_usage_updated_at 为锚点的 codex_<window>_reset_after_seconds，
+// 与 AccountUsageService 的窗口进度逻辑保持一致。
 func openAIQuotaWindowReset(extra map[string]any, window string, now time.Time) bool {
 	if len(extra) == 0 {
 		return false

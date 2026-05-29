@@ -490,12 +490,11 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 	}
-	cacheKey := openAIQuotaAutoPauseSettingsCacheKey(s.settingRepo)
-	openAIQuotaAutoPauseSettingsSF.Forget(cacheKey)
-	storeOpenAIQuotaAutoPauseSettingsCache(s.settingRepo, &cachedOpenAIQuotaAutoPauseSettings{
-		settings:  cfg.OpenAIAccountQuotaAutoPause,
-		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
-	})
+	// 将新的配额自动暂停设置直接写入 OpenAI 调度热路径读取的内存缓存，
+	// 让下一次请求立刻看到新值，不必等待后台刷新器的 TTL。
+	if s.quotaAutoPauseSink != nil {
+		s.quotaAutoPauseSink(cfg.OpenAIAccountQuotaAutoPause)
+	}
 
 	// notify cleanup service to reload schedule/enabled.
 	if s.cleanupReloader != nil {

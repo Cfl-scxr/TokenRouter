@@ -798,11 +798,65 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UsesGlobalDefa
 	require.Equal(t, int64(35402), account.ID)
 }
 
+// 回归保护：账号级显式禁用标记应在存在全局默认阈值时让账号豁免自动暂停。
+// 否则“阈值留空”会静默回退到全局默认值，管理员无法单独白名单某个账号。
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerAccountDisableOverridesGlobalDefault(t *testing.T) {
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold5h: 0.95})
+	// 账号用量很高且没有账号级阈值（通常会回退到全局默认并被暂停），
+	// 但这里设置了显式禁用标记。
+	primary := Account{
+		ID:          35701,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  99.0,
+			"auto_pause_5h_disabled": true,
+		},
+	}
+	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35701), account.ID)
+}
+
+// 禁用标记按窗口生效：只禁用 5h 时，7d 自动暂停仍应触发。
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerWindowDisableScoped(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35801,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"codex_7d_used_percent":   99.0,
+			"auto_pause_5h_disabled":  true,
+			"auto_pause_7d_threshold": 0.95,
+		},
+	}
+	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35802), account.ID, "7d auto-pause must still fire even though 5h is disabled")
+}
+
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageWindowResetSkipsPause(t *testing.T) {
 	ctx := context.Background()
-	// Usage is over threshold but the window's reset time has already passed, so the
-	// cached percentage is stale (the real window rolled over) and the account must NOT
-	// stay paused — otherwise it could be skipped forever with no traffic to refresh it.
+	// 用量超过阈值，但窗口重置时间已过，因此缓存百分比已经过期（真实窗口已滚动），
+	// 账号不能继续暂停；否则它可能因为没有流量刷新而被永久跳过。
 	primary := Account{
 		ID:          35501,
 		Platform:    PlatformOpenAI,
@@ -828,7 +882,7 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageWind
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshUsageWindowStillPauses(t *testing.T) {
 	ctx := context.Background()
-	// Same as above but the window has not reset yet, so the account stays paused.
+	// 与上面相同，但窗口尚未重置，因此账号仍应保持暂停。
 	primary := Account{
 		ID:          35601,
 		Platform:    PlatformOpenAI,
@@ -1394,6 +1448,82 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 	require.Equal(t, 3, decision.CandidateCount)
 	require.Equal(t, 2, decision.TopK)
 	require.Greater(t, decision.LoadSkew, 0.0)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+// 回归保护：TopK 初始过滤必须剔除配额自动暂停账号。否则候选池会被暂停账号填满，
+// 健康账号落到 TopK 之外，调度器会在健康账号存在时仍返回“无可用账号”。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKExcludesQuotaPaused(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(110)
+	accounts := []Account{
+		{
+			ID:          37001,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra: map[string]any{
+				"codex_5h_used_percent":   96.0,
+				"auto_pause_5h_threshold": 0.95,
+			},
+		},
+		{
+			ID:          37002,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    5,
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1 // TopK=1 会让问题必现：暂停账号会完全挤掉健康账号。
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0.4
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1.0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 1.0
+
+	concurrencyCache := schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			37001: {AccountID: 37001, LoadRate: 5, WaitingCount: 0},
+			37002: {AccountID: 37002, LoadRate: 5, WaitingCount: 0},
+		},
+		acquireResults: map[int64]bool{
+			37002: true,
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(37002), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	// 只有健康账号应该进入候选池；暂停账号必须在初始过滤阶段被剔除。
+	require.Equal(t, 1, decision.CandidateCount)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}

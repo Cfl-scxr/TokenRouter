@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -169,28 +168,7 @@ const openAIQuotaAutoPauseSettingsCacheTTL = 60 * time.Second
 const openAIQuotaAutoPauseSettingsErrorTTL = 5 * time.Second
 const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
-var openAIQuotaAutoPauseSettingsCache sync.Map // map[string]*cachedOpenAIQuotaAutoPauseSettings
-var openAIQuotaAutoPauseSettingsSF singleflight.Group
-
-func openAIQuotaAutoPauseSettingsCacheKey(repo SettingRepository) string {
-	if repo == nil {
-		return "nil"
-	}
-	return fmt.Sprintf("%T:%p", repo, repo)
-}
-
-func loadOpenAIQuotaAutoPauseSettingsCache(repo SettingRepository) (*cachedOpenAIQuotaAutoPauseSettings, bool) {
-	value, ok := openAIQuotaAutoPauseSettingsCache.Load(openAIQuotaAutoPauseSettingsCacheKey(repo))
-	if !ok || value == nil {
-		return nil, false
-	}
-	cached, ok := value.(*cachedOpenAIQuotaAutoPauseSettings)
-	return cached, ok && cached != nil
-}
-
-func storeOpenAIQuotaAutoPauseSettingsCache(repo SettingRepository, cached *cachedOpenAIQuotaAutoPauseSettings) {
-	openAIQuotaAutoPauseSettingsCache.Store(openAIQuotaAutoPauseSettingsCacheKey(repo), cached)
-}
+const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
 // DefaultSubscriptionPlanReader validates plan references used by default subscriptions.
 type DefaultSubscriptionPlanReader interface {
@@ -216,6 +194,14 @@ type SettingService struct {
 	openAICodexUASF             singleflight.Group
 	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
 	openAIAllowCodexPluginSF    singleflight.Group
+
+	// openAIQuotaAutoPauseSettingsCache 保存最近一次观测到的配额自动暂停设置。
+	// GetOpenAIQuotaAutoPauseSettings 在请求热路径读取这个 atomic.Value，绝不阻塞等待 DB；
+	// 当缓存项过期时，后台 goroutine 通过 openAIQuotaAutoPauseSettingsSF 刷新它
+	// （stale-while-revalidate）。该字段归属单个服务实例，也让测试天然隔离：
+	// 每个 SettingService 实例拥有自己的缓存，不共享包级状态。
+	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
+	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -2059,9 +2045,17 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		enabled:   settings.OpenAIAdvancedSchedulerEnabled,
 		expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
 	})
-	cacheKey := openAIQuotaAutoPauseSettingsCacheKey(s.settingRepo)
-	openAIQuotaAutoPauseSettingsSF.Forget(cacheKey)
-	openAIQuotaAutoPauseSettingsCache.Delete(cacheKey)
+	// 使配额自动暂停缓存失效，并让下一次读取触发重新加载。
+	// 这里无法判断 ops_advanced_settings 是否也被修改，因此采用防御式处理：
+	// 写入一个已过期条目，GetOpenAIQuotaAutoPauseSettings 会先返回旧值并触发异步刷新，
+	// 不会阻塞后续请求。
+	s.openAIQuotaAutoPauseSettingsSF.Forget(openAIQuotaAutoPauseSettingsRefreshKey)
+	if cached, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings); cached != nil {
+		s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
+			settings:  cached.settings,
+			expiresAt: 0,
+		})
+	}
 	if s.cfg != nil {
 		s.cfg.SetTrustForwardedIPForAPIKeyACL(settings.APIKeyACLTrustForwardedIP)
 	}
@@ -4627,49 +4621,98 @@ func (s *SettingService) GetClaudeCodeVersionBounds(ctx context.Context) (min, m
 	return b.min, b.max
 }
 
+// GetOpenAIQuotaAutoPauseSettings 返回当前全局默认配额自动暂停设置。
+// 它会在 OpenAI 调度热路径上被调用（每个请求一次），因此设计为绝不阻塞等待 DB：
+//
+//   - 缓存新鲜：立即返回。
+//   - 缓存过期或为空：返回最后已知值，并由后台 goroutine 通过 singleflight 刷新缓存
+//     （stale-while-revalidate）。
+//   - 首次调用且尚无缓存：返回零默认值并触发同样的异步刷新；下一次调用即可拿到新填充的值。
+//
+// 需要同步读取最新持久化值的调用方（测试、更新后确认、可选启动预热）
+// 应调用 WarmOpenAIQuotaAutoPauseSettings。
 func (s *SettingService) GetOpenAIQuotaAutoPauseSettings(ctx context.Context) OpsOpenAIAccountQuotaAutoPauseSettings {
-	if cached, ok := loadOpenAIQuotaAutoPauseSettingsCache(s.settingRepo); ok {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.settings
+	if s == nil {
+		return OpsOpenAIAccountQuotaAutoPauseSettings{}
+	}
+	cached, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings)
+	now := time.Now().UnixNano()
+	if cached != nil && now < cached.expiresAt {
+		return cached.settings
+	}
+	// 缓存过期或未设置：触发后台刷新，但不阻塞当前请求。
+	// singleflight.DoChan 会合并并发刷新；这里有意忽略返回 channel，
+	// 结果会通过 atomic 缓存对外可见。
+	s.openAIQuotaAutoPauseSettingsSF.DoChan(openAIQuotaAutoPauseSettingsRefreshKey, func() (any, error) {
+		s.refreshOpenAIQuotaAutoPauseSettings(context.Background())
+		return nil, nil
+	})
+	if cached != nil {
+		return cached.settings // 刷新期间先返回旧值
+	}
+	return OpsOpenAIAccountQuotaAutoPauseSettings{}
+}
+
+// WarmOpenAIQuotaAutoPauseSettings 同步加载配额自动暂停设置到内存缓存。
+// 应用启动时可用它让首个请求命中预热缓存；测试也可用它在构造服务后获得确定性读取。
+func (s *SettingService) WarmOpenAIQuotaAutoPauseSettings(ctx context.Context) OpsOpenAIAccountQuotaAutoPauseSettings {
+	if s == nil {
+		return OpsOpenAIAccountQuotaAutoPauseSettings{}
+	}
+	s.refreshOpenAIQuotaAutoPauseSettings(ctx)
+	cached, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings)
+	if cached == nil {
+		return OpsOpenAIAccountQuotaAutoPauseSettings{}
+	}
+	return cached.settings
+}
+
+// refreshOpenAIQuotaAutoPauseSettings 从 DB 读取最新设置并写入内存缓存。
+// 出错时写入旧值（如果没有旧缓存则写入零默认值）并使用更短的错误 TTL，
+// 让下一次刷新更快到来。该方法始终使用自带超时的 context，
+// 避免刷新延迟受调用方影响而变得不可预测。
+func (s *SettingService) refreshOpenAIQuotaAutoPauseSettings(ctx context.Context) {
+	if s == nil || s.settingRepo == nil {
+		return
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIQuotaAutoPauseSettingsDBTimeout)
+	defer cancel()
+
+	settings := OpsOpenAIAccountQuotaAutoPauseSettings{}
+	ttl := openAIQuotaAutoPauseSettingsCacheTTL
+	raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpsAdvancedSettings)
+	if err == nil {
+		cfg := defaultOpsAdvancedSettings()
+		if strings.TrimSpace(raw) != "" {
+			if jsonErr := json.Unmarshal([]byte(raw), cfg); jsonErr == nil {
+				normalizeOpsAdvancedSettings(cfg)
+			}
 		}
+		settings = cfg.OpenAIAccountQuotaAutoPause
+	} else if !errors.Is(err, ErrSettingNotFound) {
+		// 真实错误：继续返回旧值，但更快重试刷新。
+		if prior, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings); prior != nil {
+			settings = prior.settings
+		}
+		ttl = openAIQuotaAutoPauseSettingsErrorTTL
 	}
 
-	cacheKey := openAIQuotaAutoPauseSettingsCacheKey(s.settingRepo)
-	result, _, _ := openAIQuotaAutoPauseSettingsSF.Do(cacheKey, func() (any, error) {
-		if cached, ok := loadOpenAIQuotaAutoPauseSettingsCache(s.settingRepo); ok {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.settings, nil
-			}
-		}
-
-		settings := OpsOpenAIAccountQuotaAutoPauseSettings{}
-		ttl := openAIQuotaAutoPauseSettingsCacheTTL
-		if s != nil && s.settingRepo != nil {
-			dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIQuotaAutoPauseSettingsDBTimeout)
-			defer cancel()
-			raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpsAdvancedSettings)
-			if err == nil {
-				cfg := defaultOpsAdvancedSettings()
-				if strings.TrimSpace(raw) != "" {
-					if jsonErr := json.Unmarshal([]byte(raw), cfg); jsonErr == nil {
-						normalizeOpsAdvancedSettings(cfg)
-					}
-				}
-				settings = cfg.OpenAIAccountQuotaAutoPause
-			} else {
-				ttl = openAIQuotaAutoPauseSettingsErrorTTL
-			}
-		}
-
-		storeOpenAIQuotaAutoPauseSettingsCache(s.settingRepo, &cachedOpenAIQuotaAutoPauseSettings{
-			settings:  settings,
-			expiresAt: time.Now().Add(ttl).UnixNano(),
-		})
-		return settings, nil
+	s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
+		settings:  settings,
+		expiresAt: time.Now().Add(ttl).UnixNano(),
 	})
+}
 
-	settings, _ := result.(OpsOpenAIAccountQuotaAutoPauseSettings)
-	return settings
+// SetOpenAIQuotaAutoPauseSettings 将给定设置直接写入内存缓存。
+// 设置写入路径会调用它，让下一次读取立即反映新值，不必等待后台刷新。
+func (s *SettingService) SetOpenAIQuotaAutoPauseSettings(settings OpsOpenAIAccountQuotaAutoPauseSettings) {
+	if s == nil {
+		return
+	}
+	s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
+		settings:  settings,
+		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
+	})
 }
 
 // GetRectifierSettings 获取请求整流器配置

@@ -428,6 +428,45 @@ func ProvideBackupService(
 	return svc
 }
 
+// ProvideOpsService 构造 OpsService，并接入由 SettingService 支撑的配额自动暂停缓存写入回调。
+// 这与 SetCleanupReloader 模式一致：OpsService 不持有 *SettingService 引用，
+// 而是由 wire 注入一个小回调，让 ops_advanced_settings 写入后能立刻传播到调度热路径缓存。
+func ProvideOpsService(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	cfg *config.Config,
+	accountRepo AccountRepository,
+	userRepo UserRepository,
+	concurrencyService *ConcurrencyService,
+	gatewayService *GatewayService,
+	openAIGatewayService *OpenAIGatewayService,
+	geminiCompatService *GeminiMessagesCompatService,
+	antigravityGatewayService *AntigravityGatewayService,
+	systemLogSink *OpsSystemLogSink,
+	settingService *SettingService,
+) *OpsService {
+	svc := NewOpsService(
+		opsRepo,
+		settingRepo,
+		cfg,
+		accountRepo,
+		userRepo,
+		concurrencyService,
+		gatewayService,
+		openAIGatewayService,
+		geminiCompatService,
+		antigravityGatewayService,
+		systemLogSink,
+	)
+	if settingService != nil {
+		svc.SetOpenAIQuotaAutoPauseSettingsSink(settingService.SetOpenAIQuotaAutoPauseSettings)
+		// 可选预热：让进程启动后的首个调度请求看到已填充缓存，而不是零默认值。
+		// 该操作尽力而为，并由同步超时边界保护。
+		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
+	}
+	return svc
+}
+
 // ProvideSettingService wires SettingService with group reader and proxy repo.
 func ProvideSettingService(settingRepo SettingRepository, paymentConfigService *PaymentConfigService, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
@@ -533,7 +572,7 @@ var ProviderSet = wire.NewSet(
 	NewDataManagementService,
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
-	NewOpsService,
+	ProvideOpsService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,

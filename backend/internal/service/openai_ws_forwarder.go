@@ -4193,10 +4193,9 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		return nil, nil
 	}
-	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
-	// account over its 5h/7d threshold keeps serving the same response chain even though
-	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
-	// without deleting the binding (the window may reset before the next turn).
+	// 配额自动暂停也必须拦截 previous_response_id 粘性路径；否则超过 5h/7d 阈值的账号
+	// 即使被普通调度跳过，也会继续服务同一响应链。暂停是临时状态，因此这里不删除绑定，
+	// 直接回落到普通调度（下一轮前窗口可能已重置）。
 	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
 		return nil, nil
 	}
