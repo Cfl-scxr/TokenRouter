@@ -281,7 +281,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
-	require.JSONEq(t, `{"worker_count":32,"queue_size":100000,"task_timeout_seconds":300}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"task_timeout_seconds":300}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
@@ -308,7 +308,7 @@ func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T
 }
 
 func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testing.T) {
-	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":999,"queue_size":999999,"task_timeout_seconds":999}`}}
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":2048,"queue_size":999999,"task_timeout_seconds":999}`}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
 		QueueSize:   1,

@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultDataSharingCaptureWorkerCount        = 32
-	maxDataSharingCaptureWorkerCount            = 32
+	maxDataSharingCaptureWorkerCount            = 1024
 	defaultDataSharingCaptureQueueSize          = 32768
 	maxDataSharingCaptureQueueSize              = 100000
 	defaultDataSharingCaptureTaskTimeoutSeconds = 15
