@@ -67,6 +67,12 @@ export interface DataShareSessionFilters {
   sort_order?: 'asc' | 'desc'
 }
 
+export interface DataShareSessionFilterOptions {
+  models: string[]
+  request_paths: string[]
+  user_agents: string[]
+}
+
 export interface DataShareExportTicket {
   token: string
   download_url: string
@@ -103,6 +109,11 @@ export async function listSessions(
   const { data } = await apiClient.get<PaginatedResponse<DataShareSession>>('/data-sharing/sessions', {
     params: { page, page_size: pageSize, ...filters }
   })
+  return data
+}
+
+export async function getFilterOptions(): Promise<DataShareSessionFilterOptions> {
+  const { data } = await apiClient.get<DataShareSessionFilterOptions>('/data-sharing/filter-options')
   return data
 }
 
@@ -147,6 +158,7 @@ export const dataSharingAPI = {
   getNotice,
   confirmNotice,
   listSessions,
+  getFilterOptions,
   getSession,
   createExportTicket,
   createSessionExportTicket,

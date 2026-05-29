@@ -263,6 +263,57 @@ func TestDataShareSessionRepository_RequestPathBreakdownLoader(t *testing.T) {
 	require.Equal(t, int64(10), uaPoints[1].TotalTokens)
 }
 
+func TestDataShareSessionRepository_FilterOptionsIndependentFromQuality(t *testing.T) {
+	repo, _ := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	sessions := []struct {
+		traj    string
+		path    string
+		model   string
+		ua      string
+		quality string
+		userID  int64
+	}{
+		{traj: "traj-invalid", path: "/v1/responses", model: "gpt-5.5", ua: "opencode", quality: service.DataShareQualityInvalid, userID: 7},
+		{traj: "traj-complete", path: "/v1/messages", model: "gpt-5.4", ua: "claude-cli", quality: service.DataShareQualityComplete, userID: 7},
+		{traj: "traj-other-user", path: "/v1/chat/completions", model: "other-model", ua: "other-ua", quality: service.DataShareQualityComplete, userID: 8},
+	}
+	for _, item := range sessions {
+		require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+			TrajectoryID:       item.traj,
+			SessionID:          item.traj,
+			Dataset:            "tokenrouter-agent",
+			Provider:           service.PlatformOpenAI,
+			Model:              item.model,
+			RequestPath:        item.path,
+			UserAgent:          item.ua,
+			Status:             service.DataShareStatusCompleted,
+			IsFinalSnapshot:    true,
+			SourceRequestCount: 1,
+			Tools:              []map[string]any{},
+			Messages:           []map[string]any{},
+			Usage:              map[string]any{},
+			Meta:               map[string]any{"request_path": item.path, "user_agent": item.ua},
+			SessionJSON:        map[string]any{"request_path": item.path, "user_agent": item.ua},
+			QualityStatus:      item.quality,
+			QualityErrors:      []string{},
+			TotalTokens:        1,
+			UserID:             item.userID,
+			CreatedAt:          now,
+			EndedAt:            &now,
+			UpdatedAt:          now,
+		}))
+	}
+
+	options, err := repo.FilterOptions(ctx, service.DataShareSessionFilters{UserID: 7})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-5.4", "gpt-5.5"}, options.Models)
+	require.Equal(t, []string{"/v1/messages", "/v1/responses"}, options.RequestPaths)
+	require.Equal(t, []string{"claude-cli", "opencode"}, options.UserAgents)
+}
+
 func TestDataShareSessionRepository_CompressesPayloadAndOmitsListPayload(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()

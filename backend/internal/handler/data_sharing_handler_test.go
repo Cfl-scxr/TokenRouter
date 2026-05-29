@@ -108,6 +108,10 @@ func (r *dataShareHandlerRepoStub) Stats(context.Context, service.DataShareSessi
 	panic("unexpected Stats call")
 }
 
+func (r *dataShareHandlerRepoStub) FilterOptions(context.Context, service.DataShareSessionFilters) (*service.DataShareSessionFilterOptions, error) {
+	panic("unexpected FilterOptions call")
+}
+
 func (r *dataShareHandlerRepoStub) TotalStorageBytes(context.Context) (int64, error) {
 	return 0, nil
 }

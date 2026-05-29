@@ -197,6 +197,16 @@ func (h *DataSharingHandler) ListSessions(c *gin.Context) {
 	response.Paginated(c, out, total, page, pageSize)
 }
 
+// FilterOptions 返回管理端数据共享列表的全量筛选选项。
+func (h *DataSharingHandler) FilterOptions(c *gin.Context) {
+	options, err := h.dataSharingService.FilterOptions(c.Request.Context(), service.DataShareSessionFilters{})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, options)
+}
+
 // GetSession 返回单条数据共享 session 详情。
 func (h *DataSharingHandler) GetSession(c *gin.Context) {
 	id, err := parseAdminDataShareIDParam(c)

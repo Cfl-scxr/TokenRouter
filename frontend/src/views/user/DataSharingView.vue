@@ -233,7 +233,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { dataSharingAPI, type DataShareSession, type DataShareSessionFilters } from '@/api/dataSharing'
+import { dataSharingAPI, type DataShareSession, type DataShareSessionFilterOptions, type DataShareSessionFilters } from '@/api/dataSharing'
 import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
 
@@ -242,6 +242,7 @@ const { t, te } = useI18n()
 
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
+const filterOptions = ref<DataShareSessionFilterOptions>({ models: [], request_paths: [], user_agents: [] })
 // 选中状态支持两种模式：显式 ID 列表，以及“当前筛选条件全集 + 排除列表”。
 const selectedIds = ref<Set<number>>(new Set())
 const excludedIds = ref<Set<number>>(new Set())
@@ -303,33 +304,21 @@ const selectionSummary = computed(() => {
 })
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
 const requestPathOptions = computed(() => {
-  const values = new Set<string>()
-  for (const row of sessions.value) {
-    if (row.request_path) values.add(row.request_path)
-  }
   return [
     { value: 'all', label: '全部路径' },
-    ...Array.from(values).sort().map(value => ({ value, label: value }))
+    ...filterOptions.value.request_paths.map(value => ({ value, label: value }))
   ]
 })
 const modelOptions = computed(() => {
-  const values = new Set<string>()
-  for (const row of sessions.value) {
-    if (row.model) values.add(row.model)
-  }
   return [
     { value: 'all', label: '全部模型' },
-    ...Array.from(values).sort().map(value => ({ value, label: value }))
+    ...filterOptions.value.models.map(value => ({ value, label: value }))
   ]
 })
 const userAgentOptions = computed(() => {
-  const values = new Set<string>()
-  for (const row of sessions.value) {
-    if (row.user_agent) values.add(row.user_agent)
-  }
   return [
     { value: 'all', label: '全部 User Agent' },
-    ...Array.from(values).sort().map(value => ({ value, label: formatUserAgent(value) }))
+    ...filterOptions.value.user_agents.map(value => ({ value, label: formatUserAgent(value) }))
   ]
 })
 
@@ -361,6 +350,14 @@ async function loadSessions() {
     appStore.showError('加载数据共享记录失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadFilterOptions() {
+  try {
+    filterOptions.value = await dataSharingAPI.getFilterOptions()
+  } catch (error) {
+    appStore.showError('加载数据共享筛选项失败')
   }
 }
 
@@ -528,5 +525,8 @@ function formatBytes(value?: number | null) {
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`
 }
 
-onMounted(loadSessions)
+onMounted(() => {
+  loadFilterOptions()
+  loadSessions()
+})
 </script>

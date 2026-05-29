@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { DataShareExportTicket, DataShareNotice, DataShareSession, DataShareSessionFilters } from '../dataSharing'
+import type { DataShareExportTicket, DataShareNotice, DataShareSession, DataShareSessionFilterOptions, DataShareSessionFilters } from '../dataSharing'
 import type { PaginatedResponse } from '@/types'
 
 export interface DataShareStoragePoint {
@@ -129,6 +129,11 @@ export async function listSessions(
   return data
 }
 
+export async function getFilterOptions(): Promise<DataShareSessionFilterOptions> {
+  const { data } = await apiClient.get<DataShareSessionFilterOptions>('/admin/data-sharing/filter-options')
+  return data
+}
+
 export async function getSession(id: number): Promise<DataShareSession> {
   const { data } = await apiClient.get<DataShareSession>(`/admin/data-sharing/sessions/${id}`)
   return data
@@ -178,6 +183,7 @@ export const adminDataSharingAPI = {
   getStorageLimit,
   updateStorageLimit,
   listSessions,
+  getFilterOptions,
   getSession,
   deleteSession,
   batchDeleteSessions,

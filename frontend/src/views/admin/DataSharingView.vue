@@ -176,12 +176,25 @@
       </div>
 
       <div class="card p-4">
-        <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">采集跳过规则</h2>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              :aria-expanded="skipRulesExpanded"
+              aria-controls="data-sharing-skip-rules"
+              @click="toggleSkipRulesExpanded"
+            >
+              <span>采集跳过规则</span>
+              <span class="badge badge-gray">{{ skipRulesSummary }}</span>
+            </button>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">命中启用规则的辅助请求不会进入数据共享 session。</p>
           </div>
           <div class="flex flex-wrap gap-2">
+            <button class="btn btn-secondary btn-sm" @click="toggleSkipRulesExpanded">
+              <Icon :name="skipRulesExpanded ? 'chevronUp' : 'chevronDown'" size="sm" class="mr-1" />
+              {{ skipRulesExpanded ? '收起' : '展开' }}
+            </button>
             <button class="btn btn-secondary btn-sm" :disabled="skipRulesLoading || savingSkipRules" @click="restoreDefaultSkipRules">
               恢复默认规则
             </button>
@@ -196,131 +209,133 @@
           </div>
         </div>
 
-        <div v-if="skipRulesLoading" class="flex h-32 items-center justify-center">
-          <LoadingSpinner />
-        </div>
-        <div v-else-if="skipRules.length === 0" class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-          暂无跳过规则
-        </div>
-        <div v-else class="space-y-3">
-          <div
-            v-for="(rule, index) in skipRules"
-            :key="rule.id || index"
-            class="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
-          >
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                <input v-model="rule.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600" />
-                启用规则
-              </label>
-              <button class="btn btn-ghost btn-sm text-red-600 hover:text-red-700" @click="removeSkipRule(index)">
-                <Icon name="trash" size="sm" class="mr-1" />
-                删除
-              </button>
-            </div>
+        <div v-if="skipRulesExpanded" id="data-sharing-skip-rules" class="mt-4">
+          <div v-if="skipRulesLoading" class="flex h-32 items-center justify-center">
+            <LoadingSpinner />
+          </div>
+          <div v-else-if="skipRules.length === 0" class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            暂无跳过规则
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="(rule, index) in skipRules"
+              :key="rule.id || index"
+              class="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+            >
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <input v-model="rule.enabled" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                  启用规则
+                </label>
+                <button class="btn btn-ghost btn-sm text-red-600 hover:text-red-700" @click="removeSkipRule(index)">
+                  <Icon name="trash" size="sm" class="mr-1" />
+                  删除
+                </button>
+              </div>
 
-            <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <div>
-                <label class="input-label">规则 ID</label>
-                <input v-model="rule.id" type="text" class="input font-mono text-sm" placeholder="custom_rule" />
-              </div>
-              <div>
-                <label class="input-label">规则名称</label>
-                <input v-model="rule.name" type="text" class="input" placeholder="辅助请求跳过规则" />
-              </div>
-              <div>
-                <label class="input-label">客户端</label>
-                <input
-                  :value="joinList(rule.client_families)"
-                  type="text"
-                  class="input"
-                  placeholder="opencode, claude-cli"
-                  @input="setSkipRuleList(rule, 'client_families', eventValue($event))"
-                />
-              </div>
-              <div>
-                <label class="input-label">模型</label>
-                <input
-                  :value="joinList(rule.models)"
-                  type="text"
-                  class="input font-mono text-sm"
-                  placeholder="gpt-5.4-mini, codex-auto-review"
-                  @input="setSkipRuleList(rule, 'models', eventValue($event))"
-                />
-              </div>
-              <div>
-                <label class="input-label">请求路径</label>
-                <div class="relative" :ref="el => setSkipRulePathMenuRef(rule.id || String(index), el)">
-                  <button type="button" class="input flex items-center justify-between gap-2 text-left" @click="toggleSkipRulePathMenu(rule.id || String(index))">
-                    <span class="truncate">{{ formatSkipRulePaths(rule.request_paths) }}</span>
-                    <Icon name="chevronDown" size="sm" class="text-gray-400" />
-                  </button>
-                  <div
-                    v-if="openSkipRulePathMenu === (rule.id || String(index))"
-                    class="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
-                  >
-                    <label
-                      v-for="option in skipRuleRequestPathOptions"
-                      :key="option.value"
-                      class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+              <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div>
+                  <label class="input-label">规则 ID</label>
+                  <input v-model="rule.id" type="text" class="input font-mono text-sm" placeholder="custom_rule" />
+                </div>
+                <div>
+                  <label class="input-label">规则名称</label>
+                  <input v-model="rule.name" type="text" class="input" placeholder="辅助请求跳过规则" />
+                </div>
+                <div>
+                  <label class="input-label">客户端</label>
+                  <input
+                    :value="joinList(rule.client_families)"
+                    type="text"
+                    class="input"
+                    placeholder="opencode, claude-cli"
+                    @input="setSkipRuleList(rule, 'client_families', eventValue($event))"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">模型</label>
+                  <input
+                    :value="joinList(rule.models)"
+                    type="text"
+                    class="input font-mono text-sm"
+                    placeholder="gpt-5.4-mini, codex-auto-review"
+                    @input="setSkipRuleList(rule, 'models', eventValue($event))"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">请求路径</label>
+                  <div class="relative" :ref="el => setSkipRulePathMenuRef(rule.id || String(index), el)">
+                    <button type="button" class="input flex items-center justify-between gap-2 text-left" @click="toggleSkipRulePathMenu(rule.id || String(index))">
+                      <span class="truncate">{{ formatSkipRulePaths(rule.request_paths) }}</span>
+                      <Icon name="chevronDown" size="sm" class="text-gray-400" />
+                    </button>
+                    <div
+                      v-if="openSkipRulePathMenu === (rule.id || String(index))"
+                      class="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900"
                     >
-                      <input
-                        :checked="rule.request_paths.includes(option.value)"
-                        type="checkbox"
-                        class="rounded border-gray-300 text-primary-600"
-                        @change="toggleSkipRulePath(rule, option.value, $event)"
-                      />
-                      <span>{{ option.label }}</span>
-                    </label>
+                      <label
+                        v-for="option in skipRuleRequestPathOptions"
+                        :key="option.value"
+                        class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        <input
+                          :checked="rule.request_paths.includes(option.value)"
+                          type="checkbox"
+                          class="rounded border-gray-300 text-primary-600"
+                          @change="toggleSkipRulePath(rule, option.value, $event)"
+                        />
+                        <span>{{ option.label }}</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
-              <div>
-                <label class="input-label">匹配字段</label>
-                <div class="flex flex-wrap gap-2">
-                  <label
-                    v-for="scope in skipRuleScopeOptions"
-                    :key="scope.value"
-                    class="inline-flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300"
-                  >
-                    <input
-                      :checked="rule.field_scopes.includes(scope.value)"
-                      type="checkbox"
-                      class="rounded border-gray-300 text-primary-600"
-                      @change="toggleSkipRuleScope(rule, scope.value, $event)"
-                    />
-                    {{ scope.label }}
+              <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+                <div>
+                  <label class="input-label">匹配字段</label>
+                  <div class="flex flex-wrap gap-2">
+                    <label
+                      v-for="scope in skipRuleScopeOptions"
+                      :key="scope.value"
+                      class="inline-flex items-center gap-2 rounded border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                    >
+                      <input
+                        :checked="rule.field_scopes.includes(scope.value)"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-primary-600"
+                        @change="toggleSkipRuleScope(rule, scope.value, $event)"
+                      />
+                      {{ scope.label }}
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label class="input-label">匹配方式</label>
+                  <select v-model="rule.match_mode" class="input">
+                    <option value="contains">包含</option>
+                    <option value="equals">等于</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="input-label">大小写</label>
+                  <label class="flex h-10 items-center gap-2 rounded border border-gray-200 px-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                    <input v-model="rule.case_sensitive" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                    区分大小写
                   </label>
                 </div>
               </div>
-              <div>
-                <label class="input-label">匹配方式</label>
-                <select v-model="rule.match_mode" class="input">
-                  <option value="contains">包含</option>
-                  <option value="equals">等于</option>
-                </select>
-              </div>
-              <div>
-                <label class="input-label">大小写</label>
-                <label class="flex h-10 items-center gap-2 rounded border border-gray-200 px-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
-                  <input v-model="rule.case_sensitive" type="checkbox" class="rounded border-gray-300 text-primary-600" />
-                  区分大小写
-                </label>
-              </div>
-            </div>
 
-            <div class="mt-3">
-              <label class="input-label">关键词（一行一条）</label>
-              <textarea
-                :value="joinLines(rule.patterns)"
-                rows="3"
-                class="input font-mono text-sm"
-                placeholder="Generate a title for this conversation:"
-                @input="setSkipRulePatterns(rule, eventValue($event))"
-              ></textarea>
+              <div class="mt-3">
+                <label class="input-label">关键词（一行一条）</label>
+                <textarea
+                  :value="joinLines(rule.patterns)"
+                  rows="3"
+                  class="input font-mono text-sm"
+                  placeholder="Generate a title for this conversation:"
+                  @input="setSkipRulePatterns(rule, eventValue($event))"
+                ></textarea>
+              </div>
             </div>
           </div>
         </div>
@@ -555,7 +570,7 @@ import {
   type DataShareStorageLimit,
   type DataShareStats
 } from '@/api/admin/dataSharing'
-import { dataSharingAPI, type DataShareNotice, type DataShareSession } from '@/api/dataSharing'
+import { dataSharingAPI, type DataShareNotice, type DataShareSession, type DataShareSessionFilterOptions } from '@/api/dataSharing'
 import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
 
@@ -573,7 +588,9 @@ const storageLimitUnit = ref<'MB' | 'GB' | 'TB'>('GB')
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
+const filterOptions = ref<DataShareSessionFilterOptions>({ models: [], request_paths: [], user_agents: [] })
 const openSkipRulePathMenu = ref<string | null>(null)
+const skipRulesExpanded = ref(false)
 const skipRulePathMenuRefs = new Map<string, HTMLElement>()
 // 选中状态支持两种模式：显式 ID 列表，以及“当前筛选条件全集 + 排除列表”。
 const selectedIds = ref<Set<number>>(new Set())
@@ -882,6 +899,11 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+const skipRulesSummary = computed(() => {
+  const total = skipRules.value.length
+  const enabled = skipRules.value.filter(rule => rule.enabled).length
+  return `${enabled}/${total} 启用`
+})
 
 const storageLimitProgress = computed(() => {
   if (!storageLimit.value?.enabled) return 0
@@ -896,44 +918,23 @@ const storageLimitStatusText = computed(() => {
 })
 
 const requestPathOptions = computed(() => {
-  const values = new Set<string>()
-  for (const point of stats.value?.request_path_breakdown || []) {
-    if (point.request_path && point.request_path !== '(unknown)') values.add(point.request_path)
-  }
-  for (const row of sessions.value) {
-    if (row.request_path) values.add(row.request_path)
-  }
   return [
     { value: 'all', label: '全部路径' },
-    ...Array.from(values).sort().map(value => ({ value, label: value }))
+    ...filterOptions.value.request_paths.map(value => ({ value, label: value }))
   ]
 })
 
 const modelOptions = computed(() => {
-  const values = new Set<string>()
-  for (const point of stats.value?.model_breakdown || []) {
-    if (point.model && point.model !== '(unknown)') values.add(point.model)
-  }
-  for (const row of sessions.value) {
-    if (row.model) values.add(row.model)
-  }
   return [
     { value: 'all', label: '全部模型' },
-    ...Array.from(values).sort().map(value => ({ value, label: value }))
+    ...filterOptions.value.models.map(value => ({ value, label: value }))
   ]
 })
 
 const userAgentOptions = computed(() => {
-  const values = new Set<string>()
-  for (const point of stats.value?.user_agent_breakdown || []) {
-    if (point.user_agent && point.user_agent !== '(unknown)') values.add(point.user_agent)
-  }
-  for (const row of sessions.value) {
-    if (row.user_agent) values.add(row.user_agent)
-  }
   return [
     { value: 'all', label: '全部 User Agent' },
-    ...Array.from(values).sort().map(value => ({ value, label: formatUserAgent(value) }))
+    ...filterOptions.value.user_agents.map(value => ({ value, label: formatUserAgent(value) }))
   ]
 })
 
@@ -1080,11 +1081,20 @@ async function saveSkipRules() {
   }
 }
 
+function toggleSkipRulesExpanded() {
+  skipRulesExpanded.value = !skipRulesExpanded.value
+  if (!skipRulesExpanded.value) {
+    openSkipRulePathMenu.value = null
+  }
+}
+
 function restoreDefaultSkipRules() {
+  skipRulesExpanded.value = true
   skipRules.value = cloneSkipRules(defaultSkipRules)
 }
 
 function addSkipRule() {
+  skipRulesExpanded.value = true
   skipRules.value = [
     ...skipRules.value,
     {
@@ -1221,6 +1231,14 @@ async function loadStats() {
 function refreshStats() {
   loadStats()
   loadStorageLimit()
+}
+
+async function loadFilterOptions() {
+  try {
+    filterOptions.value = await adminDataSharingAPI.getFilterOptions()
+  } catch (error) {
+    appStore.showError('加载数据共享筛选项失败')
+  }
 }
 
 async function loadSessions() {
@@ -1503,6 +1521,7 @@ function formatBytes(value?: number | null) {
 
 onMounted(() => {
   document.addEventListener('click', closeSkipRulePathMenuOnOutsideClick)
+  loadFilterOptions()
   loadNotice()
   loadSkipRules()
   refreshAll()

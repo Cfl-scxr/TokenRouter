@@ -145,6 +145,13 @@ type DataShareSessionFilters struct {
 	Search        string
 }
 
+// DataShareSessionFilterOptions 描述列表筛选器的全量可选值。
+type DataShareSessionFilterOptions struct {
+	Models       []string `json:"models"`
+	RequestPaths []string `json:"request_paths"`
+	UserAgents   []string `json:"user_agents"`
+}
+
 // DataShareExportScope 表示数据共享导出下载票据的权限范围。
 type DataShareExportScope string
 
@@ -294,6 +301,7 @@ type DataShareSessionRepository interface {
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
 	Stats(ctx context.Context, filters DataShareSessionFilters) (*DataShareStats, error)
+	FilterOptions(ctx context.Context, filters DataShareSessionFilters) (*DataShareSessionFilterOptions, error)
 	TotalStorageBytes(ctx context.Context) (int64, error)
 }
 
@@ -933,6 +941,10 @@ func (s *DataSharingService) BatchDeleteSessions(ctx context.Context, ids []int6
 
 func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSessionFilters) (*DataShareStats, error) {
 	return s.repo.Stats(ctx, filters)
+}
+
+func (s *DataSharingService) FilterOptions(ctx context.Context, filters DataShareSessionFilters) (*DataShareSessionFilterOptions, error) {
+	return s.repo.FilterOptions(ctx, filters)
 }
 
 // CreateExportTicket 为大文件下载签发短期票据，避免浏览器用 Blob 缓存完整导出文件。

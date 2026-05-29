@@ -80,6 +80,7 @@ func RegisterUserRoutes(
 		{
 			dataSharing.GET("/notice", h.DataSharing.GetNotice)
 			dataSharing.POST("/confirm", h.DataSharing.ConfirmNotice)
+			dataSharing.GET("/filter-options", h.DataSharing.FilterOptions)
 			dataSharing.GET("/sessions", h.DataSharing.ListSessions)
 			dataSharing.GET("/sessions/:id", h.DataSharing.GetSession)
 			dataSharing.POST("/sessions/:id/export-ticket", h.DataSharing.CreateSessionExportTicket)

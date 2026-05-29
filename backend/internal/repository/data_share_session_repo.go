@@ -357,11 +357,67 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 	return stats, nil
 }
 
+func (r *dataShareSessionRepository) FilterOptions(ctx context.Context, filters service.DataShareSessionFilters) (*service.DataShareSessionFilterOptions, error) {
+	sqlq := r.sqlExecutorFromContext(ctx)
+	whereSQL, args := dataShareStatsWhere(filters)
+	models, err := r.loadDistinctDataShareStrings(ctx, sqlq, "model", whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	requestPaths, err := r.loadDistinctDataShareStrings(ctx, sqlq, "request_path", whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	userAgents, err := r.loadDistinctDataShareStrings(ctx, sqlq, "user_agent", whereSQL, args)
+	if err != nil {
+		return nil, err
+	}
+	return &service.DataShareSessionFilterOptions{
+		Models:       models,
+		RequestPaths: requestPaths,
+		UserAgents:   userAgents,
+	}, nil
+}
+
 func (r *dataShareSessionRepository) TotalStorageBytes(ctx context.Context) (int64, error) {
 	sqlq := r.sqlExecutorFromContext(ctx)
 	total := int64(0)
 	err := scanSingleRow(ctx, sqlq, `SELECT COALESCE(SUM(storage_bytes), 0) FROM data_share_sessions`, nil, &total)
 	return total, err
+}
+
+func (r *dataShareSessionRepository) loadDistinctDataShareStrings(ctx context.Context, sqlq sqlExecutor, column string, whereSQL string, args []any) ([]string, error) {
+	// 列名只来自固定调用点，避免把用户输入拼进 DISTINCT 查询。
+	whereSQL = dataShareAppendWhere(whereSQL, fmt.Sprintf("NULLIF(%s, '') IS NOT NULL", column))
+	rows, err := sqlq.QueryContext(ctx, fmt.Sprintf(`
+		SELECT DISTINCT %s
+		FROM data_share_sessions
+		%s
+		ORDER BY %s ASC
+	`, column, whereSQL, column), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]string, 0)
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		out = append(out, value)
+	}
+	return out, rows.Err()
+}
+
+func dataShareAppendWhere(whereSQL string, clause string) string {
+	if strings.TrimSpace(clause) == "" {
+		return whereSQL
+	}
+	if strings.TrimSpace(whereSQL) == "" {
+		return "WHERE " + clause
+	}
+	return whereSQL + " AND " + clause
 }
 
 func (r *dataShareSessionRepository) loadStorageTrend(ctx context.Context, sqlq sqlExecutor, whereSQL string, args []any) ([]service.DataShareStoragePoint, error) {

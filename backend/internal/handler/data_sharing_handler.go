@@ -146,6 +146,21 @@ func (h *DataSharingHandler) ListSessions(c *gin.Context) {
 	response.Paginated(c, out, total, page, pageSize)
 }
 
+// FilterOptions 返回当前用户数据共享列表的全量筛选选项。
+func (h *DataSharingHandler) FilterOptions(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	options, err := h.dataSharingService.FilterOptions(c.Request.Context(), service.DataShareSessionFilters{UserID: subject.UserID})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, options)
+}
+
 // GetSession 返回当前用户自己的单条数据共享 session 详情。
 func (h *DataSharingHandler) GetSession(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
