@@ -446,6 +446,21 @@ func (_c *UserCreate) AddAllowedGroups(v ...*Group) *UserCreate {
 	return _c.AddAllowedGroupIDs(ids...)
 }
 
+// AddDisabledPublicGroupIDs adds the "disabled_public_groups" edge to the Group entity by IDs.
+func (_c *UserCreate) AddDisabledPublicGroupIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddDisabledPublicGroupIDs(ids...)
+	return _c
+}
+
+// AddDisabledPublicGroups adds the "disabled_public_groups" edges to the Group entity.
+func (_c *UserCreate) AddDisabledPublicGroups(v ...*Group) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDisabledPublicGroupIDs(ids...)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_c *UserCreate) AddUsageLogIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddUsageLogIDs(ids...)
@@ -970,6 +985,26 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _c.config, mutation: newUserAllowedGroupMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DisabledPublicGroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _c.config, mutation: newUserDisabledPublicGroupMutation(_c.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields

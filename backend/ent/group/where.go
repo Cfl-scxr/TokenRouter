@@ -1352,6 +1352,29 @@ func HasAllowedUsersWith(preds ...predicate.User) predicate.Group {
 	})
 }
 
+// HasDisabledPublicUsers applies the HasEdge predicate on the "disabled_public_users" edge.
+func HasDisabledPublicUsers() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, DisabledPublicUsersTable, DisabledPublicUsersPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasDisabledPublicUsersWith applies the HasEdge predicate on the "disabled_public_users" edge with a given conditions (other predicates).
+func HasDisabledPublicUsersWith(preds ...predicate.User) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newDisabledPublicUsersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccountGroups applies the HasEdge predicate on the "account_groups" edge.
 func HasAccountGroups() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
@@ -1390,6 +1413,29 @@ func HasUserAllowedGroups() predicate.Group {
 func HasUserAllowedGroupsWith(preds ...predicate.UserAllowedGroup) predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
 		step := newUserAllowedGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasUserDisabledPublicGroups applies the HasEdge predicate on the "user_disabled_public_groups" edge.
+func HasUserDisabledPublicGroups() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, UserDisabledPublicGroupsTable, UserDisabledPublicGroupsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasUserDisabledPublicGroupsWith applies the HasEdge predicate on the "user_disabled_public_groups" edge with a given conditions (other predicates).
+func HasUserDisabledPublicGroupsWith(preds ...predicate.UserDisabledPublicGroup) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newUserDisabledPublicGroupsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

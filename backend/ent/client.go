@@ -46,6 +46,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/userallowedgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userattributedefinition"
 	"github.com/TokenFlux/TokenRouter/ent/userattributevalue"
+	"github.com/TokenFlux/TokenRouter/ent/userdisabledpublicgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userplatformquota"
 	"github.com/TokenFlux/TokenRouter/ent/usersubscription"
 
@@ -119,6 +120,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserDisabledPublicGroup is the client for interacting with the UserDisabledPublicGroup builders.
+	UserDisabledPublicGroup *UserDisabledPublicGroupClient
 	// UserPlatformQuota is the client for interacting with the UserPlatformQuota builders.
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
@@ -165,6 +168,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserDisabledPublicGroup = NewUserDisabledPublicGroupClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
@@ -290,6 +294,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:         NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:  NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:       NewUserAttributeValueClient(cfg),
+		UserDisabledPublicGroup:  NewUserDisabledPublicGroupClient(cfg),
 		UserPlatformQuota:        NewUserPlatformQuotaClient(cfg),
 		UserSubscription:         NewUserSubscriptionClient(cfg),
 	}, nil
@@ -342,6 +347,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:         NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:  NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:       NewUserAttributeValueClient(cfg),
+		UserDisabledPublicGroup:  NewUserDisabledPublicGroupClient(cfg),
 		UserPlatformQuota:        NewUserPlatformQuotaClient(cfg),
 		UserSubscription:         NewUserSubscriptionClient(cfg),
 	}, nil
@@ -381,7 +387,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserDisabledPublicGroup, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -399,7 +405,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserDisabledPublicGroup, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -470,6 +476,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserDisabledPublicGroupMutation:
+		return c.UserDisabledPublicGroup.mutate(ctx, m)
 	case *UserPlatformQuotaMutation:
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
@@ -2059,6 +2067,22 @@ func (c *GroupClient) QueryAllowedUsers(_m *Group) *UserQuery {
 	return query
 }
 
+// QueryDisabledPublicUsers queries the disabled_public_users edge of a Group.
+func (c *GroupClient) QueryDisabledPublicUsers(_m *Group) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, group.DisabledPublicUsersTable, group.DisabledPublicUsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAccountGroups queries the account_groups edge of a Group.
 func (c *GroupClient) QueryAccountGroups(_m *Group) *AccountGroupQuery {
 	query := (&AccountGroupClient{config: c.config}).Query()
@@ -2084,6 +2108,22 @@ func (c *GroupClient) QueryUserAllowedGroups(_m *Group) *UserAllowedGroupQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.GroupColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, group.UserAllowedGroupsTable, group.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUserDisabledPublicGroups queries the user_disabled_public_groups edge of a Group.
+func (c *GroupClient) QueryUserDisabledPublicGroups(_m *Group) *UserDisabledPublicGroupQuery {
+	query := (&UserDisabledPublicGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(userdisabledpublicgroup.Table, userdisabledpublicgroup.GroupColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, group.UserDisabledPublicGroupsTable, group.UserDisabledPublicGroupsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -4937,6 +4977,22 @@ func (c *UserClient) QueryAllowedGroups(_m *User) *GroupQuery {
 	return query
 }
 
+// QueryDisabledPublicGroups queries the disabled_public_groups edge of a User.
+func (c *UserClient) QueryDisabledPublicGroups(_m *User) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, user.DisabledPublicGroupsTable, user.DisabledPublicGroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUsageLogs queries the usage_logs edge of a User.
 func (c *UserClient) QueryUsageLogs(_m *User) *UsageLogQuery {
 	query := (&UsageLogClient{config: c.config}).Query()
@@ -5058,6 +5114,22 @@ func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.UserColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, user.UserAllowedGroupsTable, user.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUserDisabledPublicGroups queries the user_disabled_public_groups edge of a User.
+func (c *UserClient) QueryUserDisabledPublicGroups(_m *User) *UserDisabledPublicGroupQuery {
+	query := (&UserDisabledPublicGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userdisabledpublicgroup.Table, userdisabledpublicgroup.UserColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, user.UserDisabledPublicGroupsTable, user.UserDisabledPublicGroupsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5524,6 +5596,122 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserDisabledPublicGroupClient is a client for the UserDisabledPublicGroup schema.
+type UserDisabledPublicGroupClient struct {
+	config
+}
+
+// NewUserDisabledPublicGroupClient returns a client for the UserDisabledPublicGroup from the given config.
+func NewUserDisabledPublicGroupClient(c config) *UserDisabledPublicGroupClient {
+	return &UserDisabledPublicGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userdisabledpublicgroup.Hooks(f(g(h())))`.
+func (c *UserDisabledPublicGroupClient) Use(hooks ...Hook) {
+	c.hooks.UserDisabledPublicGroup = append(c.hooks.UserDisabledPublicGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userdisabledpublicgroup.Intercept(f(g(h())))`.
+func (c *UserDisabledPublicGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserDisabledPublicGroup = append(c.inters.UserDisabledPublicGroup, interceptors...)
+}
+
+// Create returns a builder for creating a UserDisabledPublicGroup entity.
+func (c *UserDisabledPublicGroupClient) Create() *UserDisabledPublicGroupCreate {
+	mutation := newUserDisabledPublicGroupMutation(c.config, OpCreate)
+	return &UserDisabledPublicGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserDisabledPublicGroup entities.
+func (c *UserDisabledPublicGroupClient) CreateBulk(builders ...*UserDisabledPublicGroupCreate) *UserDisabledPublicGroupCreateBulk {
+	return &UserDisabledPublicGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserDisabledPublicGroupClient) MapCreateBulk(slice any, setFunc func(*UserDisabledPublicGroupCreate, int)) *UserDisabledPublicGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserDisabledPublicGroupCreateBulk{err: fmt.Errorf("calling to UserDisabledPublicGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserDisabledPublicGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserDisabledPublicGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserDisabledPublicGroup.
+func (c *UserDisabledPublicGroupClient) Update() *UserDisabledPublicGroupUpdate {
+	mutation := newUserDisabledPublicGroupMutation(c.config, OpUpdate)
+	return &UserDisabledPublicGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserDisabledPublicGroupClient) UpdateOne(_m *UserDisabledPublicGroup) *UserDisabledPublicGroupUpdateOne {
+	mutation := newUserDisabledPublicGroupMutation(c.config, OpUpdateOne)
+	mutation.user = &_m.UserID
+	mutation.group = &_m.GroupID
+	return &UserDisabledPublicGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserDisabledPublicGroup.
+func (c *UserDisabledPublicGroupClient) Delete() *UserDisabledPublicGroupDelete {
+	mutation := newUserDisabledPublicGroupMutation(c.config, OpDelete)
+	return &UserDisabledPublicGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Query returns a query builder for UserDisabledPublicGroup.
+func (c *UserDisabledPublicGroupClient) Query() *UserDisabledPublicGroupQuery {
+	return &UserDisabledPublicGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserDisabledPublicGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// QueryUser queries the user edge of a UserDisabledPublicGroup.
+func (c *UserDisabledPublicGroupClient) QueryUser(_m *UserDisabledPublicGroup) *UserQuery {
+	return c.Query().
+		Where(userdisabledpublicgroup.UserID(_m.UserID), userdisabledpublicgroup.GroupID(_m.GroupID)).
+		QueryUser()
+}
+
+// QueryGroup queries the group edge of a UserDisabledPublicGroup.
+func (c *UserDisabledPublicGroupClient) QueryGroup(_m *UserDisabledPublicGroup) *GroupQuery {
+	return c.Query().
+		Where(userdisabledpublicgroup.UserID(_m.UserID), userdisabledpublicgroup.GroupID(_m.GroupID)).
+		QueryGroup()
+}
+
+// Hooks returns the client hooks.
+func (c *UserDisabledPublicGroupClient) Hooks() []Hook {
+	return c.hooks.UserDisabledPublicGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserDisabledPublicGroupClient) Interceptors() []Interceptor {
+	return c.inters.UserDisabledPublicGroup
+}
+
+func (c *UserDisabledPublicGroupClient) mutate(ctx context.Context, m *UserDisabledPublicGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserDisabledPublicGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserDisabledPublicGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserDisabledPublicGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserDisabledPublicGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserDisabledPublicGroup mutation op: %q", m.Op())
+	}
+}
+
 // UserPlatformQuotaClient is a client for the UserPlatformQuota schema.
 type UserPlatformQuotaClient struct {
 	config
@@ -5883,8 +6071,8 @@ type (
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, RedeemCodeUsage, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		UserAttributeDefinition, UserAttributeValue, UserDisabledPublicGroup,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -5893,8 +6081,8 @@ type (
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, RedeemCodeUsage, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		UserAttributeDefinition, UserAttributeValue, UserDisabledPublicGroup,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

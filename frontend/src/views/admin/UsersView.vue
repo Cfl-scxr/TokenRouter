@@ -1004,13 +1004,14 @@ const loadAllGroups = async () => {
 const getUserGroups = (user: AdminUser) => {
   const exclusive: AdminGroup[] = []
   const publicGroups: AdminGroup[] = []
+  const disabledPublicGroups = new Set(user.disabled_public_groups || [])
   for (const g of allGroups.value) {
     if (g.status !== 'active') continue
     if (g.is_exclusive) {
       if (user.allowed_groups?.includes(g.id)) {
         exclusive.push(g)
       }
-    } else {
+    } else if (!disabledPublicGroups.has(g.id)) {
       publicGroups.push(g)
     }
   }

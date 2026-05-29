@@ -38,6 +38,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				abortWithGoogleError(c, 401, "Invalid API key")
 				return
 			}
+			if errors.Is(err, service.ErrGroupDisabledForUser) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnavailable)
+				abortWithGoogleError(c, 403, "API Key 所属公开分组已被禁用")
+				return
+			}
 			abortWithGoogleError(c, 500, "Failed to validate API key")
 			return
 		}

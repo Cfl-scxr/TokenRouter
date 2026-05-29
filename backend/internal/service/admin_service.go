@@ -131,6 +131,8 @@ type CreateUserInput struct {
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
+	// DisabledPublicGroups 记录管理员禁止该用户使用的公开分组 ID。
+	DisabledPublicGroups []int64
 }
 
 type UpdateUserInput struct {
@@ -143,6 +145,8 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// DisabledPublicGroups 使用指针区分"未提供"和"清空公开分组禁用列表"
+	DisabledPublicGroups *[]int64
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -686,15 +690,16 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       input.Balance,
-		Concurrency:   input.Concurrency,
-		RPMLimit:      input.RPMLimit,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:                input.Email,
+		Username:             input.Username,
+		Notes:                input.Notes,
+		Role:                 RoleUser, // Always create as regular user, never admin
+		Balance:              input.Balance,
+		Concurrency:          input.Concurrency,
+		RPMLimit:             input.RPMLimit,
+		Status:               StatusActive,
+		AllowedGroups:        input.AllowedGroups,
+		DisabledPublicGroups: input.DisabledPublicGroups,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -757,6 +762,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	normalizedEmail := ""
 	emailChanged := false
 	oldRPMLimit := user.RPMLimit
+	oldDisabledPublicGroups := append([]int64(nil), user.DisabledPublicGroups...)
 
 	if input.Email != "" {
 		emailChanged = input.Email != user.Email
@@ -804,6 +810,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
+	if input.DisabledPublicGroups != nil {
+		user.DisabledPublicGroups = *input.DisabledPublicGroups
+	}
 
 	updateUser := s.userRepo.Update
 	if emailChanged && normalizedEmail != "" {
@@ -826,7 +835,13 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit {
+		if user.Concurrency != oldConcurrency ||
+			user.Status != oldStatus ||
+			user.Role != oldRole ||
+			user.RPMLimit != oldRPMLimit ||
+			!sameInt64Set(user.DisabledPublicGroups, oldDisabledPublicGroups) ||
+			input.AllowedGroups != nil ||
+			input.GroupRates != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -898,6 +913,39 @@ func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs [
 		}
 	}
 	return affected, nil
+}
+
+func sameInt64Set(a, b []int64) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	normalize := func(values []int64) []int64 {
+		seen := make(map[int64]struct{}, len(values))
+		out := make([]int64, 0, len(values))
+		for _, value := range values {
+			if value <= 0 {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			out = append(out, value)
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+		return out
+	}
+	left := normalize(a)
+	right := normalize(b)
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {
@@ -2209,6 +2257,18 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		}
 		if group.Status != StatusActive {
 			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+		}
+		if !group.IsExclusive {
+			if s.userRepo == nil {
+				return nil, infraerrors.InternalServer("USER_REPOSITORY_UNAVAILABLE", "user repository unavailable")
+			}
+			user, err := s.userRepo.GetByID(ctx, apiKey.UserID)
+			if err != nil {
+				return nil, fmt.Errorf("get user: %w", err)
+			}
+			if !user.CanBindGroup(group.ID, group.IsExclusive) {
+				return nil, ErrGroupNotAllowed
+			}
 		}
 		gid := *groupID
 		apiKey.GroupID = &gid

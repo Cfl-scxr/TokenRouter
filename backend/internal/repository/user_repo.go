@@ -18,6 +18,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/predicate"
 	dbuser "github.com/TokenFlux/TokenRouter/ent/user"
 	"github.com/TokenFlux/TokenRouter/ent/userallowedgroup"
+	"github.com/TokenFlux/TokenRouter/ent/userdisabledpublicgroup"
 	"github.com/TokenFlux/TokenRouter/ent/usersubscription"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/TokenFlux/TokenRouter/internal/service"
@@ -115,6 +116,9 @@ func (r *userRepository) createWithNormalizationGuard(ctx context.Context, userI
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
 	}
+	if err := r.syncUserDisabledPublicGroupsWithClient(txCtx, txClient, created.ID, userIn.DisabledPublicGroups); err != nil {
+		return err
+	}
 	if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 	}
@@ -143,6 +147,14 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	disabledPublicGroups, err := r.loadDisabledPublicGroups(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := disabledPublicGroups[id]; ok {
+		out.DisabledPublicGroups = v
+	}
+	out.GroupRestrictionsLoaded = true
 	return out, nil
 }
 
@@ -170,6 +182,14 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	disabledPublicGroups, err := r.loadDisabledPublicGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := disabledPublicGroups[m.ID]; ok {
+		out.DisabledPublicGroups = v
+	}
+	out.GroupRestrictionsLoaded = true
 	return out, nil
 }
 
@@ -245,6 +265,9 @@ func (r *userRepository) updateWithNormalizationGuard(ctx context.Context, userI
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+	}
+	if err := r.syncUserDisabledPublicGroupsWithClient(txCtx, txClient, updated.ID, userIn.DisabledPublicGroups); err != nil {
 		return err
 	}
 	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
@@ -510,6 +533,16 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
 		}
+	}
+	disabledPublicGroupsByUser, err := r.loadDisabledPublicGroups(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if groups, ok := disabledPublicGroupsByUser[id]; ok {
+			u.DisabledPublicGroups = groups
+		}
+		u.GroupRestrictionsLoaded = true
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
@@ -953,6 +986,14 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	disabledPublicGroups, err := r.loadDisabledPublicGroups(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := disabledPublicGroups[m.ID]; ok {
+		out.DisabledPublicGroups = v
+	}
+	out.GroupRestrictionsLoaded = true
 	return out, nil
 }
 
@@ -964,6 +1005,30 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 
 	rows, err := r.client.UserAllowedGroup.Query().
 		Where(userallowedgroup.UserIDIn(userIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range rows {
+		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
+	}
+
+	for userID := range out {
+		sort.Slice(out[userID], func(i, j int) bool { return out[userID][i] < out[userID][j] })
+	}
+
+	return out, nil
+}
+
+func (r *userRepository) loadDisabledPublicGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.client.UserDisabledPublicGroup.Query().
+		Where(userdisabledpublicgroup.UserIDIn(userIDs...)).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -1015,6 +1080,72 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 			}
 			return err
 		}
+	}
+
+	return nil
+}
+
+// syncUserDisabledPublicGroupsWithClient 同步用户禁用的公开分组列表。
+// 写入前会校验目标分组必须为非专属，避免把专属分组权限语义混入禁用表。
+func (r *userRepository) syncUserDisabledPublicGroupsWithClient(ctx context.Context, client *dbent.Client, userID int64, groupIDs []int64) error {
+	if client == nil {
+		return nil
+	}
+
+	if _, err := client.UserDisabledPublicGroup.Delete().Where(userdisabledpublicgroup.UserIDEQ(userID)).Exec(ctx); err != nil {
+		return err
+	}
+
+	unique := make(map[int64]struct{}, len(groupIDs))
+	for _, id := range groupIDs {
+		if id <= 0 {
+			continue
+		}
+		unique[id] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+
+	candidateIDs := make([]int64, 0, len(unique))
+	for groupID := range unique {
+		candidateIDs = append(candidateIDs, groupID)
+	}
+	sort.Slice(candidateIDs, func(i, j int) bool { return candidateIDs[i] < candidateIDs[j] })
+
+	publicIDs, err := client.Group.Query().
+		Where(
+			dbgroup.IDIn(candidateIDs...),
+			dbgroup.IsExclusiveEQ(false),
+		).
+		IDs(ctx)
+	if err != nil {
+		return err
+	}
+	publicSet := make(map[int64]struct{}, len(publicIDs))
+	for _, groupID := range publicIDs {
+		publicSet[groupID] = struct{}{}
+	}
+
+	creates := make([]*dbent.UserDisabledPublicGroupCreate, 0, len(publicIDs))
+	for _, groupID := range candidateIDs {
+		if _, ok := publicSet[groupID]; !ok {
+			continue
+		}
+		creates = append(creates, client.UserDisabledPublicGroup.Create().SetUserID(userID).SetGroupID(groupID))
+	}
+	if len(creates) == 0 {
+		return nil
+	}
+	if err := client.UserDisabledPublicGroup.
+		CreateBulk(creates...).
+		OnConflictColumns(userdisabledpublicgroup.FieldUserID, userdisabledpublicgroup.FieldGroupID).
+		DoNothing().
+		Exec(ctx); err != nil {
+		if isSQLNoRowsError(err) {
+			return nil
+		}
+		return err
 	}
 
 	return nil

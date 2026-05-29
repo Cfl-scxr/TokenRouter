@@ -137,6 +137,11 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))
 	require.True(t, uagRegclass.Valid, "expected user_allowed_groups table to exist")
 
+	// user_disabled_public_groups table should exist
+	var udpgRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_disabled_public_groups')").Scan(&udpgRegclass))
+	require.True(t, udpgRegclass.Valid, "expected user_disabled_public_groups table to exist")
+
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
 
@@ -150,6 +155,8 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+	requireColumn(t, tx, "user_disabled_public_groups", "created_at", "timestamp with time zone", 0, false)
+	requireIndex(t, tx, "user_disabled_public_groups", "idx_user_disabled_public_groups_group_id")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

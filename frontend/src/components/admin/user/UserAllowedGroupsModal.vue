@@ -98,28 +98,45 @@
           <div class="mb-3 flex items-center gap-2">
             <div class="h-1.5 w-1.5 rounded-full bg-green-500"></div>
             <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ t('admin.users.publicGroups') }}</h4>
-            <span class="text-xs text-gray-400">({{ publicGroupConfigs.length }})</span>
+            <span class="text-xs text-gray-400">({{ publicGroupConfigs.filter(c => c.isSelected).length }}/{{ publicGroupConfigs.length }})</span>
           </div>
           <div class="grid gap-3">
             <div
               v-for="config in publicGroupConfigs"
               :key="config.groupId"
-              class="relative overflow-hidden rounded-xl border-2 border-green-200 bg-green-50/50 p-4 dark:border-green-800/50 dark:bg-green-900/10"
+              class="group relative overflow-hidden rounded-xl border-2 p-4 transition-all duration-200"
+              :class="config.isSelected
+                ? 'border-green-300 bg-green-50/50 shadow-sm dark:border-green-700/60 dark:bg-green-900/10'
+                : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-dark-500'"
             >
               <div class="flex items-center gap-4">
-                <!-- 复选框（禁用状态） -->
+                <!-- 公开分组开关，取消勾选表示禁止该用户使用 -->
                 <div class="flex-shrink-0">
-                  <div class="flex h-5 w-5 items-center justify-center rounded-md border-2 border-green-400 bg-green-500 dark:border-green-600 dark:bg-green-600">
-                    <svg class="h-full w-full text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
+                  <label class="relative flex h-6 w-6 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      :checked="config.isSelected"
+                      @change="togglePublicGroup(config.groupId)"
+                      class="peer sr-only"
+                    />
+                    <div class="h-5 w-5 rounded-md border-2 border-gray-300 transition-all peer-checked:border-green-500 peer-checked:bg-green-500 dark:border-dark-500 peer-checked:dark:border-green-600 peer-checked:dark:bg-green-600">
+                      <svg v-if="config.isSelected" class="h-full w-full text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </label>
                 </div>
 
                 <!-- 分组信息 -->
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
                     <span class="text-base font-semibold text-gray-900 dark:text-white">{{ config.groupName }}</span>
+                    <span
+                      v-if="!config.isSelected"
+                      class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                    >
+                      {{ t('admin.users.publicGroupDisabled') }}
+                    </span>
                   </div>
                   <div class="mt-1.5 flex items-center gap-3 text-sm">
                     <span class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
@@ -133,7 +150,7 @@
                   </div>
                 </div>
 
-                <!-- 专属倍率输入 -->
+                <!-- 分组倍率输入 -->
                 <div class="flex flex-shrink-0 items-center gap-3">
                   <label class="text-sm font-medium text-gray-600 dark:text-gray-400">{{ t('admin.users.customRate') }}</label>
                   <input
@@ -232,6 +249,7 @@ const load = async () => {
 
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []
+    const userDisabledPublicGroups = props.user?.disabled_public_groups || []
     const userGroupRates = props.user?.group_rates || {}
 
     // 保存原始专属倍率，用于检测删除操作
@@ -244,9 +262,8 @@ const load = async () => {
       isExclusive: g.is_exclusive,
       defaultRate: g.rate_multiplier,
       customRate: userGroupRates[g.id] ?? null,
-      // 专属分组：检查是否在 allowed_groups 中
-      // 公开分组：始终选中
-      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : true,
+      // 专属分组由 allowed_groups 授权；公开分组默认可用，仅命中禁用列表时不可用。
+      isSelected: g.is_exclusive ? userAllowedGroups.includes(g.id) : !userDisabledPublicGroups.includes(g.id),
     }))
   } catch (error) {
     console.error('Failed to load groups:', error)
@@ -258,6 +275,13 @@ const load = async () => {
 const toggleExclusiveGroup = (groupId: number) => {
   const config = groupConfigs.value.find((c) => c.groupId === groupId)
   if (config && config.isExclusive) {
+    config.isSelected = !config.isSelected
+  }
+}
+
+const togglePublicGroup = (groupId: number) => {
+  const config = groupConfigs.value.find((c) => c.groupId === groupId)
+  if (config && !config.isExclusive) {
     config.isSelected = !config.isSelected
   }
 }
@@ -281,6 +305,8 @@ const handleSave = async () => {
   try {
     // 构建 allowed_groups（仅包含专属分组中被勾选的）
     const allowedGroups = groupConfigs.value.filter((c) => c.isExclusive && c.isSelected).map((c) => c.groupId)
+    // 构建 disabled_public_groups（仅包含公开分组中被取消勾选的）
+    const disabledPublicGroups = groupConfigs.value.filter((c) => !c.isExclusive && !c.isSelected).map((c) => c.groupId)
 
     // 构建 group_rates
     // - 有新专属倍率: 设置为该值
@@ -300,6 +326,7 @@ const handleSave = async () => {
 
     await adminAPI.users.update(props.user.id, {
       allowed_groups: allowedGroups,
+      disabled_public_groups: disabledPublicGroups,
       group_rates: Object.keys(groupRates).length > 0 ? groupRates : undefined,
     })
 

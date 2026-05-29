@@ -23,6 +23,7 @@ import (
 var (
 	ErrAPIKeyNotFound             = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
 	ErrGroupNotAllowed            = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrGroupDisabledForUser       = infraerrors.Forbidden("GROUP_DISABLED_FOR_USER", "user is not allowed to use this public group")
 	ErrAPIKeyExists               = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
 	ErrAPIKeyTooShort             = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars         = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
@@ -339,6 +340,28 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
+// canUserUseBoundGroup 校验已有 API Key 当前绑定的公开分组是否仍被该用户允许。
+func (s *APIKeyService) canUserUseBoundGroup(ctx context.Context, apiKey *APIKey) bool {
+	if apiKey == nil || apiKey.GroupID == nil || apiKey.Group == nil || apiKey.Group.IsExclusive {
+		return true
+	}
+	user := apiKey.User
+	if user == nil {
+		return true
+	}
+	if user.GroupRestrictionsLoaded {
+		return user.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive)
+	}
+	if s.userRepo == nil {
+		return true
+	}
+	loadedUser, err := s.userRepo.GetByID(ctx, apiKey.UserID)
+	if err != nil {
+		return true
+	}
+	return loadedUser.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive)
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	// 验证用户存在
@@ -497,6 +520,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 				return nil, fmt.Errorf("get api key: %w", err)
 			}
 			apiKey = s.applyDefaultGroupFallback(ctx, apiKey)
+			if !s.canUserUseBoundGroup(ctx, apiKey) {
+				return nil, fmt.Errorf("get api key: %w", ErrGroupDisabledForUser)
+			}
 			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 		}
@@ -515,6 +541,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 				return nil, fmt.Errorf("get api key: %w", err)
 			}
 			apiKey = s.applyDefaultGroupFallback(ctx, apiKey)
+			if !s.canUserUseBoundGroup(ctx, apiKey) {
+				return nil, fmt.Errorf("get api key: %w", ErrGroupDisabledForUser)
+			}
 			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 		}
@@ -528,6 +557,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 				return nil, fmt.Errorf("get api key: %w", err)
 			}
 			apiKey = s.applyDefaultGroupFallback(ctx, apiKey)
+			if !s.canUserUseBoundGroup(ctx, apiKey) {
+				return nil, fmt.Errorf("get api key: %w", ErrGroupDisabledForUser)
+			}
 			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 		}
@@ -539,6 +571,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	}
 	apiKey.Key = key
 	apiKey = s.applyDefaultGroupFallback(ctx, apiKey)
+	if !s.canUserUseBoundGroup(ctx, apiKey) {
+		return nil, fmt.Errorf("get api key: %w", ErrGroupDisabledForUser)
+	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
 }
@@ -708,6 +743,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			return nil, err
 		}
 		apiKey.GroupID = req.GroupID
+		apiKey.Group = group
+		apiKey.User = user
+	}
+	if !s.canUserUseBoundGroup(ctx, apiKey) {
+		return nil, ErrGroupDisabledForUser
 	}
 
 	if req.Status != nil {

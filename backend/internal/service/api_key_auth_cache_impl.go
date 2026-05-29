@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12：重新加载快照以同时包含数据共享开关和自定义模型列表配置
+const apiKeyAuthSnapshotVersion = 13 // v13：认证快照包含公开分组禁用列表
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -234,6 +234,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             apiKey.User.TotalRecharged,
 			RPMLimit:                   apiKey.User.RPMLimit,
+			DisabledPublicGroups:       append([]int64(nil), apiKey.User.DisabledPublicGroups...),
 		},
 	}
 
@@ -251,6 +252,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Name:                            apiKey.Group.Name,
 			Platform:                        apiKey.Group.Platform,
 			Status:                          apiKey.Group.Status,
+			IsExclusive:                     apiKey.Group.IsExclusive,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
 			DataSharingEnabled:              apiKey.Group.DataSharingEnabled,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
@@ -310,6 +312,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			TotalRecharged:             snapshot.User.TotalRecharged,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
+			DisabledPublicGroups:       append([]int64(nil), snapshot.User.DisabledPublicGroups...),
+			GroupRestrictionsLoaded:    true,
 		},
 	}
 	if snapshot.Group != nil {
@@ -318,6 +322,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Name:                            snapshot.Group.Name,
 			Platform:                        snapshot.Group.Platform,
 			Status:                          snapshot.Group.Status,
+			IsExclusive:                     snapshot.Group.IsExclusive,
 			Hydrated:                        true,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
 			DataSharingEnabled:              snapshot.Group.DataSharingEnabled,

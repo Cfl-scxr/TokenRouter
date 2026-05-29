@@ -2229,6 +2229,7 @@ export default {
       groupConfigHint: 'Configure custom rate multipliers for user {email} (overrides group defaults)',
       exclusiveGroups: 'Exclusive Groups',
       publicGroups: 'Public Groups (Default Available)',
+      publicGroupDisabled: 'Disabled',
       defaultRate: 'Default Rate',
       customRate: 'Custom Rate',
       useDefaultRate: 'Use Default',

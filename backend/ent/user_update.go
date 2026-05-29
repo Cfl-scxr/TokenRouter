@@ -517,6 +517,21 @@ func (_u *UserUpdate) AddAllowedGroups(v ...*Group) *UserUpdate {
 	return _u.AddAllowedGroupIDs(ids...)
 }
 
+// AddDisabledPublicGroupIDs adds the "disabled_public_groups" edge to the Group entity by IDs.
+func (_u *UserUpdate) AddDisabledPublicGroupIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddDisabledPublicGroupIDs(ids...)
+	return _u
+}
+
+// AddDisabledPublicGroups adds the "disabled_public_groups" edges to the Group entity.
+func (_u *UserUpdate) AddDisabledPublicGroups(v ...*Group) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDisabledPublicGroupIDs(ids...)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *UserUpdate) AddUsageLogIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -772,6 +787,27 @@ func (_u *UserUpdate) RemoveAllowedGroups(v ...*Group) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedGroupIDs(ids...)
+}
+
+// ClearDisabledPublicGroups clears all "disabled_public_groups" edges to the Group entity.
+func (_u *UserUpdate) ClearDisabledPublicGroups() *UserUpdate {
+	_u.mutation.ClearDisabledPublicGroups()
+	return _u
+}
+
+// RemoveDisabledPublicGroupIDs removes the "disabled_public_groups" edge to Group entities by IDs.
+func (_u *UserUpdate) RemoveDisabledPublicGroupIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveDisabledPublicGroupIDs(ids...)
+	return _u
+}
+
+// RemoveDisabledPublicGroups removes "disabled_public_groups" edges to Group entities.
+func (_u *UserUpdate) RemoveDisabledPublicGroups(v ...*Group) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDisabledPublicGroupIDs(ids...)
 }
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
@@ -1431,6 +1467,63 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DisabledPublicGroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDisabledPublicGroupsIDs(); len(nodes) > 0 && !_u.mutation.DisabledPublicGroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DisabledPublicGroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
@@ -2247,6 +2340,21 @@ func (_u *UserUpdateOne) AddAllowedGroups(v ...*Group) *UserUpdateOne {
 	return _u.AddAllowedGroupIDs(ids...)
 }
 
+// AddDisabledPublicGroupIDs adds the "disabled_public_groups" edge to the Group entity by IDs.
+func (_u *UserUpdateOne) AddDisabledPublicGroupIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddDisabledPublicGroupIDs(ids...)
+	return _u
+}
+
+// AddDisabledPublicGroups adds the "disabled_public_groups" edges to the Group entity.
+func (_u *UserUpdateOne) AddDisabledPublicGroups(v ...*Group) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDisabledPublicGroupIDs(ids...)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *UserUpdateOne) AddUsageLogIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -2502,6 +2610,27 @@ func (_u *UserUpdateOne) RemoveAllowedGroups(v ...*Group) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedGroupIDs(ids...)
+}
+
+// ClearDisabledPublicGroups clears all "disabled_public_groups" edges to the Group entity.
+func (_u *UserUpdateOne) ClearDisabledPublicGroups() *UserUpdateOne {
+	_u.mutation.ClearDisabledPublicGroups()
+	return _u
+}
+
+// RemoveDisabledPublicGroupIDs removes the "disabled_public_groups" edge to Group entities by IDs.
+func (_u *UserUpdateOne) RemoveDisabledPublicGroupIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveDisabledPublicGroupIDs(ids...)
+	return _u
+}
+
+// RemoveDisabledPublicGroups removes "disabled_public_groups" edges to Group entities.
+func (_u *UserUpdateOne) RemoveDisabledPublicGroups(v ...*Group) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDisabledPublicGroupIDs(ids...)
 }
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
@@ -3191,6 +3320,63 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DisabledPublicGroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDisabledPublicGroupsIDs(); len(nodes) > 0 && !_u.mutation.DisabledPublicGroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DisabledPublicGroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.DisabledPublicGroupsTable,
+			Columns: user.DisabledPublicGroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserDisabledPublicGroupCreate{config: _u.config, mutation: newUserDisabledPublicGroupMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields

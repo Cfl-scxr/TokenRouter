@@ -86,12 +86,13 @@ export interface User {
   linuxdo_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
-  role: 'admin' | 'user' // User role for authorization
-  balance: number // User balance for API usage
-  concurrency: number // Allowed concurrent requests
-  rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
-  status: 'active' | 'disabled' // Account status
-  allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
+  role: 'admin' | 'user' // 用户角色
+  balance: number // 用户余额
+  concurrency: number // 允许的并发请求数
+  rpm_limit?: number // 用户级 RPM 上限（0 表示无限制）；分组未配置时作为兜底
+  status: 'active' | 'disabled' // 账号状态
+  allowed_groups: number[] | null // 允许的专属分组 ID
+  disabled_public_groups?: number[] | null // 被禁用的公开分组 ID
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
@@ -1620,6 +1621,7 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  disabled_public_groups?: number[] | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>

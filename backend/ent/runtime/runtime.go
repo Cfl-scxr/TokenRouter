@@ -37,6 +37,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/userallowedgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userattributedefinition"
 	"github.com/TokenFlux/TokenRouter/ent/userattributevalue"
+	"github.com/TokenFlux/TokenRouter/ent/userdisabledpublicgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userplatformquota"
 	"github.com/TokenFlux/TokenRouter/ent/usersubscription"
 	"github.com/TokenFlux/TokenRouter/internal/domain"
@@ -1956,6 +1957,12 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userdisabledpublicgroupFields := schema.UserDisabledPublicGroup{}.Fields()
+	_ = userdisabledpublicgroupFields
+	// userdisabledpublicgroupDescCreatedAt is the schema descriptor for created_at field.
+	userdisabledpublicgroupDescCreatedAt := userdisabledpublicgroupFields[2].Descriptor()
+	// userdisabledpublicgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userdisabledpublicgroup.DefaultCreatedAt = userdisabledpublicgroupDescCreatedAt.Default.(func() time.Time)
 	userplatformquotaMixin := schema.UserPlatformQuota{}.Mixin()
 	userplatformquotaMixinHooks1 := userplatformquotaMixin[1].Hooks()
 	userplatformquota.Hooks[0] = userplatformquotaMixinHooks1[0]

@@ -2289,6 +2289,7 @@ export default {
       groupConfigHint: '为用户 {email} 配置专属分组倍率（覆盖分组默认倍率）',
       exclusiveGroups: '专属分组',
       publicGroups: '公开分组（默认可用）',
+      publicGroupDisabled: '已禁止',
       defaultRate: '默认倍率',
       customRate: '专属倍率',
       useDefaultRate: '使用默认',

@@ -40,6 +40,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/userallowedgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userattributedefinition"
 	"github.com/TokenFlux/TokenRouter/ent/userattributevalue"
+	"github.com/TokenFlux/TokenRouter/ent/userdisabledpublicgroup"
 	"github.com/TokenFlux/TokenRouter/ent/userplatformquota"
 	"github.com/TokenFlux/TokenRouter/ent/usersubscription"
 )
@@ -937,6 +938,33 @@ func (f TraverseUserAttributeValue) Traverse(ctx context.Context, q ent.Query) e
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
 }
 
+// The UserDisabledPublicGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserDisabledPublicGroupFunc func(context.Context, *ent.UserDisabledPublicGroupQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserDisabledPublicGroupFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserDisabledPublicGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserDisabledPublicGroupQuery", q)
+}
+
+// The TraverseUserDisabledPublicGroup type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserDisabledPublicGroup func(context.Context, *ent.UserDisabledPublicGroupQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserDisabledPublicGroup) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserDisabledPublicGroup) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserDisabledPublicGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserDisabledPublicGroupQuery", q)
+}
+
 // The UserPlatformQuotaFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserPlatformQuotaFunc func(context.Context, *ent.UserPlatformQuotaQuery) (ent.Value, error)
 
@@ -1056,6 +1084,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserAttributeDefinitionQuery, predicate.UserAttributeDefinition, userattributedefinition.OrderOption]{typ: ent.TypeUserAttributeDefinition, tq: q}, nil
 	case *ent.UserAttributeValueQuery:
 		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: q}, nil
+	case *ent.UserDisabledPublicGroupQuery:
+		return &query[*ent.UserDisabledPublicGroupQuery, predicate.UserDisabledPublicGroup, userdisabledpublicgroup.OrderOption]{typ: ent.TypeUserDisabledPublicGroup, tq: q}, nil
 	case *ent.UserPlatformQuotaQuery:
 		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:

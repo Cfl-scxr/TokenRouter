@@ -101,13 +101,17 @@ type GroupEdges struct {
 	Accounts []*Account `json:"accounts,omitempty"`
 	// AllowedUsers holds the value of the allowed_users edge.
 	AllowedUsers []*User `json:"allowed_users,omitempty"`
+	// DisabledPublicUsers holds the value of the disabled_public_users edge.
+	DisabledPublicUsers []*User `json:"disabled_public_users,omitempty"`
 	// AccountGroups holds the value of the account_groups edge.
 	AccountGroups []*AccountGroup `json:"account_groups,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
+	// UserDisabledPublicGroups holds the value of the user_disabled_public_groups edge.
+	UserDisabledPublicGroups []*UserDisabledPublicGroup `json:"user_disabled_public_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [8]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -146,10 +150,19 @@ func (e GroupEdges) AllowedUsersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "allowed_users"}
 }
 
+// DisabledPublicUsersOrErr returns the DisabledPublicUsers value or an error if the edge
+// was not loaded in eager-loading.
+func (e GroupEdges) DisabledPublicUsersOrErr() ([]*User, error) {
+	if e.loadedTypes[4] {
+		return e.DisabledPublicUsers, nil
+	}
+	return nil, &NotLoadedError{edge: "disabled_public_users"}
+}
+
 // AccountGroupsOrErr returns the AccountGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e GroupEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.AccountGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "account_groups"}
@@ -158,10 +171,19 @@ func (e GroupEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e GroupEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
+}
+
+// UserDisabledPublicGroupsOrErr returns the UserDisabledPublicGroups value or an error if the edge
+// was not loaded in eager-loading.
+func (e GroupEdges) UserDisabledPublicGroupsOrErr() ([]*UserDisabledPublicGroup, error) {
+	if e.loadedTypes[7] {
+		return e.UserDisabledPublicGroups, nil
+	}
+	return nil, &NotLoadedError{edge: "user_disabled_public_groups"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -448,6 +470,11 @@ func (_m *Group) QueryAllowedUsers() *UserQuery {
 	return NewGroupClient(_m.config).QueryAllowedUsers(_m)
 }
 
+// QueryDisabledPublicUsers queries the "disabled_public_users" edge of the Group entity.
+func (_m *Group) QueryDisabledPublicUsers() *UserQuery {
+	return NewGroupClient(_m.config).QueryDisabledPublicUsers(_m)
+}
+
 // QueryAccountGroups queries the "account_groups" edge of the Group entity.
 func (_m *Group) QueryAccountGroups() *AccountGroupQuery {
 	return NewGroupClient(_m.config).QueryAccountGroups(_m)
@@ -456,6 +483,11 @@ func (_m *Group) QueryAccountGroups() *AccountGroupQuery {
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the Group entity.
 func (_m *Group) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	return NewGroupClient(_m.config).QueryUserAllowedGroups(_m)
+}
+
+// QueryUserDisabledPublicGroups queries the "user_disabled_public_groups" edge of the Group entity.
+func (_m *Group) QueryUserDisabledPublicGroups() *UserDisabledPublicGroupQuery {
+	return NewGroupClient(_m.config).QueryUserDisabledPublicGroups(_m)
 }
 
 // Update returns a builder for updating this Group.

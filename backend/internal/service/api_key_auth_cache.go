@@ -51,6 +51,9 @@ type APIKeyAuthUserSnapshot struct {
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
+
+	// DisabledPublicGroups 记录该用户被禁止使用的公开分组 ID，用于认证热路径拦截已有 Key。
+	DisabledPublicGroups []int64 `json:"disabled_public_groups,omitempty"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照
@@ -59,6 +62,7 @@ type APIKeyAuthGroupSnapshot struct {
 	Name                            string   `json:"name"`
 	Platform                        string   `json:"platform"`
 	Status                          string   `json:"status"`
+	IsExclusive                     bool     `json:"is_exclusive"`
 	RateMultiplier                  float64  `json:"rate_multiplier"`
 	DataSharingEnabled              bool     `json:"data_sharing_enabled"`
 	AllowImageGeneration            bool     `json:"allow_image_generation"`

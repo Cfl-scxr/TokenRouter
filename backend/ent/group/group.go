@@ -90,10 +90,14 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeDisabledPublicUsers holds the string denoting the disabled_public_users edge name in mutations.
+	EdgeDisabledPublicUsers = "disabled_public_users"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
+	// EdgeUserDisabledPublicGroups holds the string denoting the user_disabled_public_groups edge name in mutations.
+	EdgeUserDisabledPublicGroups = "user_disabled_public_groups"
 	// Table holds the table name of the group in the database.
 	Table = "groups"
 	// APIKeysTable is the table that holds the api_keys relation/edge.
@@ -120,6 +124,11 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// DisabledPublicUsersTable is the table that holds the disabled_public_users relation/edge. The primary key declared below.
+	DisabledPublicUsersTable = "user_disabled_public_groups"
+	// DisabledPublicUsersInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	DisabledPublicUsersInverseTable = "users"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -134,6 +143,13 @@ const (
 	UserAllowedGroupsInverseTable = "user_allowed_groups"
 	// UserAllowedGroupsColumn is the table column denoting the user_allowed_groups relation/edge.
 	UserAllowedGroupsColumn = "group_id"
+	// UserDisabledPublicGroupsTable is the table that holds the user_disabled_public_groups relation/edge.
+	UserDisabledPublicGroupsTable = "user_disabled_public_groups"
+	// UserDisabledPublicGroupsInverseTable is the table name for the UserDisabledPublicGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "userdisabledpublicgroup" package.
+	UserDisabledPublicGroupsInverseTable = "user_disabled_public_groups"
+	// UserDisabledPublicGroupsColumn is the table column denoting the user_disabled_public_groups relation/edge.
+	UserDisabledPublicGroupsColumn = "group_id"
 )
 
 // Columns holds all SQL columns for group fields.
@@ -181,6 +197,9 @@ var (
 	// AllowedUsersPrimaryKey and AllowedUsersColumn2 are the table columns denoting the
 	// primary key for the allowed_users relation (M2M).
 	AllowedUsersPrimaryKey = []string{"user_id", "group_id"}
+	// DisabledPublicUsersPrimaryKey and DisabledPublicUsersColumn2 are the table columns denoting the
+	// primary key for the disabled_public_users relation (M2M).
+	DisabledPublicUsersPrimaryKey = []string{"user_id", "group_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -472,6 +491,20 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByDisabledPublicUsersCount orders the results by disabled_public_users count.
+func ByDisabledPublicUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newDisabledPublicUsersStep(), opts...)
+	}
+}
+
+// ByDisabledPublicUsers orders the results by disabled_public_users terms.
+func ByDisabledPublicUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDisabledPublicUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -497,6 +530,20 @@ func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByUserAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUserAllowedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByUserDisabledPublicGroupsCount orders the results by user_disabled_public_groups count.
+func ByUserDisabledPublicGroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUserDisabledPublicGroupsStep(), opts...)
+	}
+}
+
+// ByUserDisabledPublicGroups orders the results by user_disabled_public_groups terms.
+func ByUserDisabledPublicGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUserDisabledPublicGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newAPIKeysStep() *sqlgraph.Step {
@@ -527,6 +574,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
 	)
 }
+func newDisabledPublicUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DisabledPublicUsersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, DisabledPublicUsersTable, DisabledPublicUsersPrimaryKey...),
+	)
+}
 func newAccountGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -539,5 +593,12 @@ func newUserAllowedGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserAllowedGroupsInverseTable, UserAllowedGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedGroupsTable, UserAllowedGroupsColumn),
+	)
+}
+func newUserDisabledPublicGroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UserDisabledPublicGroupsInverseTable, UserDisabledPublicGroupsColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, UserDisabledPublicGroupsTable, UserDisabledPublicGroupsColumn),
 	)
 }

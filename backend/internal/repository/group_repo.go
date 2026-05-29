@@ -641,12 +641,17 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		return nil, err
 	}
 
-	// 3. 删除 account_groups 关联行。
+	// 3. 从公开分组禁用表移除该分组 ID，避免软删除后遗留孤立配置。
+	if _, err := exec.ExecContext(ctx, "DELETE FROM user_disabled_public_groups WHERE group_id = $1", id); err != nil {
+		return nil, err
+	}
+
+	// 4. 删除 account_groups 关联行。
 	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 	}
 
-	// 4. 软删除分组自身。
+	// 5. 软删除分组自身。
 	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
 		return nil, err
 	}

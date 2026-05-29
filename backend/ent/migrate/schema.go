@@ -1606,6 +1606,39 @@ var (
 			},
 		},
 	}
+	// UserDisabledPublicGroupsColumns holds the columns for the "user_disabled_public_groups" table.
+	UserDisabledPublicGroupsColumns = []*schema.Column{
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// UserDisabledPublicGroupsTable holds the schema information for the "user_disabled_public_groups" table.
+	UserDisabledPublicGroupsTable = &schema.Table{
+		Name:       "user_disabled_public_groups",
+		Columns:    UserDisabledPublicGroupsColumns,
+		PrimaryKey: []*schema.Column{UserDisabledPublicGroupsColumns[1], UserDisabledPublicGroupsColumns[2]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_disabled_public_groups_users_user",
+				Columns:    []*schema.Column{UserDisabledPublicGroupsColumns[1]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_disabled_public_groups_groups_group",
+				Columns:    []*schema.Column{UserDisabledPublicGroupsColumns[2]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userdisabledpublicgroup_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserDisabledPublicGroupsColumns[2]},
+			},
+		},
+	}
 	// UserPlatformQuotasColumns holds the columns for the "user_platform_quotas" table.
 	UserPlatformQuotasColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1789,6 +1822,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserDisabledPublicGroupsTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
 	}
@@ -1915,6 +1949,11 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserDisabledPublicGroupsTable.ForeignKeys[0].RefTable = UsersTable
+	UserDisabledPublicGroupsTable.ForeignKeys[1].RefTable = GroupsTable
+	UserDisabledPublicGroupsTable.Annotation = &entsql.Annotation{
+		Table: "user_disabled_public_groups",
 	}
 	UserPlatformQuotasTable.ForeignKeys[0].RefTable = UsersTable
 	UserPlatformQuotasTable.Annotation = &entsql.Annotation{
