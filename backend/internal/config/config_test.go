@@ -1919,8 +1919,8 @@ func TestLoad_DefaultGatewayDataSharingCaptureConfig(t *testing.T) {
 	if !cfg.Gateway.DataSharingCapture.BufferEnabled {
 		t.Fatalf("buffer_enabled = false, want true")
 	}
-	if cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds != 5 {
-		t.Fatalf("buffer_idle_flush_seconds = %d, want 5", cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds)
+	if cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds != 30 {
+		t.Fatalf("buffer_idle_flush_seconds = %d, want 30", cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds)
 	}
 	if cfg.Gateway.DataSharingCapture.BufferMaxSessions != 4096 {
 		t.Fatalf("buffer_max_sessions = %d, want 4096", cfg.Gateway.DataSharingCapture.BufferMaxSessions)

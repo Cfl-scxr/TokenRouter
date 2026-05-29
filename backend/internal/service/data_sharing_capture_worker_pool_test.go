@@ -94,6 +94,78 @@ func TestDataSharingCaptureWorkerPool_QueueFullDropsWithoutSyncFallback(t *testi
 	close(block)
 }
 
+func TestDataSharingCaptureWorkerPool_FlushQueueHasPriority(t *testing.T) {
+	block := make(chan struct{})
+	started := make(chan struct{})
+	order := make(chan string, 2)
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+		Handler: func(ctx context.Context, job DataSharingCaptureJob) error {
+			if job.Metadata.RequestID == "running" {
+				close(started)
+				<-block
+				return nil
+			}
+			order <- job.Metadata.RequestID
+			return nil
+		},
+	})
+	t.Cleanup(pool.Stop)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "running"}}))
+	<-started
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "capture"}}))
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.SubmitFlush(DataSharingCaptureJob{
+		Metadata: DataSharingCaptureJobMetadata{RequestID: "flush"},
+		Flush: func(context.Context) error {
+			order <- "flush"
+			return nil
+		},
+	}))
+
+	close(block)
+
+	select {
+	case got := <-order:
+		require.Equal(t, "flush", got)
+	case <-time.After(time.Second):
+		t.Fatal("flush job not executed")
+	}
+}
+
+func TestDataSharingCaptureWorkerPool_FlushQueueUsesIndependentCapacity(t *testing.T) {
+	block := make(chan struct{})
+	started := make(chan struct{})
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount:    1,
+		QueueSize:      4,
+		FlushQueueSize: 1,
+		TaskTimeout:    time.Second,
+		Handler: func(ctx context.Context, job DataSharingCaptureJob) error {
+			if job.Metadata.RequestID == "running" {
+				close(started)
+				<-block
+			}
+			return nil
+		},
+	})
+	t.Cleanup(pool.Stop)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "running"}}))
+	<-started
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.SubmitFlush(DataSharingCaptureJob{Flush: func(context.Context) error { return nil }}))
+	require.Equal(t, DataSharingCaptureSubmitModeDropped, pool.SubmitFlush(DataSharingCaptureJob{Flush: func(context.Context) error { return nil }}))
+	require.Equal(t, 1, pool.Stats().FlushQueueCapacity)
+
+	pool.UpdateRuntimeSettings(1, 4, 2, time.Second)
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.SubmitFlush(DataSharingCaptureJob{Flush: func(context.Context) error { return nil }}))
+	require.Equal(t, 2, pool.Stats().FlushQueueCapacity)
+
+	close(block)
+}
+
 func TestDataSharingCaptureWorkerPool_SubmitAfterStop(t *testing.T) {
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
@@ -123,6 +195,7 @@ func TestDataSharingCaptureWorkerPool_OptionsFromConfig(t *testing.T) {
 
 	stats := pool.Stats()
 	require.Equal(t, 9, stats.QueueCapacity)
+	require.Equal(t, 9, stats.FlushQueueCapacity)
 	require.Equal(t, 7*time.Second, pool.TaskTimeout())
 	require.Equal(t, 7, stats.TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelBetter), stats.CompressionLevel)
@@ -132,17 +205,20 @@ func TestDataSharingCaptureWorkerPool_OptionsFromNilConfig(t *testing.T) {
 	opts := dataSharingCapturePoolOptionsFromConfig(nil)
 	require.Equal(t, defaultDataSharingCaptureWorkerCount, opts.WorkerCount)
 	require.Equal(t, defaultDataSharingCaptureQueueSize, opts.QueueSize)
+	require.Equal(t, defaultDataSharingCaptureQueueSize, opts.FlushQueueSize)
 	require.Equal(t, time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds)*time.Second, opts.TaskTimeout)
 }
 
 func TestDataSharingCaptureWorkerPool_OptionsClampUpperBounds(t *testing.T) {
 	opts := normalizeDataSharingCapturePoolOptions(DataSharingCaptureWorkerPoolOptions{
-		WorkerCount: maxDataSharingCaptureWorkerCount + 1,
-		QueueSize:   maxDataSharingCaptureQueueSize + 1,
-		TaskTimeout: time.Duration(maxDataSharingCaptureTaskTimeoutSeconds+1) * time.Second,
+		WorkerCount:    maxDataSharingCaptureWorkerCount + 1,
+		QueueSize:      maxDataSharingCaptureQueueSize + 1,
+		FlushQueueSize: maxDataSharingCaptureQueueSize + 2,
+		TaskTimeout:    time.Duration(maxDataSharingCaptureTaskTimeoutSeconds+1) * time.Second,
 	})
 	require.Equal(t, maxDataSharingCaptureWorkerCount, opts.WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, opts.QueueSize)
+	require.Equal(t, maxDataSharingCaptureQueueSize, opts.FlushQueueSize)
 	require.Equal(t, time.Duration(maxDataSharingCaptureTaskTimeoutSeconds)*time.Second, opts.TaskTimeout)
 }
 
@@ -199,16 +275,17 @@ func TestDataSharingCaptureWorkerPool_UpdateRuntimeSettingsChangesLogicalCapacit
 	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "queued-1"}}))
 	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "queued-2"}}))
 
-	pool.UpdateRuntimeSettings(1, 2, 30*time.Second)
+	pool.UpdateRuntimeSettings(1, 2, 5, 30*time.Second)
 	require.Equal(t, DataSharingCaptureSubmitModeDropped, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "overflow"}}))
 	require.False(t, overflowExecuted.Load())
 
-	pool.UpdateRuntimeSettings(3, 8, 30*time.Second)
+	pool.UpdateRuntimeSettings(3, 8, 9, 30*time.Second)
 	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "accepted-after-grow"}}))
 
 	stats := pool.Stats()
 	require.Equal(t, 3, stats.WorkerCount)
 	require.Equal(t, 8, stats.QueueCapacity)
+	require.Equal(t, 9, stats.FlushQueueCapacity)
 	require.Equal(t, 30, stats.TaskTimeoutSeconds)
 	require.GreaterOrEqual(t, stats.AvailableWorkers, int64(2))
 

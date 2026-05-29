@@ -1938,7 +1938,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.data_sharing_capture.task_timeout_seconds", 15)
 	viper.SetDefault("gateway.data_sharing_capture.compression_level", "fastest")
 	viper.SetDefault("gateway.data_sharing_capture.buffer_enabled", true)
-	viper.SetDefault("gateway.data_sharing_capture.buffer_idle_flush_seconds", 5)
+	viper.SetDefault("gateway.data_sharing_capture.buffer_idle_flush_seconds", 30)
 	viper.SetDefault("gateway.data_sharing_capture.buffer_max_sessions", 4096)
 	viper.SetDefault("gateway.data_sharing_capture.buffer_max_pending_events", 65536)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)

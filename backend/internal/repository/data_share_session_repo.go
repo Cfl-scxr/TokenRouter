@@ -41,12 +41,47 @@ func (r *dataShareSessionRepository) sqlExecutorFromContext(ctx context.Context)
 	return r.sql
 }
 
-func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session *service.DataShareSession, opts ...service.DataShareUpsertOptions) error {
+func (r *dataShareSessionRepository) GetCaptureByTrajectoryIDWithPayload(ctx context.Context, trajectoryID string) (*service.DataShareSession, error) {
+	trajectoryID = strings.TrimSpace(trajectoryID)
+	if trajectoryID == "" {
+		return nil, service.ErrDataShareSessionNotFound
+	}
+	item, err := clientFromContext(ctx, r.client).DataShareSession.Query().
+		Where(datasharesession.TrajectoryIDEQ(trajectoryID)).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrDataShareSessionNotFound, nil)
+	}
+	out := dataShareSessionEntityToService(item)
+	if out == nil {
+		return nil, service.ErrDataShareSessionNotFound
+	}
+	if err := populateDataShareSessionPayload(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, session *service.DataShareSession, opts ...service.DataShareUpsertOptions) error {
 	if session == nil {
 		return nil
 	}
 	client := clientFromContext(ctx, r.client)
 	now := time.Now()
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = now
+	}
+	if session.UpdatedAt.IsZero() {
+		session.UpdatedAt = now
+	}
+	if session.EndedAt == nil {
+		session.EndedAt = &now
+	}
+	payload := service.BuildDataShareSessionPayload(session)
+	compressed, payloadBytes, err := encodeDataSharePayload(payload)
+	if err != nil {
+		return err
+	}
 	existing, err := client.DataShareSession.Query().
 		Where(datasharesession.TrajectoryIDEQ(session.TrajectoryID)).
 		Only(ctx)
@@ -54,11 +89,6 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		return err
 	}
 	if dbent.IsNotFound(err) || existing == nil {
-		payload := service.BuildDataShareSessionPayload(session)
-		compressed, payloadBytes, err := encodeDataSharePayload(payload)
-		if err != nil {
-			return err
-		}
 		// 新 session 写入前做容量保护，避免数据共享采集把磁盘持续打满。
 		if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
 			currentBytes, err := r.TotalStorageBytes(ctx)
@@ -98,63 +128,14 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 			SetUserID(session.UserID).
 			SetAPIKeyID(session.APIKeyID).
 			SetGroupID(session.GroupID).
-			SetCreatedAt(now).
+			SetCreatedAt(session.CreatedAt).
 			SetNillableEndedAt(session.EndedAt).
 			SetUpdatedAt(now)
 		_, err = builder.Save(ctx)
 		return err
 	}
 
-	existingSession := dataShareSessionEntityToService(existing)
-	if err := populateDataShareSessionPayload(existingSession); err != nil {
-		return err
-	}
-	messages := mergeDataShareMessages(existingSession.Messages, session.Messages)
-	tools := mergeDataShareTools(existingSession.Tools, session.Tools)
-	usage := mergeDataShareUsage(existingSession.Usage, session.Usage)
-	meta := mergeDataShareMeta(existingSession.Meta, session.Meta)
-	incomingRequestCount := session.SourceRequestCount
-	if incomingRequestCount <= 0 {
-		incomingRequestCount = 1
-	}
-	// 缓冲池 flush 时一条写入可能代表多次采集增量，需要按增量数累加来源请求数。
-	sourceRequestCount := existing.SourceRequestCount + incomingRequestCount
-	inputTokens := existing.InputTokens + session.InputTokens
-	outputTokens := existing.OutputTokens + session.OutputTokens
-	totalTokens := existing.TotalTokens + session.TotalTokens
-	systemPrompt := firstSystemPrompt(existingSession.SystemPrompt, session.SystemPrompt)
-	merged := &service.DataShareSession{
-		TrajectoryID:       existing.TrajectoryID,
-		SessionID:          existing.SessionID,
-		Dataset:            firstNonBlankRepository(existing.Dataset, session.Dataset),
-		Provider:           firstNonBlankRepository(existing.Provider, session.Provider),
-		Model:              session.Model,
-		RequestPath:        firstNonBlankRepository(session.RequestPath, existing.RequestPath),
-		UserAgent:          firstNonBlankRepository(session.UserAgent, existing.UserAgent),
-		SourceRequestCount: sourceRequestCount,
-		SystemPrompt:       systemPrompt,
-		Tools:              tools,
-		Messages:           messages,
-		Usage:              usage,
-		Meta:               meta,
-		CreatedAt:          existing.CreatedAt,
-		EndedAt:            session.EndedAt,
-	}
-	if merged.EndedAt == nil {
-		merged.EndedAt = &now
-	}
-	// 每次合并后都重新评估质量，避免早期空消息请求留下的错误阻止后续导出。
-	qualityStatus, qualityErrors := repositoryQuality(session.Model, systemPrompt, messages, tools, usage)
-	status, finalSnapshot := repositoryCompletionState(qualityStatus)
-	merged.Status = status
-	merged.IsFinalSnapshot = finalSnapshot
-	merged.QualityStatus = qualityStatus
-	payload := service.BuildDataShareSessionPayload(merged)
-	compressed, payloadBytes, err := encodeDataSharePayload(payload)
-	if err != nil {
-		return err
-	}
-	// 已有 session 的增量也需要容量保护，避免单个任务持续追加时突破磁盘阈值。
+	// 已有 session 的快照保存也需要容量保护，避免单个任务持续追加时突破磁盘阈值。
 	if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
 		currentBytes, err := r.TotalStorageBytes(ctx)
 		if err != nil {
@@ -168,12 +149,15 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
+		SetSessionID(session.SessionID).
+		SetDataset(session.Dataset).
+		SetProvider(session.Provider).
 		SetModel(session.Model).
-		SetRequestPath(firstNonBlankRepository(session.RequestPath, existing.RequestPath)).
-		SetUserAgent(firstNonBlankRepository(session.UserAgent, existing.UserAgent)).
-		SetStatus(status).
-		SetIsFinalSnapshot(finalSnapshot).
-		SetSourceRequestCount(sourceRequestCount).
+		SetRequestPath(session.RequestPath).
+		SetUserAgent(session.UserAgent).
+		SetStatus(session.Status).
+		SetIsFinalSnapshot(session.IsFinalSnapshot).
+		SetSourceRequestCount(session.SourceRequestCount).
 		ClearSystemPrompt().
 		SetTools([]map[string]any{}).
 		SetMessages([]map[string]any{}).
@@ -183,13 +167,16 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		SetPayloadCompressed(compressed).
 		SetPayloadEncoding(dataSharePayloadEncodingZstd).
 		SetPayloadBytes(payloadBytes).
-		SetExportable(service.DataShareQualityExportable(qualityStatus)).
-		SetQualityStatus(qualityStatus).
-		SetQualityErrors(qualityErrors).
+		SetExportable(session.Exportable).
+		SetQualityStatus(session.QualityStatus).
+		SetQualityErrors(session.QualityErrors).
 		SetStorageBytes(int64(len(compressed))).
-		SetInputTokens(inputTokens).
-		SetOutputTokens(outputTokens).
-		SetTotalTokens(totalTokens).
+		SetInputTokens(session.InputTokens).
+		SetOutputTokens(session.OutputTokens).
+		SetTotalTokens(session.TotalTokens).
+		SetUserID(session.UserID).
+		SetAPIKeyID(session.APIKeyID).
+		SetGroupID(session.GroupID).
 		SetNillableEndedAt(session.EndedAt).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -1240,234 +1227,6 @@ func (r *dataShareSessionRepository) persistCompressedPayload(ctx context.Contex
 	return nil
 }
 
-func mergeDataShareTools(existing, incoming []map[string]any) []map[string]any {
-	out := append([]map[string]any{}, existing...)
-	seen := make(map[string]struct{}, len(existing))
-	for _, tool := range existing {
-		seen[string(mustRepositoryJSON(tool))] = struct{}{}
-	}
-	for _, tool := range incoming {
-		key := string(mustRepositoryJSON(tool))
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, tool)
-	}
-	return out
-}
-
-func mergeDataShareMessages(existing, incoming []map[string]any) []map[string]any {
-	out := append([]map[string]any{}, existing...)
-	outIdentities := make([]string, 0, len(out)+len(incoming))
-	for range out {
-		outIdentities = append(outIdentities, "")
-	}
-	outIdentityAt := func(index int) string {
-		if outIdentities[index] == "" {
-			outIdentities[index] = dataShareMessageIdentity(out[index])
-		}
-		return outIdentities[index]
-	}
-	incomingIdentities := make([]string, len(incoming))
-	incomingIdentityAt := func(index int) string {
-		if incomingIdentities[index] == "" {
-			incomingIdentities[index] = dataShareMessageIdentity(incoming[index])
-		}
-		return incomingIdentities[index]
-	}
-	seenToolCalls := map[string]struct{}{}
-	seenToolResults := map[string]struct{}{}
-	for _, msg := range out {
-		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
-	}
-	for i := 0; i < len(incoming); {
-		if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(incoming), incomingIdentityAt); prefix >= 2 {
-			i += prefix
-			continue
-		}
-		msg := incoming[i]
-		if !dataShareMessageAlreadySeen(msg, seenToolCalls, seenToolResults) {
-			rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
-			out = append(out, msg)
-			outIdentities = append(outIdentities, "")
-		}
-		i++
-	}
-	return out
-}
-
-func dataShareMessageAlreadySeen(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
-	if strings.TrimSpace(stringFromRepositoryAny(msg["role"])) == "tool" {
-		id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"]))
-		if id == "" {
-			return false
-		}
-		_, ok := seenToolResults[id]
-		return ok
-	}
-	callIDs := dataShareToolCallIDs(msg)
-	if len(callIDs) == 0 {
-		return false
-	}
-	for _, id := range callIDs {
-		if _, ok := seenToolCalls[id]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func rememberDataShareMessage(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) {
-	if strings.TrimSpace(stringFromRepositoryAny(msg["role"])) == "tool" {
-		if id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"])); id != "" {
-			seenToolResults[id] = struct{}{}
-		}
-		return
-	}
-	for _, id := range dataShareToolCallIDs(msg) {
-		seenToolCalls[id] = struct{}{}
-	}
-}
-
-func dataShareToolCallIDs(msg map[string]any) []string {
-	switch calls := msg["tool_calls"].(type) {
-	case []map[string]any:
-		out := make([]string, 0, len(calls))
-		for _, call := range calls {
-			if id := strings.TrimSpace(stringFromRepositoryAny(call["id"])); id != "" {
-				out = append(out, id)
-			}
-		}
-		return out
-	case []any:
-		out := make([]string, 0, len(calls))
-		for _, raw := range calls {
-			call, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			if id := strings.TrimSpace(stringFromRepositoryAny(call["id"])); id != "" {
-				out = append(out, id)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func dataShareMessageIdentity(msg map[string]any) string {
-	role := strings.TrimSpace(stringFromRepositoryAny(msg["role"]))
-	if role == "" {
-		return string(mustRepositoryJSON(msg))
-	}
-	if role == "tool" {
-		if id := strings.TrimSpace(stringFromRepositoryAny(msg["tool_call_id"])); id != "" {
-			return "tool:" + id
-		}
-	}
-	if role == "assistant" {
-		if calls, ok := msg["tool_calls"].([]any); ok && len(calls) > 0 {
-			return "assistant_tool_calls:" + string(mustRepositoryJSON(calls))
-		}
-		if calls, ok := msg["tool_calls"].([]map[string]any); ok && len(calls) > 0 {
-			return "assistant_tool_calls:" + string(mustRepositoryJSON(calls))
-		}
-	}
-	return role + ":" + string(mustRepositoryJSON(msg))
-}
-
-func dataShareCommonPrefixLen(leftLen int, leftIdentityAt func(int) string, rightStart int, rightLen int, rightIdentityAt func(int) string) int {
-	limit := leftLen
-	if remaining := rightLen - rightStart; remaining < limit {
-		limit = remaining
-	}
-	for i := 0; i < limit; i++ {
-		if leftIdentityAt(i) != rightIdentityAt(rightStart+i) {
-			return i
-		}
-	}
-	return limit
-}
-
-func mergeDataShareUsage(existing, incoming map[string]any) map[string]any {
-	out := make(map[string]any, len(existing)+len(incoming))
-	for k, v := range existing {
-		out[k] = v
-	}
-	for k, v := range incoming {
-		out[k] = int64FromAny(out[k]) + int64FromAny(v)
-	}
-	return out
-}
-
-func mergeDataShareMeta(existing, incoming map[string]any) map[string]any {
-	out := make(map[string]any, len(existing)+len(incoming))
-	for k, v := range existing {
-		out[k] = v
-	}
-	for k, v := range incoming {
-		out[k] = v
-	}
-	sourceIDs := appendStringAny(nil, stringsFromRepositoryAny(existing["source_request_ids"])...)
-	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(existing["request_ids"])...)
-	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(incoming["source_request_ids"])...)
-	sourceIDs = appendStringAny(sourceIDs, stringsFromRepositoryAny(incoming["request_ids"])...)
-	sourceIDs = appendStringAny(sourceIDs, stringFromRepositoryAny(existing["request_id"]), stringFromRepositoryAny(incoming["request_id"]))
-	out["source_request_ids"] = sourceIDs
-	out["user_agent"] = firstNonBlankRepository(stringFromRepositoryAny(incoming["user_agent"]), stringFromRepositoryAny(existing["user_agent"]))
-	delete(out, "request_ids")
-	return out
-}
-
-func appendStringAny(v any, values ...string) []string {
-	seen := make(map[string]struct{})
-	var out []string
-	if arr, ok := v.([]string); ok {
-		for _, item := range arr {
-			if item == "" {
-				continue
-			}
-			seen[item] = struct{}{}
-			out = append(out, item)
-		}
-	}
-	for _, item := range values {
-		if item == "" {
-			continue
-		}
-		if _, ok := seen[item]; ok {
-			continue
-		}
-		seen[item] = struct{}{}
-		out = append(out, item)
-	}
-	return out
-}
-
-func stringsFromRepositoryAny(v any) []string {
-	switch x := v.(type) {
-	case []string:
-		return x
-	case []any:
-		out := make([]string, 0, len(x))
-		for _, item := range x {
-			if text := strings.TrimSpace(stringFromRepositoryAny(item)); text != "" {
-				out = append(out, text)
-			}
-		}
-		return out
-	case string:
-		if strings.TrimSpace(x) == "" {
-			return nil
-		}
-		return []string{x}
-	default:
-		return nil
-	}
-}
-
 func mapFromRepositoryAny(v any) map[string]any {
 	if m, ok := v.(map[string]any); ok {
 		return m
@@ -1497,57 +1256,6 @@ func stringFromRepositoryAny(v any) string {
 		return text
 	}
 	return ""
-}
-
-func firstSystemPrompt(existing, incoming *string) *string {
-	if existing != nil && strings.TrimSpace(*existing) != "" {
-		return existing
-	}
-	return incoming
-}
-
-func firstNonBlankRepository(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-func repositoryQuality(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) (string, []string) {
-	prompt := ""
-	if systemPrompt != nil {
-		prompt = *systemPrompt
-	}
-	return service.DataShareSessionQuality(model, prompt, messages, tools, usage)
-}
-
-func repositoryCompletionState(qualityStatus string) (string, bool) {
-	if qualityStatus == service.DataShareQualityComplete {
-		return service.DataShareStatusCompleted, true
-	}
-	return service.DataShareStatusTerminated, false
-}
-
-func int64FromAny(v any) int64 {
-	switch x := v.(type) {
-	case int:
-		return int64(x)
-	case int64:
-		return x
-	case float64:
-		return int64(x)
-	case jsonNumber:
-		i, _ := x.Int64()
-		return i
-	default:
-		return 0
-	}
-}
-
-type jsonNumber interface {
-	Int64() (int64, error)
 }
 
 func mustRepositoryJSON(v any) []byte {

@@ -61,8 +61,12 @@ func (s *dataShareHandlerSettingRepoStub) Delete(_ context.Context, key string) 
 	return nil
 }
 
-func (r *dataShareHandlerRepoStub) UpsertCapture(context.Context, *service.DataShareSession, ...service.DataShareUpsertOptions) error {
-	panic("unexpected UpsertCapture call")
+func (r *dataShareHandlerRepoStub) GetCaptureByTrajectoryIDWithPayload(context.Context, string) (*service.DataShareSession, error) {
+	panic("unexpected GetCaptureByTrajectoryIDWithPayload call")
+}
+
+func (r *dataShareHandlerRepoStub) SaveCaptureSnapshot(context.Context, *service.DataShareSession, ...service.DataShareUpsertOptions) error {
+	panic("unexpected SaveCaptureSnapshot call")
 }
 
 func (r *dataShareHandlerRepoStub) List(context.Context, pagination.PaginationParams, service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {

@@ -44,6 +44,7 @@ type UpdateDataShareStorageLimitRequest struct {
 type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 	WorkerCount            int    `json:"worker_count"`
 	QueueSize              int    `json:"queue_size"`
+	FlushQueueSize         int    `json:"flush_queue_size"`
 	TaskTimeoutSeconds     int    `json:"task_timeout_seconds"`
 	CompressionLevel       string `json:"compression_level"`
 	BufferEnabled          bool   `json:"buffer_enabled"`
@@ -200,6 +201,7 @@ func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
 	settings, err := h.dataSharingService.UpdateCaptureRuntimeSettings(c.Request.Context(), service.DataShareCaptureRuntimeSettings{
 		WorkerCount:            req.WorkerCount,
 		QueueSize:              req.QueueSize,
+		FlushQueueSize:         req.FlushQueueSize,
 		TaskTimeoutSeconds:     req.TaskTimeoutSeconds,
 		CompressionLevel:       req.CompressionLevel,
 		BufferEnabled:          req.BufferEnabled,

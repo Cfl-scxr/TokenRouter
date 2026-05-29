@@ -251,12 +251,6 @@ func provideCleanup(
 		}
 
 		dataSharingSteps := []cleanupStep{
-			{"DataSharingCaptureWorkerPool", func() error {
-				if dataSharingCaptureWorkerPool != nil {
-					dataSharingCaptureWorkerPool.Stop()
-				}
-				return nil
-			}},
 			{"DataSharingService", func() error {
 				if dataSharingService != nil {
 					dataSharingService.Stop(ctx)

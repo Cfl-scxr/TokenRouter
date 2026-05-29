@@ -44,7 +44,7 @@ func TestDataShareSessionRepository_RequestPathFilter(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC()
-	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 		TrajectoryID:       "traj-responses",
 		SessionID:          "sess-responses",
 		Dataset:            "tokenrouter-agent",
@@ -71,7 +71,7 @@ func TestDataShareSessionRepository_RequestPathFilter(t *testing.T) {
 		EndedAt:            &now,
 		UpdatedAt:          now,
 	}))
-	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 		TrajectoryID:       "traj-chat",
 		SessionID:          "sess-chat",
 		Dataset:            "tokenrouter-agent",
@@ -200,7 +200,7 @@ func TestDataShareSessionRepository_RequestPathBreakdownLoader(t *testing.T) {
 		{traj: "traj-responses", session: "sess-responses", path: "/v1/responses", ua: "codex-cli/1.0", tokens: 10},
 		{traj: "traj-chat", session: "sess-chat", path: "/v1/chat/completions", ua: "claude-code/2.0", tokens: 20},
 	} {
-		require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+		require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 			TrajectoryID:       item.traj,
 			SessionID:          item.session,
 			Dataset:            "tokenrouter-agent",
@@ -281,7 +281,7 @@ func TestDataShareSessionRepository_FilterOptionsIndependentFromQuality(t *testi
 		{traj: "traj-other-user", path: "/v1/chat/completions", model: "other-model", ua: "other-ua", quality: service.DataShareQualityComplete, userID: 8},
 	}
 	for _, item := range sessions {
-		require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+		require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 			TrajectoryID:       item.traj,
 			SessionID:          item.traj,
 			Dataset:            "tokenrouter-agent",
@@ -347,7 +347,7 @@ func TestDataShareSessionRepository_CompressesPayloadAndOmitsListPayload(t *test
 		"meta":                 map[string]any{"request_path": "/v1/responses", "user_agent": "codex-cli/1.0"},
 	}
 
-	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 		TrajectoryID:       "traj-compress",
 		SessionID:          "sess-compress",
 		Dataset:            "tokenrouter-agent",
@@ -418,36 +418,17 @@ func TestDataShareSessionRepository_CompressesPayloadAndOmitsListPayload(t *test
 	require.Equal(t, tools, payloadItems[0].Tools)
 }
 
-func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testing.T) {
+func TestDataShareSessionRepository_SaveCaptureSnapshotReplacesWithoutMerging(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
 	systemPrompt := "你是编码助手"
 	tools := []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}}
-	legacyMessages := []map[string]any{
+	firstMessages := []map[string]any{
 		{"role": "system", "content": systemPrompt},
 		{"role": "user", "content": "列目录"},
-		{
-			"role": "assistant",
-			"content": []any{
-				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{"cmd": "ls"}},
-			},
-		},
-		{
-			"role": "user",
-			"content": []any{
-				map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "README.md"},
-			},
-		},
-		{"role": "assistant", "content": "看到了 README.md"},
-		{
-			"role": "assistant",
-			"content": []any{
-				map[string]any{"type": "tool_use", "id": "toolu_tail", "name": "exec_command", "input": map[string]any{"cmd": "pwd"}},
-			},
-		},
 	}
-	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 		TrajectoryID:       "traj-legacy-partial",
 		SessionID:          "sess-legacy-partial",
 		Dataset:            "tokenrouter-agent",
@@ -460,10 +441,10 @@ func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testin
 		SourceRequestCount: 1,
 		SystemPrompt:       &systemPrompt,
 		Tools:              tools,
-		Messages:           legacyMessages,
+		Messages:           firstMessages,
 		Usage:              map[string]any{"total_tokens": 15},
 		Meta:               map[string]any{"request_path": "/v1/messages"},
-		SessionJSON:        map[string]any{"messages": legacyMessages},
+		SessionJSON:        map[string]any{"messages": firstMessages},
 		QualityStatus:      service.DataShareQualityInvalid,
 		QualityErrors:      []string{},
 		TotalTokens:        15,
@@ -471,7 +452,12 @@ func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testin
 		EndedAt:            &now,
 		UpdatedAt:          now,
 	}))
-	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+	secondMessages := []map[string]any{
+		{"role": "system", "content": systemPrompt},
+		{"role": "user", "content": "列目录"},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
 		TrajectoryID:       "traj-legacy-partial",
 		SessionID:          "sess-legacy-partial",
 		Dataset:            "tokenrouter-agent",
@@ -481,16 +467,17 @@ func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testin
 		UserAgent:          "claude-code",
 		Status:             service.DataShareStatusTerminated,
 		IsFinalSnapshot:    false,
-		SourceRequestCount: 1,
+		SourceRequestCount: 2,
 		SystemPrompt:       &systemPrompt,
 		Tools:              tools,
-		Messages:           legacyMessages,
-		Usage:              map[string]any{"total_tokens": 15},
+		Messages:           secondMessages,
+		Usage:              map[string]any{"total_tokens": 30},
 		Meta:               map[string]any{"request_path": "/v1/messages"},
-		SessionJSON:        map[string]any{"messages": legacyMessages},
-		QualityStatus:      service.DataShareQualityInvalid,
+		SessionJSON:        map[string]any{"messages": secondMessages},
+		Exportable:         true,
+		QualityStatus:      service.DataShareQualityPartial,
 		QualityErrors:      []string{},
-		TotalTokens:        15,
+		TotalTokens:        30,
 		CreatedAt:          now,
 		EndedAt:            &now,
 		UpdatedAt:          now,
@@ -498,11 +485,16 @@ func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testin
 
 	stored, err := client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-legacy-partial")).Only(ctx)
 	require.NoError(t, err)
+	require.Equal(t, 2, stored.SourceRequestCount)
+	require.Equal(t, int64(30), stored.TotalTokens)
 	require.True(t, stored.Exportable)
 	require.Equal(t, service.DataShareQualityPartial, stored.QualityStatus)
+	hydrated, err := repo.GetCaptureByTrajectoryIDWithPayload(ctx, "traj-legacy-partial")
+	require.NoError(t, err)
+	require.Len(t, hydrated.Messages, len(secondMessages))
 }
 
-func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedIncrement(t *testing.T) {
+func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedSnapshot(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -533,30 +525,34 @@ func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedIncre
 		}
 	}
 
-	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", strings.Repeat("a", 64))))
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, session("traj-limit-1", strings.Repeat("a", 64))))
 	total, err := repo.TotalStorageBytes(ctx)
 	require.NoError(t, err)
 	require.Greater(t, total, int64(0))
 
 	// 新 session 超过阈值时直接跳过采集，避免继续扩大数据共享表空间。
-	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-2", strings.Repeat("b", 64)), service.DataShareUpsertOptions{StorageLimitBytes: total}))
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, session("traj-limit-2", strings.Repeat("b", 64)), service.DataShareUpsertOptions{StorageLimitBytes: total}))
 	count, err := client.DataShareSession.Query().Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
-	// 已有 session 的小增量在阈值仍有余量时允许，避免正常任务无法闭合。
-	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", strings.Repeat("c", 64)), service.DataShareUpsertOptions{StorageLimitBytes: total + 4096}))
+	// 已有 session 的小快照在阈值仍有余量时允许，避免正常任务无法闭合。
+	next := session("traj-limit-1", strings.Repeat("c", 64))
+	next.SourceRequestCount = 2
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, next, service.DataShareUpsertOptions{StorageLimitBytes: total + 4096}))
 	stored, err := client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-limit-1")).Only(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, stored.SourceRequestCount)
 
 	currentTotal, err := repo.TotalStorageBytes(ctx)
 	require.NoError(t, err)
-	require.Greater(t, currentTotal, total)
+	require.Greater(t, currentTotal, int64(0))
 
-	// 已有 session 的大增量超过阈值时也会跳过，避免单 session 持续追加打爆磁盘。
+	// 已有 session 的大快照超过阈值时也会跳过，避免单 session 持续追加打爆磁盘。
 	limit := currentTotal + 8
-	require.NoError(t, repo.UpsertCapture(ctx, session("traj-limit-1", deterministicDataShareTestContent(4096)), service.DataShareUpsertOptions{StorageLimitBytes: limit}))
+	oversized := session("traj-limit-1", deterministicDataShareTestContent(4096))
+	oversized.SourceRequestCount = 3
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, oversized, service.DataShareUpsertOptions{StorageLimitBytes: limit}))
 	stored, err = client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-limit-1")).Only(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, stored.SourceRequestCount)

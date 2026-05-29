@@ -207,18 +207,19 @@ func TestDataShareCaptureRuntimeSettingsHandlers(t *testing.T) {
 	require.Equal(t, 15, getEnvelope.Data.TaskTimeoutSeconds)
 	require.Equal(t, string(service.DataShareCompressionLevelFastest), getEnvelope.Data.CompressionLevel)
 	require.True(t, getEnvelope.Data.BufferEnabled)
-	require.Equal(t, 5, getEnvelope.Data.BufferIdleFlushSeconds)
+	require.Equal(t, 30, getEnvelope.Data.BufferIdleFlushSeconds)
 
-	body := bytes.NewBufferString(`{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`)
+	body := bytes.NewBufferString(`{"worker_count":3,"queue_size":8,"flush_queue_size":9,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`)
 	putRecorder := httptest.NewRecorder()
 	putCtx, _ := gin.CreateTestContext(putRecorder)
 	putCtx.Request = httptest.NewRequest(http.MethodPut, "/admin/data-sharing/runtime-settings", body)
 	putCtx.Request.Header.Set("Content-Type", "application/json")
 	h.UpdateCaptureRuntimeSettings(putCtx)
 	require.Equal(t, http.StatusOK, putRecorder.Code)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":9,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 3, pool.Stats().WorkerCount)
 	require.Equal(t, 8, pool.Stats().QueueCapacity)
+	require.Equal(t, 9, pool.Stats().FlushQueueCapacity)
 	require.Equal(t, 60, pool.Stats().TaskTimeoutSeconds)
 	require.Equal(t, string(service.DataShareCompressionLevelDefault), pool.Stats().CompressionLevel)
 }
@@ -246,5 +247,5 @@ func TestDataShareCaptureRuntimeSettingsHandlerBackfillsLegacyPayload(t *testing
 	h.UpdateCaptureRuntimeSettings(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":5,"buffer_max_sessions":4096,"buffer_max_pending_events":65536}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
 }

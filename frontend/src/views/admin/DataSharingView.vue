@@ -57,16 +57,32 @@
         <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
           <div class="space-y-4">
             <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-              <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>队列占用</span>
-                <span>{{ captureWorkerQueueRatioText }}</span>
+              <div class="space-y-4">
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>采集队列占用</span>
+                    <span>{{ captureWorkerQueueRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureWorkerQueueProgress}%` }"></div>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ captureWorkerQueueText }}
+                  </p>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Flush 队列占用</span>
+                    <span>{{ captureWorkerFlushQueueRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-cyan-500 transition-all" :style="{ width: `${captureWorkerFlushQueueProgress}%` }"></div>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ captureWorkerFlushQueueText }}
+                  </p>
+                </div>
               </div>
-              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureWorkerQueueProgress}%` }"></div>
-              </div>
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ captureWorkerQueueText }} · {{ formatNumber(captureWorkerAvailableWorkers) }} 个 Worker 空闲可用
-              </p>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
@@ -94,7 +110,7 @@
           </div>
 
           <div class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <label class="input-label">Worker 数量</label>
                 <input v-model="captureWorkerCountInput" type="number" min="1" :max="captureWorkerCountMax" step="1" class="input" />
@@ -102,6 +118,10 @@
               <div>
                 <label class="input-label">队列大小</label>
                 <input v-model="captureQueueSizeInput" type="number" min="1" :max="captureQueueSizeMax" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">Flush 队列大小</label>
+                <input v-model="captureFlushQueueSizeInput" type="number" min="1" :max="captureFlushQueueSizeMax" step="1" class="input" />
               </div>
               <div>
                 <label class="input-label">任务超时（秒）</label>
@@ -163,14 +183,14 @@
           <div class="space-y-4">
             <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
               <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>待落库事件</span>
+                <span>待落库增量</span>
                 <span>{{ captureBufferPendingRatioText }}</span>
               </div>
               <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                 <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
               </div>
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ formatNumber(captureBufferPendingEvents) }}/{{ formatNumber(captureBufferMaxPendingEvents) }} 个事件 · {{ formatNumber(captureBufferBufferedSessions) }}/{{ formatNumber(captureBufferMaxSessions) }} 个 session
+                {{ formatNumber(captureBufferPendingEvents) }}/{{ formatNumber(captureBufferMaxPendingEvents) }} 个增量 · {{ formatNumber(captureBufferBufferedSessions) }}/{{ formatNumber(captureBufferMaxSessions) }} 个 session
               </p>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -199,11 +219,7 @@
           </div>
 
           <div class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label class="flex h-full items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
-                <input v-model="captureBufferEnabledInput" type="checkbox" class="rounded border-gray-300 text-primary-600" />
-                <span>启用缓冲池</span>
-              </label>
+            <div class="grid gap-4 md:grid-cols-3">
               <div>
                 <label class="input-label">空闲 Flush（秒）</label>
                 <input v-model="captureBufferIdleFlushInput" type="number" min="1" :max="captureBufferIdleFlushMax" step="1" class="input" />
@@ -213,7 +229,7 @@
                 <input v-model="captureBufferMaxSessionsInput" type="number" min="1" :max="captureBufferMaxSessionsLimit" step="1" class="input" />
               </div>
               <div>
-                <label class="input-label">最大事件</label>
+                <label class="input-label">最大增量</label>
                 <input v-model="captureBufferMaxPendingEventsInput" type="number" min="1" :max="captureBufferMaxPendingEventsLimit" step="1" class="input" />
               </div>
             </div>
@@ -239,7 +255,7 @@
                 </div>
                 <div>
                   <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>事件容量</span>
+                    <span>增量容量</span>
                     <span>{{ captureBufferPendingRatioText }}</span>
                   </div>
                   <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
@@ -810,6 +826,7 @@ const storageLimitInput = ref('')
 const storageLimitUnit = ref<'MB' | 'GB' | 'TB'>('GB')
 const captureWorkerCountInput = ref('')
 const captureQueueSizeInput = ref('')
+const captureFlushQueueSizeInput = ref('')
 const captureTimeoutInput = ref('')
 const captureCompressionLevelInput = ref('')
 const captureBufferEnabledInput = ref(true)
@@ -818,6 +835,7 @@ const captureBufferMaxSessionsInput = ref('')
 const captureBufferMaxPendingEventsInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
+const captureFlushQueueSizeMax = 100000
 const captureTimeoutSecondsMax = 300
 const captureBufferIdleFlushMax = 300
 const captureBufferMaxSessionsLimit = 100000
@@ -1155,6 +1173,18 @@ const captureWorkerQueueProgress = computed(() => {
   return Math.min(Math.max((worker.queue_depth / worker.queue_capacity) * 100, 0), 100)
 })
 const captureWorkerQueueRatioText = computed(() => `${captureWorkerQueueProgress.value.toFixed(1)}%`)
+const captureWorkerFlushQueueText = computed(() => {
+  const worker = stats.value?.capture_worker
+  if (!worker) return '-'
+  return `${formatNumber(worker.flush_queue_depth || 0)}/${formatNumber(worker.flush_queue_capacity || worker.queue_capacity || 0)}`
+})
+const captureWorkerFlushQueueProgress = computed(() => {
+  const worker = stats.value?.capture_worker
+  const capacity = worker?.flush_queue_capacity || worker?.queue_capacity || 0
+  if (!capacity) return 0
+  return Math.min(Math.max(((worker?.flush_queue_depth || 0) / capacity) * 100, 0), 100)
+})
+const captureWorkerFlushQueueRatioText = computed(() => `${captureWorkerFlushQueueProgress.value.toFixed(1)}%`)
 const captureWorkerRunningWorkers = computed(() => stats.value?.capture_worker?.running_workers || 0)
 const captureWorkerAvailableWorkers = computed(() => stats.value?.capture_worker?.available_workers || 0)
 const captureWorkerCompletedTotal = computed(() => stats.value?.capture_worker?.completed_total || 0)
@@ -1173,6 +1203,7 @@ const captureWorkerTaskTimeoutSeconds = computed(() => stats.value?.capture_work
 const captureWorkerCompressionLevel = computed(() => stats.value?.capture_worker?.compression_level || '')
 const captureWorkerCount = computed(() => stats.value?.capture_worker?.worker_count || 0)
 const captureWorkerQueueCapacity = computed(() => stats.value?.capture_worker?.queue_capacity || 0)
+const captureWorkerFlushQueueCapacity = computed(() => stats.value?.capture_worker?.flush_queue_capacity || 0)
 const captureWorkerSlotLimit = 64
 const captureWorkerHiddenCount = computed(() => Math.max(captureWorkerCount.value - captureWorkerSlotLimit, 0))
 const captureWorkerSlots = computed(() => {
@@ -1384,19 +1415,21 @@ async function loadCaptureRuntimeSettings() {
 function captureRuntimeSettingsFromForm() {
   const workerCount = boundedPositiveIntegerFromInput(captureWorkerCountInput.value, captureWorkerCountMax)
   const queueSize = boundedPositiveIntegerFromInput(captureQueueSizeInput.value, captureQueueSizeMax)
+  const flushQueueSize = boundedPositiveIntegerFromInput(captureFlushQueueSizeInput.value, captureFlushQueueSizeMax)
   const timeoutSeconds = boundedPositiveIntegerFromInput(captureTimeoutInput.value, captureTimeoutSecondsMax)
   const bufferIdleFlushSeconds = boundedPositiveIntegerFromInput(captureBufferIdleFlushInput.value, captureBufferIdleFlushMax)
   const bufferMaxSessions = boundedPositiveIntegerFromInput(captureBufferMaxSessionsInput.value, captureBufferMaxSessionsLimit)
   const bufferMaxPendingEvents = boundedPositiveIntegerFromInput(captureBufferMaxPendingEventsInput.value, captureBufferMaxPendingEventsLimit)
-  if (!workerCount || !queueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents) {
+  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents) {
     throw new Error('invalid capture runtime settings')
   }
   return {
     worker_count: workerCount,
     queue_size: queueSize,
+    flush_queue_size: flushQueueSize,
     task_timeout_seconds: timeoutSeconds,
     compression_level: normalizeCaptureCompressionLevel(captureCompressionLevelInput.value),
-    buffer_enabled: captureBufferEnabledInput.value,
+    buffer_enabled: true,
     buffer_idle_flush_seconds: bufferIdleFlushSeconds,
     buffer_max_sessions: bufferMaxSessions,
     buffer_max_pending_events: bufferMaxPendingEvents
@@ -1421,6 +1454,7 @@ function ratioPercent(value: number, total: number) {
 function applyCaptureRuntimeSettingsToForm(settings: {
   worker_count: number
   queue_size: number
+  flush_queue_size?: number
   task_timeout_seconds: number
   compression_level?: string
   buffer_enabled?: boolean
@@ -1430,10 +1464,11 @@ function applyCaptureRuntimeSettingsToForm(settings: {
 }) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
+  captureFlushQueueSizeInput.value = String(settings.flush_queue_size || settings.queue_size)
   captureTimeoutInput.value = String(settings.task_timeout_seconds)
   captureCompressionLevelInput.value = normalizeCaptureCompressionLevel(settings.compression_level || 'fastest')
-  captureBufferEnabledInput.value = settings.buffer_enabled ?? true
-  captureBufferIdleFlushInput.value = String(settings.buffer_idle_flush_seconds || 5)
+  captureBufferEnabledInput.value = true
+  captureBufferIdleFlushInput.value = String(settings.buffer_idle_flush_seconds || 30)
   captureBufferMaxSessionsInput.value = String(settings.buffer_max_sessions || 4096)
   captureBufferMaxPendingEventsInput.value = String(settings.buffer_max_pending_events || 65536)
 }
@@ -1631,6 +1666,9 @@ async function loadStats() {
     }
     if (!captureQueueSizeInput.value && captureWorkerQueueCapacity.value > 0) {
       captureQueueSizeInput.value = String(captureWorkerQueueCapacity.value)
+    }
+    if (!captureFlushQueueSizeInput.value && captureWorkerFlushQueueCapacity.value > 0) {
+      captureFlushQueueSizeInput.value = String(captureWorkerFlushQueueCapacity.value)
     }
     if (!captureTimeoutInput.value && captureWorkerTaskTimeoutSeconds.value > 0) {
       captureTimeoutInput.value = String(captureWorkerTaskTimeoutSeconds.value)

@@ -44,6 +44,8 @@ export interface DataShareQualityErrorPoint {
 export interface DataShareCaptureWorkerStats {
   queue_depth: number
   queue_capacity: number
+  flush_queue_depth: number
+  flush_queue_capacity: number
   worker_count: number
   running_workers: number
   available_workers: number
@@ -76,6 +78,7 @@ export interface DataShareCaptureBufferStats {
 export interface DataShareCaptureRuntimeSettings {
   worker_count: number
   queue_size: number
+  flush_queue_size: number
   task_timeout_seconds: number
   compression_level: string
   buffer_enabled: boolean

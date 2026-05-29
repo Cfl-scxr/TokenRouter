@@ -14,9 +14,17 @@ import (
 // DataSharingCaptureBufferFlush 负责把缓冲中合并后的 session 写入持久化层。
 type DataSharingCaptureBufferFlush func(ctx context.Context, session *DataShareSession) error
 
+// DataSharingCaptureBufferHydrate 负责按缓冲 key 读取已落库的完整 session。
+type DataSharingCaptureBufferHydrate func(ctx context.Context, key string) (*DataShareSession, error)
+
+// DataSharingCaptureBufferScheduleFlush 负责把一次快照落库任务提交给外部执行器。
+type DataSharingCaptureBufferScheduleFlush func(job DataSharingCaptureJob) DataSharingCaptureSubmitMode
+
 // DataSharingCaptureBufferOptions 描述采集缓冲池的依赖与初始配置。
 type DataSharingCaptureBufferOptions struct {
-	Flush DataSharingCaptureBufferFlush
+	Flush         DataSharingCaptureBufferFlush
+	Hydrate       DataSharingCaptureBufferHydrate
+	ScheduleFlush DataSharingCaptureBufferScheduleFlush
 }
 
 // DataSharingCaptureBufferStats 是管理端可见的采集缓冲池运行时统计。
@@ -40,6 +48,8 @@ type DataSharingCaptureBufferStats struct {
 type DataSharingCaptureBuffer struct {
 	mu             sync.Mutex
 	flush          DataSharingCaptureBufferFlush
+	hydrate        DataSharingCaptureBufferHydrate
+	scheduleFlush  DataSharingCaptureBufferScheduleFlush
 	entries        map[string]*dataSharingCaptureBufferEntry
 	stopped        bool
 	enabled        bool
@@ -64,21 +74,26 @@ type dataSharingCaptureBufferEntry struct {
 	eventCount            int
 	lastUpdated           time.Time
 	timer                 *time.Timer
+	hydrating             bool
+	hydrateErr            error
 	flushing              bool
 	lastFlushed           *DataShareSession
 	lastFlushedEventCount int
+	cond                  *sync.Cond
 }
 
 // NewDataSharingCaptureBuffer 创建进程内数据共享采集缓冲池。
 func NewDataSharingCaptureBuffer(opts DataSharingCaptureBufferOptions) *DataSharingCaptureBuffer {
 	b := &DataSharingCaptureBuffer{
-		flush:        opts.Flush,
-		entries:      map[string]*dataSharingCaptureBufferEntry{},
-		enabled:      defaultDataSharingCaptureBufferEnabled,
-		idleFlush:    time.Duration(defaultDataSharingCaptureBufferIdleSeconds) * time.Second,
-		flushTimeout: time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
-		maxSessions:  defaultDataSharingCaptureBufferMaxSessions,
-		maxPending:   defaultDataSharingCaptureBufferMaxEvents,
+		flush:         opts.Flush,
+		hydrate:       opts.Hydrate,
+		scheduleFlush: opts.ScheduleFlush,
+		entries:       map[string]*dataSharingCaptureBufferEntry{},
+		enabled:       defaultDataSharingCaptureBufferEnabled,
+		idleFlush:     time.Duration(defaultDataSharingCaptureBufferIdleSeconds) * time.Second,
+		flushTimeout:  time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
+		maxSessions:   defaultDataSharingCaptureBufferMaxSessions,
+		maxPending:    defaultDataSharingCaptureBufferMaxEvents,
 	}
 	return b
 }
@@ -91,21 +106,17 @@ func (b *DataSharingCaptureBuffer) UpdateRuntimeSettings(settings DataShareCaptu
 	normalized := normalizeDataShareCaptureRuntimeSettings(settings)
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.enabled = normalized.BufferEnabled
+	b.enabled = true
 	b.idleFlush = time.Duration(normalized.BufferIdleFlushSeconds) * time.Second
 	b.flushTimeout = time.Duration(normalized.TaskTimeoutSeconds) * time.Second
 	b.maxSessions = normalized.BufferMaxSessions
 	b.maxPending = normalized.BufferMaxPendingEvents
 	for _, entry := range b.entries {
-		if !b.enabled {
-			b.startFlushLocked(entry, context.Background(), true)
-			continue
-		}
 		b.scheduleEntryTimerLocked(entry, b.remainingIdleFlushLocked(entry))
 	}
 }
 
-// Submit 合并一次采集结果；缓冲关闭时会同步调用 flush，保留原有立即落库语义。
+// Submit 合并一次采集结果；缓冲池强制开启，落库统一由 idle flush 触发。
 func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShareSession) error {
 	if b == nil || session == nil {
 		return nil
@@ -122,9 +133,8 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 	}
 
 	b.mu.Lock()
-	if b.stopped || !b.enabled {
+	if b.stopped {
 		b.mu.Unlock()
-		// 绕过缓冲池时仍要完成质量评估和 payload 构建，避免写入半成品 session。
 		return b.flush(ctx, finalizeBufferedDataShareSession(session))
 	}
 	if b.pendingEvents >= b.maxPending || (b.entries[key] == nil && len(b.entries) >= b.maxSessions) {
@@ -135,9 +145,36 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 		}
 	}
 	entry := b.entries[key]
+	shouldHydrate := false
 	if entry == nil {
-		entry = &dataSharingCaptureBufferEntry{key: key}
+		entry = b.newEntryLocked(key)
 		b.entries[key] = entry
+		if b.hydrate != nil {
+			entry.hydrating = true
+			shouldHydrate = true
+		}
+	}
+	b.mu.Unlock()
+
+	if shouldHydrate {
+		b.hydrateEntry(ctx, entry, key)
+	}
+
+	b.mu.Lock()
+	for entry.hydrating && !b.stopped {
+		entry.cond.Wait()
+	}
+	if entry.hydrateErr != nil {
+		err := entry.hydrateErr
+		if b.entries[key] == entry && entry.session == nil && entry.eventCount == 0 && !entry.flushing {
+			delete(b.entries, key)
+		}
+		b.mu.Unlock()
+		return err
+	}
+	if b.stopped {
+		b.mu.Unlock()
+		return b.flush(ctx, finalizeBufferedDataShareSession(session))
 	}
 	entry.session = mergeBufferedDataShareSession(entry.session, session)
 	entry.eventCount++
@@ -158,7 +195,7 @@ func (b *DataSharingCaptureBuffer) FlushAll(ctx context.Context) {
 		b.mu.Lock()
 		var selected *dataSharingCaptureBufferEntry
 		for _, entry := range b.entries {
-			if !entry.flushing {
+			if !entry.flushing && !entry.hydrating {
 				selected = entry
 				break
 			}
@@ -203,6 +240,9 @@ func (b *DataSharingCaptureBuffer) Stop(ctx context.Context) {
 			entry.timer.Stop()
 			entry.timer = nil
 		}
+		if entry.cond != nil {
+			entry.cond.Broadcast()
+		}
 	}
 	b.mu.Unlock()
 	b.FlushAll(ctx)
@@ -232,6 +272,44 @@ func (b *DataSharingCaptureBuffer) Stats() DataSharingCaptureBufferStats {
 	lastError, _ := b.lastError.Load().(string)
 	stats.LastError = lastError
 	return stats
+}
+
+func (b *DataSharingCaptureBuffer) newEntryLocked(key string) *dataSharingCaptureBufferEntry {
+	entry := &dataSharingCaptureBufferEntry{key: key}
+	entry.cond = sync.NewCond(&b.mu)
+	return entry
+}
+
+func (b *DataSharingCaptureBuffer) hydrateEntry(ctx context.Context, entry *dataSharingCaptureBufferEntry, key string) {
+	var hydrated *DataShareSession
+	var err error
+	if b.hydrate != nil {
+		hydrated, err = b.hydrate(ctx, key)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	current := b.entries[key]
+	if current != entry {
+		return
+	}
+	if err != nil && !errors.Is(err, ErrDataShareSessionNotFound) {
+		entry.hydrateErr = err
+		b.failedTotal.Add(1)
+		b.lastError.Store(truncateDataSharingCaptureError(err.Error()))
+		logger.L().With(
+			zap.String("component", "service.data_sharing_capture_buffer"),
+			zap.String("trajectory_id", key),
+			zap.Error(err),
+		).Warn("data_sharing.capture_buffer_hydrate_failed")
+	}
+	if hydrated != nil {
+		entry.session = mergeBufferedDataShareSession(hydrated, entry.session)
+	}
+	if err == nil || errors.Is(err, ErrDataShareSessionNotFound) {
+		entry.hydrateErr = nil
+	}
+	entry.hydrating = false
+	entry.cond.Broadcast()
 }
 
 func (b *DataSharingCaptureBuffer) scheduleEntryTimerLocked(entry *dataSharingCaptureBufferEntry, delay time.Duration) {
@@ -274,6 +352,10 @@ func (b *DataSharingCaptureBuffer) flushByKey(key string) {
 			return
 		}
 	}
+	if entry.hydrating {
+		b.mu.Unlock()
+		return
+	}
 	b.startFlushLocked(entry, context.Background(), true)
 	b.mu.Unlock()
 }
@@ -281,7 +363,7 @@ func (b *DataSharingCaptureBuffer) flushByKey(key string) {
 func (b *DataSharingCaptureBuffer) flushOldestLocked() bool {
 	var selected *dataSharingCaptureBufferEntry
 	for _, entry := range b.entries {
-		if entry.flushing {
+		if entry.flushing || entry.hydrating {
 			continue
 		}
 		if selected == nil || entry.eventCount > selected.eventCount {
@@ -296,7 +378,7 @@ func (b *DataSharingCaptureBuffer) flushOldestLocked() bool {
 }
 
 func (b *DataSharingCaptureBuffer) startFlushLocked(entry *dataSharingCaptureBufferEntry, ctx context.Context, async bool) {
-	if b == nil || entry == nil || entry.flushing {
+	if b == nil || entry == nil || entry.flushing || entry.hydrating {
 		return
 	}
 	session, key := b.detachFlushLocked(entry)
@@ -305,6 +387,25 @@ func (b *DataSharingCaptureBuffer) startFlushLocked(entry *dataSharingCaptureBuf
 	}
 	if !async {
 		run()
+		return
+	}
+	if b.scheduleFlush != nil {
+		b.flushWG.Add(1)
+		mode := b.scheduleFlush(DataSharingCaptureJob{
+			Kind: DataSharingCaptureJobKindFlush,
+			Flush: func(jobCtx context.Context) error {
+				defer b.flushWG.Done()
+				return b.flushEntry(jobCtx, key, session)
+			},
+			Metadata: DataSharingCaptureJobMetadata{RequestID: key},
+		})
+		if mode == DataSharingCaptureSubmitModeEnqueued {
+			return
+		}
+		b.flushWG.Done()
+		b.failedTotal.Add(1)
+		b.lastError.Store("data sharing capture flush queue is full")
+		b.finishFlushLocked(key, errors.New("data sharing capture flush queue is full"))
 		return
 	}
 	b.flushWG.Add(1)
@@ -377,6 +478,10 @@ func (b *DataSharingCaptureBuffer) flushContext(ctx context.Context) (context.Co
 func (b *DataSharingCaptureBuffer) finishFlush(key string, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.finishFlushLocked(key, err)
+}
+
+func (b *DataSharingCaptureBuffer) finishFlushLocked(key string, err error) {
 	entry := b.entries[key]
 	if entry == nil {
 		return

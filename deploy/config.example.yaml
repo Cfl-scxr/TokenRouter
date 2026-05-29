@@ -393,7 +393,7 @@ gateway:
     # 是否启用进程内热点 session 缓冲池，可在管理端在线覆盖
     buffer_enabled: true
     # 热点 session 空闲多久后合并落库（秒），可在管理端在线覆盖
-    buffer_idle_flush_seconds: 5
+    buffer_idle_flush_seconds: 30
     # 最大缓冲 session 数量，超过后优先触发 flush
     buffer_max_sessions: 4096
     # 最大待落库增量事件数，超过后优先触发 flush

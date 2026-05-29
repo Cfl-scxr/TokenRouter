@@ -22,7 +22,7 @@ const (
 	maxDataSharingCaptureTaskTimeoutSeconds     = 300
 	defaultDataSharingCaptureCompressionLevel   = DataShareCompressionLevelFastest
 	defaultDataSharingCaptureBufferEnabled      = true
-	defaultDataSharingCaptureBufferIdleSeconds  = 5
+	defaultDataSharingCaptureBufferIdleSeconds  = 30
 	maxDataSharingCaptureBufferIdleSeconds      = 300
 	defaultDataSharingCaptureBufferMaxSessions  = 4096
 	maxDataSharingCaptureBufferMaxSessions      = 100000
@@ -40,6 +40,14 @@ const (
 	DataSharingCaptureProtocolOpenAI DataSharingCaptureProtocol = "openai"
 )
 
+// DataSharingCaptureJobKind 标识 worker 当前执行采集解析还是缓冲池快照落库。
+type DataSharingCaptureJobKind string
+
+const (
+	DataSharingCaptureJobKindCapture DataSharingCaptureJobKind = "capture"
+	DataSharingCaptureJobKindFlush   DataSharingCaptureJobKind = "flush"
+)
+
 // DataSharingCaptureJobMetadata 保存日志与统计需要的轻量元信息，不依赖请求 ctx。
 type DataSharingCaptureJobMetadata struct {
 	Provider  string
@@ -52,8 +60,10 @@ type DataSharingCaptureJobMetadata struct {
 
 // DataSharingCaptureJob 是提交到数据共享采集 worker 的任务。
 type DataSharingCaptureJob struct {
+	Kind     DataSharingCaptureJobKind
 	Protocol DataSharingCaptureProtocol
 	Input    DataShareCaptureInput
+	Flush    func(ctx context.Context) error
 	Metadata DataSharingCaptureJobMetadata
 }
 
@@ -70,16 +80,19 @@ const (
 
 // DataSharingCaptureWorkerPoolOptions 数据共享采集池配置。
 type DataSharingCaptureWorkerPoolOptions struct {
-	WorkerCount int
-	QueueSize   int
-	TaskTimeout time.Duration
-	Handler     DataSharingCaptureHandler
+	WorkerCount    int
+	QueueSize      int
+	FlushQueueSize int
+	TaskTimeout    time.Duration
+	Handler        DataSharingCaptureHandler
 }
 
 // DataSharingCaptureWorkerPoolStats 是管理端可见的采集池运行时统计。
 type DataSharingCaptureWorkerPoolStats struct {
 	QueueDepth         uint64 `json:"queue_depth"`
 	QueueCapacity      int    `json:"queue_capacity"`
+	FlushQueueDepth    uint64 `json:"flush_queue_depth"`
+	FlushQueueCapacity int    `json:"flush_queue_capacity"`
 	WorkerCount        int    `json:"worker_count"`
 	RunningWorkers     int64  `json:"running_workers"`
 	AvailableWorkers   int64  `json:"available_workers"`
@@ -100,6 +113,9 @@ type DataSharingCaptureWorkerPool struct {
 	queue            []DataSharingCaptureJob
 	queueHead        int
 	queueLen         int
+	flushQueue       []DataSharingCaptureJob
+	flushQueueHead   int
+	flushQueueLen    int
 	stopping         bool
 	startedWorkers   int
 	workerWG         sync.WaitGroup
@@ -107,6 +123,7 @@ type DataSharingCaptureWorkerPool struct {
 	handler          DataSharingCaptureHandler
 	workerCount      int
 	queueCapacity    int
+	flushQueueCap    int
 	activeTotal      atomic.Int64
 	submittedTotal   atomic.Uint64
 	completedTotal   atomic.Uint64
@@ -131,6 +148,7 @@ func NewDataSharingCaptureWorkerPoolWithOptions(opts DataSharingCaptureWorkerPoo
 		handler:       opts.Handler,
 		workerCount:   opts.WorkerCount,
 		queueCapacity: opts.QueueSize,
+		flushQueueCap: opts.FlushQueueSize,
 	}
 	p.cond = sync.NewCond(&p.mu)
 	p.SetTaskTimeout(opts.TaskTimeout)
@@ -177,14 +195,15 @@ func (p *DataSharingCaptureWorkerPool) TaskTimeout() time.Duration {
 }
 
 // UpdateRuntimeSettings 在线调整 worker 数、队列容量和后续任务超时。
-func (p *DataSharingCaptureWorkerPool) UpdateRuntimeSettings(workerCount, queueSize int, taskTimeout time.Duration) {
+func (p *DataSharingCaptureWorkerPool) UpdateRuntimeSettings(workerCount, queueSize, flushQueueSize int, taskTimeout time.Duration) {
 	if p == nil {
 		return
 	}
 	opts := normalizeDataSharingCapturePoolOptions(DataSharingCaptureWorkerPoolOptions{
-		WorkerCount: workerCount,
-		QueueSize:   queueSize,
-		TaskTimeout: taskTimeout,
+		WorkerCount:    workerCount,
+		QueueSize:      queueSize,
+		FlushQueueSize: flushQueueSize,
+		TaskTimeout:    taskTimeout,
 	})
 	p.SetTaskTimeout(opts.TaskTimeout)
 
@@ -196,12 +215,26 @@ func (p *DataSharingCaptureWorkerPool) UpdateRuntimeSettings(workerCount, queueS
 	}
 	p.workerCount = opts.WorkerCount
 	p.queueCapacity = opts.QueueSize
+	p.flushQueueCap = opts.FlushQueueSize
 	p.ensureWorkersLocked(opts.WorkerCount)
 	p.cond.Broadcast()
 }
 
 // Submit 非阻塞提交采集任务；队列满或未就绪时直接丢弃。
 func (p *DataSharingCaptureWorkerPool) Submit(job DataSharingCaptureJob) DataSharingCaptureSubmitMode {
+	if job.Kind == "" {
+		job.Kind = DataSharingCaptureJobKindCapture
+	}
+	return p.submit(job, false)
+}
+
+// SubmitFlush 非阻塞提交缓冲池落库任务；flush 队列优先于普通采集队列消费。
+func (p *DataSharingCaptureWorkerPool) SubmitFlush(job DataSharingCaptureJob) DataSharingCaptureSubmitMode {
+	job.Kind = DataSharingCaptureJobKindFlush
+	return p.submit(job, true)
+}
+
+func (p *DataSharingCaptureWorkerPool) submit(job DataSharingCaptureJob, flush bool) DataSharingCaptureSubmitMode {
 	if p == nil {
 		return DataSharingCaptureSubmitModeDropped
 	}
@@ -211,12 +244,20 @@ func (p *DataSharingCaptureWorkerPool) Submit(job DataSharingCaptureJob) DataSha
 	switch {
 	case p.stopping:
 		reason = "stopped"
-	case p.handler == nil:
+	case !flush && p.handler == nil:
 		reason = "missing_handler"
-	case p.queueLen >= p.queueCapacity:
+	case flush && job.Flush == nil:
+		reason = "missing_flush"
+	case flush && p.flushQueueLen >= p.flushQueueCap:
+		reason = "flush_full"
+	case !flush && p.queueLen >= p.queueCapacity:
 		reason = "full"
 	default:
-		p.enqueueLocked(job)
+		if flush {
+			p.enqueueFlushLocked(job)
+		} else {
+			p.enqueueLocked(job)
+		}
 		p.submittedTotal.Add(1)
 		p.cond.Broadcast()
 		p.mu.Unlock()
@@ -247,6 +288,8 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 	p.initCondLocked()
 	queueDepth := p.queueLen
 	queueCapacity := p.queueCapacity
+	flushQueueDepth := p.flushQueueLen
+	flushQueueCapacity := p.flushQueueCap
 	workerCount := p.workerCount
 	stopping := p.stopping
 	p.mu.Unlock()
@@ -259,6 +302,8 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 	return DataSharingCaptureWorkerPoolStats{
 		QueueDepth:         uint64(queueDepth),
 		QueueCapacity:      queueCapacity,
+		FlushQueueDepth:    uint64(flushQueueDepth),
+		FlushQueueCapacity: flushQueueCapacity,
 		WorkerCount:        workerCount,
 		RunningWorkers:     runningWorkers,
 		AvailableWorkers:   availableWorkers,
@@ -296,6 +341,17 @@ func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
 	p.initCondLocked()
 	handler := p.handler
 	p.mu.Unlock()
+	if job.Kind == "" {
+		job.Kind = DataSharingCaptureJobKindCapture
+	}
+	if job.Kind == DataSharingCaptureJobKindFlush {
+		handler = func(ctx context.Context, job DataSharingCaptureJob) error {
+			if job.Flush == nil {
+				return nil
+			}
+			return job.Flush(ctx)
+		}
+	}
 	if handler == nil {
 		p.droppedTotal.Add(1)
 		return
@@ -314,6 +370,7 @@ func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
 			logger.L().With(
 				zap.String("component", "service.data_sharing_capture_worker_pool"),
 				zap.Any("panic", recovered),
+				zap.String("kind", string(job.Kind)),
 				zap.String("protocol", string(job.Protocol)),
 				zap.String("provider", job.Metadata.Provider),
 				zap.String("model", job.Metadata.Model),
@@ -333,6 +390,7 @@ func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
 		p.storeLastError(err.Error())
 		logger.L().With(
 			zap.String("component", "service.data_sharing_capture_worker_pool"),
+			zap.String("kind", string(job.Kind)),
 			zap.String("protocol", string(job.Protocol)),
 			zap.String("provider", job.Metadata.Provider),
 			zap.String("model", job.Metadata.Model),
@@ -372,13 +430,16 @@ func (p *DataSharingCaptureWorkerPool) dequeue(workerID int) (DataSharingCapture
 	defer p.mu.Unlock()
 	p.initCondLocked()
 	for {
-		if p.stopping && p.queueLen == 0 {
+		if p.stopping && p.queueLen == 0 && p.flushQueueLen == 0 {
 			return zero, false
 		}
 		// 停机排空阶段允许已创建 worker 协助清空队列，避免缩容后停止等待过久。
 		if !p.stopping && workerID >= p.workerCount {
 			p.cond.Wait()
 			continue
+		}
+		if p.flushQueueLen > 0 {
+			return p.dequeueFlushLocked(), true
 		}
 		if p.queueLen > 0 {
 			return p.dequeueLocked(), true
@@ -405,6 +466,18 @@ func (p *DataSharingCaptureWorkerPool) enqueueLocked(job DataSharingCaptureJob) 
 	p.queueLen++
 }
 
+func (p *DataSharingCaptureWorkerPool) enqueueFlushLocked(job DataSharingCaptureJob) {
+	if len(p.flushQueue) == 0 {
+		p.flushQueue = make([]DataSharingCaptureJob, initialDataSharingCaptureQueueBufferSize(p.flushQueueCap))
+	}
+	if p.flushQueueLen == len(p.flushQueue) {
+		p.growFlushQueueLocked()
+	}
+	tail := (p.flushQueueHead + p.flushQueueLen) % len(p.flushQueue)
+	p.flushQueue[tail] = job
+	p.flushQueueLen++
+}
+
 func (p *DataSharingCaptureWorkerPool) dequeueLocked() DataSharingCaptureJob {
 	job := p.queue[p.queueHead]
 	p.queue[p.queueHead] = DataSharingCaptureJob{}
@@ -412,6 +485,17 @@ func (p *DataSharingCaptureWorkerPool) dequeueLocked() DataSharingCaptureJob {
 	p.queueLen--
 	if p.queueLen == 0 {
 		p.queueHead = 0
+	}
+	return job
+}
+
+func (p *DataSharingCaptureWorkerPool) dequeueFlushLocked() DataSharingCaptureJob {
+	job := p.flushQueue[p.flushQueueHead]
+	p.flushQueue[p.flushQueueHead] = DataSharingCaptureJob{}
+	p.flushQueueHead = (p.flushQueueHead + 1) % len(p.flushQueue)
+	p.flushQueueLen--
+	if p.flushQueueLen == 0 {
+		p.flushQueueHead = 0
 	}
 	return job
 }
@@ -430,6 +514,22 @@ func (p *DataSharingCaptureWorkerPool) growQueueLocked() {
 	}
 	p.queue = next
 	p.queueHead = 0
+}
+
+func (p *DataSharingCaptureWorkerPool) growFlushQueueLocked() {
+	nextSize := len(p.flushQueue) * 2
+	if nextSize <= 0 {
+		nextSize = 1
+	}
+	if nextSize > p.flushQueueCap {
+		nextSize = p.flushQueueCap
+	}
+	next := make([]DataSharingCaptureJob, nextSize)
+	for i := 0; i < p.flushQueueLen; i++ {
+		next[i] = p.flushQueue[(p.flushQueueHead+i)%len(p.flushQueue)]
+	}
+	p.flushQueue = next
+	p.flushQueueHead = 0
 }
 
 func (p *DataSharingCaptureWorkerPool) storeLastError(msg string) {
@@ -467,9 +567,10 @@ func (p *DataSharingCaptureWorkerPool) logDrop(reason string, metadata DataShari
 
 func dataSharingCapturePoolOptionsFromConfig(cfg *config.Config) DataSharingCaptureWorkerPoolOptions {
 	opts := DataSharingCaptureWorkerPoolOptions{
-		WorkerCount: defaultDataSharingCaptureWorkerCount,
-		QueueSize:   defaultDataSharingCaptureQueueSize,
-		TaskTimeout: time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
+		WorkerCount:    defaultDataSharingCaptureWorkerCount,
+		QueueSize:      defaultDataSharingCaptureQueueSize,
+		FlushQueueSize: defaultDataSharingCaptureQueueSize,
+		TaskTimeout:    time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
 	}
 	if cfg == nil {
 		return opts
@@ -479,6 +580,7 @@ func dataSharingCapturePoolOptionsFromConfig(cfg *config.Config) DataSharingCapt
 	}
 	if cfg.Gateway.DataSharingCapture.QueueSize > 0 {
 		opts.QueueSize = cfg.Gateway.DataSharingCapture.QueueSize
+		opts.FlushQueueSize = cfg.Gateway.DataSharingCapture.QueueSize
 	}
 	if cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds > 0 {
 		opts.TaskTimeout = time.Duration(cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds) * time.Second
@@ -494,6 +596,7 @@ func dataShareCaptureRuntimeSettingsFromConfig(cfg *config.Config) DataShareCapt
 	}
 	settings.WorkerCount = cfg.Gateway.DataSharingCapture.WorkerCount
 	settings.QueueSize = cfg.Gateway.DataSharingCapture.QueueSize
+	settings.FlushQueueSize = cfg.Gateway.DataSharingCapture.QueueSize
 	settings.TaskTimeoutSeconds = cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds
 	settings.CompressionLevel = cfg.Gateway.DataSharingCapture.CompressionLevel
 	settings.BufferEnabled = cfg.Gateway.DataSharingCapture.BufferEnabled
@@ -515,6 +618,13 @@ func normalizeDataSharingCapturePoolOptions(opts DataSharingCaptureWorkerPoolOpt
 	}
 	if opts.QueueSize > maxDataSharingCaptureQueueSize {
 		opts.QueueSize = maxDataSharingCaptureQueueSize
+	}
+	// Flush 队列和采集队列共用同一套容量上限；旧配置缺字段时跟随采集队列，保持升级前行为。
+	if opts.FlushQueueSize <= 0 {
+		opts.FlushQueueSize = opts.QueueSize
+	}
+	if opts.FlushQueueSize > maxDataSharingCaptureQueueSize {
+		opts.FlushQueueSize = maxDataSharingCaptureQueueSize
 	}
 	if opts.TaskTimeout <= 0 {
 		opts.TaskTimeout = time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second
