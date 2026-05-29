@@ -477,8 +477,10 @@ func ProvideDataSharingService(
 	repo DataShareSessionRepository,
 	settingRepo SettingRepository,
 	captureWorker *DataSharingCaptureWorkerPool,
+	cfg *config.Config,
 ) *DataSharingService {
 	svc := NewDataSharingService(repo, settingRepo, captureWorker)
+	svc.SetDefaultCaptureRuntimeSettings(dataShareCaptureRuntimeSettingsFromConfig(cfg))
 	if _, err := svc.LoadRuntimeSettings(context.Background()); err != nil {
 		logger.LegacyPrintf("service.data_sharing", "load data sharing runtime settings failed: %v", err)
 	}

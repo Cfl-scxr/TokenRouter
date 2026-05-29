@@ -143,6 +143,115 @@
         </div>
       </div>
 
+      <div class="card overflow-hidden">
+        <div class="border-b border-gray-200 p-4 dark:border-gray-700">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">采集缓冲池状态</h2>
+                <span :class="['badge', captureBufferBadgeClass]">{{ captureBufferStatusText }}</span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">热点 session 会先在内存中聚合，空闲后再合并压缩落库。</p>
+            </div>
+            <button class="btn btn-primary btn-sm" :disabled="savingCaptureRuntimeSettings" @click="saveCaptureRuntimeSettings">
+              <Icon name="check" size="sm" class="mr-1" />
+              保存运行配置
+            </button>
+          </div>
+        </div>
+        <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
+          <div class="space-y-4">
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+              <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>待落库事件</span>
+                <span>{{ captureBufferPendingRatioText }}</span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ formatNumber(captureBufferPendingEvents) }}/{{ formatNumber(captureBufferMaxPendingEvents) }} 个事件 · {{ formatNumber(captureBufferBufferedSessions) }}/{{ formatNumber(captureBufferMaxSessions) }} 个 session
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">缓冲 Session</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureBufferBufferedSessions) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">Flush 中</p>
+                <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ formatNumber(captureBufferFlushingSessions) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">成功/失败</p>
+                <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                  {{ formatNumber(captureBufferFlushSuccessTotal) }}/{{ formatNumber(captureBufferFlushFailedTotal) }}
+                </p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">最近耗时</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferLastFlushDurationMillis) }}</p>
+              </div>
+            </div>
+            <p v-if="stats?.capture_buffer?.last_error" class="truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_buffer.last_error">
+              {{ stats.capture_buffer.last_error }}
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <label class="flex h-full items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                <input v-model="captureBufferEnabledInput" type="checkbox" class="rounded border-gray-300 text-primary-600" />
+                <span>启用缓冲池</span>
+              </label>
+              <div>
+                <label class="input-label">空闲 Flush（秒）</label>
+                <input v-model="captureBufferIdleFlushInput" type="number" min="1" :max="captureBufferIdleFlushMax" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">最大 Session</label>
+                <input v-model="captureBufferMaxSessionsInput" type="number" min="1" :max="captureBufferMaxSessionsLimit" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">最大事件</label>
+                <input v-model="captureBufferMaxPendingEventsInput" type="number" min="1" :max="captureBufferMaxPendingEventsLimit" step="1" class="input" />
+              </div>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">缓冲池容量</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    已提交 {{ formatNumber(captureBufferSubmittedTotal) }} · 丢弃 {{ formatNumber(captureBufferDroppedTotal) }} · 空闲阈值 {{ formatNumber(captureBufferIdleFlushSeconds) }} 秒
+                  </p>
+                </div>
+                <span :class="['badge', captureBufferEnabled ? 'badge-success' : 'badge-gray']">{{ captureBufferEnabled ? '已启用' : '已关闭' }}</span>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Session 容量</span>
+                    <span>{{ captureBufferSessionRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureBufferSessionProgress}%` }"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>事件容量</span>
+                    <span>{{ captureBufferPendingRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)_minmax(320px,0.65fr)]">
         <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">空间增长趋势</h2>
@@ -703,9 +812,16 @@ const captureWorkerCountInput = ref('')
 const captureQueueSizeInput = ref('')
 const captureTimeoutInput = ref('')
 const captureCompressionLevelInput = ref('')
+const captureBufferEnabledInput = ref(true)
+const captureBufferIdleFlushInput = ref('')
+const captureBufferMaxSessionsInput = ref('')
+const captureBufferMaxPendingEventsInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureTimeoutSecondsMax = 300
+const captureBufferIdleFlushMax = 300
+const captureBufferMaxSessionsLimit = 100000
+const captureBufferMaxPendingEventsLimit = 1000000
 const captureCompressionLevelOptions = [
   { value: 'fastest', label: '最快' },
   { value: 'default', label: '默认' },
@@ -1076,6 +1192,38 @@ const captureWorkerBadgeClass = computed(() => {
   if (worker.failed_total > 0) return 'badge-warning'
   return 'badge-success'
 })
+const captureBufferEnabled = computed(() => stats.value?.capture_buffer?.enabled ?? false)
+const captureBufferIdleFlushSeconds = computed(() => stats.value?.capture_buffer?.idle_flush_seconds || 0)
+const captureBufferMaxSessions = computed(() => stats.value?.capture_buffer?.max_sessions || 0)
+const captureBufferMaxPendingEvents = computed(() => stats.value?.capture_buffer?.max_pending_events || 0)
+const captureBufferBufferedSessions = computed(() => stats.value?.capture_buffer?.buffered_sessions || 0)
+const captureBufferPendingEvents = computed(() => stats.value?.capture_buffer?.pending_events || 0)
+const captureBufferFlushingSessions = computed(() => stats.value?.capture_buffer?.flushing_sessions || 0)
+const captureBufferSubmittedTotal = computed(() => stats.value?.capture_buffer?.submitted_total || 0)
+const captureBufferFlushSuccessTotal = computed(() => stats.value?.capture_buffer?.flush_success_total || 0)
+const captureBufferFlushFailedTotal = computed(() => stats.value?.capture_buffer?.flush_failed_total || 0)
+const captureBufferDroppedTotal = computed(() => stats.value?.capture_buffer?.dropped_total || 0)
+const captureBufferLastFlushDurationMillis = computed(() => stats.value?.capture_buffer?.last_flush_duration_millis || 0)
+const captureBufferSessionProgress = computed(() => ratioPercent(captureBufferBufferedSessions.value, captureBufferMaxSessions.value))
+const captureBufferPendingProgress = computed(() => ratioPercent(captureBufferPendingEvents.value, captureBufferMaxPendingEvents.value))
+const captureBufferSessionRatioText = computed(() => `${captureBufferSessionProgress.value.toFixed(1)}%`)
+const captureBufferPendingRatioText = computed(() => `${captureBufferPendingProgress.value.toFixed(1)}%`)
+const captureBufferStatusText = computed(() => {
+  const buffer = stats.value?.capture_buffer
+  if (!buffer) return '未启用'
+  if (!buffer.enabled) return '已关闭'
+  if (buffer.dropped_total > 0) return '有丢弃'
+  if (buffer.flush_failed_total > 0) return '有失败'
+  if (buffer.flushing_sessions > 0) return 'Flush 中'
+  return '正常'
+})
+const captureBufferBadgeClass = computed(() => {
+  const buffer = stats.value?.capture_buffer
+  if (!buffer || !buffer.enabled) return 'badge-gray'
+  if (buffer.dropped_total > 0) return 'badge-danger'
+  if (buffer.flush_failed_total > 0) return 'badge-warning'
+  return 'badge-success'
+})
 const skipRulesSummary = computed(() => {
   const total = skipRules.value.length
   const enabled = skipRules.value.filter(rule => rule.enabled).length
@@ -1237,14 +1385,21 @@ function captureRuntimeSettingsFromForm() {
   const workerCount = boundedPositiveIntegerFromInput(captureWorkerCountInput.value, captureWorkerCountMax)
   const queueSize = boundedPositiveIntegerFromInput(captureQueueSizeInput.value, captureQueueSizeMax)
   const timeoutSeconds = boundedPositiveIntegerFromInput(captureTimeoutInput.value, captureTimeoutSecondsMax)
-  if (!workerCount || !queueSize || !timeoutSeconds) {
+  const bufferIdleFlushSeconds = boundedPositiveIntegerFromInput(captureBufferIdleFlushInput.value, captureBufferIdleFlushMax)
+  const bufferMaxSessions = boundedPositiveIntegerFromInput(captureBufferMaxSessionsInput.value, captureBufferMaxSessionsLimit)
+  const bufferMaxPendingEvents = boundedPositiveIntegerFromInput(captureBufferMaxPendingEventsInput.value, captureBufferMaxPendingEventsLimit)
+  if (!workerCount || !queueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents) {
     throw new Error('invalid capture runtime settings')
   }
   return {
     worker_count: workerCount,
     queue_size: queueSize,
     task_timeout_seconds: timeoutSeconds,
-    compression_level: normalizeCaptureCompressionLevel(captureCompressionLevelInput.value)
+    compression_level: normalizeCaptureCompressionLevel(captureCompressionLevelInput.value),
+    buffer_enabled: captureBufferEnabledInput.value,
+    buffer_idle_flush_seconds: bufferIdleFlushSeconds,
+    buffer_max_sessions: bufferMaxSessions,
+    buffer_max_pending_events: bufferMaxPendingEvents
   }
 }
 
@@ -1258,11 +1413,29 @@ function boundedPositiveIntegerFromInput(value: string, max: number) {
   return Math.min(Math.round(raw), max)
 }
 
-function applyCaptureRuntimeSettingsToForm(settings: { worker_count: number; queue_size: number; task_timeout_seconds: number; compression_level?: string }) {
+function ratioPercent(value: number, total: number) {
+  if (!total) return 0
+  return Math.min(Math.max((value / total) * 100, 0), 100)
+}
+
+function applyCaptureRuntimeSettingsToForm(settings: {
+  worker_count: number
+  queue_size: number
+  task_timeout_seconds: number
+  compression_level?: string
+  buffer_enabled?: boolean
+  buffer_idle_flush_seconds?: number
+  buffer_max_sessions?: number
+  buffer_max_pending_events?: number
+}) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
   captureTimeoutInput.value = String(settings.task_timeout_seconds)
   captureCompressionLevelInput.value = normalizeCaptureCompressionLevel(settings.compression_level || 'fastest')
+  captureBufferEnabledInput.value = settings.buffer_enabled ?? true
+  captureBufferIdleFlushInput.value = String(settings.buffer_idle_flush_seconds || 5)
+  captureBufferMaxSessionsInput.value = String(settings.buffer_max_sessions || 4096)
+  captureBufferMaxPendingEventsInput.value = String(settings.buffer_max_pending_events || 65536)
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -1464,6 +1637,15 @@ async function loadStats() {
     }
     if (!captureCompressionLevelInput.value && captureWorkerCompressionLevel.value) {
       captureCompressionLevelInput.value = normalizeCaptureCompressionLevel(captureWorkerCompressionLevel.value)
+    }
+    if (!captureBufferIdleFlushInput.value && captureBufferIdleFlushSeconds.value > 0) {
+      captureBufferIdleFlushInput.value = String(captureBufferIdleFlushSeconds.value)
+    }
+    if (!captureBufferMaxSessionsInput.value && captureBufferMaxSessions.value > 0) {
+      captureBufferMaxSessionsInput.value = String(captureBufferMaxSessions.value)
+    }
+    if (!captureBufferMaxPendingEventsInput.value && captureBufferMaxPendingEvents.value > 0) {
+      captureBufferMaxPendingEventsInput.value = String(captureBufferMaxPendingEvents.value)
     }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')
@@ -1698,6 +1880,12 @@ function formatDate(value?: string | null) {
 
 function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
+}
+
+function formatDurationMillis(value?: number | null) {
+  const millis = value || 0
+  if (millis < 1000) return `${formatNumber(millis)} ms`
+  return `${(millis / 1000).toFixed(2)} s`
 }
 
 function formatUserAgent(value?: string | null) {

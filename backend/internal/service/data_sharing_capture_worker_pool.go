@@ -21,6 +21,13 @@ const (
 	defaultDataSharingCaptureTaskTimeoutSeconds = 15
 	maxDataSharingCaptureTaskTimeoutSeconds     = 300
 	defaultDataSharingCaptureCompressionLevel   = DataShareCompressionLevelFastest
+	defaultDataSharingCaptureBufferEnabled      = true
+	defaultDataSharingCaptureBufferIdleSeconds  = 5
+	maxDataSharingCaptureBufferIdleSeconds      = 300
+	defaultDataSharingCaptureBufferMaxSessions  = 4096
+	maxDataSharingCaptureBufferMaxSessions      = 100000
+	defaultDataSharingCaptureBufferMaxEvents    = 65536
+	maxDataSharingCaptureBufferMaxEvents        = 1000000
 	dataSharingCaptureDropLogInterval           = 5 * time.Second
 	dataSharingCaptureInitialQueueBufferSize    = 1024
 )
@@ -478,6 +485,22 @@ func dataSharingCapturePoolOptionsFromConfig(cfg *config.Config) DataSharingCapt
 	}
 	SetDataShareCompressionLevel(cfg.Gateway.DataSharingCapture.CompressionLevel)
 	return normalizeDataSharingCapturePoolOptions(opts)
+}
+
+func dataShareCaptureRuntimeSettingsFromConfig(cfg *config.Config) DataShareCaptureRuntimeSettings {
+	settings := *defaultDataShareCaptureRuntimeSettings()
+	if cfg == nil {
+		return settings
+	}
+	settings.WorkerCount = cfg.Gateway.DataSharingCapture.WorkerCount
+	settings.QueueSize = cfg.Gateway.DataSharingCapture.QueueSize
+	settings.TaskTimeoutSeconds = cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds
+	settings.CompressionLevel = cfg.Gateway.DataSharingCapture.CompressionLevel
+	settings.BufferEnabled = cfg.Gateway.DataSharingCapture.BufferEnabled
+	settings.BufferIdleFlushSeconds = cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds
+	settings.BufferMaxSessions = cfg.Gateway.DataSharingCapture.BufferMaxSessions
+	settings.BufferMaxPendingEvents = cfg.Gateway.DataSharingCapture.BufferMaxPendingEvents
+	return normalizeDataShareCaptureRuntimeSettings(settings)
 }
 
 func normalizeDataSharingCapturePoolOptions(opts DataSharingCaptureWorkerPoolOptions) DataSharingCaptureWorkerPoolOptions {

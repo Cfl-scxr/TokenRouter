@@ -113,7 +113,12 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 	tools := mergeDataShareTools(existingSession.Tools, session.Tools)
 	usage := mergeDataShareUsage(existingSession.Usage, session.Usage)
 	meta := mergeDataShareMeta(existingSession.Meta, session.Meta)
-	sourceRequestCount := existing.SourceRequestCount + 1
+	incomingRequestCount := session.SourceRequestCount
+	if incomingRequestCount <= 0 {
+		incomingRequestCount = 1
+	}
+	// 缓冲池 flush 时一条写入可能代表多次采集增量，需要按增量数累加来源请求数。
+	sourceRequestCount := existing.SourceRequestCount + incomingRequestCount
 	inputTokens := existing.InputTokens + session.InputTokens
 	outputTokens := existing.OutputTokens + session.OutputTokens
 	totalTokens := existing.TotalTokens + session.TotalTokens

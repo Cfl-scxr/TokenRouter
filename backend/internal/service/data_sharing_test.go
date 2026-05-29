@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -96,6 +97,7 @@ type dataShareCaptureRepoStub struct {
 	sessions []*DataShareSession
 	stats    *DataShareStats
 	err      error
+	seenOpts []DataShareUpsertOptions
 }
 
 func (r *dataShareCaptureRepoStub) UpsertCapture(ctx context.Context, session *DataShareSession, opts ...DataShareUpsertOptions) error {
@@ -103,6 +105,9 @@ func (r *dataShareCaptureRepoStub) UpsertCapture(ctx context.Context, session *D
 	defer r.mu.Unlock()
 	r.upserts++
 	r.sessions = append(r.sessions, session)
+	if len(opts) > 0 {
+		r.seenOpts = append(r.seenOpts, opts[0])
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -150,6 +155,15 @@ func (r *dataShareCaptureRepoStub) upsertCount() int {
 	return r.upserts
 }
 
+func (r *dataShareCaptureRepoStub) lastSession() *DataShareSession {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.sessions) == 0 {
+		return nil
+	}
+	return r.sessions[len(r.sessions)-1]
+}
+
 func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
 	gid := int64(12)
 	repo := &dataShareCaptureRepoStub{}
@@ -160,6 +174,16 @@ func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
 	})
 	t.Cleanup(pool.Stop)
 	svc := NewDataSharingService(repo, nil, pool)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          false,
+		BufferIdleFlushSeconds: 5,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
 
 	mode := svc.CaptureOpenAIRequestAsync(DataShareCaptureInput{
 		APIKey: &APIKey{
@@ -244,6 +268,8 @@ func TestDataSharingService_StatsIncludesCaptureWorker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(3), stats.SessionCount)
 	require.Equal(t, 7, stats.CaptureWorker.QueueCapacity)
+	require.True(t, stats.CaptureBuffer.Enabled)
+	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, stats.CaptureBuffer.IdleFlushSeconds)
 }
 
 func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *testing.T) {
@@ -258,17 +284,25 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *
 	svc := NewDataSharingService(nil, repo, pool)
 
 	settings, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
-		WorkerCount:        2,
-		QueueSize:          9,
-		TaskTimeoutSeconds: 45,
-		CompressionLevel:   string(DataShareCompressionLevelDefault),
+		WorkerCount:            2,
+		QueueSize:              9,
+		TaskTimeoutSeconds:     45,
+		CompressionLevel:       string(DataShareCompressionLevelDefault),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 7,
+		BufferMaxSessions:      123,
+		BufferMaxPendingEvents: 456,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, settings.WorkerCount)
 	require.Equal(t, 9, settings.QueueSize)
 	require.Equal(t, 45, settings.TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelDefault), settings.CompressionLevel)
-	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"task_timeout_seconds":45,"compression_level":"default"}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.True(t, settings.BufferEnabled)
+	require.Equal(t, 7, settings.BufferIdleFlushSeconds)
+	require.Equal(t, 123, settings.BufferMaxSessions)
+	require.Equal(t, 456, settings.BufferMaxPendingEvents)
+	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
 	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
 	require.Equal(t, 45, svc.CaptureWorkerStats().TaskTimeoutSeconds)
@@ -287,16 +321,22 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	svc := NewDataSharingService(nil, repo, pool)
 
 	settings, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
-		WorkerCount:        maxDataSharingCaptureWorkerCount + 100,
-		QueueSize:          maxDataSharingCaptureQueueSize + 100,
-		TaskTimeoutSeconds: maxDataSharingCaptureTaskTimeoutSeconds + 100,
+		WorkerCount:            maxDataSharingCaptureWorkerCount + 100,
+		QueueSize:              maxDataSharingCaptureQueueSize + 100,
+		TaskTimeoutSeconds:     maxDataSharingCaptureTaskTimeoutSeconds + 100,
+		BufferIdleFlushSeconds: maxDataSharingCaptureBufferIdleSeconds + 100,
+		BufferMaxSessions:      maxDataSharingCaptureBufferMaxSessions + 100,
+		BufferMaxPendingEvents: maxDataSharingCaptureBufferMaxEvents + 100,
 	})
 	require.NoError(t, err)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelFastest), settings.CompressionLevel)
-	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"task_timeout_seconds":300,"compression_level":"fastest"}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, maxDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
+	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
+	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"task_timeout_seconds":300,"compression_level":"fastest","buffer_enabled":false,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
@@ -304,7 +344,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 
 func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T) {
 	resetDataShareCompressionLevel(t)
-	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90,"compression_level":"better"}`}}
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90,"compression_level":"better","buffer_enabled":true,"buffer_idle_flush_seconds":9,"buffer_max_sessions":100,"buffer_max_pending_events":200}`}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
 		QueueSize:   1,
@@ -319,6 +359,10 @@ func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T
 	require.Equal(t, 10, settings.QueueSize)
 	require.Equal(t, 90, settings.TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelBetter), settings.CompressionLevel)
+	require.True(t, settings.BufferEnabled)
+	require.Equal(t, 9, settings.BufferIdleFlushSeconds)
+	require.Equal(t, 100, settings.BufferMaxSessions)
+	require.Equal(t, 200, settings.BufferMaxPendingEvents)
 	require.Equal(t, 4, pool.Stats().WorkerCount)
 	require.Equal(t, 10, pool.Stats().QueueCapacity)
 	require.Equal(t, 90, pool.Stats().TaskTimeoutSeconds)
@@ -345,7 +389,7 @@ func TestDataSharingService_LoadRuntimeSettingsUsesCurrentCompressionDefault(t *
 
 func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testing.T) {
 	resetDataShareCompressionLevel(t)
-	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":2048,"queue_size":999999,"task_timeout_seconds":999}`}}
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":2048,"queue_size":999999,"task_timeout_seconds":999,"buffer_enabled":true,"buffer_idle_flush_seconds":999,"buffer_max_sessions":999999,"buffer_max_pending_events":9999999}`}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
 		QueueSize:   1,
@@ -360,10 +404,244 @@ func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testin
 	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelFastest), settings.CompressionLevel)
+	require.Equal(t, maxDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
+	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
+	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
 	require.Equal(t, string(DataShareCompressionLevelFastest), pool.Stats().CompressionLevel)
+}
+
+func TestDataSharingService_LoadRuntimeSettingsBackfillsLegacyBufferDefaults(t *testing.T) {
+	resetDataShareCompressionLevel(t)
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90,"compression_level":"better"}`}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.LoadRuntimeSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 4, settings.WorkerCount)
+	require.Equal(t, 10, settings.QueueSize)
+	require.Equal(t, 90, settings.TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelBetter), settings.CompressionLevel)
+	require.True(t, settings.BufferEnabled)
+	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
+	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
+	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
+}
+
+func TestDataSharingService_UpdateRuntimeSettingsBackfillsLegacyRequest(t *testing.T) {
+	resetDataShareCompressionLevel(t)
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
+		WorkerCount:        3,
+		QueueSize:          8,
+		TaskTimeoutSeconds: 60,
+		CompressionLevel:   string(DataShareCompressionLevelDefault),
+	})
+	require.NoError(t, err)
+	require.True(t, settings.BufferEnabled)
+	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
+	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
+	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":5,"buffer_max_sessions":4096,"buffer_max_pending_events":65536}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+}
+
+func TestDataSharingService_CaptureAsyncBuffersUntilFlush(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(repo, nil, pool)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	mode := svc.CaptureOpenAIRequestAsync(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: true},
+		},
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5",
+		SessionID:       "session-buffer",
+		RequestID:       "request-buffer-1",
+		RequestBody:     []byte(`{"messages":[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"exec_command"}}]}`),
+		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{}"}}]}}]}`),
+		InboundEndpoint: "/v1/chat/completions",
+	})
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, mode)
+
+	require.Eventually(t, func() bool {
+		return svc.CaptureBufferStats().PendingEvents == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 0, repo.upsertCount())
+
+	svc.captureBuffer.FlushAll(context.Background())
+	require.Equal(t, 1, repo.upsertCount())
+	require.Equal(t, uint64(1), svc.CaptureBufferStats().FlushSuccessTotal)
+}
+
+func TestDataSharingService_CaptureBufferMergesSameTrajectory(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	input := func(requestID string, messages string, inputTokens int) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey: &APIKey{
+				ID:      34,
+				UserID:  56,
+				GroupID: &gid,
+				Group:   &Group{ID: gid, DataSharingEnabled: true},
+			},
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5",
+			SessionID:       "session-buffer-merge",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"messages":` + messages + `,"tools":[{"type":"function","function":{"name":"exec_command"}}]}`),
+			ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+			InboundEndpoint: "/v1/chat/completions",
+			InputTokens:     inputTokens,
+		}
+	}
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-1", `[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"}]`, 10)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-2", `[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"},{"role":"assistant","content":"ok"},{"role":"user","content":"again"}]`, 20)}))
+
+	require.Equal(t, 0, repo.upsertCount())
+	require.Equal(t, 2, svc.CaptureBufferStats().PendingEvents)
+	svc.captureBuffer.FlushAll(context.Background())
+
+	require.Equal(t, 1, repo.upsertCount())
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Equal(t, int64(30), session.InputTokens)
+	require.Equal(t, []string{"request-1", "request-2"}, stringsFromAny(session.Meta["source_request_ids"]))
+	require.Len(t, session.Messages, 5)
+}
+
+func TestDataSharingService_CaptureBufferIdleHotUpdateFlushesSooner(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, &dataShareSettingRepoStub{values: map[string]string{}})
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: true},
+		},
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5",
+		SessionID:       "session-buffer-hot-update",
+		RequestID:       "request-hot-update",
+		RequestBody:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+		InboundEndpoint: "/v1/chat/completions",
+	}}))
+	require.Equal(t, 0, repo.upsertCount())
+
+	_, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 1,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return repo.upsertCount() == 1
+	}, 2*time.Second, 20*time.Millisecond)
+}
+
+func TestDataSharingCaptureBuffer_RetainsSessionWhenFlushFails(t *testing.T) {
+	wantErr := errors.New("boom")
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Flush: func(context.Context, *DataShareSession) error {
+			return wantErr
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-failed",
+		SessionID:          "sess-failed",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+		Meta:               map[string]any{"request_id": "req-failed"},
+	}))
+
+	buffer.FlushAll(context.Background())
+	stats := buffer.Stats()
+	require.Equal(t, uint64(1), stats.FlushFailedTotal)
+	require.Equal(t, 1, stats.BufferedSessions)
+	require.Equal(t, 1, stats.PendingEvents)
+	require.Contains(t, stats.LastError, "boom")
 }
 
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {

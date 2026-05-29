@@ -42,10 +42,14 @@ type UpdateDataShareStorageLimitRequest struct {
 
 // UpdateDataShareCaptureRuntimeSettingsRequest 是管理端更新采集运行时配置的请求。
 type UpdateDataShareCaptureRuntimeSettingsRequest struct {
-	WorkerCount        int    `json:"worker_count"`
-	QueueSize          int    `json:"queue_size"`
-	TaskTimeoutSeconds int    `json:"task_timeout_seconds"`
-	CompressionLevel   string `json:"compression_level"`
+	WorkerCount            int    `json:"worker_count"`
+	QueueSize              int    `json:"queue_size"`
+	TaskTimeoutSeconds     int    `json:"task_timeout_seconds"`
+	CompressionLevel       string `json:"compression_level"`
+	BufferEnabled          bool   `json:"buffer_enabled"`
+	BufferIdleFlushSeconds int    `json:"buffer_idle_flush_seconds"`
+	BufferMaxSessions      int    `json:"buffer_max_sessions"`
+	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
 }
 
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
@@ -194,10 +198,14 @@ func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
 		return
 	}
 	settings, err := h.dataSharingService.UpdateCaptureRuntimeSettings(c.Request.Context(), service.DataShareCaptureRuntimeSettings{
-		WorkerCount:        req.WorkerCount,
-		QueueSize:          req.QueueSize,
-		TaskTimeoutSeconds: req.TaskTimeoutSeconds,
-		CompressionLevel:   req.CompressionLevel,
+		WorkerCount:            req.WorkerCount,
+		QueueSize:              req.QueueSize,
+		TaskTimeoutSeconds:     req.TaskTimeoutSeconds,
+		CompressionLevel:       req.CompressionLevel,
+		BufferEnabled:          req.BufferEnabled,
+		BufferIdleFlushSeconds: req.BufferIdleFlushSeconds,
+		BufferMaxSessions:      req.BufferMaxSessions,
+		BufferMaxPendingEvents: req.BufferMaxPendingEvents,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

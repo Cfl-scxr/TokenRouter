@@ -1006,6 +1006,14 @@ type GatewayDataSharingCaptureConfig struct {
 	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
 	// CompressionLevel: payload 压缩等级，支持 fastest/default/better/best
 	CompressionLevel string `mapstructure:"compression_level"`
+	// BufferEnabled: 是否启用进程内热点 session 缓冲池
+	BufferEnabled bool `mapstructure:"buffer_enabled"`
+	// BufferIdleFlushSeconds: session 空闲多久后触发缓冲落库（秒）
+	BufferIdleFlushSeconds int `mapstructure:"buffer_idle_flush_seconds"`
+	// BufferMaxSessions: 最大缓冲 session 数量
+	BufferMaxSessions int `mapstructure:"buffer_max_sessions"`
+	// BufferMaxPendingEvents: 最大待落库增量事件数
+	BufferMaxPendingEvents int `mapstructure:"buffer_max_pending_events"`
 }
 
 // TLSFingerprintConfig TLS指纹伪装配置
@@ -1929,6 +1937,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.data_sharing_capture.queue_size", 32768)
 	viper.SetDefault("gateway.data_sharing_capture.task_timeout_seconds", 15)
 	viper.SetDefault("gateway.data_sharing_capture.compression_level", "fastest")
+	viper.SetDefault("gateway.data_sharing_capture.buffer_enabled", true)
+	viper.SetDefault("gateway.data_sharing_capture.buffer_idle_flush_seconds", 5)
+	viper.SetDefault("gateway.data_sharing_capture.buffer_max_sessions", 4096)
+	viper.SetDefault("gateway.data_sharing_capture.buffer_max_pending_events", 65536)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -2717,6 +2729,15 @@ func (c *Config) Validate() error {
 	}
 	if level := strings.ToLower(strings.TrimSpace(c.Gateway.DataSharingCapture.CompressionLevel)); level != "fastest" && level != "default" && level != "better" && level != "best" {
 		return fmt.Errorf("gateway.data_sharing_capture.compression_level must be one of fastest, default, better, best")
+	}
+	if c.Gateway.DataSharingCapture.BufferIdleFlushSeconds <= 0 {
+		return fmt.Errorf("gateway.data_sharing_capture.buffer_idle_flush_seconds must be positive")
+	}
+	if c.Gateway.DataSharingCapture.BufferMaxSessions <= 0 {
+		return fmt.Errorf("gateway.data_sharing_capture.buffer_max_sessions must be positive")
+	}
+	if c.Gateway.DataSharingCapture.BufferMaxPendingEvents <= 0 {
+		return fmt.Errorf("gateway.data_sharing_capture.buffer_max_pending_events must be positive")
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.user_group_rate_cache_ttl_seconds must be positive")

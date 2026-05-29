@@ -86,10 +86,14 @@ type DataShareStorageLimit struct {
 
 // DataShareCaptureRuntimeSettings 描述可在线更新的数据共享采集运行时配置。
 type DataShareCaptureRuntimeSettings struct {
-	WorkerCount        int    `json:"worker_count"`
-	QueueSize          int    `json:"queue_size"`
-	TaskTimeoutSeconds int    `json:"task_timeout_seconds"`
-	CompressionLevel   string `json:"compression_level"`
+	WorkerCount            int    `json:"worker_count"`
+	QueueSize              int    `json:"queue_size"`
+	TaskTimeoutSeconds     int    `json:"task_timeout_seconds"`
+	CompressionLevel       string `json:"compression_level"`
+	BufferEnabled          bool   `json:"buffer_enabled"`
+	BufferIdleFlushSeconds int    `json:"buffer_idle_flush_seconds"`
+	BufferMaxSessions      int    `json:"buffer_max_sessions"`
+	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
 }
 
 // DataShareCompressionLevel 表示采集 payload 的 zstd 压缩等级。
@@ -281,6 +285,7 @@ type DataShareStats struct {
 	UserAgentBreakdown    []DataShareUserAgentPoint         `json:"user_agent_breakdown"`
 	QualityErrorBreakdown []DataShareQualityErrorPoint      `json:"quality_error_breakdown"`
 	CaptureWorker         DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
+	CaptureBuffer         DataSharingCaptureBufferStats     `json:"capture_buffer"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -332,6 +337,8 @@ type DataSharingService struct {
 	repo                     DataShareSessionRepository
 	settingRepo              SettingRepository
 	captureWorker            *DataSharingCaptureWorkerPool
+	captureBuffer            *DataSharingCaptureBuffer
+	defaultRuntimeSettings   DataShareCaptureRuntimeSettings
 	captureWorkerNilDropped  atomic.Uint64
 	captureWorkerNilLogNanos atomic.Int64
 	skipRulesMu              sync.RWMutex
@@ -340,14 +347,35 @@ type DataSharingService struct {
 }
 
 func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository, captureWorker ...*DataSharingCaptureWorkerPool) *DataSharingService {
-	svc := &DataSharingService{repo: repo, settingRepo: settingRepo}
+	svc := &DataSharingService{
+		repo:                   repo,
+		settingRepo:            settingRepo,
+		defaultRuntimeSettings: *defaultDataShareCaptureRuntimeSettings(),
+	}
 	if len(captureWorker) > 0 {
 		svc.captureWorker = captureWorker[0]
+	}
+	if repo != nil {
+		svc.captureBuffer = NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+			Flush: svc.flushBufferedCaptureSession,
+		})
+		svc.captureBuffer.UpdateRuntimeSettings(svc.defaultRuntimeSettings)
 	}
 	if svc.captureWorker != nil {
 		svc.captureWorker.SetHandler(svc.handleCaptureJob)
 	}
 	return svc
+}
+
+// SetDefaultCaptureRuntimeSettings 设置配置文件提供的默认采集运行时参数，数据库配置仍可覆盖。
+func (s *DataSharingService) SetDefaultCaptureRuntimeSettings(settings DataShareCaptureRuntimeSettings) {
+	if s == nil {
+		return
+	}
+	s.defaultRuntimeSettings = normalizeDataShareCaptureRuntimeSettings(settings)
+	if s.captureBuffer != nil {
+		s.captureBuffer.UpdateRuntimeSettings(s.defaultRuntimeSettings)
+	}
 }
 
 // LoadRuntimeSettings 从数据库加载运行时配置并同步到当前 worker。
@@ -480,6 +508,12 @@ func (s *DataSharingService) UpdateCaptureRuntimeSettings(ctx context.Context, s
 	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
 		return nil, ErrDataShareCaptureRuntimeInvalid
 	}
+	if settings.BufferIdleFlushSeconds <= 0 {
+		settings.BufferEnabled = defaultDataSharingCaptureBufferEnabled
+		settings.BufferIdleFlushSeconds = defaultDataSharingCaptureBufferIdleSeconds
+		settings.BufferMaxSessions = defaultDataSharingCaptureBufferMaxSessions
+		settings.BufferMaxPendingEvents = defaultDataSharingCaptureBufferMaxEvents
+	}
 	settings = normalizeDataShareCaptureRuntimeSettings(settings)
 	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingCaptureRuntime, dataShareCaptureRuntimeSettingsJSON(settings)); err != nil {
 		return nil, err
@@ -492,7 +526,8 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 	if s == nil {
 		return defaultDataShareCaptureRuntimeSettings(), nil
 	}
-	defaultSettings := defaultDataShareCaptureRuntimeSettings()
+	defaultSettingsValue := normalizeDataShareCaptureRuntimeSettings(s.defaultRuntimeSettings)
+	defaultSettings := &defaultSettingsValue
 	if s.captureWorker != nil {
 		stats := s.captureWorker.Stats()
 		if stats.WorkerCount > 0 {
@@ -508,6 +543,19 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 			defaultSettings.CompressionLevel = stats.CompressionLevel
 		}
 	}
+	if s.captureBuffer != nil {
+		bufferStats := s.captureBuffer.Stats()
+		defaultSettings.BufferEnabled = bufferStats.Enabled
+		if bufferStats.IdleFlushSeconds > 0 {
+			defaultSettings.BufferIdleFlushSeconds = bufferStats.IdleFlushSeconds
+		}
+		if bufferStats.MaxSessions > 0 {
+			defaultSettings.BufferMaxSessions = bufferStats.MaxSessions
+		}
+		if bufferStats.MaxPendingEvents > 0 {
+			defaultSettings.BufferMaxPendingEvents = bufferStats.MaxPendingEvents
+		}
+	}
 	if s.settingRepo == nil {
 		return defaultSettings, nil
 	}
@@ -518,11 +566,12 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 		}
 		return nil, err
 	}
-	var settings DataShareCaptureRuntimeSettings
+	settings := *defaultSettings
 	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
 		return nil, ErrDataShareCaptureRuntimeInvalid
 	}
-	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 ||
+		settings.BufferIdleFlushSeconds <= 0 || settings.BufferMaxSessions <= 0 || settings.BufferMaxPendingEvents <= 0 {
 		return nil, ErrDataShareCaptureRuntimeInvalid
 	}
 	if strings.TrimSpace(settings.CompressionLevel) == "" {
@@ -533,26 +582,33 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 }
 
 func (s *DataSharingService) applyCaptureRuntimeSettings(settings *DataShareCaptureRuntimeSettings) {
-	if s == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+	if s == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 ||
+		settings.BufferIdleFlushSeconds <= 0 || settings.BufferMaxSessions <= 0 || settings.BufferMaxPendingEvents <= 0 {
 		return
 	}
 	SetDataShareCompressionLevel(settings.CompressionLevel)
-	if s.captureWorker == nil {
-		return
+	if s.captureWorker != nil {
+		s.captureWorker.UpdateRuntimeSettings(
+			settings.WorkerCount,
+			settings.QueueSize,
+			time.Duration(settings.TaskTimeoutSeconds)*time.Second,
+		)
 	}
-	s.captureWorker.UpdateRuntimeSettings(
-		settings.WorkerCount,
-		settings.QueueSize,
-		time.Duration(settings.TaskTimeoutSeconds)*time.Second,
-	)
+	if s.captureBuffer != nil {
+		s.captureBuffer.UpdateRuntimeSettings(*settings)
+	}
 }
 
 func defaultDataShareCaptureRuntimeSettings() *DataShareCaptureRuntimeSettings {
 	settings := normalizeDataShareCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
-		WorkerCount:        defaultDataSharingCaptureWorkerCount,
-		QueueSize:          defaultDataSharingCaptureQueueSize,
-		TaskTimeoutSeconds: defaultDataSharingCaptureTaskTimeoutSeconds,
-		CompressionLevel:   string(defaultDataSharingCaptureCompressionLevel),
+		WorkerCount:            defaultDataSharingCaptureWorkerCount,
+		QueueSize:              defaultDataSharingCaptureQueueSize,
+		TaskTimeoutSeconds:     defaultDataSharingCaptureTaskTimeoutSeconds,
+		CompressionLevel:       string(defaultDataSharingCaptureCompressionLevel),
+		BufferEnabled:          defaultDataSharingCaptureBufferEnabled,
+		BufferIdleFlushSeconds: defaultDataSharingCaptureBufferIdleSeconds,
+		BufferMaxSessions:      defaultDataSharingCaptureBufferMaxSessions,
+		BufferMaxPendingEvents: defaultDataSharingCaptureBufferMaxEvents,
 	})
 	return &settings
 }
@@ -563,11 +619,36 @@ func normalizeDataShareCaptureRuntimeSettings(settings DataShareCaptureRuntimeSe
 		QueueSize:   settings.QueueSize,
 		TaskTimeout: time.Duration(settings.TaskTimeoutSeconds) * time.Second,
 	})
+	bufferIdleSeconds := settings.BufferIdleFlushSeconds
+	if bufferIdleSeconds <= 0 {
+		bufferIdleSeconds = defaultDataSharingCaptureBufferIdleSeconds
+	}
+	if bufferIdleSeconds > maxDataSharingCaptureBufferIdleSeconds {
+		bufferIdleSeconds = maxDataSharingCaptureBufferIdleSeconds
+	}
+	bufferMaxSessions := settings.BufferMaxSessions
+	if bufferMaxSessions <= 0 {
+		bufferMaxSessions = defaultDataSharingCaptureBufferMaxSessions
+	}
+	if bufferMaxSessions > maxDataSharingCaptureBufferMaxSessions {
+		bufferMaxSessions = maxDataSharingCaptureBufferMaxSessions
+	}
+	bufferMaxPendingEvents := settings.BufferMaxPendingEvents
+	if bufferMaxPendingEvents <= 0 {
+		bufferMaxPendingEvents = defaultDataSharingCaptureBufferMaxEvents
+	}
+	if bufferMaxPendingEvents > maxDataSharingCaptureBufferMaxEvents {
+		bufferMaxPendingEvents = maxDataSharingCaptureBufferMaxEvents
+	}
 	return DataShareCaptureRuntimeSettings{
-		WorkerCount:        opts.WorkerCount,
-		QueueSize:          opts.QueueSize,
-		TaskTimeoutSeconds: durationSecondsCeil(opts.TaskTimeout),
-		CompressionLevel:   NormalizeDataShareCompressionLevel(settings.CompressionLevel),
+		WorkerCount:            opts.WorkerCount,
+		QueueSize:              opts.QueueSize,
+		TaskTimeoutSeconds:     durationSecondsCeil(opts.TaskTimeout),
+		CompressionLevel:       NormalizeDataShareCompressionLevel(settings.CompressionLevel),
+		BufferEnabled:          settings.BufferEnabled,
+		BufferIdleFlushSeconds: bufferIdleSeconds,
+		BufferMaxSessions:      bufferMaxSessions,
+		BufferMaxPendingEvents: bufferMaxPendingEvents,
 	}
 }
 
@@ -1073,6 +1154,37 @@ func appendDataShareSkipContents(out map[string][]string, raw any) {
 
 // CaptureClaudeRequest 采集 Claude/Gemini 兼容协议成功请求。
 func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input DataShareCaptureInput) error {
+	session := s.buildCaptureSession(ctx, input)
+	if session == nil {
+		return nil
+	}
+	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
+}
+
+// CaptureClaudeRequestAsync 异步提交 Claude/Gemini 兼容协议数据共享采集。
+func (s *DataSharingService) CaptureClaudeRequestAsync(input DataShareCaptureInput) DataSharingCaptureSubmitMode {
+	return s.submitCaptureJob(DataSharingCaptureProtocolClaude, input)
+}
+
+// CaptureOpenAIRequest 采集 OpenAI 协议成功请求。
+func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input DataShareCaptureInput) error {
+	session := s.buildCaptureSession(ctx, input)
+	if session == nil {
+		return nil
+	}
+	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
+}
+
+func (s *DataSharingService) buildCaptureSession(ctx context.Context, input DataShareCaptureInput) *DataShareSession {
+	return s.buildCaptureSessionWithOptions(ctx, input, dataShareBuildSessionOptions{FinalizeQuality: true})
+}
+
+func (s *DataSharingService) buildBufferedCaptureSession(ctx context.Context, input DataShareCaptureInput) *DataShareSession {
+	// 缓冲池最终只落库合并后的快照，入缓冲时跳过质量评估和 payload marshal，降低热点 session CPU 消耗。
+	return s.buildCaptureSessionWithOptions(ctx, input, dataShareBuildSessionOptions{FinalizeQuality: false})
+}
+
+func (s *DataSharingService) buildCaptureSessionWithOptions(ctx context.Context, input DataShareCaptureInput, opts dataShareBuildSessionOptions) *DataShareSession {
 	if input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
 		return nil
 	}
@@ -1085,28 +1197,7 @@ func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input Dat
 	if input.Model == "" && input.UpstreamModel != "" {
 		input.Model = input.UpstreamModel
 	}
-	session := s.buildSession(input)
-	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
-}
-
-// CaptureClaudeRequestAsync 异步提交 Claude/Gemini 兼容协议数据共享采集。
-func (s *DataSharingService) CaptureClaudeRequestAsync(input DataShareCaptureInput) DataSharingCaptureSubmitMode {
-	return s.submitCaptureJob(DataSharingCaptureProtocolClaude, input)
-}
-
-// CaptureOpenAIRequest 采集 OpenAI 协议成功请求。
-func (s *DataSharingService) CaptureOpenAIRequest(ctx context.Context, input DataShareCaptureInput) error {
-	if input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
-		return nil
-	}
-	if s == nil || s.repo == nil {
-		return nil
-	}
-	if s.shouldSkipDataShareCapture(ctx, input) {
-		return nil
-	}
-	session := s.buildSession(input)
-	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
+	return s.buildSessionWithOptions(input, opts)
 }
 
 // CaptureOpenAIRequestAsync 异步提交 OpenAI 协议数据共享采集。
@@ -1140,12 +1231,38 @@ func (s *DataSharingService) handleCaptureJob(ctx context.Context, job DataShari
 	if s == nil {
 		return nil
 	}
-	switch job.Protocol {
-	case DataSharingCaptureProtocolOpenAI:
-		return s.CaptureOpenAIRequest(ctx, job.Input)
-	default:
-		return s.CaptureClaudeRequest(ctx, job.Input)
+	return s.captureRequestFromJob(ctx, job)
+}
+
+func (s *DataSharingService) captureRequestFromJob(ctx context.Context, job DataSharingCaptureJob) error {
+	if s.captureBuffer == nil {
+		session := s.buildCaptureSession(ctx, job.Input)
+		if session == nil {
+			return nil
+		}
+		return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
 	}
+	session := s.buildBufferedCaptureSession(ctx, job.Input)
+	if session == nil {
+		return nil
+	}
+	// 只把解析后的轻量增量放入进程内缓冲，容量检查和压缩落库延后到 flush 阶段执行。
+	return s.captureBuffer.Submit(ctx, session)
+}
+
+func (s *DataSharingService) flushBufferedCaptureSession(ctx context.Context, session *DataShareSession) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	return s.repo.UpsertCapture(ctx, session, s.captureStorageLimitOption(ctx))
+}
+
+// Stop 停止数据共享采集缓冲池，正常退出时尽量把内存中的增量落库。
+func (s *DataSharingService) Stop(ctx context.Context) {
+	if s == nil || s.captureBuffer == nil {
+		return
+	}
+	s.captureBuffer.Stop(ctx)
 }
 
 func (s *DataSharingService) recordMissingCaptureWorkerDrop(metadata DataSharingCaptureJobMetadata) {
@@ -1228,6 +1345,7 @@ func (s *DataSharingService) Stats(ctx context.Context, filters DataShareSession
 		stats = &DataShareStats{}
 	}
 	stats.CaptureWorker = s.CaptureWorkerStats()
+	stats.CaptureBuffer = s.CaptureBufferStats()
 	return stats, nil
 }
 
@@ -1242,6 +1360,14 @@ func (s *DataSharingService) CaptureWorkerStats() DataSharingCaptureWorkerPoolSt
 		}
 	}
 	return s.captureWorker.Stats()
+}
+
+// CaptureBufferStats 返回数据共享采集缓冲池运行时统计。
+func (s *DataSharingService) CaptureBufferStats() DataSharingCaptureBufferStats {
+	if s == nil || s.captureBuffer == nil {
+		return DataSharingCaptureBufferStats{}
+	}
+	return s.captureBuffer.Stats()
 }
 
 func (s *DataSharingService) FilterOptions(ctx context.Context, filters DataShareSessionFilters) (*DataShareSessionFilterOptions, error) {
@@ -1472,7 +1598,15 @@ func defaultDataSharingNotice(ctx context.Context, repo SettingRepository) (*Dat
 	return &DataShareNotice{Content: content, Version: version, UpdatedAt: time.Now()}, nil
 }
 
+type dataShareBuildSessionOptions struct {
+	FinalizeQuality bool
+}
+
 func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShareSession {
+	return s.buildSessionWithOptions(input, dataShareBuildSessionOptions{FinalizeQuality: true})
+}
+
+func (s *DataSharingService) buildSessionWithOptions(input DataShareCaptureInput, opts dataShareBuildSessionOptions) *DataShareSession {
 	now := time.Now()
 	groupID := int64(0)
 	if input.APIKey != nil && input.APIKey.GroupID != nil {
@@ -1507,10 +1641,16 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	if systemPrompt == "" {
 		systemPrompt = extractSystemPromptFromMessages(messages)
 	}
-	qualityReport := evaluateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
-	qualityErrors := qualityReport.Errors
-	qualityStatus := qualityReport.Status
-	status, finalSnapshot := dataShareCompletionState(qualityStatus)
+	qualityStatus := DataShareQualityInvalid
+	qualityErrors := []string(nil)
+	status := DataShareStatusTerminated
+	finalSnapshot := false
+	if opts.FinalizeQuality {
+		qualityReport := evaluateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
+		qualityErrors = qualityReport.Errors
+		qualityStatus = qualityReport.Status
+		status, finalSnapshot = dataShareCompletionState(qualityStatus)
+	}
 	sessionJSON := map[string]any{
 		"trajectory_id":        trajectoryID,
 		"session_id":           sessionID,
@@ -1531,7 +1671,12 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 		"usage":                usage,
 		"meta":                 meta,
 	}
-	storageBytes := int64(len(mustJSON(sessionJSON)))
+	storageBytes := int64(0)
+	if opts.FinalizeQuality {
+		storageBytes = int64(len(mustJSON(sessionJSON)))
+	} else {
+		sessionJSON = nil
+	}
 	var sysPtr *string
 	if systemPrompt != "" {
 		sysPtr = &systemPrompt
