@@ -36,6 +36,7 @@ const (
 var (
 	ErrDataShareSessionNotFound = infraerrors.NotFound("DATA_SHARE_SESSION_NOT_FOUND", "data share session not found")
 	ErrDataShareNoticeMissing   = infraerrors.BadRequest("DATA_SHARE_NOTICE_MISSING", "data sharing notice content is required")
+	dataShareCompressionLevel   atomic.Value
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
@@ -85,10 +86,21 @@ type DataShareStorageLimit struct {
 
 // DataShareCaptureRuntimeSettings 描述可在线更新的数据共享采集运行时配置。
 type DataShareCaptureRuntimeSettings struct {
-	WorkerCount        int `json:"worker_count"`
-	QueueSize          int `json:"queue_size"`
-	TaskTimeoutSeconds int `json:"task_timeout_seconds"`
+	WorkerCount        int    `json:"worker_count"`
+	QueueSize          int    `json:"queue_size"`
+	TaskTimeoutSeconds int    `json:"task_timeout_seconds"`
+	CompressionLevel   string `json:"compression_level"`
 }
+
+// DataShareCompressionLevel 表示采集 payload 的 zstd 压缩等级。
+type DataShareCompressionLevel string
+
+const (
+	DataShareCompressionLevelFastest DataShareCompressionLevel = "fastest"
+	DataShareCompressionLevelDefault DataShareCompressionLevel = "default"
+	DataShareCompressionLevelBetter  DataShareCompressionLevel = "better"
+	DataShareCompressionLevelBest    DataShareCompressionLevel = "best"
+)
 
 // DataShareSession 保存一条聚合后的 Agent session。
 type DataShareSession struct {
@@ -492,6 +504,9 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 		if stats.TaskTimeoutSeconds > 0 {
 			defaultSettings.TaskTimeoutSeconds = stats.TaskTimeoutSeconds
 		}
+		if stats.CompressionLevel != "" {
+			defaultSettings.CompressionLevel = stats.CompressionLevel
+		}
 	}
 	if s.settingRepo == nil {
 		return defaultSettings, nil
@@ -510,12 +525,19 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
 		return nil, ErrDataShareCaptureRuntimeInvalid
 	}
+	if strings.TrimSpace(settings.CompressionLevel) == "" {
+		settings.CompressionLevel = defaultSettings.CompressionLevel
+	}
 	settings = normalizeDataShareCaptureRuntimeSettings(settings)
 	return &settings, nil
 }
 
 func (s *DataSharingService) applyCaptureRuntimeSettings(settings *DataShareCaptureRuntimeSettings) {
-	if s == nil || s.captureWorker == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+	if s == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+		return
+	}
+	SetDataShareCompressionLevel(settings.CompressionLevel)
+	if s.captureWorker == nil {
 		return
 	}
 	s.captureWorker.UpdateRuntimeSettings(
@@ -530,6 +552,7 @@ func defaultDataShareCaptureRuntimeSettings() *DataShareCaptureRuntimeSettings {
 		WorkerCount:        defaultDataSharingCaptureWorkerCount,
 		QueueSize:          defaultDataSharingCaptureQueueSize,
 		TaskTimeoutSeconds: defaultDataSharingCaptureTaskTimeoutSeconds,
+		CompressionLevel:   string(defaultDataSharingCaptureCompressionLevel),
 	})
 	return &settings
 }
@@ -544,7 +567,40 @@ func normalizeDataShareCaptureRuntimeSettings(settings DataShareCaptureRuntimeSe
 		WorkerCount:        opts.WorkerCount,
 		QueueSize:          opts.QueueSize,
 		TaskTimeoutSeconds: durationSecondsCeil(opts.TaskTimeout),
+		CompressionLevel:   NormalizeDataShareCompressionLevel(settings.CompressionLevel),
 	}
+}
+
+// NormalizeDataShareCompressionLevel 归一化管理端可配置的 zstd 压缩等级。
+func NormalizeDataShareCompressionLevel(level string) string {
+	switch DataShareCompressionLevel(strings.ToLower(strings.TrimSpace(level))) {
+	case DataShareCompressionLevelFastest:
+		return string(DataShareCompressionLevelFastest)
+	case DataShareCompressionLevelDefault:
+		return string(DataShareCompressionLevelDefault)
+	case DataShareCompressionLevelBetter:
+		return string(DataShareCompressionLevelBetter)
+	case DataShareCompressionLevelBest:
+		return string(DataShareCompressionLevelBest)
+	default:
+		return string(defaultDataSharingCaptureCompressionLevel)
+	}
+}
+
+// SetDataShareCompressionLevel 在线更新后续采集 payload 使用的 zstd 压缩等级。
+func SetDataShareCompressionLevel(level string) string {
+	normalized := NormalizeDataShareCompressionLevel(level)
+	dataShareCompressionLevel.Store(normalized)
+	return normalized
+}
+
+// CurrentDataShareCompressionLevel 返回当前采集 payload 使用的 zstd 压缩等级。
+func CurrentDataShareCompressionLevel() string {
+	level, _ := dataShareCompressionLevel.Load().(string)
+	if strings.TrimSpace(level) == "" {
+		return string(defaultDataSharingCaptureCompressionLevel)
+	}
+	return NormalizeDataShareCompressionLevel(level)
 }
 
 func dataShareCaptureRuntimeSettingsJSON(settings DataShareCaptureRuntimeSettings) string {
@@ -1451,8 +1507,9 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	if systemPrompt == "" {
 		systemPrompt = extractSystemPromptFromMessages(messages)
 	}
-	qualityErrors := ValidateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
-	qualityStatus := DataSharePayloadQualityStatus(model, systemPrompt, messages, tools, usage)
+	qualityReport := evaluateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
+	qualityErrors := qualityReport.Errors
+	qualityStatus := qualityReport.Status
 	status, finalSnapshot := dataShareCompletionState(qualityStatus)
 	sessionJSON := map[string]any{
 		"trajectory_id":        trajectoryID,
@@ -1781,8 +1838,53 @@ func resolveDataShareActualModel(input DataShareCaptureInput) string {
 	return firstNonBlank(input.UpstreamModel, input.Model, gjson.GetBytes(input.RequestBody, "model").String())
 }
 
+type dataShareQualityReport struct {
+	Errors []string
+	Status string
+}
+
 // ValidateDataShareSessionQuality 按附件交付规则检查 session 是否可进入正式导出。
 func ValidateDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
+	compact := CompactDataShareMessages(messages)
+	return validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+}
+
+// DataShareSessionQuality 一次性返回质量状态和错误列表，避免采集热路径重复扫描消息。
+func DataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) (string, []string) {
+	report := evaluateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)
+	if report.Status != DataShareQualityInvalid {
+		return report.Status, report.Errors
+	}
+	if !dataShareErrorsAllowNormalizeFallback(report.Errors) {
+		return report.Status, report.Errors
+	}
+	if !dataShareMessagesNeedNormalizeFallback(messages) {
+		return report.Status, report.Errors
+	}
+	normalized := normalizeDataShareMessages(messages)
+	if len(normalized) == 0 {
+		return report.Status, report.Errors
+	}
+	// 兼容历史/异构 payload：状态允许走规范化恢复，错误列表仍保留原始快照的具体缺口。
+	if normalizedReport := evaluateDataShareSessionQuality(model, systemPrompt, normalized, tools, usage); normalizedReport.Status != DataShareQualityInvalid {
+		return DataShareQualityPartial, report.Errors
+	}
+	return report.Status, report.Errors
+}
+
+func evaluateDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) dataShareQualityReport {
+	compact := CompactDataShareMessages(messages)
+	errs := validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+	status := DataShareQualityInvalid
+	if len(errs) == 0 {
+		status = DataShareQualityComplete
+	} else if dataShareErrorsAllowTailTrim(errs) && dataShareCanTrimTailToComplete(model, systemPrompt, compact, tools, usage) {
+		status = DataShareQualityPartial
+	}
+	return dataShareQualityReport{Errors: errs, Status: status}
+}
+
+func validateCompactDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
 	var errs []string
 	seenErrs := map[string]struct{}{}
 	addErr := func(code string) {
@@ -1793,7 +1895,6 @@ func ValidateDataShareSessionQuality(model string, systemPrompt string, messages
 		errs = append(errs, code)
 	}
 	systemPrompt = firstNonBlank(systemPrompt, extractSystemPromptFromMessages(messages))
-	messages = CompactDataShareMessages(messages)
 	if strings.TrimSpace(systemPrompt) == "" {
 		addErr("missing_system_prompt")
 	}
@@ -1838,6 +1939,65 @@ func ValidateDataShareSessionQuality(model string, systemPrompt string, messages
 	// 交付文档允许 token 用量无法聚合时为空或保留在 meta，因此 usage 不能作为 session 可用性的硬门槛。
 	_ = usage
 	return errs
+}
+
+func dataShareCanTrimTailToComplete(model string, systemPrompt string, compact []map[string]any, tools []map[string]any, usage map[string]any) bool {
+	for end := len(compact) - 1; end >= 0; end-- {
+		candidate := compact[:end]
+		if !hasFinalAssistantMessage(candidate) {
+			continue
+		}
+		if len(validateCompactDataShareSessionQuality(model, systemPrompt, candidate, tools, usage)) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func dataShareErrorsAllowTailTrim(errs []string) bool {
+	if len(errs) == 0 {
+		return false
+	}
+	for _, errCode := range errs {
+		switch errCode {
+		case "invalid_tool_call", "tool_definition_missing", "tool_call_result_unpaired", "tool_result_unpaired", "missing_final_assistant":
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func dataShareErrorsAllowNormalizeFallback(errs []string) bool {
+	if len(errs) == 0 {
+		return false
+	}
+	for _, errCode := range errs {
+		switch errCode {
+		case "missing_structured_tool_call", "invalid_tool_call", "tool_call_result_unpaired", "tool_result_unpaired", "missing_final_assistant":
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func dataShareMessagesNeedNormalizeFallback(messages []map[string]any) bool {
+	for _, msg := range messages {
+		for _, raw := range anySlice(msg["content"]) {
+			block, ok := mapFromAny(raw)
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(stringFromAny(block["type"])) {
+			case "tool_use", "tool_result":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func dataShareModelAllowed(model string) bool {
@@ -2028,11 +2188,25 @@ func contentValueFromAnthropicBlocks(blocks []any) any {
 // CompactDataShareMessages 压缩 Responses/Codex 每轮请求重复携带的历史消息。
 func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(messages))
+	outIdentities := make([]string, 0, len(messages))
+	outIdentityAt := func(index int) string {
+		if outIdentities[index] == "" {
+			outIdentities[index] = dataShareMessageIdentity(out[index])
+		}
+		return outIdentities[index]
+	}
+	messageIdentities := make([]string, len(messages))
+	messageIdentityAt := func(index int) string {
+		if messageIdentities[index] == "" {
+			messageIdentities[index] = dataShareMessageIdentity(messages[index])
+		}
+		return messageIdentities[index]
+	}
 	seenToolCalls := map[string]struct{}{}
 	seenToolResults := map[string]struct{}{}
 	for i := 0; i < len(messages); {
 		if len(out) > 0 {
-			if prefix := dataShareCommonPrefixLen(out, messages[i:]); prefix >= 2 {
+			if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(messages), messageIdentityAt); prefix >= 2 {
 				i += prefix
 				continue
 			}
@@ -2044,6 +2218,7 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 		}
 		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
 		out = append(out, msg)
+		outIdentities = append(outIdentities, "")
 		i++
 	}
 	return out
@@ -2115,13 +2290,13 @@ func dataShareMessageIdentity(msg map[string]any) string {
 	return role + ":" + string(mustJSON(msg))
 }
 
-func dataShareCommonPrefixLen(left, right []map[string]any) int {
-	limit := len(left)
-	if len(right) < limit {
-		limit = len(right)
+func dataShareCommonPrefixLen(leftLen int, leftIdentityAt func(int) string, rightStart int, rightLen int, rightIdentityAt func(int) string) int {
+	limit := leftLen
+	if remaining := rightLen - rightStart; remaining < limit {
+		limit = remaining
 	}
 	for i := 0; i < limit; i++ {
-		if dataShareMessageIdentity(left[i]) != dataShareMessageIdentity(right[i]) {
+		if leftIdentityAt(i) != rightIdentityAt(rightStart+i) {
 			return i
 		}
 	}
@@ -2473,13 +2648,8 @@ func validateDataSharePayloadQuality(payload map[string]any) []string {
 
 // DataSharePayloadQualityStatus 把附件质量规则归纳成完整、部分完整、无效三态。
 func DataSharePayloadQualityStatus(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) string {
-	if len(ValidateDataShareSessionQuality(model, systemPrompt, messages, tools, usage)) == 0 {
-		return DataShareQualityComplete
-	}
-	if _, errs := exportableDataShareMessages(model, systemPrompt, messages, tools, usage); len(errs) == 0 {
-		return DataShareQualityPartial
-	}
-	return DataShareQualityInvalid
+	status, _ := DataShareSessionQuality(model, systemPrompt, messages, tools, usage)
+	return status
 }
 
 func dataShareCompletionState(qualityStatus string) (string, bool) {
@@ -2497,17 +2667,21 @@ func DataShareQualityExportable(qualityStatus string) bool {
 // exportableDataShareMessages 仅裁掉尾部未闭合工具链，裁切后仍需完整通过同一套交付校验。
 func exportableDataShareMessages(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) ([]map[string]any, []string) {
 	compact := CompactDataShareMessages(normalizeDataShareMessages(messages))
+	if report := evaluateDataShareSessionQuality(model, systemPrompt, compact, tools, usage); report.Status == DataShareQualityComplete {
+		return append([]map[string]any{}, compact...), nil
+	} else if report.Status != DataShareQualityPartial {
+		return nil, report.Errors
+	}
 	for end := len(compact); end >= 0; end-- {
 		candidate := compact[:end]
 		if !hasFinalAssistantMessage(candidate) {
 			continue
 		}
-		errs := ValidateDataShareSessionQuality(model, systemPrompt, candidate, tools, usage)
-		if len(errs) == 0 {
+		if errs := validateCompactDataShareSessionQuality(model, systemPrompt, candidate, tools, usage); len(errs) == 0 {
 			return append([]map[string]any{}, candidate...), nil
 		}
 	}
-	return nil, ValidateDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+	return nil, validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
 }
 
 func exportPayloadFromSession(session *DataShareSession) map[string]any {

@@ -81,6 +81,15 @@ func (s *dataShareSettingRepoStub) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+func resetDataShareCompressionLevel(t *testing.T) {
+	t.Helper()
+	previous := CurrentDataShareCompressionLevel()
+	t.Cleanup(func() {
+		SetDataShareCompressionLevel(previous)
+	})
+	SetDataShareCompressionLevel(string(defaultDataSharingCaptureCompressionLevel))
+}
+
 type dataShareCaptureRepoStub struct {
 	mu       sync.Mutex
 	upserts  int
@@ -238,6 +247,7 @@ func TestDataSharingService_StatsIncludesCaptureWorker(t *testing.T) {
 }
 
 func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *testing.T) {
+	resetDataShareCompressionLevel(t)
 	repo := &dataShareSettingRepoStub{values: map[string]string{}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
@@ -251,18 +261,22 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *
 		WorkerCount:        2,
 		QueueSize:          9,
 		TaskTimeoutSeconds: 45,
+		CompressionLevel:   string(DataShareCompressionLevelDefault),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, settings.WorkerCount)
 	require.Equal(t, 9, settings.QueueSize)
 	require.Equal(t, 45, settings.TaskTimeoutSeconds)
-	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"task_timeout_seconds":45}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, string(DataShareCompressionLevelDefault), settings.CompressionLevel)
+	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"task_timeout_seconds":45,"compression_level":"default"}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
 	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
 	require.Equal(t, 45, svc.CaptureWorkerStats().TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelDefault), svc.CaptureWorkerStats().CompressionLevel)
 }
 
 func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *testing.T) {
+	resetDataShareCompressionLevel(t)
 	repo := &dataShareSettingRepoStub{values: map[string]string{}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
@@ -281,14 +295,16 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
-	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"task_timeout_seconds":300}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, string(DataShareCompressionLevelFastest), settings.CompressionLevel)
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"task_timeout_seconds":300,"compression_level":"fastest"}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
 }
 
 func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T) {
-	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90}`}}
+	resetDataShareCompressionLevel(t)
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90,"compression_level":"better"}`}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
 		QueueSize:   1,
@@ -302,12 +318,33 @@ func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T
 	require.Equal(t, 4, settings.WorkerCount)
 	require.Equal(t, 10, settings.QueueSize)
 	require.Equal(t, 90, settings.TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelBetter), settings.CompressionLevel)
 	require.Equal(t, 4, pool.Stats().WorkerCount)
 	require.Equal(t, 10, pool.Stats().QueueCapacity)
 	require.Equal(t, 90, pool.Stats().TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelBetter), pool.Stats().CompressionLevel)
+}
+
+func TestDataSharingService_LoadRuntimeSettingsUsesCurrentCompressionDefault(t *testing.T) {
+	resetDataShareCompressionLevel(t)
+	SetDataShareCompressionLevel(string(DataShareCompressionLevelBest))
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.LoadRuntimeSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, string(DataShareCompressionLevelBest), settings.CompressionLevel)
+	require.Equal(t, string(DataShareCompressionLevelBest), pool.Stats().CompressionLevel)
 }
 
 func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testing.T) {
+	resetDataShareCompressionLevel(t)
 	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":2048,"queue_size":999999,"task_timeout_seconds":999}`}}
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
@@ -322,9 +359,11 @@ func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testin
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelFastest), settings.CompressionLevel)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelFastest), pool.Stats().CompressionLevel)
 }
 
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
@@ -1053,6 +1092,9 @@ func TestCompactDataShareMessagesKeepsUnfinishedTail(t *testing.T) {
 	if !containsString(errs, "tool_call_result_unpaired") {
 		t.Fatalf("quality_errors = %v, want unfinished tail to remain unpaired", errs)
 	}
+	if status := DataSharePayloadQualityStatus("gpt-5.5", "你是编码助手", compact, []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}}, map[string]any{"total_tokens": 1}); status != DataShareQualityPartial {
+		t.Fatalf("quality_status = %q, want partial", status)
+	}
 }
 
 func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
@@ -1075,6 +1117,106 @@ func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
 	}
 	if status := DataSharePayloadQualityStatus("gpt-5.5", sys, messages, tools, usage); status != DataShareQualityComplete {
 		t.Fatalf("quality_status = %q, want complete", status)
+	}
+}
+
+func TestDataShareQualityStatusNormalizesLegacyPartialPayload(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{"cmd": "ls"}},
+			},
+		},
+		{
+			"role": "user",
+			"content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "README.md"},
+			},
+		},
+		{"role": "assistant", "content": "看到了 README.md"},
+		{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_tail", "name": "exec_command", "input": map[string]any{"cmd": "pwd"}},
+			},
+		},
+	}
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+
+	if status := DataSharePayloadQualityStatus("gpt-5.5", sys, messages, tools, map[string]any{"total_tokens": 15}); status != DataShareQualityPartial {
+		t.Fatalf("quality_status = %q, want partial", status)
+	}
+}
+
+func TestDataShareQualityStatusDoesNotTrimUnfixableErrors(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md", "status": "success", "is_error": false},
+		{"role": "assistant", "content": "看到了 README.md"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_tail", "name": "exec_command", "arguments": map[string]any{"cmd": "pwd"}}}},
+	}
+
+	if status := DataSharePayloadQualityStatus("gpt-5.5", sys, messages, nil, map[string]any{"total_tokens": 15}); status != DataShareQualityInvalid {
+		t.Fatalf("quality_status = %q, want invalid", status)
+	}
+}
+
+func TestDataShareQualityStatusDoesNotNormalizeUnfixableErrors(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{"cmd": "ls"}},
+			},
+		},
+		{
+			"role": "user",
+			"content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "README.md"},
+			},
+		},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+
+	if status := DataSharePayloadQualityStatus("gpt-4.1", sys, messages, tools, map[string]any{"total_tokens": 15}); status != DataShareQualityInvalid {
+		t.Fatalf("quality_status = %q, want invalid", status)
+	}
+}
+
+func TestExportableDataShareMessagesAllowsCompleteSnapshot(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md", "status": "success", "is_error": false},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+
+	exported, errs := exportableDataShareMessages("gpt-5.5", sys, messages, tools, map[string]any{"total_tokens": 15})
+	if len(errs) != 0 {
+		t.Fatalf("quality_errors = %v, want none", errs)
+	}
+	if len(exported) != len(messages) {
+		t.Fatalf("exported len = %d, want %d", len(exported), len(messages))
 	}
 }
 

@@ -20,6 +20,7 @@ const (
 	maxDataSharingCaptureQueueSize              = 100000
 	defaultDataSharingCaptureTaskTimeoutSeconds = 15
 	maxDataSharingCaptureTaskTimeoutSeconds     = 300
+	defaultDataSharingCaptureCompressionLevel   = DataShareCompressionLevelFastest
 	dataSharingCaptureDropLogInterval           = 5 * time.Second
 	dataSharingCaptureInitialQueueBufferSize    = 1024
 )
@@ -76,6 +77,7 @@ type DataSharingCaptureWorkerPoolStats struct {
 	RunningWorkers     int64  `json:"running_workers"`
 	AvailableWorkers   int64  `json:"available_workers"`
 	TaskTimeoutSeconds int    `json:"task_timeout_seconds"`
+	CompressionLevel   string `json:"compression_level"`
 	SubmittedTotal     uint64 `json:"submitted_total"`
 	CompletedTotal     uint64 `json:"completed_total"`
 	FailedTotal        uint64 `json:"failed_total"`
@@ -254,6 +256,7 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 		RunningWorkers:     runningWorkers,
 		AvailableWorkers:   availableWorkers,
 		TaskTimeoutSeconds: durationSecondsCeil(p.TaskTimeout()),
+		CompressionLevel:   CurrentDataShareCompressionLevel(),
 		SubmittedTotal:     p.submittedTotal.Load(),
 		CompletedTotal:     p.completedTotal.Load(),
 		FailedTotal:        p.failedTotal.Load(),
@@ -473,6 +476,7 @@ func dataSharingCapturePoolOptionsFromConfig(cfg *config.Config) DataSharingCapt
 	if cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds > 0 {
 		opts.TaskTimeout = time.Duration(cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds) * time.Second
 	}
+	SetDataShareCompressionLevel(cfg.Gateway.DataSharingCapture.CompressionLevel)
 	return normalizeDataSharingCapturePoolOptions(opts)
 }
 

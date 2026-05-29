@@ -1479,6 +1479,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.data_sharing_capture.task_timeout_seconds",
 		},
 		{
+			name:    "gateway data sharing capture compression level",
+			mutate:  func(c *Config) { c.Gateway.DataSharingCapture.CompressionLevel = "ultra" },
+			wantErr: "gateway.data_sharing_capture.compression_level",
+		},
+		{
 			name:    "gateway user group rate cache ttl",
 			mutate:  func(c *Config) { c.Gateway.UserGroupRateCacheTTLSeconds = 0 },
 			wantErr: "gateway.user_group_rate_cache_ttl_seconds",
@@ -1892,6 +1897,9 @@ func TestLoad_DefaultGatewayDataSharingCaptureConfig(t *testing.T) {
 	}
 	if cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds != 15 {
 		t.Fatalf("task_timeout_seconds = %d, want 15", cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds)
+	}
+	if cfg.Gateway.DataSharingCapture.CompressionLevel != "fastest" {
+		t.Fatalf("compression_level = %q, want fastest", cfg.Gateway.DataSharingCapture.CompressionLevel)
 	}
 }
 

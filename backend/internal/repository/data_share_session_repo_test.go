@@ -418,6 +418,90 @@ func TestDataShareSessionRepository_CompressesPayloadAndOmitsListPayload(t *test
 	require.Equal(t, tools, payloadItems[0].Tools)
 }
 
+func TestDataShareSessionRepository_UpsertKeepsLegacyPartialExportable(t *testing.T) {
+	repo, client := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	systemPrompt := "你是编码助手"
+	tools := []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}}
+	legacyMessages := []map[string]any{
+		{"role": "system", "content": systemPrompt},
+		{"role": "user", "content": "列目录"},
+		{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "exec_command", "input": map[string]any{"cmd": "ls"}},
+			},
+		},
+		{
+			"role": "user",
+			"content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "README.md"},
+			},
+		},
+		{"role": "assistant", "content": "看到了 README.md"},
+		{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_tail", "name": "exec_command", "input": map[string]any{"cmd": "pwd"}},
+			},
+		},
+	}
+	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+		TrajectoryID:       "traj-legacy-partial",
+		SessionID:          "sess-legacy-partial",
+		Dataset:            "tokenrouter-agent",
+		Provider:           service.PlatformAnthropic,
+		Model:              "claude-sonnet-4.5",
+		RequestPath:        "/v1/messages",
+		UserAgent:          "claude-code",
+		Status:             service.DataShareStatusTerminated,
+		IsFinalSnapshot:    false,
+		SourceRequestCount: 1,
+		SystemPrompt:       &systemPrompt,
+		Tools:              tools,
+		Messages:           legacyMessages,
+		Usage:              map[string]any{"total_tokens": 15},
+		Meta:               map[string]any{"request_path": "/v1/messages"},
+		SessionJSON:        map[string]any{"messages": legacyMessages},
+		QualityStatus:      service.DataShareQualityInvalid,
+		QualityErrors:      []string{},
+		TotalTokens:        15,
+		CreatedAt:          now,
+		EndedAt:            &now,
+		UpdatedAt:          now,
+	}))
+	require.NoError(t, repo.UpsertCapture(ctx, &service.DataShareSession{
+		TrajectoryID:       "traj-legacy-partial",
+		SessionID:          "sess-legacy-partial",
+		Dataset:            "tokenrouter-agent",
+		Provider:           service.PlatformAnthropic,
+		Model:              "claude-sonnet-4.5",
+		RequestPath:        "/v1/messages",
+		UserAgent:          "claude-code",
+		Status:             service.DataShareStatusTerminated,
+		IsFinalSnapshot:    false,
+		SourceRequestCount: 1,
+		SystemPrompt:       &systemPrompt,
+		Tools:              tools,
+		Messages:           legacyMessages,
+		Usage:              map[string]any{"total_tokens": 15},
+		Meta:               map[string]any{"request_path": "/v1/messages"},
+		SessionJSON:        map[string]any{"messages": legacyMessages},
+		QualityStatus:      service.DataShareQualityInvalid,
+		QualityErrors:      []string{},
+		TotalTokens:        15,
+		CreatedAt:          now,
+		EndedAt:            &now,
+		UpdatedAt:          now,
+	}))
+
+	stored, err := client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ("traj-legacy-partial")).Only(ctx)
+	require.NoError(t, err)
+	require.True(t, stored.Exportable)
+	require.Equal(t, service.DataShareQualityPartial, stored.QualityStatus)
+}
+
 func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedIncrement(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()

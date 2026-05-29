@@ -111,10 +111,12 @@ func TestDataSharingCaptureWorkerPool_SubmitAfterStop(t *testing.T) {
 }
 
 func TestDataSharingCaptureWorkerPool_OptionsFromConfig(t *testing.T) {
+	resetDataShareCompressionLevel(t)
 	cfg := &config.Config{}
 	cfg.Gateway.DataSharingCapture.WorkerCount = 3
 	cfg.Gateway.DataSharingCapture.QueueSize = 9
 	cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds = 7
+	cfg.Gateway.DataSharingCapture.CompressionLevel = string(DataShareCompressionLevelBetter)
 
 	pool := NewDataSharingCaptureWorkerPool(cfg)
 	t.Cleanup(pool.Stop)
@@ -123,6 +125,7 @@ func TestDataSharingCaptureWorkerPool_OptionsFromConfig(t *testing.T) {
 	require.Equal(t, 9, stats.QueueCapacity)
 	require.Equal(t, 7*time.Second, pool.TaskTimeout())
 	require.Equal(t, 7, stats.TaskTimeoutSeconds)
+	require.Equal(t, string(DataShareCompressionLevelBetter), stats.CompressionLevel)
 }
 
 func TestDataSharingCaptureWorkerPool_OptionsFromNilConfig(t *testing.T) {

@@ -1,13 +1,12 @@
 package repository
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
@@ -27,6 +26,8 @@ type dataShareSessionRepository struct {
 }
 
 const dataSharePayloadEncodingZstd = "zstd"
+
+var dataSharePayloadCodecCache sync.Map
 
 func NewDataShareSessionRepository(client *dbent.Client, sqlDB *sql.DB) service.DataShareSessionRepository {
 	return &dataShareSessionRepository{client: client, sql: sqlDB}
@@ -137,8 +138,7 @@ func (r *dataShareSessionRepository) UpsertCapture(ctx context.Context, session 
 		merged.EndedAt = &now
 	}
 	// 每次合并后都重新评估质量，避免早期空消息请求留下的错误阻止后续导出。
-	qualityErrors := validateRepositoryQuality(session.Model, systemPrompt, messages, tools, usage)
-	qualityStatus := repositoryQualityStatus(session.Model, systemPrompt, messages, tools, usage)
+	qualityStatus, qualityErrors := repositoryQuality(session.Model, systemPrompt, messages, tools, usage)
 	status, finalSnapshot := repositoryCompletionState(qualityStatus)
 	merged.Status = status
 	merged.IsFinalSnapshot = finalSnapshot
@@ -1051,14 +1051,11 @@ func encodeDataSharePayload(payload map[string]any) ([]byte, int64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	enc, err := zstd.NewWriter(nil)
+	codec, err := currentDataSharePayloadCodec()
 	if err != nil {
 		return nil, 0, err
 	}
-	compressed := enc.EncodeAll(data, nil)
-	if err := enc.Close(); err != nil {
-		return nil, 0, err
-	}
+	compressed := codec.encoder.EncodeAll(data, nil)
 	return compressed, int64(len(data)), nil
 }
 
@@ -1069,12 +1066,11 @@ func decodeDataSharePayload(compressed []byte, encoding string) (map[string]any,
 	if strings.TrimSpace(encoding) != dataSharePayloadEncodingZstd {
 		return nil, fmt.Errorf("unsupported data share payload encoding: %s", encoding)
 	}
-	dec, err := zstd.NewReader(bytes.NewReader(compressed))
+	codec, err := currentDataSharePayloadCodec()
 	if err != nil {
 		return nil, err
 	}
-	defer dec.Close()
-	data, err := io.ReadAll(dec)
+	data, err := codec.decoder.DecodeAll(compressed, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1083,6 +1079,74 @@ func decodeDataSharePayload(compressed []byte, encoding string) (map[string]any,
 		return nil, err
 	}
 	return payload, nil
+}
+
+type dataSharePayloadCodec struct {
+	encoder *zstd.Encoder
+	decoder *zstd.Decoder
+}
+
+func currentDataSharePayloadCodec() (*dataSharePayloadCodec, error) {
+	level := service.CurrentDataShareCompressionLevel()
+	if cached, ok := dataSharePayloadCodecCache.Load(level); ok {
+		return cached.(*dataSharePayloadCodec), nil
+	}
+	codec, err := newDataSharePayloadCodec(level)
+	if err != nil {
+		return nil, err
+	}
+	actual, _ := dataSharePayloadCodecCache.LoadOrStore(level, codec)
+	if actual != codec {
+		codec.close()
+	}
+	return actual.(*dataSharePayloadCodec), nil
+}
+
+func newDataSharePayloadCodec(level string) (*dataSharePayloadCodec, error) {
+	encoderLevel, err := dataShareZstdEncoderLevel(level)
+	if err != nil {
+		return nil, err
+	}
+	encoder, err := zstd.NewWriter(
+		nil,
+		zstd.WithEncoderLevel(encoderLevel),
+	)
+	if err != nil {
+		return nil, err
+	}
+	decoder, err := zstd.NewReader(nil)
+	if err != nil {
+		encoder.Close()
+		return nil, err
+	}
+	return &dataSharePayloadCodec{encoder: encoder, decoder: decoder}, nil
+}
+
+func (c *dataSharePayloadCodec) close() {
+	if c == nil {
+		return
+	}
+	if c.encoder != nil {
+		c.encoder.Close()
+	}
+	if c.decoder != nil {
+		c.decoder.Close()
+	}
+}
+
+func dataShareZstdEncoderLevel(level string) (zstd.EncoderLevel, error) {
+	switch service.NormalizeDataShareCompressionLevel(level) {
+	case string(service.DataShareCompressionLevelFastest):
+		return zstd.SpeedFastest, nil
+	case string(service.DataShareCompressionLevelDefault):
+		return zstd.SpeedDefault, nil
+	case string(service.DataShareCompressionLevelBetter):
+		return zstd.SpeedBetterCompression, nil
+	case string(service.DataShareCompressionLevelBest):
+		return zstd.SpeedBestCompression, nil
+	default:
+		return zstd.SpeedFastest, nil
+	}
 }
 
 func populateDataShareSessionPayload(session *service.DataShareSession) error {
@@ -1175,22 +1239,40 @@ func mergeDataShareTools(existing, incoming []map[string]any) []map[string]any {
 
 func mergeDataShareMessages(existing, incoming []map[string]any) []map[string]any {
 	out := append([]map[string]any{}, existing...)
+	outIdentities := make([]string, 0, len(out)+len(incoming))
+	for range out {
+		outIdentities = append(outIdentities, "")
+	}
+	outIdentityAt := func(index int) string {
+		if outIdentities[index] == "" {
+			outIdentities[index] = dataShareMessageIdentity(out[index])
+		}
+		return outIdentities[index]
+	}
+	incomingIdentities := make([]string, len(incoming))
+	incomingIdentityAt := func(index int) string {
+		if incomingIdentities[index] == "" {
+			incomingIdentities[index] = dataShareMessageIdentity(incoming[index])
+		}
+		return incomingIdentities[index]
+	}
 	seenToolCalls := map[string]struct{}{}
 	seenToolResults := map[string]struct{}{}
 	for _, msg := range out {
 		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
 	}
-	for len(incoming) > 0 {
-		if prefix := dataShareCommonPrefixLen(out, incoming); prefix >= 2 {
-			incoming = incoming[prefix:]
+	for i := 0; i < len(incoming); {
+		if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(incoming), incomingIdentityAt); prefix >= 2 {
+			i += prefix
 			continue
 		}
-		msg := incoming[0]
+		msg := incoming[i]
 		if !dataShareMessageAlreadySeen(msg, seenToolCalls, seenToolResults) {
 			rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
 			out = append(out, msg)
+			outIdentities = append(outIdentities, "")
 		}
-		incoming = incoming[1:]
+		i++
 	}
 	return out
 }
@@ -1276,13 +1358,13 @@ func dataShareMessageIdentity(msg map[string]any) string {
 	return role + ":" + string(mustRepositoryJSON(msg))
 }
 
-func dataShareCommonPrefixLen(left, right []map[string]any) int {
-	limit := len(left)
-	if len(right) < limit {
-		limit = len(right)
+func dataShareCommonPrefixLen(leftLen int, leftIdentityAt func(int) string, rightStart int, rightLen int, rightIdentityAt func(int) string) int {
+	limit := leftLen
+	if remaining := rightLen - rightStart; remaining < limit {
+		limit = remaining
 	}
 	for i := 0; i < limit; i++ {
-		if dataShareMessageIdentity(left[i]) != dataShareMessageIdentity(right[i]) {
+		if leftIdentityAt(i) != rightIdentityAt(rightStart+i) {
 			return i
 		}
 	}
@@ -1413,20 +1495,12 @@ func firstNonBlankRepository(values ...string) string {
 	return ""
 }
 
-func validateRepositoryQuality(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
+func repositoryQuality(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) (string, []string) {
 	prompt := ""
 	if systemPrompt != nil {
 		prompt = *systemPrompt
 	}
-	return service.ValidateDataShareSessionQuality(model, prompt, messages, tools, usage)
-}
-
-func repositoryQualityStatus(model string, systemPrompt *string, messages []map[string]any, tools []map[string]any, usage map[string]any) string {
-	prompt := ""
-	if systemPrompt != nil {
-		prompt = *systemPrompt
-	}
-	return service.DataSharePayloadQualityStatus(model, prompt, messages, tools, usage)
+	return service.DataShareSessionQuality(model, prompt, messages, tools, usage)
 }
 
 func repositoryCompletionState(qualityStatus string) (string, bool) {

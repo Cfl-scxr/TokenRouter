@@ -179,6 +179,10 @@ func TestDataShareStorageLimitHandlers(t *testing.T) {
 }
 
 func TestDataShareCaptureRuntimeSettingsHandlers(t *testing.T) {
+	service.SetDataShareCompressionLevel(string(service.DataShareCompressionLevelFastest))
+	t.Cleanup(func() {
+		service.SetDataShareCompressionLevel(string(service.DataShareCompressionLevelFastest))
+	})
 	gin.SetMode(gin.TestMode)
 	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
 	pool := service.NewDataSharingCaptureWorkerPoolWithOptions(service.DataSharingCaptureWorkerPoolOptions{
@@ -201,16 +205,18 @@ func TestDataShareCaptureRuntimeSettingsHandlers(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &getEnvelope))
 	require.Equal(t, 15, getEnvelope.Data.TaskTimeoutSeconds)
+	require.Equal(t, string(service.DataShareCompressionLevelFastest), getEnvelope.Data.CompressionLevel)
 
-	body := bytes.NewBufferString(`{"worker_count":3,"queue_size":8,"task_timeout_seconds":60}`)
+	body := bytes.NewBufferString(`{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default"}`)
 	putRecorder := httptest.NewRecorder()
 	putCtx, _ := gin.CreateTestContext(putRecorder)
 	putCtx.Request = httptest.NewRequest(http.MethodPut, "/admin/data-sharing/runtime-settings", body)
 	putCtx.Request.Header.Set("Content-Type", "application/json")
 	h.UpdateCaptureRuntimeSettings(putCtx)
 	require.Equal(t, http.StatusOK, putRecorder.Code)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60,"compression_level":"default"}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 3, pool.Stats().WorkerCount)
 	require.Equal(t, 8, pool.Stats().QueueCapacity)
 	require.Equal(t, 60, pool.Stats().TaskTimeoutSeconds)
+	require.Equal(t, string(service.DataShareCompressionLevelDefault), pool.Stats().CompressionLevel)
 }

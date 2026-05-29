@@ -48,6 +48,7 @@ export interface DataShareCaptureWorkerStats {
   running_workers: number
   available_workers: number
   task_timeout_seconds: number
+  compression_level: string
   submitted_total: number
   completed_total: number
   failed_total: number
@@ -60,6 +61,7 @@ export interface DataShareCaptureRuntimeSettings {
   worker_count: number
   queue_size: number
   task_timeout_seconds: number
+  compression_level: string
 }
 
 export interface DataShareStats {

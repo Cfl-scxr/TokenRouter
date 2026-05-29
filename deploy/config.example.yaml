@@ -388,6 +388,8 @@ gateway:
     queue_size: 32768
     # 单个采集写入任务超时（秒）
     task_timeout_seconds: 15
+    # payload 压缩等级：fastest/default/better/best，可在管理端在线覆盖
+    compression_level: "fastest"
   # SSE max line size in bytes (default: 40MB)
   # SSE 单行最大字节数（默认 40MB）
   max_line_size: 41943040

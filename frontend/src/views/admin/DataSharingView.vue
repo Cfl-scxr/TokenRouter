@@ -94,7 +94,7 @@
           </div>
 
           <div class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-3">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label class="input-label">Worker 数量</label>
                 <input v-model="captureWorkerCountInput" type="number" min="1" :max="captureWorkerCountMax" step="1" class="input" />
@@ -106,6 +106,14 @@
               <div>
                 <label class="input-label">任务超时（秒）</label>
                 <input v-model="captureTimeoutInput" type="number" min="1" :max="captureTimeoutSecondsMax" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">压缩等级</label>
+                <select v-model="captureCompressionLevelInput" class="input">
+                  <option v-for="option in captureCompressionLevelOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
               </div>
             </div>
             <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
@@ -694,9 +702,16 @@ const storageLimitUnit = ref<'MB' | 'GB' | 'TB'>('GB')
 const captureWorkerCountInput = ref('')
 const captureQueueSizeInput = ref('')
 const captureTimeoutInput = ref('')
+const captureCompressionLevelInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureTimeoutSecondsMax = 300
+const captureCompressionLevelOptions = [
+  { value: 'fastest', label: '最快' },
+  { value: 'default', label: '默认' },
+  { value: 'better', label: '更高压缩' },
+  { value: 'best', label: '最高压缩' }
+]
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
@@ -1039,6 +1054,7 @@ const captureWorkerStatusText = computed(() => {
   return '正常'
 })
 const captureWorkerTaskTimeoutSeconds = computed(() => stats.value?.capture_worker?.task_timeout_seconds || 0)
+const captureWorkerCompressionLevel = computed(() => stats.value?.capture_worker?.compression_level || '')
 const captureWorkerCount = computed(() => stats.value?.capture_worker?.worker_count || 0)
 const captureWorkerQueueCapacity = computed(() => stats.value?.capture_worker?.queue_capacity || 0)
 const captureWorkerSlotLimit = 64
@@ -1227,8 +1243,13 @@ function captureRuntimeSettingsFromForm() {
   return {
     worker_count: workerCount,
     queue_size: queueSize,
-    task_timeout_seconds: timeoutSeconds
+    task_timeout_seconds: timeoutSeconds,
+    compression_level: normalizeCaptureCompressionLevel(captureCompressionLevelInput.value)
   }
+}
+
+function normalizeCaptureCompressionLevel(level: string) {
+  return captureCompressionLevelOptions.some(option => option.value === level) ? level : 'fastest'
 }
 
 function boundedPositiveIntegerFromInput(value: string, max: number) {
@@ -1237,10 +1258,11 @@ function boundedPositiveIntegerFromInput(value: string, max: number) {
   return Math.min(Math.round(raw), max)
 }
 
-function applyCaptureRuntimeSettingsToForm(settings: { worker_count: number; queue_size: number; task_timeout_seconds: number }) {
+function applyCaptureRuntimeSettingsToForm(settings: { worker_count: number; queue_size: number; task_timeout_seconds: number; compression_level?: string }) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
   captureTimeoutInput.value = String(settings.task_timeout_seconds)
+  captureCompressionLevelInput.value = normalizeCaptureCompressionLevel(settings.compression_level || 'fastest')
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -1439,6 +1461,9 @@ async function loadStats() {
     }
     if (!captureTimeoutInput.value && captureWorkerTaskTimeoutSeconds.value > 0) {
       captureTimeoutInput.value = String(captureWorkerTaskTimeoutSeconds.value)
+    }
+    if (!captureCompressionLevelInput.value && captureWorkerCompressionLevel.value) {
+      captureCompressionLevelInput.value = normalizeCaptureCompressionLevel(captureWorkerCompressionLevel.value)
     }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')

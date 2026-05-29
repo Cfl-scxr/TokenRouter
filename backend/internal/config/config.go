@@ -1004,6 +1004,8 @@ type GatewayDataSharingCaptureConfig struct {
 	QueueSize int `mapstructure:"queue_size"`
 	// TaskTimeoutSeconds: 单个采集写入任务超时（秒）
 	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
+	// CompressionLevel: payload 压缩等级，支持 fastest/default/better/best
+	CompressionLevel string `mapstructure:"compression_level"`
 }
 
 // TLSFingerprintConfig TLS指纹伪装配置
@@ -1926,6 +1928,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.data_sharing_capture.worker_count", 32)
 	viper.SetDefault("gateway.data_sharing_capture.queue_size", 32768)
 	viper.SetDefault("gateway.data_sharing_capture.task_timeout_seconds", 15)
+	viper.SetDefault("gateway.data_sharing_capture.compression_level", "fastest")
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -2711,6 +2714,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.DataSharingCapture.TaskTimeoutSeconds <= 0 {
 		return fmt.Errorf("gateway.data_sharing_capture.task_timeout_seconds must be positive")
+	}
+	if level := strings.ToLower(strings.TrimSpace(c.Gateway.DataSharingCapture.CompressionLevel)); level != "fastest" && level != "default" && level != "better" && level != "best" {
+		return fmt.Errorf("gateway.data_sharing_capture.compression_level must be one of fastest, default, better, best")
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.user_group_rate_cache_ttl_seconds must be positive")
