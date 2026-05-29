@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -1089,7 +1090,11 @@ type dataSharePayloadCodec struct {
 func currentDataSharePayloadCodec() (*dataSharePayloadCodec, error) {
 	level := service.CurrentDataShareCompressionLevel()
 	if cached, ok := dataSharePayloadCodecCache.Load(level); ok {
-		return cached.(*dataSharePayloadCodec), nil
+		codec, ok := cached.(*dataSharePayloadCodec)
+		if !ok {
+			return nil, fmt.Errorf("invalid cached data share payload codec for level %s", level)
+		}
+		return codec, nil
 	}
 	codec, err := newDataSharePayloadCodec(level)
 	if err != nil {
@@ -1097,9 +1102,16 @@ func currentDataSharePayloadCodec() (*dataSharePayloadCodec, error) {
 	}
 	actual, _ := dataSharePayloadCodecCache.LoadOrStore(level, codec)
 	if actual != codec {
-		codec.close()
+		// 并发场景下丢弃未入缓存的临时 codec，避免后台资源残留。
+		if err := codec.close(); err != nil {
+			return nil, err
+		}
 	}
-	return actual.(*dataSharePayloadCodec), nil
+	cached, ok := actual.(*dataSharePayloadCodec)
+	if !ok {
+		return nil, fmt.Errorf("invalid cached data share payload codec for level %s", level)
+	}
+	return cached, nil
 }
 
 func newDataSharePayloadCodec(level string) (*dataSharePayloadCodec, error) {
@@ -1116,22 +1128,25 @@ func newDataSharePayloadCodec(level string) (*dataSharePayloadCodec, error) {
 	}
 	decoder, err := zstd.NewReader(nil)
 	if err != nil {
-		encoder.Close()
-		return nil, err
+		// 构造 decoder 失败时清理已创建的 encoder，保留两个错误便于排查。
+		return nil, errors.Join(err, encoder.Close())
 	}
 	return &dataSharePayloadCodec{encoder: encoder, decoder: decoder}, nil
 }
 
-func (c *dataSharePayloadCodec) close() {
+func (c *dataSharePayloadCodec) close() error {
 	if c == nil {
-		return
+		return nil
 	}
 	if c.encoder != nil {
-		c.encoder.Close()
+		if err := c.encoder.Close(); err != nil {
+			return err
+		}
 	}
 	if c.decoder != nil {
 		c.decoder.Close()
 	}
+	return nil
 }
 
 func dataShareZstdEncoderLevel(level string) (zstd.EncoderLevel, error) {
