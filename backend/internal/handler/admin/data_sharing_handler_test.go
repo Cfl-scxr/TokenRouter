@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
@@ -175,4 +176,41 @@ func TestDataShareStorageLimitHandlers(t *testing.T) {
 	h.UpdateStorageLimit(putCtx)
 	require.Equal(t, http.StatusOK, putRecorder.Code)
 	require.Equal(t, "1048576", repo.values[service.SettingKeyDataSharingStorageLimit])
+}
+
+func TestDataShareCaptureRuntimeSettingsHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
+	pool := service.NewDataSharingCaptureWorkerPoolWithOptions(service.DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	h := NewDataSharingHandler(service.NewDataSharingService(nil, repo, pool))
+
+	getRecorder := httptest.NewRecorder()
+	getCtx, _ := gin.CreateTestContext(getRecorder)
+	getCtx.Request = httptest.NewRequest(http.MethodGet, "/admin/data-sharing/runtime-settings", nil)
+	h.GetCaptureRuntimeSettings(getCtx)
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var getEnvelope struct {
+		Code int                                     `json:"code"`
+		Data service.DataShareCaptureRuntimeSettings `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &getEnvelope))
+	require.Equal(t, 15, getEnvelope.Data.TaskTimeoutSeconds)
+
+	body := bytes.NewBufferString(`{"worker_count":3,"queue_size":8,"task_timeout_seconds":60}`)
+	putRecorder := httptest.NewRecorder()
+	putCtx, _ := gin.CreateTestContext(putRecorder)
+	putCtx.Request = httptest.NewRequest(http.MethodPut, "/admin/data-sharing/runtime-settings", body)
+	putCtx.Request.Header.Set("Content-Type", "application/json")
+	h.UpdateCaptureRuntimeSettings(putCtx)
+	require.Equal(t, http.StatusOK, putRecorder.Code)
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"task_timeout_seconds":60}`, repo.values[service.SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, 3, pool.Stats().WorkerCount)
+	require.Equal(t, 8, pool.Stats().QueueCapacity)
+	require.Equal(t, 60, pool.Stats().TaskTimeoutSeconds)
 }

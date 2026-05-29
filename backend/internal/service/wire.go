@@ -478,7 +478,11 @@ func ProvideDataSharingService(
 	settingRepo SettingRepository,
 	captureWorker *DataSharingCaptureWorkerPool,
 ) *DataSharingService {
-	return NewDataSharingService(repo, settingRepo, captureWorker)
+	svc := NewDataSharingService(repo, settingRepo, captureWorker)
+	if _, err := svc.LoadRuntimeSettings(context.Background()); err != nil {
+		logger.LegacyPrintf("service.data_sharing", "load data sharing runtime settings failed: %v", err)
+	}
+	return svc
 }
 
 // ProviderSet is the Wire provider set for all services

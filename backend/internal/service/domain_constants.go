@@ -166,6 +166,7 @@ const (
 	SettingKeyDataSharingCaptureSkipRules = "data_sharing_capture_skip_rules"  // 数据共享采集跳过规则
 	SettingKeyDataSharingExportTicketKey  = "data_sharing_export_ticket_key"   // 数据共享导出下载票据签名密钥
 	SettingKeyDataSharingStorageLimit     = "data_sharing_storage_limit_bytes" // 数据共享采集空间阈值，0 表示不限制
+	SettingKeyDataSharingCaptureRuntime   = "data_sharing_capture_runtime"     // 数据共享采集运行时配置（JSON，可在线更新）
 
 	// TOTP 双因素认证设置
 	SettingKeyTotpEnabled = "totp_enabled" // 是否启用 TOTP 2FA 功能

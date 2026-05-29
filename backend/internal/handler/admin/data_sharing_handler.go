@@ -40,6 +40,13 @@ type UpdateDataShareStorageLimitRequest struct {
 	LimitBytes int64 `json:"limit_bytes"`
 }
 
+// UpdateDataShareCaptureRuntimeSettingsRequest 是管理端更新采集运行时配置的请求。
+type UpdateDataShareCaptureRuntimeSettingsRequest struct {
+	WorkerCount        int `json:"worker_count"`
+	QueueSize          int `json:"queue_size"`
+	TaskTimeoutSeconds int `json:"task_timeout_seconds"`
+}
+
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
 type BatchDeleteDataShareSessionsRequest struct {
 	IDs []int64 `json:"ids"`
@@ -166,6 +173,35 @@ func (h *DataSharingHandler) UpdateStorageLimit(c *gin.Context) {
 		return
 	}
 	response.Success(c, limit)
+}
+
+// GetCaptureRuntimeSettings 返回数据共享采集运行时配置。
+func (h *DataSharingHandler) GetCaptureRuntimeSettings(c *gin.Context) {
+	settings, err := h.dataSharingService.GetCaptureRuntimeSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+// UpdateCaptureRuntimeSettings 保存数据共享采集运行时配置并立即生效。
+func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
+	var req UpdateDataShareCaptureRuntimeSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings, err := h.dataSharingService.UpdateCaptureRuntimeSettings(c.Request.Context(), service.DataShareCaptureRuntimeSettings{
+		WorkerCount:        req.WorkerCount,
+		QueueSize:          req.QueueSize,
+		TaskTimeoutSeconds: req.TaskTimeoutSeconds,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
 }
 
 // ListSessions 查询所有数据共享 session。

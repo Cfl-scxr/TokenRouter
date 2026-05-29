@@ -46,6 +46,7 @@ var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES
 var ErrDataShareExportTicketInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_TICKET_INVALID", "data sharing export ticket is invalid")
 var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT_TICKET_FORBIDDEN", "data sharing export ticket scope is not allowed")
 var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
+var ErrDataShareCaptureRuntimeInvalid = infraerrors.BadRequest("DATA_SHARE_CAPTURE_RUNTIME_INVALID", "data sharing capture runtime settings are invalid")
 
 const (
 	dataShareSkipRuleMatchContains = "contains"
@@ -80,6 +81,13 @@ type DataShareStorageLimit struct {
 	Enabled             bool    `json:"enabled"`
 	Exceeded            bool    `json:"exceeded"`
 	UsageRatio          float64 `json:"usage_ratio"`
+}
+
+// DataShareCaptureRuntimeSettings 描述可在线更新的数据共享采集运行时配置。
+type DataShareCaptureRuntimeSettings struct {
+	WorkerCount        int `json:"worker_count"`
+	QueueSize          int `json:"queue_size"`
+	TaskTimeoutSeconds int `json:"task_timeout_seconds"`
 }
 
 // DataShareSession 保存一条聚合后的 Agent session。
@@ -330,6 +338,16 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 	return svc
 }
 
+// LoadRuntimeSettings 从数据库加载运行时配置并同步到当前 worker。
+func (s *DataSharingService) LoadRuntimeSettings(ctx context.Context) (*DataShareCaptureRuntimeSettings, error) {
+	settings, err := s.GetCaptureRuntimeSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.applyCaptureRuntimeSettings(settings)
+	return settings, nil
+}
+
 // GetNotice 返回当前数据共享须知；未配置时返回默认模板和版本 1。
 func (s *DataSharingService) GetNotice(ctx context.Context) (*DataShareNotice, error) {
 	return defaultDataSharingNotice(ctx, s.settingRepo)
@@ -431,6 +449,110 @@ func (s *DataSharingService) UpdateStorageLimit(ctx context.Context, limitBytes 
 		return nil, err
 	}
 	return s.GetStorageLimit(ctx)
+}
+
+// GetCaptureRuntimeSettings 返回数据共享采集运行时配置。
+func (s *DataSharingService) GetCaptureRuntimeSettings(ctx context.Context) (*DataShareCaptureRuntimeSettings, error) {
+	settings, err := s.loadCaptureRuntimeSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
+// UpdateCaptureRuntimeSettings 保存数据共享采集运行时配置，并立即更新当前进程 worker。
+func (s *DataSharingService) UpdateCaptureRuntimeSettings(ctx context.Context, settings DataShareCaptureRuntimeSettings) (*DataShareCaptureRuntimeSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, ErrSettingNotFound
+	}
+	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+		return nil, ErrDataShareCaptureRuntimeInvalid
+	}
+	settings = normalizeDataShareCaptureRuntimeSettings(settings)
+	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingCaptureRuntime, dataShareCaptureRuntimeSettingsJSON(settings)); err != nil {
+		return nil, err
+	}
+	s.applyCaptureRuntimeSettings(&settings)
+	return &settings, nil
+}
+
+func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*DataShareCaptureRuntimeSettings, error) {
+	if s == nil {
+		return defaultDataShareCaptureRuntimeSettings(), nil
+	}
+	defaultSettings := defaultDataShareCaptureRuntimeSettings()
+	if s.captureWorker != nil {
+		stats := s.captureWorker.Stats()
+		if stats.WorkerCount > 0 {
+			defaultSettings.WorkerCount = stats.WorkerCount
+		}
+		if stats.QueueCapacity > 0 {
+			defaultSettings.QueueSize = stats.QueueCapacity
+		}
+		if stats.TaskTimeoutSeconds > 0 {
+			defaultSettings.TaskTimeoutSeconds = stats.TaskTimeoutSeconds
+		}
+	}
+	if s.settingRepo == nil {
+		return defaultSettings, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingCaptureRuntime)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return defaultSettings, nil
+		}
+		return nil, err
+	}
+	var settings DataShareCaptureRuntimeSettings
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		return nil, ErrDataShareCaptureRuntimeInvalid
+	}
+	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+		return nil, ErrDataShareCaptureRuntimeInvalid
+	}
+	settings = normalizeDataShareCaptureRuntimeSettings(settings)
+	return &settings, nil
+}
+
+func (s *DataSharingService) applyCaptureRuntimeSettings(settings *DataShareCaptureRuntimeSettings) {
+	if s == nil || s.captureWorker == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 {
+		return
+	}
+	s.captureWorker.UpdateRuntimeSettings(
+		settings.WorkerCount,
+		settings.QueueSize,
+		time.Duration(settings.TaskTimeoutSeconds)*time.Second,
+	)
+}
+
+func defaultDataShareCaptureRuntimeSettings() *DataShareCaptureRuntimeSettings {
+	settings := normalizeDataShareCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:        defaultDataSharingCaptureWorkerCount,
+		QueueSize:          defaultDataSharingCaptureQueueSize,
+		TaskTimeoutSeconds: defaultDataSharingCaptureTaskTimeoutSeconds,
+	})
+	return &settings
+}
+
+func normalizeDataShareCaptureRuntimeSettings(settings DataShareCaptureRuntimeSettings) DataShareCaptureRuntimeSettings {
+	opts := normalizeDataSharingCapturePoolOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: settings.WorkerCount,
+		QueueSize:   settings.QueueSize,
+		TaskTimeout: time.Duration(settings.TaskTimeoutSeconds) * time.Second,
+	})
+	return DataShareCaptureRuntimeSettings{
+		WorkerCount:        opts.WorkerCount,
+		QueueSize:          opts.QueueSize,
+		TaskTimeoutSeconds: durationSecondsCeil(opts.TaskTimeout),
+	}
+}
+
+func dataShareCaptureRuntimeSettingsJSON(settings DataShareCaptureRuntimeSettings) string {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func (s *DataSharingService) loadStorageLimitBytes(ctx context.Context) (int64, error) {

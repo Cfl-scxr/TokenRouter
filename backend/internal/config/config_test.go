@@ -1884,11 +1884,11 @@ func TestLoad_DefaultGatewayDataSharingCaptureConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.Gateway.DataSharingCapture.WorkerCount != 16 {
-		t.Fatalf("worker_count = %d, want 16", cfg.Gateway.DataSharingCapture.WorkerCount)
+	if cfg.Gateway.DataSharingCapture.WorkerCount != 32 {
+		t.Fatalf("worker_count = %d, want 32", cfg.Gateway.DataSharingCapture.WorkerCount)
 	}
-	if cfg.Gateway.DataSharingCapture.QueueSize != 256 {
-		t.Fatalf("queue_size = %d, want 256", cfg.Gateway.DataSharingCapture.QueueSize)
+	if cfg.Gateway.DataSharingCapture.QueueSize != 32768 {
+		t.Fatalf("queue_size = %d, want 32768", cfg.Gateway.DataSharingCapture.QueueSize)
 	}
 	if cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds != 15 {
 		t.Fatalf("task_timeout_seconds = %d, want 15", cfg.Gateway.DataSharingCapture.TaskTimeoutSeconds)

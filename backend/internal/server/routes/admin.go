@@ -113,6 +113,8 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataSharing.PUT("/skip-rules", h.Admin.DataSharing.UpdateSkipRules)
 		dataSharing.GET("/storage-limit", h.Admin.DataSharing.GetStorageLimit)
 		dataSharing.PUT("/storage-limit", h.Admin.DataSharing.UpdateStorageLimit)
+		dataSharing.GET("/runtime-settings", h.Admin.DataSharing.GetCaptureRuntimeSettings)
+		dataSharing.PUT("/runtime-settings", h.Admin.DataSharing.UpdateCaptureRuntimeSettings)
 		dataSharing.GET("/filter-options", h.Admin.DataSharing.FilterOptions)
 		dataSharing.GET("/sessions", h.Admin.DataSharing.ListSessions)
 		dataSharing.GET("/sessions/:id", h.Admin.DataSharing.GetSession)

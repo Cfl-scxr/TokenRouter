@@ -9,7 +9,7 @@
         </button>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
+      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">Session 总数</p>
           <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(stats?.session_count) }}</p>
@@ -36,18 +36,102 @@
             {{ formatNumber(Math.round(stats?.avg_tokens_per_session || 0)) }}
           </p>
         </div>
-        <div class="card p-4">
-          <div class="flex items-center justify-between gap-2">
-            <p class="text-xs text-gray-500 dark:text-gray-400">采集队列</p>
-            <span :class="['badge', captureWorkerBadgeClass]">{{ captureWorkerStatusText }}</span>
+      </div>
+
+      <div class="card overflow-hidden">
+        <div class="border-b border-gray-200 p-4 dark:border-gray-700">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">采集 Worker 运行状态</h2>
+                <span :class="['badge', captureWorkerBadgeClass]">{{ captureWorkerStatusText }}</span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">异步数据共享采集任务的队列与 Worker 池状态，配置保存后对新任务在线生效。</p>
+            </div>
+            <button class="btn btn-primary btn-sm" :disabled="savingCaptureRuntimeSettings" @click="saveCaptureRuntimeSettings">
+              <Icon name="check" size="sm" class="mr-1" />
+              保存运行配置
+            </button>
           </div>
-          <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ captureWorkerQueueText }}</p>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            失败 {{ formatNumber(captureWorkerFailedTotal) }} · 超时 {{ formatNumber(captureWorkerTimeoutTotal) }} · 丢弃 {{ formatNumber(captureWorkerDroppedTotal) }}
-          </p>
-          <p v-if="stats?.capture_worker?.last_error" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_worker.last_error">
-            {{ stats.capture_worker.last_error }}
-          </p>
+        </div>
+        <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]">
+          <div class="space-y-4">
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+              <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>队列占用</span>
+                <span>{{ captureWorkerQueueRatioText }}</span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureWorkerQueueProgress}%` }"></div>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ captureWorkerQueueText }} · {{ formatNumber(captureWorkerAvailableWorkers) }} 个 Worker 空闲可用
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">处理中</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureWorkerRunningWorkers) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">已完成</p>
+                <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ formatNumber(captureWorkerCompletedTotal) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">失败/超时</p>
+                <p class="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">
+                  {{ formatNumber(captureWorkerFailedTotal) }}/{{ formatNumber(captureWorkerTimeoutTotal) }}
+                </p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">丢弃</p>
+                <p class="mt-2 text-2xl font-semibold text-red-600 dark:text-red-400">{{ formatNumber(captureWorkerDroppedTotal) }}</p>
+              </div>
+            </div>
+            <p v-if="stats?.capture_worker?.last_error" class="truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_worker.last_error">
+              {{ stats.capture_worker.last_error }}
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-3">
+              <div>
+                <label class="input-label">Worker 数量</label>
+                <input v-model="captureWorkerCountInput" type="number" min="1" :max="captureWorkerCountMax" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">队列大小</label>
+                <input v-model="captureQueueSizeInput" type="number" min="1" :max="captureQueueSizeMax" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">任务超时（秒）</label>
+                <input v-model="captureTimeoutInput" type="number" min="1" :max="captureTimeoutSecondsMax" step="1" class="input" />
+              </div>
+            </div>
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">Worker 池</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    运行 {{ formatNumber(captureWorkerRunningWorkers) }} · 空闲 {{ formatNumber(captureWorkerAvailableWorkers) }} · 总计 {{ formatNumber(captureWorkerCount) }}
+                  </p>
+                </div>
+                <span v-if="captureWorkerHiddenCount > 0" class="badge badge-gray">+{{ formatNumber(captureWorkerHiddenCount) }}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
+                <div
+                  v-for="worker in captureWorkerSlots"
+                  :key="worker.id"
+                  class="flex h-11 items-center justify-between rounded-lg border px-3 transition-colors"
+                  :class="captureWorkerSlotClass(worker.state)"
+                  :title="worker.label"
+                >
+                  <span class="text-sm font-semibold">#{{ worker.id }}</span>
+                  <span class="h-2.5 w-2.5 rounded-full" :class="captureWorkerDotClass(worker.state)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -598,6 +682,12 @@ const skipRules = ref<DataShareCaptureSkipRule[]>([])
 const storageLimit = ref<DataShareStorageLimit | null>(null)
 const storageLimitInput = ref('')
 const storageLimitUnit = ref<'MB' | 'GB' | 'TB'>('GB')
+const captureWorkerCountInput = ref('')
+const captureQueueSizeInput = ref('')
+const captureTimeoutInput = ref('')
+const captureWorkerCountMax = 32
+const captureQueueSizeMax = 100000
+const captureTimeoutSecondsMax = 300
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
@@ -617,6 +707,7 @@ const skipRulesLoading = ref(false)
 const savingSkipRules = ref(false)
 const storageLimitLoading = ref(false)
 const savingStorageLimit = ref(false)
+const savingCaptureRuntimeSettings = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -912,11 +1003,21 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+type CaptureWorkerSlotState = 'active' | 'idle' | 'disabled'
 const captureWorkerQueueText = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return '-'
   return `${formatNumber(worker.queue_depth)}/${formatNumber(worker.queue_capacity)}`
 })
+const captureWorkerQueueProgress = computed(() => {
+  const worker = stats.value?.capture_worker
+  if (!worker?.queue_capacity) return 0
+  return Math.min(Math.max((worker.queue_depth / worker.queue_capacity) * 100, 0), 100)
+})
+const captureWorkerQueueRatioText = computed(() => `${captureWorkerQueueProgress.value.toFixed(1)}%`)
+const captureWorkerRunningWorkers = computed(() => stats.value?.capture_worker?.running_workers || 0)
+const captureWorkerAvailableWorkers = computed(() => stats.value?.capture_worker?.available_workers || 0)
+const captureWorkerCompletedTotal = computed(() => stats.value?.capture_worker?.completed_total || 0)
 const captureWorkerFailedTotal = computed(() => stats.value?.capture_worker?.failed_total || 0)
 const captureWorkerTimeoutTotal = computed(() => stats.value?.capture_worker?.timeout_total || 0)
 const captureWorkerDroppedTotal = computed(() => stats.value?.capture_worker?.dropped_total || 0)
@@ -927,6 +1028,21 @@ const captureWorkerStatusText = computed(() => {
   if (worker.timeout_total > 0) return '有超时'
   if (worker.failed_total > 0) return '有失败'
   return '正常'
+})
+const captureWorkerTaskTimeoutSeconds = computed(() => stats.value?.capture_worker?.task_timeout_seconds || 0)
+const captureWorkerCount = computed(() => stats.value?.capture_worker?.worker_count || 0)
+const captureWorkerQueueCapacity = computed(() => stats.value?.capture_worker?.queue_capacity || 0)
+const captureWorkerSlotLimit = 64
+const captureWorkerHiddenCount = computed(() => Math.max(captureWorkerCount.value - captureWorkerSlotLimit, 0))
+const captureWorkerSlots = computed(() => {
+  const total = Math.min(Math.max(captureWorkerCount.value, 0), captureWorkerSlotLimit)
+  const active = Math.max(captureWorkerRunningWorkers.value, 0)
+  const enabled = Boolean(stats.value?.capture_worker)
+  return Array.from({ length: total }, (_, index) => ({
+    id: index + 1,
+    state: (!enabled ? 'disabled' : index < active ? 'active' : 'idle') as CaptureWorkerSlotState,
+    label: !enabled ? 'Worker 未启用' : index < active ? 'Worker 处理中' : 'Worker 空闲'
+  }))
 })
 const captureWorkerBadgeClass = computed(() => {
   const worker = stats.value?.capture_worker
@@ -1067,6 +1183,54 @@ async function saveStorageLimit() {
   } finally {
     savingStorageLimit.value = false
   }
+}
+
+async function saveCaptureRuntimeSettings() {
+  savingCaptureRuntimeSettings.value = true
+  try {
+    const settings = await adminDataSharingAPI.updateRuntimeSettings(captureRuntimeSettingsFromForm())
+    applyCaptureRuntimeSettingsToForm(settings)
+    await loadStats()
+    appStore.showSuccess('采集 Worker 配置已更新')
+  } catch (error) {
+    appStore.showError('保存采集 Worker 配置失败')
+  } finally {
+    savingCaptureRuntimeSettings.value = false
+  }
+}
+
+async function loadCaptureRuntimeSettings() {
+  try {
+    applyCaptureRuntimeSettingsToForm(await adminDataSharingAPI.getRuntimeSettings())
+  } catch (error) {
+    appStore.showError('加载采集 Worker 配置失败')
+  }
+}
+
+function captureRuntimeSettingsFromForm() {
+  const workerCount = boundedPositiveIntegerFromInput(captureWorkerCountInput.value, captureWorkerCountMax)
+  const queueSize = boundedPositiveIntegerFromInput(captureQueueSizeInput.value, captureQueueSizeMax)
+  const timeoutSeconds = boundedPositiveIntegerFromInput(captureTimeoutInput.value, captureTimeoutSecondsMax)
+  if (!workerCount || !queueSize || !timeoutSeconds) {
+    throw new Error('invalid capture runtime settings')
+  }
+  return {
+    worker_count: workerCount,
+    queue_size: queueSize,
+    task_timeout_seconds: timeoutSeconds
+  }
+}
+
+function boundedPositiveIntegerFromInput(value: string, max: number) {
+  const raw = Number(value)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  return Math.min(Math.round(raw), max)
+}
+
+function applyCaptureRuntimeSettingsToForm(settings: { worker_count: number; queue_size: number; task_timeout_seconds: number }) {
+  captureWorkerCountInput.value = String(settings.worker_count)
+  captureQueueSizeInput.value = String(settings.queue_size)
+  captureTimeoutInput.value = String(settings.task_timeout_seconds)
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -1257,6 +1421,15 @@ async function loadStats() {
   statsLoading.value = true
   try {
     stats.value = await adminDataSharingAPI.getStats(buildFilters())
+    if (!captureWorkerCountInput.value && captureWorkerCount.value > 0) {
+      captureWorkerCountInput.value = String(captureWorkerCount.value)
+    }
+    if (!captureQueueSizeInput.value && captureWorkerQueueCapacity.value > 0) {
+      captureQueueSizeInput.value = String(captureWorkerQueueCapacity.value)
+    }
+    if (!captureTimeoutInput.value && captureWorkerTaskTimeoutSeconds.value > 0) {
+      captureTimeoutInput.value = String(captureWorkerTaskTimeoutSeconds.value)
+    }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')
   } finally {
@@ -1523,6 +1696,18 @@ function buildSessionCountDoughnutChartOptions(points: Array<{ session_count: nu
   }
 }
 
+function captureWorkerSlotClass(state: CaptureWorkerSlotState) {
+  if (state === 'active') return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-900/20 dark:text-sky-200'
+  if (state === 'idle') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-200'
+  return 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500'
+}
+
+function captureWorkerDotClass(state: CaptureWorkerSlotState) {
+  if (state === 'active') return 'bg-sky-500'
+  if (state === 'idle') return 'bg-emerald-500'
+  return 'bg-gray-400'
+}
+
 function qualityErrorLabel(code?: string | null) {
   const raw = (code || '').trim()
   const normalized = !raw || raw === '(unknown)' ? 'unknown' : raw
@@ -1560,6 +1745,7 @@ onMounted(() => {
   loadFilterOptions()
   loadNotice()
   loadSkipRules()
+  loadCaptureRuntimeSettings()
   refreshAll()
 })
 

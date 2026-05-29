@@ -44,13 +44,22 @@ export interface DataShareQualityErrorPoint {
 export interface DataShareCaptureWorkerStats {
   queue_depth: number
   queue_capacity: number
+  worker_count: number
   running_workers: number
+  available_workers: number
+  task_timeout_seconds: number
   submitted_total: number
   completed_total: number
   failed_total: number
   timeout_total: number
   dropped_total: number
   last_error: string
+}
+
+export interface DataShareCaptureRuntimeSettings {
+  worker_count: number
+  queue_size: number
+  task_timeout_seconds: number
 }
 
 export interface DataShareStats {
@@ -131,6 +140,16 @@ export async function updateStorageLimit(limitBytes: number): Promise<DataShareS
   return data
 }
 
+export async function getRuntimeSettings(): Promise<DataShareCaptureRuntimeSettings> {
+  const { data } = await apiClient.get<DataShareCaptureRuntimeSettings>('/admin/data-sharing/runtime-settings')
+  return data
+}
+
+export async function updateRuntimeSettings(settings: DataShareCaptureRuntimeSettings): Promise<DataShareCaptureRuntimeSettings> {
+  const { data } = await apiClient.put<DataShareCaptureRuntimeSettings>('/admin/data-sharing/runtime-settings', settings)
+  return data
+}
+
 export async function listSessions(
   page = 1,
   pageSize = 20,
@@ -195,6 +214,8 @@ export const adminDataSharingAPI = {
   updateSkipRules,
   getStorageLimit,
   updateStorageLimit,
+  getRuntimeSettings,
+  updateRuntimeSettings,
   listSessions,
   getFilterOptions,
   getSession,

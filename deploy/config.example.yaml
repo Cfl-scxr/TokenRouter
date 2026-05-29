@@ -383,9 +383,9 @@ gateway:
   # 数据共享采集队列（进程级、有界队列；队列满时丢弃并在管理端统计中可见）
   data_sharing_capture:
     # 固定采集 worker 数量
-    worker_count: 16
+    worker_count: 32
     # 最大待写入采集任务数，超过后直接丢弃
-    queue_size: 256
+    queue_size: 32768
     # 单个采集写入任务超时（秒）
     task_timeout_seconds: 15
   # SSE max line size in bytes (default: 40MB)

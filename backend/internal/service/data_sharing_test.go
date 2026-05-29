@@ -237,6 +237,96 @@ func TestDataSharingService_StatsIncludesCaptureWorker(t *testing.T) {
 	require.Equal(t, 7, stats.CaptureWorker.QueueCapacity)
 }
 
+func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *testing.T) {
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
+		WorkerCount:        2,
+		QueueSize:          9,
+		TaskTimeoutSeconds: 45,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, settings.WorkerCount)
+	require.Equal(t, 9, settings.QueueSize)
+	require.Equal(t, 45, settings.TaskTimeoutSeconds)
+	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"task_timeout_seconds":45}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
+	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
+	require.Equal(t, 45, svc.CaptureWorkerStats().TaskTimeoutSeconds)
+}
+
+func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *testing.T) {
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
+		WorkerCount:        maxDataSharingCaptureWorkerCount + 100,
+		QueueSize:          maxDataSharingCaptureQueueSize + 100,
+		TaskTimeoutSeconds: maxDataSharingCaptureTaskTimeoutSeconds + 100,
+	})
+	require.NoError(t, err)
+	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
+	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
+	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
+	require.JSONEq(t, `{"worker_count":32,"queue_size":100000,"task_timeout_seconds":300}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
+	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
+	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
+}
+
+func TestDataSharingService_LoadRuntimeSettingsAppliesStoredTimeout(t *testing.T) {
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":4,"queue_size":10,"task_timeout_seconds":90}`}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.LoadRuntimeSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 4, settings.WorkerCount)
+	require.Equal(t, 10, settings.QueueSize)
+	require.Equal(t, 90, settings.TaskTimeoutSeconds)
+	require.Equal(t, 4, pool.Stats().WorkerCount)
+	require.Equal(t, 10, pool.Stats().QueueCapacity)
+	require.Equal(t, 90, pool.Stats().TaskTimeoutSeconds)
+}
+
+func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testing.T) {
+	repo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingCaptureRuntime: `{"worker_count":999,"queue_size":999999,"task_timeout_seconds":999}`}}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   1,
+		TaskTimeout: 15 * time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(nil, repo, pool)
+
+	settings, err := svc.LoadRuntimeSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
+	require.Equal(t, maxDataSharingCaptureQueueSize, settings.QueueSize)
+	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, settings.TaskTimeoutSeconds)
+	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
+	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
+	require.Equal(t, maxDataSharingCaptureTaskTimeoutSeconds, pool.Stats().TaskTimeoutSeconds)
+}
+
 func TestBuildSessionUsesActualUpstreamModel(t *testing.T) {
 	gid := int64(12)
 	svc := NewDataSharingService(nil, nil)
