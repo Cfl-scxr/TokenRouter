@@ -79,6 +79,7 @@ func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
 		expectedInput float64
 	}{
 		{"claude-opus-4.5-20250101", 5e-6},
+		{"claude-opus-4-8", 5e-6},
 		{"claude-3-opus-20240229", 15e-6},
 		{"claude-sonnet-4-20250514", 3e-6},
 		{"claude-3-5-sonnet-20241022", 3e-6},
@@ -341,6 +342,7 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		expectNilPricing bool
 	}{
 		{name: "empty model", model: "   ", expectNilPricing: true},
+		{name: "claude opus 4.8", model: "claude-opus-4-8-20260528", expectedInput: 5e-6},
 		{name: "claude opus 4.6", model: "claude-opus-4.6-20260201", expectedInput: 5e-6},
 		{name: "claude opus 4.5 alt separator", model: "claude-opus-4-5-20260101", expectedInput: 5e-6},
 		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
@@ -703,6 +705,40 @@ func TestCalculateCostWithServiceTier_PriorityFallsBackToTierMultiplierWithoutEx
 	require.InDelta(t, baseCost.CacheCreationCost*2, priorityCost.CacheCreationCost, 1e-10)
 	require.InDelta(t, baseCost.CacheReadCost*2, priorityCost.CacheReadCost, 1e-10)
 	require.InDelta(t, baseCost.TotalCost*2, priorityCost.TotalCost, 1e-10)
+}
+
+func TestCalculateCostWithServiceTier_ClaudeOpus48FastUsesDoublePricing(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{
+		InputTokens:           100,
+		OutputTokens:          50,
+		CacheCreation5mTokens: 40,
+		CacheCreation1hTokens: 20,
+		CacheReadTokens:       10,
+	}
+
+	pricing, err := svc.GetModelPricing("claude-opus-4-8")
+	require.NoError(t, err)
+	require.InDelta(t, 5e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 25e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, pricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 10e-6, pricing.CacheCreation1hPrice, 1e-12)
+	require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.True(t, pricing.SupportsCacheBreakdown)
+	require.True(t, pricing.SupportsServiceTier)
+
+	baseCost, err := svc.CalculateCost("claude-opus-4.8", tokens, 1.0)
+	require.NoError(t, err)
+
+	fastCost, err := svc.CalculateCostWithServiceTier("claude-opus-4-8", tokens, 1.0, "priority")
+	require.NoError(t, err)
+
+	// Claude Opus 4.8 Fast mode 官方价格是常规定价的 2 倍。
+	require.InDelta(t, baseCost.InputCost*2, fastCost.InputCost, 1e-10)
+	require.InDelta(t, baseCost.OutputCost*2, fastCost.OutputCost, 1e-10)
+	require.InDelta(t, baseCost.CacheCreationCost*2, fastCost.CacheCreationCost, 1e-10)
+	require.InDelta(t, baseCost.CacheReadCost*2, fastCost.CacheReadCost, 1e-10)
+	require.InDelta(t, baseCost.TotalCost*2, fastCost.TotalCost, 1e-10)
 }
 
 func TestBillingServiceGetModelPricing_UsesDynamicPriorityFields(t *testing.T) {

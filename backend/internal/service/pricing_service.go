@@ -22,8 +22,20 @@ import (
 )
 
 var (
-	openAIModelDatePattern     = regexp.MustCompile(`-\d{8}$`)
-	openAIModelBasePattern     = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	openAIModelDatePattern      = regexp.MustCompile(`-\d{8}$`)
+	openAIModelBasePattern      = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	claudeOpus48FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:                   5e-06,  // 每百万 token $5
+		OutputCostPerToken:                  25e-06, // 每百万 token $25
+		CacheCreationInputTokenCost:         6.25e-06,
+		CacheCreationInputTokenCostAbove1hr: 10e-06,
+		CacheReadInputTokenCost:             0.5e-06,
+		LiteLLMProvider:                     "anthropic",
+		Mode:                                "chat",
+		SupportsPromptCaching:               true,
+		// Claude Opus 4.8 Fast mode 官方价格是常规定价的 2 倍，复用通用 service_tier 倍率即可。
+		SupportsServiceTier: true,
+	}
 	openAIGPT55FallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:               5e-06,    // $5 per MTok
 		InputCostPerTokenPriority:       12.5e-06, // $12.5 per MTok
@@ -598,6 +610,14 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 		}
 	}
 
+	// Claude Opus 4.8 刚发布时 LiteLLM 价格文件可能尚未同步；这里用代码级兜底，
+	// 避免继续落入泛化的 Opus 4 系列模糊匹配而拿到旧价格。
+	for _, candidate := range lookupCandidates {
+		if isClaudeOpus48Model(candidate) {
+			return claudeOpus48FallbackPricing
+		}
+	}
+
 	// 4. 基于模型系列匹配（Claude）
 	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
 		return pricing
@@ -609,6 +629,14 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	}
 
 	return nil
+}
+
+func isClaudeOpus48Model(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" || !strings.Contains(model, "opus") {
+		return false
+	}
+	return strings.Contains(model, "4.8") || strings.Contains(model, "4-8")
 }
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {

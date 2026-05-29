@@ -113,6 +113,26 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.InDelta(t, 3e-5, got.OutputCostPerToken, 1e-12)
 }
 
+func TestGetModelPricing_ClaudeOpus48UsesStaticFallbackWhenRemoteMissing(t *testing.T) {
+	opus4Pricing := &LiteLLMModelPricing{InputCostPerToken: 15e-6, OutputCostPerToken: 75e-6}
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-opus-4-20250514": opus4Pricing,
+		},
+	}
+
+	got := svc.GetModelPricing("claude-opus-4-8")
+	require.NotNil(t, got)
+	require.NotSame(t, opus4Pricing, got)
+	require.InDelta(t, 5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 25e-6, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 6.25e-6, got.CacheCreationInputTokenCost, 1e-12)
+	require.InDelta(t, 10e-6, got.CacheCreationInputTokenCostAbove1hr, 1e-12)
+	require.InDelta(t, 0.5e-6, got.CacheReadInputTokenCost, 1e-12)
+	require.True(t, got.SupportsPromptCaching)
+	require.True(t, got.SupportsServiceTier)
+}
+
 func TestDefaultPricingIncludesCodexAutoReview(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)
