@@ -59,14 +59,15 @@ type DataSharingCaptureBuffer struct {
 }
 
 type dataSharingCaptureBufferEntry struct {
-	key         string
-	session     *DataShareSession
-	eventCount  int
-	lastUpdated time.Time
-	timer       *time.Timer
-	flushing    bool
-	flushQueued bool
-	lastFlushed *DataShareSession
+	key                   string
+	session               *DataShareSession
+	eventCount            int
+	lastUpdated           time.Time
+	timer                 *time.Timer
+	flushing              bool
+	flushQueued           bool
+	lastFlushed           *DataShareSession
+	lastFlushedEventCount int
 }
 
 // NewDataSharingCaptureBuffer 创建进程内数据共享采集缓冲池。
@@ -124,7 +125,8 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 	b.mu.Lock()
 	if b.stopped || !b.enabled {
 		b.mu.Unlock()
-		return b.flush(ctx, session)
+		// 绕过缓冲池时仍要完成质量评估和 payload 构建，避免写入半成品 session。
+		return b.flush(ctx, finalizeBufferedDataShareSession(session))
 	}
 	if b.pendingEvents >= b.maxPending || (b.entries[key] == nil && len(b.entries) >= b.maxSessions) {
 		if !b.flushOldestLocked() {
@@ -334,6 +336,7 @@ func (b *DataSharingCaptureBuffer) detachFlushLocked(entry *dataSharingCaptureBu
 	entry.session = nil
 	entry.eventCount = 0
 	entry.lastFlushed = cloneBufferedDataShareSession(session)
+	entry.lastFlushedEventCount = eventCount
 	entry.flushing = true
 	b.pendingEvents -= eventCount
 	if b.pendingEvents < 0 {
@@ -392,10 +395,15 @@ func (b *DataSharingCaptureBuffer) finishFlush(key string, err error) {
 	}
 	entry.flushing = false
 	if err != nil && entry.lastFlushed != nil {
+		lastFlushedEventCount := entry.lastFlushedEventCount
+		if lastFlushedEventCount <= 0 {
+			lastFlushedEventCount = 1
+		}
 		entry.session = mergeBufferedDataShareSession(entry.lastFlushed, entry.session)
 		entry.lastFlushed = nil
-		entry.eventCount++
-		b.pendingEvents++
+		entry.lastFlushedEventCount = 0
+		entry.eventCount += lastFlushedEventCount
+		b.pendingEvents += lastFlushedEventCount
 		entry.lastUpdated = time.Now()
 		if !b.stopped {
 			b.scheduleEntryTimerLocked(entry, b.idleFlush)
@@ -403,6 +411,7 @@ func (b *DataSharingCaptureBuffer) finishFlush(key string, err error) {
 		return
 	}
 	entry.lastFlushed = nil
+	entry.lastFlushedEventCount = 0
 	if entry.eventCount == 0 {
 		delete(b.entries, key)
 		return

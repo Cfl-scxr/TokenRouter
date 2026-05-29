@@ -607,6 +607,53 @@ func TestDataSharingService_CaptureBufferIdleHotUpdateFlushesSooner(t *testing.T
 	}, 2*time.Second, 20*time.Millisecond)
 }
 
+func TestDataSharingCaptureBuffer_BypassFinalizesSession(t *testing.T) {
+	var got *DataShareSession
+	systemPrompt := "你是编码助手"
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Flush: func(_ context.Context, session *DataShareSession) error {
+			got = session
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          false,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-bypass",
+		SessionID:          "sess-bypass",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		SystemPrompt:       &systemPrompt,
+		Tools:              []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}},
+		Messages: []map[string]any{
+			{"role": "system", "content": "你是编码助手"},
+			{"role": "user", "content": "hi"},
+			{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command"}}},
+			{"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+			{"role": "assistant", "content": "ok"},
+		},
+		Usage: map[string]any{"total_tokens": 3},
+		Meta:  map[string]any{"request_id": "req-bypass"},
+	}))
+
+	require.NotNil(t, got)
+	require.Equal(t, DataShareQualityComplete, got.QualityStatus)
+	require.True(t, got.Exportable)
+	require.NotEmpty(t, got.SessionJSON)
+	require.Greater(t, got.StorageBytes, int64(0))
+}
+
 func TestDataSharingCaptureBuffer_RetainsSessionWhenFlushFails(t *testing.T) {
 	wantErr := errors.New("boom")
 	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
@@ -635,12 +682,22 @@ func TestDataSharingCaptureBuffer_RetainsSessionWhenFlushFails(t *testing.T) {
 		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
 		Meta:               map[string]any{"request_id": "req-failed"},
 	}))
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-failed",
+		SessionID:          "sess-failed",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "assistant", "content": "ok"}},
+		Meta:               map[string]any{"request_id": "req-failed-2"},
+	}))
 
 	buffer.FlushAll(context.Background())
 	stats := buffer.Stats()
 	require.Equal(t, uint64(1), stats.FlushFailedTotal)
 	require.Equal(t, 1, stats.BufferedSessions)
-	require.Equal(t, 1, stats.PendingEvents)
+	require.Equal(t, 2, stats.PendingEvents)
 	require.Contains(t, stats.LastError, "boom")
 }
 

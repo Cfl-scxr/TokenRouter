@@ -102,7 +102,7 @@ func provideCleanup(
 	tlsFingerprintCollector *service.TLSFingerprintCollectorService,
 ) func() {
 	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		type cleanupStep struct {
@@ -110,7 +110,7 @@ func provideCleanup(
 			fn   func() error
 		}
 
-		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
+		// 应用层清理步骤可并行执行；数据共享采集需先 drain worker 再 flush 缓冲池。
 		parallelSteps := []cleanupStep{
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
@@ -202,18 +202,6 @@ func provideCleanup(
 				}
 				return nil
 			}},
-			{"DataSharingService", func() error {
-				if dataSharingService != nil {
-					dataSharingService.Stop(ctx)
-				}
-				return nil
-			}},
-			{"DataSharingCaptureWorkerPool", func() error {
-				if dataSharingCaptureWorkerPool != nil {
-					dataSharingCaptureWorkerPool.Stop()
-				}
-				return nil
-			}},
 			{"OAuthService", func() error {
 				oauth.Stop()
 				return nil
@@ -257,6 +245,21 @@ func provideCleanup(
 			{"TLSFingerprintCollectorService", func() error {
 				if tlsFingerprintCollector != nil {
 					return tlsFingerprintCollector.Stop(context.Background())
+				}
+				return nil
+			}},
+		}
+
+		dataSharingSteps := []cleanupStep{
+			{"DataSharingCaptureWorkerPool", func() error {
+				if dataSharingCaptureWorkerPool != nil {
+					dataSharingCaptureWorkerPool.Stop()
+				}
+				return nil
+			}},
+			{"DataSharingService", func() error {
+				if dataSharingService != nil {
+					dataSharingService.Stop(ctx)
 				}
 				return nil
 			}},
@@ -306,12 +309,13 @@ func provideCleanup(
 		}
 
 		runParallel(parallelSteps)
+		runSequential(dataSharingSteps)
 		runSequential(infraSteps)
 
 		// Check if context timed out
 		select {
 		case <-ctx.Done():
-			log.Printf("[Cleanup] Warning: cleanup timed out after 10 seconds")
+			log.Printf("[Cleanup] Warning: cleanup timed out after 30 seconds")
 		default:
 			log.Printf("[Cleanup] All cleanup steps completed")
 		}
