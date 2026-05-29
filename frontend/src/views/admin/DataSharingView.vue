@@ -461,6 +461,15 @@
                 <button class="btn btn-secondary" :disabled="loading" @click="refreshAll">
                   <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
                 </button>
+                <button
+                  class="btn btn-secondary"
+                  :disabled="pagination.total === 0"
+                  :title="selectAllMatching ? '清空当前选中 session' : '选中当前筛选条件下的所有 session'"
+                  @click="toggleSelectAllFilteredSessions"
+                >
+                  <Icon :name="selectAllMatching ? 'xCircle' : 'checkCircle'" size="md" class="mr-2" />
+                  {{ selectAllMatching ? '取消全选' : '全选结果' }}
+                </button>
                 <button class="btn btn-secondary" :disabled="selectedCount === 0" @click="batchDelete">
                   <Icon name="trash" size="md" class="mr-2" />
                   删除已选
@@ -490,13 +499,13 @@
                   已选 {{ formatNumber(selectedCount) }}
                 </span>
                 <input
-                  :checked="allMatchingSelected"
-                  :disabled="pagination.total === 0"
-                  :indeterminate="selectionIndeterminate"
+                  :checked="currentPageAllSelected"
+                  :disabled="sessions.length === 0"
+                  :indeterminate="currentPageSelectionIndeterminate"
                   type="checkbox"
                   class="rounded border-gray-300 text-primary-600"
-                  title="选择当前筛选条件下的所有条目"
-                  @change="toggleSelectAll"
+                  title="选择当前页 session"
+                  @change="toggleSelectCurrentPage"
                 />
               </div>
             </template>
@@ -1096,8 +1105,9 @@ const selectedCount = computed(() => {
   }
   return selectedIds.value.size
 })
-const allMatchingSelected = computed(() => selectAllMatching.value && pagination.total > 0 && excludedIds.value.size === 0)
-const selectionIndeterminate = computed(() => selectedCount.value > 0 && !allMatchingSelected.value)
+const currentPageSelectedCount = computed(() => sessions.value.filter(row => isSelected(row.id)).length)
+const currentPageAllSelected = computed(() => sessions.value.length > 0 && currentPageSelectedCount.value === sessions.value.length)
+const currentPageSelectionIndeterminate = computed(() => currentPageSelectedCount.value > 0 && !currentPageAllSelected.value)
 const selectionSummary = computed(() => {
   if (selectAllMatching.value) {
     return `已选择当前筛选条件下 ${formatNumber(selectedCount.value)} 条数据`
@@ -1525,12 +1535,40 @@ function toggleSelect(id: number) {
   selectedIds.value = next
 }
 
-function toggleSelectAll(event: Event) {
+function toggleSelectCurrentPage(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
-  if (!checked) {
+  const pageIds = sessions.value.map(row => row.id)
+  if (selectAllMatching.value) {
+    // 表头复选框只影响当前页，通过排除列表保留“筛选结果全选”的语义。
+    const nextExcluded = new Set(excludedIds.value)
+    pageIds.forEach(id => {
+      if (checked) {
+        nextExcluded.delete(id)
+      } else {
+        nextExcluded.add(id)
+      }
+    })
+    excludedIds.value = nextExcluded
+    return
+  }
+
+  const nextSelected = new Set(selectedIds.value)
+  pageIds.forEach(id => {
+    if (checked) {
+      nextSelected.add(id)
+    } else {
+      nextSelected.delete(id)
+    }
+  })
+  selectedIds.value = nextSelected
+}
+
+function toggleSelectAllFilteredSessions() {
+  if (selectAllMatching.value) {
     clearSelection()
     return
   }
+  // 工具栏全选按钮显式进入“当前筛选条件全集”模式，供批量删除和导出复用。
   selectedIds.value = new Set()
   excludedIds.value = new Set()
   selectAllMatching.value = true
