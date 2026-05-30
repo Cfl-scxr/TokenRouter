@@ -89,21 +89,28 @@ type DataSharingCaptureWorkerPoolOptions struct {
 
 // DataSharingCaptureWorkerPoolStats 是管理端可见的采集池运行时统计。
 type DataSharingCaptureWorkerPoolStats struct {
-	QueueDepth         uint64 `json:"queue_depth"`
-	QueueCapacity      int    `json:"queue_capacity"`
-	FlushQueueDepth    uint64 `json:"flush_queue_depth"`
-	FlushQueueCapacity int    `json:"flush_queue_capacity"`
-	WorkerCount        int    `json:"worker_count"`
-	RunningWorkers     int64  `json:"running_workers"`
-	AvailableWorkers   int64  `json:"available_workers"`
-	TaskTimeoutSeconds int    `json:"task_timeout_seconds"`
-	CompressionLevel   string `json:"compression_level"`
-	SubmittedTotal     uint64 `json:"submitted_total"`
-	CompletedTotal     uint64 `json:"completed_total"`
-	FailedTotal        uint64 `json:"failed_total"`
-	TimeoutTotal       uint64 `json:"timeout_total"`
-	DroppedTotal       uint64 `json:"dropped_total"`
-	LastError          string `json:"last_error"`
+	QueueDepth         uint64                          `json:"queue_depth"`
+	QueueCapacity      int                             `json:"queue_capacity"`
+	FlushQueueDepth    uint64                          `json:"flush_queue_depth"`
+	FlushQueueCapacity int                             `json:"flush_queue_capacity"`
+	WorkerCount        int                             `json:"worker_count"`
+	WorkerStates       []DataSharingCaptureWorkerState `json:"worker_states"`
+	RunningWorkers     int64                           `json:"running_workers"`
+	AvailableWorkers   int64                           `json:"available_workers"`
+	TaskTimeoutSeconds int                             `json:"task_timeout_seconds"`
+	CompressionLevel   string                          `json:"compression_level"`
+	SubmittedTotal     uint64                          `json:"submitted_total"`
+	CompletedTotal     uint64                          `json:"completed_total"`
+	FailedTotal        uint64                          `json:"failed_total"`
+	TimeoutTotal       uint64                          `json:"timeout_total"`
+	DroppedTotal       uint64                          `json:"dropped_total"`
+	LastError          string                          `json:"last_error"`
+}
+
+// DataSharingCaptureWorkerState 描述单个 worker 当前正在执行的任务类型。
+type DataSharingCaptureWorkerState struct {
+	ID      int    `json:"id"`
+	JobKind string `json:"job_kind"`
 }
 
 // DataSharingCaptureWorkerPool 提供可在线调整 worker 数与逻辑队列容量的数据共享采集执行器。
@@ -124,6 +131,7 @@ type DataSharingCaptureWorkerPool struct {
 	workerCount      int
 	queueCapacity    int
 	flushQueueCap    int
+	workerJobKinds   []DataSharingCaptureJobKind
 	activeTotal      atomic.Int64
 	submittedTotal   atomic.Uint64
 	completedTotal   atomic.Uint64
@@ -291,6 +299,7 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 	flushQueueDepth := p.flushQueueLen
 	flushQueueCapacity := p.flushQueueCap
 	workerCount := p.workerCount
+	workerStates := p.workerStatesLocked(workerCount)
 	stopping := p.stopping
 	p.mu.Unlock()
 	lastError, _ := p.lastError.Load().(string)
@@ -305,6 +314,7 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 		FlushQueueDepth:    uint64(flushQueueDepth),
 		FlushQueueCapacity: flushQueueCapacity,
 		WorkerCount:        workerCount,
+		WorkerStates:       workerStates,
 		RunningWorkers:     runningWorkers,
 		AvailableWorkers:   availableWorkers,
 		TaskTimeoutSeconds: durationSecondsCeil(p.TaskTimeout()),
@@ -336,7 +346,7 @@ func (p *DataSharingCaptureWorkerPool) Stop() {
 	p.workerWG.Wait()
 }
 
-func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
+func (p *DataSharingCaptureWorkerPool) execute(workerID int, job DataSharingCaptureJob) {
 	p.mu.Lock()
 	p.initCondLocked()
 	handler := p.handler
@@ -356,12 +366,14 @@ func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
 		p.droppedTotal.Add(1)
 		return
 	}
+	p.setWorkerJobKind(workerID, job.Kind)
 	p.activeTotal.Add(1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.TaskTimeout())
 	defer cancel()
 
 	defer func() {
+		p.clearWorkerJobKind(workerID)
 		p.activeTotal.Add(-1)
 		p.completedTotal.Add(1)
 		if recovered := recover(); recovered != nil {
@@ -405,6 +417,11 @@ func (p *DataSharingCaptureWorkerPool) execute(job DataSharingCaptureJob) {
 
 func (p *DataSharingCaptureWorkerPool) ensureWorkersLocked(workerCount int) {
 	p.initCondLocked()
+	if len(p.workerJobKinds) < workerCount {
+		next := make([]DataSharingCaptureJobKind, workerCount)
+		copy(next, p.workerJobKinds)
+		p.workerJobKinds = next
+	}
 	for p.startedWorkers < workerCount {
 		workerID := p.startedWorkers
 		p.startedWorkers++
@@ -420,8 +437,47 @@ func (p *DataSharingCaptureWorkerPool) worker(workerID int) {
 		if !ok {
 			return
 		}
-		p.execute(job)
+		p.execute(workerID, job)
 	}
+}
+
+func (p *DataSharingCaptureWorkerPool) setWorkerJobKind(workerID int, kind DataSharingCaptureJobKind) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setWorkerJobKindLocked(workerID, kind)
+}
+
+func (p *DataSharingCaptureWorkerPool) clearWorkerJobKind(workerID int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setWorkerJobKindLocked(workerID, "")
+}
+
+func (p *DataSharingCaptureWorkerPool) setWorkerJobKindLocked(workerID int, kind DataSharingCaptureJobKind) {
+	if workerID < 0 {
+		return
+	}
+	if len(p.workerJobKinds) <= workerID {
+		next := make([]DataSharingCaptureJobKind, workerID+1)
+		copy(next, p.workerJobKinds)
+		p.workerJobKinds = next
+	}
+	p.workerJobKinds[workerID] = kind
+}
+
+func (p *DataSharingCaptureWorkerPool) workerStatesLocked(workerCount int) []DataSharingCaptureWorkerState {
+	if workerCount <= 0 {
+		return nil
+	}
+	states := make([]DataSharingCaptureWorkerState, workerCount)
+	for i := 0; i < workerCount; i++ {
+		kind := ""
+		if i < len(p.workerJobKinds) {
+			kind = string(p.workerJobKinds[i])
+		}
+		states[i] = DataSharingCaptureWorkerState{ID: i + 1, JobKind: kind}
+	}
+	return states
 }
 
 func (p *DataSharingCaptureWorkerPool) dequeue(workerID int) (DataSharingCaptureJob, bool) {

@@ -146,16 +146,30 @@
                 </div>
                 <span v-if="captureWorkerHiddenCount > 0" class="badge badge-gray">+{{ formatNumber(captureWorkerHiddenCount) }}</span>
               </div>
+              <div class="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="h-2.5 w-2.5 rounded-full bg-sky-500"></span>
+                  采集任务
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="h-2.5 w-2.5 rounded-full bg-violet-500"></span>
+                  Flush 落库
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                  空闲
+                </span>
+              </div>
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8">
                 <div
                   v-for="worker in captureWorkerSlots"
                   :key="worker.id"
                   class="flex h-11 items-center justify-between rounded-lg border px-3 transition-colors"
-                  :class="captureWorkerSlotClass(worker.state)"
+                  :class="captureWorkerSlotClass(worker.state, worker.jobKind)"
                   :title="worker.label"
                 >
                   <span class="text-sm font-semibold">#{{ worker.id }}</span>
-                  <span class="h-2.5 w-2.5 rounded-full" :class="captureWorkerDotClass(worker.state)"></span>
+                  <span class="h-2.5 w-2.5 rounded-full" :class="captureWorkerDotClass(worker.state, worker.jobKind)"></span>
                 </div>
               </div>
             </div>
@@ -182,16 +196,41 @@
         <div class="grid gap-4 p-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
           <div class="space-y-4">
             <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-              <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>待落库增量</span>
-                <span>{{ captureBufferPendingRatioText }}</span>
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">缓冲池容量</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    已提交 {{ formatNumber(captureBufferSubmittedTotal) }} · 丢弃 {{ formatNumber(captureBufferDroppedTotal) }} · 空闲阈值 {{ formatNumber(captureBufferIdleFlushSeconds) }} 秒
+                  </p>
+                </div>
+                <span :class="['badge', captureBufferEnabled ? 'badge-success' : 'badge-gray']">{{ captureBufferEnabled ? '已启用' : '已关闭' }}</span>
               </div>
-              <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
+              <div class="space-y-4">
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Session 容量</span>
+                    <span>{{ captureBufferSessionRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureBufferSessionProgress}%` }"></div>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatNumber(captureBufferBufferedSessions) }}/{{ formatNumber(captureBufferMaxSessions) }} 个 session
+                  </p>
+                </div>
+                <div>
+                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>待落库增量</span>
+                    <span>{{ captureBufferPendingRatioText }}</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatNumber(captureBufferPendingEvents) }}/{{ formatNumber(captureBufferMaxPendingEvents) }} 个增量
+                  </p>
+                </div>
               </div>
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ formatNumber(captureBufferPendingEvents) }}/{{ formatNumber(captureBufferMaxPendingEvents) }} 个增量 · {{ formatNumber(captureBufferBufferedSessions) }}/{{ formatNumber(captureBufferMaxSessions) }} 个 session
-              </p>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
@@ -231,37 +270,6 @@
               <div>
                 <label class="input-label">最大增量</label>
                 <input v-model="captureBufferMaxPendingEventsInput" type="number" min="1" :max="captureBufferMaxPendingEventsLimit" step="1" class="input" />
-              </div>
-            </div>
-            <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">缓冲池容量</p>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    已提交 {{ formatNumber(captureBufferSubmittedTotal) }} · 丢弃 {{ formatNumber(captureBufferDroppedTotal) }} · 空闲阈值 {{ formatNumber(captureBufferIdleFlushSeconds) }} 秒
-                  </p>
-                </div>
-                <span :class="['badge', captureBufferEnabled ? 'badge-success' : 'badge-gray']">{{ captureBufferEnabled ? '已启用' : '已关闭' }}</span>
-              </div>
-              <div class="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>Session 容量</span>
-                    <span>{{ captureBufferSessionRatioText }}</span>
-                  </div>
-                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    <div class="h-full rounded-full bg-sky-500 transition-all" :style="{ width: `${captureBufferSessionProgress}%` }"></div>
-                  </div>
-                </div>
-                <div>
-                  <div class="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                    <span>增量容量</span>
-                    <span>{{ captureBufferPendingRatioText }}</span>
-                  </div>
-                  <div class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: `${captureBufferPendingProgress}%` }"></div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -1161,7 +1169,6 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
-type CaptureWorkerSlotState = 'active' | 'idle' | 'disabled'
 const captureWorkerQueueText = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return '-'
@@ -1206,14 +1213,18 @@ const captureWorkerQueueCapacity = computed(() => stats.value?.capture_worker?.q
 const captureWorkerFlushQueueCapacity = computed(() => stats.value?.capture_worker?.flush_queue_capacity || 0)
 const captureWorkerSlotLimit = 64
 const captureWorkerHiddenCount = computed(() => Math.max(captureWorkerCount.value - captureWorkerSlotLimit, 0))
+type CaptureWorkerJobKind = 'capture' | 'flush' | ''
+type CaptureWorkerSlotState = 'active' | 'idle' | 'disabled'
 const captureWorkerSlots = computed(() => {
   const total = Math.min(Math.max(captureWorkerCount.value, 0), captureWorkerSlotLimit)
   const active = Math.max(captureWorkerRunningWorkers.value, 0)
   const enabled = Boolean(stats.value?.capture_worker)
+  const workerStates = stats.value?.capture_worker?.worker_states || []
   return Array.from({ length: total }, (_, index) => ({
     id: index + 1,
-    state: (!enabled ? 'disabled' : index < active ? 'active' : 'idle') as CaptureWorkerSlotState,
-    label: !enabled ? 'Worker 未启用' : index < active ? 'Worker 处理中' : 'Worker 空闲'
+    jobKind: normalizeCaptureWorkerJobKind(workerStates[index]?.job_kind),
+    state: (!enabled ? 'disabled' : workerStates.length > index ? (workerStates[index]?.job_kind ? 'active' : 'idle') : index < active ? 'active' : 'idle') as CaptureWorkerSlotState,
+    label: captureWorkerSlotLabel(enabled, normalizeCaptureWorkerJobKind(workerStates[index]?.job_kind), index < active)
   }))
 })
 const captureWorkerBadgeClass = computed(() => {
@@ -1985,13 +1996,27 @@ function buildSessionCountDoughnutChartOptions(points: Array<{ session_count: nu
   }
 }
 
-function captureWorkerSlotClass(state: CaptureWorkerSlotState) {
+function normalizeCaptureWorkerJobKind(value?: string | null): CaptureWorkerJobKind {
+  return value === 'flush' || value === 'capture' ? value : ''
+}
+
+function captureWorkerSlotLabel(enabled: boolean, jobKind: CaptureWorkerJobKind, fallbackActive: boolean) {
+  if (!enabled) return 'Worker 未启用'
+  if (jobKind === 'flush') return 'Worker 正在执行 Flush 落库'
+  if (jobKind === 'capture') return 'Worker 正在执行采集任务'
+  if (fallbackActive) return 'Worker 处理中'
+  return 'Worker 空闲'
+}
+
+function captureWorkerSlotClass(state: CaptureWorkerSlotState, jobKind: CaptureWorkerJobKind) {
+  if (state === 'active' && jobKind === 'flush') return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-900/20 dark:text-violet-200'
   if (state === 'active') return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-900/20 dark:text-sky-200'
   if (state === 'idle') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-200'
   return 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-500'
 }
 
-function captureWorkerDotClass(state: CaptureWorkerSlotState) {
+function captureWorkerDotClass(state: CaptureWorkerSlotState, jobKind: CaptureWorkerJobKind) {
+  if (state === 'active' && jobKind === 'flush') return 'bg-violet-500'
   if (state === 'active') return 'bg-sky-500'
   if (state === 'idle') return 'bg-emerald-500'
   return 'bg-gray-400'

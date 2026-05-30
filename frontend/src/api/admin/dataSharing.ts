@@ -41,12 +41,18 @@ export interface DataShareQualityErrorPoint {
   session_count: number
 }
 
+export interface DataShareCaptureWorkerState {
+  id: number
+  job_kind: 'capture' | 'flush' | ''
+}
+
 export interface DataShareCaptureWorkerStats {
   queue_depth: number
   queue_capacity: number
   flush_queue_depth: number
   flush_queue_capacity: number
   worker_count: number
+  worker_states?: DataShareCaptureWorkerState[] | null
   running_workers: number
   available_workers: number
   task_timeout_seconds: number

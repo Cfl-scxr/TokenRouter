@@ -166,6 +166,61 @@ func TestDataSharingCaptureWorkerPool_FlushQueueUsesIndependentCapacity(t *testi
 	close(block)
 }
 
+func TestDataSharingCaptureWorkerPool_StatsExposeWorkerJobKinds(t *testing.T) {
+	captureBlock := make(chan struct{})
+	flushBlock := make(chan struct{})
+	captureStarted := make(chan struct{})
+	flushStarted := make(chan struct{})
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount:    2,
+		QueueSize:      2,
+		FlushQueueSize: 2,
+		TaskTimeout:    time.Second,
+		Handler: func(ctx context.Context, job DataSharingCaptureJob) error {
+			close(captureStarted)
+			<-captureBlock
+			return nil
+		},
+	})
+	t.Cleanup(pool.Stop)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{}))
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.SubmitFlush(DataSharingCaptureJob{
+		Flush: func(context.Context) error {
+			close(flushStarted)
+			<-flushBlock
+			return nil
+		},
+	}))
+	<-captureStarted
+	<-flushStarted
+
+	require.Eventually(t, func() bool {
+		stats := pool.Stats()
+		return countDataSharingCaptureWorkerKind(stats.WorkerStates, DataSharingCaptureJobKindCapture) == 1 &&
+			countDataSharingCaptureWorkerKind(stats.WorkerStates, DataSharingCaptureJobKindFlush) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	close(captureBlock)
+	close(flushBlock)
+	require.Eventually(t, func() bool {
+		stats := pool.Stats()
+		return stats.RunningWorkers == 0 &&
+			countDataSharingCaptureWorkerKind(stats.WorkerStates, DataSharingCaptureJobKindCapture) == 0 &&
+			countDataSharingCaptureWorkerKind(stats.WorkerStates, DataSharingCaptureJobKindFlush) == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
+func countDataSharingCaptureWorkerKind(states []DataSharingCaptureWorkerState, kind DataSharingCaptureJobKind) int {
+	count := 0
+	for _, state := range states {
+		if state.JobKind == string(kind) {
+			count++
+		}
+	}
+	return count
+}
+
 func TestDataSharingCaptureWorkerPool_SubmitAfterStop(t *testing.T) {
 	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
 		WorkerCount: 1,
