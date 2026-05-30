@@ -445,6 +445,33 @@ func (_u *DataShareSessionUpdate) AddTotalTokens(v int64) *DataShareSessionUpdat
 	return _u
 }
 
+// SetActualCost sets the "actual_cost" field.
+func (_u *DataShareSessionUpdate) SetActualCost(v float64) *DataShareSessionUpdate {
+	_u.mutation.ResetActualCost()
+	_u.mutation.SetActualCost(v)
+	return _u
+}
+
+// SetNillableActualCost sets the "actual_cost" field if the given value is not nil.
+func (_u *DataShareSessionUpdate) SetNillableActualCost(v *float64) *DataShareSessionUpdate {
+	if v != nil {
+		_u.SetActualCost(*v)
+	}
+	return _u
+}
+
+// AddActualCost adds value to the "actual_cost" field.
+func (_u *DataShareSessionUpdate) AddActualCost(v float64) *DataShareSessionUpdate {
+	_u.mutation.AddActualCost(v)
+	return _u
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (_u *DataShareSessionUpdate) ClearActualCost() *DataShareSessionUpdate {
+	_u.mutation.ClearActualCost()
+	return _u
+}
+
 // SetUserID sets the "user_id" field.
 func (_u *DataShareSessionUpdate) SetUserID(v int64) *DataShareSessionUpdate {
 	_u.mutation.ResetUserID()
@@ -776,6 +803,15 @@ func (_u *DataShareSessionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.AddedTotalTokens(); ok {
 		_spec.AddField(datasharesession.FieldTotalTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ActualCost(); ok {
+		_spec.SetField(datasharesession.FieldActualCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCost(); ok {
+		_spec.AddField(datasharesession.FieldActualCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.ActualCostCleared() {
+		_spec.ClearField(datasharesession.FieldActualCost, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(datasharesession.FieldUserID, field.TypeInt64, value)
@@ -1240,6 +1276,33 @@ func (_u *DataShareSessionUpdateOne) AddTotalTokens(v int64) *DataShareSessionUp
 	return _u
 }
 
+// SetActualCost sets the "actual_cost" field.
+func (_u *DataShareSessionUpdateOne) SetActualCost(v float64) *DataShareSessionUpdateOne {
+	_u.mutation.ResetActualCost()
+	_u.mutation.SetActualCost(v)
+	return _u
+}
+
+// SetNillableActualCost sets the "actual_cost" field if the given value is not nil.
+func (_u *DataShareSessionUpdateOne) SetNillableActualCost(v *float64) *DataShareSessionUpdateOne {
+	if v != nil {
+		_u.SetActualCost(*v)
+	}
+	return _u
+}
+
+// AddActualCost adds value to the "actual_cost" field.
+func (_u *DataShareSessionUpdateOne) AddActualCost(v float64) *DataShareSessionUpdateOne {
+	_u.mutation.AddActualCost(v)
+	return _u
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (_u *DataShareSessionUpdateOne) ClearActualCost() *DataShareSessionUpdateOne {
+	_u.mutation.ClearActualCost()
+	return _u
+}
+
 // SetUserID sets the "user_id" field.
 func (_u *DataShareSessionUpdateOne) SetUserID(v int64) *DataShareSessionUpdateOne {
 	_u.mutation.ResetUserID()
@@ -1601,6 +1664,15 @@ func (_u *DataShareSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSh
 	}
 	if value, ok := _u.mutation.AddedTotalTokens(); ok {
 		_spec.AddField(datasharesession.FieldTotalTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ActualCost(); ok {
+		_spec.SetField(datasharesession.FieldActualCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCost(); ok {
+		_spec.AddField(datasharesession.FieldActualCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.ActualCostCleared() {
+		_spec.ClearField(datasharesession.FieldActualCost, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.UserID(); ok {
 		_spec.SetField(datasharesession.FieldUserID, field.TypeInt64, value)

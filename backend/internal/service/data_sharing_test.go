@@ -625,6 +625,7 @@ func TestDataSharingService_CaptureBufferMergesSameTrajectory(t *testing.T) {
 			ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
 			InboundEndpoint: "/v1/chat/completions",
 			InputTokens:     inputTokens,
+			ActualCost:      float64Ptr(float64(inputTokens) / 100),
 		}
 	}
 	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-1", `[{"role":"system","content":"你是编码助手"},{"role":"user","content":"hi"}]`, 10)}))
@@ -639,6 +640,8 @@ func TestDataSharingService_CaptureBufferMergesSameTrajectory(t *testing.T) {
 	require.NotNil(t, session)
 	require.Equal(t, 2, session.SourceRequestCount)
 	require.Equal(t, int64(30), session.InputTokens)
+	require.NotNil(t, session.ActualCost)
+	require.InDelta(t, 0.3, *session.ActualCost, 1e-12)
 	require.Equal(t, []string{"request-1", "request-2"}, stringsFromAny(session.Meta["source_request_ids"]))
 	require.Len(t, session.Messages, 5)
 }
@@ -797,6 +800,7 @@ func TestDataSharingCaptureBuffer_HydratesColdSessionBeforeMerge(t *testing.T) {
 			require.Equal(t, "traj-cold", key)
 			return &DataShareSession{
 				TrajectoryID:       "traj-cold",
+				ID:                 99,
 				SessionID:          "sess-cold",
 				Dataset:            defaultDataShareDataset,
 				Provider:           PlatformOpenAI,
@@ -806,6 +810,7 @@ func TestDataSharingCaptureBuffer_HydratesColdSessionBeforeMerge(t *testing.T) {
 				Messages:           []map[string]any{{"role": "user", "content": "old"}},
 				Usage:              map[string]any{"input_tokens": 3},
 				InputTokens:        3,
+				ActualCost:         float64Ptr(1.25),
 			}, nil
 		},
 		Flush: func(_ context.Context, session *DataShareSession) error {
@@ -834,13 +839,68 @@ func TestDataSharingCaptureBuffer_HydratesColdSessionBeforeMerge(t *testing.T) {
 		Messages:           []map[string]any{{"role": "assistant", "content": "new"}},
 		Usage:              map[string]any{"input_tokens": 7},
 		InputTokens:        7,
+		ActualCost:         float64Ptr(0),
 	}))
 	buffer.FlushAll(context.Background())
 
 	require.NotNil(t, got)
 	require.Equal(t, 2, got.SourceRequestCount)
 	require.Equal(t, int64(10), got.InputTokens)
+	require.NotNil(t, got.ActualCost)
+	require.InDelta(t, 1.25, *got.ActualCost, 1e-12)
 	require.Len(t, got.Messages, 2)
+}
+
+func TestDataSharingCaptureBuffer_KeepsLegacyUnknownActualCostNull(t *testing.T) {
+	var got *DataShareSession
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Hydrate: func(_ context.Context, key string) (*DataShareSession, error) {
+			require.Equal(t, "traj-legacy-cost", key)
+			return &DataShareSession{
+				ID:                 100,
+				TrajectoryID:       "traj-legacy-cost",
+				SessionID:          "sess-legacy-cost",
+				Dataset:            defaultDataShareDataset,
+				Provider:           PlatformOpenAI,
+				Model:              "gpt-5",
+				SourceRequestCount: 1,
+				Messages:           []map[string]any{{"role": "user", "content": "old"}},
+				InputTokens:        3,
+				ActualCost:         nil,
+			}, nil
+		},
+		Flush: func(_ context.Context, session *DataShareSession) error {
+			got = cloneBufferedDataShareSession(session)
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-legacy-cost",
+		SessionID:          "sess-legacy-cost",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "assistant", "content": "new"}},
+		InputTokens:        7,
+		ActualCost:         float64Ptr(0.75),
+	}))
+	buffer.FlushAll(context.Background())
+
+	require.NotNil(t, got)
+	require.Nil(t, got.ActualCost)
+	require.Equal(t, int64(10), got.InputTokens)
 }
 
 func TestDataSharingCaptureBuffer_FlushAllWaitsForHydrate(t *testing.T) {

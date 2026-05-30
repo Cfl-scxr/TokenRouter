@@ -576,6 +576,7 @@ func mergeBufferedDataShareSession(existing *DataShareSession, incoming *DataSha
 	existing.InputTokens += incoming.InputTokens
 	existing.OutputTokens += incoming.OutputTokens
 	existing.TotalTokens += incoming.TotalTokens
+	mergeBufferedDataShareActualCost(existing, incoming)
 	if incoming.EndedAt != nil {
 		existing.EndedAt = incoming.EndedAt
 	} else if existing.EndedAt == nil {
@@ -625,12 +626,33 @@ func cloneBufferedDataShareSession(session *DataShareSession) *DataShareSession 
 		endedAt := *session.EndedAt
 		clone.EndedAt = &endedAt
 	}
+	if session.ActualCost != nil {
+		actualCost := *session.ActualCost
+		clone.ActualCost = &actualCost
+	}
 	clone.Messages = cloneBufferedDataShareMaps(session.Messages)
 	clone.Tools = cloneBufferedDataShareMaps(session.Tools)
 	clone.Usage = cloneDataShareMap(session.Usage)
 	clone.Meta = cloneDataShareMap(session.Meta)
 	clone.SessionJSON = cloneDataShareMap(session.SessionJSON)
 	return &clone
+}
+
+func mergeBufferedDataShareActualCost(existing *DataShareSession, incoming *DataShareSession) {
+	if existing == nil || incoming == nil || incoming.ActualCost == nil {
+		return
+	}
+	if existing.ActualCost == nil {
+		if existing.ID > 0 {
+			// 已落库但 actual_cost 为空的历史 session 成本整体未知，后续增量不能把它改成部分已知。
+			return
+		}
+		actualCost := *incoming.ActualCost
+		existing.ActualCost = &actualCost
+		return
+	}
+	// 只有已知扣费才进入累加；历史未知的 NULL 不会被当作 0 参与统计。
+	*existing.ActualCost += *incoming.ActualCost
 }
 
 func cloneBufferedDataShareMaps(items []map[string]any) []map[string]any {

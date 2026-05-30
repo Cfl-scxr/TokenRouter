@@ -8836,13 +8836,13 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-	s.captureDataSharingBestEffort(input, result, requestedModel)
+	s.captureDataSharingBestEffort(input, result, requestedModel, usageLog.ActualCost)
 
 	return nil
 }
 
 // captureDataSharingBestEffort 在使用记录成功后异步旁路采集数据共享 session，失败不影响网关主链路。
-func (s *GatewayService) captureDataSharingBestEffort(input *recordUsageCoreInput, result *ForwardResult, requestedModel string) {
+func (s *GatewayService) captureDataSharingBestEffort(input *recordUsageCoreInput, result *ForwardResult, requestedModel string, actualCost float64) {
 	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
 		return
 	}
@@ -8862,6 +8862,7 @@ func (s *GatewayService) captureDataSharingBestEffort(input *recordUsageCoreInpu
 		OutputTokens:      result.Usage.OutputTokens,
 		CacheReadTokens:   result.Usage.CacheReadInputTokens,
 		CacheCreateTokens: result.Usage.CacheCreationInputTokens,
+		ActualCost:        &actualCost,
 		UserAgent:         input.UserAgent,
 		IPAddress:         input.IPAddress,
 		InboundEndpoint:   input.InboundEndpoint,

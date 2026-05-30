@@ -70,6 +70,8 @@ type DataShareSession struct {
 	OutputTokens int64 `json:"output_tokens,omitempty"`
 	// TotalTokens holds the value of the "total_tokens" field.
 	TotalTokens int64 `json:"total_tokens,omitempty"`
+	// ActualCost holds the value of the "actual_cost" field.
+	ActualCost *float64 `json:"actual_cost,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
 	// APIKeyID holds the value of the "api_key_id" field.
@@ -94,6 +96,8 @@ func (*DataShareSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case datasharesession.FieldIsFinalSnapshot, datasharesession.FieldExportable:
 			values[i] = new(sql.NullBool)
+		case datasharesession.FieldActualCost:
+			values[i] = new(sql.NullFloat64)
 		case datasharesession.FieldID, datasharesession.FieldSourceRequestCount, datasharesession.FieldPayloadBytes, datasharesession.FieldStorageBytes, datasharesession.FieldInputTokens, datasharesession.FieldOutputTokens, datasharesession.FieldTotalTokens, datasharesession.FieldUserID, datasharesession.FieldAPIKeyID, datasharesession.FieldGroupID:
 			values[i] = new(sql.NullInt64)
 		case datasharesession.FieldTrajectoryID, datasharesession.FieldSessionID, datasharesession.FieldDataset, datasharesession.FieldProvider, datasharesession.FieldModel, datasharesession.FieldRequestPath, datasharesession.FieldUserAgent, datasharesession.FieldStatus, datasharesession.FieldSystemPrompt, datasharesession.FieldPayloadEncoding, datasharesession.FieldQualityStatus:
@@ -290,6 +294,13 @@ func (_m *DataShareSession) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TotalTokens = value.Int64
 			}
+		case datasharesession.FieldActualCost:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field actual_cost", values[i])
+			} else if value.Valid {
+				_m.ActualCost = new(float64)
+				*_m.ActualCost = value.Float64
+			}
 		case datasharesession.FieldUserID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
@@ -444,6 +455,11 @@ func (_m *DataShareSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("total_tokens=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TotalTokens))
+	builder.WriteString(", ")
+	if v := _m.ActualCost; v != nil {
+		builder.WriteString("actual_cost=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))

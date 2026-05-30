@@ -154,6 +154,11 @@ func TotalTokens(v int64) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldTotalTokens, v))
 }
 
+// ActualCost applies equality check predicate on the "actual_cost" field. It's identical to ActualCostEQ.
+func ActualCost(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldActualCost, v))
+}
+
 // UserID applies equality check predicate on the "user_id" field. It's identical to UserIDEQ.
 func UserID(v int64) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldEQ(FieldUserID, v))
@@ -1277,6 +1282,56 @@ func TotalTokensLT(v int64) predicate.DataShareSession {
 // TotalTokensLTE applies the LTE predicate on the "total_tokens" field.
 func TotalTokensLTE(v int64) predicate.DataShareSession {
 	return predicate.DataShareSession(sql.FieldLTE(FieldTotalTokens, v))
+}
+
+// ActualCostEQ applies the EQ predicate on the "actual_cost" field.
+func ActualCostEQ(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldEQ(FieldActualCost, v))
+}
+
+// ActualCostNEQ applies the NEQ predicate on the "actual_cost" field.
+func ActualCostNEQ(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNEQ(FieldActualCost, v))
+}
+
+// ActualCostIn applies the In predicate on the "actual_cost" field.
+func ActualCostIn(vs ...float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIn(FieldActualCost, vs...))
+}
+
+// ActualCostNotIn applies the NotIn predicate on the "actual_cost" field.
+func ActualCostNotIn(vs ...float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotIn(FieldActualCost, vs...))
+}
+
+// ActualCostGT applies the GT predicate on the "actual_cost" field.
+func ActualCostGT(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGT(FieldActualCost, v))
+}
+
+// ActualCostGTE applies the GTE predicate on the "actual_cost" field.
+func ActualCostGTE(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldGTE(FieldActualCost, v))
+}
+
+// ActualCostLT applies the LT predicate on the "actual_cost" field.
+func ActualCostLT(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLT(FieldActualCost, v))
+}
+
+// ActualCostLTE applies the LTE predicate on the "actual_cost" field.
+func ActualCostLTE(v float64) predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldLTE(FieldActualCost, v))
+}
+
+// ActualCostIsNil applies the IsNil predicate on the "actual_cost" field.
+func ActualCostIsNil() predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldIsNull(FieldActualCost))
+}
+
+// ActualCostNotNil applies the NotNil predicate on the "actual_cost" field.
+func ActualCostNotNil() predicate.DataShareSession {
+	return predicate.DataShareSession(sql.FieldNotNull(FieldActualCost))
 }
 
 // UserIDEQ applies the EQ predicate on the "user_id" field.

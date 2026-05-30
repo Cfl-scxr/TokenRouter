@@ -65,6 +65,8 @@ const (
 	FieldOutputTokens = "output_tokens"
 	// FieldTotalTokens holds the string denoting the total_tokens field in the database.
 	FieldTotalTokens = "total_tokens"
+	// FieldActualCost holds the string denoting the actual_cost field in the database.
+	FieldActualCost = "actual_cost"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
 	// FieldAPIKeyID holds the string denoting the api_key_id field in the database.
@@ -110,6 +112,7 @@ var Columns = []string{
 	FieldInputTokens,
 	FieldOutputTokens,
 	FieldTotalTokens,
+	FieldActualCost,
 	FieldUserID,
 	FieldAPIKeyID,
 	FieldGroupID,
@@ -284,6 +287,11 @@ func ByOutputTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByTotalTokens orders the results by the total_tokens field.
 func ByTotalTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotalTokens, opts...).ToFunc()
+}
+
+// ByActualCost orders the results by the actual_cost field.
+func ByActualCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActualCost, opts...).ToFunc()
 }
 
 // ByUserID orders the results by the user_id field.

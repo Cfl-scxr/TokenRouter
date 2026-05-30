@@ -590,11 +590,11 @@ func init() {
 	// datasharesession.DefaultTotalTokens holds the default value on creation for the total_tokens field.
 	datasharesession.DefaultTotalTokens = datasharesessionDescTotalTokens.Default.(int64)
 	// datasharesessionDescCreatedAt is the schema descriptor for created_at field.
-	datasharesessionDescCreatedAt := datasharesessionFields[29].Descriptor()
+	datasharesessionDescCreatedAt := datasharesessionFields[30].Descriptor()
 	// datasharesession.DefaultCreatedAt holds the default value on creation for the created_at field.
 	datasharesession.DefaultCreatedAt = datasharesessionDescCreatedAt.Default.(func() time.Time)
 	// datasharesessionDescUpdatedAt is the schema descriptor for updated_at field.
-	datasharesessionDescUpdatedAt := datasharesessionFields[31].Descriptor()
+	datasharesessionDescUpdatedAt := datasharesessionFields[32].Descriptor()
 	// datasharesession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	datasharesession.DefaultUpdatedAt = datasharesessionDescUpdatedAt.Default.(func() time.Time)
 	// datasharesession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

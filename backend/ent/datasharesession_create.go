@@ -290,6 +290,20 @@ func (_c *DataShareSessionCreate) SetNillableTotalTokens(v *int64) *DataShareSes
 	return _c
 }
 
+// SetActualCost sets the "actual_cost" field.
+func (_c *DataShareSessionCreate) SetActualCost(v float64) *DataShareSessionCreate {
+	_c.mutation.SetActualCost(v)
+	return _c
+}
+
+// SetNillableActualCost sets the "actual_cost" field if the given value is not nil.
+func (_c *DataShareSessionCreate) SetNillableActualCost(v *float64) *DataShareSessionCreate {
+	if v != nil {
+		_c.SetActualCost(*v)
+	}
+	return _c
+}
+
 // SetUserID sets the "user_id" field.
 func (_c *DataShareSessionCreate) SetUserID(v int64) *DataShareSessionCreate {
 	_c.mutation.SetUserID(v)
@@ -698,6 +712,10 @@ func (_c *DataShareSessionCreate) createSpec() (*DataShareSession, *sqlgraph.Cre
 	if value, ok := _c.mutation.TotalTokens(); ok {
 		_spec.SetField(datasharesession.FieldTotalTokens, field.TypeInt64, value)
 		_node.TotalTokens = value
+	}
+	if value, ok := _c.mutation.ActualCost(); ok {
+		_spec.SetField(datasharesession.FieldActualCost, field.TypeFloat64, value)
+		_node.ActualCost = &value
 	}
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(datasharesession.FieldUserID, field.TypeInt64, value)
@@ -1168,6 +1186,30 @@ func (u *DataShareSessionUpsert) UpdateTotalTokens() *DataShareSessionUpsert {
 // AddTotalTokens adds v to the "total_tokens" field.
 func (u *DataShareSessionUpsert) AddTotalTokens(v int64) *DataShareSessionUpsert {
 	u.Add(datasharesession.FieldTotalTokens, v)
+	return u
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (u *DataShareSessionUpsert) SetActualCost(v float64) *DataShareSessionUpsert {
+	u.Set(datasharesession.FieldActualCost, v)
+	return u
+}
+
+// UpdateActualCost sets the "actual_cost" field to the value that was provided on create.
+func (u *DataShareSessionUpsert) UpdateActualCost() *DataShareSessionUpsert {
+	u.SetExcluded(datasharesession.FieldActualCost)
+	return u
+}
+
+// AddActualCost adds v to the "actual_cost" field.
+func (u *DataShareSessionUpsert) AddActualCost(v float64) *DataShareSessionUpsert {
+	u.Add(datasharesession.FieldActualCost, v)
+	return u
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (u *DataShareSessionUpsert) ClearActualCost() *DataShareSessionUpsert {
+	u.SetNull(datasharesession.FieldActualCost)
 	return u
 }
 
@@ -1759,6 +1801,34 @@ func (u *DataShareSessionUpsertOne) AddTotalTokens(v int64) *DataShareSessionUps
 func (u *DataShareSessionUpsertOne) UpdateTotalTokens() *DataShareSessionUpsertOne {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateTotalTokens()
+	})
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (u *DataShareSessionUpsertOne) SetActualCost(v float64) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetActualCost(v)
+	})
+}
+
+// AddActualCost adds v to the "actual_cost" field.
+func (u *DataShareSessionUpsertOne) AddActualCost(v float64) *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.AddActualCost(v)
+	})
+}
+
+// UpdateActualCost sets the "actual_cost" field to the value that was provided on create.
+func (u *DataShareSessionUpsertOne) UpdateActualCost() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateActualCost()
+	})
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (u *DataShareSessionUpsertOne) ClearActualCost() *DataShareSessionUpsertOne {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.ClearActualCost()
 	})
 }
 
@@ -2530,6 +2600,34 @@ func (u *DataShareSessionUpsertBulk) AddTotalTokens(v int64) *DataShareSessionUp
 func (u *DataShareSessionUpsertBulk) UpdateTotalTokens() *DataShareSessionUpsertBulk {
 	return u.Update(func(s *DataShareSessionUpsert) {
 		s.UpdateTotalTokens()
+	})
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (u *DataShareSessionUpsertBulk) SetActualCost(v float64) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.SetActualCost(v)
+	})
+}
+
+// AddActualCost adds v to the "actual_cost" field.
+func (u *DataShareSessionUpsertBulk) AddActualCost(v float64) *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.AddActualCost(v)
+	})
+}
+
+// UpdateActualCost sets the "actual_cost" field to the value that was provided on create.
+func (u *DataShareSessionUpsertBulk) UpdateActualCost() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.UpdateActualCost()
+	})
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (u *DataShareSessionUpsertBulk) ClearActualCost() *DataShareSessionUpsertBulk {
+	return u.Update(func(s *DataShareSessionUpsert) {
+		s.ClearActualCost()
 	})
 }
 

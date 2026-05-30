@@ -125,6 +125,7 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 			SetInputTokens(session.InputTokens).
 			SetOutputTokens(session.OutputTokens).
 			SetTotalTokens(session.TotalTokens).
+			SetNillableActualCost(session.ActualCost).
 			SetUserID(session.UserID).
 			SetAPIKeyID(session.APIKeyID).
 			SetGroupID(session.GroupID).
@@ -174,6 +175,7 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 		SetInputTokens(session.InputTokens).
 		SetOutputTokens(session.OutputTokens).
 		SetTotalTokens(session.TotalTokens).
+		SetNillableActualCost(session.ActualCost).
 		SetUserID(session.UserID).
 		SetAPIKeyID(session.APIKeyID).
 		SetGroupID(session.GroupID).
@@ -299,7 +301,9 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 			COUNT(*) FILTER (WHERE quality_status = 'partial'),
 			COUNT(*) FILTER (WHERE quality_status = 'invalid'),
 			COALESCE(SUM(storage_bytes), 0),
-			COALESCE(SUM(total_tokens), 0)
+			COALESCE(SUM(total_tokens), 0),
+			COALESCE(SUM(actual_cost) FILTER (WHERE actual_cost IS NOT NULL), 0),
+			COALESCE(AVG(actual_cost) FILTER (WHERE actual_cost IS NOT NULL), 0)
 		FROM data_share_sessions
 		`+whereSQL,
 		args,
@@ -311,6 +315,8 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		&stats.InvalidCount,
 		&stats.TotalStorageBytes,
 		&stats.TotalTokens,
+		&stats.TotalActualCost,
+		&stats.AvgActualCostPerSession,
 	); err != nil {
 		return nil, err
 	}
@@ -829,6 +835,7 @@ func dataShareMetadataFields() []string {
 		datasharesession.FieldInputTokens,
 		datasharesession.FieldOutputTokens,
 		datasharesession.FieldTotalTokens,
+		datasharesession.FieldActualCost,
 		datasharesession.FieldUserID,
 		datasharesession.FieldAPIKeyID,
 		datasharesession.FieldGroupID,
@@ -883,6 +890,7 @@ func dataShareSessionEntityToService(m *dbent.DataShareSession) *service.DataSha
 		InputTokens:        m.InputTokens,
 		OutputTokens:       m.OutputTokens,
 		TotalTokens:        m.TotalTokens,
+		ActualCost:         m.ActualCost,
 		UserID:             m.UserID,
 		UserName:           stringFromRepositoryAny(m.Meta["user_name"]),
 		UserEmail:          stringFromRepositoryAny(m.Meta["user_email"]),

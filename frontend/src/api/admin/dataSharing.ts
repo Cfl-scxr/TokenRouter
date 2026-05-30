@@ -103,6 +103,8 @@ export interface DataShareStats {
   total_storage_bytes: number
   total_tokens: number
   avg_tokens_per_session: number
+  total_actual_cost: number
+  avg_actual_cost_per_session: number
   storage_trend: DataShareStoragePoint[]
   group_storage_breakdown: DataShareGroupStoragePoint[]
   request_path_breakdown: DataShareRequestPathPoint[]

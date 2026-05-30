@@ -9,7 +9,7 @@
         </button>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div class="grid gap-4 md:grid-cols-4 xl:grid-cols-7">
         <div class="card p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">Session 总数</p>
           <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(stats?.session_count) }}</p>
@@ -34,6 +34,12 @@
           <p class="text-xs text-gray-500 dark:text-gray-400">单 session 平均 token</p>
           <p class="mt-2 text-2xl font-semibold text-purple-600 dark:text-purple-400">
             {{ formatNumber(Math.round(stats?.avg_tokens_per_session || 0)) }}
+          </p>
+        </div>
+        <div class="card p-4">
+          <p class="text-xs text-gray-500 dark:text-gray-400">单 session 平均{{ balanceUnitName }}</p>
+          <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">
+            {{ formatBalanceAmount(stats?.avg_actual_cost_per_session || 0, { fractionDigits: 4 }) }}
           </p>
         </div>
       </div>
@@ -809,6 +815,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import {
   adminDataSharingAPI,
   type AdminDataShareSessionFilters,
@@ -825,6 +832,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 
 const appStore = useAppStore()
 const { t, te } = useI18n()
+const { balanceUnitName, formatBalanceAmount } = useBalanceDisplay()
 
 const notice = ref<DataShareNotice | null>(null)
 const noticeContent = ref('')

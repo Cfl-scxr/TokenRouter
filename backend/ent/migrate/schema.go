@@ -458,6 +458,7 @@ var (
 		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
 		{Name: "output_tokens", Type: field.TypeInt64, Default: 0},
 		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "user_id", Type: field.TypeInt64},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "group_id", Type: field.TypeInt64},
@@ -479,17 +480,17 @@ var (
 			{
 				Name:    "datasharesession_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[27]},
+				Columns: []*schema.Column{DataShareSessionsColumns[28]},
 			},
 			{
 				Name:    "datasharesession_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[28]},
+				Columns: []*schema.Column{DataShareSessionsColumns[29]},
 			},
 			{
 				Name:    "datasharesession_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[29]},
+				Columns: []*schema.Column{DataShareSessionsColumns[30]},
 			},
 			{
 				Name:    "datasharesession_provider",
@@ -524,12 +525,12 @@ var (
 			{
 				Name:    "datasharesession_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[30]},
+				Columns: []*schema.Column{DataShareSessionsColumns[31]},
 			},
 			{
 				Name:    "datasharesession_updated_at",
 				Unique:  false,
-				Columns: []*schema.Column{DataShareSessionsColumns[32]},
+				Columns: []*schema.Column{DataShareSessionsColumns[33]},
 			},
 		},
 	}

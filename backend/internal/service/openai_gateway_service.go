@@ -5862,13 +5862,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-	s.captureOpenAIDataSharingBestEffort(input, result, requestedModel, actualInputTokens)
+	s.captureOpenAIDataSharingBestEffort(input, result, requestedModel, actualInputTokens, usageLog.ActualCost)
 
 	return nil
 }
 
 // captureOpenAIDataSharingBestEffort 在 OpenAI 使用记录成功后旁路采集数据共享 session。
-func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIRecordUsageInput, result *OpenAIForwardResult, requestedModel string, actualInputTokens int) {
+func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIRecordUsageInput, result *OpenAIForwardResult, requestedModel string, actualInputTokens int, actualCost float64) {
 	if s == nil || s.dataSharingService == nil || input == nil || result == nil || input.APIKey == nil || input.APIKey.Group == nil || !input.APIKey.Group.DataSharingEnabled {
 		return
 	}
@@ -5887,6 +5887,7 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIR
 		OutputTokens:      result.Usage.OutputTokens,
 		CacheReadTokens:   result.Usage.CacheReadInputTokens,
 		CacheCreateTokens: result.Usage.CacheCreationInputTokens,
+		ActualCost:        &actualCost,
 		UserAgent:         input.UserAgent,
 		IPAddress:         input.IPAddress,
 		InboundEndpoint:   input.InboundEndpoint,

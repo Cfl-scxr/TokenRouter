@@ -147,6 +147,7 @@ type DataShareSession struct {
 	InputTokens        int64
 	OutputTokens       int64
 	TotalTokens        int64
+	ActualCost         *float64
 	UserID             int64
 	UserName           string
 	UserEmail          string
@@ -281,23 +282,25 @@ type DataShareQualityErrorPoint struct {
 
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
-	SessionCount          int64                             `json:"session_count"`
-	ExportableCount       int64                             `json:"exportable_count"`
-	NonExportableCount    int64                             `json:"non_exportable_count"`
-	CompleteCount         int64                             `json:"complete_count"`
-	PartialCount          int64                             `json:"partial_count"`
-	InvalidCount          int64                             `json:"invalid_count"`
-	TotalStorageBytes     int64                             `json:"total_storage_bytes"`
-	TotalTokens           int64                             `json:"total_tokens"`
-	AvgTokensPerSession   float64                           `json:"avg_tokens_per_session"`
-	StorageTrend          []DataShareStoragePoint           `json:"storage_trend"`
-	GroupStorageBreakdown []DataShareGroupStoragePoint      `json:"group_storage_breakdown"`
-	RequestPathBreakdown  []DataShareRequestPathPoint       `json:"request_path_breakdown"`
-	ModelBreakdown        []DataShareModelPoint             `json:"model_breakdown"`
-	UserAgentBreakdown    []DataShareUserAgentPoint         `json:"user_agent_breakdown"`
-	QualityErrorBreakdown []DataShareQualityErrorPoint      `json:"quality_error_breakdown"`
-	CaptureWorker         DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
-	CaptureBuffer         DataSharingCaptureBufferStats     `json:"capture_buffer"`
+	SessionCount            int64                             `json:"session_count"`
+	ExportableCount         int64                             `json:"exportable_count"`
+	NonExportableCount      int64                             `json:"non_exportable_count"`
+	CompleteCount           int64                             `json:"complete_count"`
+	PartialCount            int64                             `json:"partial_count"`
+	InvalidCount            int64                             `json:"invalid_count"`
+	TotalStorageBytes       int64                             `json:"total_storage_bytes"`
+	TotalTokens             int64                             `json:"total_tokens"`
+	AvgTokensPerSession     float64                           `json:"avg_tokens_per_session"`
+	TotalActualCost         float64                           `json:"total_actual_cost"`
+	AvgActualCostPerSession float64                           `json:"avg_actual_cost_per_session"`
+	StorageTrend            []DataShareStoragePoint           `json:"storage_trend"`
+	GroupStorageBreakdown   []DataShareGroupStoragePoint      `json:"group_storage_breakdown"`
+	RequestPathBreakdown    []DataShareRequestPathPoint       `json:"request_path_breakdown"`
+	ModelBreakdown          []DataShareModelPoint             `json:"model_breakdown"`
+	UserAgentBreakdown      []DataShareUserAgentPoint         `json:"user_agent_breakdown"`
+	QualityErrorBreakdown   []DataShareQualityErrorPoint      `json:"quality_error_breakdown"`
+	CaptureWorker           DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
+	CaptureBuffer           DataSharingCaptureBufferStats     `json:"capture_buffer"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -319,6 +322,7 @@ type DataShareCaptureInput struct {
 	OutputTokens      int
 	CacheReadTokens   int
 	CacheCreateTokens int
+	ActualCost        *float64
 	UserAgent         string
 	IPAddress         string
 	InboundEndpoint   string
@@ -1729,6 +1733,11 @@ func (s *DataSharingService) buildSessionWithOptions(input DataShareCaptureInput
 	}
 	inputTokens := int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens)
 	outputTokens := int64(input.OutputTokens)
+	var actualCost *float64
+	if input.ActualCost != nil {
+		cost := *input.ActualCost
+		actualCost = &cost
+	}
 	return &DataShareSession{
 		TrajectoryID:       trajectoryID,
 		SessionID:          sessionID,
@@ -1753,6 +1762,7 @@ func (s *DataSharingService) buildSessionWithOptions(input DataShareCaptureInput
 		InputTokens:        inputTokens,
 		OutputTokens:       outputTokens,
 		TotalTokens:        inputTokens + outputTokens,
+		ActualCost:         actualCost,
 		UserID:             userID,
 		APIKeyID:           apiKeyID,
 		GroupID:            groupID,

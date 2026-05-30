@@ -141,7 +141,9 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 			"invalid",
 			"storage",
 			"tokens",
-		}).AddRow(int64(2), int64(1), int64(1), int64(1), int64(0), int64(1), int64(300), int64(30)))
+			"total_actual_cost",
+			"avg_actual_cost_per_session",
+		}).AddRow(int64(3), int64(1), int64(2), int64(1), int64(1), int64(1), int64(300), int64(30), 2.0, 1.0))
 	mock.ExpectQuery(`SELECT to_char\(date_trunc\('day', created_at\), 'YYYY-MM-DD'\) AS day`).
 		WillReturnRows(sqlmock.NewRows([]string{"day", "storage_bytes", "session_count"}).
 			AddRow("2026-05-27", int64(300), int64(2)))
@@ -166,8 +168,10 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 
 	stats, err := repo.Stats(ctx, service.DataShareSessionFilters{})
 	require.NoError(t, err)
-	require.Equal(t, int64(2), stats.SessionCount)
-	require.Equal(t, float64(15), stats.AvgTokensPerSession)
+	require.Equal(t, int64(3), stats.SessionCount)
+	require.Equal(t, float64(10), stats.AvgTokensPerSession)
+	require.InDelta(t, 2.0, stats.TotalActualCost, 1e-12)
+	require.InDelta(t, 1.0, stats.AvgActualCostPerSession, 1e-12)
 	require.Len(t, stats.RequestPathBreakdown, 2)
 	require.Equal(t, "/v1/responses", stats.RequestPathBreakdown[0].RequestPath)
 	require.Equal(t, int64(100), stats.RequestPathBreakdown[0].StorageBytes)
@@ -180,6 +184,51 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 	require.Equal(t, "missing_structured_tool_call", stats.QualityErrorBreakdown[0].ErrorCode)
 	require.Equal(t, int64(2), stats.QualityErrorBreakdown[0].SessionCount)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDataShareSessionRepository_ActualCostPersistsNullAndZeroDistinctly(t *testing.T) {
+	repo, _ := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	zeroCost := 0.0
+
+	baseSession := func(trajectoryID string, actualCost *float64) *service.DataShareSession {
+		return &service.DataShareSession{
+			TrajectoryID:       trajectoryID,
+			SessionID:          trajectoryID + "-session",
+			Dataset:            "tokenrouter-agent",
+			Provider:           service.PlatformOpenAI,
+			Model:              "gpt-5.5",
+			RequestPath:        "/v1/responses",
+			UserAgent:          "codex-cli/1.0",
+			Status:             service.DataShareStatusCompleted,
+			IsFinalSnapshot:    true,
+			SourceRequestCount: 1,
+			Tools:              []map[string]any{},
+			Messages:           []map[string]any{},
+			Usage:              map[string]any{},
+			Meta:               map[string]any{},
+			SessionJSON:        map[string]any{},
+			QualityStatus:      service.DataShareQualityInvalid,
+			QualityErrors:      []string{},
+			ActualCost:         actualCost,
+			CreatedAt:          now,
+			EndedAt:            &now,
+			UpdatedAt:          now,
+		}
+	}
+
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, baseSession("traj-actual-cost-null", nil)))
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, baseSession("traj-actual-cost-zero", &zeroCost)))
+
+	unknownCost, err := repo.GetCaptureByTrajectoryIDWithPayload(ctx, "traj-actual-cost-null")
+	require.NoError(t, err)
+	require.Nil(t, unknownCost.ActualCost)
+
+	knownZeroCost, err := repo.GetCaptureByTrajectoryIDWithPayload(ctx, "traj-actual-cost-zero")
+	require.NoError(t, err)
+	require.NotNil(t, knownZeroCost.ActualCost)
+	require.Zero(t, *knownZeroCost.ActualCost)
 }
 
 func TestDataShareSessionRepository_RequestPathBreakdownLoader(t *testing.T) {

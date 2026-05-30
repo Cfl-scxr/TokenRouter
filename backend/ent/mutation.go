@@ -9050,6 +9050,8 @@ type DataShareSessionMutation struct {
 	addoutput_tokens        *int64
 	total_tokens            *int64
 	addtotal_tokens         *int64
+	actual_cost             *float64
+	addactual_cost          *float64
 	user_id                 *int64
 	adduser_id              *int64
 	api_key_id              *int64
@@ -10371,6 +10373,76 @@ func (m *DataShareSessionMutation) ResetTotalTokens() {
 	m.addtotal_tokens = nil
 }
 
+// SetActualCost sets the "actual_cost" field.
+func (m *DataShareSessionMutation) SetActualCost(f float64) {
+	m.actual_cost = &f
+	m.addactual_cost = nil
+}
+
+// ActualCost returns the value of the "actual_cost" field in the mutation.
+func (m *DataShareSessionMutation) ActualCost() (r float64, exists bool) {
+	v := m.actual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCost returns the old "actual_cost" field's value of the DataShareSession entity.
+// If the DataShareSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataShareSessionMutation) OldActualCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCost: %w", err)
+	}
+	return oldValue.ActualCost, nil
+}
+
+// AddActualCost adds f to the "actual_cost" field.
+func (m *DataShareSessionMutation) AddActualCost(f float64) {
+	if m.addactual_cost != nil {
+		*m.addactual_cost += f
+	} else {
+		m.addactual_cost = &f
+	}
+}
+
+// AddedActualCost returns the value that was added to the "actual_cost" field in this mutation.
+func (m *DataShareSessionMutation) AddedActualCost() (r float64, exists bool) {
+	v := m.addactual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (m *DataShareSessionMutation) ClearActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	m.clearedFields[datasharesession.FieldActualCost] = struct{}{}
+}
+
+// ActualCostCleared returns if the "actual_cost" field was cleared in this mutation.
+func (m *DataShareSessionMutation) ActualCostCleared() bool {
+	_, ok := m.clearedFields[datasharesession.FieldActualCost]
+	return ok
+}
+
+// ResetActualCost resets all changes to the "actual_cost" field.
+func (m *DataShareSessionMutation) ResetActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	delete(m.clearedFields, datasharesession.FieldActualCost)
+}
+
 // SetUserID sets the "user_id" field.
 func (m *DataShareSessionMutation) SetUserID(i int64) {
 	m.user_id = &i
@@ -10694,7 +10766,7 @@ func (m *DataShareSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataShareSessionMutation) Fields() []string {
-	fields := make([]string, 0, 32)
+	fields := make([]string, 0, 33)
 	if m.trajectory_id != nil {
 		fields = append(fields, datasharesession.FieldTrajectoryID)
 	}
@@ -10772,6 +10844,9 @@ func (m *DataShareSessionMutation) Fields() []string {
 	}
 	if m.total_tokens != nil {
 		fields = append(fields, datasharesession.FieldTotalTokens)
+	}
+	if m.actual_cost != nil {
+		fields = append(fields, datasharesession.FieldActualCost)
 	}
 	if m.user_id != nil {
 		fields = append(fields, datasharesession.FieldUserID)
@@ -10851,6 +10926,8 @@ func (m *DataShareSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.OutputTokens()
 	case datasharesession.FieldTotalTokens:
 		return m.TotalTokens()
+	case datasharesession.FieldActualCost:
+		return m.ActualCost()
 	case datasharesession.FieldUserID:
 		return m.UserID()
 	case datasharesession.FieldAPIKeyID:
@@ -10924,6 +11001,8 @@ func (m *DataShareSessionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldOutputTokens(ctx)
 	case datasharesession.FieldTotalTokens:
 		return m.OldTotalTokens(ctx)
+	case datasharesession.FieldActualCost:
+		return m.OldActualCost(ctx)
 	case datasharesession.FieldUserID:
 		return m.OldUserID(ctx)
 	case datasharesession.FieldAPIKeyID:
@@ -11127,6 +11206,13 @@ func (m *DataShareSessionMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetTotalTokens(v)
 		return nil
+	case datasharesession.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCost(v)
+		return nil
 	case datasharesession.FieldUserID:
 		v, ok := value.(int64)
 		if !ok {
@@ -11195,6 +11281,9 @@ func (m *DataShareSessionMutation) AddedFields() []string {
 	if m.addtotal_tokens != nil {
 		fields = append(fields, datasharesession.FieldTotalTokens)
 	}
+	if m.addactual_cost != nil {
+		fields = append(fields, datasharesession.FieldActualCost)
+	}
 	if m.adduser_id != nil {
 		fields = append(fields, datasharesession.FieldUserID)
 	}
@@ -11224,6 +11313,8 @@ func (m *DataShareSessionMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedOutputTokens()
 	case datasharesession.FieldTotalTokens:
 		return m.AddedTotalTokens()
+	case datasharesession.FieldActualCost:
+		return m.AddedActualCost()
 	case datasharesession.FieldUserID:
 		return m.AddedUserID()
 	case datasharesession.FieldAPIKeyID:
@@ -11281,6 +11372,13 @@ func (m *DataShareSessionMutation) AddField(name string, value ent.Value) error 
 		}
 		m.AddTotalTokens(v)
 		return nil
+	case datasharesession.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCost(v)
+		return nil
 	case datasharesession.FieldUserID:
 		v, ok := value.(int64)
 		if !ok {
@@ -11334,6 +11432,9 @@ func (m *DataShareSessionMutation) ClearedFields() []string {
 	if m.FieldCleared(datasharesession.FieldQualityErrors) {
 		fields = append(fields, datasharesession.FieldQualityErrors)
 	}
+	if m.FieldCleared(datasharesession.FieldActualCost) {
+		fields = append(fields, datasharesession.FieldActualCost)
+	}
 	if m.FieldCleared(datasharesession.FieldEndedAt) {
 		fields = append(fields, datasharesession.FieldEndedAt)
 	}
@@ -11374,6 +11475,9 @@ func (m *DataShareSessionMutation) ClearField(name string) error {
 		return nil
 	case datasharesession.FieldQualityErrors:
 		m.ClearQualityErrors()
+		return nil
+	case datasharesession.FieldActualCost:
+		m.ClearActualCost()
 		return nil
 	case datasharesession.FieldEndedAt:
 		m.ClearEndedAt()
@@ -11463,6 +11567,9 @@ func (m *DataShareSessionMutation) ResetField(name string) error {
 		return nil
 	case datasharesession.FieldTotalTokens:
 		m.ResetTotalTokens()
+		return nil
+	case datasharesession.FieldActualCost:
+		m.ResetActualCost()
 		return nil
 	case datasharesession.FieldUserID:
 		m.ResetUserID()

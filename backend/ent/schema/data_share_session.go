@@ -50,6 +50,8 @@ func (DataShareSession) Fields() []ent.Field {
 		field.Int64("input_tokens").Default(0),
 		field.Int64("output_tokens").Default(0),
 		field.Int64("total_tokens").Default(0),
+		// ActualCost 记录已知的用户实际扣费积分；NULL 表示历史 session 未采集扣费信息。
+		field.Float("actual_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
 		field.Int64("group_id"),
