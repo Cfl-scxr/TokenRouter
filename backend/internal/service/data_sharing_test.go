@@ -1977,12 +1977,25 @@ func TestDataShareExportRedactsSensitiveFields(t *testing.T) {
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload))
 	requireNoDataShareExportSensitiveFields(t, payload)
-	require.Equal(t, "trace-1", payload["messages"].([]any)[0].(map[string]any)["metadata"].(map[string]any)["trace_id"])
-	require.Equal(t, "legacy-trace", payload["metadata"].(map[string]any)["trace_id"])
-	meta := payload["meta"].(map[string]any)
+
+	messages, ok := payload["messages"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, messages)
+	firstMessage, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+	messageMetadata, ok := firstMessage["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "trace-1", messageMetadata["trace_id"])
+	metadata, ok := payload["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "legacy-trace", metadata["trace_id"])
+	meta, ok := payload["meta"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "req-redact", meta["request_id"])
 	require.Equal(t, "共享分组", meta["group_name"])
-	require.Equal(t, true, meta["nested"].(map[string]any)["kept"])
+	nestedMeta, ok := meta["nested"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, nestedMeta["kept"])
 }
 
 func TestWriteSingleSessionJSONLRedactsSensitiveFields(t *testing.T) {
@@ -2007,7 +2020,9 @@ func TestWriteSingleSessionJSONLRedactsSensitiveFields(t *testing.T) {
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload))
 	requireNoDataShareExportSensitiveFields(t, payload)
-	require.Equal(t, "req-single", payload["meta"].(map[string]any)["request_id"])
+	meta, ok := payload["meta"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "req-single", meta["request_id"])
 }
 
 func requireNoDataShareExportSensitiveFields(t *testing.T, value any) {
