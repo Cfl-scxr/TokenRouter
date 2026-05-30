@@ -413,11 +413,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if v, ok := getContextInt64(c, service.OpsUpstreamStatusCodeKey); ok {
 					statusCode = int(v)
 				}
-				if !h.recordOpenAIForwardErrorCyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, err) {
+				recordedWarning := h.recordOpenAIForwardErrorCyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, err)
+				if !recordedWarning {
 					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, nil, err.Error())
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				wroteFallback := false
+				// cyber warning 场景下，service 层可能已经把上游 response.failed/JSON 错误写给下游。
+				// 此时不再补写第二个 fallback，避免客户端看到重复的终止事件。
+				if !recordedWarning || c.Writer.Size() == writerSizeBeforeForward {
+					wroteFallback = h.ensureOpenAIForwardErrorResponse(c, streamStarted, err)
+				}
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
@@ -1751,11 +1757,25 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	if failoverErr == nil {
+		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
+		return
+	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
+		return
+	}
+	if service.IsOpenAICyberWarningPayload(responseBody, "") {
+		message := service.ExtractOpenAICyberWarningMessage(responseBody, "")
+		service.SetOpsUpstreamError(c, statusCode, message, "")
+		responseStatus := statusCode
+		if responseStatus < 400 || responseStatus > 599 {
+			responseStatus = http.StatusBadGateway
+		}
+		h.handleStreamingAwareError(c, responseStatus, "invalid_request_error", message, streamStarted)
 		return
 	}
 
@@ -1847,8 +1867,22 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
 func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
+	return h.ensureOpenAIForwardErrorResponse(c, streamStarted, nil)
+}
+
+func (h *OpenAIGatewayHandler) ensureOpenAIForwardErrorResponse(c *gin.Context, streamStarted bool, err error) bool {
 	if c == nil || c.Writer == nil {
 		return false
+	}
+	errType := "upstream_error"
+	message := "Upstream request failed"
+	status := http.StatusBadGateway
+	if warning, ok := service.ExtractOpenAIUpstreamWarning(err); ok && service.IsOpenAICyberWarningPayload(warning.ResponseBody, warning.Message) {
+		errType = "invalid_request_error"
+		message = service.ExtractOpenAICyberWarningMessage(warning.ResponseBody, warning.Message)
+		if warning.StatusCode >= 400 && warning.StatusCode <= 599 {
+			status = warning.StatusCode
+		}
 	}
 	// 旧实现在 Writer.Written 时直接 return false，导致 ping 已 flush 之后的
 	// 上游错误（http2 timeout、连接中断等）完全无法把错误传给客户端——
@@ -1858,7 +1892,7 @@ func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, stream
 	if c.Writer.Written() {
 		streamStarted = true
 	}
-	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
+	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 	return true
 }
 

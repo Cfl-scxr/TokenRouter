@@ -1773,10 +1773,12 @@ func TestIsOpenAICyberWarningText(t *testing.T) {
 		want bool
 	}{
 		{name: "cybersecurity risk", text: "This request may pose a cybersecurity risk", want: true},
+		{name: "full trusted access warning", text: "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get authorized for security work, join the Trusted Access for Cyber program:", want: true},
 		{name: "cyber and risk separated", text: "Cyber content was rejected because of risk controls", want: true},
 		{name: "cyber link", text: "See https://chatgpt.com/cyber for details", want: true},
-		{name: "usage policy", text: "Your request violates our usage policy", want: true},
-		{name: "flagged", text: "The request was flagged by safety systems", want: true},
+		{name: "cyber abuse", text: "Request blocked by cyber abuse policy", want: true},
+		{name: "usage policy only", text: "Your request violates our usage policy", want: false},
+		{name: "flagged only", text: "The request was flagged by safety systems", want: false},
 		{name: "normal error", text: "upstream service unavailable", want: false},
 	}
 	for _, tc := range cases {
@@ -1831,16 +1833,17 @@ func TestContentModerationRecordCyberWarning_DefaultRecordsWithoutBan(t *testing
 		AccountID:      2001,
 		AccountName:    "openai-1",
 		UpstreamStatus: 400,
-		ResponseBody:   []byte(`{"error":{"message":"This request may pose a cybersecurity risk."}}`),
+		ResponseBody:   []byte(`{"error":{"message":"This request may pose a cybersecurity risk. token=abc123456789xyz"}}`),
 		PromptExcerpt:  "inspect target sk-proj-1234567890abcdef",
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, warning)
 	require.Len(t, repo.cyberWarnings, 1)
+	require.Contains(t, repo.cyberWarnings[0].WarningText, "token=abc123456789xyz")
 	require.Contains(t, repo.cyberWarnings[0].PromptExcerpt, "inspect target")
-	require.Contains(t, repo.cyberWarnings[0].PromptExcerpt, "[已脱敏]")
-	require.NotContains(t, repo.cyberWarnings[0].PromptExcerpt, "sk-proj-1234567890abcdef")
+	require.Contains(t, repo.cyberWarnings[0].PromptExcerpt, "sk-proj-1234567890abcdef")
+	require.NotContains(t, repo.cyberWarnings[0].PromptExcerpt, "[已脱敏]")
 	require.Equal(t, 1, repo.cyberWarnings[0].ViolationCount)
 	require.False(t, repo.cyberWarnings[0].AutoBanned)
 	require.Empty(t, userRepo.updated)
@@ -1869,7 +1872,7 @@ func TestContentModerationRecordCyberWarning_BansWhenCyberThresholdReached(t *te
 		AccountID:      2001,
 		AccountName:    "openai-1",
 		UpstreamStatus: 400,
-		WarningText:    "flagged by OpenAI cyber policy",
+		WarningText:    "This content was flagged for possible cybersecurity risk.",
 	})
 
 	require.NoError(t, err)

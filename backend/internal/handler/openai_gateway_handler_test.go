@@ -220,6 +220,53 @@ func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespons
 	assert.Contains(t, body, "Upstream request failed")
 }
 
+func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteCyberWarningEmitsOriginalMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	_, _ = c.Writer.WriteString(":\n\n")
+
+	message := "This request has been flagged for potentially high-risk cyber activity."
+	err := &openAIHandlerTestWarningError{
+		warning: &service.OpenAIUpstreamWarning{
+			StatusCode:   http.StatusForbidden,
+			ResponseBody: []byte(`{"type":"response.failed","error":{"message":"` + message + `"}}`),
+			Message:      message,
+		},
+		err: errors.New("upstream response failed"),
+	}
+
+	h := &OpenAIGatewayHandler{}
+	wrote := h.ensureOpenAIForwardErrorResponse(c, false, err)
+
+	require.True(t, wrote)
+	body := w.Body.String()
+	assert.Contains(t, body, "event: response.failed\n")
+	assert.Contains(t, body, `"code":"invalid_request"`)
+	assert.Contains(t, body, message)
+	assert.NotContains(t, body, "Upstream request failed")
+}
+
+func TestOpenAIHandleFailoverExhausted_CyberWarningPassesThroughMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	setOpsRequestContext(c, "gpt-5.1", false)
+
+	message := "This content was flagged for possible cybersecurity risk. If this seems wrong, try rephrasing your request."
+	h := &OpenAIGatewayHandler{}
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusForbidden,
+		ResponseBody: []byte(`{"error":{"message":"` + message + `"}}`),
+	}, false)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), message)
+	assert.NotContains(t, w.Body.String(), "All available accounts exhausted")
+}
+
 func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

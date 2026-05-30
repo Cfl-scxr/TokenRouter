@@ -297,7 +297,38 @@ func openAIUpstreamWarningIsCyber(warning *OpenAIUpstreamWarning) bool {
 		return false
 	}
 	// 保持 WS 重试决策与 cyber 落库识别规则一致，避免重试覆盖可统计的上游风控拒绝。
-	return IsOpenAICyberWarningText(warning.Message) || IsOpenAICyberWarningText(string(warning.ResponseBody))
+	return IsOpenAICyberWarningPayload(warning.ResponseBody, warning.Message)
+}
+
+// IsOpenAICyberWarningPayload 判断上游响应体或错误文本是否属于 OpenAI cyber 风控拒绝。
+func IsOpenAICyberWarningPayload(responseBody []byte, warningText string) bool {
+	if IsOpenAICyberWarningText(warningText) {
+		return true
+	}
+	if len(responseBody) == 0 {
+		return false
+	}
+	return IsOpenAICyberWarningText(extractCyberWarningText(responseBody)) ||
+		IsOpenAICyberWarningText(string(responseBody))
+}
+
+// ExtractOpenAICyberWarningMessage 提取可直接回传给下游客户端的 cyber 风控提示。
+func ExtractOpenAICyberWarningMessage(responseBody []byte, warningText string) string {
+	for _, candidate := range []string{
+		strings.TrimSpace(warningText),
+		strings.TrimSpace(extractCyberWarningText(responseBody)),
+	} {
+		if IsOpenAICyberWarningText(candidate) {
+			return truncateForLog([]byte(sanitizeUpstreamErrorMessage(candidate)), 2048)
+		}
+	}
+	if fallback := strings.TrimSpace(warningText); fallback != "" {
+		return truncateForLog([]byte(sanitizeUpstreamErrorMessage(fallback)), 2048)
+	}
+	if fallback := strings.TrimSpace(extractCyberWarningText(responseBody)); fallback != "" && !strings.HasPrefix(fallback, "{") {
+		return truncateForLog([]byte(sanitizeUpstreamErrorMessage(fallback)), 2048)
+	}
+	return "OpenAI rejected this request because it may violate cyber safety policy."
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -2186,6 +2217,10 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	// Cyber/abuse 风控拒绝通常绑定当前用户输入，切账号只会吞掉上游原始提示。
+	if IsOpenAICyberWarningPayload(upstreamBody, upstreamMsg) {
+		return false
+	}
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 	}
@@ -4258,6 +4293,27 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			account.Type,
 			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 		)
+	}
+
+	if IsOpenAICyberWarningPayload(body, upstreamMsg) {
+		errMsg := ExtractOpenAICyberWarningMessage(body, upstreamMsg)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "http_error",
+			Message:            errMsg,
+			Detail:             upstreamDetail,
+		})
+		c.JSON(resp.StatusCode, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": errMsg,
+			},
+		})
+		return nil, wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, body, errMsg, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, errMsg))
 	}
 
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(

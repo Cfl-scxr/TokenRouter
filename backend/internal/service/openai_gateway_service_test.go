@@ -1342,6 +1342,44 @@ func TestOpenAIStreamingCybersecurityRiskResponseFailedCarriesHTTPStatusWarning(
 	require.Contains(t, string(warning.ResponseBody), "response.failed")
 }
 
+func TestOpenAIShouldFailoverUpstreamResponse_CyberWarningDoesNotFailover(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	body := []byte(`{"error":{"message":"This request has been flagged for potentially high-risk cyber activity."}}`)
+
+	require.False(t,
+		svc.shouldFailoverOpenAIUpstreamResponse(http.StatusUnauthorized, "This request has been flagged for potentially high-risk cyber activity.", body),
+	)
+	require.True(t,
+		svc.shouldFailoverOpenAIUpstreamResponse(http.StatusUnauthorized, "User account is not active", []byte(`{"code":"USER_INACTIVE","message":"User account is not active"}`)),
+	)
+}
+
+func TestOpenAIHandleErrorResponse_CyberWarningPassesThroughMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{}
+	message := "This request has been flagged for potentially high-risk cyber activity."
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"` + message + `"}}`)),
+		Header:     http.Header{},
+	}
+	account := &Account{ID: 1, Name: "openai", Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, []byte(`{"model":"gpt-5"}`))
+
+	require.Error(t, err)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), message)
+	warning, ok := ExtractOpenAIUpstreamWarning(err)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, warning.StatusCode)
+	require.Contains(t, warning.Message, "high-risk cyber")
+}
+
 func TestOpenAIStreamingClientDisconnectDrainsUpstreamUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

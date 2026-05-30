@@ -1908,8 +1908,9 @@ func (s *ContentModerationService) buildCyberWarning(input ContentModerationCybe
 		Endpoint:       strings.TrimSpace(input.Endpoint),
 		Model:          strings.TrimSpace(input.Model),
 		UpstreamStatus: input.UpstreamStatus,
-		WarningText:    trimRunes(redactContentModerationSecrets(warningText), 1000),
-		PromptExcerpt:  sanitizeContentModerationExcerpt(input.PromptExcerpt, maxCyberWarningPromptExcerptRunes),
+		// Cyber 警告用于管理员复盘上游误杀/命中原因，需要保留原始文本；这里只做长度裁剪，避免 UI 和存储被超长内容撑爆。
+		WarningText:   trimRawContentModerationText(warningText, 1000),
+		PromptExcerpt: trimRawContentModerationText(input.PromptExcerpt, maxCyberWarningPromptExcerptRunes),
 	}
 }
 
@@ -2760,13 +2761,17 @@ func IsOpenAICyberWarningText(text string) bool {
 	if lower == "" {
 		return false
 	}
+	// 只用明确的 cyber 风控锚点命中，避免普通 usage policy/flagged 错误被当成 cyber 拒绝。
 	if strings.Contains(lower, "cybersecurity risk") ||
 		strings.Contains(lower, "chatgpt.com/cyber") ||
-		strings.Contains(lower, "usage policy") ||
-		strings.Contains(lower, "flagged") {
+		strings.Contains(lower, "cyber abuse") ||
+		strings.Contains(lower, "trusted access for cyber") {
 		return true
 	}
-	return strings.Contains(lower, "cyber") && strings.Contains(lower, "risk")
+	return strings.Contains(lower, "cyber") &&
+		(strings.Contains(lower, "risk") ||
+			strings.Contains(lower, "abuse") ||
+			strings.Contains(lower, "security work"))
 }
 
 func extractCyberWarningText(body []byte) string {
@@ -3008,6 +3013,10 @@ func cloneInt64Ptr(in *int64) *int64 {
 func sanitizeContentModerationExcerpt(text string, max int) string {
 	// 管理端只需要可读摘要，这里统一脱敏并截断，避免把密钥或超长提示词写入记录。
 	return trimRunes(redactContentModerationSecrets(text), max)
+}
+
+func trimRawContentModerationText(text string, max int) string {
+	return trimRunes(strings.TrimSpace(text), max)
 }
 
 func trimRunes(text string, max int) string {
