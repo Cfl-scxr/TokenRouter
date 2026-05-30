@@ -174,6 +174,66 @@ func (r *dataShareCaptureRepoStub) lastSession() *DataShareSession {
 	return r.sessions[len(r.sessions)-1]
 }
 
+type dataShareExportRepoStub struct {
+	items []DataShareSession
+}
+
+func (r *dataShareExportRepoStub) GetCaptureByTrajectoryIDWithPayload(context.Context, string) (*DataShareSession, error) {
+	panic("unexpected GetCaptureByTrajectoryIDWithPayload call")
+}
+
+func (r *dataShareExportRepoStub) SaveCaptureSnapshot(context.Context, *DataShareSession, ...DataShareUpsertOptions) error {
+	panic("unexpected SaveCaptureSnapshot call")
+}
+
+func (r *dataShareExportRepoStub) List(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (r *dataShareExportRepoStub) ListWithPayload(_ context.Context, params pagination.PaginationParams, _ DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
+	pageSize := params.PageSize
+	if pageSize <= 0 {
+		pageSize = len(r.items)
+	}
+	start := params.Offset()
+	if start >= len(r.items) {
+		return nil, &pagination.PaginationResult{Total: int64(len(r.items)), Page: params.Page, PageSize: pageSize, Pages: 1}, nil
+	}
+	end := start + pageSize
+	if end > len(r.items) {
+		end = len(r.items)
+	}
+	pages := 1
+	if pageSize > 0 {
+		pages = (len(r.items) + pageSize - 1) / pageSize
+	}
+	return r.items[start:end], &pagination.PaginationResult{Total: int64(len(r.items)), Page: params.Page, PageSize: pageSize, Pages: pages}, nil
+}
+
+func (r *dataShareExportRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
+	panic("unexpected GetByID call")
+}
+
+func (r *dataShareExportRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (r *dataShareExportRepoStub) BatchDelete(context.Context, []int64, DataShareSessionFilters) (int64, error) {
+	panic("unexpected BatchDelete call")
+}
+
+func (r *dataShareExportRepoStub) Stats(context.Context, DataShareSessionFilters) (*DataShareStats, error) {
+	panic("unexpected Stats call")
+}
+
+func (r *dataShareExportRepoStub) FilterOptions(context.Context, DataShareSessionFilters) (*DataShareSessionFilterOptions, error) {
+	panic("unexpected FilterOptions call")
+}
+
+func (r *dataShareExportRepoStub) TotalStorageBytes(context.Context) (int64, error) {
+	return 0, nil
+}
+
 func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
 	gid := int64(12)
 	repo := &dataShareCaptureRepoStub{}
@@ -1866,6 +1926,104 @@ func TestInvalidSessionCanExportWhenSelected(t *testing.T) {
 	}
 	if got := payload["session_id"]; got != "sess" {
 		t.Fatalf("session_id = %v, want sess", got)
+	}
+}
+
+func TestDataShareExportRedactsSensitiveFields(t *testing.T) {
+	sys := "你是编码助手"
+	session := DataShareSession{
+		TrajectoryID:       "traj-redact",
+		SessionID:          "sess-redact",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		Status:             DataShareStatusCompleted,
+		IsFinalSnapshot:    true,
+		SourceRequestCount: 1,
+		SystemPrompt:       &sys,
+		Messages: []map[string]any{
+			{"role": "user", "content": "hello", "metadata": map[string]any{"user_id": "client-user", "trace_id": "trace-1"}},
+			{"role": "assistant", "content": "hi"},
+		},
+		Usage: map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+		Meta: map[string]any{
+			"request_id":   "req-redact",
+			"user_email":   "alice@example.com",
+			"ip_address":   "127.0.0.1",
+			"api_key_id":   int64(10),
+			"api_key_name": "main-key",
+			"account_id":   int64(20),
+			"user_id":      int64(30),
+			"user_name":    "alice",
+			"group_id":     int64(40),
+			"group_name":   "共享分组",
+			"nested":       map[string]any{"api_key_name": "nested-key", "kept": true},
+		},
+		SessionJSON: map[string]any{
+			"user_id": "legacy-user",
+			"metadata": map[string]any{
+				"user_email": "legacy@example.com",
+				"trace_id":   "legacy-trace",
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	var buf bytes.Buffer
+	err := NewDataSharingService(&dataShareExportRepoStub{items: []DataShareSession{session}}, nil).
+		ExportJSONL(context.Background(), &buf, DataShareSessionFilters{}, false)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload))
+	requireNoDataShareExportSensitiveFields(t, payload)
+	require.Equal(t, "trace-1", payload["messages"].([]any)[0].(map[string]any)["metadata"].(map[string]any)["trace_id"])
+	require.Equal(t, "legacy-trace", payload["metadata"].(map[string]any)["trace_id"])
+	meta := payload["meta"].(map[string]any)
+	require.Equal(t, "req-redact", meta["request_id"])
+	require.Equal(t, "共享分组", meta["group_name"])
+	require.Equal(t, true, meta["nested"].(map[string]any)["kept"])
+}
+
+func TestWriteSingleSessionJSONLRedactsSensitiveFields(t *testing.T) {
+	session := &DataShareSession{
+		TrajectoryID:       "traj-single-redact",
+		SessionID:          "sess-single-redact",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		Status:             DataShareStatusCompleted,
+		IsFinalSnapshot:    true,
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "hello"}},
+		Usage:              map[string]any{"total_tokens": 1},
+		Meta:               map[string]any{"api_key_id": int64(10), "request_id": "req-single"},
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteSingleSessionJSONL(&buf, session))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload))
+	requireNoDataShareExportSensitiveFields(t, payload)
+	require.Equal(t, "req-single", payload["meta"].(map[string]any)["request_id"])
+}
+
+func requireNoDataShareExportSensitiveFields(t *testing.T, value any) {
+	t.Helper()
+	switch v := value.(type) {
+	case map[string]any:
+		for key, item := range v {
+			if _, excluded := dataShareExportExcludedFields[key]; excluded {
+				t.Fatalf("export payload contains sensitive field %q in %#v", key, v)
+			}
+			requireNoDataShareExportSensitiveFields(t, item)
+		}
+	case []any:
+		for _, item := range v {
+			requireNoDataShareExportSensitiveFields(t, item)
+		}
 	}
 }
 

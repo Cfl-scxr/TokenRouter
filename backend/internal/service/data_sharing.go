@@ -43,6 +43,17 @@ const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用
 const dataShareSkipRulesCacheTTL = 30 * time.Second
 const dataShareExportTicketTTL = 5 * time.Minute
 
+// dataShareExportExcludedFields 是导出文件中禁止外发的身份和来源字段。
+var dataShareExportExcludedFields = map[string]struct{}{
+	"user_email":   {},
+	"ip_address":   {},
+	"api_key_id":   {},
+	"api_key_name": {},
+	"account_id":   {},
+	"user_id":      {},
+	"user_name":    {},
+}
+
 var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES_INVALID", "data sharing capture skip rules are invalid")
 var ErrDataShareExportTicketInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_TICKET_INVALID", "data sharing export ticket is invalid")
 var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT_TICKET_FORBIDDEN", "data sharing export ticket scope is not allowed")
@@ -1481,7 +1492,7 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 			return err
 		}
 		for i := range items {
-			payload := exportPayloadFromSession(&items[i])
+			payload := exportDownloadPayloadFromSession(&items[i])
 			line, err := json.Marshal(payload)
 			if err != nil {
 				return err
@@ -2897,6 +2908,15 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	return payload
 }
 
+// exportDownloadPayloadFromSession 仅用于下载导出，在保留库内原始采集数据的同时剔除敏感字段。
+func exportDownloadPayloadFromSession(session *DataShareSession) map[string]any {
+	payload, ok := redactDataShareExportFields(exportPayloadFromSession(session)).(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	return payload
+}
+
 // BuildDataShareSessionPayload 生成可导出、可压缩持久化的规范 session payload。
 func BuildDataShareSessionPayload(session *DataShareSession) map[string]any {
 	return exportPayloadFromSession(session)
@@ -3130,6 +3150,36 @@ func cloneDataShareMap(in map[string]any) map[string]any {
 	return out
 }
 
+// redactDataShareExportFields 递归清理导出 payload 中的敏感字段，保留其它业务字段。
+func redactDataShareExportFields(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			if _, excluded := dataShareExportExcludedFields[key]; excluded {
+				continue
+			}
+			out[key] = redactDataShareExportFields(item)
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			redacted, _ := redactDataShareExportFields(item).(map[string]any)
+			out = append(out, redacted)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, redactDataShareExportFields(item))
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 func firstNonEmptyMaps(values ...[]map[string]any) []map[string]any {
 	for _, v := range values {
 		if len(v) > 0 {
@@ -3188,13 +3238,13 @@ func intFromAny(v any) int {
 	}
 }
 
-// WriteSingleSessionJSONL 输出单条 session 的原始 JSONL，供详情页下载和问题排查使用。
+// WriteSingleSessionJSONL 输出单条 session 的下载 JSONL，并剔除不允许外发的身份字段。
 func WriteSingleSessionJSONL(w io.Writer, session *DataShareSession) error {
 	if session == nil {
 		return ErrDataShareSessionNotFound
 	}
 	var buf bytes.Buffer
-	payload := exportPayloadFromSession(session)
+	payload := exportDownloadPayloadFromSession(session)
 	line, err := json.Marshal(payload)
 	if err != nil {
 		return err
