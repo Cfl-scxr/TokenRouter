@@ -42,6 +42,17 @@ type UserSubscription struct {
 	AssignedByUser *User
 }
 
+// SubscriptionWindowActivation 表示本次维护允许首次激活的订阅额度窗口。
+type SubscriptionWindowActivation struct {
+	Daily   bool
+	Weekly  bool
+	Monthly bool
+}
+
+func (a SubscriptionWindowActivation) Any() bool {
+	return a.Daily || a.Weekly || a.Monthly
+}
+
 func (s *UserSubscription) IsActive() bool {
 	now := time.Now()
 	return s.Status == SubscriptionStatusActive && !now.Before(s.StartsAt) && now.Before(s.ExpiresAt)
@@ -95,11 +106,42 @@ func (s *UserSubscription) IsWindowActivated() bool {
 	return s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
 }
 
+func (s *UserSubscription) HasQuotaLimit() bool {
+	return positiveSubscriptionLimit(s.DailyLimitUSD) ||
+		positiveSubscriptionLimit(s.WeeklyLimitUSD) ||
+		positiveSubscriptionLimit(s.MonthlyLimitUSD)
+}
+
 func (s *UserSubscription) HasOneTimeDailyQuota() bool {
 	if s == nil || s.StartsAt.IsZero() || s.ExpiresAt.IsZero() {
 		return false
 	}
 	return !s.ExpiresAt.After(s.StartsAt.AddDate(0, 0, 1))
+}
+
+func (s *UserSubscription) NeedsWindowActivationAt(now time.Time) bool {
+	return s.WindowActivationAt(now).Any()
+}
+
+// WindowActivationAt 返回当前可首次激活的额度窗口；到期尾段不足完整周期的窗口保持未激活。
+func (s *UserSubscription) WindowActivationAt(now time.Time) SubscriptionWindowActivation {
+	var activation SubscriptionWindowActivation
+	if s == nil || !s.HasQuotaLimit() {
+		return activation
+	}
+
+	windowStart := startOfDay(now)
+	if positiveSubscriptionLimit(s.DailyLimitUSD) && s.DailyWindowStart == nil {
+		activation.Daily = s.HasOneTimeDailyQuota() ||
+			s.CanStartFullQuotaWindow(windowStart, subscriptionDailyWindow)
+	}
+	if positiveSubscriptionLimit(s.WeeklyLimitUSD) && s.WeeklyWindowStart == nil {
+		activation.Weekly = s.CanStartFullQuotaWindow(windowStart, subscriptionWeeklyWindow)
+	}
+	if positiveSubscriptionLimit(s.MonthlyLimitUSD) && s.MonthlyWindowStart == nil {
+		activation.Monthly = s.CanStartFullQuotaWindow(windowStart, subscriptionMonthlyWindow)
+	}
+	return activation
 }
 
 func (s *UserSubscription) NeedsDailyReset() bool {
@@ -272,4 +314,8 @@ func minRemainingWindowAmount(values ...*float64) float64 {
 		return 0
 	}
 	return min
+}
+
+func positiveSubscriptionLimit(limit *float64) bool {
+	return limit != nil && *limit > 0
 }

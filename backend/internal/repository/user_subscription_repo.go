@@ -325,13 +325,22 @@ func (r *userSubscriptionRepository) UpdateNotes(ctx context.Context, subscripti
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
-func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time, activation service.SubscriptionWindowActivation) error {
+	if !activation.Any() {
+		return nil
+	}
 	client := clientFromContext(ctx, r.client)
-	_, err := client.UserSubscription.UpdateOneID(id).
-		SetDailyWindowStart(start).
-		SetWeeklyWindowStart(start).
-		SetMonthlyWindowStart(start).
-		Save(ctx)
+	update := client.UserSubscription.UpdateOneID(id)
+	if activation.Daily {
+		update.SetDailyWindowStart(start)
+	}
+	if activation.Weekly {
+		update.SetWeeklyWindowStart(start)
+	}
+	if activation.Monthly {
+		update.SetMonthlyWindowStart(start)
+	}
+	_, err := update.Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 

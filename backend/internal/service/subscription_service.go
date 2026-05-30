@@ -683,11 +683,13 @@ func startOfDay(t time.Time) time.Time {
 }
 
 func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *UserSubscription) error {
-	if sub.IsWindowActivated() {
+	now := time.Now()
+	activation := sub.WindowActivationAt(now)
+	if !activation.Any() {
 		return nil
 	}
-	windowStart := startOfDay(time.Now())
-	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
+	windowStart := startOfDay(now)
+	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart, activation)
 }
 
 func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
@@ -792,7 +794,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, _ *G
 		sub.MonthlyUsageUSD = 0
 		needsMaintenance = true
 	}
-	if !sub.IsWindowActivated() {
+	if sub.NeedsWindowActivationAt(time.Now()) {
 		needsMaintenance = true
 	}
 	return needsMaintenance, s.CheckUsageLimits(context.Background(), sub, nil, 0)
@@ -804,7 +806,7 @@ func (s *SubscriptionService) DoWindowMaintenance(sub *UserSubscription) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if !sub.IsWindowActivated() {
+	if sub.NeedsWindowActivationAt(time.Now()) {
 		_ = s.CheckAndActivateWindow(ctx, sub)
 	}
 	_ = s.CheckAndResetWindows(ctx, sub)

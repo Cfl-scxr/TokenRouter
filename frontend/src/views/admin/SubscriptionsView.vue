@@ -281,7 +281,7 @@
                       d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
+                  <span>{{ formatUsageWindow(row, row.weekly_window_start, 'weekly') }}</span>
                 </div>
               </div>
 
@@ -318,7 +318,7 @@
                       d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
+                  <span>{{ formatUsageWindow(row, row.monthly_window_start, 'monthly') }}</span>
                 </div>
               </div>
 
@@ -1359,10 +1359,25 @@ const formatDailyUsageWindow = (subscription: UserSubscription): string => {
     const parts = getRemainingDurationParts(subscription.expires_at)
     return parts ? formatQuotaEndDuration(parts) : t('admin.subscriptions.windowNotActive')
   }
-  return formatResetTime(subscription.daily_window_start, 'daily')
+  return formatUsageWindow(subscription, subscription.daily_window_start, 'daily')
 }
 
-const formatResetTime = (windowStart: string | null, period: 'daily' | 'weekly' | 'monthly'): string => {
+const formatUsageWindow = (
+  subscription: UserSubscription,
+  windowStart: string | null,
+  period: 'daily' | 'weekly' | 'monthly'
+): string => {
+  if (isQuotaWindowEndingAtSubscriptionExpiry(subscription, windowStart, period)) {
+    const parts = getRemainingDurationParts(subscription.expires_at)
+    return parts ? formatQuotaEndDuration(parts) : t('admin.subscriptions.windowNotActive')
+  }
+  return formatResetTime(windowStart, period)
+}
+
+const formatResetTime = (
+  windowStart: string | null,
+  period: 'daily' | 'weekly' | 'monthly'
+): string => {
   if (!windowStart) return t('admin.subscriptions.windowNotActive')
 
   const start = new Date(windowStart)
@@ -1384,6 +1399,26 @@ const formatResetTime = (windowStart: string | null, period: 'daily' | 'weekly' 
 
   const parts = getRemainingDurationParts(resetTime, now)
   return parts ? formatResetDuration(parts) : t('admin.subscriptions.windowNotActive')
+}
+
+const isQuotaWindowEndingAtSubscriptionExpiry = (
+  subscription: UserSubscription,
+  windowStart: string | null,
+  period: 'daily' | 'weekly' | 'monthly'
+): boolean => {
+  if (!windowStart) return false
+  const start = new Date(windowStart).getTime()
+  const expiresAt = new Date(subscription.expires_at).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(expiresAt)) return false
+
+  const windowMsByPeriod = {
+    daily: 24 * 60 * 60 * 1000,
+    weekly: 7 * 24 * 60 * 60 * 1000,
+    monthly: 30 * 24 * 60 * 60 * 1000
+  }
+  const windowMs = windowMsByPeriod[period]
+  const nextWindowStart = start + windowMs
+  return nextWindowStart + windowMs > expiresAt
 }
 
 // Handle click outside to close dropdowns

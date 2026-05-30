@@ -15,6 +15,14 @@ type dailyResetTrackingUserSubRepo struct {
 	resetDailyCalled   bool
 	resetWeeklyCalled  bool
 	resetMonthlyCalled bool
+	activateCalled     bool
+	lastActivation     SubscriptionWindowActivation
+}
+
+func (r *dailyResetTrackingUserSubRepo) ActivateWindows(_ context.Context, _ int64, _ time.Time, activation SubscriptionWindowActivation) error {
+	r.activateCalled = true
+	r.lastActivation = activation
+	return nil
 }
 
 func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, time.Time) error {
@@ -229,6 +237,88 @@ func TestCheckAndResetWindows_ExpiryTailDoesNotResetMonthlyUsage(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, repo.resetMonthlyCalled, "到期尾段不应重置 monthly usage")
 	require.Equal(t, 10.0, sub.MonthlyUsageUSD)
+}
+
+func TestValidateAndCheckLimits_ExpiryTailMissingWindowDoesNotNeedActivation(t *testing.T) {
+	now := time.Now()
+	monthlyLimit := 100.0
+	sub := &UserSubscription{
+		Status:          SubscriptionStatusActive,
+		StartsAt:        now.AddDate(0, 0, -29),
+		ExpiresAt:       now.Add(2 * time.Hour),
+		MonthlyLimitUSD: &monthlyLimit,
+		MonthlyUsageUSD: 90,
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, nil)
+
+	require.NoError(t, err)
+	require.False(t, needsMaintenance, "到期尾段不足完整月窗口时不应激活空窗口")
+}
+
+func TestDoWindowMaintenance_ExpiryTailMissingWindowDoesNotActivate(t *testing.T) {
+	now := time.Now()
+	monthlyLimit := 100.0
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:              1,
+		Status:          SubscriptionStatusActive,
+		StartsAt:        now.AddDate(0, 0, -29),
+		ExpiresAt:       now.Add(2 * time.Hour),
+		MonthlyLimitUSD: &monthlyLimit,
+		MonthlyUsageUSD: 90,
+	}
+
+	svc.DoWindowMaintenance(sub)
+
+	require.False(t, repo.activateCalled, "到期尾段不足完整月窗口时不应写入新的窗口起点")
+}
+
+func TestDoWindowMaintenance_MissingDailyCardWindowStillActivates(t *testing.T) {
+	now := time.Now()
+	dailyLimit := 10.0
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:            1,
+		Status:        SubscriptionStatusActive,
+		StartsAt:      now.Add(-time.Hour),
+		ExpiresAt:     now.Add(time.Hour),
+		DailyLimitUSD: &dailyLimit,
+	}
+
+	svc.DoWindowMaintenance(sub)
+
+	require.True(t, repo.activateCalled, "一次性日额度首次使用仍应激活窗口")
+	require.True(t, repo.lastActivation.Daily)
+	require.False(t, repo.lastActivation.Weekly)
+	require.False(t, repo.lastActivation.Monthly)
+}
+
+func TestDoWindowMaintenance_MixedDailyMonthlyTailActivatesOnlyDaily(t *testing.T) {
+	now := time.Now()
+	dailyLimit := 10.0
+	monthlyLimit := 100.0
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:              1,
+		Status:          SubscriptionStatusActive,
+		StartsAt:        now.AddDate(0, 0, -29),
+		ExpiresAt:       startOfDay(now).Add(25 * time.Hour),
+		DailyLimitUSD:   &dailyLimit,
+		MonthlyLimitUSD: &monthlyLimit,
+		MonthlyUsageUSD: 90,
+	}
+
+	svc.DoWindowMaintenance(sub)
+
+	require.True(t, repo.activateCalled, "到期尾段仍可覆盖完整日窗口时，应只激活日额度窗口")
+	require.True(t, repo.lastActivation.Daily)
+	require.False(t, repo.lastActivation.Weekly)
+	require.False(t, repo.lastActivation.Monthly, "不足完整月窗口时不应顺带激活月额度窗口")
 }
 
 func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t *testing.T) {

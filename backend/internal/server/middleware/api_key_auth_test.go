@@ -1117,7 +1117,7 @@ func (r *stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscription
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time, activation service.SubscriptionWindowActivation) error {
 	if r.activateWindow != nil {
 		return r.activateWindow(ctx, id, start)
 	}

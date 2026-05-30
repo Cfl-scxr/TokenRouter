@@ -159,6 +159,8 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 type usageBillingSubscriptionRow struct {
 	ID                 int64
 	PlanID             int64
+	StartsAt           time.Time
+	ExpiresAt          time.Time
 	DailyWindowStart   sql.NullTime
 	WeeklyWindowStart  sql.NullTime
 	MonthlyWindowStart sql.NullTime
@@ -179,6 +181,8 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, userID i
 		SELECT
 			id,
 			plan_id,
+			starts_at,
+			expires_at,
 			daily_window_start,
 			weekly_window_start,
 			monthly_window_start,
@@ -206,6 +210,8 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, userID i
 		if err := rows.Scan(
 			&row.ID,
 			&row.PlanID,
+			&row.StartsAt,
+			&row.ExpiresAt,
 			&row.DailyWindowStart,
 			&row.WeeklyWindowStart,
 			&row.MonthlyWindowStart,
@@ -239,9 +245,9 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, userID i
 			break
 		}
 
-		dailyStart, dailyUsage := normalizeUsageBillingWindow(row.DailyWindowStart, row.DailyLimitUSD, row.DailyUsageUSD, windowStart, 24*time.Hour, now)
-		weeklyStart, weeklyUsage := normalizeUsageBillingWindow(row.WeeklyWindowStart, row.WeeklyLimitUSD, row.WeeklyUsageUSD, windowStart, 7*24*time.Hour, now)
-		monthlyStart, monthlyUsage := normalizeUsageBillingWindow(row.MonthlyWindowStart, row.MonthlyLimitUSD, row.MonthlyUsageUSD, windowStart, 30*24*time.Hour, now)
+		dailyStart, dailyUsage := normalizeUsageBillingWindow(row.DailyWindowStart, row.DailyLimitUSD, row.DailyUsageUSD, windowStart, 24*time.Hour, now, row.StartsAt, row.ExpiresAt)
+		weeklyStart, weeklyUsage := normalizeUsageBillingWindow(row.WeeklyWindowStart, row.WeeklyLimitUSD, row.WeeklyUsageUSD, windowStart, 7*24*time.Hour, now, row.StartsAt, row.ExpiresAt)
+		monthlyStart, monthlyUsage := normalizeUsageBillingWindow(row.MonthlyWindowStart, row.MonthlyLimitUSD, row.MonthlyUsageUSD, windowStart, 30*24*time.Hour, now, row.StartsAt, row.ExpiresAt)
 
 		available := usageBillingSubscriptionAvailable(
 			remaining,
@@ -286,7 +292,7 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, userID i
 	return remaining, allocations, nil
 }
 
-func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64, used float64, resetStart time.Time, duration time.Duration, now time.Time) (*time.Time, float64) {
+func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64, used float64, resetStart time.Time, duration time.Duration, now, startsAt, expiresAt time.Time) (*time.Time, float64) {
 	if !limit.Valid || limit.Float64 <= 0 {
 		if !windowStart.Valid {
 			return nil, used
@@ -294,12 +300,36 @@ func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64
 		start := windowStart.Time
 		return &start, used
 	}
+
+	// 1 日卡是一次性日额度：首次扣费要记录窗口，但跨过 24 小时边界后不能清零。
+	if duration == 24*time.Hour && !expiresAt.After(startsAt.AddDate(0, 0, 1)) {
+		if !windowStart.Valid || windowStart.Time.IsZero() {
+			start := resetStart
+			return &start, 0
+		}
+		start := windowStart.Time
+		return &start, used
+	}
+
+	// 到期尾段不足一个完整窗口时，不补新窗口也不重置已用量，避免套餐结束前额外刷新额度。
+	if !canStartUsageBillingWindow(resetStart, duration, expiresAt) {
+		if !windowStart.Valid || windowStart.Time.IsZero() {
+			return nil, used
+		}
+		start := windowStart.Time
+		return &start, used
+	}
+
 	if !windowStart.Valid || windowStart.Time.IsZero() || !windowStart.Time.Add(duration).After(now) {
 		start := resetStart
 		return &start, 0
 	}
 	start := windowStart.Time
 	return &start, used
+}
+
+func canStartUsageBillingWindow(windowStart time.Time, duration time.Duration, expiresAt time.Time) bool {
+	return !expiresAt.IsZero() && !windowStart.Add(duration).After(expiresAt)
 }
 
 func windowRemaining(limit sql.NullFloat64, used float64) *float64 {
