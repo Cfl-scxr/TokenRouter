@@ -238,26 +238,6 @@
                 </div>
               </div>
             </div>
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">缓冲 Session</p>
-                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureBufferBufferedSessions) }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">Flush 中</p>
-                <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ formatNumber(captureBufferFlushingSessions) }}</p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">成功/失败</p>
-                <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-                  {{ formatNumber(captureBufferFlushSuccessTotal) }}/{{ formatNumber(captureBufferFlushFailedTotal) }}
-                </p>
-              </div>
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">最近耗时</p>
-                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferLastFlushDurationMillis) }}</p>
-              </div>
-            </div>
             <p v-if="stats?.capture_buffer?.last_error" class="truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_buffer.last_error">
               {{ stats.capture_buffer.last_error }}
             </p>
@@ -276,6 +256,26 @@
               <div>
                 <label class="input-label">最大增量</label>
                 <input v-model="captureBufferMaxPendingEventsInput" type="number" min="1" :max="captureBufferMaxPendingEventsLimit" step="1" class="input" />
+              </div>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">缓冲 Session</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureBufferBufferedSessions) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">Flush 中</p>
+                <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ formatNumber(captureBufferFlushingSessions) }}</p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">成功/失败</p>
+                <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+                  {{ formatNumber(captureBufferFlushSuccessTotal) }}/{{ formatNumber(captureBufferFlushFailedTotal) }}
+                </p>
+              </div>
+              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                <p class="text-xs text-gray-500 dark:text-gray-400">最近耗时</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferLastFlushDurationMillis) }}</p>
               </div>
             </div>
           </div>
