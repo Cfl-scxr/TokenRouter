@@ -22,21 +22,15 @@
                 <button
                   ref="autoRefreshButtonRef"
                   @click="toggleAutoRefreshDropdown"
-                  class="btn btn-secondary px-2 md:px-3"
-                  :title="t('admin.accounts.autoRefresh')"
+                  class="btn btn-secondary justify-center px-2 md:min-w-[7.5rem] md:px-3"
+                  :title="autoRefreshButtonTitle"
                 >
                   <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
-                  <span class="hidden md:inline">
-                    {{
-                      autoRefreshEnabled
-                        ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown })
-                        : t('admin.accounts.autoRefresh')
-                    }}
-                  </span>
+                  <span class="hidden md:inline">{{ t('admin.accounts.autoRefresh') }}</span>
                 </button>
                 <div
                   v-if="showAutoRefreshDropdown"
-                  class="fixed z-50 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                  class="fixed z-50 w-56 origin-top-left overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
                   :style="autoRefreshDropdownStyle"
                 >
                   <div class="p-2">
@@ -549,6 +543,10 @@ const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
+const autoRefreshButtonTitle = computed(() => {
+  if (!autoRefreshEnabled.value) return t('admin.accounts.autoRefresh')
+  return t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown.value })
+})
 const hasPendingListSync = ref(false)
 const todayStatsByAccountId = ref<Record<string, WindowStats>>({})
 const todayStatsLoading = ref(false)
@@ -683,11 +681,12 @@ const clampDropdownLeft = (left: number, width: number) => {
   )
 }
 
-const buildTopDropdownStyle = (trigger: HTMLElement | null, width: number): Record<string, string> => {
+const buildTopDropdownStyle = (trigger: HTMLElement | null, width: number, align: 'left' | 'right' = 'right'): Record<string, string> => {
   if (!trigger) return {}
   const rect = trigger.getBoundingClientRect()
-  // 右对齐触发按钮，同时限制在视口内，避免移动端下拉菜单被左侧裁掉。
-  const left = clampDropdownLeft(rect.right - width, width)
+  // 顶部工具菜单固定定位，按触发按钮对齐并限制在视口内，避免滚动容器裁剪。
+  const rawLeft = align === 'left' ? rect.left : rect.right - width
+  const left = clampDropdownLeft(rawLeft, width)
   return {
     top: `${rect.bottom + 8}px`,
     left: `${left}px`,
@@ -701,7 +700,7 @@ const updateTopDropdownPositions = () => {
     accountToolsDropdownStyle.value = buildTopDropdownStyle(accountToolsButtonRef.value, width)
   }
   if (showAutoRefreshDropdown.value) {
-    autoRefreshDropdownStyle.value = buildTopDropdownStyle(autoRefreshButtonRef.value, 224)
+    autoRefreshDropdownStyle.value = buildTopDropdownStyle(autoRefreshButtonRef.value, 224, 'left')
   }
 }
 

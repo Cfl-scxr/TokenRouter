@@ -3,10 +3,48 @@
     <div class="space-y-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white">数据概览</h2>
-        <button class="btn btn-secondary btn-sm self-start sm:self-auto" :disabled="statsLoading || storageLimitLoading" title="刷新统计图表" @click="refreshStats">
-          <Icon name="refresh" size="sm" :class="statsLoading ? 'animate-spin' : ''" />
-          <span class="ml-1">刷新统计</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div ref="statsAutoRefreshDropdownRef" class="relative">
+            <button
+              ref="statsAutoRefreshButtonRef"
+              class="btn btn-secondary btn-sm justify-center sm:min-w-[7.5rem]"
+              :title="statsAutoRefreshTitle"
+              @click="toggleStatsAutoRefreshDropdown"
+            >
+              <Icon name="refresh" size="sm" :class="statsAutoRefreshEnabled ? 'animate-spin' : ''" />
+              <span class="ml-1">自动刷新</span>
+            </button>
+            <div
+              v-if="statsAutoRefreshDropdownOpen"
+              class="fixed z-50 w-56 origin-top-left overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              :style="statsAutoRefreshDropdownStyle"
+            >
+              <div class="p-2">
+                <button
+                  class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="setStatsAutoRefreshEnabled(!statsAutoRefreshEnabled)"
+                >
+                  <span>启用自动刷新</span>
+                  <Icon v-if="statsAutoRefreshEnabled" name="check" size="sm" class="text-primary-500" />
+                </button>
+                <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                <button
+                  v-for="seconds in statsAutoRefreshIntervals"
+                  :key="seconds"
+                  class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                  @click="setStatsAutoRefreshInterval(seconds)"
+                >
+                  <span>{{ seconds }} 秒</span>
+                  <Icon v-if="statsAutoRefreshIntervalSeconds === seconds" name="check" size="sm" class="text-primary-500" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" :disabled="statsLoading || storageLimitLoading" title="刷新统计图表" @click="refreshStats">
+            <Icon name="refresh" size="sm" :class="statsLoading ? 'animate-spin' : ''" />
+            <span class="ml-1">刷新统计</span>
+          </button>
+        </div>
       </div>
 
       <div class="grid gap-4 md:grid-cols-4 xl:grid-cols-7">
@@ -856,6 +894,8 @@ const captureTimeoutSecondsMax = 300
 const captureBufferIdleFlushMax = 300
 const captureBufferMaxSessionsLimit = 100000
 const captureBufferMaxPendingEventsLimit = 1000000
+const statsAutoRefreshDefaultSeconds = 5
+const statsAutoRefreshIntervals = [5, 10, 15, 30] as const
 const captureCompressionLevelOptions = [
   { value: 'fastest', label: '最快' },
   { value: 'default', label: '默认' },
@@ -876,6 +916,12 @@ const selectAllMatching = ref(false)
 
 const loading = ref(false)
 const statsLoading = ref(false)
+const statsAutoRefreshEnabled = ref(true)
+const statsAutoRefreshIntervalSeconds = ref<(typeof statsAutoRefreshIntervals)[number]>(statsAutoRefreshDefaultSeconds)
+const statsAutoRefreshDropdownOpen = ref(false)
+const statsAutoRefreshDropdownRef = ref<HTMLElement | null>(null)
+const statsAutoRefreshButtonRef = ref<HTMLElement | null>(null)
+const statsAutoRefreshDropdownStyle = ref<Record<string, string>>({})
 const savingNotice = ref(false)
 const skipRulesLoading = ref(false)
 const savingSkipRules = ref(false)
@@ -1329,8 +1375,13 @@ const selectionSummary = computed(() => {
   return `已选择 ${formatNumber(selectedCount.value)} 条数据`
 })
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
+const statsAutoRefreshTitle = computed(() => {
+  if (!statsAutoRefreshEnabled.value) return '自动刷新已关闭'
+  return `每 ${statsAutoRefreshIntervalSeconds.value} 秒自动刷新统计`
+})
 
 let filterTimer: number | null = null
+let statsAutoRefreshTimer: number | null = null
 
 function buildFilters(): AdminDataShareSessionFilters {
   const out: AdminDataShareSessionFilters = {
@@ -1711,9 +1762,75 @@ async function loadStats() {
   }
 }
 
-function refreshStats() {
-  loadStats()
-  loadStorageLimit()
+async function refreshStats() {
+  await Promise.all([loadStats(), loadStorageLimit()])
+}
+
+function restartStatsAutoRefresh() {
+  stopStatsAutoRefresh()
+  statsAutoRefreshTimer = window.setInterval(runStatsAutoRefresh, statsAutoRefreshIntervalSeconds.value * 1000)
+}
+
+function stopStatsAutoRefresh() {
+  if (!statsAutoRefreshTimer) return
+  window.clearInterval(statsAutoRefreshTimer)
+  statsAutoRefreshTimer = null
+}
+
+async function runStatsAutoRefresh() {
+  // 自动刷新只更新顶部统计与采集状态，避免影响下方列表筛选和分页。
+  if (!statsAutoRefreshEnabled.value || document.hidden || statsLoading.value || storageLimitLoading.value) return
+  await refreshStats()
+}
+
+function setStatsAutoRefreshEnabled(enabled: boolean) {
+  statsAutoRefreshEnabled.value = enabled
+  if (enabled) {
+    restartStatsAutoRefresh()
+  } else {
+    stopStatsAutoRefresh()
+  }
+}
+
+function setStatsAutoRefreshInterval(seconds: (typeof statsAutoRefreshIntervals)[number]) {
+  statsAutoRefreshIntervalSeconds.value = seconds
+  if (statsAutoRefreshEnabled.value) restartStatsAutoRefresh()
+}
+
+function clampDropdownLeft(left: number, width: number) {
+  const margin = 16
+  return Math.min(
+    Math.max(left, margin),
+    Math.max(margin, window.innerWidth - width - margin)
+  )
+}
+
+function updateStatsAutoRefreshDropdownPosition() {
+  if (!statsAutoRefreshDropdownOpen.value || !statsAutoRefreshButtonRef.value) return
+  const width = 224
+  const rect = statsAutoRefreshButtonRef.value.getBoundingClientRect()
+  // 下拉菜单跟随按钮左边展开，并限制在视口内避免被边缘裁切。
+  statsAutoRefreshDropdownStyle.value = {
+    top: `${rect.bottom + 8}px`,
+    left: `${clampDropdownLeft(rect.left, width)}px`,
+    maxHeight: `${Math.max(240, window.innerHeight - rect.bottom - 24)}px`
+  }
+}
+
+function toggleStatsAutoRefreshDropdown() {
+  statsAutoRefreshDropdownOpen.value = !statsAutoRefreshDropdownOpen.value
+  updateStatsAutoRefreshDropdownPosition()
+}
+
+function closeStatsAutoRefreshDropdownOnOutsideClick(event: MouseEvent) {
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (statsAutoRefreshDropdownRef.value?.contains(target)) return
+  statsAutoRefreshDropdownOpen.value = false
+}
+
+function handleStatsAutoRefreshViewportChange() {
+  updateStatsAutoRefreshDropdownPosition()
 }
 
 async function loadFilterOptions() {
@@ -2064,14 +2181,22 @@ function formatBytes(value?: number | null) {
 
 onMounted(() => {
   document.addEventListener('click', closeSkipRulePathMenuOnOutsideClick)
+  document.addEventListener('click', closeStatsAutoRefreshDropdownOnOutsideClick)
+  window.addEventListener('resize', handleStatsAutoRefreshViewportChange)
+  window.addEventListener('scroll', handleStatsAutoRefreshViewportChange, true)
   loadFilterOptions()
   loadNotice()
   loadSkipRules()
   loadCaptureRuntimeSettings()
   refreshAll()
+  restartStatsAutoRefresh()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeSkipRulePathMenuOnOutsideClick)
+  document.removeEventListener('click', closeStatsAutoRefreshDropdownOnOutsideClick)
+  window.removeEventListener('resize', handleStatsAutoRefreshViewportChange)
+  window.removeEventListener('scroll', handleStatsAutoRefreshViewportChange, true)
+  stopStatsAutoRefresh()
 })
 </script>
