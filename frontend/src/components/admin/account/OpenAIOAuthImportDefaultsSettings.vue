@@ -101,6 +101,33 @@
                 <option value="force_off">{{ t('admin.accounts.openai.compactModeForceOff') }}</option>
               </select>
             </div>
+            <div class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="input-label mb-0">
+                    {{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') }}
+                  </p>
+                </div>
+                <Toggle v-model="tlsFingerprintEnabled" data-testid="openai-oauth-default-tls-fingerprint-toggle" />
+              </div>
+              <select
+                v-if="tlsFingerprintEnabled"
+                v-model="tlsFingerprintProfileId"
+                class="input w-full md:w-64"
+                data-testid="openai-oauth-default-tls-fingerprint-profile"
+              >
+                <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+                <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">
+                  {{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}
+                </option>
+                <option v-for="profile in tlsFingerprintProfiles" :key="profile.id" :value="profile.id">
+                  {{ profile.name }}
+                </option>
+              </select>
+            </div>
           </div>
         </section>
 
@@ -266,6 +293,9 @@ const openaiPassthrough = ref(false)
 const codexCLIOnly = ref(false)
 const wsMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const compactMode = ref<OpenAICompactMode>('auto')
+const tlsFingerprintEnabled = ref(false)
+const tlsFingerprintProfileId = ref<number | null>(null)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const form = reactive({
   notes: '',
   concurrency: '' as NumberInputValue,
@@ -300,7 +330,9 @@ const structuredExtraKeys = [
   'responses_websockets_v2_enabled',
   'openai_ws_enabled',
   'codex_cli_only',
-  'openai_compact_mode'
+  'openai_compact_mode',
+  'enable_tls_fingerprint',
+  'tls_fingerprint_profile_id'
 ]
 
 const numberToInput = (value: unknown): string => {
@@ -378,6 +410,18 @@ const isCompactMode = (value: unknown): value is OpenAICompactMode => {
   return value === 'auto' || value === 'force_on' || value === 'force_off'
 }
 
+const normalizeTLSFingerprintProfileId = (value: unknown): number | null => {
+  // 导入模板保存为 JSON，profile_id 可能来自数字或数字字符串，这里统一归一化。
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return value === 0 ? null : value
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && parsed !== 0 ? parsed : null
+  }
+  return null
+}
+
 const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
   const account = defaults.account || {}
   form.notes = typeof account.notes === 'string' ? account.notes : ''
@@ -411,6 +455,10 @@ const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
     defaultMode: OPENAI_WS_MODE_OFF
   })
   compactMode.value = isCompactMode(extra.openai_compact_mode) ? extra.openai_compact_mode : 'auto'
+  tlsFingerprintEnabled.value = extra.enable_tls_fingerprint === true
+  tlsFingerprintProfileId.value = tlsFingerprintEnabled.value
+    ? normalizeTLSFingerprintProfileId(extra.tls_fingerprint_profile_id)
+    : null
   for (const key of structuredExtraKeys) {
     delete extra[key]
   }
@@ -426,6 +474,16 @@ const load = async () => {
     appStore.showError(error?.message || t('admin.accounts.openAIOAuthImportDefaultsLoadFailed'))
   } finally {
     loading.value = false
+  }
+}
+
+const loadTLSFingerprintProfiles = async () => {
+  try {
+    const profiles = await adminAPI.tlsFingerprintProfiles.list()
+    tlsFingerprintProfiles.value = profiles.map((profile) => ({ id: profile.id, name: profile.name }))
+  } catch {
+    // 模板保存不依赖 profile 列表，加载失败时保留内置默认选项。
+    tlsFingerprintProfiles.value = []
   }
 }
 
@@ -485,6 +543,12 @@ const save = async () => {
     if (compactMode.value !== 'auto') {
       extra.openai_compact_mode = compactMode.value
     }
+    if (tlsFingerprintEnabled.value) {
+      extra.enable_tls_fingerprint = true
+      if (tlsFingerprintProfileId.value !== null) {
+        extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+      }
+    }
 
     const modelMapping = buildModelMappingObject('mapping', [], defaultModelMappings.value)
     const updatedCredentials: Record<string, unknown> = {
@@ -509,5 +573,8 @@ const save = async () => {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadTLSFingerprintProfiles()
+})
 </script>

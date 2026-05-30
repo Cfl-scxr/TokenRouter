@@ -3583,6 +3583,18 @@ const isOpenAICompactMode = (value: unknown): value is OpenAICompactMode => {
   return value === 'auto' || value === 'force_on' || value === 'force_off'
 }
 
+const normalizeOpenAITLSFingerprintProfileId = (value: unknown): number | null => {
+  // 默认值来自 JSON 配置，兼容数字和数字字符串，非法值回落到内置默认 profile。
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return value === 0 ? null : value
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && parsed !== 0 ? parsed : null
+  }
+  return null
+}
+
 const splitDefaultMappingObject = (raw: unknown): ModelMapping[] => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return []
@@ -3689,6 +3701,10 @@ const applyOpenAIOAuthImportDefaultsToForm = () => {
   }
   if (isOpenAICompactMode(extra.openai_compact_mode) && openAICompactMode.value === 'auto') {
     openAICompactMode.value = extra.openai_compact_mode
+  }
+  if (extra.enable_tls_fingerprint === true) {
+    tlsFingerprintEnabled.value = true
+    tlsFingerprintProfileId.value = normalizeOpenAITLSFingerprintProfileId(extra.tls_fingerprint_profile_id)
   }
 
   openAIOAuthImportDefaultsApplied.value = true

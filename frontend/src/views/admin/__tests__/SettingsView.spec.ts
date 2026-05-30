@@ -26,6 +26,7 @@ const {
   updateProvider,
   createProvider,
   deleteProvider,
+  listTLSFingerprintProfiles,
   fetchPublicSettings,
   adminSettingsFetch,
   showError,
@@ -52,6 +53,7 @@ const {
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
   deleteProvider: vi.fn(),
+  listTLSFingerprintProfiles: vi.fn(),
   fetchPublicSettings: vi.fn(),
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
@@ -90,6 +92,9 @@ vi.mock("@/api", () => ({
       updateProvider,
       createProvider,
       deleteProvider,
+    },
+    tlsFingerprintProfiles: {
+      list: listTLSFingerprintProfiles,
     },
   },
 }));
@@ -205,6 +210,36 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.defaults.platformQuotaNotice": "月限额为 30 天滚动窗口，非自然月",
     "admin.settings.authSourceDefaults.platformQuotasOverride": "平台限额覆盖",
     "admin.settings.authSourceDefaults.platformQuotasOverrideHint": "留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。",
+    "admin.accounts.openAIOAuthImportDefaultsTitle": "OpenAI OAuth 导入默认值",
+    "admin.accounts.openAIOAuthImportDefaultsDescription": "这些默认值会在添加 OpenAI OAuth 账号时自动带入，也会用于批量导入中缺失字段的 OpenAI OAuth 账号。",
+    "admin.accounts.openAIOAuthImportDefaultsAccount": "账号字段",
+    "admin.accounts.openAIOAuthImportDefaultsOpenAIOptions": "OpenAI OAuth 选项",
+    "admin.accounts.openAIOAuthImportDefaultsUnset": "不设置",
+    "admin.accounts.openAIOAuthImportDefaultsCredentialsJson": "Credentials 附加 JSON",
+    "admin.accounts.openAIOAuthImportDefaultsExtraJson": "Extra 附加 JSON",
+    "admin.accounts.openAIOAuthImportDefaultsSaved": "导入默认值已保存",
+    "admin.accounts.openai.oauthPassthrough": "自动透传（仅替换认证）",
+    "admin.accounts.openai.oauthPassthroughDesc": "开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。",
+    "admin.accounts.openai.wsMode": "WS mode",
+    "admin.accounts.openai.wsModeDesc": "仅对当前 OpenAI 账号类型生效。",
+    "admin.accounts.openai.wsModeOff": "关闭（off）",
+    "admin.accounts.openai.wsModeCtxPool": "上下文池（ctx_pool）",
+    "admin.accounts.openai.wsModePassthrough": "透传（passthrough）",
+    "admin.accounts.openai.codexCLIOnly": "仅允许 Codex 官方客户端",
+    "admin.accounts.openai.codexCLIOnlyDesc": "仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。",
+    "admin.accounts.openai.compactMode": "Compact 模式",
+    "admin.accounts.openai.compactModeDesc": "控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。",
+    "admin.accounts.openai.compactModeAuto": "自动",
+    "admin.accounts.openai.compactModeForceOn": "强制开启",
+    "admin.accounts.openai.compactModeForceOff": "强制关闭",
+    "admin.accounts.quotaControl.tlsFingerprint.label": "TLS 指纹模拟",
+    "admin.accounts.quotaControl.tlsFingerprint.hint": "模拟 Node.js/Claude Code/Codex CLI 客户端的 TLS 指纹",
+    "admin.accounts.quotaControl.tlsFingerprint.defaultProfile": "内置默认",
+    "admin.accounts.quotaControl.tlsFingerprint.randomProfile": "随机",
+    "admin.accounts.modelWhitelist": "模型白名单",
+    "admin.accounts.modelMapping": "模型映射",
+    "admin.accounts.mapRequestModels": "将请求模型映射到实际模型。",
+    "admin.accounts.addMapping": "添加映射",
   };
   return {
     ...actual,
@@ -232,6 +267,7 @@ const ToggleStub = defineComponent({
         ...attrs,
         class: "toggle-stub",
         type: "checkbox",
+        "data-testid": attrs["data-testid"],
         checked: props.modelValue,
         onChange: (event: Event) => {
           emit("update:modelValue", (event.target as HTMLInputElement).checked);
@@ -537,6 +573,7 @@ describe("admin SettingsView payment visible method controls", () => {
     updateProvider.mockReset();
     createProvider.mockReset();
     deleteProvider.mockReset();
+    listTLSFingerprintProfiles.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();
@@ -611,6 +648,10 @@ describe("admin SettingsView payment visible method controls", () => {
     getProviders.mockResolvedValue({
       data: [],
     });
+    listTLSFingerprintProfiles.mockResolvedValue([
+      { id: 7, name: "Codex TLS" },
+      { id: 9, name: "Node TLS" },
+    ]);
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
   });
@@ -933,6 +974,47 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(paymentHelpImageUpload?.attributes("data-upload-label")).toBe("上传图片");
     expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
   });
+
+  it("renders and submits OpenAI OAuth import default TLS fingerprint settings", async () => {
+    getOpenAIOAuthImportDefaults.mockResolvedValueOnce({
+      credentials: { model_whitelist: ["gpt-5.2"] },
+      extra: {
+        enable_tls_fingerprint: true,
+        tls_fingerprint_profile_id: 7,
+      },
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    expect(listTLSFingerprintProfiles).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("TLS 指纹模拟");
+
+    const toggle = wrapper.get('[data-testid="openai-oauth-default-tls-fingerprint-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+
+    const profileSelect = wrapper.get('[data-testid="openai-oauth-default-tls-fingerprint-profile"]');
+    expect((profileSelect.element as HTMLSelectElement).value).toBe("7");
+    await profileSelect.setValue("9");
+
+    const defaultsCard = wrapper.get("#openai-oauth-import-defaults");
+    const saveButton = defaultsCard
+      .findAll("button")
+      .find((node) => node.text() === "common.save");
+    expect(saveButton).toBeDefined();
+    await saveButton?.trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthImportDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          enable_tls_fingerprint: true,
+          tls_fingerprint_profile_id: 9,
+        }),
+      }),
+    );
+  });
 });
 
 describe("admin SettingsView security tab controls", () => {
@@ -958,6 +1040,7 @@ describe("admin SettingsView security tab controls", () => {
     updateProvider.mockReset();
     createProvider.mockReset();
     deleteProvider.mockReset();
+    listTLSFingerprintProfiles.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();
@@ -1035,6 +1118,7 @@ describe("admin SettingsView security tab controls", () => {
     getProviders.mockResolvedValue({
       data: [],
     });
+    listTLSFingerprintProfiles.mockResolvedValue([]);
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
   });
