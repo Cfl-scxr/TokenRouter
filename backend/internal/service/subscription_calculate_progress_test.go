@@ -128,6 +128,27 @@ func TestCalculateProgress_MonthlyUsage(t *testing.T) {
 	assert.Equal(t, 80.0, progress.Monthly.Percentage)
 }
 
+func TestCalculateProgress_MonthlyTailWindowUsesExpiryAsResetTime(t *testing.T) {
+	svc := newTestSubscriptionService()
+	startsAt := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	monthlyStart := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
+
+	sub := &UserSubscription{
+		ID:                 1,
+		StartsAt:           startsAt,
+		ExpiresAt:          expiresAt,
+		MonthlyLimitUSD:    ptrFloat64(100.0),
+		MonthlyUsageUSD:    80.0,
+		MonthlyWindowStart: ptrTime(monthlyStart),
+	}
+
+	progress := svc.calculateProgress(sub)
+
+	require.NotNil(t, progress.Monthly, "月限额尾段仍应返回进度")
+	assert.Equal(t, expiresAt, progress.Monthly.ResetsAt, "到期尾段月额度结束时间应显示订阅过期时间")
+}
+
 func TestCalculateProgress_OverLimit_ClampedTo100Percent(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()

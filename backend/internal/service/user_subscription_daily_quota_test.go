@@ -12,11 +12,23 @@ import (
 type dailyResetTrackingUserSubRepo struct {
 	userSubRepoNoop
 
-	resetDailyCalled bool
+	resetDailyCalled   bool
+	resetWeeklyCalled  bool
+	resetMonthlyCalled bool
 }
 
 func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, time.Time) error {
 	r.resetDailyCalled = true
+	return nil
+}
+
+func (r *dailyResetTrackingUserSubRepo) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+	r.resetWeeklyCalled = true
+	return nil
+}
+
+func (r *dailyResetTrackingUserSubRepo) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+	r.resetMonthlyCalled = true
 	return nil
 }
 
@@ -92,6 +104,34 @@ func TestUserSubscriptionNeedsDailyReset_MultiDaySubscriptionStillRefreshes(t *t
 	require.True(t, sub.NeedsDailyResetAt(dailyWindowStart.Add(24*time.Hour)), "多日订阅仍应按 24 小时日窗口刷新")
 }
 
+func TestUserSubscriptionNeedsDailyReset_SkipsExpiryTailWindow(t *testing.T) {
+	start := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	dailyWindowStart := time.Date(2026, 5, 29, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 5, 30, 0, 5, 0, 0, time.UTC)
+	sub := &UserSubscription{
+		StartsAt:         start,
+		ExpiresAt:        expiresAt,
+		DailyWindowStart: &dailyWindowStart,
+	}
+
+	require.False(t, sub.NeedsDailyResetAt(now), "到期当天不足完整日窗口时不应额外刷新 daily usage")
+}
+
+func TestUserSubscriptionNeedsMonthlyReset_SkipsExpiryTailWindow(t *testing.T) {
+	start := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	monthlyWindowStart := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 5, 30, 0, 5, 0, 0, time.UTC)
+	sub := &UserSubscription{
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		MonthlyWindowStart: &monthlyWindowStart,
+	}
+
+	require.False(t, sub.NeedsMonthlyResetAt(now), "到期当天不足完整月窗口时不应额外刷新 monthly usage")
+}
+
 func TestUserSubscriptionDailyResetTime_DailyCardReturnsExpiry(t *testing.T) {
 	start := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
 	dailyWindowStart := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
@@ -105,6 +145,21 @@ func TestUserSubscriptionDailyResetTime_DailyCardReturnsExpiry(t *testing.T) {
 	resetAt := sub.DailyResetTime()
 	require.NotNil(t, resetAt)
 	require.Equal(t, expiresAt, *resetAt, "日卡展示的日额度结束时间应为订阅过期时间")
+}
+
+func TestUserSubscriptionMonthlyResetTime_TailWindowReturnsExpiry(t *testing.T) {
+	start := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	monthlyWindowStart := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
+	sub := &UserSubscription{
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		MonthlyWindowStart: &monthlyWindowStart,
+	}
+
+	resetAt := sub.MonthlyResetTime()
+	require.NotNil(t, resetAt)
+	require.Equal(t, expiresAt, *resetAt, "到期尾段展示的月额度结束时间应为订阅过期时间")
 }
 
 func TestCheckAndResetWindows_DailyCardDoesNotResetDailyUsage(t *testing.T) {
@@ -141,7 +196,7 @@ func TestCheckAndResetWindows_MultiDaySubscriptionStillResetsDailyUsage(t *testi
 		UserID:           10,
 		PlanID:           20,
 		StartsAt:         startsAt,
-		ExpiresAt:        startsAt.AddDate(0, 0, 2),
+		ExpiresAt:        startsAt.AddDate(0, 0, 4),
 		DailyUsageUSD:    10,
 		DailyWindowStart: &dailyWindowStart,
 	}
@@ -151,6 +206,29 @@ func TestCheckAndResetWindows_MultiDaySubscriptionStillResetsDailyUsage(t *testi
 	require.NoError(t, err)
 	require.True(t, repo.resetDailyCalled, "多日订阅仍应重置过期 daily window")
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
+}
+
+func TestCheckAndResetWindows_ExpiryTailDoesNotResetMonthlyUsage(t *testing.T) {
+	start := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	monthlyWindowStart := time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:                 1,
+		UserID:             10,
+		PlanID:             20,
+		StartsAt:           start,
+		ExpiresAt:          expiresAt,
+		MonthlyUsageUSD:    10,
+		MonthlyWindowStart: &monthlyWindowStart,
+	}
+
+	err := svc.CheckAndResetWindows(context.Background(), sub)
+
+	require.NoError(t, err)
+	require.False(t, repo.resetMonthlyCalled, "到期尾段不应重置 monthly usage")
+	require.Equal(t, 10.0, sub.MonthlyUsageUSD)
 }
 
 func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t *testing.T) {

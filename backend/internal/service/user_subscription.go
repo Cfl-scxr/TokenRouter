@@ -2,6 +2,12 @@ package service
 
 import "time"
 
+const (
+	subscriptionDailyWindow   = 24 * time.Hour
+	subscriptionWeeklyWindow  = 7 * 24 * time.Hour
+	subscriptionMonthlyWindow = 30 * 24 * time.Hour
+)
+
 type UserSubscription struct {
 	ID     int64
 	UserID int64
@@ -107,21 +113,49 @@ func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 	if s.HasOneTimeDailyQuota() {
 		return false
 	}
-	return !now.Before(s.DailyWindowStart.Add(24 * time.Hour))
+	if now.Before(s.DailyWindowStart.Add(subscriptionDailyWindow)) {
+		return false
+	}
+	// 到期尾段不足一个完整日窗口时不再重置，避免套餐结束前额外刷新一次额度。
+	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionDailyWindow)
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
+	return s.NeedsWeeklyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsWeeklyResetAt(now time.Time) bool {
 	if s.WeeklyWindowStart == nil {
 		return false
 	}
-	return time.Since(*s.WeeklyWindowStart) >= 7*24*time.Hour
+	if now.Before(s.WeeklyWindowStart.Add(subscriptionWeeklyWindow)) {
+		return false
+	}
+	// 到期尾段不足一个完整周窗口时不再重置，避免最终几天额外刷新周额度。
+	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionWeeklyWindow)
 }
 
 func (s *UserSubscription) NeedsMonthlyReset() bool {
+	return s.NeedsMonthlyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
 	if s.MonthlyWindowStart == nil {
 		return false
 	}
-	return time.Since(*s.MonthlyWindowStart) >= 30*24*time.Hour
+	if now.Before(s.MonthlyWindowStart.Add(subscriptionMonthlyWindow)) {
+		return false
+	}
+	// 到期尾段不足一个完整月窗口时不再重置，避免 30 天套餐到期瞬间刷新月额度。
+	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionMonthlyWindow)
+}
+
+// CanStartFullQuotaWindow 判断从指定起点开始是否还能覆盖一个完整额度窗口。
+func (s *UserSubscription) CanStartFullQuotaWindow(windowStart time.Time, duration time.Duration) bool {
+	if s == nil || s.ExpiresAt.IsZero() {
+		return false
+	}
+	return !windowStart.Add(duration).After(s.ExpiresAt)
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
@@ -132,7 +166,10 @@ func (s *UserSubscription) DailyResetTime() *time.Time {
 		t := s.ExpiresAt
 		return &t
 	}
-	t := s.DailyWindowStart.Add(24 * time.Hour)
+	t := s.DailyWindowStart.Add(subscriptionDailyWindow)
+	if !s.CanStartFullQuotaWindow(t, subscriptionDailyWindow) {
+		t = s.ExpiresAt
+	}
 	return &t
 }
 
@@ -140,7 +177,10 @@ func (s *UserSubscription) WeeklyResetTime() *time.Time {
 	if s.WeeklyWindowStart == nil {
 		return nil
 	}
-	t := s.WeeklyWindowStart.Add(7 * 24 * time.Hour)
+	t := s.WeeklyWindowStart.Add(subscriptionWeeklyWindow)
+	if !s.CanStartFullQuotaWindow(t, subscriptionWeeklyWindow) {
+		t = s.ExpiresAt
+	}
 	return &t
 }
 
@@ -148,7 +188,10 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	if s.MonthlyWindowStart == nil {
 		return nil
 	}
-	t := s.MonthlyWindowStart.Add(30 * 24 * time.Hour)
+	t := s.MonthlyWindowStart.Add(subscriptionMonthlyWindow)
+	if !s.CanStartFullQuotaWindow(t, subscriptionMonthlyWindow) {
+		t = s.ExpiresAt
+	}
 	return &t
 }
 

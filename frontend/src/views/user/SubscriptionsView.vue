@@ -275,21 +275,32 @@ function getProgressBarClass(used: number, limit: number | null): string {
 function formatExpirationDate(expiresAt: string): string {
   const now = new Date()
   const expires = new Date(expiresAt)
-  const diff = expires.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  if (days < 0) return t('userSubscriptions.status.expired')
+  if (!Number.isFinite(expires.getTime())) return formatDateOnly(expires)
+  if (expires.getTime() <= now.getTime()) return t('userSubscriptions.status.expired')
   const date = formatDateOnly(expires)
+  const days = diffLocalCalendarDays(expires, now)
   if (days === 0) return `${date} (${t('common.today')})`
   if (days === 1) return `${date} (${t('common.tomorrow')})`
   return `${t('userSubscriptions.daysRemaining', { days })} (${date})`
 }
 
 function getExpirationClass(expiresAt: string): string {
-  const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  if (!Number.isFinite(expires.getTime()) || expires.getTime() <= now.getTime()) {
+    return 'font-medium text-red-600 dark:text-red-400'
+  }
+  const days = diffLocalCalendarDays(expires, now)
   if (days <= 0) return 'font-medium text-red-600 dark:text-red-400'
   if (days <= 3) return 'text-red-600 dark:text-red-400'
   if (days <= 7) return 'text-orange-600 dark:text-orange-400'
   return 'text-gray-700 dark:text-gray-300'
+}
+
+function diffLocalCalendarDays(target: Date, base: Date): number {
+  const targetDay = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
+  const baseDay = Date.UTC(base.getFullYear(), base.getMonth(), base.getDate())
+  return Math.round((targetDay - baseDay) / (1000 * 60 * 60 * 24))
 }
 
 function formatDurationParts(parts: RemainingDurationParts): string {
@@ -312,9 +323,29 @@ function formatUsageWindow(
       ? t('userSubscriptions.quotaEndsIn', { time: formatDurationParts(parts) })
       : t('userSubscriptions.windowNotActive')
   }
+  if (isQuotaWindowEndingAtSubscriptionExpiry(subscription, window)) {
+    const parts = getRemainingDurationParts(subscription.expires_at)
+    return parts
+      ? t('userSubscriptions.quotaEndsIn', { time: formatDurationParts(parts) })
+      : t('userSubscriptions.windowNotActive')
+  }
   return t('userSubscriptions.resetIn', {
     time: formatResetTime(window.window_start, window.hours)
   })
+}
+
+function isQuotaWindowEndingAtSubscriptionExpiry(
+  subscription: UserSubscription,
+  window: ReturnType<typeof usageWindows>[number]
+): boolean {
+  if (!window.window_start) return false
+  const windowStart = new Date(window.window_start).getTime()
+  const expiresAt = new Date(subscription.expires_at).getTime()
+  if (!Number.isFinite(windowStart) || !Number.isFinite(expiresAt)) return false
+
+  const windowMs = window.hours * 60 * 60 * 1000
+  const nextWindowStart = windowStart + windowMs
+  return nextWindowStart + windowMs > expiresAt
 }
 
 function formatResetTime(windowStart: string | null, windowHours: number): string {

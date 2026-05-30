@@ -858,13 +858,13 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription) *Subscrip
 	if sub.Plan != nil {
 		progress.PlanName = sub.Plan.Name
 	}
-	if limit, ok := normalizedWindowProgress(sub.DailyLimitUSD, sub.DailyUsageUSD, sub.DailyResetTime(), sub.DailyWindowStart, 24*time.Hour); ok {
+	if limit, ok := normalizedWindowProgress(sub.DailyLimitUSD, sub.DailyUsageUSD, sub.DailyResetTime(), sub.DailyWindowStart, subscriptionDailyWindow); ok {
 		progress.Daily = limit
 	}
-	if limit, ok := normalizedWindowProgress(sub.WeeklyLimitUSD, sub.WeeklyUsageUSD, nil, sub.WeeklyWindowStart, 7*24*time.Hour); ok {
+	if limit, ok := normalizedWindowProgress(sub.WeeklyLimitUSD, sub.WeeklyUsageUSD, sub.WeeklyResetTime(), sub.WeeklyWindowStart, subscriptionWeeklyWindow); ok {
 		progress.Weekly = limit
 	}
-	if limit, ok := normalizedWindowProgress(sub.MonthlyLimitUSD, sub.MonthlyUsageUSD, nil, sub.MonthlyWindowStart, 30*24*time.Hour); ok {
+	if limit, ok := normalizedWindowProgress(sub.MonthlyLimitUSD, sub.MonthlyUsageUSD, sub.MonthlyResetTime(), sub.MonthlyWindowStart, subscriptionMonthlyWindow); ok {
 		progress.Monthly = limit
 	}
 	return progress
