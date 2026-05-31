@@ -31,6 +31,7 @@ func ClientRequestID() gin.HandlerFunc {
 		requestLogger := logger.FromContext(ctx).With(zap.String("client_request_id", strings.TrimSpace(id)))
 		ctx = logger.IntoContext(ctx, requestLogger)
 		c.Request = c.Request.WithContext(ctx)
+		c.Header("X-Client-Request-Id", id)
 		c.Next()
 	}
 }
