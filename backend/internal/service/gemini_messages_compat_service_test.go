@@ -173,6 +173,104 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, "data: [DONE]")
 }
 
+func TestGeminiMessagesCompatServiceForward_StreamingClosesToolUseBeforeText(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"lookup","args":{"query":"weather"}}}]}}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1}}` + "\n\n" +
+		`data: {"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":2}}` + "\n\n" +
+		"data: [DONE]\n\n"
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "gemini-api-key",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-2.5-flash","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	events := parseSSEEventsForTest(t, rec.Body.String())
+	toolStart := findSSEEventForTest(events, "content_block_start", 0, "tool_use")
+	toolStop := findSSEEventForTest(events, "content_block_stop", 0, "")
+	textStart := findSSEEventForTest(events, "content_block_start", 1, "text")
+	require.GreaterOrEqual(t, toolStart, 0, "应先开始 tool_use 块")
+	require.Greater(t, toolStop, toolStart, "tool_use 块应被关闭")
+	require.Greater(t, textStart, toolStop, "文本块必须在 tool_use 块关闭后开始")
+
+	require.Equal(t, "tool_use", gjson.GetBytes(result.ResponseBody, "stop_reason").String())
+	require.Equal(t, "tool_use", gjson.GetBytes(result.ResponseBody, "content.0.type").String())
+	require.Equal(t, "text", gjson.GetBytes(result.ResponseBody, "content.1.type").String())
+}
+
+func parseSSEEventsForTest(t *testing.T, stream string) []map[string]any {
+	t.Helper()
+	chunks := strings.Split(stream, "\n\n")
+	events := make([]map[string]any, 0, len(chunks))
+	for _, chunk := range chunks {
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		eventName := ""
+		dataLine := ""
+		for _, line := range strings.Split(chunk, "\n") {
+			if strings.HasPrefix(line, "event:") {
+				eventName = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			}
+			if strings.HasPrefix(line, "data:") {
+				dataLine = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			}
+		}
+		if dataLine == "" || dataLine == "[DONE]" {
+			continue
+		}
+		var data map[string]any
+		require.NoError(t, json.Unmarshal([]byte(dataLine), &data))
+		data["_event"] = eventName
+		events = append(events, data)
+	}
+	return events
+}
+
+func findSSEEventForTest(events []map[string]any, event string, index int, blockType string) int {
+	for i, data := range events {
+		if data["_event"] != event {
+			continue
+		}
+		if gotIndex, ok := data["index"].(float64); ok && int(gotIndex) != index {
+			continue
+		}
+		if blockType != "" {
+			block, _ := data["content_block"].(map[string]any)
+			if block["type"] != blockType {
+				continue
+			}
+		}
+		return i
+	}
+	return -1
+}
+
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 	tests := []struct {

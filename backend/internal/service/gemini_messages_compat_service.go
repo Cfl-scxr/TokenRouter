@@ -2059,6 +2059,19 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		parts := extractGeminiParts(geminiResp)
 		for _, part := range parts {
 			if text, ok := part["text"].(string); ok && text != "" {
+				// 开始文本块前先关闭已打开的 tool_use 块，和 functionCall 分支
+				// 先关闭文本块的处理保持对称；否则工具块和文本块会在
+				// Anthropic SSE 中重叠，违反 content block 生命周期约束。
+				if openToolIndex >= 0 {
+					writeAnthropicStreamEvent("content_block_stop", map[string]any{
+						"type":  "content_block_stop",
+						"index": openToolIndex,
+					})
+					openToolIndex = -1
+					openToolName = ""
+					seenToolJSON = ""
+				}
+
 				delta, newSeen := computeGeminiTextDelta(seenText, text)
 				seenText = newSeen
 				if delta == "" {
