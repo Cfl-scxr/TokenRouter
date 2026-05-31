@@ -22,9 +22,10 @@ type DataSharingCaptureBufferScheduleFlush func(job DataSharingCaptureJob) DataS
 
 // DataSharingCaptureBufferOptions 描述采集缓冲池的依赖与初始配置。
 type DataSharingCaptureBufferOptions struct {
-	Flush         DataSharingCaptureBufferFlush
-	Hydrate       DataSharingCaptureBufferHydrate
-	ScheduleFlush DataSharingCaptureBufferScheduleFlush
+	Flush            DataSharingCaptureBufferFlush
+	Hydrate          DataSharingCaptureBufferHydrate
+	ScheduleFlush    DataSharingCaptureBufferScheduleFlush
+	DurationRecorder DataShareCaptureDurationRecorder
 }
 
 // DataSharingCaptureBufferStats 是管理端可见的采集缓冲池运行时统计。
@@ -46,26 +47,27 @@ type DataSharingCaptureBufferStats struct {
 
 // DataSharingCaptureBuffer 按 trajectory_id 聚合采集增量，降低热点 session 的重复落库成本。
 type DataSharingCaptureBuffer struct {
-	mu             sync.Mutex
-	flush          DataSharingCaptureBufferFlush
-	hydrate        DataSharingCaptureBufferHydrate
-	scheduleFlush  DataSharingCaptureBufferScheduleFlush
-	entries        map[string]*dataSharingCaptureBufferEntry
-	stopped        bool
-	enabled        bool
-	idleFlush      time.Duration
-	flushTimeout   time.Duration
-	maxSessions    int
-	maxPending     int
-	pendingEvents  int
-	flushWG        sync.WaitGroup
-	flushing       atomic.Int64
-	submittedTotal atomic.Uint64
-	successTotal   atomic.Uint64
-	failedTotal    atomic.Uint64
-	droppedTotal   atomic.Uint64
-	lastDurationMS atomic.Int64
-	lastError      atomic.Value
+	mu               sync.Mutex
+	flush            DataSharingCaptureBufferFlush
+	hydrate          DataSharingCaptureBufferHydrate
+	scheduleFlush    DataSharingCaptureBufferScheduleFlush
+	durationRecorder DataShareCaptureDurationRecorder
+	entries          map[string]*dataSharingCaptureBufferEntry
+	stopped          bool
+	enabled          bool
+	idleFlush        time.Duration
+	flushTimeout     time.Duration
+	maxSessions      int
+	maxPending       int
+	pendingEvents    int
+	flushWG          sync.WaitGroup
+	flushing         atomic.Int64
+	submittedTotal   atomic.Uint64
+	successTotal     atomic.Uint64
+	failedTotal      atomic.Uint64
+	droppedTotal     atomic.Uint64
+	lastDurationMS   atomic.Int64
+	lastError        atomic.Value
 }
 
 type dataSharingCaptureBufferEntry struct {
@@ -85,15 +87,16 @@ type dataSharingCaptureBufferEntry struct {
 // NewDataSharingCaptureBuffer 创建进程内数据共享采集缓冲池。
 func NewDataSharingCaptureBuffer(opts DataSharingCaptureBufferOptions) *DataSharingCaptureBuffer {
 	b := &DataSharingCaptureBuffer{
-		flush:         opts.Flush,
-		hydrate:       opts.Hydrate,
-		scheduleFlush: opts.ScheduleFlush,
-		entries:       map[string]*dataSharingCaptureBufferEntry{},
-		enabled:       defaultDataSharingCaptureBufferEnabled,
-		idleFlush:     time.Duration(defaultDataSharingCaptureBufferIdleSeconds) * time.Second,
-		flushTimeout:  time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
-		maxSessions:   defaultDataSharingCaptureBufferMaxSessions,
-		maxPending:    defaultDataSharingCaptureBufferMaxEvents,
+		flush:            opts.Flush,
+		hydrate:          opts.Hydrate,
+		scheduleFlush:    opts.ScheduleFlush,
+		durationRecorder: opts.DurationRecorder,
+		entries:          map[string]*dataSharingCaptureBufferEntry{},
+		enabled:          defaultDataSharingCaptureBufferEnabled,
+		idleFlush:        time.Duration(defaultDataSharingCaptureBufferIdleSeconds) * time.Second,
+		flushTimeout:     time.Duration(defaultDataSharingCaptureTaskTimeoutSeconds) * time.Second,
+		maxSessions:      defaultDataSharingCaptureBufferMaxSessions,
+		maxPending:       defaultDataSharingCaptureBufferMaxEvents,
 	}
 	return b
 }
@@ -121,6 +124,10 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 	if b == nil || session == nil {
 		return nil
 	}
+	submitStart := time.Now()
+	defer func() {
+		b.recordDuration(DataShareCaptureDurationPartBufferSubmitTotal, time.Since(submitStart))
+	}()
 	if b.flush == nil {
 		return errors.New("data sharing capture buffer flush is nil")
 	}
@@ -156,7 +163,9 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 	}
 	if shouldHydrate {
 		b.mu.Unlock()
+		hydrateStart := time.Now()
 		b.hydrateEntry(ctx, entry, key)
+		b.recordDuration(DataShareCaptureDurationPartBufferHydrate, time.Since(hydrateStart))
 		b.mu.Lock()
 	}
 
@@ -179,12 +188,14 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 		b.mu.Unlock()
 		return b.flush(ctx, finalizeBufferedDataShareSession(session))
 	}
+	mergeStart := time.Now()
 	entry.session = mergeBufferedDataShareSession(entry.session, session)
 	entry.eventCount++
 	entry.lastUpdated = time.Now()
 	b.pendingEvents++
 	b.submittedTotal.Add(1)
 	b.scheduleEntryTimerLocked(entry, b.idleFlush)
+	b.recordDuration(DataShareCaptureDurationPartBufferMerge, time.Since(mergeStart))
 	b.mu.Unlock()
 	return nil
 }
@@ -480,14 +491,17 @@ func (b *DataSharingCaptureBuffer) flushEntry(ctx context.Context, key string, s
 		b.finishFlush(key, nil)
 		return nil
 	}
-	session = finalizeBufferedDataShareSession(session)
 	start := time.Now()
+	finalizeStart := time.Now()
+	session = finalizeBufferedDataShareSession(session)
+	b.recordDuration(DataShareCaptureDurationPartFlushFinalize, time.Since(finalizeStart))
 	b.flushing.Add(1)
 	flushCtx, cancel := b.flushContext(ctx)
 	err := b.flush(flushCtx, session)
 	cancel()
 	b.flushing.Add(-1)
 	b.lastDurationMS.Store(time.Since(start).Milliseconds())
+	b.recordDuration(DataShareCaptureDurationPartFlushTotal, time.Since(start))
 	if err != nil {
 		b.failedTotal.Add(1)
 		b.lastError.Store(truncateDataSharingCaptureError(err.Error()))
@@ -501,6 +515,13 @@ func (b *DataSharingCaptureBuffer) flushEntry(ctx context.Context, key string, s
 	}
 	b.finishFlush(key, err)
 	return err
+}
+
+func (b *DataSharingCaptureBuffer) recordDuration(part DataShareCaptureDurationPartKey, duration time.Duration) {
+	if b == nil || b.durationRecorder == nil {
+		return
+	}
+	b.durationRecorder.Observe(part, duration)
 }
 
 func (b *DataSharingCaptureBuffer) flushContext(ctx context.Context) (context.Context, context.CancelFunc) {

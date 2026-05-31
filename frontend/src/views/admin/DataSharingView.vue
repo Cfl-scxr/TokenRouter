@@ -282,7 +282,7 @@
           </div>
 
           <div class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-3">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label class="input-label">空闲 Flush（秒）</label>
                 <input v-model="captureBufferIdleFlushInput" type="number" min="1" :max="captureBufferIdleFlushMax" step="1" class="input" />
@@ -294,6 +294,10 @@
               <div>
                 <label class="input-label">最大增量</label>
                 <input v-model="captureBufferMaxPendingEventsInput" type="number" min="1" :max="captureBufferMaxPendingEventsLimit" step="1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">耗时窗口样本数</label>
+                <input v-model="captureDurationWindowInput" type="number" :min="captureDurationWindowMin" :max="captureDurationWindowMax" step="1" class="input" />
               </div>
             </div>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -311,10 +315,16 @@
                   {{ formatNumber(captureBufferFlushSuccessTotal) }}/{{ formatNumber(captureBufferFlushFailedTotal) }}
                 </p>
               </div>
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+              <button
+                type="button"
+                class="rounded-lg bg-gray-50 p-4 text-left transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800/60 dark:hover:bg-gray-800"
+                title="查看采集链路耗时分布"
+                @click="durationDetailOpen = true"
+              >
                 <p class="text-xs text-gray-500 dark:text-gray-400">最近耗时</p>
-                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferLastFlushDurationMillis) }}</p>
-              </div>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferRecentDurationMillis) }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">窗口 {{ formatNumber(captureDurationWindowSize) }} · 样本 {{ formatNumber(captureDurationSampleCount) }}</p>
+              </button>
             </div>
           </div>
         </div>
@@ -825,6 +835,71 @@
         <pre class="max-h-[60vh] overflow-auto rounded-lg bg-gray-950 p-4 text-xs leading-relaxed text-gray-100">{{ prettySession }}</pre>
       </div>
     </BaseDialog>
+
+    <BaseDialog :show="durationDetailOpen" title="采集耗时分布" width="extra-wide" @close="durationDetailOpen = false">
+      <div class="space-y-4">
+        <div class="grid gap-3 md:grid-cols-3">
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500 dark:text-gray-400">窗口样本数</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureDurationWindowSize) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500 dark:text-gray-400">当前样本</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatNumber(captureDurationSampleCount) }}</p>
+          </div>
+          <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+            <p class="text-xs text-gray-500 dark:text-gray-400">最近 Flush</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(captureBufferRecentDurationMillis) }}</p>
+          </div>
+        </div>
+
+        <div v-if="!captureDurationSampleCount" class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          当前窗口还没有新采集耗时样本；产生新的数据共享请求并等待 Flush 后会出现柱状分布。
+        </div>
+        <div v-if="captureDurationParts.length" class="space-y-3">
+          <div
+            v-for="part in captureDurationParts"
+            :key="part.key"
+            class="rounded-lg border border-gray-200 p-4 dark:border-gray-700"
+          >
+            <div class="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ part.label }}</h3>
+                  <span class="badge badge-gray">{{ part.category }}</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">样本 {{ formatNumber(part.sample_count) }}</p>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-5">
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">最近</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(part.last_millis) }}</p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">平均</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(part.avg_millis) }}</p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">P50</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(part.p50_millis) }}</p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">P95</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(part.p95_millis) }}</p>
+                </div>
+                <div>
+                  <p class="text-gray-500 dark:text-gray-400">最大</p>
+                  <p class="font-semibold text-gray-900 dark:text-white">{{ formatDurationMillis(part.max_millis) }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="h-48">
+              <Bar :data="durationBucketChartData(part)" :options="durationBucketChartOptions" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -857,6 +932,7 @@ import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import {
   adminDataSharingAPI,
   type AdminDataShareSessionFilters,
+  type DataShareCaptureDurationPart,
   type DataShareCaptureSkipRule,
   type DataShareCaptureSkipRuleFieldScope,
   type DataShareStorageLimit,
@@ -887,6 +963,7 @@ const captureBufferEnabledInput = ref(true)
 const captureBufferIdleFlushInput = ref('')
 const captureBufferMaxSessionsInput = ref('')
 const captureBufferMaxPendingEventsInput = ref('')
+const captureDurationWindowInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureFlushQueueSizeMax = 100000
@@ -895,6 +972,9 @@ const captureTimeoutSecondsMax = 1800
 const captureBufferIdleFlushMax = 300
 const captureBufferMaxSessionsLimit = 100000
 const captureBufferMaxPendingEventsLimit = 1000000
+const captureDurationWindowMin = 32
+const captureDurationWindowMax = 10000
+const captureDurationWindowDefault = 512
 const statsAutoRefreshDefaultSeconds = 5
 const statsAutoRefreshIntervals = [5, 10, 15, 30] as const
 const captureCompressionLevelOptions = [
@@ -932,6 +1012,7 @@ const savingCaptureRuntimeSettings = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
+const durationDetailOpen = ref(false)
 
 const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
@@ -1224,6 +1305,27 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+const durationBucketChartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  indexAxis: 'y' as const,
+  scales: {
+    x: {
+      beginAtZero: true,
+      ticks: { color: chartColors.value.text, precision: 0 },
+      grid: { color: chartColors.value.grid }
+    },
+    y: { ticks: { color: chartColors.value.text }, grid: { color: chartColors.value.grid } }
+  },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx: any) => `样本: ${formatNumber(Number(ctx.raw || 0))}`
+      }
+    }
+  }
+}))
 const captureWorkerQueueText = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return '-'
@@ -1301,6 +1403,14 @@ const captureBufferFlushSuccessTotal = computed(() => stats.value?.capture_buffe
 const captureBufferFlushFailedTotal = computed(() => stats.value?.capture_buffer?.flush_failed_total || 0)
 const captureBufferDroppedTotal = computed(() => stats.value?.capture_buffer?.dropped_total || 0)
 const captureBufferLastFlushDurationMillis = computed(() => stats.value?.capture_buffer?.last_flush_duration_millis || 0)
+const captureDurationWindowSize = computed(() => stats.value?.capture_durations?.window_size || captureDurationWindowDefault)
+const captureDurationSampleCount = computed(() => stats.value?.capture_durations?.sample_count || 0)
+const captureDurationParts = computed(() => stats.value?.capture_durations?.parts || [])
+const captureFlushTotalDurationPart = computed(() => captureDurationParts.value.find(part => part.key === 'flush_total'))
+const captureBufferRecentDurationMillis = computed(() => {
+  const flushTotal = captureFlushTotalDurationPart.value
+  return flushTotal && flushTotal.sample_count > 0 ? flushTotal.last_millis : captureBufferLastFlushDurationMillis.value
+})
 const captureBufferSessionProgress = computed(() => ratioPercent(captureBufferBufferedSessions.value, captureBufferMaxSessions.value))
 const captureBufferPendingProgress = computed(() => ratioPercent(captureBufferPendingEvents.value, captureBufferMaxPendingEvents.value))
 const captureBufferSessionRatioText = computed(() => `${captureBufferSessionProgress.value.toFixed(1)}%`)
@@ -1491,7 +1601,8 @@ function captureRuntimeSettingsFromForm() {
   const bufferIdleFlushSeconds = boundedPositiveIntegerFromInput(captureBufferIdleFlushInput.value, captureBufferIdleFlushMax)
   const bufferMaxSessions = boundedPositiveIntegerFromInput(captureBufferMaxSessionsInput.value, captureBufferMaxSessionsLimit)
   const bufferMaxPendingEvents = boundedPositiveIntegerFromInput(captureBufferMaxPendingEventsInput.value, captureBufferMaxPendingEventsLimit)
-  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents) {
+  const durationWindowSize = boundedIntegerFromInput(captureDurationWindowInput.value, captureDurationWindowMin, captureDurationWindowMax)
+  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents || !durationWindowSize) {
     throw new Error('invalid capture runtime settings')
   }
   return {
@@ -1503,7 +1614,8 @@ function captureRuntimeSettingsFromForm() {
     buffer_enabled: true,
     buffer_idle_flush_seconds: bufferIdleFlushSeconds,
     buffer_max_sessions: bufferMaxSessions,
-    buffer_max_pending_events: bufferMaxPendingEvents
+    buffer_max_pending_events: bufferMaxPendingEvents,
+    duration_window_size: durationWindowSize
   }
 }
 
@@ -1515,6 +1627,12 @@ function boundedPositiveIntegerFromInput(value: string, max: number) {
   const raw = Number(value)
   if (!Number.isFinite(raw) || raw <= 0) return 0
   return Math.min(Math.round(raw), max)
+}
+
+function boundedIntegerFromInput(value: string, min: number, max: number) {
+  const raw = Number(value)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  return Math.min(Math.max(Math.round(raw), min), max)
 }
 
 function ratioPercent(value: number, total: number) {
@@ -1532,6 +1650,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   buffer_idle_flush_seconds?: number
   buffer_max_sessions?: number
   buffer_max_pending_events?: number
+  duration_window_size?: number
 }) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
@@ -1542,6 +1661,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   captureBufferIdleFlushInput.value = String(settings.buffer_idle_flush_seconds || 30)
   captureBufferMaxSessionsInput.value = String(settings.buffer_max_sessions || 4096)
   captureBufferMaxPendingEventsInput.value = String(settings.buffer_max_pending_events || 65536)
+  captureDurationWindowInput.value = String(settings.duration_window_size || captureDurationWindowDefault)
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -1755,6 +1875,9 @@ async function loadStats() {
     }
     if (!captureBufferMaxPendingEventsInput.value && captureBufferMaxPendingEvents.value > 0) {
       captureBufferMaxPendingEventsInput.value = String(captureBufferMaxPendingEvents.value)
+    }
+    if (!captureDurationWindowInput.value) {
+      captureDurationWindowInput.value = String(captureDurationWindowSize.value)
     }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')
@@ -2058,7 +2181,7 @@ function formatNumber(value?: number | null) {
 }
 
 function formatDurationMillis(value?: number | null) {
-  const millis = value || 0
+  const millis = Math.max(Math.round(value || 0), 0)
   if (millis < 1000) return `${formatNumber(millis)} ms`
   return `${(millis / 1000).toFixed(2)} s`
 }
@@ -2119,6 +2242,21 @@ function buildSessionCountDoughnutChartOptions(points: Array<{ session_count: nu
         }
       }
     }
+  }
+}
+
+function durationBucketChartData(part: DataShareCaptureDurationPart) {
+  return {
+    labels: part.buckets.map(bucket => bucket.label),
+    datasets: [
+      {
+        label: part.label,
+        data: part.buckets.map(bucket => bucket.count),
+        backgroundColor: '#0891b288',
+        borderColor: '#0891b2',
+        borderWidth: 1
+      }
+    ]
   }
 }
 

@@ -66,6 +66,7 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 	if session == nil {
 		return nil
 	}
+	upsertOptions := resolveDataShareUpsertOptions(opts)
 	client := clientFromContext(ctx, r.client)
 	now := time.Now()
 	if session.CreatedAt.IsZero() {
@@ -78,20 +79,26 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 		session.EndedAt = &now
 	}
 	payload := service.BuildDataShareSessionPayload(session)
+	encodeStart := time.Now()
 	compressed, payloadBytes, err := encodeDataSharePayload(payload)
+	recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartPayloadEncode, time.Since(encodeStart))
 	if err != nil {
 		return err
 	}
+	lookupStart := time.Now()
 	existing, err := client.DataShareSession.Query().
 		Where(datasharesession.TrajectoryIDEQ(session.TrajectoryID)).
 		Only(ctx)
+	recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartDBLookup, time.Since(lookupStart))
 	if err != nil && !dbent.IsNotFound(err) {
 		return err
 	}
 	if dbent.IsNotFound(err) || existing == nil {
 		// 新 session 写入前做容量保护，避免数据共享采集把磁盘持续打满。
-		if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
+		if limitBytes := upsertOptions.StorageLimitBytes; limitBytes > 0 {
+			limitStart := time.Now()
 			currentBytes, err := r.TotalStorageBytes(ctx)
+			recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartStorageLimitCheck, time.Since(limitStart))
 			if err != nil {
 				return err
 			}
@@ -132,13 +139,17 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 			SetCreatedAt(session.CreatedAt).
 			SetNillableEndedAt(session.EndedAt).
 			SetUpdatedAt(now)
+		writeStart := time.Now()
 		_, err = builder.Save(ctx)
+		recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartDBWrite, time.Since(writeStart))
 		return err
 	}
 
 	// 已有 session 的快照保存也需要容量保护，避免单个任务持续追加时突破磁盘阈值。
-	if limitBytes := resolveDataShareStorageLimit(opts); limitBytes > 0 {
+	if limitBytes := upsertOptions.StorageLimitBytes; limitBytes > 0 {
+		limitStart := time.Now()
 		currentBytes, err := r.TotalStorageBytes(ctx)
+		recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartStorageLimitCheck, time.Since(limitStart))
 		if err != nil {
 			return err
 		}
@@ -148,6 +159,7 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 		}
 	}
 
+	writeStart := time.Now()
 	_, err = client.DataShareSession.Update().
 		Where(datasharesession.IDEQ(existing.ID)).
 		SetSessionID(session.SessionID).
@@ -182,14 +194,22 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 		SetNillableEndedAt(session.EndedAt).
 		SetUpdatedAt(now).
 		Save(ctx)
+	recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartDBWrite, time.Since(writeStart))
 	return err
 }
 
-func resolveDataShareStorageLimit(opts []service.DataShareUpsertOptions) int64 {
-	if len(opts) == 0 || opts[0].StorageLimitBytes <= 0 {
-		return 0
+func resolveDataShareUpsertOptions(opts []service.DataShareUpsertOptions) service.DataShareUpsertOptions {
+	if len(opts) == 0 {
+		return service.DataShareUpsertOptions{}
 	}
-	return opts[0].StorageLimitBytes
+	return opts[0]
+}
+
+func recordDataShareCaptureDuration(recorder service.DataShareCaptureDurationRecorder, part service.DataShareCaptureDurationPartKey, duration time.Duration) {
+	if recorder == nil {
+		return
+	}
+	recorder.Observe(part, duration)
 }
 
 func (r *dataShareSessionRepository) List(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {

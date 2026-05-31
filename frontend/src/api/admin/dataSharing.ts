@@ -81,6 +81,30 @@ export interface DataShareCaptureBufferStats {
   last_error: string
 }
 
+export interface DataShareCaptureDurationBucket {
+  label: string
+  count: number
+}
+
+export interface DataShareCaptureDurationPart {
+  key: string
+  label: string
+  category: string
+  last_millis: number
+  avg_millis: number
+  p50_millis: number
+  p95_millis: number
+  max_millis: number
+  sample_count: number
+  buckets: DataShareCaptureDurationBucket[]
+}
+
+export interface DataShareCaptureDurationStats {
+  window_size: number
+  sample_count: number
+  parts: DataShareCaptureDurationPart[]
+}
+
 export interface DataShareCaptureRuntimeSettings {
   worker_count: number
   queue_size: number
@@ -91,6 +115,7 @@ export interface DataShareCaptureRuntimeSettings {
   buffer_idle_flush_seconds: number
   buffer_max_sessions: number
   buffer_max_pending_events: number
+  duration_window_size: number
 }
 
 export interface DataShareStats {
@@ -113,6 +138,7 @@ export interface DataShareStats {
   quality_error_breakdown: DataShareQualityErrorPoint[]
   capture_worker?: DataShareCaptureWorkerStats | null
   capture_buffer?: DataShareCaptureBufferStats | null
+  capture_durations?: DataShareCaptureDurationStats | null
 }
 
 export type DataShareCaptureSkipRuleMatchMode = 'contains' | 'equals'

@@ -211,6 +211,39 @@ func TestDataSharingCaptureWorkerPool_StatsExposeWorkerJobKinds(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func TestDataSharingCaptureWorkerPool_RecordsQueueWaitDurations(t *testing.T) {
+	recorder := newDataShareCaptureDurationRecorder(64)
+	block := make(chan struct{})
+	started := make(chan struct{})
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount:    1,
+		QueueSize:      4,
+		FlushQueueSize: 4,
+		TaskTimeout:    time.Second,
+		Handler: func(ctx context.Context, job DataSharingCaptureJob) error {
+			if job.Metadata.RequestID == "running" {
+				close(started)
+				<-block
+			}
+			return nil
+		},
+	})
+	pool.SetDurationRecorder(recorder)
+	t.Cleanup(pool.Stop)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "running"}}))
+	<-started
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{Metadata: DataSharingCaptureJobMetadata{RequestID: "capture"}}))
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.SubmitFlush(DataSharingCaptureJob{Flush: func(context.Context) error { return nil }}))
+	close(block)
+
+	require.Eventually(t, func() bool {
+		stats := recorder.Snapshot()
+		return findDataShareCaptureDurationPart(t, stats, DataShareCaptureDurationPartCaptureQueueWait).SampleCount > 0 &&
+			findDataShareCaptureDurationPart(t, stats, DataShareCaptureDurationPartFlushQueueWait).SampleCount > 0
+	}, time.Second, 10*time.Millisecond)
+}
+
 func countDataSharingCaptureWorkerKind(states []DataSharingCaptureWorkerState, kind DataSharingCaptureJobKind) int {
 	count := 0
 	for _, state := range states {

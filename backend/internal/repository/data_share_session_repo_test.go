@@ -607,6 +607,59 @@ func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedSnaps
 	require.Equal(t, 2, stored.SourceRequestCount)
 }
 
+func TestDataShareSessionRepository_SaveCaptureSnapshotRecordsDurations(t *testing.T) {
+	repo, client := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	seen := map[service.DataShareCaptureDurationPartKey]int{}
+	recorder := service.DataShareCaptureDurationObserveFunc(func(part service.DataShareCaptureDurationPartKey, duration time.Duration) {
+		require.NotEmpty(t, part)
+		require.GreaterOrEqual(t, duration, time.Duration(0))
+		seen[part]++
+	})
+	now := time.Now().UTC()
+	session := func(trajectoryID string, count int) *service.DataShareSession {
+		return &service.DataShareSession{
+			TrajectoryID:       trajectoryID,
+			SessionID:          "sess-" + trajectoryID,
+			Dataset:            "tokenrouter-agent",
+			Provider:           service.PlatformOpenAI,
+			Model:              "gpt-5",
+			RequestPath:        "/v1/responses",
+			UserAgent:          "codex-cli",
+			Status:             service.DataShareStatusCompleted,
+			IsFinalSnapshot:    true,
+			SourceRequestCount: count,
+			Tools:              []map[string]any{},
+			Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+			Usage:              map[string]any{"total_tokens": count},
+			Meta:               map[string]any{"request_path": "/v1/responses"},
+			SessionJSON:        map[string]any{"messages": []map[string]any{{"role": "user", "content": "hi"}}},
+			QualityStatus:      service.DataShareQualityComplete,
+			QualityErrors:      []string{},
+			TotalTokens:        int64(count),
+			CreatedAt:          now,
+			EndedAt:            &now,
+			UpdatedAt:          now,
+		}
+	}
+
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, session("traj-duration", 1), service.DataShareUpsertOptions{
+		StorageLimitBytes: 1 << 30,
+		DurationRecorder:  recorder,
+	}))
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, session("traj-duration", 2), service.DataShareUpsertOptions{
+		StorageLimitBytes: 1 << 30,
+		DurationRecorder:  recorder,
+	}))
+	count, err := client.DataShareSession.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.GreaterOrEqual(t, seen[service.DataShareCaptureDurationPartPayloadEncode], 2)
+	require.GreaterOrEqual(t, seen[service.DataShareCaptureDurationPartStorageLimitCheck], 2)
+	require.GreaterOrEqual(t, seen[service.DataShareCaptureDurationPartDBLookup], 2)
+	require.GreaterOrEqual(t, seen[service.DataShareCaptureDurationPartDBWrite], 2)
+}
+
 func deterministicDataShareTestContent(lines int) string {
 	var b strings.Builder
 	for i := 0; i < lines; i++ {

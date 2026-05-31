@@ -61,11 +61,12 @@ type DataSharingCaptureJobMetadata struct {
 
 // DataSharingCaptureJob 是提交到数据共享采集 worker 的任务。
 type DataSharingCaptureJob struct {
-	Kind     DataSharingCaptureJobKind
-	Protocol DataSharingCaptureProtocol
-	Input    DataShareCaptureInput
-	Flush    func(ctx context.Context) error
-	Metadata DataSharingCaptureJobMetadata
+	Kind       DataSharingCaptureJobKind
+	Protocol   DataSharingCaptureProtocol
+	Input      DataShareCaptureInput
+	Flush      func(ctx context.Context) error
+	Metadata   DataSharingCaptureJobMetadata
+	enqueuedAt time.Time
 }
 
 // DataSharingCaptureHandler 执行一次具体的数据共享采集写入。
@@ -134,6 +135,7 @@ type DataSharingCaptureWorkerPool struct {
 	flushQueueCap    int
 	workerJobKinds   []DataSharingCaptureJobKind
 	activeTotal      atomic.Int64
+	durationRecorder DataShareCaptureDurationRecorder
 	submittedTotal   atomic.Uint64
 	completedTotal   atomic.Uint64
 	failedTotal      atomic.Uint64
@@ -141,6 +143,16 @@ type DataSharingCaptureWorkerPool struct {
 	droppedTotal     atomic.Uint64
 	lastDropLogNanos atomic.Int64
 	lastError        atomic.Value
+}
+
+// SetDurationRecorder 绑定运行态耗时统计器。
+func (p *DataSharingCaptureWorkerPool) SetDurationRecorder(recorder DataShareCaptureDurationRecorder) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.durationRecorder = recorder
 }
 
 // NewDataSharingCaptureWorkerPool 从配置构建数据共享采集池。
@@ -262,6 +274,7 @@ func (p *DataSharingCaptureWorkerPool) submit(job DataSharingCaptureJob, flush b
 	case !flush && p.queueLen >= p.queueCapacity:
 		reason = "full"
 	default:
+		job.enqueuedAt = time.Now()
 		if flush {
 			p.enqueueFlushLocked(job)
 		} else {
@@ -369,6 +382,13 @@ func (p *DataSharingCaptureWorkerPool) execute(workerID int, job DataSharingCapt
 	}
 	p.setWorkerJobKind(workerID, job.Kind)
 	p.activeTotal.Add(1)
+	if !job.enqueuedAt.IsZero() {
+		part := DataShareCaptureDurationPartCaptureQueueWait
+		if job.Kind == DataSharingCaptureJobKindFlush {
+			part = DataShareCaptureDurationPartFlushQueueWait
+		}
+		p.recordDuration(part, time.Since(job.enqueuedAt))
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.TaskTimeout())
 	defer cancel()
@@ -413,6 +433,18 @@ func (p *DataSharingCaptureWorkerPool) execute(workerID int, job DataSharingCapt
 			zap.Int64("group_id", job.Metadata.GroupID),
 			zap.Error(err),
 		).Warn("data_sharing.capture_failed")
+	}
+}
+
+func (p *DataSharingCaptureWorkerPool) recordDuration(part DataShareCaptureDurationPartKey, duration time.Duration) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	recorder := p.durationRecorder
+	p.mu.Unlock()
+	if recorder != nil {
+		recorder.Observe(part, duration)
 	}
 }
 
@@ -660,6 +692,7 @@ func dataShareCaptureRuntimeSettingsFromConfig(cfg *config.Config) DataShareCapt
 	settings.BufferIdleFlushSeconds = cfg.Gateway.DataSharingCapture.BufferIdleFlushSeconds
 	settings.BufferMaxSessions = cfg.Gateway.DataSharingCapture.BufferMaxSessions
 	settings.BufferMaxPendingEvents = cfg.Gateway.DataSharingCapture.BufferMaxPendingEvents
+	settings.DurationWindowSize = defaultDataSharingCaptureDurationWindowSize
 	return normalizeDataShareCaptureRuntimeSettings(settings)
 }
 

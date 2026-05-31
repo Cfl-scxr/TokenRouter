@@ -51,6 +51,7 @@ type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 	BufferIdleFlushSeconds int    `json:"buffer_idle_flush_seconds"`
 	BufferMaxSessions      int    `json:"buffer_max_sessions"`
 	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
+	DurationWindowSize     int    `json:"duration_window_size"`
 }
 
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
@@ -208,6 +209,7 @@ func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
 		BufferIdleFlushSeconds: req.BufferIdleFlushSeconds,
 		BufferMaxSessions:      req.BufferMaxSessions,
 		BufferMaxPendingEvents: req.BufferMaxPendingEvents,
+		DurationWindowSize:     req.DurationWindowSize,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

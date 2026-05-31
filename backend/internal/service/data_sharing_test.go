@@ -276,9 +276,11 @@ func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return svc.CaptureWorkerStats().CompletedTotal == 1 && svc.CaptureBufferStats().PendingEvents == 1
 	}, time.Second, 10*time.Millisecond)
+	require.Greater(t, svc.CaptureDurationStats().SampleCount, 0)
 	require.Equal(t, 0, repo.upsertCount())
 	svc.captureBuffer.FlushAll(context.Background())
 	require.Equal(t, 1, repo.upsertCount())
+	require.Greater(t, findDataShareCaptureDurationPart(t, svc.CaptureDurationStats(), DataShareCaptureDurationPartFlushTotal).SampleCount, 0)
 }
 
 func TestDataSharingService_CaptureAsyncDisabledGroupDoesNotSubmit(t *testing.T) {
@@ -377,7 +379,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *
 	require.Equal(t, 7, settings.BufferIdleFlushSeconds)
 	require.Equal(t, 123, settings.BufferMaxSessions)
 	require.Equal(t, 456, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
 	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
 	require.Equal(t, 12, svc.CaptureWorkerStats().FlushQueueCapacity)
@@ -414,7 +416,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	require.Equal(t, maxDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().FlushQueueCapacity)
@@ -518,6 +520,7 @@ func TestDataSharingService_LoadRuntimeSettingsBackfillsLegacyBufferDefaults(t *
 	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
+	require.Equal(t, defaultDataSharingCaptureDurationWindowSize, settings.DurationWindowSize)
 }
 
 func TestDataSharingService_UpdateRuntimeSettingsBackfillsLegacyRequest(t *testing.T) {
@@ -543,7 +546,7 @@ func TestDataSharingService_UpdateRuntimeSettingsBackfillsLegacyRequest(t *testi
 	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 }
 
 func TestDataSharingService_CaptureAsyncBuffersUntilFlush(t *testing.T) {
