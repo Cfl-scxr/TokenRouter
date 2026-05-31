@@ -19,17 +19,18 @@ const (
 	defaultDataSharingCaptureQueueSize          = 32768
 	maxDataSharingCaptureQueueSize              = 100000
 	defaultDataSharingCaptureTaskTimeoutSeconds = 15
-	maxDataSharingCaptureTaskTimeoutSeconds     = 300
-	defaultDataSharingCaptureCompressionLevel   = DataShareCompressionLevelFastest
-	defaultDataSharingCaptureBufferEnabled      = true
-	defaultDataSharingCaptureBufferIdleSeconds  = 30
-	maxDataSharingCaptureBufferIdleSeconds      = 300
-	defaultDataSharingCaptureBufferMaxSessions  = 4096
-	maxDataSharingCaptureBufferMaxSessions      = 100000
-	defaultDataSharingCaptureBufferMaxEvents    = 65536
-	maxDataSharingCaptureBufferMaxEvents        = 1000000
-	dataSharingCaptureDropLogInterval           = 5 * time.Second
-	dataSharingCaptureInitialQueueBufferSize    = 1024
+	// 数据共享采集任务最长允许 30 分钟，覆盖大 session 压缩和落库长尾。
+	maxDataSharingCaptureTaskTimeoutSeconds    = 1800
+	defaultDataSharingCaptureCompressionLevel  = DataShareCompressionLevelFastest
+	defaultDataSharingCaptureBufferEnabled     = true
+	defaultDataSharingCaptureBufferIdleSeconds = 30
+	maxDataSharingCaptureBufferIdleSeconds     = 300
+	defaultDataSharingCaptureBufferMaxSessions = 4096
+	maxDataSharingCaptureBufferMaxSessions     = 100000
+	defaultDataSharingCaptureBufferMaxEvents   = 65536
+	maxDataSharingCaptureBufferMaxEvents       = 1000000
+	dataSharingCaptureDropLogInterval          = 5 * time.Second
+	dataSharingCaptureInitialQueueBufferSize   = 1024
 )
 
 // DataSharingCaptureProtocol 表示采集写入需要使用的上游协议解析方式。

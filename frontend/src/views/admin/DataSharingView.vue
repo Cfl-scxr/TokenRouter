@@ -890,7 +890,8 @@ const captureBufferMaxPendingEventsInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureFlushQueueSizeMax = 100000
-const captureTimeoutSecondsMax = 300
+// 采集 flush 可能处理大 session，前端允许配置到 30 分钟。
+const captureTimeoutSecondsMax = 1800
 const captureBufferIdleFlushMax = 300
 const captureBufferMaxSessionsLimit = 100000
 const captureBufferMaxPendingEventsLimit = 1000000
