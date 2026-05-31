@@ -18,7 +18,7 @@ func TestDefaultModels_ContainsClaudeOpus48(t *testing.T) {
 	if model.DisplayName != "Claude Opus 4.8" {
 		t.Fatalf("unexpected display name: %q", model.DisplayName)
 	}
-	if model.CreatedAt != "2026-05-28T00:00:00Z" {
+	if model.CreatedAt != "2026-05-29T00:00:00Z" {
 		t.Fatalf("unexpected created_at: %q", model.CreatedAt)
 	}
 
