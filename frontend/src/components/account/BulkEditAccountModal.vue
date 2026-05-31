@@ -789,6 +789,169 @@
         </div>
       </div>
 
+      <!-- OpenAI OAuth: 5h/7d 配额自动暂停 -->
+      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3">
+          <div class="text-sm font-medium text-gray-900 dark:text-white">
+            {{ t('admin.accounts.quotaControl.title') }}
+          </div>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.autoPauseThresholdHint') }}
+          </p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-openai-auto-pause-5h-disabled-label"
+                class="input-label mb-0"
+                for="bulk-edit-openai-auto-pause-5h-disabled-enabled"
+              >
+                {{ t('admin.accounts.autoPause5hDisabled') }}
+              </label>
+              <input
+                v-model="enableAutoPause5hDisabled"
+                id="bulk-edit-openai-auto-pause-5h-disabled-enabled"
+                type="checkbox"
+                aria-controls="bulk-edit-openai-auto-pause-5h-disabled"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="bulk-edit-openai-auto-pause-5h-disabled"
+              :class="!enableAutoPause5hDisabled && 'pointer-events-none opacity-50'"
+            >
+              <button
+                id="bulk-edit-openai-auto-pause-5h-disabled-toggle"
+                type="button"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                  autoPause5hDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+                @click="autoPause5hDisabled = !autoPause5hDisabled"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    autoPause5hDisabled ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.autoPauseDisabledHint') }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-openai-auto-pause-5h-threshold-label"
+                class="input-label mb-0"
+                for="bulk-edit-openai-auto-pause-5h-threshold-enabled"
+              >
+                {{ t('admin.accounts.autoPause5hThreshold') }}
+              </label>
+              <input
+                v-model="enableAutoPause5hThreshold"
+                id="bulk-edit-openai-auto-pause-5h-threshold-enabled"
+                type="checkbox"
+                aria-controls="bulk-edit-openai-auto-pause-5h-threshold"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <input
+              v-model.number="autoPause5hThreshold"
+              id="bulk-edit-openai-auto-pause-5h-threshold"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              :disabled="!enableAutoPause5hThreshold"
+              class="input"
+              :class="!enableAutoPause5hThreshold && 'cursor-not-allowed opacity-50'"
+              aria-labelledby="bulk-edit-openai-auto-pause-5h-threshold-label"
+              @input="autoPause5hThreshold = normalizeAutoPauseThresholdInput(autoPause5hThreshold)"
+            />
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-openai-auto-pause-7d-disabled-label"
+                class="input-label mb-0"
+                for="bulk-edit-openai-auto-pause-7d-disabled-enabled"
+              >
+                {{ t('admin.accounts.autoPause7dDisabled') }}
+              </label>
+              <input
+                v-model="enableAutoPause7dDisabled"
+                id="bulk-edit-openai-auto-pause-7d-disabled-enabled"
+                type="checkbox"
+                aria-controls="bulk-edit-openai-auto-pause-7d-disabled"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="bulk-edit-openai-auto-pause-7d-disabled"
+              :class="!enableAutoPause7dDisabled && 'pointer-events-none opacity-50'"
+            >
+              <button
+                id="bulk-edit-openai-auto-pause-7d-disabled-toggle"
+                type="button"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                  autoPause7dDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+                @click="autoPause7dDisabled = !autoPause7dDisabled"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    autoPause7dDisabled ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.autoPauseDisabledHint') }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-openai-auto-pause-7d-threshold-label"
+                class="input-label mb-0"
+                for="bulk-edit-openai-auto-pause-7d-threshold-enabled"
+              >
+                {{ t('admin.accounts.autoPause7dThreshold') }}
+              </label>
+              <input
+                v-model="enableAutoPause7dThreshold"
+                id="bulk-edit-openai-auto-pause-7d-threshold-enabled"
+                type="checkbox"
+                aria-controls="bulk-edit-openai-auto-pause-7d-threshold"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <input
+              v-model.number="autoPause7dThreshold"
+              id="bulk-edit-openai-auto-pause-7d-threshold"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              :disabled="!enableAutoPause7dThreshold"
+              class="input"
+              :class="!enableAutoPause7dThreshold && 'cursor-not-allowed opacity-50'"
+              aria-labelledby="bulk-edit-openai-auto-pause-7d-threshold-label"
+              @input="autoPause7dThreshold = normalizeAutoPauseThresholdInput(autoPause7dThreshold)"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI API Key WS mode -->
       <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1335,6 +1498,8 @@ interface ModelMapping {
   to: string
 }
 
+type OptionalNumberInputValue = number | null | ''
+
 interface ParsedModelRestrictionState {
   mode: 'whitelist' | 'mapping'
   allowedModels: string[]
@@ -1358,6 +1523,10 @@ const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAllowClaudeCode = ref(false)
+const enableAutoPause5hThreshold = ref(false)
+const enableAutoPause7dThreshold = ref(false)
+const enableAutoPause5hDisabled = ref(false)
+const enableAutoPause7dDisabled = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
@@ -1387,6 +1556,10 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
+const autoPause5hThreshold = ref<OptionalNumberInputValue>(null)
+const autoPause7dThreshold = ref<OptionalNumberInputValue>(null)
+const autoPause5hDisabled = ref(false)
+const autoPause7dDisabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
@@ -1662,6 +1835,24 @@ const buildOpenAICompactModelMapping = (): Record<string, string> | null => {
   return buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
 }
 
+const normalizeAutoPauseThresholdInput = (value: OptionalNumberInputValue): OptionalNumberInputValue => {
+  if (value === '' || value === null) {
+    return null
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null
+  }
+  return Math.min(parsed, 100)
+}
+
+const buildAutoPauseThresholdRatio = (value: OptionalNumberInputValue): number => {
+  // UI 使用百分比，后端 extra 字段使用 0-1；0 表示清除账号级覆盖并回退全局默认。
+  const normalized = normalizeAutoPauseThresholdInput(value)
+  return typeof normalized === 'number' ? normalized / 100 : 0
+}
+
 const buildUpdatePayload = (): Record<string, unknown> | null => {
   const updates: Record<string, unknown> = {}
   const credentials: Record<string, unknown> = {}
@@ -1772,6 +1963,26 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableCodexCLIOnlyAllowClaudeCode.value) {
     const extra = ensureExtra()
     extra.codex_cli_only_allowed_clients = codexCLIOnlyAllowClaudeCodeEnabled.value ? ['claude_code'] : []
+  }
+
+  if (enableAutoPause5hThreshold.value) {
+    const extra = ensureExtra()
+    extra.auto_pause_5h_threshold = buildAutoPauseThresholdRatio(autoPause5hThreshold.value)
+  }
+
+  if (enableAutoPause7dThreshold.value) {
+    const extra = ensureExtra()
+    extra.auto_pause_7d_threshold = buildAutoPauseThresholdRatio(autoPause7dThreshold.value)
+  }
+
+  if (enableAutoPause5hDisabled.value) {
+    const extra = ensureExtra()
+    extra.auto_pause_5h_disabled = autoPause5hDisabled.value
+  }
+
+  if (enableAutoPause7dDisabled.value) {
+    const extra = ensureExtra()
+    extra.auto_pause_7d_disabled = autoPause7dDisabled.value
   }
 
   if (enableTLSFingerprint.value) {
@@ -1887,6 +2098,10 @@ const handleSubmit = async () => {
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAllowClaudeCode.value ||
+    enableAutoPause5hThreshold.value ||
+    enableAutoPause7dThreshold.value ||
+    enableAutoPause5hDisabled.value ||
+    enableAutoPause7dDisabled.value ||
     enableTLSFingerprint.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
@@ -1992,6 +2207,10 @@ const resetBulkEditFormState = () => {
   enableOpenAIAPIKeyWSMode.value = false
   enableCodexCLIOnly.value = false
   enableCodexCLIOnlyAllowClaudeCode.value = false
+  enableAutoPause5hThreshold.value = false
+  enableAutoPause7dThreshold.value = false
+  enableAutoPause5hDisabled.value = false
+  enableAutoPause7dDisabled.value = false
   enableOpenAICompactMode.value = false
   enableOpenAICompactModelMapping.value = false
   enableRpmLimit.value = false
@@ -2014,6 +2233,10 @@ const resetBulkEditFormState = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAllowClaudeCodeEnabled.value = false
+  autoPause5hThreshold.value = null
+  autoPause7dThreshold.value = null
+  autoPause5hDisabled.value = false
+  autoPause7dDisabled.value = false
   openAICompactMode.value = 'auto'
   openAICompactModelMappings.value = []
   rpmLimitEnabled.value = false

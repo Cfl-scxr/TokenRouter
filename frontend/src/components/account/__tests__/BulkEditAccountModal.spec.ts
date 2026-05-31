@@ -398,6 +398,33 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('OpenAI OAuth 批量编辑应提交 5h/7d 自动暂停字段', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-auto-pause-5h-threshold-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-auto-pause-5h-threshold').setValue('95')
+    await wrapper.get('#bulk-edit-openai-auto-pause-7d-threshold-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-auto-pause-7d-threshold').setValue('90')
+    await wrapper.get('#bulk-edit-openai-auto-pause-5h-disabled-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-auto-pause-5h-disabled-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-openai-auto-pause-7d-disabled-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        auto_pause_5h_threshold: 0.95,
+        auto_pause_7d_threshold: 0.9,
+        auto_pause_5h_disabled: true,
+        auto_pause_7d_disabled: false
+      }
+    })
+  })
+
   it('OpenAI OAuth 批量编辑可关闭 TLS 指纹伪装', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
