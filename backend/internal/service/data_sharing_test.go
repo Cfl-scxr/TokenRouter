@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -745,7 +746,7 @@ func TestDataSharingCaptureBuffer_ForcedEnabledIgnoresDisabledSetting(t *testing
 	require.Equal(t, DataShareQualityComplete, got.QualityStatus)
 	require.True(t, got.Exportable)
 	require.NotEmpty(t, got.SessionJSON)
-	require.Greater(t, got.StorageBytes, int64(0))
+	require.Zero(t, got.StorageBytes)
 }
 
 func TestDataSharingCaptureBuffer_RetainsSessionWhenFlushFails(t *testing.T) {
@@ -1849,6 +1850,22 @@ func TestDataShareQualityStatusDoesNotTrimUnfixableErrors(t *testing.T) {
 	}
 }
 
+func TestDataShareQualityStatusLargePartialTail(t *testing.T) {
+	sys := "你是编码助手"
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+	messages := buildLargeDataShareMessages(sys, 2000, true)
+
+	status, errs := DataShareSessionQuality("gpt-5.5", sys, messages, tools, map[string]any{"total_tokens": 15})
+	if status != DataShareQualityPartial {
+		t.Fatalf("quality_status = %q, want partial, errors=%v", status, errs)
+	}
+	if !containsString(errs, "tool_call_result_unpaired") {
+		t.Fatalf("quality_errors = %v, want unpaired tail", errs)
+	}
+}
+
 func TestDataShareQualityStatusDoesNotNormalizeUnfixableErrors(t *testing.T) {
 	sys := "你是编码助手"
 	messages := []map[string]any{
@@ -1990,6 +2007,111 @@ func TestInvalidSessionCanExportWhenSelected(t *testing.T) {
 	if got := payload["session_id"]; got != "sess" {
 		t.Fatalf("session_id = %v, want sess", got)
 	}
+}
+
+func buildLargeDataShareMessages(systemPrompt string, rounds int, includeUnpairedTail bool) []map[string]any {
+	messages := make([]map[string]any, 0, rounds*4+3)
+	messages = append(messages,
+		map[string]any{"role": "system", "content": systemPrompt},
+		map[string]any{"role": "user", "content": "开始执行任务"},
+	)
+	for i := 0; i < rounds; i++ {
+		callID := fmt.Sprintf("call_%05d", i)
+		messages = append(messages,
+			map[string]any{
+				"role":          "assistant",
+				"content":       "",
+				"finish_reason": "tool_calls",
+				"tool_calls": []map[string]any{{
+					"id":        callID,
+					"name":      "exec_command",
+					"arguments": map[string]any{"cmd": fmt.Sprintf("echo %d", i)},
+				}},
+			},
+			map[string]any{
+				"role":         "tool",
+				"tool_call_id": callID,
+				"content":      strings.Repeat("ok ", 8),
+				"status":       "success",
+				"is_error":     false,
+			},
+			map[string]any{"role": "assistant", "content": fmt.Sprintf("完成第 %d 步", i)},
+			map[string]any{"role": "user", "content": fmt.Sprintf("继续第 %d 步", i+1)},
+		)
+	}
+	messages = append(messages, map[string]any{"role": "assistant", "content": "所有步骤完成"})
+	if includeUnpairedTail {
+		messages = append(messages, map[string]any{
+			"role":          "assistant",
+			"content":       "",
+			"finish_reason": "tool_calls",
+			"tool_calls": []map[string]any{{
+				"id":        "call_tail",
+				"name":      "exec_command",
+				"arguments": map[string]any{"cmd": "pwd"},
+			}},
+		})
+	}
+	return messages
+}
+
+func benchmarkFinalizeBufferedDataShareSession(b *testing.B, rounds int, includeUnpairedTail bool) {
+	sys := "你是编码助手"
+	base := &DataShareSession{
+		TrajectoryID:       "traj-bench",
+		SessionID:          "sess-bench",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		SourceRequestCount: rounds,
+		SystemPrompt:       &sys,
+		Tools: []map[string]any{
+			{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+		},
+		Messages: buildLargeDataShareMessages(sys, rounds, includeUnpairedTail),
+		Usage:    map[string]any{"input_tokens": rounds * 10, "output_tokens": rounds * 5, "total_tokens": rounds * 15},
+		Meta:     map[string]any{"source_request_ids": []string{"bench"}},
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		session := cloneBufferedDataShareSession(base)
+		finalizeBufferedDataShareSession(session)
+	}
+}
+
+func BenchmarkBuildDataShareSessionPayload_FromFinalizedLargeSession(b *testing.B) {
+	sys := "你是编码助手"
+	base := finalizeBufferedDataShareSession(&DataShareSession{
+		TrajectoryID:       "traj-bench",
+		SessionID:          "sess-bench",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		SourceRequestCount: 1000,
+		SystemPrompt:       &sys,
+		Tools: []map[string]any{
+			{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+		},
+		Messages: buildLargeDataShareMessages(sys, 1000, true),
+		Usage:    map[string]any{"input_tokens": 10000, "output_tokens": 5000, "total_tokens": 15000},
+		Meta:     map[string]any{"source_request_ids": []string{"bench"}},
+	})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		session := cloneBufferedDataShareSession(base)
+		session.SessionJSON = nil
+		BuildFinalizedDataShareSessionPayload(session)
+	}
+}
+
+func BenchmarkFinalizeBufferedDataShareSession_LargeComplete(b *testing.B) {
+	benchmarkFinalizeBufferedDataShareSession(b, 1000, false)
+}
+
+func BenchmarkFinalizeBufferedDataShareSession_LargePartialTail(b *testing.B) {
+	benchmarkFinalizeBufferedDataShareSession(b, 1000, true)
 }
 
 func TestDataShareExportRedactsSensitiveFields(t *testing.T) {

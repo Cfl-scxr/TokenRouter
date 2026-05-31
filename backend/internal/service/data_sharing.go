@@ -121,44 +121,45 @@ const (
 
 // DataShareSession 保存一条聚合后的 Agent session。
 type DataShareSession struct {
-	ID                 int64
-	TrajectoryID       string
-	SessionID          string
-	Dataset            string
-	Provider           string
-	Model              string
-	RequestPath        string
-	UserAgent          string
-	Status             string
-	IsFinalSnapshot    bool
-	SourceRequestCount int
-	SystemPrompt       *string
-	Tools              []map[string]any
-	Messages           []map[string]any
-	Usage              map[string]any
-	Meta               map[string]any
-	SessionJSON        map[string]any
-	PayloadCompressed  []byte
-	PayloadEncoding    string
-	PayloadBytes       int64
-	Exportable         bool
-	QualityStatus      string
-	QualityErrors      []string
-	StorageBytes       int64
-	InputTokens        int64
-	OutputTokens       int64
-	TotalTokens        int64
-	ActualCost         *float64
-	UserID             int64
-	UserName           string
-	UserEmail          string
-	APIKeyID           int64
-	APIKeyName         string
-	GroupID            int64
-	GroupName          string
-	CreatedAt          time.Time
-	EndedAt            *time.Time
-	UpdatedAt          time.Time
+	ID                   int64
+	TrajectoryID         string
+	SessionID            string
+	Dataset              string
+	Provider             string
+	Model                string
+	RequestPath          string
+	UserAgent            string
+	Status               string
+	IsFinalSnapshot      bool
+	SourceRequestCount   int
+	SystemPrompt         *string
+	Tools                []map[string]any
+	Messages             []map[string]any
+	Usage                map[string]any
+	Meta                 map[string]any
+	SessionJSON          map[string]any
+	SessionJSONFinalized bool
+	PayloadCompressed    []byte
+	PayloadEncoding      string
+	PayloadBytes         int64
+	Exportable           bool
+	QualityStatus        string
+	QualityErrors        []string
+	StorageBytes         int64
+	InputTokens          int64
+	OutputTokens         int64
+	TotalTokens          int64
+	ActualCost           *float64
+	UserID               int64
+	UserName             string
+	UserEmail            string
+	APIKeyID             int64
+	APIKeyName           string
+	GroupID              int64
+	GroupName            string
+	CreatedAt            time.Time
+	EndedAt              *time.Time
+	UpdatedAt            time.Time
 }
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。
@@ -2115,6 +2116,11 @@ func DataShareSessionQuality(model string, systemPrompt string, messages []map[s
 
 func evaluateDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) dataShareQualityReport {
 	compact := CompactDataShareMessages(messages)
+	return evaluateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+}
+
+// evaluateCompactDataShareSessionQuality 只接收已 compact 的消息，避免最终化阶段重复压缩同一份大快照。
+func evaluateCompactDataShareSessionQuality(model string, systemPrompt string, compact []map[string]any, tools []map[string]any, usage map[string]any) dataShareQualityReport {
 	errs := validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
 	status := DataShareQualityInvalid
 	if len(errs) == 0 {
@@ -2183,16 +2189,147 @@ func validateCompactDataShareSessionQuality(model string, systemPrompt string, m
 }
 
 func dataShareCanTrimTailToComplete(model string, systemPrompt string, compact []map[string]any, tools []map[string]any, usage map[string]any) bool {
-	for end := len(compact) - 1; end >= 0; end-- {
-		candidate := compact[:end]
-		if !hasFinalAssistantMessage(candidate) {
-			continue
-		}
-		if len(validateCompactDataShareSessionQuality(model, systemPrompt, candidate, tools, usage)) == 0 {
-			return true
+	return dataShareCompleteTrimPrefixLen(model, systemPrompt, compact, tools, usage) > 0
+}
+
+// dataShareCompleteTrimPrefixLen 用单次前缀扫描寻找可导出的完整前缀，替代逐候选完整校验的平方级路径。
+func dataShareCompleteTrimPrefixLen(model string, systemPrompt string, compact []map[string]any, tools []map[string]any, usage map[string]any) int {
+	// usage 当前不是质量硬门槛；保留参数是为了让调用点和完整校验的签名保持一致。
+	_ = usage
+	state := newDataSharePrefixQualityState(model, systemPrompt, tools)
+	completeLen := 0
+	for i, msg := range compact {
+		state.observe(msg)
+		// 尾部裁剪必须至少去掉一条消息，避免把完整快照误当成 partial 修复。
+		if i < len(compact)-1 && state.complete() {
+			completeLen = i + 1
 		}
 	}
-	return false
+	return completeLen
+}
+
+// dataSharePrefixQualityState 增量维护 validateCompactDataShareSessionQuality 关心的质量条件。
+type dataSharePrefixQualityState struct {
+	modelAllowed               bool
+	toolDefinitionsReady       bool
+	hasSystemPrompt            bool
+	messageCount               int
+	toolCallCount              int
+	invalidToolCallCount       int
+	toolDefinitionMissingCount int
+	callIDs                    map[string]struct{}
+	resultCounts               map[string]int
+	callIDsWithBadResultCount  int
+	resultIDsWithBadCount      int
+	emptyToolResultCount       int
+	hasFinalAssistant          bool
+	toolDefs                   map[string]struct{}
+}
+
+func newDataSharePrefixQualityState(model string, systemPrompt string, tools []map[string]any) *dataSharePrefixQualityState {
+	toolDefs, invalidToolCount := collectDataShareToolDefinitions(tools)
+	return &dataSharePrefixQualityState{
+		modelAllowed:         dataShareModelAllowed(model),
+		toolDefinitionsReady: len(toolDefs) > 0 && invalidToolCount == 0,
+		hasSystemPrompt:      strings.TrimSpace(systemPrompt) != "",
+		callIDs:              map[string]struct{}{},
+		resultCounts:         map[string]int{},
+		toolDefs:             toolDefs,
+	}
+}
+
+func (s *dataSharePrefixQualityState) observe(msg map[string]any) {
+	if s == nil {
+		return
+	}
+	s.messageCount++
+	role := strings.TrimSpace(stringFromAny(msg["role"]))
+	if (role == "system" || role == "developer") && strings.TrimSpace(dataShareContentText(msg["content"])) != "" {
+		s.hasSystemPrompt = true
+	}
+	s.observeToolCalls(msg)
+	if role == "tool" {
+		s.observeToolResult(strings.TrimSpace(stringFromAny(msg["tool_call_id"])))
+	}
+	if role != "" {
+		s.hasFinalAssistant = role == "assistant" && len(anySlice(msg["tool_calls"])) == 0 && strings.TrimSpace(dataShareContentText(msg["content"])) != ""
+	}
+}
+
+func (s *dataSharePrefixQualityState) observeToolCalls(msg map[string]any) {
+	for _, raw := range anySlice(msg["tool_calls"]) {
+		call, ok := mapFromAny(raw)
+		if !ok {
+			continue
+		}
+		s.toolCallCount++
+		id := strings.TrimSpace(stringFromAny(call["id"]))
+		name := strings.TrimSpace(stringFromAny(call["name"]))
+		if id == "" || name == "" {
+			s.invalidToolCallCount++
+			continue
+		}
+		if _, ok := s.toolDefs[name]; !ok {
+			s.toolDefinitionMissingCount++
+		}
+		s.observeToolCallID(id)
+	}
+}
+
+func (s *dataSharePrefixQualityState) observeToolCallID(id string) {
+	if _, exists := s.callIDs[id]; exists {
+		return
+	}
+	s.callIDs[id] = struct{}{}
+	if s.resultCounts[id] != 1 {
+		s.callIDsWithBadResultCount++
+	}
+}
+
+func (s *dataSharePrefixQualityState) observeToolResult(id string) {
+	if id == "" {
+		s.emptyToolResultCount++
+		return
+	}
+	oldCount := s.resultCounts[id]
+	oldBadResult := oldCount > 0 && oldCount != 1
+	oldBadCall := s.callIDNeedsResult(id, oldCount)
+	newCount := oldCount + 1
+	s.resultCounts[id] = newCount
+	newBadResult := newCount != 1
+	newBadCall := s.callIDNeedsResult(id, newCount)
+	if oldBadResult && !newBadResult {
+		s.resultIDsWithBadCount--
+	} else if !oldBadResult && newBadResult {
+		s.resultIDsWithBadCount++
+	}
+	if oldBadCall && !newBadCall {
+		s.callIDsWithBadResultCount--
+	} else if !oldBadCall && newBadCall {
+		s.callIDsWithBadResultCount++
+	}
+}
+
+func (s *dataSharePrefixQualityState) callIDNeedsResult(id string, resultCount int) bool {
+	if _, ok := s.callIDs[id]; !ok {
+		return false
+	}
+	return resultCount != 1
+}
+
+func (s *dataSharePrefixQualityState) complete() bool {
+	return s != nil &&
+		s.modelAllowed &&
+		s.toolDefinitionsReady &&
+		s.hasSystemPrompt &&
+		s.messageCount >= 2 &&
+		s.toolCallCount > 0 &&
+		s.invalidToolCallCount == 0 &&
+		s.toolDefinitionMissingCount == 0 &&
+		s.callIDsWithBadResultCount == 0 &&
+		s.resultIDsWithBadCount == 0 &&
+		s.emptyToolResultCount == 0 &&
+		s.hasFinalAssistant
 }
 
 func dataShareErrorsAllowTailTrim(errs []string) bool {
@@ -2908,24 +3045,26 @@ func DataShareQualityExportable(qualityStatus string) bool {
 // exportableDataShareMessages 仅裁掉尾部未闭合工具链，裁切后仍需完整通过同一套交付校验。
 func exportableDataShareMessages(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) ([]map[string]any, []string) {
 	compact := CompactDataShareMessages(normalizeDataShareMessages(messages))
-	if report := evaluateDataShareSessionQuality(model, systemPrompt, compact, tools, usage); report.Status == DataShareQualityComplete {
+	if report := evaluateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage); report.Status == DataShareQualityComplete {
 		return append([]map[string]any{}, compact...), nil
 	} else if report.Status != DataShareQualityPartial {
 		return nil, report.Errors
 	}
-	for end := len(compact); end >= 0; end-- {
-		candidate := compact[:end]
-		if !hasFinalAssistantMessage(candidate) {
-			continue
-		}
-		if errs := validateCompactDataShareSessionQuality(model, systemPrompt, candidate, tools, usage); len(errs) == 0 {
-			return append([]map[string]any{}, candidate...), nil
-		}
+	if end := dataShareCompleteTrimPrefixLen(model, systemPrompt, compact, tools, usage); end > 0 {
+		return append([]map[string]any{}, compact[:end]...), nil
 	}
 	return nil, validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
 }
 
 func exportPayloadFromSession(session *DataShareSession) map[string]any {
+	return exportPayloadFromSessionWithOptions(session, false)
+}
+
+func exportPayloadFromFinalizedSession(session *DataShareSession) map[string]any {
+	return exportPayloadFromSessionWithOptions(session, true)
+}
+
+func exportPayloadFromSessionWithOptions(session *DataShareSession, finalized bool) map[string]any {
 	if session == nil {
 		return map[string]any{}
 	}
@@ -2944,10 +3083,16 @@ func exportPayloadFromSession(session *DataShareSession) map[string]any {
 	payload["status"] = session.Status
 	payload["is_final_snapshot"] = session.IsFinalSnapshot
 	payload["source_request_count"] = session.SourceRequestCount
-	messages := CompactDataShareMessages(normalizeDataShareMessages(firstNonEmptyMaps(session.Messages, mapsFromAny(payload["messages"]))))
-	tools := normalizeDataShareTools(firstNonEmptyMaps(session.Tools, mapsFromAny(payload["tools"])))
-	usage := normalizeDataShareUsage(firstNonEmptyMap(session.Usage, mapAnyFromAny(payload["usage"])))
-	meta := normalizeDataShareMeta(firstNonEmptyMap(session.Meta, mapAnyFromAny(payload["meta"])))
+	messages := firstNonEmptyMaps(session.Messages, mapsFromAny(payload["messages"]))
+	tools := firstNonEmptyMaps(session.Tools, mapsFromAny(payload["tools"]))
+	usage := firstNonEmptyMap(session.Usage, mapAnyFromAny(payload["usage"]))
+	meta := firstNonEmptyMap(session.Meta, mapAnyFromAny(payload["meta"]))
+	if !finalized {
+		messages = CompactDataShareMessages(normalizeDataShareMessages(messages))
+		tools = normalizeDataShareTools(tools)
+		usage = normalizeDataShareUsage(usage)
+		meta = normalizeDataShareMeta(meta)
+	}
 	systemPrompt := firstNonBlank(optionalStringValue(session.SystemPrompt), stringFromAny(payload["system_prompt"]), extractSystemPromptFromMessages(messages))
 	payload["system_prompt"] = systemPrompt
 	payload["tools"] = tools
@@ -2970,6 +3115,11 @@ func exportDownloadPayloadFromSession(session *DataShareSession) map[string]any 
 // BuildDataShareSessionPayload 生成可导出、可压缩持久化的规范 session payload。
 func BuildDataShareSessionPayload(session *DataShareSession) map[string]any {
 	return exportPayloadFromSession(session)
+}
+
+// BuildFinalizedDataShareSessionPayload 复用最终化阶段已规范化的字段，避免超大快照重复 compact。
+func BuildFinalizedDataShareSessionPayload(session *DataShareSession) map[string]any {
+	return exportPayloadFromFinalizedSession(session)
 }
 
 func normalizeDataShareProvider(provider string, apiKey *APIKey) string {

@@ -622,15 +622,16 @@ func finalizeBufferedDataShareSession(session *DataShareSession) *DataShareSessi
 	session.Tools = normalizeDataShareTools(session.Tools)
 	session.Usage = normalizeDataShareUsage(session.Usage)
 	session.Meta = normalizeDataShareMeta(session.Meta)
-	qualityStatus, qualityErrors := DataShareSessionQuality(session.Model, optionalStringValue(session.SystemPrompt), session.Messages, session.Tools, session.Usage)
+	qualityReport := evaluateCompactDataShareSessionQuality(session.Model, optionalStringValue(session.SystemPrompt), session.Messages, session.Tools, session.Usage)
+	qualityStatus, qualityErrors := qualityReport.Status, qualityReport.Errors
 	status, finalSnapshot := dataShareCompletionState(qualityStatus)
 	session.Status = status
 	session.IsFinalSnapshot = finalSnapshot
 	session.QualityStatus = qualityStatus
 	session.QualityErrors = qualityErrors
 	session.Exportable = DataShareQualityExportable(qualityStatus)
-	session.SessionJSON = BuildDataShareSessionPayload(session)
-	session.StorageBytes = int64(len(mustJSON(session.SessionJSON)))
+	session.SessionJSON = BuildFinalizedDataShareSessionPayload(session)
+	session.SessionJSONFinalized = true
 	return session
 }
 
@@ -656,6 +657,7 @@ func cloneBufferedDataShareSession(session *DataShareSession) *DataShareSession 
 	clone.Usage = cloneDataShareMap(session.Usage)
 	clone.Meta = cloneDataShareMap(session.Meta)
 	clone.SessionJSON = cloneDataShareMap(session.SessionJSON)
+	clone.SessionJSONFinalized = session.SessionJSONFinalized
 	return &clone
 }
 

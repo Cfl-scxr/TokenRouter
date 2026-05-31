@@ -78,7 +78,7 @@ func (r *dataShareSessionRepository) SaveCaptureSnapshot(ctx context.Context, se
 	if session.EndedAt == nil {
 		session.EndedAt = &now
 	}
-	payload := service.BuildDataShareSessionPayload(session)
+	payload := dataShareSessionPayloadForPersist(session)
 	encodeStart := time.Now()
 	compressed, payloadBytes, err := encodeDataSharePayload(payload)
 	recordDataShareCaptureDuration(upsertOptions.DurationRecorder, service.DataShareCaptureDurationPartPayloadEncode, time.Since(encodeStart))
@@ -1193,10 +1193,21 @@ func populateDataShareSessionPayload(session *service.DataShareSession) error {
 		return err
 	}
 	if payload == nil {
-		payload = service.BuildDataShareSessionPayload(session)
+		payload = dataShareSessionPayloadForPersist(session)
 	}
 	applyDataSharePayloadToSession(session, payload)
 	return nil
+}
+
+func dataShareSessionPayloadForPersist(session *service.DataShareSession) map[string]any {
+	if session == nil {
+		return map[string]any{}
+	}
+	if session.SessionJSONFinalized && len(session.SessionJSON) > 0 {
+		// 采集最终化已经构建了规范 payload，持久化阶段直接复用以避免大快照重复 compact。
+		return session.SessionJSON
+	}
+	return service.BuildDataShareSessionPayload(session)
 }
 
 func applyDataSharePayloadToSession(session *service.DataShareSession, payload map[string]any) {
@@ -1227,7 +1238,7 @@ func (r *dataShareSessionRepository) persistCompressedPayload(ctx context.Contex
 	if session == nil || session.ID <= 0 {
 		return nil
 	}
-	payload := service.BuildDataShareSessionPayload(session)
+	payload := dataShareSessionPayloadForPersist(session)
 	compressed, payloadBytes, err := encodeDataSharePayload(payload)
 	if err != nil {
 		return err

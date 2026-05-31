@@ -543,6 +543,84 @@ func TestDataShareSessionRepository_SaveCaptureSnapshotReplacesWithoutMerging(t 
 	require.Len(t, hydrated.Messages, len(secondMessages))
 }
 
+func TestDataShareSessionRepository_PersistReusesOnlyCompleteSessionJSON(t *testing.T) {
+	repo, client := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	systemPrompt := "你是编码助手"
+	tools := []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}}
+	messages := []map[string]any{
+		{"role": "system", "content": systemPrompt},
+		{"role": "user", "content": "列目录"},
+	}
+	base := &service.DataShareSession{
+		TrajectoryID:       "traj-payload-reuse",
+		SessionID:          "sess-payload-reuse",
+		Dataset:            "tokenrouter-agent",
+		Provider:           service.PlatformOpenAI,
+		Model:              "gpt-5.5",
+		RequestPath:        "/v1/responses",
+		UserAgent:          "codex-cli",
+		Status:             service.DataShareStatusTerminated,
+		IsFinalSnapshot:    false,
+		SourceRequestCount: 1,
+		SystemPrompt:       &systemPrompt,
+		Tools:              tools,
+		Messages:           messages,
+		Usage:              map[string]any{"total_tokens": 1},
+		Meta:               map[string]any{"request_path": "/v1/responses"},
+		SessionJSON:        map[string]any{"messages": messages, "sentinel": "partial"},
+		QualityStatus:      service.DataShareQualityInvalid,
+		QualityErrors:      []string{},
+		TotalTokens:        1,
+		CreatedAt:          now,
+		EndedAt:            &now,
+		UpdatedAt:          now,
+	}
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, base))
+	stored, err := client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ(base.TrajectoryID)).Only(ctx)
+	require.NoError(t, err)
+	payload, err := decodeDataSharePayload(*stored.PayloadCompressed, stored.PayloadEncoding)
+	require.NoError(t, err)
+	require.Equal(t, "partial", payload["sentinel"])
+	require.Equal(t, base.TrajectoryID, payload["trajectory_id"])
+	require.Equal(t, systemPrompt, payload["system_prompt"])
+	require.Equal(t, "/v1/responses", payload["request_path"])
+	require.Equal(t, tools, mapsFromRepositoryAny(payload["tools"]))
+
+	base.SourceRequestCount = 2
+	completePayload := service.BuildFinalizedDataShareSessionPayload(&service.DataShareSession{
+		TrajectoryID:       base.TrajectoryID,
+		SessionID:          base.SessionID,
+		Dataset:            base.Dataset,
+		Provider:           base.Provider,
+		Model:              base.Model,
+		RequestPath:        base.RequestPath,
+		UserAgent:          base.UserAgent,
+		Status:             base.Status,
+		IsFinalSnapshot:    base.IsFinalSnapshot,
+		SourceRequestCount: base.SourceRequestCount,
+		SystemPrompt:       base.SystemPrompt,
+		Tools:              base.Tools,
+		Messages:           base.Messages,
+		Usage:              base.Usage,
+		Meta:               base.Meta,
+		CreatedAt:          base.CreatedAt,
+		EndedAt:            base.EndedAt,
+		UpdatedAt:          base.UpdatedAt,
+	})
+	completePayload["sentinel"] = "complete"
+	base.SessionJSON = completePayload
+	base.SessionJSONFinalized = true
+	require.NoError(t, repo.SaveCaptureSnapshot(ctx, base))
+	stored, err = client.DataShareSession.Query().Where(datasharesession.TrajectoryIDEQ(base.TrajectoryID)).Only(ctx)
+	require.NoError(t, err)
+	payload, err = decodeDataSharePayload(*stored.PayloadCompressed, stored.PayloadEncoding)
+	require.NoError(t, err)
+	require.Equal(t, "complete", payload["sentinel"])
+	require.Equal(t, float64(2), payload["source_request_count"])
+}
+
 func TestDataShareSessionRepository_StorageLimitSkipsNewSessionAndOversizedSnapshot(t *testing.T) {
 	repo, client := newDataShareSessionRepoSQLite(t)
 	ctx := context.Background()
