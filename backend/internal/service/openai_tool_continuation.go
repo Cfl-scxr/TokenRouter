@@ -201,7 +201,7 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 			}
 			referenceIDs[idValue] = struct{}{}
 		}
-		return !(result.HasFunctionCallOutput && result.HasToolCallContext)
+		return !result.HasFunctionCallOutput || !result.HasToolCallContext
 	})
 	if !result.HasFunctionCallOutput || result.HasToolCallContext || len(callIDs) == 0 || len(referenceIDs) == 0 {
 		return result
