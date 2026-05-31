@@ -367,6 +367,20 @@
 
       <div class="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <div class="card p-4">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">无效会话用户排行</h2>
+            <span v-if="stats?.invalid_user_breakdown?.length" class="badge badge-danger">Top {{ stats.invalid_user_breakdown.length }}</span>
+          </div>
+          <div class="h-96">
+            <div v-if="statsLoading" class="flex h-full items-center justify-center">
+              <LoadingSpinner />
+            </div>
+            <Bar v-else-if="invalidUserChartData" :data="invalidUserChartData" :options="invalidUserBarChartOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无无效用户数据</div>
+          </div>
+        </div>
+
+        <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">模型分布</h2>
           <div class="h-64">
             <div v-if="statsLoading" class="flex h-full items-center justify-center">
@@ -649,6 +663,15 @@
                 <Select v-model="filters.request_path" :options="requestPathOptions" class="w-52" @change="handleFilterChange" />
                 <Select v-model="filters.user_agent" :options="userAgentOptions" class="w-56" searchable @change="handleFilterChange" />
                 <Select v-model="filters.quality_status" :options="qualityOptions" class="w-40" @change="handleFilterChange" />
+                <div
+                  v-if="filters.user_id > 0"
+                  class="inline-flex min-h-10 max-w-full items-center gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-200"
+                >
+                  <span class="truncate">用户：{{ invalidUserFilterLabel }}</span>
+                  <button type="button" class="rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900/40" title="清除用户筛选" @click="clearInvalidUserFilter">
+                    <Icon name="x" size="sm" />
+                  </button>
+                </div>
                 <input v-model="filters.start_date" type="date" class="input w-40" @change="handleFilterChange" />
                 <input v-model="filters.end_date" type="date" class="input w-40" @change="handleFilterChange" />
               </div>
@@ -933,6 +956,7 @@ import {
   adminDataSharingAPI,
   type AdminDataShareSessionFilters,
   type DataShareCaptureDurationPart,
+  type DataShareInvalidUserPoint,
   type DataShareCaptureSkipRule,
   type DataShareCaptureSkipRuleFieldScope,
   type DataShareStorageLimit,
@@ -1025,6 +1049,8 @@ const filters = reactive({
   user_agent: 'all',
   model: 'all',
   quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
+  user_id: 0,
+  user_filter_label: '',
   start_date: '',
   end_date: ''
 })
@@ -1236,6 +1262,24 @@ const qualityErrorChartData = computed(() => buildBreakdownChartData(
   point => qualityErrorLabel(point.error_code)
 ))
 
+const invalidUserChartData = computed(() => {
+  const points = stats.value?.invalid_user_breakdown || []
+  if (!points.length) return null
+  return {
+    labels: points.map(point => invalidUserLabel(point)),
+    datasets: [
+      {
+        label: '无效 Session',
+        data: points.map(point => point.invalid_count),
+        backgroundColor: '#ef444488',
+        borderColor: '#ef4444',
+        borderWidth: 1,
+        maxBarThickness: 28
+      }
+    ]
+  }
+})
+
 const lineChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -1305,6 +1349,54 @@ const doughnutChartOptions = computed(() => ({
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
 const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+const invalidUserBarChartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  indexAxis: 'y' as const,
+  onClick: (_event: unknown, elements: Array<{ index: number }>) => {
+    const index = elements?.[0]?.index
+    if (typeof index === 'number') {
+      applyInvalidUserFilter(stats.value?.invalid_user_breakdown?.[index])
+    }
+  },
+  onHover: (event: any, elements: Array<{ index: number }>) => {
+    if (event?.native?.target?.style) {
+      event.native.target.style.cursor = elements?.length ? 'pointer' : 'default'
+    }
+  },
+  scales: {
+    x: {
+      beginAtZero: true,
+      ticks: { color: chartColors.value.text, precision: 0 },
+      grid: { color: chartColors.value.grid }
+    },
+    y: {
+      ticks: {
+        color: chartColors.value.text,
+        callback: (_value: string | number, index: number) => truncateChartLabel(invalidUserLabel(stats.value?.invalid_user_breakdown?.[index]), 22)
+      },
+      grid: { color: chartColors.value.grid }
+    }
+  },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx: any) => {
+          const point = stats.value?.invalid_user_breakdown?.[ctx.dataIndex]
+          if (!point) return `无效 Session: ${formatNumber(ctx.raw)}`
+          return [
+            `无效 Session: ${formatNumber(point.invalid_count)}`,
+            `总 Session: ${formatNumber(point.session_count)}`,
+            `无效率: ${formatPercent(point.invalid_ratio)}`,
+            `空间: ${formatBytes(point.storage_bytes)}`,
+            `Token: ${formatNumber(point.total_tokens)}`
+          ]
+        }
+      }
+    }
+  }
+}))
 const durationBucketChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -1486,6 +1578,7 @@ const selectionSummary = computed(() => {
   return `已选择 ${formatNumber(selectedCount.value)} 条数据`
 })
 const prettySession = computed(() => JSON.stringify(selectedSession.value?.session_json || selectedSession.value, null, 2))
+const invalidUserFilterLabel = computed(() => filters.user_filter_label || (filters.user_id > 0 ? `#${filters.user_id}` : ''))
 const statsAutoRefreshTitle = computed(() => {
   if (!statsAutoRefreshEnabled.value) return '自动刷新已关闭'
   return `每 ${statsAutoRefreshIntervalSeconds.value} 秒自动刷新统计`
@@ -1501,6 +1594,7 @@ function buildFilters(): AdminDataShareSessionFilters {
   }
   if (filters.search.trim()) out.search = filters.search.trim()
   if (filters.user_name.trim()) out.user_name = filters.user_name.trim()
+  if (filters.user_id > 0) out.user_id = filters.user_id
   if (filters.api_key_name.trim()) out.api_key_name = filters.api_key_name.trim()
   if (filters.group_name.trim()) out.group_name = filters.group_name.trim()
   if (filters.model !== 'all') out.model = filters.model
@@ -1992,6 +2086,21 @@ function handleFilterChange() {
   filterTimer = window.setTimeout(refreshAll, 250)
 }
 
+// 用户排行固定统计无效贡献，点击条形后再把列表切到该用户的无效样本。
+function applyInvalidUserFilter(point?: DataShareInvalidUserPoint) {
+  if (!point?.user_id) return
+  filters.user_id = point.user_id
+  filters.user_filter_label = invalidUserLabel(point)
+  filters.quality_status = 'invalid'
+  handleFilterChange()
+}
+
+function clearInvalidUserFilter() {
+  filters.user_id = 0
+  filters.user_filter_label = ''
+  handleFilterChange()
+}
+
 function handleSort(key: string, order: 'asc' | 'desc') {
   sortState.sort_by = key
   sortState.sort_order = order
@@ -2163,6 +2272,11 @@ function displayUser(row: DataShareSession) {
   return row.user_name || row.user_email || `#${row.user_id}`
 }
 
+function invalidUserLabel(point?: DataShareInvalidUserPoint | null) {
+  if (!point) return '-'
+  return point.user_name || point.user_email || `#${point.user_id}`
+}
+
 function displayAPIKey(row: DataShareSession) {
   return row.api_key_name || `#${row.api_key_id}`
 }
@@ -2180,6 +2294,10 @@ function formatNumber(value?: number | null) {
   return new Intl.NumberFormat().format(value || 0)
 }
 
+function formatPercent(value?: number | null) {
+  return `${((value || 0) * 100).toFixed(1)}%`
+}
+
 function formatDurationMillis(value?: number | null) {
   const millis = Math.max(Math.round(value || 0), 0)
   if (millis < 1000) return `${formatNumber(millis)} ms`
@@ -2190,6 +2308,12 @@ function formatUserAgent(value?: string | null) {
   const userAgent = (value || '').trim()
   if (!userAgent || userAgent === '(unknown)') return userAgent || '-'
   return userAgent.length > 56 ? `${userAgent.slice(0, 56)}...` : userAgent
+}
+
+function truncateChartLabel(value: string, maxLength: number) {
+  const label = (value || '').trim()
+  if (label.length <= maxLength) return label
+  return `${label.slice(0, Math.max(maxLength - 3, 1))}...`
 }
 
 function buildBreakdownChartData<T extends { session_count: number }>(points: T[], labelOf: (point: T) => string) {

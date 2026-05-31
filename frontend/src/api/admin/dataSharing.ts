@@ -41,6 +41,17 @@ export interface DataShareQualityErrorPoint {
   session_count: number
 }
 
+export interface DataShareInvalidUserPoint {
+  user_id: number
+  user_name: string
+  user_email: string
+  session_count: number
+  invalid_count: number
+  invalid_ratio: number
+  storage_bytes: number
+  total_tokens: number
+}
+
 export interface DataShareCaptureWorkerState {
   id: number
   job_kind: 'capture' | 'flush' | ''
@@ -136,6 +147,7 @@ export interface DataShareStats {
   model_breakdown: DataShareModelPoint[]
   user_agent_breakdown: DataShareUserAgentPoint[]
   quality_error_breakdown: DataShareQualityErrorPoint[]
+  invalid_user_breakdown: DataShareInvalidUserPoint[]
   capture_worker?: DataShareCaptureWorkerStats | null
   capture_buffer?: DataShareCaptureBufferStats | null
   capture_durations?: DataShareCaptureDurationStats | null

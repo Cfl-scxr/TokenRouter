@@ -165,6 +165,10 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"error_code", "session_count"}).
 			AddRow("missing_structured_tool_call", int64(2)).
 			AddRow("tool_call_result_unpaired", int64(1)))
+	mock.ExpectQuery(`LEFT JOIN users u ON u\.id = d\.user_id`).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "user_name", "user_email", "session_count", "invalid_count", "storage_bytes", "total_tokens"}).
+			AddRow(int64(7), "alice", "alice@example.com", int64(3), int64(2), int64(240), int64(24)).
+			AddRow(int64(8), "bob", "bob@example.com", int64(1), int64(1), int64(60), int64(6)))
 
 	stats, err := repo.Stats(ctx, service.DataShareSessionFilters{})
 	require.NoError(t, err)
@@ -183,6 +187,68 @@ func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 	require.Len(t, stats.QualityErrorBreakdown, 2)
 	require.Equal(t, "missing_structured_tool_call", stats.QualityErrorBreakdown[0].ErrorCode)
 	require.Equal(t, int64(2), stats.QualityErrorBreakdown[0].SessionCount)
+	require.Len(t, stats.InvalidUserBreakdown, 2)
+	require.Equal(t, int64(7), stats.InvalidUserBreakdown[0].UserID)
+	require.Equal(t, "alice", stats.InvalidUserBreakdown[0].UserName)
+	require.Equal(t, int64(2), stats.InvalidUserBreakdown[0].InvalidCount)
+	require.InDelta(t, 2.0/3.0, stats.InvalidUserBreakdown[0].InvalidRatio, 1e-12)
+	require.Equal(t, int64(240), stats.InvalidUserBreakdown[0].StorageBytes)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDataShareSessionRepository_InvalidUserBreakdownIgnoresQualityFilter(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &dataShareSessionRepository{sql: db}
+	ctx := context.Background()
+	filters := service.DataShareSessionFilters{
+		Model:         "gpt-5.5",
+		QualityStatus: service.DataShareQualityComplete,
+	}
+
+	mock.ExpectQuery(`SELECT\s+COUNT\(\*\),\s+COUNT\(\*\) FILTER \(WHERE exportable = TRUE\)`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"count",
+			"exportable",
+			"non_exportable",
+			"complete",
+			"partial",
+			"invalid",
+			"storage",
+			"tokens",
+			"total_actual_cost",
+			"avg_actual_cost_per_session",
+		}).AddRow(int64(1), int64(1), int64(0), int64(1), int64(0), int64(0), int64(100), int64(10), 1.0, 1.0))
+	mock.ExpectQuery(`SELECT to_char\(date_trunc\('day', created_at\), 'YYYY-MM-DD'\) AS day`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"day", "storage_bytes", "session_count"}))
+	mock.ExpectQuery(`LEFT JOIN groups g ON g.id = d.group_id`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "group_name", "storage_bytes", "session_count"}))
+	mock.ExpectQuery(`SELECT COALESCE\(NULLIF\(request_path, ''\), '\(unknown\)'\) AS request_path`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"request_path", "storage_bytes", "session_count", "total_tokens"}))
+	mock.ExpectQuery(`SELECT COALESCE\(NULLIF\(model, ''\), '\(unknown\)'\) AS model`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"model", "storage_bytes", "session_count", "total_tokens"}))
+	mock.ExpectQuery(`SELECT COALESCE\(NULLIF\(user_agent, ''\), '\(unknown\)'\) AS user_agent`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"user_agent", "storage_bytes", "session_count", "total_tokens"}))
+	mock.ExpectQuery(`CROSS JOIN LATERAL jsonb_array_elements_text\(.+jsonb_typeof\(d\.quality_errors\) = 'array'.+jsonb_typeof\(d\.quality_errors\) = 'string'.+jsonb_build_array`).
+		WithArgs("gpt-5.5", service.DataShareQualityComplete).
+		WillReturnRows(sqlmock.NewRows([]string{"error_code", "session_count"}))
+	mock.ExpectQuery(`LEFT JOIN users u ON u\.id = d\.user_id`).
+		WithArgs("gpt-5.5").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "user_name", "user_email", "session_count", "invalid_count", "storage_bytes", "total_tokens"}).
+			AddRow(int64(7), "alice", "alice@example.com", int64(4), int64(3), int64(300), int64(30)))
+
+	stats, err := repo.Stats(ctx, filters)
+	require.NoError(t, err)
+	require.Len(t, stats.InvalidUserBreakdown, 1)
+	require.Equal(t, int64(7), stats.InvalidUserBreakdown[0].UserID)
+	require.Equal(t, int64(4), stats.InvalidUserBreakdown[0].SessionCount)
+	require.Equal(t, int64(3), stats.InvalidUserBreakdown[0].InvalidCount)
+	require.InDelta(t, 0.75, stats.InvalidUserBreakdown[0].InvalidRatio, 1e-12)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

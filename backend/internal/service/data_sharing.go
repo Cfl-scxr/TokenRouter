@@ -282,6 +282,18 @@ type DataShareQualityErrorPoint struct {
 	SessionCount int64  `json:"session_count"`
 }
 
+// DataShareInvalidUserPoint 用于管理端按用户定位无效会话贡献来源。
+type DataShareInvalidUserPoint struct {
+	UserID       int64   `json:"user_id"`
+	UserName     string  `json:"user_name"`
+	UserEmail    string  `json:"user_email"`
+	SessionCount int64   `json:"session_count"`
+	InvalidCount int64   `json:"invalid_count"`
+	InvalidRatio float64 `json:"invalid_ratio"`
+	StorageBytes int64   `json:"storage_bytes"`
+	TotalTokens  int64   `json:"total_tokens"`
+}
+
 // DataShareStats 是管理端数据共享概览指标。
 type DataShareStats struct {
 	SessionCount            int64                             `json:"session_count"`
@@ -301,6 +313,7 @@ type DataShareStats struct {
 	ModelBreakdown          []DataShareModelPoint             `json:"model_breakdown"`
 	UserAgentBreakdown      []DataShareUserAgentPoint         `json:"user_agent_breakdown"`
 	QualityErrorBreakdown   []DataShareQualityErrorPoint      `json:"quality_error_breakdown"`
+	InvalidUserBreakdown    []DataShareInvalidUserPoint       `json:"invalid_user_breakdown"`
 	CaptureWorker           DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
 	CaptureBuffer           DataSharingCaptureBufferStats     `json:"capture_buffer"`
 	CaptureDurations        DataShareCaptureDurationStats     `json:"capture_durations"`

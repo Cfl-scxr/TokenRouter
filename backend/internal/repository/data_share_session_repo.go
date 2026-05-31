@@ -373,6 +373,11 @@ func (r *dataShareSessionRepository) Stats(ctx context.Context, filters service.
 		return nil, err
 	}
 	stats.QualityErrorBreakdown = qualityErrorBreakdown
+	invalidUserBreakdown, err := r.loadInvalidUserBreakdown(ctx, sqlq, filters)
+	if err != nil {
+		return nil, err
+	}
+	stats.InvalidUserBreakdown = invalidUserBreakdown
 	return stats, nil
 }
 
@@ -599,6 +604,45 @@ func (r *dataShareSessionRepository) loadQualityErrorBreakdown(ctx context.Conte
 		var p service.DataShareQualityErrorPoint
 		if err := rows.Scan(&p.ErrorCode, &p.SessionCount); err != nil {
 			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *dataShareSessionRepository) loadInvalidUserBreakdown(ctx context.Context, sqlq sqlExecutor, filters service.DataShareSessionFilters) ([]service.DataShareInvalidUserPoint, error) {
+	// 用户排行需要固定统计无效会话贡献，不能被页面的质量筛选切走。
+	filters.QualityStatus = ""
+	whereSQL, args := dataShareStatsWhere(filters)
+	whereSQL = prefixDataShareWhereAlias(whereSQL, "d")
+	rows, err := sqlq.QueryContext(ctx, `
+		SELECT d.user_id,
+		       COALESCE(u.username, ''),
+		       COALESCE(u.email, ''),
+		       COUNT(*) AS session_count,
+		       COUNT(*) FILTER (WHERE d.quality_status = 'invalid') AS invalid_count,
+		       COALESCE(SUM(d.storage_bytes) FILTER (WHERE d.quality_status = 'invalid'), 0) AS storage_bytes,
+		       COALESCE(SUM(d.total_tokens) FILTER (WHERE d.quality_status = 'invalid'), 0) AS total_tokens
+		FROM data_share_sessions d
+		LEFT JOIN users u ON u.id = d.user_id
+		`+whereSQL+`
+		GROUP BY d.user_id, u.username, u.email
+		HAVING COUNT(*) FILTER (WHERE d.quality_status = 'invalid') > 0
+		ORDER BY invalid_count DESC, storage_bytes DESC, d.user_id ASC
+		LIMIT 20
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []service.DataShareInvalidUserPoint
+	for rows.Next() {
+		var p service.DataShareInvalidUserPoint
+		if err := rows.Scan(&p.UserID, &p.UserName, &p.UserEmail, &p.SessionCount, &p.InvalidCount, &p.StorageBytes, &p.TotalTokens); err != nil {
+			return nil, err
+		}
+		if p.SessionCount > 0 {
+			p.InvalidRatio = float64(p.InvalidCount) / float64(p.SessionCount)
 		}
 		out = append(out, p)
 	}
