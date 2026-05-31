@@ -88,6 +88,73 @@
               </div>
               <Toggle v-model="codexCLIOnly" />
             </div>
+            <div
+              v-if="codexCLIOnly"
+              class="flex items-center justify-between gap-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
+            >
+              <div>
+                <label class="input-label mb-0">
+                  {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCode') }}
+                </label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') }}
+                </p>
+              </div>
+              <Toggle
+                v-model="codexCLIOnlyAllowClaudeCode"
+                data-testid="openai-oauth-default-codex-allow-claude-code-toggle"
+              />
+            </div>
+            <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-4">
+                  <label class="input-label mb-0">{{ t('admin.accounts.autoPause5hDisabled') }}</label>
+                  <Toggle
+                    v-model="autoPause5hDisabled"
+                    data-testid="openai-oauth-default-auto-pause-5h-disabled"
+                  />
+                </div>
+                <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.accounts.autoPause5hThreshold') }}</label>
+                <input
+                  v-model="autoPause5hThreshold"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input"
+                  :disabled="autoPause5hDisabled"
+                  data-testid="openai-oauth-default-auto-pause-5h-threshold"
+                />
+                <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-4">
+                  <label class="input-label mb-0">{{ t('admin.accounts.autoPause7dDisabled') }}</label>
+                  <Toggle
+                    v-model="autoPause7dDisabled"
+                    data-testid="openai-oauth-default-auto-pause-7d-disabled"
+                  />
+                </div>
+                <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.accounts.autoPause7dThreshold') }}</label>
+                <input
+                  v-model="autoPause7dThreshold"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  class="input"
+                  :disabled="autoPause7dDisabled"
+                  data-testid="openai-oauth-default-auto-pause-7d-threshold"
+                />
+                <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+              </div>
+            </div>
             <div class="flex items-center justify-between gap-4">
               <div>
                 <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
@@ -291,11 +358,16 @@ const credentialsJson = ref('{}')
 const extraJson = ref('{}')
 const openaiPassthrough = ref(false)
 const codexCLIOnly = ref(false)
+const codexCLIOnlyAllowClaudeCode = ref(false)
 const wsMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const compactMode = ref<OpenAICompactMode>('auto')
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const autoPause5hThreshold = ref<NumberInputValue>('')
+const autoPause7dThreshold = ref<NumberInputValue>('')
+const autoPause5hDisabled = ref(false)
+const autoPause7dDisabled = ref(false)
 const form = reactive({
   notes: '',
   concurrency: '' as NumberInputValue,
@@ -330,6 +402,11 @@ const structuredExtraKeys = [
   'responses_websockets_v2_enabled',
   'openai_ws_enabled',
   'codex_cli_only',
+  'codex_cli_only_allowed_clients',
+  'auto_pause_5h_threshold',
+  'auto_pause_7d_threshold',
+  'auto_pause_5h_disabled',
+  'auto_pause_7d_disabled',
   'openai_compact_mode',
   'enable_tls_fingerprint',
   'tls_fingerprint_profile_id'
@@ -366,6 +443,15 @@ const parseOptionalNumber = (value: NumberInputValue, label: string, integer: bo
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || parsed < 0 || (integer && !Number.isInteger(parsed))) {
     throw new Error(t('admin.accounts.openAIOAuthImportDefaultsInvalidNumber', { label }))
+  }
+  return parsed
+}
+
+const parseOptionalPercent = (value: NumberInputValue, label: string): number | undefined => {
+  // 百分比阈值在界面按 0-100 展示，保存时再换算成 0-1 的比例。
+  const parsed = parseOptionalNumber(value, label, false)
+  if (parsed !== undefined && parsed > 100) {
+    throw new Error(t('admin.accounts.openAIOAuthImportDefaultsInvalidPercent', { label }))
   }
   return parsed
 }
@@ -448,6 +534,19 @@ const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
   const extra = { ...(defaults.extra || {}) }
   openaiPassthrough.value = extra.openai_passthrough === true || extra.openai_oauth_passthrough === true
   codexCLIOnly.value = extra.codex_cli_only === true
+  codexCLIOnlyAllowClaudeCode.value =
+    Array.isArray(extra.codex_cli_only_allowed_clients) &&
+    extra.codex_cli_only_allowed_clients.includes('claude_code')
+  autoPause5hThreshold.value =
+    typeof extra.auto_pause_5h_threshold === 'number' && Number.isFinite(extra.auto_pause_5h_threshold)
+      ? String(extra.auto_pause_5h_threshold * 100)
+      : ''
+  autoPause7dThreshold.value =
+    typeof extra.auto_pause_7d_threshold === 'number' && Number.isFinite(extra.auto_pause_7d_threshold)
+      ? String(extra.auto_pause_7d_threshold * 100)
+      : ''
+  autoPause5hDisabled.value = extra.auto_pause_5h_disabled === true
+  autoPause7dDisabled.value = extra.auto_pause_7d_disabled === true
   wsMode.value = resolveOpenAIWSModeFromExtra(extra, {
     modeKey: 'openai_oauth_responses_websockets_v2_mode',
     enabledKey: 'openai_oauth_responses_websockets_v2_enabled',
@@ -539,6 +638,29 @@ const save = async () => {
     }
     if (codexCLIOnly.value) {
       extra.codex_cli_only = true
+    }
+    if (codexCLIOnly.value && codexCLIOnlyAllowClaudeCode.value) {
+      extra.codex_cli_only_allowed_clients = ['claude_code']
+    }
+    const autoPause5hPercent = parseOptionalPercent(
+      autoPause5hThreshold.value,
+      t('admin.accounts.autoPause5hThreshold')
+    )
+    const autoPause7dPercent = parseOptionalPercent(
+      autoPause7dThreshold.value,
+      t('admin.accounts.autoPause7dThreshold')
+    )
+    if (autoPause5hPercent !== undefined && autoPause5hPercent > 0) {
+      extra.auto_pause_5h_threshold = autoPause5hPercent / 100
+    }
+    if (autoPause7dPercent !== undefined && autoPause7dPercent > 0) {
+      extra.auto_pause_7d_threshold = autoPause7dPercent / 100
+    }
+    if (autoPause5hDisabled.value) {
+      extra.auto_pause_5h_disabled = true
+    }
+    if (autoPause7dDisabled.value) {
+      extra.auto_pause_7d_disabled = true
     }
     if (compactMode.value !== 'auto') {
       extra.openai_compact_mode = compactMode.value

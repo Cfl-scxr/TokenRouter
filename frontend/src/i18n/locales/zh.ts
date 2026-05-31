@@ -3022,6 +3022,7 @@ export default {
       openAIOAuthImportDefaultsSaved: '导入默认值已保存',
       openAIOAuthImportDefaultsJsonObjectRequired: '{label} 必须是 JSON 对象',
       openAIOAuthImportDefaultsInvalidNumber: '{label} 必须是非负数字',
+      openAIOAuthImportDefaultsInvalidPercent: '{label} 必须在 0 到 100 之间',
       openAIOAuthImportDefaultsForbiddenField: '{section}.{field} 不能用于导入默认值',
       syncFromCrsTitle: '从 CRS 同步账号',
       syncFromCrsDesc:

@@ -2947,6 +2947,7 @@ export default {
       openAIOAuthImportDefaultsSaved: 'Import defaults saved',
       openAIOAuthImportDefaultsJsonObjectRequired: '{label} must be a JSON object',
       openAIOAuthImportDefaultsInvalidNumber: '{label} must be a non-negative number',
+      openAIOAuthImportDefaultsInvalidPercent: '{label} must be between 0 and 100',
       openAIOAuthImportDefaultsForbiddenField: '{section}.{field} cannot be used in import defaults',
       syncFromCrsTitle: 'Sync Accounts from CRS',
       syncFromCrsDesc:

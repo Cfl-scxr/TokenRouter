@@ -227,6 +227,14 @@ vi.mock("vue-i18n", async () => {
     "admin.accounts.openai.wsModePassthrough": "透传（passthrough）",
     "admin.accounts.openai.codexCLIOnly": "仅允许 Codex 官方客户端",
     "admin.accounts.openai.codexCLIOnlyDesc": "仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。",
+    "admin.accounts.openai.codexCLIOnlyAllowClaudeCode": "额外放行 Claude Code 的 Codex 插件",
+    "admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc": "仅在上方开关开启时生效。额外放行通过 Claude Code 的 Codex 插件发起的请求。",
+    "admin.accounts.autoPause5hDisabled": "禁用 5h 自动暂停",
+    "admin.accounts.autoPause7dDisabled": "禁用 7d 自动暂停",
+    "admin.accounts.autoPause5hThreshold": "5h 用量阈值(%)",
+    "admin.accounts.autoPause7dThreshold": "7d 用量阈值(%)",
+    "admin.accounts.autoPauseDisabledHint": "开启后该账号永不进入自动暂停。",
+    "admin.accounts.autoPauseThresholdHint": "留空或填 0 表示使用全局默认阈值。",
     "admin.accounts.openai.compactMode": "Compact 模式",
     "admin.accounts.openai.compactModeDesc": "控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。",
     "admin.accounts.openai.compactModeAuto": "自动",
@@ -1013,6 +1021,73 @@ describe("admin SettingsView payment visible method controls", () => {
           tls_fingerprint_profile_id: 9,
         }),
       }),
+    );
+  });
+
+  it("renders and submits OpenAI OAuth import default auto-pause and Claude Code allow settings", async () => {
+    getOpenAIOAuthImportDefaults.mockResolvedValueOnce({
+      credentials: { model_whitelist: ["gpt-5.2"] },
+      extra: {
+        codex_cli_only: true,
+        codex_cli_only_allowed_clients: ["claude_code"],
+        auto_pause_5h_threshold: 0.91,
+        auto_pause_7d_threshold: 0.82,
+        auto_pause_5h_disabled: true,
+      },
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    const allowClaudeCodeToggle = wrapper.get(
+      '[data-testid="openai-oauth-default-codex-allow-claude-code-toggle"]',
+    );
+    expect((allowClaudeCodeToggle.element as HTMLInputElement).checked).toBe(true);
+
+    const fiveHourDisabledToggle = wrapper.get(
+      '[data-testid="openai-oauth-default-auto-pause-5h-disabled"]',
+    );
+    expect((fiveHourDisabledToggle.element as HTMLInputElement).checked).toBe(true);
+    await fiveHourDisabledToggle.setValue(false);
+
+    const fiveHourThreshold = wrapper.get(
+      '[data-testid="openai-oauth-default-auto-pause-5h-threshold"]',
+    );
+    expect((fiveHourThreshold.element as HTMLInputElement).value).toBe("91");
+    await fiveHourThreshold.setValue("95");
+
+    const sevenDayThreshold = wrapper.get(
+      '[data-testid="openai-oauth-default-auto-pause-7d-threshold"]',
+    );
+    expect((sevenDayThreshold.element as HTMLInputElement).value).toBe("82");
+
+    const sevenDayDisabledToggle = wrapper.get(
+      '[data-testid="openai-oauth-default-auto-pause-7d-disabled"]',
+    );
+    await sevenDayDisabledToggle.setValue(true);
+
+    const defaultsCard = wrapper.get("#openai-oauth-import-defaults");
+    const saveButton = defaultsCard
+      .findAll("button")
+      .find((node) => node.text() === "common.save");
+    expect(saveButton).toBeDefined();
+    await saveButton?.trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthImportDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          codex_cli_only: true,
+          codex_cli_only_allowed_clients: ["claude_code"],
+          auto_pause_5h_threshold: 0.95,
+          auto_pause_7d_threshold: 0.82,
+          auto_pause_7d_disabled: true,
+        }),
+      }),
+    );
+    expect(updateOpenAIOAuthImportDefaults.mock.calls[0]?.[0]?.extra).not.toHaveProperty(
+      "auto_pause_5h_disabled",
     );
   });
 });

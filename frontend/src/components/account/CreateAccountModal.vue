@@ -2831,6 +2831,84 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.autoPause5hDisabled') }}</label>
+            <button
+              type="button"
+              @click="autoPause5hDisabled = !autoPause5hDisabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                autoPause5hDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              data-testid="create-auto-pause-5h-disabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  autoPause5hDisabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause5hThreshold') }}</label>
+          <input
+            v-model.number="autoPause5hThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            :disabled="autoPause5hDisabled"
+            data-testid="create-auto-pause-5h-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.autoPause7dDisabled') }}</label>
+            <button
+              type="button"
+              @click="autoPause7dDisabled = !autoPause7dDisabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                autoPause7dDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              data-testid="create-auto-pause-7d-disabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  autoPause7dDisabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause7dThreshold') }}</label>
+          <input
+            v-model.number="autoPause7dThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            :disabled="autoPause7dDisabled"
+            data-testid="create-auto-pause-7d-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+        </div>
+      </div>
+
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- Mixed Scheduling (only for antigravity accounts) -->
         <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
@@ -3467,6 +3545,10 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const autoPause5hThreshold = ref<number | null>(null)
+const autoPause7dThreshold = ref<number | null>(null)
+const autoPause5hDisabled = ref(false)
+const autoPause7dDisabled = ref(false)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
@@ -3798,6 +3880,32 @@ const applyOpenAIOAuthImportDefaultsToForm = () => {
   }
   if (extra.codex_cli_only === true) {
     codexCLIOnlyEnabled.value = true
+  }
+  if (
+    Array.isArray(extra.codex_cli_only_allowed_clients) &&
+    extra.codex_cli_only_allowed_clients.includes('claude_code')
+  ) {
+    codexCLIOnlyAllowClaudeCodeEnabled.value = true
+  }
+  if (
+    typeof extra.auto_pause_5h_threshold === 'number' &&
+    Number.isFinite(extra.auto_pause_5h_threshold) &&
+    autoPause5hThreshold.value == null
+  ) {
+    autoPause5hThreshold.value = extra.auto_pause_5h_threshold * 100
+  }
+  if (
+    typeof extra.auto_pause_7d_threshold === 'number' &&
+    Number.isFinite(extra.auto_pause_7d_threshold) &&
+    autoPause7dThreshold.value == null
+  ) {
+    autoPause7dThreshold.value = extra.auto_pause_7d_threshold * 100
+  }
+  if (extra.auto_pause_5h_disabled === true) {
+    autoPause5hDisabled.value = true
+  }
+  if (extra.auto_pause_7d_disabled === true) {
+    autoPause7dDisabled.value = true
   }
   const defaultWSMode = resolveOpenAIWSModeFromExtra(extra, {
     modeKey: 'openai_oauth_responses_websockets_v2_mode',
@@ -4479,6 +4587,10 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  autoPause5hThreshold.value = null
+  autoPause7dThreshold.value = null
+  autoPause5hDisabled.value = false
+  autoPause7dDisabled.value = false
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
@@ -4581,6 +4693,34 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_cli_only_allowed_clients = ['claude_code']
   } else {
     delete extra.codex_cli_only_allowed_clients
+  }
+
+  if (accountCategory.value === 'oauth-based') {
+    if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
+      extra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
+    } else {
+      delete extra.auto_pause_5h_threshold
+    }
+    if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
+      extra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
+    } else {
+      delete extra.auto_pause_7d_threshold
+    }
+    if (autoPause5hDisabled.value) {
+      extra.auto_pause_5h_disabled = true
+    } else {
+      delete extra.auto_pause_5h_disabled
+    }
+    if (autoPause7dDisabled.value) {
+      extra.auto_pause_7d_disabled = true
+    } else {
+      delete extra.auto_pause_7d_disabled
+    }
+  } else {
+    delete extra.auto_pause_5h_threshold
+    delete extra.auto_pause_7d_threshold
+    delete extra.auto_pause_5h_disabled
+    delete extra.auto_pause_7d_disabled
   }
 
   if (accountCategory.value === 'oauth-based' && tlsFingerprintEnabled.value) {
@@ -5351,6 +5491,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
   oauthClient.error.value = ''
 
   try {
+    await loadOpenAIOAuthImportDefaults()
     const extra = buildOpenAIExtra()
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
