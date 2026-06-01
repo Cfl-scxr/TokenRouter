@@ -295,6 +295,15 @@
                     <Icon name="edit" size="sm" />
                   </button>
                   <button
+                    type="button"
+                    @click="handleCopyYaml(profile)"
+                    class="p-1 text-gray-500 hover:text-primary-600 dark:hover:text-primary-400"
+                    :title="t('admin.tlsFingerprintProfiles.copyYaml')"
+                    :aria-label="t('admin.tlsFingerprintProfiles.copyYaml')"
+                  >
+                    <Icon name="copy" size="sm" />
+                  </button>
+                  <button
                     @click="handleDelete(profile)"
                     class="p-1 text-gray-500 hover:text-red-600 dark:hover:text-red-400"
                     :title="t('common.delete')"
@@ -837,13 +846,16 @@ const parseYamlInput = () => {
     switch (key) {
       case 'name': {
         // 去掉外层引号。
-        const unquoted = value.replace(/^["']|["']$/g, '')
+        const unquoted = parseYamlScalar(value)
         if (unquoted) {
           form.name = unquoted
           foundName = true
         }
         break
       }
+      case 'description':
+        form.description = parseYamlScalar(value) || null
+        break
       case 'enable_grease':
         form.enable_grease = value === 'true'
         break
@@ -930,6 +942,62 @@ const formatNumericArray = (arr: number[] | null | undefined): string => (arr ??
 
 // point_formats 与 psk_modes 是 uint8 语义，直接显示十进制。
 const formatPlainNumericArray = (arr: number[] | null | undefined): string => (arr ?? []).join(', ')
+
+// 解析导出 YAML 中的简单字符串标量，兼容 JSON 风格双引号与 YAML 单引号。
+const parseYamlScalar = (value: string): string => {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'null' || trimmed === '~') return ''
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return trimmed.replace(/^"|"$/g, '')
+    }
+  }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'")
+  }
+
+  return trimmed
+}
+
+// 字符串用 JSON 引号输出，避免名称和描述里的特殊字符破坏 YAML。
+const formatYamlString = (value: string): string => JSON.stringify(value)
+
+const formatYamlNumericArray = (arr: number[] | null | undefined, formatter: (n: number) => string = formatHex): string => {
+  return `[${(arr ?? []).map(formatter).join(', ')}]`
+}
+
+const formatYamlStringArray = (arr: string[] | null | undefined): string => {
+  return `[${(arr ?? []).map(formatYamlString).join(', ')}]`
+}
+
+const formatDecimal = (n: number): string => String(n)
+
+// 导出的 YAML 与“粘贴 YAML 配置”入口保持同一字段结构，方便复制后再导入。
+const buildProfileYaml = (profile: TLSFingerprintProfile): string => {
+  return [
+    'tls_fingerprint_profile:',
+    `  name: ${formatYamlString(profile.name)}`,
+    `  description: ${formatYamlString(profile.description || '')}`,
+    `  enable_grease: ${profile.enable_grease ? 'true' : 'false'}`,
+    `  cipher_suites: ${formatYamlNumericArray(profile.cipher_suites)}`,
+    `  curves: ${formatYamlNumericArray(profile.curves, formatDecimal)}`,
+    `  point_formats: ${formatYamlNumericArray(profile.point_formats, formatDecimal)}`,
+    `  signature_algorithms: ${formatYamlNumericArray(profile.signature_algorithms)}`,
+    `  alpn_protocols: ${formatYamlStringArray(profile.alpn_protocols)}`,
+    `  supported_versions: ${formatYamlNumericArray(profile.supported_versions)}`,
+    `  key_share_groups: ${formatYamlNumericArray(profile.key_share_groups, formatDecimal)}`,
+    `  psk_modes: ${formatYamlNumericArray(profile.psk_modes, formatDecimal)}`,
+    `  extensions: ${formatYamlNumericArray(profile.extensions)}`
+  ].join('\n')
+}
+
+const handleCopyYaml = (profile: TLSFingerprintProfile) => {
+  copyText(buildProfileYaml(profile))
+}
 
 const handleEdit = (profile: TLSFingerprintProfile) => {
   editingProfile.value = profile

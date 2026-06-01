@@ -6633,6 +6633,7 @@ export default {
       createProfile: '创建模板',
       editProfile: '编辑模板',
       deleteProfile: '删除模板',
+      copyYaml: '复制为 YAML',
       noProfiles: '暂无模板',
       createFirstProfile: '创建你的第一个 TLS 指纹模板',
 

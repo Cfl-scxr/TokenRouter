@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
+const clipboardWriteTextMock = vi.fn()
+
 const {
   listProfilesMock,
   createProfileMock,
@@ -142,6 +144,14 @@ describe('TLSFingerprintProfilesModal', () => {
     listCollectorCapturesMock.mockReset()
     showSuccessMock.mockReset()
     showErrorMock.mockReset()
+    clipboardWriteTextMock.mockReset()
+
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: clipboardWriteTextMock
+      },
+      configurable: true
+    })
 
     listProfilesMock.mockResolvedValue([])
     createProfileMock.mockResolvedValue({})
@@ -226,5 +236,53 @@ describe('TLSFingerprintProfilesModal', () => {
 
     expect((wrapper.find('input[required]').element as HTMLInputElement).value).toBe('Codex CLI 2026')
     expect(wrapper.find('textarea').element.value).toContain('captured_profile:')
+  })
+
+  it('可在模板列表操作列复制模板 YAML', async () => {
+    listProfilesMock.mockResolvedValue([
+      {
+        id: 12,
+        name: 'Mac Codex',
+        description: 'export me',
+        enable_grease: true,
+        cipher_suites: [4865, 4866],
+        curves: [29, 23],
+        point_formats: [0],
+        signature_algorithms: [2052],
+        alpn_protocols: ['h2', 'http/1.1'],
+        supported_versions: [772, 771],
+        key_share_groups: [29],
+        psk_modes: [1],
+        extensions: [0, 43],
+        created_at: '2026-06-01T00:00:00Z',
+        updated_at: '2026-06-01T00:00:00Z'
+      }
+    ])
+
+    const wrapper = mountModal()
+    await flushPromises()
+
+    const copyButton = wrapper.find('button[aria-label="admin.tlsFingerprintProfiles.copyYaml"]')
+    expect(copyButton.exists()).toBe(true)
+
+    await copyButton.trigger('click')
+    await flushPromises()
+
+    expect(clipboardWriteTextMock).toHaveBeenCalledWith([
+      'tls_fingerprint_profile:',
+      '  name: "Mac Codex"',
+      '  description: "export me"',
+      '  enable_grease: true',
+      '  cipher_suites: [0x1301, 0x1302]',
+      '  curves: [29, 23]',
+      '  point_formats: [0]',
+      '  signature_algorithms: [0x0804]',
+      '  alpn_protocols: ["h2", "http/1.1"]',
+      '  supported_versions: [0x0304, 0x0303]',
+      '  key_share_groups: [29]',
+      '  psk_modes: [1]',
+      '  extensions: [0x0000, 0x002b]'
+    ].join('\n'))
+    expect(showSuccessMock).toHaveBeenCalledWith('admin.tlsFingerprintProfiles.collector.copied')
   })
 })

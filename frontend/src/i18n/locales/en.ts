@@ -6485,6 +6485,7 @@ export default {
       createProfile: 'Create Profile',
       editProfile: 'Edit Profile',
       deleteProfile: 'Delete Profile',
+      copyYaml: 'Copy as YAML',
       noProfiles: 'No profiles configured',
       createFirstProfile: 'Create your first TLS fingerprint profile',
 
