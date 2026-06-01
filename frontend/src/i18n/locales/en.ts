@@ -3331,6 +3331,14 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        clientPolicy: 'Client access policy',
+        clientPolicyDesc:
+          'Only applies to OpenAI OAuth. Allow any client, restrict to official Codex clients, or require the request to match a TLS router rule.',
+        clientPolicyAny: 'Allow any client',
+        clientPolicyCodexOnly: 'Codex clients only',
+        clientPolicyTLSRouterMatchedOnly: 'TLS router matched clients only',
+        clientPolicyClaudeCodeHint:
+          'The current policy is not Codex-only, so the Claude Code allow-list will not take effect.',
         codexCLIOnlyAllowClaudeCode: "Also allow Claude Code's Codex plugin",
         codexCLIOnlyAllowClaudeCodeDesc:
           'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
@@ -3491,7 +3499,10 @@ export default {
           label: 'TLS Fingerprint Simulation',
           hint: 'Simulate Node.js/Claude Code/Codex CLI client TLS fingerprint',
           defaultProfile: 'Built-in Default',
-          randomProfile: 'Random'
+          randomProfile: 'Random',
+          noRouter: 'Do not use TLS router',
+          routerHint:
+            'When enabled, requests first match the TLS router by User-Agent. Misses, disabled routers, or unavailable target profiles fall back to the fixed profile above.'
         },
         sessionIdMasking: {
           label: 'Session ID Masking',
@@ -6411,6 +6422,56 @@ export default {
       failedToSave: 'Failed to save rule',
       failedToDelete: 'Failed to delete rule',
       failedToToggle: 'Failed to toggle status'
+    },
+
+    // TLS 指纹路由器
+    tlsFingerprintRouters: {
+      title: 'TLS Routers',
+      description: 'Match request User-Agent values in order and choose TLS fingerprint profiles for different clients.',
+      createRouter: 'Create Router',
+      editRouter: 'Edit Router',
+      deleteRouter: 'Delete Router',
+      noRouters: 'No TLS routers configured',
+      createFirstRouter: 'Create your first TLS router',
+      columns: {
+        name: 'Name',
+        description: 'Description',
+        rules: 'Rules',
+        status: 'Status',
+        actions: 'Actions'
+      },
+      form: {
+        name: 'Router Name',
+        description: 'Description',
+        enabled: 'Enable router',
+        rules: 'Routing Rules',
+        addRule: 'Add Rule',
+        noRules: 'No rules yet. Misses will fall back to the account fixed profile.',
+        ruleTitle: 'Rule {index}',
+        ruleName: 'Rule Name',
+        profile: 'TLS Profile',
+        matchType: 'Match Type',
+        pattern: 'Pattern',
+        ruleEnabled: 'Enable rule',
+        caseSensitive: 'Case sensitive',
+        patternRequired: 'Rule pattern is required',
+        regexInvalid: 'Invalid regular expression'
+      },
+      matchTypes: {
+        contains: 'Contains',
+        prefix: 'Prefix',
+        exact: 'Exact',
+        regex: 'Regex'
+      },
+      deleteConfirmMessage:
+        'Are you sure you want to delete TLS router "{name}"? Accounts using it will fall back to their fixed TLS profile.',
+      createSuccess: 'TLS router created successfully',
+      updateSuccess: 'TLS router updated successfully',
+      deleteSuccess: 'TLS router deleted successfully',
+      loadFailed: 'Failed to load TLS routers',
+      saveFailed: 'Failed to save TLS router',
+      toggleFailed: 'Failed to toggle TLS router',
+      deleteFailed: 'Failed to delete TLS router'
     },
 
     // TLS Fingerprint Profiles

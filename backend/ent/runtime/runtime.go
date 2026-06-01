@@ -31,6 +31,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/setting"
 	"github.com/TokenFlux/TokenRouter/ent/subscriptionplan"
 	"github.com/TokenFlux/TokenRouter/ent/tlsfingerprintprofile"
+	"github.com/TokenFlux/TokenRouter/ent/tlsfingerprintrouter"
 	"github.com/TokenFlux/TokenRouter/ent/usagecleanuptask"
 	"github.com/TokenFlux/TokenRouter/ent/usagelog"
 	"github.com/TokenFlux/TokenRouter/ent/user"
@@ -1515,6 +1516,43 @@ func init() {
 	tlsfingerprintprofileDescEnableGrease := tlsfingerprintprofileFields[2].Descriptor()
 	// tlsfingerprintprofile.DefaultEnableGrease holds the default value on creation for the enable_grease field.
 	tlsfingerprintprofile.DefaultEnableGrease = tlsfingerprintprofileDescEnableGrease.Default.(bool)
+	tlsfingerprintrouterMixin := schema.TLSFingerprintRouter{}.Mixin()
+	tlsfingerprintrouterMixinFields0 := tlsfingerprintrouterMixin[0].Fields()
+	_ = tlsfingerprintrouterMixinFields0
+	tlsfingerprintrouterFields := schema.TLSFingerprintRouter{}.Fields()
+	_ = tlsfingerprintrouterFields
+	// tlsfingerprintrouterDescCreatedAt is the schema descriptor for created_at field.
+	tlsfingerprintrouterDescCreatedAt := tlsfingerprintrouterMixinFields0[0].Descriptor()
+	// tlsfingerprintrouter.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tlsfingerprintrouter.DefaultCreatedAt = tlsfingerprintrouterDescCreatedAt.Default.(func() time.Time)
+	// tlsfingerprintrouterDescUpdatedAt is the schema descriptor for updated_at field.
+	tlsfingerprintrouterDescUpdatedAt := tlsfingerprintrouterMixinFields0[1].Descriptor()
+	// tlsfingerprintrouter.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tlsfingerprintrouter.DefaultUpdatedAt = tlsfingerprintrouterDescUpdatedAt.Default.(func() time.Time)
+	// tlsfingerprintrouter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tlsfingerprintrouter.UpdateDefaultUpdatedAt = tlsfingerprintrouterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// tlsfingerprintrouterDescName is the schema descriptor for name field.
+	tlsfingerprintrouterDescName := tlsfingerprintrouterFields[0].Descriptor()
+	// tlsfingerprintrouter.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	tlsfingerprintrouter.NameValidator = func() func(string) error {
+		validators := tlsfingerprintrouterDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// tlsfingerprintrouterDescEnabled is the schema descriptor for enabled field.
+	tlsfingerprintrouterDescEnabled := tlsfingerprintrouterFields[2].Descriptor()
+	// tlsfingerprintrouter.DefaultEnabled holds the default value on creation for the enabled field.
+	tlsfingerprintrouter.DefaultEnabled = tlsfingerprintrouterDescEnabled.Default.(bool)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

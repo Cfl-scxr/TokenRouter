@@ -37,6 +37,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/setting"
 	"github.com/TokenFlux/TokenRouter/ent/subscriptionplan"
 	"github.com/TokenFlux/TokenRouter/ent/tlsfingerprintprofile"
+	"github.com/TokenFlux/TokenRouter/ent/tlsfingerprintrouter"
 	"github.com/TokenFlux/TokenRouter/ent/usagecleanuptask"
 	"github.com/TokenFlux/TokenRouter/ent/usagelog"
 	"github.com/TokenFlux/TokenRouter/ent/user"
@@ -131,6 +132,7 @@ func checkColumn(t, c string) error {
 			setting.Table:                  setting.ValidColumn,
 			subscriptionplan.Table:         subscriptionplan.ValidColumn,
 			tlsfingerprintprofile.Table:    tlsfingerprintprofile.ValidColumn,
+			tlsfingerprintrouter.Table:     tlsfingerprintrouter.ValidColumn,
 			usagecleanuptask.Table:         usagecleanuptask.ValidColumn,
 			usagelog.Table:                 usagelog.ValidColumn,
 			user.Table:                     user.ValidColumn,

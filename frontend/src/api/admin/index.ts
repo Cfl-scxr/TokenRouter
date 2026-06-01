@@ -25,6 +25,7 @@ import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
+import tlsFingerprintRouterAPI from './tlsFingerprintRouter'
 import channelsAPI from './channels'
 import adminPaymentAPI from './payment'
 import riskControlAPI from './riskControl'
@@ -56,6 +57,7 @@ export const adminAPI = {
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
+  tlsFingerprintRouters: tlsFingerprintRouterAPI,
   channels: channelsAPI,
   payment: adminPaymentAPI,
   riskControl: riskControlAPI,
@@ -85,6 +87,7 @@ export {
   scheduledTestsAPI,
   backupAPI,
   tlsFingerprintProfileAPI,
+  tlsFingerprintRouterAPI,
   channelsAPI,
   adminPaymentAPI,
   riskControlAPI,
@@ -105,5 +108,12 @@ export type {
   TLSFingerprintCollectorSession,
   TLSFingerprintCaptureRecord
 } from './tlsFingerprintProfile'
+export type {
+  TLSFingerprintRouter,
+  TLSFingerprintRouterRule,
+  TLSFingerprintRouterMatchType,
+  CreateTLSFingerprintRouterRequest,
+  UpdateTLSFingerprintRouterRequest
+} from './tlsFingerprintRouter'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
 export type { DataShareStats, AdminDataShareSessionFilters } from './dataSharing'

@@ -3474,6 +3474,12 @@ export default {
         responsesStatusForcedChatCompletions: '已强制 Chat Completions',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
+        clientPolicy: '客户端访问策略',
+        clientPolicyDesc: '仅对 OpenAI OAuth 生效。可允许任意客户端、限制为官方 Codex 客户端，或要求请求命中 TLS 路由器规则。',
+        clientPolicyAny: '允许任意客户端',
+        clientPolicyCodexOnly: '只允许 Codex 客户端',
+        clientPolicyTLSRouterMatchedOnly: '只允许 TLS 路由器匹配到的客户端',
+        clientPolicyClaudeCodeHint: '当前策略不是 Codex-only，Claude Code 额外放行白名单不会生效。',
         codexCLIOnlyAllowClaudeCode: '额外放行 Claude Code 的 Codex 插件',
         codexCLIOnlyAllowClaudeCodeDesc: '仅在上方开关开启时生效。额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），不影响对其他非官方客户端的拦截。',
         codexImageGenerationBridge: 'Codex 图片生成桥接',
@@ -3627,7 +3633,9 @@ export default {
           label: 'TLS 指纹模拟',
           hint: '模拟 Node.js/Claude Code/Codex CLI 客户端的 TLS 指纹',
           defaultProfile: '内置默认',
-          randomProfile: '随机'
+          randomProfile: '随机',
+          noRouter: '不使用 TLS 路由器',
+          routerHint: '启用后会先按请求 User-Agent 匹配 TLS 路由器；未命中、路由器不可用或目标模板不可用时回退到上方固定模板。'
         },
         sessionIdMasking: {
           label: '会话 ID 伪装',
@@ -6563,6 +6571,55 @@ export default {
       failedToSave: '保存规则失败',
       failedToDelete: '删除规则失败',
       failedToToggle: '切换状态失败'
+    },
+
+    // TLS 指纹路由器
+    tlsFingerprintRouters: {
+      title: 'TLS 路由器',
+      description: '按请求 User-Agent 顺序匹配规则，并为不同客户端选择对应的 TLS 指纹模板。',
+      createRouter: '创建路由器',
+      editRouter: '编辑路由器',
+      deleteRouter: '删除路由器',
+      noRouters: '暂无 TLS 路由器',
+      createFirstRouter: '创建你的第一个 TLS 路由器',
+      columns: {
+        name: '名称',
+        description: '描述',
+        rules: '规则',
+        status: '状态',
+        actions: '操作'
+      },
+      form: {
+        name: '路由器名称',
+        description: '描述',
+        enabled: '启用路由器',
+        rules: '路由规则',
+        addRule: '添加规则',
+        noRules: '暂无规则，未命中时将回退账号固定模板。',
+        ruleTitle: '规则 {index}',
+        ruleName: '规则名称',
+        profile: 'TLS 模板',
+        matchType: '匹配方式',
+        pattern: '匹配内容',
+        ruleEnabled: '启用规则',
+        caseSensitive: '区分大小写',
+        patternRequired: '规则匹配内容不能为空',
+        regexInvalid: '正则表达式无效'
+      },
+      matchTypes: {
+        contains: '包含',
+        prefix: '前缀',
+        exact: '完全匹配',
+        regex: '正则'
+      },
+      deleteConfirmMessage: '确定要删除 TLS 路由器 "{name}" 吗？使用它的账号将回退到固定 TLS 模板。',
+      createSuccess: 'TLS 路由器创建成功',
+      updateSuccess: 'TLS 路由器更新成功',
+      deleteSuccess: 'TLS 路由器删除成功',
+      loadFailed: '加载 TLS 路由器失败',
+      saveFailed: '保存 TLS 路由器失败',
+      toggleFailed: '切换 TLS 路由器状态失败',
+      deleteFailed: '删除 TLS 路由器失败'
     },
 
     // TLS 指纹模板

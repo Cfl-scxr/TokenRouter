@@ -81,15 +81,25 @@
             </div>
             <div class="flex items-center justify-between gap-4">
               <div>
-                <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnly') }}</label>
+                <label class="input-label mb-0">{{ t('admin.accounts.openai.clientPolicy') }}</label>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.openai.codexCLIOnlyDesc') }}
+                  {{ t('admin.accounts.openai.clientPolicyDesc') }}
                 </p>
               </div>
-              <Toggle v-model="codexCLIOnly" />
+              <select
+                v-model="openAIOAuthClientPolicy"
+                class="input w-64"
+                data-testid="openai-oauth-default-client-policy"
+              >
+                <option value="any">{{ t('admin.accounts.openai.clientPolicyAny') }}</option>
+                <option value="codex_only">{{ t('admin.accounts.openai.clientPolicyCodexOnly') }}</option>
+                <option value="tls_router_matched_only">
+                  {{ t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly') }}
+                </option>
+              </select>
             </div>
             <div
-              v-if="codexCLIOnly"
+              v-if="openAIOAuthClientPolicy === 'codex_only'"
               class="flex items-center justify-between gap-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
             >
               <div>
@@ -194,6 +204,19 @@
                   {{ profile.name }}
                 </option>
               </select>
+              <div v-if="tlsFingerprintEnabled" class="space-y-1">
+                <select
+                  v-model="tlsFingerprintRouterId"
+                  class="input w-full md:w-64"
+                  data-testid="openai-oauth-default-tls-fingerprint-router"
+                >
+                  <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
+                  <option v-for="router in tlsFingerprintRouters" :key="router.id" :value="router.id">
+                    {{ router.name }}
+                  </option>
+                </select>
+                <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
+              </div>
             </div>
           </div>
         </section>
@@ -338,7 +361,7 @@ import {
   resolveOpenAIWSModeFromExtra,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
-import type { OpenAICompactMode } from '@/types'
+import type { OpenAICompactMode, OpenAIOAuthClientPolicy } from '@/types'
 
 type AutoPauseDefault = 'unset' | 'true' | 'false'
 type NumberInputValue = string | number
@@ -357,13 +380,15 @@ const defaultModelMappings = ref<ModelMapping[]>([])
 const credentialsJson = ref('{}')
 const extraJson = ref('{}')
 const openaiPassthrough = ref(false)
-const codexCLIOnly = ref(false)
+const openAIOAuthClientPolicy = ref<OpenAIOAuthClientPolicy>('any')
 const codexCLIOnlyAllowClaudeCode = ref(false)
 const wsMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const compactMode = ref<OpenAICompactMode>('auto')
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintRouterId = ref<number | null>(null)
+const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
 const autoPause5hThreshold = ref<NumberInputValue>('')
 const autoPause7dThreshold = ref<NumberInputValue>('')
 const autoPause5hDisabled = ref(false)
@@ -401,6 +426,7 @@ const structuredExtraKeys = [
   'openai_oauth_responses_websockets_v2_enabled',
   'responses_websockets_v2_enabled',
   'openai_ws_enabled',
+  'openai_oauth_client_policy',
   'codex_cli_only',
   'codex_cli_only_allowed_clients',
   'auto_pause_5h_threshold',
@@ -409,7 +435,8 @@ const structuredExtraKeys = [
   'auto_pause_7d_disabled',
   'openai_compact_mode',
   'enable_tls_fingerprint',
-  'tls_fingerprint_profile_id'
+  'tls_fingerprint_profile_id',
+  'tls_fingerprint_router_id'
 ]
 
 const numberToInput = (value: unknown): string => {
@@ -508,6 +535,17 @@ const normalizeTLSFingerprintProfileId = (value: unknown): number | null => {
   return null
 }
 
+const normalizeOpenAIOAuthClientPolicy = (
+  policy: unknown,
+  legacyCodexCLIOnly: unknown
+): OpenAIOAuthClientPolicy => {
+  // 新字段优先；没有新字段时继续读取旧的 codex_cli_only 开关。
+  if (policy === 'codex_only' || policy === 'tls_router_matched_only' || policy === 'any') {
+    return policy
+  }
+  return legacyCodexCLIOnly === true ? 'codex_only' : 'any'
+}
+
 const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
   const account = defaults.account || {}
   form.notes = typeof account.notes === 'string' ? account.notes : ''
@@ -533,7 +571,10 @@ const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
 
   const extra = { ...(defaults.extra || {}) }
   openaiPassthrough.value = extra.openai_passthrough === true || extra.openai_oauth_passthrough === true
-  codexCLIOnly.value = extra.codex_cli_only === true
+  openAIOAuthClientPolicy.value = normalizeOpenAIOAuthClientPolicy(
+    extra.openai_oauth_client_policy,
+    extra.codex_cli_only
+  )
   codexCLIOnlyAllowClaudeCode.value =
     Array.isArray(extra.codex_cli_only_allowed_clients) &&
     extra.codex_cli_only_allowed_clients.includes('claude_code')
@@ -557,6 +598,9 @@ const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
   tlsFingerprintEnabled.value = extra.enable_tls_fingerprint === true
   tlsFingerprintProfileId.value = tlsFingerprintEnabled.value
     ? normalizeTLSFingerprintProfileId(extra.tls_fingerprint_profile_id)
+    : null
+  tlsFingerprintRouterId.value = tlsFingerprintEnabled.value
+    ? normalizeTLSFingerprintProfileId(extra.tls_fingerprint_router_id)
     : null
   for (const key of structuredExtraKeys) {
     delete extra[key]
@@ -583,6 +627,16 @@ const loadTLSFingerprintProfiles = async () => {
   } catch {
     // 模板保存不依赖 profile 列表，加载失败时保留内置默认选项。
     tlsFingerprintProfiles.value = []
+  }
+}
+
+const loadTLSFingerprintRouters = async () => {
+  try {
+    const routers = await adminAPI.tlsFingerprintRouters.list()
+    tlsFingerprintRouters.value = routers.map((router) => ({ id: router.id, name: router.name }))
+  } catch {
+    // 路由器列表加载失败时仅隐藏可选项，不影响保存其它默认配置。
+    tlsFingerprintRouters.value = []
   }
 }
 
@@ -636,10 +690,10 @@ const save = async () => {
       extra.openai_oauth_responses_websockets_v2_mode = wsMode.value
       extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(wsMode.value)
     }
-    if (codexCLIOnly.value) {
-      extra.codex_cli_only = true
-    }
-    if (codexCLIOnly.value && codexCLIOnlyAllowClaudeCode.value) {
+    extra.openai_oauth_client_policy = openAIOAuthClientPolicy.value
+    // 继续写旧字段，方便旧版本服务端或旧账号逻辑读取；非 Codex 模式显式清 false。
+    extra.codex_cli_only = openAIOAuthClientPolicy.value === 'codex_only'
+    if (openAIOAuthClientPolicy.value === 'codex_only' && codexCLIOnlyAllowClaudeCode.value) {
       extra.codex_cli_only_allowed_clients = ['claude_code']
     }
     const autoPause5hPercent = parseOptionalPercent(
@@ -670,6 +724,9 @@ const save = async () => {
       if (tlsFingerprintProfileId.value !== null) {
         extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
       }
+      if (tlsFingerprintRouterId.value !== null) {
+        extra.tls_fingerprint_router_id = tlsFingerprintRouterId.value
+      }
     }
 
     const modelMapping = buildModelMappingObject('mapping', [], defaultModelMappings.value)
@@ -698,5 +755,6 @@ const save = async () => {
 onMounted(() => {
   void load()
   void loadTLSFingerprintProfiles()
+  void loadTLSFingerprintRouters()
 })
 </script>

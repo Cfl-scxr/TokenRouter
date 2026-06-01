@@ -701,7 +701,7 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Codex CLI only -->
+      <!-- OpenAI OAuth 客户端访问策略 -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
@@ -709,7 +709,7 @@
             class="input-label mb-0"
             for="bulk-edit-openai-codex-cli-only-enabled"
           >
-            {{ t('admin.accounts.openai.codexCLIOnly') }}
+            {{ t('admin.accounts.openai.clientPolicy') }}
           </label>
           <input
             v-model="enableCodexCLIOnly"
@@ -724,24 +724,14 @@
           :class="!enableCodexCLIOnly && 'pointer-events-none opacity-50'"
         >
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.openai.codexCLIOnlyDesc') }}
+            {{ t('admin.accounts.openai.clientPolicyDesc') }}
           </p>
-          <button
-            id="bulk-edit-openai-codex-cli-only-toggle"
-            type="button"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              codexCLIOnlyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-            @click="codexCLIOnlyEnabled = !codexCLIOnlyEnabled"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                codexCLIOnlyEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+          <Select
+            v-model="openAIOAuthClientPolicy"
+            data-testid="bulk-edit-openai-client-policy-select"
+            :options="openAIOAuthClientPolicyOptions"
+            aria-labelledby="bulk-edit-openai-codex-cli-only-label"
+          />
         </div>
       </div>
 
@@ -765,7 +755,11 @@
         </div>
         <div
           id="bulk-edit-openai-codex-allow-claude-code"
-          :class="!enableCodexCLIOnlyAllowClaudeCode && 'pointer-events-none opacity-50'"
+          :class="[
+            (!enableCodexCLIOnlyAllowClaudeCode ||
+              (enableCodexCLIOnly && openAIOAuthClientPolicy !== 'codex_only')) &&
+              'pointer-events-none opacity-50'
+          ]"
         >
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') }}
@@ -787,6 +781,12 @@
             />
           </button>
         </div>
+        <p
+          v-if="enableCodexCLIOnly && openAIOAuthClientPolicy !== 'codex_only'"
+          class="mt-2 text-xs text-gray-500 dark:text-gray-400"
+        >
+          {{ t('admin.accounts.openai.clientPolicyClaudeCodeHint') }}
+        </p>
       </div>
 
       <!-- OpenAI OAuth: 5h/7d 配额自动暂停 -->
@@ -1276,6 +1276,18 @@
             <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
             <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
+          <div v-if="tlsFingerprintEnabled && allOpenAIOAuth" class="mt-3">
+            <select
+              v-model="tlsFingerprintRouterId"
+              id="bulk-edit-tls-fingerprint-router"
+              data-testid="bulk-edit-tls-fingerprint-router"
+              class="input"
+            >
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
+              <option v-for="router in tlsFingerprintRouters" :key="router.id" :value="router.id">{{ router.name }}</option>
+            </select>
+            <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
+          </div>
         </div>
       </div>
 
@@ -1363,7 +1375,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, Account, OpenAICompactMode } from '@/types'
+import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, Account, OpenAICompactMode, OpenAIOAuthClientPolicy } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -1554,7 +1566,7 @@ const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
-const codexCLIOnlyEnabled = ref(false)
+const openAIOAuthClientPolicy = ref<OpenAIOAuthClientPolicy>('any')
 const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 const autoPause5hThreshold = ref<OptionalNumberInputValue>(null)
 const autoPause7dThreshold = ref<OptionalNumberInputValue>(null)
@@ -1570,6 +1582,8 @@ const userMsgQueueMode = ref<string | null>(null)
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref(0)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintRouterId = ref<number | null>(null)
+const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
 const modelRestrictionPrefillSeq = ref(0)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
@@ -1603,6 +1617,11 @@ const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
+])
+const openAIOAuthClientPolicyOptions = computed(() => [
+  { value: 'any', label: t('admin.accounts.openai.clientPolicyAny') },
+  { value: 'codex_only', label: t('admin.accounts.openai.clientPolicyCodexOnly') },
+  { value: 'tls_router_matched_only', label: t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly') }
 ])
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
@@ -1720,6 +1739,15 @@ const loadTLSFingerprintProfiles = async () => {
     tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name }))
   } catch {
     tlsFingerprintProfiles.value = []
+  }
+}
+
+const loadTLSFingerprintRouters = async () => {
+  try {
+    const routers = await adminAPI.tlsFingerprintRouters.list()
+    tlsFingerprintRouters.value = routers.map(router => ({ id: router.id, name: router.name }))
+  } catch {
+    tlsFingerprintRouters.value = []
   }
 }
 
@@ -1957,12 +1985,21 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableCodexCLIOnly.value) {
     const extra = ensureExtra()
-    extra.codex_cli_only = codexCLIOnlyEnabled.value
+    extra.openai_oauth_client_policy = openAIOAuthClientPolicy.value
+    // 兼容旧后端/旧账号字段；非 codex_only 时显式写 false，避免 JSONB merge 留下旧 true。
+    extra.codex_cli_only = openAIOAuthClientPolicy.value === 'codex_only'
+    if (openAIOAuthClientPolicy.value !== 'codex_only') {
+      extra.codex_cli_only_allowed_clients = []
+    }
   }
 
   if (enableCodexCLIOnlyAllowClaudeCode.value) {
     const extra = ensureExtra()
-    extra.codex_cli_only_allowed_clients = codexCLIOnlyAllowClaudeCodeEnabled.value ? ['claude_code'] : []
+    extra.codex_cli_only_allowed_clients =
+      (!enableCodexCLIOnly.value || openAIOAuthClientPolicy.value === 'codex_only') &&
+      codexCLIOnlyAllowClaudeCodeEnabled.value
+        ? ['claude_code']
+        : []
   }
 
   if (enableAutoPause5hThreshold.value) {
@@ -1989,6 +2026,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     const extra = ensureExtra()
     extra.enable_tls_fingerprint = tlsFingerprintEnabled.value
     extra.tls_fingerprint_profile_id = tlsFingerprintEnabled.value ? tlsFingerprintProfileId.value : 0
+    if (allOpenAIOAuth.value) {
+      // 0 表示清除账号上的 TLS 路由器，避免批量关闭后旧路由器继续生效。
+      extra.tls_fingerprint_router_id = tlsFingerprintEnabled.value ? (tlsFingerprintRouterId.value ?? 0) : 0
+    }
   }
 
   if (enableOpenAICompactMode.value) {
@@ -2231,7 +2272,7 @@ const resetBulkEditFormState = () => {
   groupIds.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-  codexCLIOnlyEnabled.value = false
+  openAIOAuthClientPolicy.value = 'any'
   codexCLIOnlyAllowClaudeCodeEnabled.value = false
   autoPause5hThreshold.value = null
   autoPause7dThreshold.value = null
@@ -2246,6 +2287,7 @@ const resetBulkEditFormState = () => {
   userMsgQueueMode.value = null
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = 0
+  tlsFingerprintRouterId.value = null
 
   showMixedChannelWarning.value = false
   mixedChannelWarningMessage.value = ''
@@ -2264,6 +2306,9 @@ watch(
     if (newShow) {
       if (allTLSFingerprintCapable.value) {
         void loadTLSFingerprintProfiles()
+      }
+      if (allOpenAIOAuth.value) {
+        void loadTLSFingerprintRouters()
       }
       void loadSelectedAccountDefaults()
       return

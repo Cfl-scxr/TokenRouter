@@ -460,6 +460,7 @@ type OpenAIGatewayService struct {
 	userGroupRateResolver *userGroupRateResolver
 	httpUpstream          HTTPUpstream
 	tlsFPProfileService   *TLSFingerprintProfileService
+	tlsFPRouterService    *TLSFingerprintRouterService
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	toolCorrector         *CodexToolCorrector
@@ -517,7 +518,12 @@ func NewOpenAIGatewayService(
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 	dataSharingService *DataSharingService,
+	tlsFPRouterServices ...*TLSFingerprintRouterService,
 ) *OpenAIGatewayService {
+	var tlsFPRouterService *TLSFingerprintRouterService
+	if len(tlsFPRouterServices) > 0 {
+		tlsFPRouterService = tlsFPRouterServices[0]
+	}
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
 		usageLogRepo:        usageLogRepo,
@@ -541,6 +547,7 @@ func NewOpenAIGatewayService(
 		),
 		httpUpstream:          httpUpstream,
 		tlsFPProfileService:   tlsFPProfileService,
+		tlsFPRouterService:    tlsFPRouterService,
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		toolCorrector:         NewCodexToolCorrector(),
@@ -589,21 +596,32 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
-func (s *OpenAIGatewayService) resolveOpenAITLSProfile(account *Account) *tlsfingerprint.Profile {
+func (s *OpenAIGatewayService) resolveOpenAITLSProfile(account *Account, routerMatch ...TLSFingerprintRouterMatchResult) *tlsfingerprint.Profile {
 	if s == nil || s.tlsFPProfileService == nil {
 		return nil
+	}
+	if len(routerMatch) > 0 && routerMatch[0].Matched {
+		if profile, ok := s.tlsFPProfileService.ResolveRoutableTLSProfileByID(account, routerMatch[0].TLSFingerprintProfileID); ok {
+			return profile
+		}
 	}
 	// ResolveTLSProfile 内部会按账号类型兜底，OpenAI API Key 即使手写 extra 也不会生效。
 	return s.tlsFPProfileService.ResolveTLSProfile(account)
 }
 
-func (s *OpenAIGatewayService) resolveOpenAIWSTLSProfile(account *Account) (*tlsfingerprint.Profile, string) {
-	profile := s.resolveOpenAITLSProfile(account)
+func (s *OpenAIGatewayService) resolveOpenAIWSTLSProfile(account *Account, routerMatch ...TLSFingerprintRouterMatchResult) (*tlsfingerprint.Profile, string) {
+	profile := s.resolveOpenAITLSProfile(account, routerMatch...)
 	if profile == nil {
 		return nil, ""
 	}
 	// Responses WebSocket 是 HTTP/1.1 Upgrade，连接池键也按剥离 h2 后的模板隔离。
 	profile = tlsfingerprint.HTTP1OnlyProfile(profile)
+	if len(routerMatch) > 0 && routerMatch[0].Matched {
+		if routerMatch[0].TLSFingerprintProfileID == -1 {
+			return profile, "tls-router-random"
+		}
+		return profile, "tls-router-" + strconv.FormatInt(routerMatch[0].RouterID, 10) + "-" + strconv.FormatInt(routerMatch[0].TLSFingerprintProfileID, 10)
+	}
 	if account != nil && account.GetTLSFingerprintProfileID() == -1 {
 		// WS 连接需要在多轮 continuation 间保持同一连接可复用，随机模板使用稳定配置键隔离连接池。
 		return profile, "tls-random"
@@ -1057,7 +1075,55 @@ func SnapshotOpenAICompatibilityFallbackMetrics() OpenAICompatibilityFallbackMet
 	}
 }
 
-func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account) CodexClientRestrictionDetectionResult {
+func (s *OpenAIGatewayService) matchTLSFingerprintRouter(c *gin.Context, account *Account) TLSFingerprintRouterMatchResult {
+	if s == nil || s.tlsFPRouterService == nil || account == nil || account.GetTLSFingerprintRouterID() <= 0 {
+		return TLSFingerprintRouterMatchResult{}
+	}
+	userAgent := ""
+	if c != nil {
+		userAgent = c.GetHeader("User-Agent")
+	}
+	return s.tlsFPRouterService.MatchUserAgent(account.GetTLSFingerprintRouterID(), userAgent)
+}
+
+// MatchOpenAITLSFingerprintRouterForRequest 暴露给 OpenAI handler，用于在选中账号后统一执行
+// UA 路由匹配，并把结果传入各转发分支。
+func (s *OpenAIGatewayService) MatchOpenAITLSFingerprintRouterForRequest(c *gin.Context, account *Account) TLSFingerprintRouterMatchResult {
+	return s.matchTLSFingerprintRouter(c, account)
+}
+
+// EnforceOpenAIClientPolicyForRequest 在非 /responses 主入口上复用 OpenAI OAuth 客户端访问策略。
+func (s *OpenAIGatewayService) EnforceOpenAIClientPolicyForRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, tlsRouterMatch TLSFingerprintRouterMatchResult) error {
+	result := s.detectCodexClientRestriction(c, account, tlsRouterMatch)
+	apiKeyID := getAPIKeyIDFromContext(c)
+	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, result, body)
+	if !result.Enabled || result.Matched {
+		return nil
+	}
+	MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+	if c != nil && GetOpenAIClientTransport(c) != OpenAIClientTransportWS {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"type":    "forbidden_error",
+				"message": openAIClientPolicyForbiddenMessage(result),
+			},
+		})
+	}
+	return errors.New("openai oauth client policy restriction: client is not allowed")
+}
+
+func openAIClientPolicyForbiddenMessage(result CodexClientRestrictionDetectionResult) string {
+	// 按策略返回更明确的拒绝原因，同时保留旧 codex_cli_only 测试和客户端提示语义。
+	if result.Policy == OpenAIOAuthClientPolicyCodexOnly {
+		return "This account only allows Codex official clients"
+	}
+	if result.Policy == OpenAIOAuthClientPolicyTLSRouterMatchedOnly {
+		return "This account only allows clients matched by the configured TLS router"
+	}
+	return "This account only allows configured OpenAI OAuth clients"
+}
+
+func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account, tlsRouterMatch TLSFingerprintRouterMatchResult) CodexClientRestrictionDetectionResult {
 	var globalAllowedClients []string
 	if account != nil && account.IsCodexCLIOnlyEnabled() && s != nil && s.settingService != nil {
 		ctx := context.Background()
@@ -1068,7 +1134,7 @@ func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, acco
 			globalAllowedClients = []string{openai.AllowedClientClaudeCode}
 		}
 	}
-	return s.getCodexClientRestrictionDetector().Detect(c, account, globalAllowedClients)
+	return s.getCodexClientRestrictionDetector().Detect(c, account, globalAllowedClients, tlsRouterMatch)
 }
 
 func getAPIKeyIDFromContext(c *gin.Context) int64 {
@@ -2451,7 +2517,8 @@ func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, re
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
-	restrictionResult := s.detectCodexClientRestriction(c, account)
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
+	restrictionResult := s.detectCodexClientRestriction(c, account, tlsRouterMatch)
 	apiKeyID := getAPIKeyIDFromContext(c)
 	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
@@ -2459,10 +2526,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{
 				"type":    "forbidden_error",
-				"message": "This account only allows Codex official clients",
+				"message": openAIClientPolicyForbiddenMessage(restrictionResult),
 			},
 		})
-		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
+		return nil, errors.New("openai oauth client policy restriction: client is not allowed")
 	}
 
 	originalBody := body
@@ -2513,7 +2580,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
-		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
+		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime, tlsRouterMatch)
 	}
 
 	reqBody, err := getOpenAIRequestBodyMap(c, body)
@@ -3036,6 +3103,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				startTime,
 				attempt,
 				wsLastFailureReason,
+				tlsRouterMatch,
 			)
 			if wsErr == nil {
 				break
@@ -3163,7 +3231,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account))
+		resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
@@ -3313,6 +3381,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reasoningEffort *string,
 	reqStream bool,
 	startTime time.Time,
+	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
 ) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
 	if isOpenAIResponsesCompactPath(c) {
@@ -3458,7 +3527,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch...))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())

@@ -21,6 +21,9 @@ vi.mock('@/api/admin', () => ({
     },
     tlsFingerprintProfiles: {
       list: vi.fn()
+    },
+    tlsFingerprintRouters: {
+      list: vi.fn()
     }
   }
 }))
@@ -112,6 +115,8 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.getById).mockReset()
     vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
+    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockReset()
+    vi.mocked(adminAPI.tlsFingerprintRouters.list).mockReset()
 
     vi.mocked(adminAPI.accounts.getById).mockImplementation(async (id: number) =>
       createAccount({ id })
@@ -124,10 +129,10 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockResolvedValue({
       has_risk: false
     } as any)
-    vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockReset()
     vi.mocked(adminAPI.tlsFingerprintProfiles.list).mockResolvedValue([
       { id: 7, name: 'Profile 7' }
     ] as any)
+    vi.mocked(adminAPI.tlsFingerprintRouters.list).mockResolvedValue([])
   })
 
   it('批量编辑打开时，相同模型白名单会回填到选择器', async () => {
@@ -315,20 +320,21 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('#bulk-edit-openai-ws-mode-enabled').exists()).toBe(false)
   })
 
-  it('OpenAI OAuth 批量编辑应提交 codex_cli_only 字段', async () => {
+  it('OpenAI OAuth 批量编辑应提交客户端访问策略字段', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['oauth']
     })
 
     await wrapper.get('#bulk-edit-openai-codex-cli-only-enabled').setValue(true)
-    await wrapper.get('#bulk-edit-openai-codex-cli-only-toggle').trigger('click')
+    await wrapper.get('[data-testid="bulk-edit-openai-client-policy-select"]').setValue('codex_only')
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
+        openai_oauth_client_policy: 'codex_only',
         codex_cli_only: true
       }
     })
@@ -351,7 +357,8 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
         enable_tls_fingerprint: true,
-        tls_fingerprint_profile_id: -1
+        tls_fingerprint_profile_id: -1,
+        tls_fingerprint_router_id: 0
       }
     })
   })
@@ -439,7 +446,8 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
         enable_tls_fingerprint: false,
-        tls_fingerprint_profile_id: 0
+        tls_fingerprint_profile_id: 0,
+        tls_fingerprint_router_id: 0
       }
     })
   })

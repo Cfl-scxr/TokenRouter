@@ -332,6 +332,14 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if profileID := a.GetTLSFingerprintProfileID(); profileID != 0 {
 			out.TLSFingerprintProfileID = &profileID
 		}
+		if routerID := a.GetTLSFingerprintRouterID(); routerID != 0 {
+			out.TLSFingerprintRouterID = &routerID
+		}
+	}
+
+	if a.IsOpenAIOAuth() {
+		policy := a.GetOpenAIOAuthClientPolicy()
+		out.OpenAIOAuthClientPolicy = &policy
 	}
 
 	// 提取账号配额限制（apikey / bedrock 类型有效）

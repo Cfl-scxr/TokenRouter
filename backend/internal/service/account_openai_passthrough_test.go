@@ -133,6 +133,33 @@ func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 		}
 		require.False(t, otherPlatform.IsCodexCLIOnlyEnabled())
 	})
+
+	t.Run("新策略字段优先于旧字段", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_client_policy": OpenAIOAuthClientPolicyAny,
+				"codex_cli_only":             true,
+			},
+		}
+		require.False(t, account.IsCodexCLIOnlyEnabled())
+		require.Equal(t, OpenAIOAuthClientPolicyAny, account.GetOpenAIOAuthClientPolicy())
+	})
+
+	t.Run("TLS 路由器策略不等同于 Codex-only", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_client_policy": OpenAIOAuthClientPolicyTLSRouterMatchedOnly,
+				"tls_fingerprint_router_id":  int64(12),
+			},
+		}
+		require.False(t, account.IsCodexCLIOnlyEnabled())
+		require.True(t, account.IsOpenAIOAuthTLSRouterMatchedOnly())
+		require.Equal(t, int64(12), account.GetTLSFingerprintRouterID())
+	})
 }
 
 func TestAccount_IsTLSFingerprintEnabled(t *testing.T) {

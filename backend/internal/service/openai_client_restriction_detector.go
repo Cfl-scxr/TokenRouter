@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	// CodexClientRestrictionReasonDisabled 表示账号未开启 codex_cli_only。
-	CodexClientRestrictionReasonDisabled = "codex_cli_only_disabled"
+	// CodexClientRestrictionReasonDisabled 表示账号未开启客户端访问限制。
+	CodexClientRestrictionReasonDisabled = "openai_oauth_client_policy_any"
 	// CodexClientRestrictionReasonMatchedUA 表示请求命中官方客户端 UA 白名单。
 	CodexClientRestrictionReasonMatchedUA = "official_client_user_agent_matched"
 	// CodexClientRestrictionReasonMatchedOriginator 表示请求命中官方客户端 originator 白名单。
@@ -21,6 +21,12 @@ const (
 	CodexClientRestrictionReasonNotMatchedUA = "official_client_user_agent_not_matched"
 	// CodexClientRestrictionReasonForceCodexCLI 表示通过 ForceCodexCLI 配置兜底放行。
 	CodexClientRestrictionReasonForceCodexCLI = "force_codex_cli_enabled"
+	// CodexClientRestrictionReasonMatchedTLSRouter 表示请求命中账号绑定的 TLS 路由器。
+	CodexClientRestrictionReasonMatchedTLSRouter = "tls_router_matched"
+	// CodexClientRestrictionReasonNotMatchedTLSRouter 表示请求未命中账号绑定的 TLS 路由器。
+	CodexClientRestrictionReasonNotMatchedTLSRouter = "tls_router_not_matched"
+	// CodexClientRestrictionReasonTLSRouterMissing 表示账号策略要求 TLS 路由器命中，但账号未绑定路由器。
+	CodexClientRestrictionReasonTLSRouterMissing = "tls_router_missing"
 )
 
 // CodexClientRestrictionDetectionResult 是 codex_cli_only 统一检测入口结果。
@@ -28,11 +34,12 @@ type CodexClientRestrictionDetectionResult struct {
 	Enabled bool
 	Matched bool
 	Reason  string
+	Policy  string
 }
 
 // CodexClientRestrictionDetector 定义 codex_cli_only 统一检测入口。
 type CodexClientRestrictionDetector interface {
-	Detect(c *gin.Context, account *Account, globalAllowedClients []string) CodexClientRestrictionDetectionResult
+	Detect(c *gin.Context, account *Account, globalAllowedClients []string, tlsRouterMatch TLSFingerprintRouterMatchResult) CodexClientRestrictionDetectionResult
 }
 
 // OpenAICodexClientRestrictionDetector 为 OpenAI OAuth codex_cli_only 的默认实现。
@@ -44,12 +51,17 @@ func NewOpenAICodexClientRestrictionDetector(cfg *config.Config) *OpenAICodexCli
 	return &OpenAICodexClientRestrictionDetector{cfg: cfg}
 }
 
-func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *Account, globalAllowedClients []string) CodexClientRestrictionDetectionResult {
-	if account == nil || !account.IsCodexCLIOnlyEnabled() {
+func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *Account, globalAllowedClients []string, tlsRouterMatch TLSFingerprintRouterMatchResult) CodexClientRestrictionDetectionResult {
+	policy := OpenAIOAuthClientPolicyAny
+	if account != nil {
+		policy = account.GetOpenAIOAuthClientPolicy()
+	}
+	if account == nil || policy == OpenAIOAuthClientPolicyAny {
 		return CodexClientRestrictionDetectionResult{
 			Enabled: false,
 			Matched: false,
 			Reason:  CodexClientRestrictionReasonDisabled,
+			Policy:  policy,
 		}
 	}
 
@@ -58,6 +70,32 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Enabled: true,
 			Matched: true,
 			Reason:  CodexClientRestrictionReasonForceCodexCLI,
+			Policy:  policy,
+		}
+	}
+
+	if policy == OpenAIOAuthClientPolicyTLSRouterMatchedOnly {
+		if account.GetTLSFingerprintRouterID() <= 0 {
+			return CodexClientRestrictionDetectionResult{
+				Enabled: true,
+				Matched: false,
+				Reason:  CodexClientRestrictionReasonTLSRouterMissing,
+				Policy:  policy,
+			}
+		}
+		if tlsRouterMatch.Matched {
+			return CodexClientRestrictionDetectionResult{
+				Enabled: true,
+				Matched: true,
+				Reason:  CodexClientRestrictionReasonMatchedTLSRouter,
+				Policy:  policy,
+			}
+		}
+		return CodexClientRestrictionDetectionResult{
+			Enabled: true,
+			Matched: false,
+			Reason:  CodexClientRestrictionReasonNotMatchedTLSRouter,
+			Policy:  policy,
 		}
 	}
 
@@ -72,6 +110,7 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Enabled: true,
 			Matched: true,
 			Reason:  CodexClientRestrictionReasonMatchedUA,
+			Policy:  policy,
 		}
 	}
 	if openai.IsCodexOfficialClientOriginator(originator) {
@@ -79,6 +118,7 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Enabled: true,
 			Matched: true,
 			Reason:  CodexClientRestrictionReasonMatchedOriginator,
+			Policy:  policy,
 		}
 	}
 
@@ -89,6 +129,7 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Enabled: true,
 			Matched: true,
 			Reason:  CodexClientRestrictionReasonMatchedAllowedClient,
+			Policy:  policy,
 		}
 	}
 
@@ -99,6 +140,7 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			Enabled: true,
 			Matched: true,
 			Reason:  CodexClientRestrictionReasonMatchedGlobalAllowedClient,
+			Policy:  policy,
 		}
 	}
 
@@ -106,5 +148,6 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 		Enabled: true,
 		Matched: false,
 		Reason:  CodexClientRestrictionReasonNotMatchedUA,
+		Policy:  policy,
 	}
 }

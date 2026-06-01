@@ -1603,6 +1603,15 @@ const (
 	WebSearchModeDisabled = "disabled" // 强制关闭
 )
 
+const (
+	// OpenAIOAuthClientPolicyAny 表示 OpenAI OAuth 账号允许任意客户端访问。
+	OpenAIOAuthClientPolicyAny = "any"
+	// OpenAIOAuthClientPolicyCodexOnly 表示仅允许官方 Codex 客户端访问。
+	OpenAIOAuthClientPolicyCodexOnly = "codex_only"
+	// OpenAIOAuthClientPolicyTLSRouterMatchedOnly 表示仅允许 TLS 路由器命中的 UA 访问。
+	OpenAIOAuthClientPolicyTLSRouterMatchedOnly = "tls_router_matched_only"
+)
+
 // GetWebSearchEmulationMode 返回账号的 WebSearch 模拟模式。
 // 三态：default（跟随渠道）/ enabled（强制开启）/ disabled（强制关闭）。
 // 兼容旧 bool 值：true→enabled, false→default（并记录 debug 日志）。
@@ -1632,14 +1641,36 @@ func (a *Account) GetWebSearchEmulationMode() string {
 }
 
 // IsCodexCLIOnlyEnabled 返回 OpenAI OAuth 账号是否启用"仅允许 Codex 官方客户端"。
-// 字段：accounts.extra.codex_cli_only。
-// 字段缺失或类型不正确时，按 false（关闭）处理。
+// 新字段 openai_oauth_client_policy 优先；旧字段 accounts.extra.codex_cli_only 仅用于兼容。
 func (a *Account) IsCodexCLIOnlyEnabled() bool {
+	return a.GetOpenAIOAuthClientPolicy() == OpenAIOAuthClientPolicyCodexOnly
+}
+
+// GetOpenAIOAuthClientPolicy 返回 OpenAI OAuth 账号的客户端访问策略。
+func (a *Account) GetOpenAIOAuthClientPolicy() string {
 	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
-		return false
+		return OpenAIOAuthClientPolicyAny
+	}
+	if policy, ok := a.Extra["openai_oauth_client_policy"].(string); ok {
+		switch strings.TrimSpace(policy) {
+		case OpenAIOAuthClientPolicyCodexOnly:
+			return OpenAIOAuthClientPolicyCodexOnly
+		case OpenAIOAuthClientPolicyTLSRouterMatchedOnly:
+			return OpenAIOAuthClientPolicyTLSRouterMatchedOnly
+		case OpenAIOAuthClientPolicyAny:
+			return OpenAIOAuthClientPolicyAny
+		}
 	}
 	enabled, ok := a.Extra["codex_cli_only"].(bool)
-	return ok && enabled
+	if ok && enabled {
+		return OpenAIOAuthClientPolicyCodexOnly
+	}
+	return OpenAIOAuthClientPolicyAny
+}
+
+// IsOpenAIOAuthTLSRouterMatchedOnly 返回账号是否仅允许 TLS 路由器命中的客户端。
+func (a *Account) IsOpenAIOAuthTLSRouterMatchedOnly() bool {
+	return a.GetOpenAIOAuthClientPolicy() == OpenAIOAuthClientPolicyTLSRouterMatchedOnly
 }
 
 // GetCodexCLIOnlyAllowedClients 返回 codex_cli_only 之上额外放行的命名客户端预设 ID 列表。
@@ -1731,6 +1762,31 @@ func (a *Account) GetTLSFingerprintProfileID() int64 {
 		return 0
 	}
 	v, ok := a.Extra["tls_fingerprint_profile_id"]
+	if !ok {
+		return 0
+	}
+	switch id := v.(type) {
+	case float64:
+		return int64(id)
+	case int64:
+		return id
+	case int:
+		return int64(id)
+	case json.Number:
+		if i, err := id.Int64(); err == nil {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetTLSFingerprintRouterID 获取账号绑定的 TLS 路由器 ID。
+// 返回 0 表示未绑定路由器。
+func (a *Account) GetTLSFingerprintRouterID() int64 {
+	if a.Extra == nil {
+		return 0
+	}
+	v, ok := a.Extra["tls_fingerprint_router_id"]
 	if !ok {
 		return 0
 	}
