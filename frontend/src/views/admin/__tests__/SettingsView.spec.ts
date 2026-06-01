@@ -303,12 +303,15 @@ const SelectStub = defineComponent({
   setup(props, { emit }) {
     const onChange = (event: Event) => {
       const target = event.target as HTMLSelectElement;
-      emit("update:modelValue", target.value);
       const option =
         (props.options as Array<Record<string, unknown>>).find(
           (item) => String(item.value ?? "") === target.value,
         ) ?? null;
-      emit("change", target.value, option);
+      const value = option
+        ? (option.value as string | number | boolean | null)
+        : target.value;
+      emit("update:modelValue", value);
+      emit("change", value, option);
     };
 
     return () =>

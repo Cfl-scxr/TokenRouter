@@ -1265,27 +1265,20 @@
             </button>
           </div>
 
-          <select
+          <Select
             v-if="tlsFingerprintEnabled"
-            v-model.number="tlsFingerprintProfileId"
+            v-model="tlsFingerprintProfileId"
             id="bulk-edit-tls-fingerprint-profile"
             data-testid="bulk-edit-tls-fingerprint-profile"
-            class="input"
-          >
-            <option :value="0">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-            <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-            <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
+            :options="tlsFingerprintProfileOptions"
+          />
           <div v-if="tlsFingerprintEnabled && allOpenAIOAuth" class="mt-3">
-            <select
+            <Select
               v-model="tlsFingerprintRouterId"
               id="bulk-edit-tls-fingerprint-router"
               data-testid="bulk-edit-tls-fingerprint-router"
-              class="input"
-            >
-              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
-              <option v-for="router in tlsFingerprintRouters" :key="router.id" :value="router.id">{{ router.name }}</option>
-            </select>
+              :options="tlsFingerprintRouterOptions"
+            />
             <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
           </div>
         </div>
@@ -1584,6 +1577,17 @@ const tlsFingerprintProfileId = ref(0)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const tlsFingerprintRouterId = ref<number | null>(null)
 const tlsFingerprintRouters = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintProfileOptions = computed(() => [
+  { value: 0, label: t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') },
+  ...(tlsFingerprintProfiles.value.length > 0
+    ? [{ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }]
+    : []),
+  ...tlsFingerprintProfiles.value.map((profile) => ({ value: profile.id, label: profile.name }))
+])
+const tlsFingerprintRouterOptions = computed(() => [
+  { value: null, label: t('admin.accounts.quotaControl.tlsFingerprint.noRouter') },
+  ...tlsFingerprintRouters.value.map((router) => ({ value: router.id, label: router.name }))
+])
 const modelRestrictionPrefillSeq = ref(0)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },

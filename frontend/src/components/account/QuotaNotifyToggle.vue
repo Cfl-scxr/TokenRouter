@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE, type QuotaThresholdType } from '@/constants/account'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
+import Select from '@/components/common/Select.vue'
 
 const { usdUnitSymbol } = useBalanceDisplay()
 
@@ -15,6 +17,19 @@ const emit = defineEmits<{
   'update:threshold': [value: number | null]
   'update:thresholdType': [value: QuotaThresholdType | null]
 }>()
+
+// 通知阈值类型只允许固定金额或百分比，避免 Select 回传其他类型时污染字段。
+const thresholdTypeOptions = computed(() => [
+  { value: QUOTA_THRESHOLD_TYPE_FIXED, label: usdUnitSymbol },
+  { value: QUOTA_THRESHOLD_TYPE_PERCENTAGE, label: '%' }
+])
+
+const onThresholdTypeChange = (value: string | number | boolean | null) => {
+  emit(
+    'update:thresholdType',
+    value === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? QUOTA_THRESHOLD_TYPE_PERCENTAGE : QUOTA_THRESHOLD_TYPE_FIXED
+  )
+}
 </script>
 
 <template>
@@ -44,14 +59,23 @@ const emit = defineEmits<{
         :step="thresholdType === QUOTA_THRESHOLD_TYPE_PERCENTAGE ? 1 : 0.01"
         class="input py-1 text-sm flex-1 min-w-0"
       />
-      <select
-        :value="thresholdType || QUOTA_THRESHOLD_TYPE_FIXED"
-        @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value as QuotaThresholdType)"
-        class="input py-1 text-xs w-[4.5rem] flex-shrink-0 text-center"
-      >
-        <option :value="QUOTA_THRESHOLD_TYPE_FIXED">{{ usdUnitSymbol }}</option>
-        <option :value="QUOTA_THRESHOLD_TYPE_PERCENTAGE">%</option>
-      </select>
+      <Select
+        :model-value="thresholdType || QUOTA_THRESHOLD_TYPE_FIXED"
+        :options="thresholdTypeOptions"
+        class="quota-threshold-type-select w-[4.5rem] flex-shrink-0 text-xs"
+        :searchable="false"
+        @change="onThresholdTypeChange"
+      />
     </template>
   </div>
 </template>
+
+<style scoped>
+.quota-threshold-type-select :deep(.select-trigger) {
+  @apply rounded-lg px-2 py-1 text-xs;
+}
+
+.quota-threshold-type-select :deep(.select-value) {
+  @apply text-center;
+}
+</style>

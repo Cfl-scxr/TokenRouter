@@ -1,20 +1,20 @@
-/** WebSearch emulation mode values (must match backend WebSearchMode* constants in account.go) */
+/** WebSearch 模拟模式值，必须与后端 account.go 中的 WebSearchMode* 常量一致。 */
 export const WEB_SEARCH_MODE_DEFAULT = 'default' as const
 export const WEB_SEARCH_MODE_ENABLED = 'enabled' as const
 export const WEB_SEARCH_MODE_DISABLED = 'disabled' as const
 export type WebSearchMode = typeof WEB_SEARCH_MODE_DEFAULT | typeof WEB_SEARCH_MODE_ENABLED | typeof WEB_SEARCH_MODE_DISABLED
 
-/** Quota notification threshold type values (must match thresholdType* constants in balance_notify_service.go) */
+/** 额度通知阈值类型，必须与后端 balance_notify_service.go 中的 thresholdType* 常量一致。 */
 export const QUOTA_THRESHOLD_TYPE_FIXED = 'fixed' as const
 export const QUOTA_THRESHOLD_TYPE_PERCENTAGE = 'percentage' as const
 export type QuotaThresholdType = typeof QUOTA_THRESHOLD_TYPE_FIXED | typeof QUOTA_THRESHOLD_TYPE_PERCENTAGE
 
-/** Quota reset mode values */
+/** 额度重置模式值。 */
 export const QUOTA_RESET_MODE_ROLLING = 'rolling' as const
 export const QUOTA_RESET_MODE_FIXED = 'fixed' as const
 export type QuotaResetMode = typeof QUOTA_RESET_MODE_ROLLING | typeof QUOTA_RESET_MODE_FIXED
 
-/** Vertex AI location options for Service Account accounts */
+/** Service Account 账号可选的 Vertex AI 区域。 */
 export const VERTEX_LOCATION_OPTIONS = [
   {
     label: 'Common',
@@ -61,3 +61,76 @@ export const VERTEX_LOCATION_OPTIONS = [
     ]
   }
 ] as const
+
+/** AWS Bedrock 可选区域。 */
+export const BEDROCK_REGION_OPTIONS = [
+  {
+    label: 'US',
+    options: [
+      { value: 'us-east-1', label: 'us-east-1 (N. Virginia)' },
+      { value: 'us-east-2', label: 'us-east-2 (Ohio)' },
+      { value: 'us-west-1', label: 'us-west-1 (N. California)' },
+      { value: 'us-west-2', label: 'us-west-2 (Oregon)' },
+      { value: 'us-gov-east-1', label: 'us-gov-east-1 (GovCloud US-East)' },
+      { value: 'us-gov-west-1', label: 'us-gov-west-1 (GovCloud US-West)' }
+    ]
+  },
+  {
+    label: 'Europe',
+    options: [
+      { value: 'eu-west-1', label: 'eu-west-1 (Ireland)' },
+      { value: 'eu-west-2', label: 'eu-west-2 (London)' },
+      { value: 'eu-west-3', label: 'eu-west-3 (Paris)' },
+      { value: 'eu-central-1', label: 'eu-central-1 (Frankfurt)' },
+      { value: 'eu-central-2', label: 'eu-central-2 (Zurich)' },
+      { value: 'eu-south-1', label: 'eu-south-1 (Milan)' },
+      { value: 'eu-south-2', label: 'eu-south-2 (Spain)' },
+      { value: 'eu-north-1', label: 'eu-north-1 (Stockholm)' }
+    ]
+  },
+  {
+    label: 'Asia Pacific',
+    options: [
+      { value: 'ap-northeast-1', label: 'ap-northeast-1 (Tokyo)' },
+      { value: 'ap-northeast-2', label: 'ap-northeast-2 (Seoul)' },
+      { value: 'ap-northeast-3', label: 'ap-northeast-3 (Osaka)' },
+      { value: 'ap-south-1', label: 'ap-south-1 (Mumbai)' },
+      { value: 'ap-south-2', label: 'ap-south-2 (Hyderabad)' },
+      { value: 'ap-southeast-1', label: 'ap-southeast-1 (Singapore)' },
+      { value: 'ap-southeast-2', label: 'ap-southeast-2 (Sydney)' }
+    ]
+  },
+  {
+    label: 'Canada',
+    options: [
+      { value: 'ca-central-1', label: 'ca-central-1 (Canada)' }
+    ]
+  },
+  {
+    label: 'South America',
+    options: [
+      { value: 'sa-east-1', label: 'sa-east-1 (Sao Paulo)' }
+    ]
+  }
+] as const
+
+export type AccountSelectGroup = {
+  readonly label: string
+  readonly options: readonly {
+    readonly value: string | number
+    readonly label: string
+  }[]
+}
+
+// 将 optgroup 数据转换为项目 Select 可识别的分组头与选项。
+export const groupedAccountSelectOptions = (groups: readonly AccountSelectGroup[]) => {
+  return groups.flatMap((group) => [
+    {
+      value: `__group__${group.label}`,
+      label: group.label,
+      disabled: true,
+      kind: 'group'
+    },
+    ...group.options
+  ])
+}

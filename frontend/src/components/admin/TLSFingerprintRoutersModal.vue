@@ -204,22 +204,19 @@
               </div>
               <div>
                 <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.profile') }}</label>
-                <select v-model.number="rule.tls_fingerprint_profile_id" class="input">
-                  <option :value="0">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-                  <option v-if="profiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-                  <option v-for="profile in profiles" :key="profile.id" :value="profile.id">
-                    {{ profile.name }}
-                  </option>
-                </select>
+                <Select
+                  :model-value="rule.tls_fingerprint_profile_id"
+                  :options="profileOptions"
+                  @change="rule.tls_fingerprint_profile_id = Number($event ?? 0)"
+                />
               </div>
               <div>
                 <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.matchType') }}</label>
-                <select v-model="rule.match_type" class="input">
-                  <option value="contains">{{ t('admin.tlsFingerprintRouters.matchTypes.contains') }}</option>
-                  <option value="prefix">{{ t('admin.tlsFingerprintRouters.matchTypes.prefix') }}</option>
-                  <option value="exact">{{ t('admin.tlsFingerprintRouters.matchTypes.exact') }}</option>
-                  <option value="regex">{{ t('admin.tlsFingerprintRouters.matchTypes.regex') }}</option>
-                </select>
+                <Select
+                  :model-value="rule.match_type"
+                  :options="matchTypeOptions"
+                  @change="rule.match_type = normalizeMatchType($event)"
+                />
               </div>
               <div>
                 <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.pattern') }}</label>
@@ -278,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -290,6 +287,7 @@ import type {
 } from '@/api/admin/tlsFingerprintRouter'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{
@@ -322,6 +320,21 @@ const form = reactive({
   enabled: true,
   rules: [] as TLSFingerprintRouterRule[]
 })
+
+const profileOptions = computed<SelectOption[]>(() => [
+  { value: 0, label: t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') },
+  ...(profiles.value.length > 0
+    ? [{ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }]
+    : []),
+  ...profiles.value.map((profile) => ({ value: profile.id, label: profile.name }))
+])
+
+const matchTypeOptions = computed<SelectOption[]>(() => [
+  { value: 'contains', label: t('admin.tlsFingerprintRouters.matchTypes.contains') },
+  { value: 'prefix', label: t('admin.tlsFingerprintRouters.matchTypes.prefix') },
+  { value: 'exact', label: t('admin.tlsFingerprintRouters.matchTypes.exact') },
+  { value: 'regex', label: t('admin.tlsFingerprintRouters.matchTypes.regex') }
+])
 
 watch(() => props.show, (visible) => {
   if (visible) {

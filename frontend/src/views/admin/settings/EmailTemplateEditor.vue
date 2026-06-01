@@ -56,39 +56,23 @@
             <label class="input-label" for="email-template-event">
               {{ t("admin.settings.emailTemplates.event") }}
             </label>
-            <select
+            <Select
               id="email-template-event"
               v-model="selectedEvent"
-              class="input"
+              :options="emailTemplateEventSelectOptions"
               :disabled="loadingTemplate || eventOptions.length === 0"
-            >
-              <option
-                v-for="option in eventOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ formatEventOptionLabel(option) }}
-              </option>
-            </select>
+            />
           </div>
           <div>
             <label class="input-label" for="email-template-locale">
               {{ t("admin.settings.emailTemplates.locale") }}
             </label>
-            <select
+            <Select
               id="email-template-locale"
               v-model="selectedLocale"
-              class="input"
+              :options="emailTemplateLocaleSelectOptions"
               :disabled="loadingTemplate || localeOptions.length === 0"
-            >
-              <option
-                v-for="localeOption in localeOptions"
-                :key="localeOption"
-                :value="localeOption"
-              >
-                {{ formatLocale(localeOption) }}
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -237,6 +221,7 @@ import type {
   EmailTemplateEventOption,
   EmailTemplateOption,
 } from "@/api/admin/settings";
+import Select from "@/components/common/Select.vue";
 import { useAppStore } from "@/stores";
 import { extractApiErrorMessage } from "@/utils/apiError";
 
@@ -514,6 +499,20 @@ const placeholderList = computed(() => {
     ),
   );
 });
+
+const emailTemplateEventSelectOptions = computed(() =>
+  eventOptions.value.map((option) => ({
+    value: option.value,
+    label: formatEventOptionLabel(option),
+  })),
+);
+
+const emailTemplateLocaleSelectOptions = computed(() =>
+  localeOptions.value.map((localeOption) => ({
+    value: localeOption,
+    label: formatLocale(localeOption),
+  })),
+);
 
 function formatPlaceholder(placeholder: string): string {
   const trimmed = placeholder.trim();

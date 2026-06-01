@@ -43,11 +43,7 @@
             </div>
             <div>
               <label class="input-label">{{ t('admin.accounts.autoPauseOnExpired') }}</label>
-              <select v-model="form.autoPauseOnExpired" class="input">
-                <option value="unset">{{ t('admin.accounts.openAIOAuthImportDefaultsUnset') }}</option>
-                <option value="true">{{ t('common.yes') }}</option>
-                <option value="false">{{ t('common.no') }}</option>
-              </select>
+              <Select v-model="form.autoPauseOnExpired" :options="autoPauseOnExpiredOptions" />
             </div>
           </div>
         </section>
@@ -73,11 +69,7 @@
                   {{ t('admin.accounts.openai.wsModeDesc') }}
                 </p>
               </div>
-              <select v-model="wsMode" class="input w-52">
-                <option value="off">{{ t('admin.accounts.openai.wsModeOff') }}</option>
-                <option value="ctx_pool">{{ t('admin.accounts.openai.wsModeCtxPool') }}</option>
-                <option value="passthrough">{{ t('admin.accounts.openai.wsModePassthrough') }}</option>
-              </select>
+              <Select v-model="wsMode" :options="wsModeOptions" class="w-52" />
             </div>
             <div class="flex items-center justify-between gap-4">
               <div>
@@ -86,17 +78,12 @@
                   {{ t('admin.accounts.openai.clientPolicyDesc') }}
                 </p>
               </div>
-              <select
+              <Select
                 v-model="openAIOAuthClientPolicy"
-                class="input w-64"
+                :options="openAIOAuthClientPolicyOptions"
+                class="w-64"
                 data-testid="openai-oauth-default-client-policy"
-              >
-                <option value="any">{{ t('admin.accounts.openai.clientPolicyAny') }}</option>
-                <option value="codex_only">{{ t('admin.accounts.openai.clientPolicyCodexOnly') }}</option>
-                <option value="tls_router_matched_only">
-                  {{ t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly') }}
-                </option>
-              </select>
+              />
             </div>
             <div
               v-if="openAIOAuthClientPolicy === 'codex_only'"
@@ -172,11 +159,7 @@
                   {{ t('admin.accounts.openai.compactModeDesc') }}
                 </p>
               </div>
-              <select v-model="compactMode" class="input w-44">
-                <option value="auto">{{ t('admin.accounts.openai.compactModeAuto') }}</option>
-                <option value="force_on">{{ t('admin.accounts.openai.compactModeForceOn') }}</option>
-                <option value="force_off">{{ t('admin.accounts.openai.compactModeForceOff') }}</option>
-              </select>
+              <Select v-model="compactMode" :options="compactModeOptions" class="w-44" />
             </div>
             <div class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700">
               <div class="flex items-center justify-between gap-4">
@@ -190,31 +173,20 @@
                 </div>
                 <Toggle v-model="tlsFingerprintEnabled" data-testid="openai-oauth-default-tls-fingerprint-toggle" />
               </div>
-              <select
+              <Select
                 v-if="tlsFingerprintEnabled"
                 v-model="tlsFingerprintProfileId"
-                class="input w-full md:w-64"
+                :options="tlsFingerprintProfileOptions"
+                class="w-full md:w-64"
                 data-testid="openai-oauth-default-tls-fingerprint-profile"
-              >
-                <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-                <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">
-                  {{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}
-                </option>
-                <option v-for="profile in tlsFingerprintProfiles" :key="profile.id" :value="profile.id">
-                  {{ profile.name }}
-                </option>
-              </select>
+              />
               <div v-if="tlsFingerprintEnabled" class="space-y-1">
-                <select
+                <Select
                   v-model="tlsFingerprintRouterId"
-                  class="input w-full md:w-64"
+                  :options="tlsFingerprintRouterOptions"
+                  class="w-full md:w-64"
                   data-testid="openai-oauth-default-tls-fingerprint-router"
-                >
-                  <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.noRouter') }}</option>
-                  <option v-for="router in tlsFingerprintRouters" :key="router.id" :value="router.id">
-                    {{ router.name }}
-                  </option>
-                </select>
+                />
                 <p class="input-hint">{{ t('admin.accounts.quotaControl.tlsFingerprint.routerHint') }}</p>
               </div>
             </div>
@@ -352,6 +324,7 @@ import {
   splitPersistedModelRestriction
 } from '@/composables/useModelWhitelist'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -438,6 +411,46 @@ const structuredExtraKeys = [
   'tls_fingerprint_profile_id',
   'tls_fingerprint_router_id'
 ]
+
+const autoPauseOnExpiredOptions = computed<SelectOption[]>(() => [
+  { value: 'unset', label: t('admin.accounts.openAIOAuthImportDefaultsUnset') },
+  { value: 'true', label: t('common.yes') },
+  { value: 'false', label: t('common.no') }
+])
+
+const wsModeOptions = computed<SelectOption[]>(() => [
+  { value: 'off', label: t('admin.accounts.openai.wsModeOff') },
+  { value: 'ctx_pool', label: t('admin.accounts.openai.wsModeCtxPool') },
+  { value: 'passthrough', label: t('admin.accounts.openai.wsModePassthrough') }
+])
+
+const openAIOAuthClientPolicyOptions = computed<SelectOption[]>(() => [
+  { value: 'any', label: t('admin.accounts.openai.clientPolicyAny') },
+  { value: 'codex_only', label: t('admin.accounts.openai.clientPolicyCodexOnly') },
+  {
+    value: 'tls_router_matched_only',
+    label: t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly')
+  }
+])
+
+const compactModeOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
+  { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
+  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+
+const tlsFingerprintProfileOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') },
+  ...(tlsFingerprintProfiles.value.length > 0
+    ? [{ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }]
+    : []),
+  ...tlsFingerprintProfiles.value.map((profile) => ({ value: profile.id, label: profile.name }))
+])
+
+const tlsFingerprintRouterOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.accounts.quotaControl.tlsFingerprint.noRouter') },
+  ...tlsFingerprintRouters.value.map((router) => ({ value: router.id, label: router.name }))
+])
 
 const numberToInput = (value: unknown): string => {
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : ''

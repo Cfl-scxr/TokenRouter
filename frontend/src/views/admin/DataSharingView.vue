@@ -173,11 +173,7 @@
               </div>
               <div>
                 <label class="input-label">压缩等级</label>
-                <select v-model="captureCompressionLevelInput" class="input">
-                  <option v-for="option in captureCompressionLevelOptions" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
+                <Select v-model="captureCompressionLevelInput" :options="captureCompressionLevelOptions" />
               </div>
             </div>
             <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
@@ -393,13 +389,31 @@
 
         <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">User Agent 分布</h2>
-          <div class="h-64">
-            <div v-if="statsLoading" class="flex h-full items-center justify-center">
-              <LoadingSpinner />
-            </div>
-            <Doughnut v-else-if="userAgentChartData" :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无 User Agent 数据</div>
+          <div v-if="statsLoading" class="flex h-64 items-center justify-center">
+            <LoadingSpinner />
           </div>
+          <div v-else-if="userAgentChartData" class="space-y-3">
+            <div class="h-52">
+              <Doughnut :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
+            </div>
+            <div class="max-h-32 space-y-2 overflow-y-auto rounded-lg border border-gray-100 p-2 dark:border-dark-700">
+              <div
+                v-for="item in userAgentLegendItems"
+                :key="item.key"
+                class="flex items-start justify-between gap-3 text-xs"
+                :title="item.fullLabel"
+              >
+                <span class="flex min-w-0 items-start gap-2">
+                  <span class="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ backgroundColor: item.color }"></span>
+                  <span class="min-w-0 truncate text-gray-700 dark:text-gray-300">{{ item.label }}</span>
+                </span>
+                <span class="flex-shrink-0 font-medium text-gray-500 dark:text-gray-400">
+                  {{ formatNumber(item.sessionCount) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="flex h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无 User Agent 数据</div>
         </div>
 
         <div class="card p-4">
@@ -452,11 +466,7 @@
             </div>
             <div>
               <label class="input-label">单位</label>
-              <select v-model="storageLimitUnit" class="input">
-                <option value="MB">MB</option>
-                <option value="GB">GB</option>
-                <option value="TB">TB</option>
-              </select>
+              <Select v-model="storageLimitUnit" :options="storageLimitUnitOptions" />
             </div>
           </div>
         </div>
@@ -618,10 +628,7 @@
                 </div>
                 <div>
                   <label class="input-label">匹配方式</label>
-                  <select v-model="rule.match_mode" class="input">
-                    <option value="contains">包含</option>
-                    <option value="equals">等于</option>
-                  </select>
+                  <Select v-model="rule.match_mode" :options="skipRuleMatchModeOptions" />
                 </div>
                 <div>
                   <label class="input-label">大小写</label>
@@ -1007,6 +1014,12 @@ const captureCompressionLevelOptions = [
   { value: 'better', label: '更高压缩' },
   { value: 'best', label: '最高压缩' }
 ]
+
+const storageLimitUnitOptions = [
+  { value: 'MB', label: 'MB' },
+  { value: 'GB', label: 'GB' },
+  { value: 'TB', label: 'TB' }
+]
 const stats = ref<DataShareStats | null>(null)
 const sessions = ref<DataShareSession[]>([])
 const selectedSession = ref<DataShareSession | null>(null)
@@ -1073,6 +1086,11 @@ const skipRuleRequestPathOptions = [
   { value: '/v1/messages', label: '/v1/messages' },
   { value: '/v1/chat/completions', label: '/v1/chat/completions' },
   { value: '/v1/responses', label: '/v1/responses' }
+]
+
+const skipRuleMatchModeOptions = [
+  { value: 'contains', label: '包含' },
+  { value: 'equals', label: '等于' }
 ]
 
 const defaultSkipRules: DataShareCaptureSkipRule[] = [
@@ -1257,6 +1275,19 @@ const userAgentChartData = computed(() => buildBreakdownChartData(
   point => formatUserAgent(point.user_agent || '(unknown)')
 ))
 
+const userAgentLegendItems = computed(() =>
+  (stats.value?.user_agent_breakdown || []).map((point, index) => {
+    const fullLabel = point.user_agent || '(unknown)'
+    return {
+      key: `${index}:${fullLabel}`,
+      fullLabel,
+      label: formatUserAgent(fullLabel),
+      sessionCount: point.session_count,
+      color: doughnutPalette[index % doughnutPalette.length]
+    }
+  })
+)
+
 const qualityErrorChartData = computed(() => buildBreakdownChartData(
   stats.value?.quality_error_breakdown || [],
   point => qualityErrorLabel(point.error_code)
@@ -1347,7 +1378,9 @@ const doughnutChartOptions = computed(() => ({
 }))
 
 const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
-const userAgentDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.user_agent_breakdown || []))
+const userAgentDoughnutChartOptions = computed(() =>
+  buildDoughnutChartOptions(stats.value?.user_agent_breakdown || [], { legend: false })
+)
 const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
 const invalidUserBarChartOptions = computed(() => ({
   responsive: true,
@@ -2331,12 +2364,17 @@ function buildBreakdownChartData<T extends { session_count: number }>(points: T[
   }
 }
 
-function buildDoughnutChartOptions(points: Array<{ storage_bytes: number; session_count: number; total_tokens: number }>) {
+function buildDoughnutChartOptions(
+  points: Array<{ storage_bytes: number; session_count: number; total_tokens: number }>,
+  options: { legend?: boolean } = {}
+) {
   return {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'bottom' as const, labels: { color: chartColors.value.text } },
+      legend: options.legend === false
+        ? { display: false }
+        : { position: 'bottom' as const, labels: { color: chartColors.value.text } },
       tooltip: {
         callbacks: {
           label: (ctx: any) => {

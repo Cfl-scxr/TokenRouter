@@ -42,6 +42,11 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+function coerceSelectStubValue(value: string, options: unknown[]): string | number | boolean | null {
+  const option = (options as Array<Record<string, unknown>>).find((item) => String(item.value ?? '') === value)
+  return option ? (option.value as string | number | boolean | null) : value
+}
+
 function mountModal(extraProps: Record<string, unknown> = {}) {
   return mount(BulkEditAccountModal, {
     props: {
@@ -59,12 +64,22 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
         ConfirmDialog: true,
         Select: {
           props: ['modelValue', 'options'],
-          emits: ['update:modelValue'],
+          emits: ['update:modelValue', 'change'],
+          methods: {
+            coerceSelectStubValue
+          },
           template: `
             <select
               v-bind="$attrs"
               :value="modelValue"
-              @change="$emit('update:modelValue', $event.target.value)"
+              @change="
+                (event) => {
+                  const value = coerceSelectStubValue(event.target.value, options)
+                  const option = options.find((item) => String(item.value ?? '') === event.target.value) ?? null
+                  $emit('update:modelValue', value)
+                  $emit('change', value, option)
+                }
+              "
             >
               <option v-for="option in options" :key="option.value" :value="option.value">
                 {{ option.label }}

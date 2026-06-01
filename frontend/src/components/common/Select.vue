@@ -561,7 +561,8 @@ onUnmounted(() => {
 
 .select-dropdown-enter-active,
 .select-dropdown-leave-active {
-  transition: all 0.2s ease;
+  /* 下拉层会在打开时根据触发器位置更新 left/top，只动画透明度和位移，避免定位值被过渡成侧向飞入。 */
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .select-dropdown-enter-from,

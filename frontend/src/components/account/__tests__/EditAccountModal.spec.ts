@@ -10,6 +10,11 @@ const { updateAccountMock, checkMixedChannelRiskMock, getWebSearchEmulationConfi
   listTLSProfilesMock: vi.fn()
 }))
 
+function coerceSelectStubValue(value: string, options: unknown[]): string | number | boolean | null {
+  const option = (options as Array<Record<string, unknown>>).find((item) => String(item.value ?? '') === value)
+  return option ? (option.value as string | number | boolean | null) : value
+}
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError: vi.fn(),
@@ -104,12 +109,22 @@ const SelectStub = defineComponent({
       default: () => []
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    coerceSelectStubValue
+  },
   template: `
     <select
       v-bind="$attrs"
       :value="modelValue"
-      @change="$emit('update:modelValue', $event.target.value)"
+      @change="
+        (event) => {
+          const value = coerceSelectStubValue(event.target.value, options)
+          const option = options.find((item) => String(item.value ?? '') === event.target.value) ?? null
+          $emit('update:modelValue', value)
+          $emit('change', value, option)
+        }
+      "
     >
       <option v-for="option in options" :key="option.value" :value="option.value">
         {{ option.label }}
@@ -496,9 +511,10 @@ describe('EditAccountModal', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="edit-openai-tls-fingerprint-profile"]').exists()).toBe(true)
-    expect((wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]').element as HTMLSelectElement).value).toBe('-1')
+    const profileSelect = wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]')
+    expect((profileSelect.element as HTMLSelectElement).value).toBe('-1')
 
-    await wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]').setValue('7')
+    await profileSelect.setValue('7')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     await flushPromises()
 

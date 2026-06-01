@@ -81,6 +81,44 @@ const ConfirmDialogStub = defineComponent({
   template: '<div v-if="show"><button data-testid="confirm-delete" @click="$emit(\'confirm\')">confirm</button></div>'
 })
 
+const SelectStub = defineComponent({
+  name: 'Select',
+  props: {
+    modelValue: {
+      type: [String, Number, Boolean, null],
+      default: ''
+    },
+    options: {
+      type: Array,
+      default: () => []
+    }
+  },
+  emits: ['update:modelValue', 'change'],
+  setup(props, { emit }) {
+    const onChange = (event: Event) => {
+      const target = event.target as HTMLSelectElement
+      const option =
+        (props.options as Array<Record<string, unknown>>).find(
+          item => String(item.value ?? '') === target.value
+        ) ?? null
+      const value = option ? option.value as string | number | boolean | null : target.value
+      emit('update:modelValue', value)
+      emit('change', value, option)
+    }
+
+    return {
+      onChange
+    }
+  },
+  template: `
+    <select v-bind="$attrs" :value="modelValue ?? ''" @change="onChange">
+      <option v-for="option in options" :key="String(option.value)" :value="option.value">
+        {{ option.label }}
+      </option>
+    </select>
+  `
+})
+
 const routerRecord = {
   id: 9,
   name: 'Codex Router',
@@ -111,6 +149,7 @@ function mountModal() {
       stubs: {
         BaseDialog: BaseDialogStub,
         ConfirmDialog: ConfirmDialogStub,
+        Select: SelectStub,
         Icon: true
       }
     }
