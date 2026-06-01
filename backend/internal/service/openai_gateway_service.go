@@ -1475,7 +1475,12 @@ func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, b
 	return currentHash
 }
 
-func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) string {
+func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool, routerMatch ...TLSFingerprintRouterMatchResult) string {
+	if len(routerMatch) > 0 && routerMatch[0].Matched {
+		if originator := strings.TrimSpace(routerMatch[0].UpstreamOriginator); originator != "" {
+			return originator
+		}
+	}
 	if c != nil {
 		if originator := strings.TrimSpace(c.GetHeader("originator")); originator != "" {
 			return originator
@@ -1485,6 +1490,57 @@ func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) stri
 		return "codex_cli_rs"
 	}
 	return "opencode"
+}
+
+// applyOpenAIUpstreamUserAgent 按路由规则、账号配置与全局兜底优先级设置上游 UA。
+func (s *OpenAIGatewayService) applyOpenAIUpstreamUserAgent(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	req *http.Request,
+	passthrough bool,
+	routerMatch ...TLSFingerprintRouterMatchResult,
+) {
+	if req == nil {
+		return
+	}
+	if len(routerMatch) > 0 && routerMatch[0].Matched {
+		if ua := strings.TrimSpace(routerMatch[0].UpstreamUserAgent); ua != "" {
+			req.Header.Set("user-agent", ua)
+			return
+		}
+	}
+	if account != nil {
+		if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
+			req.Header.Set("user-agent", customUA)
+		}
+	}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		req.Header.Set("user-agent", codexCLIUserAgent)
+		return
+	}
+	wasBrowserUA := account != nil && account.Type == AccountTypeOAuth && openai.IsBrowserUserAgent(req.Header.Get("user-agent"))
+	s.overrideBrowserUserAgent(ctx, account, req)
+	if passthrough && account != nil && account.Type == AccountTypeOAuth && !wasBrowserUA && !openai.IsCodexCLIRequest(req.Header.Get("user-agent")) {
+		// OAuth 安全透传：非浏览器、非 Codex UA 继续使用历史 Codex CLI 兜底。
+		req.Header.Set("user-agent", codexCLIUserAgent)
+	}
+}
+
+// applyOpenAIUpstreamUserAgentHeader 在 WebSocket 握手头上复用 HTTP 上游 UA 规则。
+func (s *OpenAIGatewayService) applyOpenAIUpstreamUserAgentHeader(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	headers http.Header,
+	passthrough bool,
+	routerMatch ...TLSFingerprintRouterMatchResult,
+) {
+	if headers == nil {
+		return
+	}
+	req := &http.Request{Header: headers}
+	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, passthrough, routerMatch...)
 }
 
 // BindStickySession sets session -> account binding with standard TTL.
@@ -3217,7 +3273,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
+		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI, tlsRouterMatch)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -3511,7 +3567,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token, tlsRouterMatch...)
 	releaseUpstreamCtx()
 	if err != nil {
 		return nil, err
@@ -3656,6 +3712,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	account *Account,
 	body []byte,
 	token string,
+	routerMatch ...TLSFingerprintRouterMatchResult,
 ) (*http.Request, error) {
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
@@ -3727,6 +3784,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if req.Header.Get("originator") == "" {
 			req.Header.Set("originator", "codex_cli_rs")
 		}
+		if len(routerMatch) > 0 && routerMatch[0].Matched {
+			if originator := strings.TrimSpace(routerMatch[0].UpstreamOriginator); originator != "" {
+				req.Header.Set("originator", originator)
+			}
+		}
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
 		if clientSessionID == "" {
 			clientSessionID = promptCacheKey
@@ -3742,22 +3804,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 
-	// 透传模式也支持账户自定义 User-Agent 与 ForceCodexCLI 兜底。
-	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		req.Header.Set("user-agent", customUA)
-	}
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", codexCLIUserAgent)
-	}
-	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
-	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
-	if account.Type == AccountTypeOAuth && openai.IsBrowserUserAgent(req.Header.Get("user-agent")) {
-		s.overrideBrowserUserAgent(ctx, account, req)
-	} else if account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(req.Header.Get("user-agent")) {
-		// OAuth 安全透传：非浏览器、非 Codex UA 继续使用历史 Codex CLI 兜底。
-		req.Header.Set("user-agent", codexCLIUserAgent)
-	}
+	// 透传模式也支持 TLS 路由规则、账户自定义 User-Agent 与 ForceCodexCLI 兜底。
+	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, true, routerMatch...)
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -4406,7 +4454,7 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 	}
 }
 
-func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool, routerMatch ...TLSFingerprintRouterMatchResult) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {
@@ -4471,7 +4519,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			req.Header.Del("originator")
 		} else {
 			req.Header.Set("OpenAI-Beta", "responses=experimental")
-			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI, routerMatch...))
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		if isOpenAIResponsesCompactPath(c) {
@@ -4493,21 +4541,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		}
 	}
 
-	// Apply custom User-Agent if configured
-	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		req.Header.Set("user-agent", customUA)
-	}
-
-	// 若开启 ForceCodexCLI，则强制将上游 User-Agent 伪装为 Codex CLI。
-	// 用于网关未透传/改写 User-Agent 时，仍能命中 Codex 侧识别逻辑。
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", codexCLIUserAgent)
-	}
-
-	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
-	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
-	s.overrideBrowserUserAgent(ctx, account, req)
+	// 根据 TLS 路由规则、账号配置与全局兜底决定最终上游 User-Agent。
+	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, false, routerMatch...)
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {

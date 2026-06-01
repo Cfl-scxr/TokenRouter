@@ -2060,6 +2060,61 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 	}
 }
 
+func TestOpenAIBuildUpstreamRequestUsesTLSRouterUpstreamHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	c.Request.Header.Set("originator", "opencode")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-acc",
+			"user_agent":         "account-ua/1.0",
+		},
+	}
+	routerMatch := TLSFingerprintRouterMatchResult{
+		Matched:                 true,
+		RouterID:                9,
+		RuleName:                "Claude Code",
+		TLSFingerprintProfileID: 7,
+		UpstreamUserAgent:       "Claude Code/0.5.0 (Macos 15.5; arm64) iTerm2.app (Claude Code; 1.0.4)",
+		UpstreamOriginator:      "Claude Code",
+	}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", false, routerMatch)
+	require.NoError(t, err)
+	require.Equal(t, routerMatch.UpstreamUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, routerMatch.UpstreamOriginator, req.Header.Get("originator"))
+}
+
+func TestOpenAIBuildUpstreamRequestRouterEmptyUAUsesAccountFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "chatgpt-acc",
+			"user_agent":         "account-ua/1.0",
+		},
+	}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", false, TLSFingerprintRouterMatchResult{Matched: true})
+	require.NoError(t, err)
+	require.Equal(t, "account-ua/1.0", req.Header.Get("User-Agent"))
+	require.Equal(t, "opencode", req.Header.Get("originator"))
+}
+
 // ==================== P1-08 修复：model 替换性能优化测试 ====================
 
 // ==================== P1-08 修复：model 替换性能优化测试 =============

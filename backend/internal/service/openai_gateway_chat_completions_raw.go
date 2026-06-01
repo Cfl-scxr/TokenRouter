@@ -154,17 +154,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 			}
 		}
 	}
-	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		upstreamReq.Header.Set("user-agent", customUA)
-	}
+	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
+	s.applyOpenAIUpstreamUserAgent(c.Request.Context(), c, account, upstreamReq, false, tlsRouterMatch)
 
 	// 6. Send request
 	proxyURL := ""
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, s.matchTLSFingerprintRouter(c, account)))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch))
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")

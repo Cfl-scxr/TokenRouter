@@ -597,7 +597,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
-	upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint)
+	upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint, tlsRouterMatch...)
 	if err != nil {
 		return nil, err
 	}
@@ -727,6 +727,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	contentType string,
 	token string,
 	endpoint string,
+	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
 ) (*http.Request, error) {
 	targetURL := openAIImagesGenerationsURL
 	if endpoint == openAIImagesEditsEndpoint {
@@ -755,10 +756,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 			req.Header.Add(key, value)
 		}
 	}
-	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
-		req.Header.Set("User-Agent", customUA)
-	}
+	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, false, tlsRouterMatch...)
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

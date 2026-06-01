@@ -36,6 +36,8 @@ type TLSFingerprintRouterMatchResult struct {
 	RouterName              string
 	RuleName                string
 	TLSFingerprintProfileID int64
+	UpstreamUserAgent       string
+	UpstreamOriginator      string
 }
 
 type cachedTLSFingerprintRouter struct {
@@ -173,6 +175,8 @@ func (s *TLSFingerprintRouterService) MatchUserAgent(routerID int64, userAgent s
 				RouterName:              router.Name,
 				RuleName:                rule.Name,
 				TLSFingerprintProfileID: rule.TLSFingerprintProfileID,
+				UpstreamUserAgent:       rule.UpstreamUserAgent,
+				UpstreamOriginator:      rule.UpstreamOriginator,
 			}
 		}
 	}
@@ -264,6 +268,8 @@ func normalizeTLSFingerprintRouter(router *model.TLSFingerprintRouter) {
 		router.Rules[i].Name = strings.TrimSpace(router.Rules[i].Name)
 		router.Rules[i].Pattern = strings.TrimSpace(router.Rules[i].Pattern)
 		router.Rules[i].MatchType = model.NormalizeTLSRouterMatchType(router.Rules[i].MatchType)
+		router.Rules[i].UpstreamUserAgent = strings.TrimSpace(router.Rules[i].UpstreamUserAgent)
+		router.Rules[i].UpstreamOriginator = strings.TrimSpace(router.Rules[i].UpstreamOriginator)
 	}
 	if router.Rules == nil {
 		router.Rules = []model.TLSFingerprintRouterRule{}

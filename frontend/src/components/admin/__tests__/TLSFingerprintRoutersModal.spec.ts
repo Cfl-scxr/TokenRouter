@@ -93,7 +93,9 @@ const routerRecord = {
       match_type: 'contains',
       pattern: 'codex_cli',
       case_sensitive: false,
-      tls_fingerprint_profile_id: 7
+      tls_fingerprint_profile_id: 7,
+      upstream_user_agent: 'codex_cli_rs/0.125.0',
+      upstream_originator: 'codex_cli_rs'
     }
   ],
   created_at: '2026-06-01T00:00:00Z',
@@ -165,6 +167,8 @@ describe('TLSFingerprintRoutersModal', () => {
     const textInputs = wrapper.findAll('input[type="text"]')
     await textInputs[2].setValue('opencode')
     await textInputs[3].setValue('opencode/')
+    await textInputs[4].setValue('opencode/1.0 upstream')
+    await textInputs[5].setValue('opencode')
     const selects = wrapper.findAll('select')
     await selects[0].setValue('7')
     await selects[1].setValue('prefix')
@@ -182,7 +186,9 @@ describe('TLSFingerprintRoutersModal', () => {
           match_type: 'prefix',
           pattern: 'opencode/',
           case_sensitive: false,
-          tls_fingerprint_profile_id: 7
+          tls_fingerprint_profile_id: 7,
+          upstream_user_agent: 'opencode/1.0 upstream',
+          upstream_originator: 'opencode'
         }
       ]
     })

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/model"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
@@ -1078,6 +1079,60 @@ func TestOpenAIGatewayService_OAuthPassthrough_BrowserUAUsesConfiguredCodexUA(t 
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
 	require.NoError(t, err)
 	require.Equal(t, "codex-tui/9.9.9 test-terminal", upstream.lastReq.Header.Get("User-Agent"))
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_TLSRouterUABypassesCodexFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+
+	inputBody := []byte(`{"model":"gpt-5.2","stream":false,"store":true,"input":[{"type":"text","text":"hi"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp}
+	routerSvc := newTLSFingerprintRouterTestService(&model.TLSFingerprintRouter{
+		ID:      77,
+		Name:    "客户端路由",
+		Enabled: true,
+		Rules: []model.TLSFingerprintRouterRule{{
+			Name:                    "custom",
+			Enabled:                 true,
+			MatchType:               model.TLSRouterMatchExact,
+			Pattern:                 "custom-client/1.0",
+			TLSFingerprintProfileID: 0,
+			UpstreamUserAgent:       "custom-upstream/9.9",
+			UpstreamOriginator:      "custom-originator",
+		}},
+	})
+
+	svc := &OpenAIGatewayService{
+		cfg:                &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream:       upstream,
+		tlsFPRouterService: routerSvc,
+	}
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:          map[string]any{"openai_passthrough": true, "tls_fingerprint_router_id": int64(77)},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, inputBody)
+	require.NoError(t, err)
+	require.Equal(t, "custom-upstream/9.9", upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, "custom-originator", upstream.lastReq.Header.Get("originator"))
 }
 
 func TestOpenAIGatewayService_CodexCLIOnly_RejectsNonCodexClient(t *testing.T) {

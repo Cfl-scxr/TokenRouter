@@ -225,6 +225,16 @@
                 <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.pattern') }}</label>
                 <input v-model="rule.pattern" type="text" required class="input font-mono text-sm" />
               </div>
+              <div>
+                <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.upstreamUserAgent') }}</label>
+                <input v-model="rule.upstream_user_agent" type="text" class="input font-mono text-sm" />
+                <p class="input-hint">{{ t('admin.tlsFingerprintRouters.form.upstreamUserAgentHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.upstreamOriginator') }}</label>
+                <input v-model="rule.upstream_originator" type="text" class="input font-mono text-sm" />
+                <p class="input-hint">{{ t('admin.tlsFingerprintRouters.form.upstreamOriginatorHint') }}</p>
+              </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-4 text-sm text-gray-700 dark:text-gray-300">
@@ -327,7 +337,9 @@ function normalizeRules(rules: TLSFingerprintRouterRule[] | undefined): TLSFinge
     match_type: normalizeMatchType(rule.match_type),
     pattern: rule.pattern || '',
     case_sensitive: rule.case_sensitive === true,
-    tls_fingerprint_profile_id: Number(rule.tls_fingerprint_profile_id ?? 0)
+    tls_fingerprint_profile_id: Number(rule.tls_fingerprint_profile_id ?? 0),
+    upstream_user_agent: rule.upstream_user_agent?.trim() || '',
+    upstream_originator: rule.upstream_originator?.trim() || ''
   }))
 }
 
@@ -391,7 +403,9 @@ function addRule() {
     match_type: 'contains',
     pattern: '',
     case_sensitive: false,
-    tls_fingerprint_profile_id: 0
+    tls_fingerprint_profile_id: 0,
+    upstream_user_agent: '',
+    upstream_originator: ''
   })
 }
 

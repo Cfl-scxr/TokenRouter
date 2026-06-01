@@ -6576,7 +6576,7 @@ export default {
     // TLS 指纹路由器
     tlsFingerprintRouters: {
       title: 'TLS 路由器',
-      description: '按请求 User-Agent 顺序匹配规则，并为不同客户端选择对应的 TLS 指纹模板。',
+      description: '按请求 User-Agent 顺序匹配规则，并为不同客户端选择对应的 TLS 指纹模板和上游客户端头。',
       createRouter: '创建路由器',
       editRouter: '编辑路由器',
       deleteRouter: '删除路由器',
@@ -6601,6 +6601,10 @@ export default {
         profile: 'TLS 模板',
         matchType: '匹配方式',
         pattern: '匹配内容',
+        upstreamUserAgent: '上游 User-Agent',
+        upstreamUserAgentHint: '留空则继续使用账号自定义 UA、入站 UA 或系统兜底。',
+        upstreamOriginator: '上游 Originator',
+        upstreamOriginatorHint: '留空则继续使用入站 originator 或系统默认值。',
         ruleEnabled: '启用规则',
         caseSensitive: '区分大小写',
         patternRequired: '规则匹配内容不能为空',

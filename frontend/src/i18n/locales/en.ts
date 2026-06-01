@@ -6427,7 +6427,7 @@ export default {
     // TLS 指纹路由器
     tlsFingerprintRouters: {
       title: 'TLS Routers',
-      description: 'Match request User-Agent values in order and choose TLS fingerprint profiles for different clients.',
+      description: 'Match request User-Agent values in order and choose TLS fingerprint profiles plus upstream client headers.',
       createRouter: 'Create Router',
       editRouter: 'Edit Router',
       deleteRouter: 'Delete Router',
@@ -6452,6 +6452,10 @@ export default {
         profile: 'TLS Profile',
         matchType: 'Match Type',
         pattern: 'Pattern',
+        upstreamUserAgent: 'Upstream User-Agent',
+        upstreamUserAgentHint: 'Leave empty to use the account custom UA, inbound UA, or system fallback.',
+        upstreamOriginator: 'Upstream Originator',
+        upstreamOriginatorHint: 'Leave empty to use the inbound originator or system default.',
         ruleEnabled: 'Enable rule',
         caseSensitive: 'Case sensitive',
         patternRequired: 'Rule pattern is required',

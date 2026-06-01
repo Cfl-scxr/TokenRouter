@@ -27,6 +27,8 @@ type TLSFingerprintRouterRule struct {
 	Pattern                 string `json:"pattern"`
 	CaseSensitive           bool   `json:"case_sensitive"`
 	TLSFingerprintProfileID int64  `json:"tls_fingerprint_profile_id"`
+	UpstreamUserAgent       string `json:"upstream_user_agent,omitempty"`
+	UpstreamOriginator      string `json:"upstream_originator,omitempty"`
 }
 
 // TLSFingerprintRouter TLS 指纹路由器。

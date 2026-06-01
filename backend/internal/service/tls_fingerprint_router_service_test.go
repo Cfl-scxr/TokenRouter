@@ -75,6 +75,8 @@ func TestTLSFingerprintRouterService_MatchUserAgent(t *testing.T) {
 				MatchType:               model.TLSRouterMatchExact,
 				Pattern:                 "codex_cli_rs/1.0",
 				TLSFingerprintProfileID: 1,
+				UpstreamUserAgent:       "codex_cli_rs/9.9",
+				UpstreamOriginator:      "codex_cli_rs",
 			},
 			{
 				Name:                    "OpenCode 大小写不敏感",
@@ -123,6 +125,10 @@ func TestTLSFingerprintRouterService_MatchUserAgent(t *testing.T) {
 			if tt.wantMatch {
 				require.Equal(t, tt.wantRule, result.RuleName)
 				require.Equal(t, tt.wantID, result.TLSFingerprintProfileID)
+				if tt.wantID == 1 {
+					require.Equal(t, "codex_cli_rs/9.9", result.UpstreamUserAgent)
+					require.Equal(t, "codex_cli_rs", result.UpstreamOriginator)
+				}
 			}
 		})
 	}
