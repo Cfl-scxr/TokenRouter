@@ -210,6 +210,13 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 	return svc
 }
 
+// ProvideProxyExpiryService 创建并启动代理过期扫描服务。
+func ProvideProxyExpiryService(proxyRepo ProxyRepository) *ProxyExpiryService {
+	svc := NewProxyExpiryService(proxyRepo, time.Minute)
+	svc.Start()
+	return svc
+}
+
 // ProvideSubscriptionExpiryService 创建并启动订阅过期服务。
 func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService, lockCache LeaderLockCache, db *sql.DB) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
@@ -327,8 +334,9 @@ func ProvideOpsAlertEvaluatorService(
 	emailService *EmailService,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
-	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg)
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
 	svc.Start()
 	return svc
 }
@@ -619,6 +627,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
+	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
