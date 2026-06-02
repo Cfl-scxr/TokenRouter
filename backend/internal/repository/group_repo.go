@@ -58,6 +58,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetIsDefault(groupIn.IsDefault).
 		SetStatus(groupIn.Status).
 		SetDataSharingEnabled(groupIn.DataSharingEnabled).
+		SetSessionIsolationEnabled(groupIn.SessionIsolationEnabled).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
@@ -140,6 +141,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetIsDefault(groupIn.IsDefault).
 		SetStatus(groupIn.Status).
 		SetDataSharingEnabled(groupIn.DataSharingEnabled).
+		SetSessionIsolationEnabled(groupIn.SessionIsolationEnabled).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
@@ -399,6 +401,12 @@ func groupListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 		defaultOrder = false
 	case "is_exclusive":
 		field = group.FieldIsExclusive
+		defaultOrder = false
+	case "data_sharing_enabled":
+		field = group.FieldDataSharingEnabled
+		defaultOrder = false
+	case "session_isolation_enabled":
+		field = group.FieldSessionIsolationEnabled
 		defaultOrder = false
 	case "status":
 		field = group.FieldStatus

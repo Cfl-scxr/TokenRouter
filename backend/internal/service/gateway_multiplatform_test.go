@@ -235,6 +235,18 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
+func (m *mockGatewayCacheForPlatform) SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (m *mockGatewayCacheForPlatform) GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error) {
+	return 0, errors.New("not found")
+}
+
+func (m *mockGatewayCacheForPlatform) RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error {
+	return nil
+}
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int

@@ -13013,6 +13013,7 @@ type GroupMutation struct {
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	data_sharing_enabled                    *bool
+	session_isolation_enabled               *bool
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -14624,6 +14625,42 @@ func (m *GroupMutation) ResetDataSharingEnabled() {
 	m.data_sharing_enabled = nil
 }
 
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (m *GroupMutation) SetSessionIsolationEnabled(b bool) {
+	m.session_isolation_enabled = &b
+}
+
+// SessionIsolationEnabled returns the value of the "session_isolation_enabled" field in the mutation.
+func (m *GroupMutation) SessionIsolationEnabled() (r bool, exists bool) {
+	v := m.session_isolation_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionIsolationEnabled returns the old "session_isolation_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSessionIsolationEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionIsolationEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionIsolationEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionIsolationEnabled: %w", err)
+	}
+	return oldValue.SessionIsolationEnabled, nil
+}
+
+// ResetSessionIsolationEnabled resets all changes to the "session_isolation_enabled" field.
+func (m *GroupMutation) ResetSessionIsolationEnabled() {
+	m.session_isolation_enabled = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -14928,7 +14965,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 33)
+	fields := make([]string, 0, 34)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -15028,6 +15065,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.data_sharing_enabled != nil {
 		fields = append(fields, group.FieldDataSharingEnabled)
 	}
+	if m.session_isolation_enabled != nil {
+		fields = append(fields, group.FieldSessionIsolationEnabled)
+	}
 	return fields
 }
 
@@ -15102,6 +15142,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RpmLimit()
 	case group.FieldDataSharingEnabled:
 		return m.DataSharingEnabled()
+	case group.FieldSessionIsolationEnabled:
+		return m.SessionIsolationEnabled()
 	}
 	return nil, false
 }
@@ -15177,6 +15219,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRpmLimit(ctx)
 	case group.FieldDataSharingEnabled:
 		return m.OldDataSharingEnabled(ctx)
+	case group.FieldSessionIsolationEnabled:
+		return m.OldSessionIsolationEnabled(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -15416,6 +15460,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDataSharingEnabled(v)
+		return nil
+	case group.FieldSessionIsolationEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionIsolationEnabled(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -15726,6 +15777,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldDataSharingEnabled:
 		m.ResetDataSharingEnabled()
+		return nil
+	case group.FieldSessionIsolationEnabled:
+		m.ResetSessionIsolationEnabled()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

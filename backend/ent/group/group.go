@@ -82,6 +82,8 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// FieldDataSharingEnabled holds the string denoting the data_sharing_enabled field in the database.
 	FieldDataSharingEnabled = "data_sharing_enabled"
+	// FieldSessionIsolationEnabled holds the string denoting the session_isolation_enabled field in the database.
+	FieldSessionIsolationEnabled = "session_isolation_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
@@ -188,6 +190,7 @@ var Columns = []string{
 	FieldModelsListConfig,
 	FieldRpmLimit,
 	FieldDataSharingEnabled,
+	FieldSessionIsolationEnabled,
 }
 
 var (
@@ -280,6 +283,8 @@ var (
 	DefaultRpmLimit int
 	// DefaultDataSharingEnabled holds the default value on creation for the "data_sharing_enabled" field.
 	DefaultDataSharingEnabled bool
+	// DefaultSessionIsolationEnabled holds the default value on creation for the "session_isolation_enabled" field.
+	DefaultSessionIsolationEnabled bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -433,6 +438,11 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 // ByDataSharingEnabled orders the results by the data_sharing_enabled field.
 func ByDataSharingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDataSharingEnabled, opts...).ToFunc()
+}
+
+// BySessionIsolationEnabled orders the results by the session_isolation_enabled field.
+func BySessionIsolationEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSessionIsolationEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

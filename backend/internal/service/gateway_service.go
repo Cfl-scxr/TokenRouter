@@ -442,6 +442,12 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+	// SetSessionOwnerGroupID 首次记录显式会话所属分组；返回 true 表示本次写入成功。
+	SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error)
+	// GetSessionOwnerGroupID 读取显式会话首次归属分组。
+	GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error)
+	// RefreshSessionOwnerTTL 刷新显式会话归属记录的过期时间。
+	RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

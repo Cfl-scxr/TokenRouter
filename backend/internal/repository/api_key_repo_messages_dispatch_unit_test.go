@@ -123,3 +123,32 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageGenerationControls_SQLit
 	require.True(t, got.Group.ImageRateIndependent)
 	require.InDelta(t, 0.5, got.Group.ImageRateMultiplier, 1e-12)
 }
+
+func TestAPIKeyRepository_GetByKeyForAuth_PreservesSessionIsolation_SQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-session-isolation-unit@test.com")
+
+	group, err := client.Group.Create().
+		SetName("g-auth-session-isolation-unit").
+		SetPlatform(service.PlatformOpenAI).
+		SetStatus(service.StatusActive).
+		SetRateMultiplier(1).
+		SetSessionIsolationEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	key := &service.APIKey{
+		UserID:  user.ID,
+		Key:     "sk-getbykey-auth-session-isolation-unit",
+		Name:    "Session Isolation Key Unit",
+		GroupID: &group.ID,
+		Status:  service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, key))
+
+	got, err := repo.GetByKeyForAuth(ctx, key.Key)
+	require.NoError(t, err)
+	require.NotNil(t, got.Group)
+	require.True(t, got.Group.SessionIsolationEnabled)
+}

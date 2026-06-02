@@ -149,6 +149,18 @@ func (c *schedulerTestGatewayCache) DeleteSessionAccountID(ctx context.Context, 
 	return nil
 }
 
+func (c *schedulerTestGatewayCache) SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (c *schedulerTestGatewayCache) GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error) {
+	return 0, errors.New("not found")
+}
+
+func (c *schedulerTestGatewayCache) RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error {
+	return nil
+}
+
 func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true

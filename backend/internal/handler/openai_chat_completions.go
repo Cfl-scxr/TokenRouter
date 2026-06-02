@@ -119,6 +119,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	explicitSessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
+	if explicitSessionHash != "" {
+		if err := h.ensureOpenAISessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceOpenAI, explicitSessionHash); h.handleOpenAISessionIsolationError(c, err, streamStarted) {
+			return
+		}
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0

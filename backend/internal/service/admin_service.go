@@ -201,6 +201,8 @@ type CreateGroupInput struct {
 	IsDefault      bool
 	// DataSharingEnabled 将新建分组标记为数据共享分组。
 	DataSharingEnabled bool
+	// SessionIsolationEnabled 开启后拒绝其它分组已归属的显式会话切入。
+	SessionIsolationEnabled bool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -242,7 +244,9 @@ type UpdateGroupInput struct {
 	IsDefault      *bool
 	// DataSharingEnabled 控制分组是否进入数据共享采集流程。
 	DataSharingEnabled *bool
-	Status             string
+	// SessionIsolationEnabled 控制目标分组是否开启会话隔离。
+	SessionIsolationEnabled *bool
+	Status                  string
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -1675,6 +1679,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		IsExclusive:                     input.IsExclusive,
 		IsDefault:                       input.IsDefault,
 		DataSharingEnabled:              input.DataSharingEnabled,
+		SessionIsolationEnabled:         input.SessionIsolationEnabled,
 		Status:                          StatusActive,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
@@ -1916,6 +1921,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.DataSharingEnabled != nil {
 		group.DataSharingEnabled = *input.DataSharingEnabled
+	}
+	if input.SessionIsolationEnabled != nil {
+		group.SessionIsolationEnabled = *input.SessionIsolationEnabled
 	}
 	if input.Status != "" {
 		group.Status = input.Status

@@ -169,6 +169,16 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if groupPlatform == service.PlatformGemini && selectionSessionHash != "" {
 		selectionSessionHash = "gemini:" + selectionSessionHash
 	}
+	if isolationSessionID := metadataSessionIsolationID(parsedReq.MetadataUserID); isolationSessionID != "" {
+		if err := h.ensureGatewaySessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceGateway, isolationSessionID); err != nil {
+			if isSessionIsolationConflict(err) {
+				h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error", service.SessionIsolationConflictMessage)
+			} else {
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+			}
+			return
+		}
+	}
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)

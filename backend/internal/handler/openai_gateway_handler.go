@@ -257,7 +257,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
+	explicitSessionHash := h.gatewayService.GenerateExplicitSessionHash(c, sessionHashBody)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	if explicitSessionHash != "" {
+		if err := h.ensureOpenAISessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceOpenAI, explicitSessionHash); h.handleOpenAISessionIsolationError(c, err, streamStarted) {
+			return
+		}
+	}
 	requireCompact := isOpenAIRemoteCompactPath(c)
 
 	maxAccountSwitches := h.maxAccountSwitches
@@ -683,6 +689,19 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	isolationSource := service.SessionIsolationSourceOpenAI
+	explicitSessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
+	if explicitSessionHash == "" {
+		if isolationSessionID := metadataSessionIsolationID(gjson.GetBytes(body, "metadata.user_id").String()); isolationSessionID != "" {
+			explicitSessionHash = isolationSessionID
+			isolationSource = service.SessionIsolationSourceGateway
+		}
+	}
+	if explicitSessionHash != "" {
+		if err := h.ensureOpenAISessionIsolation(c.Request.Context(), apiKey, subject.UserID, isolationSource, explicitSessionHash); h.handleAnthropicSessionIsolationError(c, err, streamStarted) {
+			return
+		}
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -1328,6 +1347,22 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
+	explicitSessionHash := h.gatewayService.GenerateExplicitSessionHash(c, firstMessage)
+	if explicitSessionHash != "" {
+		if err := h.ensureOpenAISessionIsolation(ctx, apiKey, subject.UserID, service.SessionIsolationSourceOpenAI, explicitSessionHash); err != nil {
+			writeSessionIsolationWSError(ctx, wsConn, err)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, openAIWSSessionIsolationCloseReason(err))
+			return
+		}
+	}
+	if previousResponseID != "" {
+		previousResponseHash := service.DeriveSessionHashFromSeed(previousResponseID)
+		if err := h.ensureOpenAISessionIsolation(ctx, apiKey, subject.UserID, service.SessionIsolationSourceOpenAIPreviousResponse, previousResponseHash); err != nil {
+			writeSessionIsolationWSError(ctx, wsConn, err)
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, openAIWSSessionIsolationCloseReason(err))
+			return
+		}
+	}
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
@@ -1421,7 +1456,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
-			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+			BeforeRequest: func(turn int, payload []byte, originalModel, payloadPreviousResponseID string) error {
 				if turn == 1 {
 					return nil
 				}
@@ -1440,6 +1475,19 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
 					writeContentModerationWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
+				}
+				if payloadPreviousResponseID != "" {
+					previousResponseHash := service.DeriveSessionHashFromSeed(payloadPreviousResponseID)
+					if err := h.ensureOpenAISessionIsolation(ctx, apiKey, subject.UserID, service.SessionIsolationSourceOpenAIPreviousResponse, previousResponseHash); err != nil {
+						writeSessionIsolationWSError(ctx, wsConn, err)
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, openAIWSSessionIsolationCloseReason(err), err)
+					}
+				}
+				if explicitHash := h.gatewayService.GenerateExplicitSessionHash(c, payload); explicitHash != "" {
+					if err := h.ensureOpenAISessionIsolation(ctx, apiKey, subject.UserID, service.SessionIsolationSourceOpenAI, explicitHash); err != nil {
+						writeSessionIsolationWSError(ctx, wsConn, err)
+						return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, openAIWSSessionIsolationCloseReason(err), err)
+					}
 				}
 				return nil
 			},

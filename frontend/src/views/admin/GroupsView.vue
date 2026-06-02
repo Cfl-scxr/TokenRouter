@@ -146,7 +146,21 @@
 
           <template #cell-data_sharing_enabled="{ value }">
             <span :class="['badge', value ? 'badge-success' : 'badge-gray']">
-              {{ value ? '已启用' : '未启用' }}
+              {{
+                value
+                  ? t("admin.groups.dataSharing.enabled")
+                  : t("admin.groups.dataSharing.disabled")
+              }}
+            </span>
+          </template>
+
+          <template #cell-session_isolation_enabled="{ value }">
+            <span :class="['badge', value ? 'badge-warning' : 'badge-gray']">
+              {{
+                value
+                  ? t("admin.groups.sessionIsolation.enabled")
+                  : t("admin.groups.sessionIsolation.disabled")
+              }}
             </span>
           </template>
 
@@ -570,7 +584,7 @@
         <div>
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              数据共享分组
+              {{ t("admin.groups.dataSharing.title") }}
             </label>
           </div>
           <div class="flex items-center gap-3">
@@ -590,10 +604,54 @@
               />
             </button>
             <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{ createForm.data_sharing_enabled ? '采集对话数据' : '不采集对话数据' }}
+              {{
+                createForm.data_sharing_enabled
+                  ? t("admin.groups.dataSharing.enabledText")
+                  : t("admin.groups.dataSharing.disabledText")
+              }}
             </span>
           </div>
-          <p class="input-hint">开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。</p>
+          <p class="input-hint">{{ t("admin.groups.dataSharing.hint") }}</p>
+        </div>
+
+        <div>
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.sessionIsolation.title") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                createForm.session_isolation_enabled =
+                  !createForm.session_isolation_enabled
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.session_isolation_enabled
+                  ? 'bg-blue-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.session_isolation_enabled
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.session_isolation_enabled
+                  ? t("admin.groups.sessionIsolation.enabledText")
+                  : t("admin.groups.sessionIsolation.disabledText")
+              }}
+            </span>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.sessionIsolation.hint") }}</p>
         </div>
 
         <div class="border-t pt-4">
@@ -1854,7 +1912,7 @@
         <div>
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              数据共享分组
+              {{ t("admin.groups.dataSharing.title") }}
             </label>
           </div>
           <div class="flex items-center gap-3">
@@ -1883,14 +1941,52 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 editForm.data_sharing_enabled
-                  ? "采集对话数据"
-                  : "不采集对话数据"
+                  ? t("admin.groups.dataSharing.enabledText")
+                  : t("admin.groups.dataSharing.disabledText")
               }}
             </span>
           </div>
-          <p class="input-hint">
-            开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。
-          </p>
+          <p class="input-hint">{{ t("admin.groups.dataSharing.hint") }}</p>
+        </div>
+
+        <div>
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.sessionIsolation.title") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                editForm.session_isolation_enabled =
+                  !editForm.session_isolation_enabled
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.session_isolation_enabled
+                  ? 'bg-blue-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.session_isolation_enabled
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.session_isolation_enabled
+                  ? t("admin.groups.sessionIsolation.enabledText")
+                  : t("admin.groups.sessionIsolation.disabledText")
+              }}
+            </span>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.sessionIsolation.hint") }}</p>
         </div>
 
         <div class="border-t pt-4">
@@ -3079,7 +3175,12 @@ const columns = computed<Column[]>(() => [
   },
   {
     key: "data_sharing_enabled",
-    label: t("nav.dataSharing"),
+    label: t("admin.groups.columns.dataSharing"),
+    sortable: true,
+  },
+  {
+    key: "session_isolation_enabled",
+    label: t("admin.groups.columns.sessionIsolation"),
     sortable: true,
   },
   {
@@ -3332,6 +3433,8 @@ const createForm = reactive({
   is_default: false,
   // 数据共享分组开关
   data_sharing_enabled: false,
+  // 会话隔离开关
+  session_isolation_enabled: false,
   // 图片生成计费配置
   allow_image_generation: false,
   image_rate_independent: false,
@@ -3663,6 +3766,8 @@ const editForm = reactive({
   is_default: false,
   // 数据共享分组开关
   data_sharing_enabled: false,
+  // 会话隔离开关
+  session_isolation_enabled: false,
   status: "active" as "active" | "inactive",
   // 图片生成计费配置
   allow_image_generation: false,
@@ -3922,6 +4027,7 @@ const closeCreateModal = () => {
   createForm.is_exclusive = false;
   createForm.is_default = false;
   createForm.data_sharing_enabled = false;
+  createForm.session_isolation_enabled = false;
   createForm.allow_image_generation = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
@@ -4015,6 +4121,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_exclusive = group.is_exclusive;
   editForm.is_default = group.is_default ?? false;
   editForm.data_sharing_enabled = group.data_sharing_enabled ?? false;
+  editForm.session_isolation_enabled =
+    group.session_isolation_enabled ?? false;
   editForm.status = group.status;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
@@ -4067,6 +4175,7 @@ const closeEditModal = () => {
   editModelRoutingRules.value = [];
   editForm.is_default = false;
   editForm.data_sharing_enabled = false;
+  editForm.session_isolation_enabled = false;
   editForm.copy_accounts_from_group_ids = [];
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);

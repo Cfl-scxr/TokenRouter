@@ -465,6 +465,20 @@ func (_c *GroupCreate) SetNillableDataSharingEnabled(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (_c *GroupCreate) SetSessionIsolationEnabled(v bool) *GroupCreate {
+	_c.mutation.SetSessionIsolationEnabled(v)
+	return _c
+}
+
+// SetNillableSessionIsolationEnabled sets the "session_isolation_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSessionIsolationEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetSessionIsolationEnabled(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -679,6 +693,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultDataSharingEnabled
 		_c.mutation.SetDataSharingEnabled(v)
 	}
+	if _, ok := _c.mutation.SessionIsolationEnabled(); !ok {
+		v := group.DefaultSessionIsolationEnabled
+		_c.mutation.SetSessionIsolationEnabled(v)
+	}
 	return nil
 }
 
@@ -783,6 +801,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.DataSharingEnabled(); !ok {
 		return &ValidationError{Name: "data_sharing_enabled", err: errors.New(`ent: missing required field "Group.data_sharing_enabled"`)}
+	}
+	if _, ok := _c.mutation.SessionIsolationEnabled(); !ok {
+		return &ValidationError{Name: "session_isolation_enabled", err: errors.New(`ent: missing required field "Group.session_isolation_enabled"`)}
 	}
 	return nil
 }
@@ -942,6 +963,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DataSharingEnabled(); ok {
 		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
 		_node.DataSharingEnabled = value
+	}
+	if value, ok := _c.mutation.SessionIsolationEnabled(); ok {
+		_spec.SetField(group.FieldSessionIsolationEnabled, field.TypeBool, value)
+		_node.SessionIsolationEnabled = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1573,6 +1598,18 @@ func (u *GroupUpsert) UpdateDataSharingEnabled() *GroupUpsert {
 	return u
 }
 
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (u *GroupUpsert) SetSessionIsolationEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldSessionIsolationEnabled, v)
+	return u
+}
+
+// UpdateSessionIsolationEnabled sets the "session_isolation_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSessionIsolationEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldSessionIsolationEnabled)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2182,6 +2219,20 @@ func (u *GroupUpsertOne) SetDataSharingEnabled(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateDataSharingEnabled() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateDataSharingEnabled()
+	})
+}
+
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (u *GroupUpsertOne) SetSessionIsolationEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSessionIsolationEnabled(v)
+	})
+}
+
+// UpdateSessionIsolationEnabled sets the "session_isolation_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSessionIsolationEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSessionIsolationEnabled()
 	})
 }
 
@@ -2960,6 +3011,20 @@ func (u *GroupUpsertBulk) SetDataSharingEnabled(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateDataSharingEnabled() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateDataSharingEnabled()
+	})
+}
+
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (u *GroupUpsertBulk) SetSessionIsolationEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSessionIsolationEnabled(v)
+	})
+}
+
+// UpdateSessionIsolationEnabled sets the "session_isolation_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSessionIsolationEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSessionIsolationEnabled()
 	})
 }
 

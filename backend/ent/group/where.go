@@ -200,6 +200,11 @@ func DataSharingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDataSharingEnabled, v))
 }
 
+// SessionIsolationEnabled applies equality check predicate on the "session_isolation_enabled" field. It's identical to SessionIsolationEnabledEQ.
+func SessionIsolationEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSessionIsolationEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1258,6 +1263,16 @@ func DataSharingEnabledEQ(v bool) predicate.Group {
 // DataSharingEnabledNEQ applies the NEQ predicate on the "data_sharing_enabled" field.
 func DataSharingEnabledNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldDataSharingEnabled, v))
+}
+
+// SessionIsolationEnabledEQ applies the EQ predicate on the "session_isolation_enabled" field.
+func SessionIsolationEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSessionIsolationEnabled, v))
+}
+
+// SessionIsolationEnabledNEQ applies the NEQ predicate on the "session_isolation_enabled" field.
+func SessionIsolationEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSessionIsolationEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

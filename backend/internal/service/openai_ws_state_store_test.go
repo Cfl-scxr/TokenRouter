@@ -193,6 +193,18 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 	return nil
 }
 
+func (c *openAIWSStateStoreTimeoutProbeCache) SetSessionOwnerGroupID(context.Context, int64, string, string, int64, time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) GetSessionOwnerGroupID(context.Context, int64, string, string) (int64, error) {
+	return 0, errors.New("not found")
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) RefreshSessionOwnerTTL(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}
 	store := NewOpenAIWSStateStore(probe)

@@ -2414,6 +2414,8 @@ export default {
         platform: 'API Format',
         displayBrand: 'Brand Type',
         rateMultiplier: 'Rate Multiplier',
+        dataSharing: 'Data Sharing',
+        sessionIsolation: 'Session Isolation',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
@@ -2466,6 +2468,22 @@ export default {
         enabled: 'Use as default group',
         disabled: 'Do not use as default group',
         hint: 'When an API key has no valid group binding, requests fall back to the default group for that platform. Only one default group is kept per platform.'
+      },
+      dataSharing: {
+        title: 'Data Sharing Group',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
+        enabledText: 'Collect conversation data',
+        disabledText: 'Do not collect conversation data',
+        hint: 'When enabled, users must confirm the data sharing notice before switching an API key to this group.'
+      },
+      sessionIsolation: {
+        title: 'Enable Session Isolation',
+        enabled: 'Isolated',
+        disabled: 'Not isolated',
+        enabledText: 'Block sessions from other groups',
+        disabledText: 'Allow sessions to switch here',
+        hint: 'When enabled, explicit sessions first owned by another group cannot be switched into this group.'
       },
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {

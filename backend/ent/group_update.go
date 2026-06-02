@@ -575,6 +575,20 @@ func (_u *GroupUpdate) SetNillableDataSharingEnabled(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (_u *GroupUpdate) SetSessionIsolationEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetSessionIsolationEnabled(v)
+	return _u
+}
+
+// SetNillableSessionIsolationEnabled sets the "session_isolation_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSessionIsolationEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetSessionIsolationEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -995,6 +1009,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DataSharingEnabled(); ok {
 		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SessionIsolationEnabled(); ok {
+		_spec.SetField(group.FieldSessionIsolationEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1818,6 +1835,20 @@ func (_u *GroupUpdateOne) SetNillableDataSharingEnabled(v *bool) *GroupUpdateOne
 	return _u
 }
 
+// SetSessionIsolationEnabled sets the "session_isolation_enabled" field.
+func (_u *GroupUpdateOne) SetSessionIsolationEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetSessionIsolationEnabled(v)
+	return _u
+}
+
+// SetNillableSessionIsolationEnabled sets the "session_isolation_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSessionIsolationEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSessionIsolationEnabled(*v)
+	}
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2268,6 +2299,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.DataSharingEnabled(); ok {
 		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SessionIsolationEnabled(); ok {
+		_spec.SetField(group.FieldSessionIsolationEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

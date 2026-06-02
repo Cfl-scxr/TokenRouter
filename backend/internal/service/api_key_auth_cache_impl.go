@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13：认证快照包含公开分组禁用列表
+const apiKeyAuthSnapshotVersion = 14 // v14：认证快照包含分组会话隔离开关
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -255,6 +255,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			IsExclusive:                     apiKey.Group.IsExclusive,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
 			DataSharingEnabled:              apiKey.Group.DataSharingEnabled,
+			SessionIsolationEnabled:         apiKey.Group.SessionIsolationEnabled,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
@@ -326,6 +327,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Hydrated:                        true,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
 			DataSharingEnabled:              snapshot.Group.DataSharingEnabled,
+			SessionIsolationEnabled:         snapshot.Group.SessionIsolationEnabled,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			ImageRateMultiplier:             snapshot.Group.ImageRateMultiplier,

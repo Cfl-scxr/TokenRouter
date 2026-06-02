@@ -2464,6 +2464,8 @@ export default {
         platform: '接入格式',
         displayBrand: '品牌类型',
         rateMultiplier: '费率倍数',
+        dataSharing: '数据共享',
+        sessionIsolation: '会话隔离',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -2539,6 +2541,22 @@ export default {
         enabled: '作为默认分组',
         disabled: '不作为默认分组',
         hint: '当 API Key 未绑定到任何有效分组时，会自动回退到该平台的默认分组；同一平台只会保留一个默认分组。'
+      },
+      dataSharing: {
+        title: '数据共享分组',
+        enabled: '已启用',
+        disabled: '未启用',
+        enabledText: '采集对话数据',
+        disabledText: '不采集对话数据',
+        hint: '开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。'
+      },
+      sessionIsolation: {
+        title: '开启会话隔离',
+        enabled: '已隔离',
+        disabled: '未隔离',
+        enabledText: '阻止外部分组会话切入',
+        disabledText: '允许会话切换到本分组',
+        hint: '开启后，如果显式会话最早归属于其他分组，请求不能切换到当前分组使用。'
       },
       platforms: {
         all: '全部平台',

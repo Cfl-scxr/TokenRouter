@@ -589,6 +589,7 @@ export interface Group {
   is_exclusive: boolean
   is_default?: boolean
   data_sharing_enabled: boolean
+  session_isolation_enabled: boolean
   status: 'active' | 'inactive'
   // 图片生成计费配置
   allow_image_generation: boolean
@@ -716,6 +717,7 @@ export interface CreateGroupRequest {
   is_exclusive?: boolean
   is_default?: boolean
   data_sharing_enabled?: boolean
+  session_isolation_enabled?: boolean
   allow_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
@@ -750,6 +752,7 @@ export interface UpdateGroupRequest {
   is_exclusive?: boolean
   is_default?: boolean
   data_sharing_enabled?: boolean
+  session_isolation_enabled?: boolean
   status?: 'active' | 'inactive'
   allow_image_generation?: boolean
   image_rate_independent?: boolean

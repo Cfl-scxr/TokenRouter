@@ -144,6 +144,22 @@ func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
 	}, repo.listWithFiltersParams)
 }
 
+func TestAdminService_ListGroups_PassesSessionIsolationSortParams(t *testing.T) {
+	repo := &groupRepoStubForAdmin{
+		listWithFiltersGroups: []Group{{ID: 1, Name: "g1"}},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, _, err := svc.ListGroups(context.Background(), 1, 20, "", "", "", nil, "session_isolation_enabled", "DESC")
+	require.NoError(t, err)
+	require.Equal(t, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  20,
+		SortBy:    "session_isolation_enabled",
+		SortOrder: "DESC",
+	}, repo.listWithFiltersParams)
+}
+
 // TestAdminService_CreateGroup_WithImagePricing 测试创建分组时 ImagePrice 字段正确传递
 func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
@@ -199,6 +215,24 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice1K)
 	require.Nil(t, repo.created.ImagePrice2K)
 	require.Nil(t, repo.created.ImagePrice4K)
+}
+
+func TestAdminService_CreateGroup_WithSessionIsolation(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                    "isolated-group",
+		Platform:                PlatformAnthropic,
+		RateMultiplier:          1.0,
+		SessionIsolationEnabled: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.SessionIsolationEnabled)
+	require.True(t, group.SessionIsolationEnabled)
 }
 
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
@@ -292,6 +326,28 @@ func TestAdminService_UpdateGroup_PreservesImageGenerationControlsWhenOmitted(t 
 	require.True(t, repo.updated.AllowImageGeneration)
 	require.True(t, repo.updated.ImageRateIndependent)
 	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
+}
+
+func TestAdminService_UpdateGroup_WithSessionIsolation(t *testing.T) {
+	existingGroup := &Group{
+		ID:       1,
+		Name:     "existing-group",
+		Platform: PlatformAnthropic,
+		Status:   StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	enabled := true
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		SessionIsolationEnabled: &enabled,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.SessionIsolationEnabled)
+	require.True(t, group.SessionIsolationEnabled)
 }
 
 func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.T) {

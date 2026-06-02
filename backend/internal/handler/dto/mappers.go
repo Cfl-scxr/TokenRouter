@@ -220,6 +220,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		IsDefault:                       g.IsDefault,
 		Status:                          g.Status,
 		DataSharingEnabled:              g.DataSharingEnabled,
+		SessionIsolationEnabled:         g.SessionIsolationEnabled,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

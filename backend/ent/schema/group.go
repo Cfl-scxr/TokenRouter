@@ -158,6 +158,10 @@ func (Group) Fields() []ent.Field {
 		field.Bool("data_sharing_enabled").
 			Default(false).
 			Comment("是否为数据共享分组"),
+		// 会话隔离开关：开启后拒绝其它分组已归属的显式会话切入。
+		field.Bool("session_isolation_enabled").
+			Default(false).
+			Comment("是否开启会话隔离"),
 	}
 }
 
@@ -189,5 +193,6 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("deleted_at"),
 		index.Fields("sort_order"),
 		index.Fields("data_sharing_enabled"),
+		index.Fields("session_isolation_enabled"),
 	}
 }

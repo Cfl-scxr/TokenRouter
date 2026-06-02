@@ -189,6 +189,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldModelsListConfig,
 				group.FieldRpmLimit,
 				group.FieldDataSharingEnabled,
+				group.FieldSessionIsolationEnabled,
 			)
 		}).
 		Only(ctx)
@@ -820,6 +821,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Status:                          g.Status,
 		Hydrated:                        true,
 		DataSharingEnabled:              g.DataSharingEnabled,
+		SessionIsolationEnabled:         g.SessionIsolationEnabled,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

@@ -85,6 +85,8 @@ type Group struct {
 	RpmLimit int `json:"rpm_limit,omitempty"`
 	// 是否为数据共享分组
 	DataSharingEnabled bool `json:"data_sharing_enabled,omitempty"`
+	// 是否开启会话隔离
+	SessionIsolationEnabled bool `json:"session_isolation_enabled,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -193,7 +195,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldIsDefault, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldDataSharingEnabled:
+		case group.FieldIsExclusive, group.FieldIsDefault, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldDataSharingEnabled, group.FieldSessionIsolationEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -437,6 +439,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DataSharingEnabled = value.Bool
 			}
+		case group.FieldSessionIsolationEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field session_isolation_enabled", values[i])
+			} else if value.Valid {
+				_m.SessionIsolationEnabled = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -625,6 +633,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("data_sharing_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DataSharingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("session_isolation_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SessionIsolationEnabled))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -607,6 +607,7 @@ var (
 		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "data_sharing_enabled", Type: field.TypeBool, Default: false},
+		{Name: "session_isolation_enabled", Type: field.TypeBool, Default: false},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -648,6 +649,11 @@ var (
 				Name:    "group_data_sharing_enabled",
 				Unique:  false,
 				Columns: []*schema.Column{GroupsColumns[33]},
+			},
+			{
+				Name:    "group_session_isolation_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{GroupsColumns[34]},
 			},
 		},
 	}

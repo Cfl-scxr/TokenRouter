@@ -136,6 +136,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
+	if sessionHash != "" {
+		if err := h.ensureOpenAISessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceOpenAI, sessionHash); h.handleOpenAISessionIsolationError(c, err, streamStarted) {
+			return
+		}
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0

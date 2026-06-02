@@ -40,6 +40,8 @@ type CreateGroupRequest struct {
 	IsDefault      bool    `json:"is_default"`
 	// 数据共享分组会采集符合规则的 Agent session。
 	DataSharingEnabled bool `json:"data_sharing_enabled"`
+	// 会话隔离开启后拒绝其它分组已归属的显式会话切入。
+	SessionIsolationEnabled bool `json:"session_isolation_enabled"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
@@ -80,8 +82,10 @@ type UpdateGroupRequest struct {
 	IsExclusive    *bool    `json:"is_exclusive"`
 	IsDefault      *bool    `json:"is_default"`
 	// nil 表示不修改数据共享开关。
-	DataSharingEnabled *bool  `json:"data_sharing_enabled"`
-	Status             string `json:"status" binding:"omitempty,oneof=active inactive"`
+	DataSharingEnabled *bool `json:"data_sharing_enabled"`
+	// nil 表示不修改会话隔离开关。
+	SessionIsolationEnabled *bool  `json:"session_isolation_enabled"`
+	Status                  string `json:"status" binding:"omitempty,oneof=active inactive"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool    `json:"allow_image_generation"`
 	ImageRateIndependent            *bool    `json:"image_rate_independent"`
@@ -231,6 +235,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		IsExclusive:                     req.IsExclusive,
 		IsDefault:                       req.IsDefault,
 		DataSharingEnabled:              req.DataSharingEnabled,
+		SessionIsolationEnabled:         req.SessionIsolationEnabled,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
@@ -286,6 +291,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		IsExclusive:                     req.IsExclusive,
 		IsDefault:                       req.IsDefault,
 		DataSharingEnabled:              req.DataSharingEnabled,
+		SessionIsolationEnabled:         req.SessionIsolationEnabled,
 		Status:                          req.Status,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,

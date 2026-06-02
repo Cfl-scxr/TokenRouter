@@ -792,6 +792,10 @@ func init() {
 	groupDescDataSharingEnabled := groupFields[29].Descriptor()
 	// group.DefaultDataSharingEnabled holds the default value on creation for the data_sharing_enabled field.
 	group.DefaultDataSharingEnabled = groupDescDataSharingEnabled.Default.(bool)
+	// groupDescSessionIsolationEnabled is the schema descriptor for session_isolation_enabled field.
+	groupDescSessionIsolationEnabled := groupFields[30].Descriptor()
+	// group.DefaultSessionIsolationEnabled holds the default value on creation for the session_isolation_enabled field.
+	group.DefaultSessionIsolationEnabled = groupDescSessionIsolationEnabled.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

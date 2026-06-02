@@ -260,6 +260,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	// 3) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
 	sessionHash := extractGeminiCLISessionHash(c, body)
+	explicitGeminiCLISession := sessionHash != ""
 	if sessionHash == "" {
 		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
 		parsedReq, _ := service.ParseGatewayRequest(body, domain.PlatformGemini)
@@ -275,6 +276,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	sessionKey := sessionHash
 	if sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
+	}
+	if explicitGeminiCLISession {
+		if err := h.ensureGatewaySessionIsolation(c.Request.Context(), apiKey, authSubject.UserID, service.SessionIsolationSourceGemini, sessionKey); handleGeminiSessionIsolationError(c, err) {
+			return
+		}
 	}
 
 	// 查询粘性会话绑定的账号 ID（用于检测账号切换）

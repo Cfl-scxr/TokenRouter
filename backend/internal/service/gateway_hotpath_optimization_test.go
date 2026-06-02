@@ -144,6 +144,18 @@ func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Conte
 	return nil
 }
 
+func (s *stickyGatewayCacheHotpathStub) SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error) {
+	return 0, errors.New("not found")
+}
+
+func (s *stickyGatewayCacheHotpathStub) RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error {
+	return nil
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)
 	if s.err != nil {

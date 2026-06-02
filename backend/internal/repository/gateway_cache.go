@@ -9,7 +9,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const stickySessionPrefix = "sticky_session:"
+const (
+	stickySessionPrefix      = "sticky_session:"
+	stickySessionOwnerPrefix = "sticky_session_owner:"
+)
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -23,6 +26,12 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {
 	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
+}
+
+// buildSessionOwnerKey 构建显式会话归属 key，按用户和来源隔离避免跨用户误撞。
+// 格式: sticky_session_owner:{userID}:{source}:{sessionHash}
+func buildSessionOwnerKey(userID int64, source, sessionHash string) string {
+	return fmt.Sprintf("%s%d:%s:%s", stickySessionOwnerPrefix, userID, source, sessionHash)
 }
 
 func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -50,4 +59,19 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *gatewayCache) SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error) {
+	key := buildSessionOwnerKey(userID, source, sessionHash)
+	return c.rdb.SetNX(ctx, key, groupID, ttl).Result()
+}
+
+func (c *gatewayCache) GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error) {
+	key := buildSessionOwnerKey(userID, source, sessionHash)
+	return c.rdb.Get(ctx, key).Int64()
+}
+
+func (c *gatewayCache) RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error {
+	key := buildSessionOwnerKey(userID, source, sessionHash)
+	return c.rdb.Expire(ctx, key, ttl).Err()
 }

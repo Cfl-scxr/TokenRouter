@@ -289,6 +289,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 	}
+	if isolationSessionID := metadataSessionIsolationID(parsedReq.MetadataUserID); isolationSessionID != "" {
+		if err := h.ensureGatewaySessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceGateway, isolationSessionID); h.handleSessionIsolationError(c, err, streamStarted) {
+			return
+		}
+	}
 
 	// 查询粘性会话绑定的账号 ID
 	var sessionBoundAccountID int64

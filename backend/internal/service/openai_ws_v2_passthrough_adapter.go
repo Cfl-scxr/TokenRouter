@@ -407,7 +407,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if requestModel == "" {
 					requestModel = capturedSessionModel
 				}
-				if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
+				previousResponseID := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
+				if err := hooks.BeforeRequest(turnNo, payload, requestModel, previousResponseID); err != nil {
 					return payload, nil, err
 				}
 			}

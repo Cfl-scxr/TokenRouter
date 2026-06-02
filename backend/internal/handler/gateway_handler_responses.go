@@ -166,6 +166,16 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	if isolationSessionID := metadataSessionIsolationID(parsedReq.MetadataUserID); isolationSessionID != "" {
+		if err := h.ensureGatewaySessionIsolation(c.Request.Context(), apiKey, subject.UserID, service.SessionIsolationSourceGateway, isolationSessionID); err != nil {
+			if isSessionIsolationConflict(err) {
+				h.responsesErrorResponse(c, http.StatusForbidden, "permission_error", service.SessionIsolationConflictMessage)
+			} else {
+				h.responsesErrorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+			}
+			return
+		}
+	}
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)

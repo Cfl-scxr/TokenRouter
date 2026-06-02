@@ -251,7 +251,7 @@ type OpenAIWSIngressHooks struct {
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
 	BeforeTurn          func(turn int) error
-	BeforeRequest       func(turn int, payload []byte, originalModel string) error
+	BeforeRequest       func(turn int, payload []byte, originalModel, previousResponseID string) error
 	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
 	OnUpstreamError func(turn int, statusCode int, responseBody []byte, message string)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
@@ -762,6 +762,23 @@ func logOpenAIWSBindResponseAccountWarn(groupID, accountID int64, responseID str
 		zap.String("response_id", truncateOpenAIWSLogValue(responseID, openAIWSIDValueMaxLen)),
 		zap.Error(err),
 	)
+}
+
+// bindOpenAIWSResponseSessionOwner 将上游返回的 response_id 记录为当前分组的会话归属。
+// 后续客户端携带 previous_response_id 切到开启隔离的其它分组时，会被统一拦截。
+func (s *OpenAIGatewayService) bindOpenAIWSResponseSessionOwner(ctx context.Context, c *gin.Context, responseID string) {
+	if s == nil || c == nil {
+		return
+	}
+	apiKey := getAPIKeyFromContext(c)
+	if apiKey == nil || apiKey.UserID <= 0 {
+		return
+	}
+	responseHash := DeriveSessionHashFromSeed(responseID)
+	if responseHash == "" {
+		return
+	}
+	_ = s.EnsureSessionIsolation(ctx, apiKey, apiKey.UserID, SessionIsolationSourceOpenAIPreviousResponse, responseHash)
 }
 
 func summarizeOpenAIWSReadCloseError(err error) (status string, reason string) {
@@ -2423,6 +2440,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ttl := s.openAIWSResponseStickyTTL()
 		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 		stateStore.BindResponseConn(responseID, lease.ConnID(), ttl)
+		s.bindOpenAIWSResponseSessionOwner(ctx, c, responseID)
 	}
 	if stateStore != nil && storeDisabled && sessionHash != "" {
 		stateStore.BindSessionConn(groupID, sessionHash, lease.ConnID(), s.openAIWSSessionStickyTTL())
@@ -3388,7 +3406,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 	for {
 		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
-			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel); err != nil {
+			currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
+			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel, currentPreviousResponseID); err != nil {
 				return err
 			}
 		}
@@ -3735,6 +3754,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			ttl := s.openAIWSResponseStickyTTL()
 			logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
 			stateStore.BindResponseConn(responseID, connID, ttl)
+			s.bindOpenAIWSResponseSessionOwner(ctx, c, responseID)
 		}
 		if stateStore != nil && storeDisabled && sessionHash != "" {
 			stateStore.BindSessionConn(groupID, sessionHash, connID, s.openAIWSSessionStickyTTL())

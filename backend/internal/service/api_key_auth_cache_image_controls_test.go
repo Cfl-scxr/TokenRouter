@@ -24,15 +24,16 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesGroupCaptureControls(t *testin
 			Concurrency: 3,
 		},
 		Group: &Group{
-			ID:                   groupID,
-			Name:                 "openai-images",
-			Platform:             PlatformOpenAI,
-			Status:               StatusActive,
-			RateMultiplier:       1,
-			DataSharingEnabled:   true,
-			AllowImageGeneration: true,
-			ImageRateIndependent: true,
-			ImageRateMultiplier:  0.5,
+			ID:                      groupID,
+			Name:                    "openai-images",
+			Platform:                PlatformOpenAI,
+			Status:                  StatusActive,
+			RateMultiplier:          1,
+			DataSharingEnabled:      true,
+			SessionIsolationEnabled: true,
+			AllowImageGeneration:    true,
+			ImageRateIndependent:    true,
+			ImageRateMultiplier:     0.5,
 		},
 	}
 
@@ -42,6 +43,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesGroupCaptureControls(t *testin
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
 	require.True(t, roundTrip.Group.DataSharingEnabled)
+	require.True(t, roundTrip.Group.SessionIsolationEnabled)
 	require.True(t, roundTrip.Group.AllowImageGeneration)
 	require.True(t, roundTrip.Group.ImageRateIndependent)
 	require.InDelta(t, 0.5, roundTrip.Group.ImageRateMultiplier, 1e-12)
