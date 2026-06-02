@@ -72,6 +72,10 @@ func (s *emailNormalizationRepoStub) GetByID(context.Context, int64) (*User, err
 	return cloneEmailNormalizationUser(s.user), nil
 }
 
+func (s *emailNormalizationRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
+	return s.GetByID(ctx, id)
+}
+
 func (s *emailNormalizationRepoStub) GetByEmail(context.Context, string) (*User, error) {
 	return nil, ErrUserNotFound
 }
