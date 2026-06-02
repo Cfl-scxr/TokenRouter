@@ -41,14 +41,21 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	return out, nil
 }
 
+// responsesInputToChatMessages 将 Responses 请求里的 instructions 和 input[]
+// 转成 Chat Completions messages，并分成三段处理：
+//
+//	parse     —— instructions 转 system message，input[] 拆成逐项输入
+//	build     —— buildChatMessagesFromItems 挂载 reasoning、合并并行工具调用，
+//	             并跳过没有 Chat 等价物的 Responses item
+//	normalize —— normalizeChatMessages 统一收口 DeepSeek 需要的消息不变量
+//
+// build + normalize 的拆分把协议规则集中在少数入口里，避免未来 Codex 新增
+// item type 时被泛化路径误传给上游。
 func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := json.Marshal(instructions)
-		messages = append(messages, ChatMessage{
-			Role:    "system",
-			Content: content,
-		})
+		messages = append(messages, ChatMessage{Role: "system", Content: content})
 	}
 
 	inputRaw = bytesTrimSpace(inputRaw)
@@ -56,13 +63,11 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		return messages, nil
 	}
 
+	// 裸字符串输入表示一个普通用户回合。
 	var inputText string
 	if err := json.Unmarshal(inputRaw, &inputText); err == nil {
 		content, _ := json.Marshal(inputText)
-		messages = append(messages, ChatMessage{
-			Role:    "user",
-			Content: content,
-		})
+		messages = append(messages, ChatMessage{Role: "user", Content: content})
 		return messages, nil
 	}
 
@@ -70,6 +75,21 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 	if err := json.Unmarshal(inputRaw, &rawItems); err != nil {
 		return nil, fmt.Errorf("parse responses input: %w", err)
 	}
+
+	built, err := buildChatMessagesFromItems(messages, rawItems)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeChatMessages(built), nil
+}
+
+// buildChatMessagesFromItems 遍历 Responses input items，并追加对应的 Chat message。
+func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage) ([]ChatMessage, error) {
+	// pendingReasoning 暂存 reasoning item 的文本，直到写出它归属的 assistant
+	// message。DeepSeek thinking 模式要求产生工具调用的 reasoning_content 随同
+	// assistant tool_calls 回传；丢失后上游会返回 400。它只允许跨过同回合的
+	// assistant message，其它角色会结束当前 thinking 片段。
+	var pendingReasoning string
 
 	for _, raw := range rawItems {
 		raw = bytesTrimSpace(raw)
@@ -83,6 +103,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			if textErr := json.Unmarshal(raw, &text); textErr == nil {
 				content, _ := json.Marshal(text)
 				messages = append(messages, ChatMessage{Role: "user", Content: content})
+				pendingReasoning = ""
 				continue
 			}
 			return nil, fmt.Errorf("parse responses input item: %w", err)
@@ -91,22 +112,39 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		role := chatCompletionsBridgeRole(rawString(item["role"]))
 		itemType := rawString(item["type"])
 		switch itemType {
+		case "reasoning":
+			if txt := extractResponsesReasoningText(item); txt != "" {
+				pendingReasoning = txt
+			}
+			continue
 		case "function_call":
 			arguments := rawString(item["arguments"])
 			if strings.TrimSpace(arguments) == "" {
 				arguments = "{}"
 			}
-			messages = append(messages, ChatMessage{
-				Role: "assistant",
-				ToolCalls: []ChatToolCall{{
-					ID:   rawString(item["call_id"]),
-					Type: "function",
-					Function: ChatFunctionCall{
-						Name:      rawString(item["name"]),
-						Arguments: arguments,
-					},
-				}},
-			})
+			toolCall := ChatToolCall{
+				ID:   rawString(item["call_id"]),
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      rawString(item["name"]),
+					Arguments: arguments,
+				},
+			}
+			// 并行工具调用会以连续 function_call item 出现，必须合并到同一个
+			// assistant message，后续再紧跟匹配的 tool replies。
+			if n := len(messages); n > 0 && messages[n-1].Role == "assistant" {
+				messages[n-1].ToolCalls = append(messages[n-1].ToolCalls, toolCall)
+				if messages[n-1].ReasoningContent == "" {
+					messages[n-1].ReasoningContent = pendingReasoning
+				}
+			} else {
+				messages = append(messages, ChatMessage{
+					Role:             "assistant",
+					ToolCalls:        []ChatToolCall{toolCall},
+					ReasoningContent: pendingReasoning,
+				})
+			}
+			pendingReasoning = ""
 			continue
 		case "function_call_output":
 			content, _ := json.Marshal(rawString(item["output"]))
@@ -115,10 +153,12 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 				ToolCallID: rawString(item["call_id"]),
 				Content:    content,
 			})
+			pendingReasoning = ""
 			continue
 		case "input_text", "text":
 			content, _ := json.Marshal(rawString(item["text"]))
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
+			pendingReasoning = ""
 			continue
 		case "input_image":
 			content, err := chatContentFromSingleResponsesPart(itemType, item)
@@ -126,6 +166,16 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 				return nil, err
 			}
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
+			pendingReasoning = ""
+			continue
+		}
+
+		// 只有真正的 message item 会转成 chat message。Codex 还会发出没有
+		// Chat 等价物的 Responses item（web_search_call、local_shell_call、
+		// custom tool calls、file_search_call 等）。如果走泛化路径，它们会插到
+		// assistant tool_calls 和 tool reply 中间，导致 DeepSeek 拒绝请求。
+		if itemType != "" && itemType != "message" {
+			pendingReasoning = ""
 			continue
 		}
 
@@ -139,13 +189,115 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		messages = append(messages, ChatMessage{
-			Role:    role,
-			Content: chatContent,
-		})
+		messages = append(messages, ChatMessage{Role: role, Content: chatContent})
+		// reasoning 只允许跨过 assistant 文本消息。
+		if role != "assistant" {
+			pendingReasoning = ""
+		}
 	}
 
 	return messages, nil
+}
+
+// normalizeChatMessages 集中保证 DeepSeek / OpenAI Chat Completions schema
+// 对工具调用的要求：带 tool_calls 的 assistant message 后面必须按顺序紧跟
+// 每个 tool_call_id 对应的一条 tool message，中间不能夹其它消息。
+//
+// Codex 历史里常见的破坏方式包括：
+//   - 非 tool 消息落在 assistant tool_calls 和 tool replies 中间；
+//   - 并行工具调用的部分输出缺失，或重连后留下未回答的 tool_call；
+//   - tool reply 没有对应的 assistant tool_call。
+//
+// 这里会重建消息序列，让每个已回答的 tool_call 后面直接跟着对应回复；
+// 未回答的 tool_call 会被丢弃，只剩空内容的 assistant 也会被丢弃。
+func normalizeChatMessages(messages []ChatMessage) []ChatMessage {
+	// 按 tool_call_id 索引所有工具回复，重复 id 时保留最后一条。
+	replies := make(map[string]ChatMessage)
+	for _, m := range messages {
+		if m.Role == "tool" && m.ToolCallID != "" {
+			replies[m.ToolCallID] = m
+		}
+	}
+
+	out := make([]ChatMessage, 0, len(messages))
+	for _, m := range messages {
+		switch {
+		case m.Role == "tool":
+			// 没有 tool_call_id 的裸 tool message 属于 Chat Completions 直通，
+			// 保留原位；有 assistant 声明的工具回复会在 assistant 后统一输出，
+			// 其它孤儿回复直接丢弃。
+			if m.ToolCallID == "" {
+				out = append(out, m)
+			}
+			continue
+		case len(m.ToolCalls) > 0:
+			kept := make([]ChatToolCall, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				if tc.ID == "" {
+					continue
+				}
+				if _, ok := replies[tc.ID]; ok {
+					kept = append(kept, tc)
+				}
+			}
+			if len(kept) == 0 {
+				// 没有已回答的 tool_call 时，如果有内容就降级成普通消息，否则丢弃。
+				if isBlankChatContent(m.Content) {
+					continue
+				}
+				m.ToolCalls = nil
+				out = append(out, m)
+				continue
+			}
+			m.ToolCalls = kept
+			out = append(out, m)
+			for _, tc := range kept {
+				out = append(out, replies[tc.ID])
+			}
+		default:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// isBlankChatContent 判断 chat message content 是否没有可用文本。
+func isBlankChatContent(raw json.RawMessage) bool {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == `""` {
+		return true
+	}
+	return chatMessageContentText(raw) == ""
+}
+
+// extractResponsesReasoningText 从 Responses reasoning item 中提取 reasoning
+// 文本。Chat→Responses 桥会把上游 reasoning_content 写进 summary_text，因此
+// 这里优先读取 summary[].text，再回退到 content。
+func extractResponsesReasoningText(item map[string]json.RawMessage) string {
+	var parts []string
+	collect := func(raw json.RawMessage) {
+		raw = bytesTrimSpace(raw)
+		if len(raw) == 0 || string(raw) == "null" {
+			return
+		}
+		var arr []map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &arr); err == nil {
+			for _, p := range arr {
+				if t := rawString(p["text"]); t != "" {
+					parts = append(parts, t)
+				}
+			}
+			return
+		}
+		if t := rawString(raw); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	collect(item["summary"])
+	if len(parts) == 0 {
+		collect(item["content"])
+	}
+	return strings.Join(parts, "\n")
 }
 
 func chatCompletionsBridgeRole(role string) string {
@@ -447,10 +599,30 @@ type ChatCompletionsToResponsesStreamState struct {
 	CreatedSent    bool
 	CompletedSent  bool
 
+	// nextOutputIndex 按 item 打开顺序分配 output_index，保证流式索引与最终
+	// response.output 数组顺序一致。
+	nextOutputIndex int
+
+	// reasoning item 生命周期。DeepSeek 类上游会先流出 reasoning_content，再
+	// 流出正文，因此 reasoning 必须作为独立 output item，在 delta 前打开，并在
+	// message/tool item 打开前关闭。
+	ReasoningItemID string
+	ReasoningIndex  int
+	ReasoningOpen   bool
+	ReasoningDone   bool
+
+	// message item 与 output_text content part 生命周期。
 	MessageItemID string
-	Text          strings.Builder
-	Reasoning     strings.Builder
-	ToolCalls     map[int]*ChatToolCall
+	MessageIndex  int
+	TextPartOpen  bool
+
+	Text      strings.Builder
+	Reasoning strings.Builder
+
+	// 工具调用生命周期，按上游 tool_call index 归档。
+	ToolCalls       map[int]*ChatToolCall
+	ToolItemIDs     map[int]string
+	ToolOutputIndex map[int]int
 
 	FinishReason string
 	Usage        *ResponsesUsage
@@ -459,11 +631,19 @@ type ChatCompletionsToResponsesStreamState struct {
 // NewChatCompletionsToResponsesStreamState 返回初始化后的流式转换状态。
 func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToResponsesStreamState {
 	return &ChatCompletionsToResponsesStreamState{
-		ResponseID: generateResponsesID(),
-		Model:      model,
-		Created:    time.Now().Unix(),
-		ToolCalls:  make(map[int]*ChatToolCall),
+		ResponseID:      generateResponsesID(),
+		Model:           model,
+		Created:         time.Now().Unix(),
+		ToolCalls:       make(map[int]*ChatToolCall),
+		ToolItemIDs:     make(map[int]string),
+		ToolOutputIndex: make(map[int]int),
 	}
+}
+
+func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
+	idx := state.nextOutputIndex
+	state.nextOutputIndex++
+	return idx
 }
 
 // ChatCompletionsChunkToResponsesEvents 将单个 Chat Completions 流式 chunk
@@ -489,22 +669,30 @@ func ChatCompletionsChunkToResponsesEvents(
 	events = append(events, ensureChatToResponsesCreated(state)...)
 
 	for _, choice := range chunk.Choices {
-		if choice.Delta.Content != nil {
+		// reasoning 作为独立 output item 发出，首个 delta 前必须先打开
+		// output_item 与 summary part；同时过滤上游常见的空字符串起始 delta。
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			events = append(events, ensureChatReasoningItem(state)...)
+			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
+			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
+				OutputIndex:  state.ReasoningIndex,
+				SummaryIndex: 0,
+				Delta:        *choice.Delta.ReasoningContent,
+				ItemID:       state.ReasoningItemID,
+			}))
+		}
+		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+			// 首个正文 delta 会先关闭 reasoning item，再打开 message item 和
+			// output_text content part。
+			events = append(events, closeChatReasoningItem(state)...)
 			events = append(events, ensureChatToResponsesMessageItem(state)...)
+			events = append(events, ensureChatToResponsesTextPart(state)...)
 			_, _ = state.Text.WriteString(*choice.Delta.Content)
 			events = append(events, chatToResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
-				OutputIndex:  0,
+				OutputIndex:  state.MessageIndex,
 				ContentIndex: 0,
 				Delta:        *choice.Delta.Content,
 				ItemID:       state.MessageItemID,
-			}))
-		}
-		if choice.Delta.ReasoningContent != nil {
-			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
-			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
-				OutputIndex:  0,
-				SummaryIndex: 0,
-				Delta:        *choice.Delta.ReasoningContent,
 			}))
 		}
 		for _, toolCall := range choice.Delta.ToolCalls {
@@ -514,6 +702,8 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 			stored, ok := state.ToolCalls[idx]
 			if !ok {
+				// 工具调用开始前需要先关闭仍打开的 reasoning item。
+				events = append(events, closeChatReasoningItem(state)...)
 				copyCall := toolCall
 				if copyCall.ID == "" {
 					copyCall.ID = generateItemID()
@@ -521,11 +711,14 @@ func ChatCompletionsChunkToResponsesEvents(
 				copyCall.Type = "function"
 				state.ToolCalls[idx] = &copyCall
 				stored = &copyCall
+				itemID := generateItemID()
+				state.ToolItemIDs[idx] = itemID
+				state.ToolOutputIndex[idx] = state.allocOutputIndex()
 				events = append(events, chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-					OutputIndex: idx + 1,
+					OutputIndex: state.ToolOutputIndex[idx],
 					Item: &ResponsesOutput{
 						Type:   "function_call",
-						ID:     generateItemID(),
+						ID:     itemID,
 						CallID: stored.ID,
 						Name:   stored.Function.Name,
 						Status: "in_progress",
@@ -542,7 +735,8 @@ func ChatCompletionsChunkToResponsesEvents(
 			if toolCall.Function.Arguments != "" {
 				stored.Function.Arguments += toolCall.Function.Arguments
 				events = append(events, chatToResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
-					OutputIndex: idx + 1,
+					OutputIndex: state.ToolOutputIndex[idx],
+					ItemID:      state.ToolItemIDs[idx],
 					Delta:       toolCall.Function.Arguments,
 					CallID:      stored.ID,
 					Name:        stored.Function.Name,
@@ -564,23 +758,40 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 	}
 	var events []ResponsesStreamEvent
 	events = append(events, ensureChatToResponsesCreated(state)...)
+
+	// 关闭没有进入正文阶段的 reasoning item（仅 reasoning 或空 completion）。
+	events = append(events, closeChatReasoningItem(state)...)
+
 	if state.MessageItemID != "" {
-		events = append(events, chatToResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
-			OutputIndex:  0,
-			ContentIndex: 0,
-			Text:         state.Text.String(),
-			ItemID:       state.MessageItemID,
-		}))
+		if state.TextPartOpen {
+			events = append(events, chatToResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
+				OutputIndex:  state.MessageIndex,
+				ContentIndex: 0,
+				Text:         state.Text.String(),
+				ItemID:       state.MessageItemID,
+			}))
+			events = append(events, chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+				OutputIndex:  state.MessageIndex,
+				ContentIndex: 0,
+				ItemID:       state.MessageItemID,
+				Part:         &ResponsesContentPart{Type: "output_text", Text: state.Text.String()},
+			}))
+		}
 		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
-			OutputIndex: 0,
+			OutputIndex: state.MessageIndex,
 			Item: &ResponsesOutput{
-				Type:   "message",
-				ID:     state.MessageItemID,
-				Role:   "assistant",
-				Status: "completed",
+				Type:    "message",
+				ID:      state.MessageItemID,
+				Role:    "assistant",
+				Content: []ResponsesContentPart{{Type: "output_text", Text: state.Text.String()}},
+				Status:  "completed",
 			},
 		}))
 	}
+
+	// 关闭流里打开过的所有 function_call item。Codex 只有收到
+	// function_call_arguments.done 与 output_item.done 后才会认为工具调用完成。
+	events = append(events, closeChatToolItems(state)...)
 
 	status := "completed"
 	var incompleteDetails *ResponsesIncompleteDetails
@@ -620,20 +831,138 @@ func ensureChatToResponsesCreated(state *ChatCompletionsToResponsesStreamState) 
 	})}
 }
 
+// ensureChatReasoningItem 在首个 reasoning delta 前打开 reasoning output item
+// 与 summary part；Codex 依赖这段生命周期展示流式思考内容。
+func ensureChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if state.ReasoningOpen || state.ReasoningDone {
+		return nil
+	}
+	state.ReasoningOpen = true
+	state.ReasoningItemID = generateItemID()
+	state.ReasoningIndex = state.allocOutputIndex()
+	return []ResponsesStreamEvent{
+		chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+			OutputIndex: state.ReasoningIndex,
+			Item:        &ResponsesOutput{Type: "reasoning", ID: state.ReasoningItemID, Status: "in_progress"},
+		}),
+		chatToResponsesEvent(state, "response.reasoning_summary_part.added", &ResponsesStreamEvent{
+			OutputIndex:  state.ReasoningIndex,
+			SummaryIndex: 0,
+			ItemID:       state.ReasoningItemID,
+			Part:         &ResponsesContentPart{Type: "summary_text"},
+		}),
+	}
+}
+
+// closeChatReasoningItem 发出 reasoning item 的终止事件：
+// reasoning_summary_text.done、reasoning_summary_part.done 与 output_item.done。
+func closeChatReasoningItem(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if !state.ReasoningOpen {
+		return nil
+	}
+	state.ReasoningOpen = false
+	state.ReasoningDone = true
+	reasoning := state.Reasoning.String()
+	return []ResponsesStreamEvent{
+		chatToResponsesEvent(state, "response.reasoning_summary_text.done", &ResponsesStreamEvent{
+			OutputIndex:  state.ReasoningIndex,
+			SummaryIndex: 0,
+			Text:         reasoning,
+			ItemID:       state.ReasoningItemID,
+		}),
+		chatToResponsesEvent(state, "response.reasoning_summary_part.done", &ResponsesStreamEvent{
+			OutputIndex:  state.ReasoningIndex,
+			SummaryIndex: 0,
+			ItemID:       state.ReasoningItemID,
+			Part:         &ResponsesContentPart{Type: "summary_text", Text: reasoning},
+		}),
+		chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+			OutputIndex: state.ReasoningIndex,
+			Item: &ResponsesOutput{
+				Type:    "reasoning",
+				ID:      state.ReasoningItemID,
+				Status:  "completed",
+				Summary: []ResponsesSummary{{Type: "summary_text", Text: reasoning}},
+			},
+		}),
+	}
+}
+
 func ensureChatToResponsesMessageItem(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
 	if state.MessageItemID != "" {
 		return nil
 	}
 	state.MessageItemID = generateItemID()
+	state.MessageIndex = state.allocOutputIndex()
 	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-		OutputIndex: 0,
+		OutputIndex: state.MessageIndex,
 		Item: &ResponsesOutput{
-			Type:   "message",
-			ID:     state.MessageItemID,
-			Role:   "assistant",
-			Status: "in_progress",
+			Type:    "message",
+			ID:      state.MessageItemID,
+			Role:    "assistant",
+			Status:  "in_progress",
+			Content: []ResponsesContentPart{{Type: "output_text"}},
 		},
 	})}
+}
+
+func ensureChatToResponsesTextPart(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if state.TextPartOpen {
+		return nil
+	}
+	state.TextPartOpen = true
+	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+		OutputIndex:  state.MessageIndex,
+		ContentIndex: 0,
+		ItemID:       state.MessageItemID,
+		Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
+	})}
+}
+
+// closeChatToolItems 为流里打开过的每个工具调用发出
+// function_call_arguments.done 与 output_item.done，并带上完整 call_id/name/
+// arguments，保证 Codex 能反序列化并执行工具调用。
+func closeChatToolItems(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if len(state.ToolCalls) == 0 {
+		return nil
+	}
+	var events []ResponsesStreamEvent
+	for i := 0; i < len(state.ToolCalls); i++ {
+		toolCall, ok := state.ToolCalls[i]
+		if !ok || toolCall == nil {
+			continue
+		}
+		itemID, opened := state.ToolItemIDs[i]
+		if !opened {
+			continue
+		}
+		arguments := toolCall.Function.Arguments
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+		outputIndex := state.ToolOutputIndex[i]
+		events = append(events,
+			chatToResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
+				OutputIndex: outputIndex,
+				ItemID:      itemID,
+				CallID:      toolCall.ID,
+				Name:        toolCall.Function.Name,
+				Arguments:   arguments,
+			}),
+			chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
+				OutputIndex: outputIndex,
+				Item: &ResponsesOutput{
+					Type:      "function_call",
+					ID:        itemID,
+					CallID:    toolCall.ID,
+					Name:      toolCall.Function.Name,
+					Arguments: arguments,
+					Status:    "completed",
+				},
+			}),
+		)
+	}
+	return events
 }
 
 func (state *ChatCompletionsToResponsesStreamState) chatOutput() []ResponsesOutput {

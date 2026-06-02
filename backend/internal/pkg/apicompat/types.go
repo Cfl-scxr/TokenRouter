@@ -408,8 +408,12 @@ type ResponsesStreamEvent struct {
 	Arguments string `json:"arguments,omitempty"`
 
 	// response.reasoning_summary_text.delta / done
-	// Reuses Text/Delta fields above, SummaryIndex identifies which summary part
+	// 复用上面的 Text/Delta 字段，SummaryIndex 标识 summary part。
 	SummaryIndex int `json:"summary_index,omitempty"`
+
+	// response.content_part.added / done 以及
+	// response.reasoning_summary_part.added / done。
+	Part *ResponsesContentPart `json:"part,omitempty"`
 
 	// error event fields
 	Code  string `json:"code,omitempty"`
