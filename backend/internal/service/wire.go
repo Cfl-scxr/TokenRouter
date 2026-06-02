@@ -110,6 +110,17 @@ func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiToke
 	return NewOAuthRefreshAPI(accountRepo, tokenCache)
 }
 
+// ProvideOpenAIOAuthService 构造 OpenAI OAuth 服务，并注入账号补全与隐私设置依赖。
+func ProvideOpenAIOAuthService(
+	proxyRepo ProxyRepository,
+	oauthClient OpenAIOAuthClient,
+	privacyClientFactory PrivacyClientFactory,
+) *OpenAIOAuthService {
+	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
+	svc.SetPrivacyClientFactory(privacyClientFactory)
+	return svc
+}
+
 // ProvideClaudeTokenProvider creates ClaudeTokenProvider with OAuthRefreshAPI injection
 func ProvideClaudeTokenProvider(
 	accountRepo AccountRepository,
@@ -552,7 +563,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIGatewayService,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
-	NewOpenAIOAuthService,
+	ProvideOpenAIOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,

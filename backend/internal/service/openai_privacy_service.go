@@ -10,8 +10,8 @@ import (
 	"github.com/imroc/req/v3"
 )
 
-// PrivacyClientFactory creates an HTTP client for privacy API calls.
-// Injected from repository layer to avoid import cycles.
+// PrivacyClientFactory 创建用于调用隐私接口的 HTTP 客户端。
+// 由 repository 层注入，避免 service 与 repository 互相 import。
 type PrivacyClientFactory func(proxyURL string) (*req.Client, error)
 
 const (
@@ -35,8 +35,8 @@ func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 	return mode != PrivacyModeFailed && mode != PrivacyModeCFBlocked
 }
 
-// disableOpenAITraining calls ChatGPT settings API to turn off "Improve the model for everyone".
-// Returns privacy_mode value: "training_off" on success, "cf_blocked" / "failed" on failure.
+// disableOpenAITraining 调用 ChatGPT 设置接口关闭训练数据共享。
+// 返回 privacy_mode 值：成功时为 training_off，失败时为对应失败原因。
 func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL string) string {
 	if accessToken == "" || clientFactory == nil {
 		return ""
@@ -95,10 +95,12 @@ type ChatGPTAccountInfo struct {
 
 const chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
 
-// fetchChatGPTAccountInfo calls ChatGPT backend-api to get account info (plan_type, etc.).
-// Used as fallback when id_token doesn't contain these fields (e.g., Mobile RT).
-// orgID is used to match the correct account when multiple accounts exist (e.g., personal + team).
-// Returns nil on any failure (best-effort, non-blocking).
+var chatGPTSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
+
+// fetchChatGPTAccountInfo 调用 ChatGPT backend-api 获取账号信息。
+// 当 id_token 不包含这些字段时（例如 Mobile RT）作为兜底来源。
+// orgID 用于在个人账号和团队账号并存时匹配正确账号。
+// 任意失败都返回 nil，保持 best-effort 且不阻塞主流程。
 func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, orgID string) *ChatGPTAccountInfo {
 	if accessToken == "" || clientFactory == nil {
 		return nil
@@ -197,6 +199,62 @@ func fetchChatGPTAccountInfo(ctx context.Context, clientFactory PrivacyClientFac
 
 	slog.Info("chatgpt_account_check_success", "plan_type", info.PlanType, "subscription_expires_at", info.SubscriptionExpiresAt, "org_id", orgID)
 	return info
+}
+
+// fetchChatGPTSubscriptionExpiresAt 读取 ChatGPT/Codex 客户端使用的轻量订阅接口。
+// 部分 Plus 账号已不在 accounts/check 暴露 entitlement.expires_at，
+// 但该接口仍会返回 active_until。
+func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL, accountID string) string {
+	accountID = strings.TrimSpace(accountID)
+	if accessToken == "" || accountID == "" || clientFactory == nil {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	client, err := clientFactory(proxyURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_client_error", "error", err.Error())
+		return ""
+	}
+
+	var result struct {
+		PlanType    string `json:"plan_type"`
+		ActiveUntil string `json:"active_until"`
+		WillRenew   bool   `json:"will_renew"`
+		ID          string `json:"id"`
+	}
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+accessToken).
+		SetHeader("Origin", "https://chatgpt.com").
+		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("Accept", "application/json").
+		SetSuccessResult(&result).
+		SetQueryParam("account_id", accountID).
+		Get(chatGPTSubscriptionsURL)
+	if err != nil {
+		slog.Debug("chatgpt_subscription_request_error", "error", err.Error())
+		return ""
+	}
+	if !resp.IsSuccessState() {
+		slog.Debug("chatgpt_subscription_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
+		return ""
+	}
+
+	activeUntil := strings.TrimSpace(result.ActiveUntil)
+	if activeUntil == "" {
+		slog.Debug("chatgpt_subscription_no_active_until", "plan_type", result.PlanType, "has_subscription_id", strings.TrimSpace(result.ID) != "", "will_renew", result.WillRenew)
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339, activeUntil); err != nil {
+		slog.Debug("chatgpt_subscription_bad_active_until", "active_until", activeUntil, "error", err.Error())
+		return ""
+	}
+
+	slog.Info("chatgpt_subscription_success", "plan_type", result.PlanType, "subscription_expires_at", activeUntil, "account_id", accountID)
+	return activeUntil
 }
 
 // fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at
