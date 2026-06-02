@@ -48,14 +48,14 @@ func NewUserHandler(
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string  `json:"email" binding:"required,email"`
-	Password      string  `json:"password" binding:"required,min=6"`
-	Username      string  `json:"username"`
-	Notes         string  `json:"notes"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	RPMLimit      int     `json:"rpm_limit"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	Email         string   `json:"email" binding:"required,email"`
+	Password      string   `json:"password" binding:"required,min=6"`
+	Username      string   `json:"username"`
+	Notes         string   `json:"notes"`
+	Balance       *float64 `json:"balance"`
+	Concurrency   int      `json:"concurrency"`
+	RPMLimit      int      `json:"rpm_limit"`
+	AllowedGroups []int64  `json:"allowed_groups"`
 	// DisabledPublicGroups 记录该用户被禁止使用的公开分组。
 	DisabledPublicGroups []int64 `json:"disabled_public_groups"`
 }
