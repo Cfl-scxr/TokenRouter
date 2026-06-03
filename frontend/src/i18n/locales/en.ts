@@ -3224,8 +3224,12 @@ export default {
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
+        queryUsage: 'Query Usage',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
+        queryUsageSuccess: 'Successfully queried usage for {count} account(s)',
+        queryUsagePartialSuccess: 'Usage query partially completed: {success} succeeded, {failed} failed',
+        queryUsageNoSupported: 'Selected accounts do not support usage query',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
       },
       bulkEdit: {

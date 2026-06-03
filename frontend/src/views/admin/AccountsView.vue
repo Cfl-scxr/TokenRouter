@@ -172,9 +172,11 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :usage-loading="bulkUsageLoading"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
+          @query-usage="handleBulkQueryUsage"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
@@ -420,6 +422,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import TLSFingerprintRoutersModal from '@/components/admin/TLSFingerprintRoutersModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
@@ -498,6 +501,7 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const bulkUsageLoading = ref(false)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 
@@ -1306,6 +1310,62 @@ const handleBulkRefreshToken = async () => {
   } catch (error) {
     console.error('Failed to bulk refresh token:', error)
     appStore.showError(String(error))
+  }
+}
+const canQueryAccountUsage = (account: Account) => {
+  // 仅对后端 /usage 主动查询有意义的账号开放批量查询，避免 API Key 账号产生无效请求。
+  return (
+    (account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')) ||
+    (account.platform === 'openai' && account.type === 'oauth') ||
+    account.platform === 'gemini' ||
+    (account.platform === 'antigravity' && account.type === 'oauth')
+  )
+}
+const handleBulkQueryUsage = async () => {
+  if (bulkUsageLoading.value) return
+  const accountIds = [...selIds.value]
+  if (accountIds.length === 0) return
+
+  bulkUsageLoading.value = true
+  try {
+    const currentAccountsById = new Map(accounts.value.map(account => [account.id, account]))
+    // 跨页选择时，当前页外的账号需要先拉取详情，保证批量查询作用于所有已选 ID。
+    const selectedAccountResults = await Promise.allSettled(
+      accountIds.map(accountId => {
+        const account = currentAccountsById.get(accountId)
+        return account ? Promise.resolve(account) : adminAPI.accounts.getById(accountId)
+      })
+    )
+    const selectedAccounts = selectedAccountResults
+      .filter((result): result is PromiseFulfilledResult<Account> => result.status === 'fulfilled')
+      .map(result => result.value)
+    const metadataFailed = selectedAccountResults.length - selectedAccounts.length
+    const queryableAccounts = selectedAccounts.filter(canQueryAccountUsage)
+    if (queryableAccounts.length === 0) {
+      appStore.showWarning(t('admin.accounts.bulkActions.queryUsageNoSupported'))
+      return
+    }
+
+    const results = await Promise.allSettled(
+      queryableAccounts.map(account =>
+        enqueueUsageRequest(account, () => adminAPI.accounts.getUsage(account.id, 'active', true))
+      )
+    )
+    const success = results.filter(result => result.status === 'fulfilled').length
+    const failed = metadataFailed + results.length - success
+    if (success > 0) {
+      usageManualRefreshToken.value += 1
+    }
+    if (failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.queryUsagePartialSuccess', { success, failed }))
+      return
+    }
+    appStore.showSuccess(t('admin.accounts.bulkActions.queryUsageSuccess', { count: success }))
+  } catch (error) {
+    console.error('Failed to bulk query usage:', error)
+    appStore.showError(String(error))
+  } finally {
+    bulkUsageLoading.value = false
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {

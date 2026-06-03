@@ -3370,8 +3370,12 @@ export default {
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
+        queryUsage: '批量查询用量',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
+        queryUsageSuccess: '已成功查询 {count} 个账号用量',
+        queryUsagePartialSuccess: '用量查询部分完成：{success} 成功，{failed} 失败',
+        queryUsageNoSupported: '选中的账号没有可查询用量的类型',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
       },
       bulkEdit: {

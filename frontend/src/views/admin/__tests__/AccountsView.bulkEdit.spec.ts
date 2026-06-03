@@ -7,14 +7,26 @@ const {
   listAccounts,
   listWithEtag,
   getBatchTodayStats,
+  getById,
+  getUsage,
   getAllProxies,
-  getAllGroups
+  getAllGroups,
+  showError,
+  showSuccess,
+  showInfo,
+  showWarning
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getById: vi.fn(),
+  getUsage: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroups: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
+  showInfo: vi.fn(),
+  showWarning: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -23,6 +35,8 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      getById,
+      getUsage,
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
@@ -39,9 +53,10 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn(),
-    showInfo: vi.fn()
+    showError,
+    showSuccess,
+    showInfo,
+    showWarning
   })
 }))
 
@@ -63,20 +78,27 @@ vi.mock('vue-i18n', async () => {
 
 const DataTableStub = {
   props: ['columns', 'data'],
+  emits: ['sort'],
   template: `
     <div data-test="data-table">
       <span v-for="column in columns" :key="column.key" data-test="column-key">{{ column.key }}</span>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-created_at" :value="row.created_at" :row="row" />
+        <slot name="cell-select" :row="row" />
       </div>
     </div>
   `
 }
 
 const AccountBulkActionsBarStub = {
-  props: ['selectedIds'],
-  emits: ['edit-filtered'],
-  template: '<button data-test="edit-filtered" @click="$emit(\'edit-filtered\')">edit filtered</button>'
+  props: ['selectedIds', 'usageLoading'],
+  emits: ['edit-filtered', 'query-usage'],
+  template: `
+    <div>
+      <button data-test="edit-filtered" @click="$emit('edit-filtered')">edit filtered</button>
+      <button data-test="query-usage" :disabled="usageLoading" @click="$emit('query-usage')">query usage</button>
+    </div>
+  `
 }
 
 const BulkEditAccountModalStub = {
@@ -91,8 +113,14 @@ describe('admin AccountsView bulk edit scope', () => {
     listAccounts.mockReset()
     listWithEtag.mockReset()
     getBatchTodayStats.mockReset()
+    getById.mockReset()
+    getUsage.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
+    showError.mockReset()
+    showSuccess.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -107,6 +135,8 @@ describe('admin AccountsView bulk edit scope', () => {
       data: null
     })
     getBatchTodayStats.mockResolvedValue({ stats: {} })
+    getById.mockRejectedValue(new Error('unexpected getById call'))
+    getUsage.mockResolvedValue({ updated_at: null, five_hour: null, seven_day: null, seven_day_sonnet: null })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
   })
@@ -295,5 +325,186 @@ describe('admin AccountsView bulk edit scope', () => {
       label: 'admin.accounts.columns.createdAt',
       sortable: true
     })
+  })
+
+  it('bulk queries usage for selected supported accounts', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'openai-oauth',
+          platform: 'openai',
+          type: 'oauth',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-03-07T10:00:00Z',
+          updated_at: '2026-03-07T10:00:00Z'
+        },
+        {
+          id: 2,
+          name: 'plain-key',
+          platform: 'openai',
+          type: 'apikey',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-03-07T10:00:00Z',
+          updated_at: '2026-03-07T10:00:00Z'
+        },
+        {
+          id: 3,
+          name: 'claude-oauth',
+          platform: 'anthropic',
+          type: 'oauth',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-03-07T10:00:00Z',
+          updated_at: '2026-03-07T10:00:00Z'
+        }
+      ],
+      total: 3,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
+          AccountTableFilters: { template: '<div></div>' },
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(3)
+    for (const checkbox of checkboxes) {
+      await checkbox.setValue(true)
+    }
+
+    await wrapper.get('[data-test="query-usage"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenCalledWith(1, 'active', true)
+    expect(getUsage).toHaveBeenCalledWith(3, 'active', true)
+    expect(getUsage).not.toHaveBeenCalledWith(2, 'active', true)
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.bulkActions.queryUsageSuccess')
+  })
+
+  it('bulk queries usage for selected accounts outside the current page', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'openai-oauth',
+          platform: 'openai',
+          type: 'oauth',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-03-07T10:00:00Z',
+          updated_at: '2026-03-07T10:00:00Z'
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 1,
+      pages: 2
+    })
+    getById.mockResolvedValue({
+      id: 99,
+      name: 'page-two-claude',
+      platform: 'anthropic',
+      type: 'oauth',
+      status: 'active',
+      schedulable: true,
+      created_at: '2026-03-07T10:00:00Z',
+      updated_at: '2026-03-07T10:00:00Z'
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
+          AccountTableFilters: { template: '<div></div>' },
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const checkbox = wrapper.get('input[type="checkbox"]')
+    await checkbox.setValue(true)
+    const vm = wrapper.vm as unknown as { setSelectedIds: (ids: number[]) => void }
+    vm.setSelectedIds([1, 99])
+    await flushPromises()
+
+    await wrapper.get('[data-test="query-usage"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(getById).toHaveBeenCalledWith(99)
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenCalledWith(1, 'active', true)
+    expect(getUsage).toHaveBeenCalledWith(99, 'active', true)
   })
 })
