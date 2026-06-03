@@ -8,6 +8,7 @@ const {
   updateRouterMock,
   deleteRouterMock,
   listProfilesMock,
+  copyToClipboardMock,
   showSuccessMock,
   showErrorMock
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   updateRouterMock: vi.fn(),
   deleteRouterMock: vi.fn(),
   listProfilesMock: vi.fn(),
+  copyToClipboardMock: vi.fn(),
   showSuccessMock: vi.fn(),
   showErrorMock: vi.fn()
 }))
@@ -40,6 +42,12 @@ vi.mock('@/api/admin', () => ({
       list: listProfilesMock
     }
   }
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({
+    copyToClipboard: copyToClipboardMock
+  })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -140,6 +148,28 @@ const routerRecord = {
   updated_at: '2026-06-01T00:00:00Z'
 }
 
+const importedRouterYaml = [
+  'tls_fingerprint_router:',
+  '  name: "Imported Router"',
+  '  description: "Imported from YAML"',
+  '  enabled: false',
+  '  rules:',
+  '    - name: "codex exact"',
+  '      enabled: true',
+  '      match_type: "exact"',
+  '      pattern: "codex_cli_rs/0.125.0"',
+  '      case_sensitive: true',
+  '      tls_fingerprint_profile_id: 7',
+  '      upstream_user_agent: "codex_cli_rs/0.125.0 upstream"',
+  '      upstream_originator: "codex_cli_rs"',
+  '    - name: "fallback"',
+  '      enabled: false',
+  '      match_type: "unknown"',
+  '      pattern: "OpenAI"',
+  '      case_sensitive: false',
+  '      tls_fingerprint_profile_id: -1'
+].join('\n')
+
 function mountModal() {
   return mount(TLSFingerprintRoutersModal, {
     props: {
@@ -163,6 +193,7 @@ describe('TLSFingerprintRoutersModal', () => {
     updateRouterMock.mockReset()
     deleteRouterMock.mockReset()
     listProfilesMock.mockReset()
+    copyToClipboardMock.mockReset()
     showSuccessMock.mockReset()
     showErrorMock.mockReset()
 
@@ -171,6 +202,7 @@ describe('TLSFingerprintRoutersModal', () => {
     updateRouterMock.mockResolvedValue(routerRecord)
     deleteRouterMock.mockResolvedValue({ message: 'ok' })
     listProfilesMock.mockResolvedValue([{ id: 7, name: 'Codex TLS' }])
+    copyToClipboardMock.mockResolvedValue(true)
   })
 
   it('加载列表并支持启停路由器', async () => {
@@ -251,6 +283,157 @@ describe('TLSFingerprintRoutersModal', () => {
 
     expect(createRouterMock).not.toHaveBeenCalled()
     expect(showErrorMock).toHaveBeenCalledWith('admin.tlsFingerprintRouters.form.patternRequired')
+  })
+
+  it('可以将路由器配置导出为 YAML 并复制', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button =>
+      button.attributes('title') === 'admin.tlsFingerprintRouters.copyYaml'
+    )!.trigger('click')
+    await flushPromises()
+
+    expect(copyToClipboardMock).toHaveBeenCalledWith(
+      [
+        'tls_fingerprint_router:',
+        '  name: "Codex Router"',
+        '  description: "UA based"',
+        '  enabled: true',
+        '  rules:',
+        '    - name: "codex mac"',
+        '      enabled: true',
+        '      match_type: "contains"',
+        '      pattern: "codex_cli"',
+        '      case_sensitive: false',
+        '      tls_fingerprint_profile_id: 7',
+        '      upstream_user_agent: "codex_cli_rs/0.125.0"',
+        '      upstream_originator: "codex_cli_rs"'
+      ].join('\n'),
+      'admin.tlsFingerprintRouters.copyYamlSuccess'
+    )
+  })
+
+  it('粘贴 YAML 后会自动解析并提交路由器配置', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button =>
+      button.text().includes('admin.tlsFingerprintRouters.createRouter')
+    )!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue(importedRouterYaml)
+    await wrapper.findAll('button').find(button =>
+      button.text().includes('admin.tlsFingerprintRouters.form.parseYaml')
+    )!.trigger('click')
+    await flushPromises()
+
+    expect(showSuccessMock).toHaveBeenCalledWith('admin.tlsFingerprintRouters.form.yamlParsed')
+
+    await wrapper.findAll('button').find(button => button.text().includes('common.create'))!.trigger('click')
+    await flushPromises()
+
+    expect(createRouterMock).toHaveBeenCalledWith({
+      name: 'Imported Router',
+      description: 'Imported from YAML',
+      enabled: false,
+      rules: [
+        {
+          name: 'codex exact',
+          enabled: true,
+          match_type: 'exact',
+          pattern: 'codex_cli_rs/0.125.0',
+          case_sensitive: true,
+          tls_fingerprint_profile_id: 7,
+          upstream_user_agent: 'codex_cli_rs/0.125.0 upstream',
+          upstream_originator: 'codex_cli_rs'
+        },
+        {
+          name: 'fallback',
+          enabled: false,
+          match_type: 'contains',
+          pattern: 'OpenAI',
+          case_sensitive: false,
+          tls_fingerprint_profile_id: -1,
+          upstream_user_agent: '',
+          upstream_originator: ''
+        }
+      ]
+    })
+  })
+
+  it('触发粘贴事件后会自动解析 YAML', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button =>
+      button.text().includes('admin.tlsFingerprintRouters.createRouter')
+    )!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue(importedRouterYaml)
+    await wrapper.find('textarea').trigger('paste')
+    await vi.runAllTimersAsync()
+    await flushPromises()
+    vi.useRealTimers()
+
+    await wrapper.findAll('button').find(button => button.text().includes('common.create'))!.trigger('click')
+    await flushPromises()
+
+    expect(createRouterMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Imported Router',
+      enabled: false,
+      rules: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'codex exact',
+          match_type: 'exact',
+          pattern: 'codex_cli_rs/0.125.0'
+        })
+      ])
+    }))
+  })
+
+  it('YAML 解析失败时不会清空编辑中的既有规则', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.attributes('title') === 'common.edit')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue([
+      'tls_fingerprint_router:',
+      '  description: "bad config without name"',
+      '  rules:',
+      '    - pattern: ""'
+    ].join('\n'))
+    await wrapper.findAll('button').find(button =>
+      button.text().includes('admin.tlsFingerprintRouters.form.parseYaml')
+    )!.trigger('click')
+    await flushPromises()
+
+    expect(showErrorMock).toHaveBeenCalledWith('admin.tlsFingerprintRouters.form.yamlParseFailed')
+
+    await wrapper.findAll('button').find(button => button.text().includes('common.update'))!.trigger('click')
+    await flushPromises()
+
+    expect(updateRouterMock).toHaveBeenCalledWith(9, expect.objectContaining({
+      name: 'Codex Router',
+      description: 'UA based',
+      rules: [
+        {
+          name: 'codex mac',
+          enabled: true,
+          match_type: 'contains',
+          pattern: 'codex_cli',
+          case_sensitive: false,
+          tls_fingerprint_profile_id: 7,
+          upstream_user_agent: 'codex_cli_rs/0.125.0',
+          upstream_originator: 'codex_cli_rs'
+        }
+      ]
+    }))
   })
 
   it('删除路由器会调用删除接口', async () => {

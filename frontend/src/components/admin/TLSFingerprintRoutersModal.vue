@@ -100,6 +100,15 @@
                   </button>
                   <button
                     type="button"
+                    class="p-1 text-gray-500 hover:text-primary-600 dark:hover:text-primary-400"
+                    :title="t('admin.tlsFingerprintRouters.copyYaml')"
+                    :aria-label="t('admin.tlsFingerprintRouters.copyYaml')"
+                    @click="handleCopyYaml(router)"
+                  >
+                    <Icon name="copy" size="sm" />
+                  </button>
+                  <button
+                    type="button"
                     class="p-1 text-gray-500 hover:text-red-600 dark:hover:text-red-400"
                     :title="t('common.delete')"
                     @click="handleDelete(router)"
@@ -130,6 +139,28 @@
       @close="closeFormModal"
     >
       <form class="space-y-4" @submit.prevent="handleSubmit">
+        <!-- 粘贴 YAML 后自动解析路由器配置，方便复制迁移。 -->
+        <div>
+          <label class="input-label">{{ t('admin.tlsFingerprintRouters.form.pasteYaml') }}</label>
+          <textarea
+            v-model="yamlInput"
+            rows="4"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.tlsFingerprintRouters.form.pasteYamlPlaceholder')"
+            @paste="handleYamlPaste"
+          />
+          <div class="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button type="button" class="btn btn-secondary btn-sm" @click="parseYamlInput">
+              {{ t('admin.tlsFingerprintRouters.form.parseYaml') }}
+            </button>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.tlsFingerprintRouters.form.pasteYamlHint') }}
+            </p>
+          </div>
+        </div>
+
+        <hr class="border-gray-200 dark:border-dark-600" />
+
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label class="input-label">{{ t('admin.tlsFingerprintRouters.form.name') }}</label>
@@ -279,6 +310,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { useClipboard } from '@/composables/useClipboard'
 import type { TLSFingerprintProfile } from '@/api/admin/tlsFingerprintProfile'
 import type {
   TLSFingerprintRouter,
@@ -303,6 +335,7 @@ void emit // 模板中通过 $emit 使用，脚本侧保留引用避免类型告
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const routers = ref<TLSFingerprintRouter[]>([])
 const profiles = ref<TLSFingerprintProfile[]>([])
@@ -313,6 +346,7 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const editingRouter = ref<TLSFingerprintRouter | null>(null)
 const deletingRouter = ref<TLSFingerprintRouter | null>(null)
+const yamlInput = ref('')
 
 const form = reactive({
   name: '',
@@ -385,6 +419,7 @@ function resetForm() {
   form.description = ''
   form.enabled = true
   form.rules = []
+  yamlInput.value = ''
 }
 
 function openCreateModal() {
@@ -399,6 +434,7 @@ function handleEdit(router: TLSFingerprintRouter) {
   form.description = router.description || ''
   form.enabled = router.enabled
   form.rules = normalizeRules(router.rules)
+  yamlInput.value = ''
   showEditModal.value = true
 }
 
@@ -410,16 +446,7 @@ function closeFormModal() {
 }
 
 function addRule() {
-  form.rules.push({
-    name: '',
-    enabled: true,
-    match_type: 'contains',
-    pattern: '',
-    case_sensitive: false,
-    tls_fingerprint_profile_id: 0,
-    upstream_user_agent: '',
-    upstream_originator: ''
-  })
+  form.rules.push(createEmptyRule())
 }
 
 function removeRule(index: number) {
@@ -431,6 +458,52 @@ function moveRule(index: number, delta: number) {
   if (target < 0 || target >= form.rules.length) return
   const [rule] = form.rules.splice(index, 1)
   form.rules.splice(target, 0, rule)
+}
+
+// 解析导出 YAML 中的简单字符串标量，兼容 JSON 风格双引号与 YAML 单引号。
+function parseYamlScalar(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'null' || trimmed === '~') return ''
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return trimmed.replace(/^"|"$/g, '')
+    }
+  }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'")
+  }
+
+  return trimmed
+}
+
+// 解析 YAML 布尔值，兼容常见 yes/no 与 1/0 写法。
+function parseYamlBoolean(value: string): boolean {
+  const normalized = parseYamlScalar(value).toLowerCase()
+  return normalized === 'true' || normalized === 'yes' || normalized === '1'
+}
+
+// 解析 YAML 数字，空值或非法值统一回退到 0。
+function parseYamlNumber(value: string): number {
+  const parsed = Number(parseYamlScalar(value))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+// 新建一条空规则，供手动添加和 YAML 解析共用。
+function createEmptyRule(): TLSFingerprintRouterRule {
+  return {
+    name: '',
+    enabled: true,
+    match_type: 'contains',
+    pattern: '',
+    case_sensitive: false,
+    tls_fingerprint_profile_id: 0,
+    upstream_user_agent: '',
+    upstream_originator: ''
+  }
 }
 
 function validateRules(): boolean {
@@ -475,6 +548,176 @@ async function handleSubmit() {
   } finally {
     submitting.value = false
   }
+}
+
+interface RouterYamlDraft {
+  name: string
+  description: string
+  enabled: boolean
+}
+
+// YAML 中只接收路由器可配置字段，先写入草稿，确认解析成功后再覆盖表单。
+function applyRouterYamlField(draft: RouterYamlDraft, key: string, rawValue: string): boolean {
+  const value = parseYamlScalar(rawValue)
+
+  switch (key) {
+    case 'name':
+      draft.name = value
+      return Boolean(value)
+    case 'description':
+      draft.description = value
+      return false
+    case 'enabled':
+      draft.enabled = parseYamlBoolean(rawValue)
+      return false
+    default:
+      return false
+  }
+}
+
+// 规则字段按后端接口结构解析，匹配类型会走现有规范化逻辑。
+function applyRuleYamlField(rule: TLSFingerprintRouterRule, key: string, rawValue: string) {
+  const value = parseYamlScalar(rawValue)
+
+  switch (key) {
+    case 'name':
+      rule.name = value
+      break
+    case 'enabled':
+      rule.enabled = parseYamlBoolean(rawValue)
+      break
+    case 'match_type':
+      rule.match_type = normalizeMatchType(value)
+      break
+    case 'pattern':
+      rule.pattern = value
+      break
+    case 'case_sensitive':
+      rule.case_sensitive = parseYamlBoolean(rawValue)
+      break
+    case 'tls_fingerprint_profile_id':
+      rule.tls_fingerprint_profile_id = parseYamlNumber(rawValue)
+      break
+    case 'upstream_user_agent':
+      rule.upstream_user_agent = value
+      break
+    case 'upstream_originator':
+      rule.upstream_originator = value
+      break
+  }
+}
+
+// 解析复制出来的路由器 YAML，支持根节点和 rules 列表两层结构。
+function parseYamlInput() {
+  const text = yamlInput.value.trim()
+  if (!text) return
+
+  const nextRules: TLSFingerprintRouterRule[] = []
+  const draft: RouterYamlDraft = {
+    name: form.name,
+    description: form.description,
+    enabled: form.enabled
+  }
+  const lines = text.split('\n')
+  let currentRule: TLSFingerprintRouterRule | null = null
+  let foundName = false
+  let inRules = false
+  let rulesIndent = -1
+
+  for (const line of lines) {
+    const indent = line.match(/^\s*/)?.[0].length ?? 0
+    const trimmed = line.trim()
+
+    // 跳过空行、注释和根节点名称。
+    if (!trimmed || trimmed.startsWith('#') || trimmed === 'tls_fingerprint_router:' || trimmed === 'router:') {
+      continue
+    }
+
+    const listMatch = trimmed.match(/^-\s*(.*)$/)
+    if (listMatch) {
+      currentRule = createEmptyRule()
+      nextRules.push(currentRule)
+      inRules = true
+      const inlineField = listMatch[1].trim()
+      if (inlineField) {
+        const match = inlineField.match(/^(\w+):\s*(.*)$/)
+        if (match) applyRuleYamlField(currentRule, match[1], match[2])
+      }
+      continue
+    }
+
+    const match = trimmed.match(/^(\w+):\s*(.*)$/)
+    if (!match) continue
+
+    const [, key, rawValue] = match
+    if (key === 'rules') {
+      inRules = true
+      rulesIndent = indent
+      currentRule = null
+      continue
+    }
+
+    if (inRules && currentRule !== null && indent > rulesIndent) {
+      applyRuleYamlField(currentRule, key, rawValue)
+      continue
+    }
+
+    inRules = false
+    currentRule = null
+    if (applyRouterYamlField(draft, key, rawValue)) {
+      foundName = true
+    }
+  }
+
+  if (foundName) {
+    form.name = draft.name
+    form.description = draft.description
+    form.enabled = draft.enabled
+    form.rules = normalizeRules(nextRules)
+    appStore.showSuccess(t('admin.tlsFingerprintRouters.form.yamlParsed'))
+  } else {
+    appStore.showError(t('admin.tlsFingerprintRouters.form.yamlParseFailed'))
+  }
+}
+
+// 粘贴事件先让 v-model 接收文本，再触发解析。
+function handleYamlPaste() {
+  setTimeout(() => parseYamlInput(), 50)
+}
+
+// 字符串用 JSON 引号输出，避免特殊字符破坏 YAML 结构。
+function formatYamlString(value: string): string {
+  return JSON.stringify(value)
+}
+
+// 导出的 YAML 与粘贴解析入口保持同一字段结构，便于跨环境复制。
+function buildRouterYaml(router: TLSFingerprintRouter): string {
+  const lines = [
+    'tls_fingerprint_router:',
+    `  name: ${formatYamlString(router.name)}`,
+    `  description: ${formatYamlString(router.description || '')}`,
+    `  enabled: ${router.enabled ? 'true' : 'false'}`,
+    '  rules:'
+  ]
+
+  for (const rule of normalizeRules(router.rules)) {
+    lines.push(
+      `    - name: ${formatYamlString(rule.name)}`,
+      `      enabled: ${rule.enabled ? 'true' : 'false'}`,
+      `      match_type: ${formatYamlString(rule.match_type)}`,
+      `      pattern: ${formatYamlString(rule.pattern)}`,
+      `      case_sensitive: ${rule.case_sensitive ? 'true' : 'false'}`,
+      `      tls_fingerprint_profile_id: ${rule.tls_fingerprint_profile_id}`,
+      `      upstream_user_agent: ${formatYamlString(rule.upstream_user_agent || '')}`,
+      `      upstream_originator: ${formatYamlString(rule.upstream_originator || '')}`
+    )
+  }
+
+  return lines.join('\n')
+}
+
+function handleCopyYaml(router: TLSFingerprintRouter) {
+  copyToClipboard(buildRouterYaml(router), t('admin.tlsFingerprintRouters.copyYamlSuccess'))
 }
 
 async function toggleRouter(router: TLSFingerprintRouter) {

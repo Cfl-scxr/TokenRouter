@@ -6452,6 +6452,8 @@ export default {
       createRouter: 'Create Router',
       editRouter: 'Edit Router',
       deleteRouter: 'Delete Router',
+      copyYaml: 'Copy YAML',
+      copyYamlSuccess: 'TLS router YAML copied to clipboard',
       noRouters: 'No TLS routers configured',
       createFirstRouter: 'Create your first TLS router',
       columns: {
@@ -6462,6 +6464,12 @@ export default {
         actions: 'Actions'
       },
       form: {
+        pasteYaml: 'Paste YAML config',
+        pasteYamlPlaceholder: 'Paste TLS router YAML config here...',
+        pasteYamlHint: 'Paste a copied TLS router YAML config to auto-fill the form.',
+        parseYaml: 'Parse YAML',
+        yamlParsed: 'YAML parsed successfully, fields auto-filled',
+        yamlParseFailed: 'Failed to parse YAML: name field not found',
         name: 'Router Name',
         description: 'Description',
         enabled: 'Enable router',

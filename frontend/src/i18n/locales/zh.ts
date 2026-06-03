@@ -6601,6 +6601,8 @@ export default {
       createRouter: '创建路由器',
       editRouter: '编辑路由器',
       deleteRouter: '删除路由器',
+      copyYaml: '复制 YAML',
+      copyYamlSuccess: 'TLS 路由器 YAML 已复制到剪贴板',
       noRouters: '暂无 TLS 路由器',
       createFirstRouter: '创建你的第一个 TLS 路由器',
       columns: {
@@ -6611,6 +6613,12 @@ export default {
         actions: '操作'
       },
       form: {
+        pasteYaml: '粘贴 YAML 配置',
+        pasteYamlPlaceholder: '将 TLS 路由器 YAML 配置粘贴到这里...',
+        pasteYamlHint: '粘贴已复制的 TLS 路由器 YAML 配置，自动填充表单。',
+        parseYaml: '解析 YAML',
+        yamlParsed: 'YAML 解析成功，字段已自动填充',
+        yamlParseFailed: 'YAML 解析失败：未找到 name 字段',
         name: '路由器名称',
         description: '描述',
         enabled: '启用路由器',
