@@ -43,6 +43,9 @@ const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用
 const dataShareSkipRulesCacheTTL = 30 * time.Second
 const dataShareExportTicketTTL = 5 * time.Minute
 
+// dataShareReplayOverlapMinMessages 限制重放去重至少命中两条连续消息，避免误删真实重复的单条发言。
+const dataShareReplayOverlapMinMessages = 2
+
 // dataShareExportExcludedFields 是导出文件中禁止外发的身份和来源字段。
 var dataShareExportExcludedFields = map[string]struct{}{
 	"user_email":   {},
@@ -2597,7 +2600,7 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 	seenToolResults := map[string]struct{}{}
 	for i := 0; i < len(messages); {
 		if len(out) > 0 {
-			if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(messages), messageIdentityAt); prefix >= 2 {
+			if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(messages), messageIdentityAt); prefix == len(out) && prefix >= dataShareReplayOverlapMinMessages && dataShareReplayPrefixHasSeenToolEcho(messages[i:i+prefix], seenToolCalls, seenToolResults) {
 				i += prefix
 				continue
 			}
@@ -2611,6 +2614,64 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 		out = append(out, msg)
 		outIdentities = append(outIdentities, "")
 		i++
+	}
+	return out
+}
+
+// dataShareReplayPrefixHasSeenToolEcho 用已出现过的工具调用/result id 作为无边界 compact 的强 replay 信号，避免误删普通文本重复。
+func dataShareReplayPrefixHasSeenToolEcho(messages []map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
+	for _, msg := range messages {
+		if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" {
+			if id := strings.TrimSpace(stringFromAny(msg["tool_call_id"])); id != "" {
+				if _, ok := seenToolResults[id]; ok {
+					return true
+				}
+			}
+			continue
+		}
+		for _, id := range dataShareToolCallIDs(msg) {
+			if _, ok := seenToolCalls[id]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// dataShareMessagesAreExistingPrefix 判断 incoming 是否只是已聚合快照的前缀重放。
+func dataShareMessagesAreExistingPrefix(existing, incoming []map[string]any) bool {
+	if len(existing) == 0 || len(incoming) < dataShareReplayOverlapMinMessages || len(incoming) > len(existing) {
+		return false
+	}
+	existingIdentities := dataShareMessageIdentities(existing)
+	incomingIdentities := dataShareMessageIdentities(incoming)
+	for i := range incoming {
+		if existingIdentities[i] != incomingIdentities[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// dataShareReplayOverlapLen 查找完整历史重放长度，部分前缀相同不能当作可合并 diff。
+func dataShareReplayOverlapLen(existing, incoming []map[string]any) int {
+	if len(existing) < dataShareReplayOverlapMinMessages || len(incoming) <= len(existing) {
+		return 0
+	}
+	existingIdentities := dataShareMessageIdentities(existing)
+	incomingIdentities := dataShareMessageIdentities(incoming)
+	for i := range existingIdentities {
+		if existingIdentities[i] != incomingIdentities[i] {
+			return 0
+		}
+	}
+	return len(existing)
+}
+
+func dataShareMessageIdentities(messages []map[string]any) []string {
+	out := make([]string, len(messages))
+	for i, msg := range messages {
+		out[i] = dataShareMessageIdentity(msg)
 	}
 	return out
 }
@@ -2663,6 +2724,7 @@ func dataShareToolCallIDs(msg map[string]any) []string {
 	return out
 }
 
+// dataShareMessageIdentity 生成稳定身份，忽略 Responses message 的 id/status/type 等易变字段。
 func dataShareMessageIdentity(msg map[string]any) string {
 	role := strings.TrimSpace(stringFromAny(msg["role"]))
 	if role == "" {
@@ -2675,10 +2737,105 @@ func dataShareMessageIdentity(msg map[string]any) string {
 	}
 	if role == "assistant" {
 		if calls := anySlice(msg["tool_calls"]); len(calls) > 0 {
-			return "assistant_tool_calls:" + string(mustJSON(calls))
+			return "assistant_tool_calls:" + dataShareToolCallsIdentity(calls)
 		}
 	}
-	return role + ":" + string(mustJSON(msg))
+	contentValue := firstPresentAny(msg["content"], msg["text"])
+	content := strings.TrimSpace(dataShareContentText(contentValue))
+	if content != "" && dataShareContentIdentityCanUseText(contentValue) {
+		return role + ":content:" + content
+	}
+	return role + ":structured:" + string(mustJSON(dataShareMessageIdentityPayload(msg, role)))
+}
+
+// dataShareMessageIdentityPayload 只清理 Responses 外层易变字段；其它字段可能承载 reasoning/refusal 等语义，必须参与身份。
+func dataShareMessageIdentityPayload(msg map[string]any, role string) map[string]any {
+	out := cloneDataShareMap(msg)
+	delete(out, "id")
+	delete(out, "status")
+	delete(out, "type")
+	if role != "" {
+		out["role"] = role
+	}
+	if contentValue, ok := out["content"]; ok {
+		out["content"] = normalizeDataShareContentValue(contentValue)
+	}
+	if textValue, ok := out["text"]; ok {
+		out["text"] = normalizeDataShareContentValue(textValue)
+	}
+	return out
+}
+
+func dataShareContentIdentityCanUseText(value any) bool {
+	switch v := value.(type) {
+	case nil, string:
+		return true
+	case []any:
+		if len(v) == 0 {
+			return true
+		}
+		for _, item := range v {
+			block, ok := mapFromAny(item)
+			if !ok {
+				return false
+			}
+			if !dataShareContentBlockIdentityCanUseText(block) {
+				return false
+			}
+		}
+		return true
+	case []map[string]any:
+		if len(v) == 0 {
+			return true
+		}
+		for _, block := range v {
+			if !dataShareContentBlockIdentityCanUseText(block) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func dataShareContentBlockIdentityCanUseText(block map[string]any) bool {
+	blockType := strings.TrimSpace(stringFromAny(block["type"]))
+	if blockType != "" {
+		switch blockType {
+		case "input_text", "output_text", "text":
+		default:
+			return false
+		}
+	}
+	for key := range block {
+		switch key {
+		case "type", "text", "content":
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// dataShareToolCallsIdentity 使用工具调用的业务字段生成身份，避免上游包装字段影响重放识别。
+func dataShareToolCallsIdentity(calls []any) string {
+	normalized := make([]map[string]any, 0, len(calls))
+	for _, raw := range calls {
+		call, ok := mapFromAny(raw)
+		if !ok {
+			normalized = append(normalized, map[string]any{"raw": raw})
+			continue
+		}
+		functionMap, _ := mapFromAny(call["function"])
+		normalized = append(normalized, map[string]any{
+			"id":        firstNonBlank(stringFromAny(call["id"]), stringFromAny(call["call_id"]), stringFromAny(call["tool_call_id"])),
+			"name":      firstNonBlank(stringFromAny(call["name"]), stringFromAny(functionMap["name"]), stringFromAny(call["type"])),
+			"arguments": normalizeToolArguments(firstPresentAny(call["arguments"], functionMap["arguments"], call["input"])),
+		})
+	}
+	return string(mustJSON(normalized))
 }
 
 func dataShareCommonPrefixLen(leftLen int, leftIdentityAt func(int) string, rightStart int, rightLen int, rightIdentityAt func(int) string) int {
@@ -2950,7 +3107,7 @@ func normalizeDataShareContentValue(value any) any {
 	if value == nil {
 		return ""
 	}
-	if text := dataShareContentText(value); text != "" {
+	if text := dataShareContentText(value); text != "" && dataShareContentIdentityCanUseText(value) {
 		return text
 	}
 	return value

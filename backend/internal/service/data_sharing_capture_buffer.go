@@ -696,27 +696,14 @@ func mergeBufferedDataShareMessages(existing, incoming []map[string]any) []map[s
 	if len(incoming) == 0 {
 		return cloneBufferedDataShareMaps(existing)
 	}
-	// Agent 客户端通常每轮都会带上完整历史；保留最新快照可避免热点 session 在内存中重复累积大段历史。
-	if bufferedMessagesLookLikeSnapshot(existing, incoming) {
-		return cloneBufferedDataShareMaps(incoming)
+	if dataShareMessagesAreExistingPrefix(existing, incoming) {
+		return cloneBufferedDataShareMaps(existing)
+	}
+	// Responses 是 stateless 协议，请求会重放历史；只追加 replay overlap 后面的新增消息。
+	if overlap := dataShareReplayOverlapLen(existing, incoming); overlap >= dataShareReplayOverlapMinMessages && overlap < len(incoming) {
+		return append(cloneBufferedDataShareMaps(existing), cloneBufferedDataShareMaps(incoming[overlap:])...)
 	}
 	return append(cloneBufferedDataShareMaps(existing), cloneBufferedDataShareMaps(incoming)...)
-}
-
-func bufferedMessagesLookLikeSnapshot(existing, incoming []map[string]any) bool {
-	if len(incoming) < len(existing) || len(existing) == 0 {
-		return false
-	}
-	limit := len(existing)
-	if limit > 2 {
-		limit = 2
-	}
-	for i := 0; i < limit; i++ {
-		if dataShareMessageIdentity(existing[i]) != dataShareMessageIdentity(incoming[i]) {
-			return false
-		}
-	}
-	return true
 }
 
 func mergeBufferedDataShareTools(existing, incoming []map[string]any) []map[string]any {

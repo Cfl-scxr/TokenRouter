@@ -650,6 +650,302 @@ func TestDataSharingService_CaptureBufferMergesSameTrajectory(t *testing.T) {
 	require.Len(t, session.Messages, 5)
 }
 
+func TestDataSharingService_CaptureBufferDedupesResponsesStatelessReplay(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, inputItems string, outputText string, inputTokens int) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-replay",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `,"tools":[{"type":"function","name":"exec_command","description":"运行命令","parameters":{"type":"object"}}]}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]}`, requestID, outputText)),
+			InboundEndpoint: "/v1/responses",
+			InputTokens:     inputTokens,
+			OutputTokens:    5,
+			ActualCost:      float64Ptr(float64(inputTokens) / 100),
+		}
+	}
+
+	firstInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"请列目录"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_1","output":"README.md"}
+	]`
+	secondInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"请列目录"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_1","output":"README.md"},
+		{"type":"message","role":"assistant","id":"msg_old","status":"completed","content":[{"type":"output_text","text":"看到了 README.md"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"再检查 rustc 来源"}]},
+		{"type":"function_call","call_id":"call_2","name":"exec_command","arguments":"{\"cmd\":\"which rustc && which cargo\"}"},
+		{"type":"function_call_output","call_id":"call_2","output":"/opt/homebrew/bin/rustc\n/opt/homebrew/bin/cargo"}
+	]`
+	thirdInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"请列目录"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_1","output":"README.md"},
+		{"type":"message","role":"assistant","id":"msg_old","status":"completed","content":[{"type":"output_text","text":"看到了 README.md"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"再检查 rustc 来源"}]},
+		{"type":"function_call","call_id":"call_2","name":"exec_command","arguments":"{\"cmd\":\"which rustc && which cargo\"}"},
+		{"type":"function_call_output","call_id":"call_2","output":"/opt/homebrew/bin/rustc\n/opt/homebrew/bin/cargo"},
+		{"type":"message","role":"assistant","id":"msg_2","status":"completed","content":[{"type":"output_text","text":"初步结果显示 rustc 和 cargo 都来自 /opt/homebrew/bin"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"我再补一层检查"}]}
+	]`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-1", firstInput, "看到了 README.md", 10)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-2", secondInput, "初步结果显示 rustc 和 cargo 都来自 /opt/homebrew/bin", 20)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-3", thirdInput, "下一步可以检查 PATH 优先级", 30)}))
+
+	svc.captureBuffer.FlushAll(context.Background())
+
+	require.Equal(t, 1, repo.upsertCount())
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 3, session.SourceRequestCount)
+	require.Equal(t, int64(75), session.TotalTokens)
+	require.Equal(t, []string{"request-1", "request-2", "request-3"}, stringsFromAny(session.Meta["source_request_ids"]))
+	require.Len(t, session.Messages, 11)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "看到了 README.md"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "初步结果显示 rustc 和 cargo 都来自 /opt/homebrew/bin"))
+	require.Equal(t, "下一步可以检查 PATH 优先级", dataShareContentText(session.Messages[len(session.Messages)-1]["content"]))
+}
+
+func TestDataSharingService_CaptureBufferDedupesMultimodalReplayWithVolatileWrapper(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, inputItems string, outputText string) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-multimodal-replay",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `,"tools":[{"type":"function","name":"exec_command","description":"运行命令","parameters":{"type":"object"}}]}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]}`, requestID, outputText)),
+			InboundEndpoint: "/v1/responses",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}
+	}
+	firstInput := `[
+		{"type":"message","role":"system","id":"sys_req_1","status":"completed","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","id":"user_req_1","status":"completed","content":[{"type":"input_text","text":"看图并读文件"},{"type":"input_image","image_url":"data:image/png;base64,aGVsbG8="},{"type":"input_file","file_id":"file_abc","filename":"notes.txt"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_1","output":"README.md"}
+	]`
+	secondInput := `[
+		{"type":"message","role":"system","id":"sys_req_2","status":"in_progress","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","id":"user_req_2","status":"in_progress","content":[{"type":"input_text","text":"看图并读文件"},{"type":"input_image","image_url":"data:image/png;base64,aGVsbG8="},{"type":"input_file","file_id":"file_abc","filename":"notes.txt"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_1","output":"README.md"},
+		{"type":"message","role":"assistant","id":"msg_old_changed","status":"completed","content":[{"type":"output_text","text":"图片和文件已保留"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"继续检查"}]},
+		{"type":"function_call","call_id":"call_2","name":"exec_command","arguments":"{\"cmd\":\"pwd\"}"},
+		{"type":"function_call_output","call_id":"call_2","output":"/tmp/workspace"}
+	]`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-multi-1", firstInput, "图片和文件已保留")}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-multi-2", secondInput, "第二步完成")}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Len(t, session.Messages, 9)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "看图并读文件"))
+	content := anySlice(session.Messages[1]["content"])
+	require.Len(t, content, 3)
+	imageBlock, ok := mapFromAny(content[1])
+	require.True(t, ok)
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", imageBlock["image_url"])
+	fileBlock, ok := mapFromAny(content[2])
+	require.True(t, ok)
+	require.Equal(t, "file_abc", fileBlock["file_id"])
+}
+
+func TestDataSharingCaptureBufferKeepsRealRepeatedSingleMessage(t *testing.T) {
+	var got *DataShareSession
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Flush: func(_ context.Context, session *DataShareSession) error {
+			got = cloneBufferedDataShareSession(session)
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	repeated := map[string]any{"role": "user", "content": "继续"}
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-real-repeat",
+		SessionID:          "sess-real-repeat",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{repeated},
+	}))
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-real-repeat",
+		SessionID:          "sess-real-repeat",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{repeated},
+	}))
+
+	buffer.FlushAll(context.Background())
+
+	require.NotNil(t, got)
+	require.Equal(t, 2, got.SourceRequestCount)
+	require.Len(t, got.Messages, 2)
+	require.Equal(t, 2, countDataShareMessagesWithContent(got.Messages, "继续"))
+}
+
+func TestDataSharingCaptureBufferDoesNotDiffDivergedPrefix(t *testing.T) {
+	merged := CompactDataShareMessages(mergeBufferedDataShareMessages(
+		[]map[string]any{
+			{"role": "system", "content": "你是编码助手"},
+			{"role": "user", "content": "第一步"},
+			{"role": "assistant", "content": "旧分支"},
+			{"role": "user", "content": "旧分支继续"},
+		},
+		[]map[string]any{
+			{"role": "system", "content": "你是编码助手"},
+			{"role": "user", "content": "第一步"},
+			{"role": "assistant", "content": "新分支"},
+			{"role": "user", "content": "新分支继续"},
+		},
+	))
+
+	require.Len(t, merged, 8)
+	require.Equal(t, "旧分支", dataShareContentText(merged[2]["content"]))
+	require.Equal(t, "新分支", dataShareContentText(merged[6]["content"]))
+}
+
+func TestDataShareMessageIdentityKeepsStructuredContentDistinct(t *testing.T) {
+	first := map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{"type": "input_text", "text": "看这张图"},
+			map[string]any{"type": "input_image", "image_url": "https://example.com/a.png"},
+		},
+	}
+	second := map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{"type": "input_text", "text": "看这张图"},
+			map[string]any{"type": "input_image", "image_url": "https://example.com/b.png"},
+		},
+	}
+	normalized := normalizeDataShareMessages([]map[string]any{first, second})
+
+	require.Len(t, normalized, 2)
+	require.NotEqual(t, dataShareMessageIdentity(normalized[0]), dataShareMessageIdentity(normalized[1]))
+	require.IsType(t, []any{}, normalized[0]["content"])
+}
+
+func TestDataShareMessageIdentityIgnoresVolatileWrapperForStructuredContent(t *testing.T) {
+	first := map[string]any{
+		"type":   "message",
+		"id":     "msg_first",
+		"status": "completed",
+		"role":   "user",
+		"content": []any{
+			map[string]any{"type": "input_text", "text": "看这张图"},
+			map[string]any{"type": "input_image", "image_url": "data:image/png;base64,aGVsbG8="},
+			map[string]any{"type": "input_file", "file_id": "file_abc", "filename": "notes.txt"},
+		},
+	}
+	second := map[string]any{
+		"type":   "message",
+		"id":     "msg_second",
+		"status": "in_progress",
+		"role":   "user",
+		"content": []any{
+			map[string]any{"type": "input_text", "text": "看这张图"},
+			map[string]any{"type": "input_image", "image_url": "data:image/png;base64,aGVsbG8="},
+			map[string]any{"type": "input_file", "file_id": "file_abc", "filename": "notes.txt"},
+		},
+	}
+	normalized := normalizeDataShareMessages([]map[string]any{first, second})
+
+	require.Len(t, normalized, 2)
+	require.Equal(t, dataShareMessageIdentity(normalized[0]), dataShareMessageIdentity(normalized[1]))
+	require.IsType(t, []any{}, normalized[0]["content"])
+}
+
+func TestDataShareMessageIdentityKeepsNonContentSemanticFieldsDistinct(t *testing.T) {
+	first := normalizeDataShareMessage(map[string]any{
+		"type":              "message",
+		"id":                "msg_first",
+		"status":            "completed",
+		"role":              "assistant",
+		"content":           []any{map[string]any{"type": "output_text", "text": ""}},
+		"reasoning_content": "先检查文件",
+	})
+	second := normalizeDataShareMessage(map[string]any{
+		"type":              "message",
+		"id":                "msg_second",
+		"status":            "completed",
+		"role":              "assistant",
+		"content":           []any{map[string]any{"type": "output_text", "text": ""}},
+		"reasoning_content": "改查日志",
+	})
+
+	require.NotEqual(t, dataShareMessageIdentity(first), dataShareMessageIdentity(second))
+}
+
 func TestDataSharingService_CaptureBufferIdleHotUpdateFlushesSooner(t *testing.T) {
 	gid := int64(12)
 	repo := &dataShareCaptureRepoStub{}
@@ -1777,6 +2073,20 @@ func TestCompactDataShareMessagesKeepsUnfinishedTail(t *testing.T) {
 	}
 }
 
+func TestCompactDataShareMessagesKeepsRealRepeatedPrefix(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "hi"},
+		{"role": "assistant", "content": "ok"},
+		{"role": "user", "content": "hi"},
+		{"role": "assistant", "content": "ok"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+	require.Len(t, compact, 4)
+	require.Equal(t, "hi", dataShareContentText(compact[2]["content"]))
+	require.Equal(t, "ok", dataShareContentText(compact[3]["content"]))
+}
+
 func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
 	sys := "你是编码助手"
 	messages := []map[string]any{
@@ -2225,6 +2535,16 @@ func requireNoDataShareExportSensitiveFields(t *testing.T, value any) {
 			requireNoDataShareExportSensitiveFields(t, item)
 		}
 	}
+}
+
+func countDataShareMessagesWithContent(messages []map[string]any, content string) int {
+	count := 0
+	for _, msg := range messages {
+		if dataShareContentText(msg["content"]) == content {
+			count++
+		}
+	}
+	return count
 }
 
 func containsString(values []string, target string) bool {
