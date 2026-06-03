@@ -560,6 +560,8 @@ export interface MarketplaceGroup {
   rate_multiplier: number
   official_price_ratio?: number
   official_price_rmb_equivalent?: number
+  // 数据共享分组需要在模型广场展示醒目标记，提醒用户该分组会进入采集流程。
+  data_sharing_enabled: boolean
   capacity?: MarketplaceGroupCapacity
   model_count: number
   models: MarketplaceModel[]

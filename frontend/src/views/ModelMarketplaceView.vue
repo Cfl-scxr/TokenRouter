@@ -125,6 +125,13 @@
                   <span class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
                     {{ group.model_count }} {{ t('marketplace.modelsStat') }}
                   </span>
+                  <!-- 数据共享分组需要醒目标记，避免用户在模型广场忽略采集属性。 -->
+                  <span
+                    v-if="group.data_sharing_enabled"
+                    class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
+                  >
+                    {{ t('marketplace.dataSharingTag') }}
+                  </span>
                   <div
                     v-if="group.capacity"
                     class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80"

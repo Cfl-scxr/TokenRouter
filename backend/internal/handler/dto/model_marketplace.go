@@ -70,6 +70,7 @@ type ModelMarketplaceGroup struct {
 	RateMultiplier             float64                   `json:"rate_multiplier"`
 	OfficialPriceRatio         *float64                  `json:"official_price_ratio,omitempty"`
 	OfficialPriceRMBEquivalent *float64                  `json:"official_price_rmb_equivalent,omitempty"`
+	DataSharingEnabled         bool                      `json:"data_sharing_enabled"`
 	Capacity                   *ModelMarketplaceCapacity `json:"capacity,omitempty"`
 	ModelCount                 int                       `json:"model_count"`
 	Models                     []ModelMarketplaceModel   `json:"models"`
@@ -97,6 +98,7 @@ func ModelMarketplaceGroupsFromService(groups []service.ModelMarketplaceGroup) [
 			RateMultiplier:             group.RateMultiplier,
 			OfficialPriceRatio:         group.OfficialPriceRatio,
 			OfficialPriceRMBEquivalent: group.OfficialPriceRMBEquivalent,
+			DataSharingEnabled:         group.DataSharingEnabled,
 			Capacity:                   modelMarketplaceCapacityFromService(group.Capacity),
 			ModelCount:                 group.ModelCount,
 			Models:                     models,

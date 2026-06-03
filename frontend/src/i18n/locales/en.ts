@@ -445,6 +445,7 @@ export default {
     platformsStat: 'Brands',
     groupsStat: 'groups',
     modelsStat: 'models',
+    dataSharingTag: 'Data Sharing',
     capacity: 'Capacity',
     capacityHint: 'Aggregated group load: concurrency / sessions / RPM',
     rateMultiplier: 'Group Multiplier',
