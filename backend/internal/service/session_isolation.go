@@ -14,7 +14,7 @@ const (
 	SessionIsolationSourceGateway                = "gateway"
 	SessionIsolationSourceGemini                 = "gemini"
 
-	SessionIsolationConflictMessage = "该会话已归属于其他分组，不能切换到当前已开启会话隔离的分组"
+	SessionIsolationConflictMessage = "This session already belongs to another group and cannot switch to the current session-isolated group"
 )
 
 var ErrSessionIsolationConflict = infraerrors.Forbidden("SESSION_ISOLATION_CONFLICT", SessionIsolationConflictMessage)

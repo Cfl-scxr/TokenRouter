@@ -1249,7 +1249,11 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		(strings.Contains(msg, "model ") && strings.Contains(msg, " not in whitelist")) ||
 		(strings.Contains(msg, "beta feature ") && strings.Contains(msg, " is not allowed")) ||
 		(strings.Contains(msg, "openai service_tier=") && strings.Contains(msg, " is not allowed for model")) ||
+		// 本地客户端策略与会话隔离拒绝属于用户配置限制，不计入 SLA。
 		strings.Contains(msg, "this account only allows codex official clients") ||
+		strings.Contains(msg, "this account only allows clients matched by the configured tls router") ||
+		strings.Contains(msg, "this account only allows configured openai oauth clients") ||
+		strings.Contains(msg, "this session already belongs to another group and cannot switch to the current session-isolated group") ||
 		strings.Contains(msg, "openai wsv1 is temporarily unsupported") ||
 		strings.Contains(msg, "openai codex passthrough requires a non-empty instructions field")
 }

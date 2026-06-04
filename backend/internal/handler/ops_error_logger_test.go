@@ -589,6 +589,24 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantPhase:   "request",
 		},
 		{
+			name:        "tls router matched-only policy block",
+			errType:     "forbidden_error",
+			message:     "This account only allows clients matched by the configured TLS router",
+			code:        "",
+			status:      http.StatusForbidden,
+			wantErrType: "forbidden_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "session isolation conflict",
+			errType:     "permission_error",
+			message:     service.SessionIsolationConflictMessage,
+			code:        "",
+			status:      http.StatusForbidden,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
 			name:        "openai wsv1 unsupported feature gate",
 			errType:     "invalid_request_error",
 			message:     "OpenAI WSv1 is temporarily unsupported. Please enable responses_websockets_v2.",
@@ -819,6 +837,18 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 		{
 			name:    "provider codex client policy shaped error",
 			message: "This account only allows Codex official clients",
+			code:    "403",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider tls router policy shaped error",
+			message: "This account only allows clients matched by the configured TLS router",
+			code:    "403",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider session isolation shaped error",
+			message: service.SessionIsolationConflictMessage,
 			code:    "403",
 			status:  http.StatusForbidden,
 		},
