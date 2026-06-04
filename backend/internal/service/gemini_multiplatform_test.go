@@ -692,6 +692,60 @@ func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_NoModel
 	acc, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gemini-2.5-flash", nil)
 	require.Error(t, err)
 	require.Nil(t, acc)
+	var modelErr *GroupModelUnsupportedError
+	require.True(t, errors.As(err, &modelErr))
+	require.Equal(t, PlatformGemini, modelErr.Platform)
+	require.Equal(t, "gemini-2.5-flash", modelErr.RequestedModel)
+	require.Equal(t, []string{"gemini-1.0-pro"}, modelErr.AvailableModels)
+	require.Contains(t, err.Error(), `The current group does not support the requested model "gemini-2.5-flash"`)
+	require.Contains(t, err.Error(), "Available models: gemini-1.0-pro")
+}
+
+func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ModelRateLimitedNotGroupUnsupported(t *testing.T) {
+	ctx := context.Background()
+	resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformGemini,
+				Priority:    1,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"}},
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						"gemini-2.5-flash": map[string]any{"rate_limit_reset_at": resetAt},
+					},
+				},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformGemini,
+				Priority:    2,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gemini-1.0-pro": "gemini-1.0-pro"}},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+		groupRepo:   &mockGroupRepoForGemini{groups: map[int64]*Group{}},
+		cache:       &mockGatewayCacheForGemini{},
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gemini-2.5-flash", nil)
+	require.Error(t, err)
+	require.Nil(t, acc)
+	var modelErr *GroupModelUnsupportedError
+	require.False(t, errors.As(err, &modelErr))
 	require.Contains(t, err.Error(), "supporting model")
 }
 

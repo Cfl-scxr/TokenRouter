@@ -1246,6 +1246,7 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, "image generation is not enabled for this group") ||
 		strings.Contains(msg, "token counting is not supported for this platform") ||
 		strings.Contains(msg, "images api is not supported for this platform") ||
+		strings.Contains(msg, "the current group does not support the requested model") ||
 		(strings.Contains(msg, "model ") && strings.Contains(msg, " not in whitelist")) ||
 		(strings.Contains(msg, "beta feature ") && strings.Contains(msg, " is not allowed")) ||
 		(strings.Contains(msg, "openai service_tier=") && strings.Contains(msg, " is not allowed for model")) ||

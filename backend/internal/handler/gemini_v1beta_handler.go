@@ -381,6 +381,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+				if handleGeminiGroupModelUnsupportedError(c, err) {
+					return
+				}
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return
 			}
@@ -676,6 +679,17 @@ func googleError(c *gin.Context, status int, message string) {
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
 	})
+}
+
+// handleGeminiGroupModelUnsupportedError 将分组模型限制转换为 Google API 风格错误。
+func handleGeminiGroupModelUnsupportedError(c *gin.Context, err error) bool {
+	var modelErr *service.GroupModelUnsupportedError
+	if !errors.As(err, &modelErr) {
+		return false
+	}
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+	googleError(c, http.StatusForbidden, modelErr.Error())
+	return true
 }
 
 func writeUpstreamResponse(c *gin.Context, res *service.UpstreamHTTPResult) {

@@ -893,7 +893,61 @@ func TestGatewayService_SelectAccountForModelWithPlatform_NoModelSupport(t *test
 	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, PlatformAnthropic)
 	require.Error(t, err)
 	require.Nil(t, acc)
-	require.Contains(t, err.Error(), "supporting model")
+	var modelErr *GroupModelUnsupportedError
+	require.True(t, errors.As(err, &modelErr))
+	require.Equal(t, PlatformAnthropic, modelErr.Platform)
+	require.Equal(t, "claude-3-5-sonnet-20241022", modelErr.RequestedModel)
+	require.Equal(t, []string{"claude-3-5-haiku-20241022"}, modelErr.AvailableModels)
+	require.Contains(t, err.Error(), `The current group does not support the requested model "claude-3-5-sonnet-20241022"`)
+	require.Contains(t, err.Error(), "Available models: claude-3-5-haiku-20241022")
+}
+
+func TestGatewayService_SelectAccountForModelWithPlatform_ModelRateLimitedNotGroupUnsupported(t *testing.T) {
+	ctx := context.Background()
+	resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformAnthropic,
+				Priority:    1,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022"}},
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						"claude-3-5-sonnet-20241022": map[string]any{"rate_limit_reset_at": resetAt},
+					},
+				},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformAnthropic,
+				Priority:    2,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022"}},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       &mockGatewayCacheForPlatform{},
+		cfg:         testConfig(),
+	}
+
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, PlatformAnthropic)
+	require.Error(t, err)
+	require.Nil(t, acc)
+	var modelErr *GroupModelUnsupportedError
+	require.False(t, errors.As(err, &modelErr))
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
 }
 
 func TestGatewayService_SelectAccountForModelWithPlatform_GeminiPreferOAuth(t *testing.T) {
@@ -970,7 +1024,13 @@ func TestGatewayService_SelectAccountForModelWithPlatform_GeminiAPIKeyModelMappi
 	acc, err = svc.selectAccountForModelWithPlatform(ctx, nil, "", "gemini-3-pro-preview", nil, PlatformGemini)
 	require.Error(t, err)
 	require.Nil(t, acc)
-	require.Contains(t, err.Error(), "supporting model")
+	var modelErr *GroupModelUnsupportedError
+	require.True(t, errors.As(err, &modelErr))
+	require.Equal(t, PlatformGemini, modelErr.Platform)
+	require.Equal(t, "gemini-3-pro-preview", modelErr.RequestedModel)
+	require.Equal(t, []string{"gemini-2.5-flash", "gemini-2.5-pro"}, modelErr.AvailableModels)
+	require.Contains(t, err.Error(), `The current group does not support the requested model "gemini-3-pro-preview"`)
+	require.Contains(t, err.Error(), "Available models: gemini-2.5-flash, gemini-2.5-pro")
 }
 
 func TestGatewayService_SelectAccountForModelWithPlatform_StickyInGroup(t *testing.T) {
@@ -1881,7 +1941,13 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 		acc, err := svc.selectAccountWithMixedScheduling(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, PlatformAnthropic)
 		require.Error(t, err)
 		require.Nil(t, acc)
-		require.Contains(t, err.Error(), "supporting model")
+		var modelErr *GroupModelUnsupportedError
+		require.True(t, errors.As(err, &modelErr))
+		require.Equal(t, PlatformAnthropic, modelErr.Platform)
+		require.Equal(t, "claude-3-5-sonnet-20241022", modelErr.RequestedModel)
+		require.Equal(t, []string{"claude-3-5-haiku-20241022"}, modelErr.AvailableModels)
+		require.Contains(t, err.Error(), `The current group does not support the requested model "claude-3-5-sonnet-20241022"`)
+		require.Contains(t, err.Error(), "Available models: claude-3-5-haiku-20241022")
 	})
 
 	t.Run("混合调度-优先未使用账号", func(t *testing.T) {

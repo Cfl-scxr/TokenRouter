@@ -47,6 +47,36 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+// handleGroupModelUnsupportedError 将本地分组模型限制转换为明确的客户端侧错误。
+func handleGroupModelUnsupportedError(c *gin.Context, err error, streamStarted bool, writeError func(int, string, string, bool)) bool {
+	var modelErr *service.GroupModelUnsupportedError
+	if errors.As(err, &modelErr) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		message := modelErr.Error()
+		if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+			platform := strings.TrimSpace(modelErr.Platform)
+			if platform == "" {
+				platform = apiKey.Group.Platform
+			}
+			availableModels := filterModelsByCustomList(modelErr.AvailableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
+			message = (&service.GroupModelUnsupportedError{
+				RequestedModel:  modelErr.RequestedModel,
+				AvailableModels: availableModels,
+			}).Error()
+		}
+		writeError(http.StatusForbidden, "permission_error", message, streamStarted)
+		return true
+	}
+	return false
+}
+
+// handleOpenAISelectionBusinessError 保持 OpenAI handler 调用侧语义清晰。
+func (h *OpenAIGatewayHandler) handleOpenAISelectionBusinessError(c *gin.Context, err error, streamStarted bool) bool {
+	return handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+		h.handleStreamingAwareError(c, status, errType, message, streamStarted)
+	})
+}
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -295,6 +325,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
+					return
+				}
+				if h.handleOpenAISelectionBusinessError(c, err, streamStarted) {
 					return
 				}
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
@@ -735,6 +768,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					if h.handleOpenAISelectionBusinessError(c, err, streamStarted) {
+						return
+					}
 					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
 				}

@@ -1574,11 +1574,35 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, sessionHash, requestedModel, excludedIDs, false, 0, "")
 }
 
-// noAvailableOpenAISelectionError builds the standard "no account available" error
-// while preserving the compact-specific error when applicable.
-func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool) error {
+func shouldUseGroupModelUnsupportedError(accounts []Account, requestedModel string) bool {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || len(accounts) == 0 {
+		return false
+	}
+	hasRelevantAccount := false
+	for i := range accounts {
+		acc := &accounts[i]
+		if !acc.IsOpenAI() || !acc.IsSchedulable() {
+			continue
+		}
+		hasRelevantAccount = true
+		if acc.IsModelSupported(requestedModel) {
+			return false
+		}
+	}
+	return hasRelevantAccount
+}
+
+// noAvailableOpenAISelectionError 生成统一的账号选择失败错误。
+// compact 与分组模型不支持这两类本地业务限制需要保留更具体的错误语义。
+func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool, accounts ...[]Account) error {
 	if compactBlocked {
 		return ErrNoAvailableCompactAccounts
+	}
+	if len(accounts) > 0 && shouldUseGroupModelUnsupportedError(accounts[0], requestedModel) {
+		if err := newGroupModelUnsupportedError(PlatformOpenAI, requestedModel, accounts[0]); err != nil {
+			return err
+		}
 	}
 	if requestedModel != "" {
 		return fmt.Errorf("no available OpenAI accounts supporting model: %s", requestedModel)
@@ -1887,7 +1911,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability)
 
 	if selected == nil {
-		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked)
+		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, accounts)
 	}
 
 	hydrated, err := s.hydrateSelectedAccount(ctx, selected)
@@ -2120,7 +2144,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, noAvailableOpenAISelectionError(requestedModel, false, accounts)
 	}
 
 	isExcluded := func(accountID int64) bool {
@@ -2200,7 +2224,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, noAvailableOpenAISelectionError(requestedModel, false, accounts)
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -2372,7 +2396,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact && baseCandidateCount > 0 {
 		return nil, ErrNoAvailableCompactAccounts
 	}
-	return nil, ErrNoAvailableAccounts
+	return nil, noAvailableOpenAISelectionError(requestedModel, false, accounts)
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {

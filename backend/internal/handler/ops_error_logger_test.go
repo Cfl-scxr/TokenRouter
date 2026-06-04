@@ -562,6 +562,15 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantPhase:   "request",
 		},
 		{
+			name:        "openai group model unsupported feature gate",
+			errType:     "permission_error",
+			message:     `The current group does not support the requested model "o1-preview". Available models: gpt-5.4, gpt-5.4-mini`,
+			code:        "",
+			status:      http.StatusForbidden,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
 			name:        "claude beta policy block",
 			errType:     "invalid_request_error",
 			message:     "beta feature interleaved-thinking-2025-05-14 is not allowed",
@@ -819,6 +828,12 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 		{
 			name:    "provider antigravity whitelist shaped error",
 			message: "model claude-3-5-sonnet not in whitelist",
+			code:    "403",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider group model unsupported shaped error",
+			message: `The current group does not support the requested model "o1-preview". Available models: gpt-5.4, gpt-5.4-mini`,
 			code:    "403",
 			status:  http.StatusForbidden,
 		},

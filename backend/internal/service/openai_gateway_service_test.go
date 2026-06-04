@@ -576,9 +576,53 @@ func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) 
 	if acc != nil {
 		t.Fatalf("expected nil account for unsupported model")
 	}
-	if !strings.Contains(err.Error(), "supporting model") {
+	if !strings.Contains(err.Error(), "does not support the requested model") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestOpenAISelectAccountWithScheduler_GroupModelUnsupportedError(t *testing.T) {
+	groupID := int64(1)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_whitelist": []any{"gpt-5.4", "gpt-5.4-mini"},
+				},
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		context.Background(),
+		&groupID,
+		"",
+		"",
+		"o1-preview",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityChatCompletions,
+		false,
+	)
+	if err == nil {
+		t.Fatalf("expected group model unsupported error")
+	}
+	if selection != nil {
+		t.Fatalf("expected nil selection")
+	}
+	var modelErr *GroupModelUnsupportedError
+	if !errors.As(err, &modelErr) {
+		t.Fatalf("expected GroupModelUnsupportedError, got %T: %v", err, err)
+	}
+	require.Equal(t, "o1-preview", modelErr.RequestedModel)
+	require.Equal(t, []string{"gpt-5.4", "gpt-5.4-mini"}, modelErr.AvailableModels)
+	require.Contains(t, err.Error(), `The current group does not support the requested model "o1-preview"`)
+	require.Contains(t, err.Error(), "Available models: gpt-5.4, gpt-5.4-mini")
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorFallback(t *testing.T) {

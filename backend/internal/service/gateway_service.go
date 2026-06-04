@@ -2069,6 +2069,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	if len(candidates) == 0 {
+		if err := s.groupModelUnsupportedErrorIfApplicable(ctx, accounts, requestedModel, platform, excludedIDs, useMixed, groupID, group); err != nil {
+			return nil, err
+		}
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -2456,6 +2459,62 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 		return false
 	}
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+}
+
+// isAccountEligibleExceptModelSupport 判断账号除模型白名单/映射外是否具备本次请求资格。
+func (s *GatewayService) isAccountEligibleExceptModelSupport(ctx context.Context, account *Account, requestedModel string, platform string, excludedIDs map[int64]struct{}, useMixed bool, groupID *int64, schedGroup *Group) bool {
+	if account == nil {
+		return false
+	}
+	if excludedIDs != nil {
+		if _, excluded := excludedIDs[account.ID]; excluded {
+			return false
+		}
+	}
+	if !s.isAccountSchedulableForSelection(account) || !s.isAccountAllowedForPlatform(account, platform, useMixed) {
+		return false
+	}
+	if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
+		return false
+	}
+	if !s.isAccountSchedulableForQuota(account) || !s.isAccountSchedulableForWindowCost(ctx, account, false) || !s.isAccountSchedulableForRPM(ctx, account, false) {
+		return false
+	}
+	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+		s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
+		return false
+	}
+	return true
+}
+
+// shouldUseGroupModelUnsupportedError 判断账号选择失败是否明确由分组模型限制导致。
+func (s *GatewayService) shouldUseGroupModelUnsupportedError(ctx context.Context, accounts []Account, requestedModel string, platform string, excludedIDs map[int64]struct{}, useMixed bool, groupID *int64, schedGroup *Group) bool {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || len(accounts) == 0 {
+		return false
+	}
+	hasRelevantAccount := false
+	for i := range accounts {
+		acc := &accounts[i]
+		if !s.isAccountEligibleExceptModelSupport(ctx, acc, requestedModel, platform, excludedIDs, useMixed, groupID, schedGroup) {
+			continue
+		}
+		hasRelevantAccount = true
+		if s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			return false
+		}
+	}
+	return hasRelevantAccount
+}
+
+// groupModelUnsupportedErrorIfApplicable 在确认是分组模型限制时返回 typed error。
+func (s *GatewayService) groupModelUnsupportedErrorIfApplicable(ctx context.Context, accounts []Account, requestedModel string, platform string, excludedIDs map[int64]struct{}, useMixed bool, groupID *int64, schedGroup *Group) error {
+	if s.shouldUseGroupModelUnsupportedError(ctx, accounts, requestedModel, platform, excludedIDs, useMixed, groupID, schedGroup) {
+		if err := newGroupModelUnsupportedError(platform, requestedModel, accounts); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -3333,6 +3392,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	}
 
 	if selected == nil {
+		if err := s.groupModelUnsupportedErrorIfApplicable(ctx, accounts, requestedModel, platform, excludedIDs, false, groupID, schedGroup); err != nil {
+			return nil, err
+		}
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
@@ -3594,6 +3656,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	}
 
 	if selected == nil {
+		if err := s.groupModelUnsupportedErrorIfApplicable(ctx, accounts, requestedModel, nativePlatform, excludedIDs, true, groupID, schedGroup); err != nil {
+			return nil, err
+		}
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
 		if requestedModel != "" {
 			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))

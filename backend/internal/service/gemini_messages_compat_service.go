@@ -137,6 +137,9 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
 
 	if selected == nil {
+		if err := s.groupModelUnsupportedErrorIfApplicable(ctx, accounts, requestedModel, platform, excludedIDs, useMixedScheduling); err != nil {
+			return nil, err
+		}
 		if requestedModel != "" {
 			return nil, fmt.Errorf("no available Gemini accounts supporting model: %s", requestedModel)
 		}
@@ -355,6 +358,35 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 	}
 
 	return selected
+}
+
+// groupModelUnsupportedErrorIfApplicable 在确认是分组模型限制时返回 typed error。
+func (s *GeminiMessagesCompatService) groupModelUnsupportedErrorIfApplicable(ctx context.Context, accounts []Account, requestedModel string, platform string, excludedIDs map[int64]struct{}, useMixedScheduling bool) error {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || len(accounts) == 0 {
+		return nil
+	}
+	precheckResult := s.buildPreCheckUsageResultMap(ctx, accounts, requestedModel)
+	hasRelevantAccount := false
+	for i := range accounts {
+		acc := &accounts[i]
+		if excludedIDs != nil {
+			if _, excluded := excludedIDs[acc.ID]; excluded {
+				continue
+			}
+		}
+		if !acc.IsSchedulable() || !s.isAccountValidForPlatform(acc, platform, useMixedScheduling) || !s.passesRateLimitPreCheckWithCache(ctx, acc, requestedModel, precheckResult) {
+			continue
+		}
+		hasRelevantAccount = true
+		if s.isModelSupportedByAccount(acc, requestedModel) {
+			return nil
+		}
+	}
+	if !hasRelevantAccount {
+		return nil
+	}
+	return newGroupModelUnsupportedError(platform, requestedModel, accounts)
 }
 
 func (s *GeminiMessagesCompatService) buildPreCheckUsageResultMap(ctx context.Context, accounts []Account, requestedModel string) map[int64]bool {
