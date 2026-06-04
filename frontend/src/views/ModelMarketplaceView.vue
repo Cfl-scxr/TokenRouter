@@ -112,8 +112,8 @@
             :key="group.id"
             class="card overflow-hidden"
           >
-            <div class="card-header px-4 py-4 md:px-5">
-              <div class="min-w-0 space-y-3">
+            <div class="card-header flex flex-col gap-4 px-4 py-4 md:px-5 xl:flex-row xl:items-center xl:justify-between">
+              <div class="min-w-0 flex-1 space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <span :class="brandBadgeClass(group)">
                     <ProviderIcon :brand="groupBrandSource(group)" size="14px" />
@@ -132,24 +132,6 @@
                   >
                     {{ t('marketplace.dataSharingTag') }}
                   </span>
-                  <div
-                    v-if="group.capacity"
-                    class="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80"
-                    :title="t('marketplace.capacityHint')"
-                  >
-                    <span class="text-xs font-semibold text-gray-500 dark:text-dark-400">
-                      {{ t('marketplace.capacity') }}
-                    </span>
-                    <GroupCapacityBadge
-                      layout="horizontal"
-                      :concurrency-used="group.capacity.concurrency_used"
-                      :concurrency-max="group.capacity.concurrency_max"
-                      :sessions-used="group.capacity.sessions_used"
-                      :sessions-max="group.capacity.sessions_max"
-                      :rpm-used="group.capacity.rpm_used"
-                      :rpm-max="group.capacity.rpm_max"
-                    />
-                  </div>
                   <span
                     v-if="hasOfficialPriceRatio(group.official_price_ratio)"
                     class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
@@ -178,6 +160,25 @@
                     </p>
                   </div>
                 </div>
+              </div>
+              <!-- 容量用量独立放在卡片头部右侧，避免和价格标签挤在一起。 -->
+              <div
+                v-if="group.capacity"
+                class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80 sm:w-auto xl:ml-6 xl:shrink-0"
+                :title="t('marketplace.capacityHint')"
+              >
+                <span class="text-xs font-semibold text-gray-500 dark:text-dark-400">
+                  {{ t('marketplace.capacity') }}
+                </span>
+                <GroupCapacityBadge
+                  layout="horizontal"
+                  :concurrency-used="group.capacity.concurrency_used"
+                  :concurrency-max="group.capacity.concurrency_max"
+                  :sessions-used="group.capacity.sessions_used"
+                  :sessions-max="group.capacity.sessions_max"
+                  :rpm-used="group.capacity.rpm_used"
+                  :rpm-max="group.capacity.rpm_max"
+                />
               </div>
             </div>
 
