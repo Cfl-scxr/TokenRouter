@@ -142,6 +142,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			return
 		}
 	}
+	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -152,7 +153,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	for {
 		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForImages(
-			c.Request.Context(),
+			requestCtx,
 			apiKey.GroupID,
 			sessionHash,
 			requestModel,
@@ -210,10 +211,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				}
 			}()
 			tlsRouterMatch := h.gatewayService.MatchOpenAITLSFingerprintRouterForRequest(c, account)
-			if err := h.gatewayService.EnforceOpenAIClientPolicyForRequest(c.Request.Context(), c, account, body, tlsRouterMatch); err != nil {
+			if err := h.gatewayService.EnforceOpenAIClientPolicyForRequest(requestCtx, c, account, body, tlsRouterMatch); err != nil {
 				return nil, err
 			}
-			return h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel, tlsRouterMatch)
+			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel, tlsRouterMatch)
 		}()
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -260,7 +261,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
 							)
 							select {
-							case <-c.Request.Context().Done():
+							case <-requestCtx.Done():
 								return
 							case <-time.After(sameAccountRetryDelay):
 							}
