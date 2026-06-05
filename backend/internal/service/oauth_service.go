@@ -6,15 +6,35 @@ import (
 	"log"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/model"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/oauth"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 )
+
+// OpenAIOAuthTokenRequestOptions 定义 OpenAI OAuth token 请求的可选指纹配置。
+type OpenAIOAuthTokenRequestOptions struct {
+	UserAgent          string
+	TLSProfile         *tlsfingerprint.Profile
+	AccountID          int64
+	AccountConcurrency int
+}
+
+// OpenAIOAuthTokenRouterReader 读取账号绑定的 TLS Router 运行时配置。
+type OpenAIOAuthTokenRouterReader interface {
+	GetRuntimeRouter(routerID int64) *model.TLSFingerprintRouter
+}
+
+// OpenAIOAuthTokenProfileResolver 解析 ChatGPT OAuth token 请求专用的 TLS 模板。
+type OpenAIOAuthTokenProfileResolver interface {
+	ResolveTokenTLSProfileByID(id int64) (*tlsfingerprint.Profile, bool)
+}
 
 // OpenAIOAuthClient interface for OpenAI OAuth operations
 type OpenAIOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error)
-	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
-	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error)
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken, proxyURL string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
+	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string, options ...OpenAIOAuthTokenRequestOptions) (*openai.TokenResponse, error)
 }
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows

@@ -32825,20 +32825,23 @@ func (m *TLSFingerprintProfileMutation) ResetEdge(name string) error {
 // TLSFingerprintRouterMutation represents an operation that mutates the TLSFingerprintRouter nodes in the graph.
 type TLSFingerprintRouterMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int64
-	created_at    *time.Time
-	updated_at    *time.Time
-	name          *string
-	description   *string
-	enabled       *bool
-	rules         *[]model.TLSFingerprintRouterRule
-	appendrules   []model.TLSFingerprintRouterRule
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*TLSFingerprintRouter, error)
-	predicates    []predicate.TLSFingerprintRouter
+	op                                                Op
+	typ                                               string
+	id                                                *int64
+	created_at                                        *time.Time
+	updated_at                                        *time.Time
+	name                                              *string
+	description                                       *string
+	enabled                                           *bool
+	chatgpt_oauth_token_user_agent                    *string
+	chatgpt_oauth_token_tls_fingerprint_profile_id    *int64
+	addchatgpt_oauth_token_tls_fingerprint_profile_id *int64
+	rules                                             *[]model.TLSFingerprintRouterRule
+	appendrules                                       []model.TLSFingerprintRouterRule
+	clearedFields                                     map[string]struct{}
+	done                                              bool
+	oldValue                                          func(context.Context) (*TLSFingerprintRouter, error)
+	predicates                                        []predicate.TLSFingerprintRouter
 }
 
 var _ ent.Mutation = (*TLSFingerprintRouterMutation)(nil)
@@ -33132,6 +33135,112 @@ func (m *TLSFingerprintRouterMutation) ResetEnabled() {
 	m.enabled = nil
 }
 
+// SetChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field.
+func (m *TLSFingerprintRouterMutation) SetChatgptOauthTokenUserAgent(s string) {
+	m.chatgpt_oauth_token_user_agent = &s
+}
+
+// ChatgptOauthTokenUserAgent returns the value of the "chatgpt_oauth_token_user_agent" field in the mutation.
+func (m *TLSFingerprintRouterMutation) ChatgptOauthTokenUserAgent() (r string, exists bool) {
+	v := m.chatgpt_oauth_token_user_agent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChatgptOauthTokenUserAgent returns the old "chatgpt_oauth_token_user_agent" field's value of the TLSFingerprintRouter entity.
+// If the TLSFingerprintRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TLSFingerprintRouterMutation) OldChatgptOauthTokenUserAgent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChatgptOauthTokenUserAgent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChatgptOauthTokenUserAgent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChatgptOauthTokenUserAgent: %w", err)
+	}
+	return oldValue.ChatgptOauthTokenUserAgent, nil
+}
+
+// ResetChatgptOauthTokenUserAgent resets all changes to the "chatgpt_oauth_token_user_agent" field.
+func (m *TLSFingerprintRouterMutation) ResetChatgptOauthTokenUserAgent() {
+	m.chatgpt_oauth_token_user_agent = nil
+}
+
+// SetChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (m *TLSFingerprintRouterMutation) SetChatgptOauthTokenTLSFingerprintProfileID(i int64) {
+	m.chatgpt_oauth_token_tls_fingerprint_profile_id = &i
+	m.addchatgpt_oauth_token_tls_fingerprint_profile_id = nil
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileID returns the value of the "chatgpt_oauth_token_tls_fingerprint_profile_id" field in the mutation.
+func (m *TLSFingerprintRouterMutation) ChatgptOauthTokenTLSFingerprintProfileID() (r int64, exists bool) {
+	v := m.chatgpt_oauth_token_tls_fingerprint_profile_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChatgptOauthTokenTLSFingerprintProfileID returns the old "chatgpt_oauth_token_tls_fingerprint_profile_id" field's value of the TLSFingerprintRouter entity.
+// If the TLSFingerprintRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TLSFingerprintRouterMutation) OldChatgptOauthTokenTLSFingerprintProfileID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChatgptOauthTokenTLSFingerprintProfileID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChatgptOauthTokenTLSFingerprintProfileID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChatgptOauthTokenTLSFingerprintProfileID: %w", err)
+	}
+	return oldValue.ChatgptOauthTokenTLSFingerprintProfileID, nil
+}
+
+// AddChatgptOauthTokenTLSFingerprintProfileID adds i to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (m *TLSFingerprintRouterMutation) AddChatgptOauthTokenTLSFingerprintProfileID(i int64) {
+	if m.addchatgpt_oauth_token_tls_fingerprint_profile_id != nil {
+		*m.addchatgpt_oauth_token_tls_fingerprint_profile_id += i
+	} else {
+		m.addchatgpt_oauth_token_tls_fingerprint_profile_id = &i
+	}
+}
+
+// AddedChatgptOauthTokenTLSFingerprintProfileID returns the value that was added to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field in this mutation.
+func (m *TLSFingerprintRouterMutation) AddedChatgptOauthTokenTLSFingerprintProfileID() (r int64, exists bool) {
+	v := m.addchatgpt_oauth_token_tls_fingerprint_profile_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearChatgptOauthTokenTLSFingerprintProfileID clears the value of the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (m *TLSFingerprintRouterMutation) ClearChatgptOauthTokenTLSFingerprintProfileID() {
+	m.chatgpt_oauth_token_tls_fingerprint_profile_id = nil
+	m.addchatgpt_oauth_token_tls_fingerprint_profile_id = nil
+	m.clearedFields[tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID] = struct{}{}
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDCleared returns if the "chatgpt_oauth_token_tls_fingerprint_profile_id" field was cleared in this mutation.
+func (m *TLSFingerprintRouterMutation) ChatgptOauthTokenTLSFingerprintProfileIDCleared() bool {
+	_, ok := m.clearedFields[tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID]
+	return ok
+}
+
+// ResetChatgptOauthTokenTLSFingerprintProfileID resets all changes to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (m *TLSFingerprintRouterMutation) ResetChatgptOauthTokenTLSFingerprintProfileID() {
+	m.chatgpt_oauth_token_tls_fingerprint_profile_id = nil
+	m.addchatgpt_oauth_token_tls_fingerprint_profile_id = nil
+	delete(m.clearedFields, tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
+}
+
 // SetRules sets the "rules" field.
 func (m *TLSFingerprintRouterMutation) SetRules(mfrr []model.TLSFingerprintRouterRule) {
 	m.rules = &mfrr
@@ -33231,7 +33340,7 @@ func (m *TLSFingerprintRouterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TLSFingerprintRouterMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, tlsfingerprintrouter.FieldCreatedAt)
 	}
@@ -33246,6 +33355,12 @@ func (m *TLSFingerprintRouterMutation) Fields() []string {
 	}
 	if m.enabled != nil {
 		fields = append(fields, tlsfingerprintrouter.FieldEnabled)
+	}
+	if m.chatgpt_oauth_token_user_agent != nil {
+		fields = append(fields, tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent)
+	}
+	if m.chatgpt_oauth_token_tls_fingerprint_profile_id != nil {
+		fields = append(fields, tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
 	}
 	if m.rules != nil {
 		fields = append(fields, tlsfingerprintrouter.FieldRules)
@@ -33268,6 +33383,10 @@ func (m *TLSFingerprintRouterMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case tlsfingerprintrouter.FieldEnabled:
 		return m.Enabled()
+	case tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent:
+		return m.ChatgptOauthTokenUserAgent()
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		return m.ChatgptOauthTokenTLSFingerprintProfileID()
 	case tlsfingerprintrouter.FieldRules:
 		return m.Rules()
 	}
@@ -33289,6 +33408,10 @@ func (m *TLSFingerprintRouterMutation) OldField(ctx context.Context, name string
 		return m.OldDescription(ctx)
 	case tlsfingerprintrouter.FieldEnabled:
 		return m.OldEnabled(ctx)
+	case tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent:
+		return m.OldChatgptOauthTokenUserAgent(ctx)
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		return m.OldChatgptOauthTokenTLSFingerprintProfileID(ctx)
 	case tlsfingerprintrouter.FieldRules:
 		return m.OldRules(ctx)
 	}
@@ -33335,6 +33458,20 @@ func (m *TLSFingerprintRouterMutation) SetField(name string, value ent.Value) er
 		}
 		m.SetEnabled(v)
 		return nil
+	case tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChatgptOauthTokenUserAgent(v)
+		return nil
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChatgptOauthTokenTLSFingerprintProfileID(v)
+		return nil
 	case tlsfingerprintrouter.FieldRules:
 		v, ok := value.([]model.TLSFingerprintRouterRule)
 		if !ok {
@@ -33349,13 +33486,21 @@ func (m *TLSFingerprintRouterMutation) SetField(name string, value ent.Value) er
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *TLSFingerprintRouterMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addchatgpt_oauth_token_tls_fingerprint_profile_id != nil {
+		fields = append(fields, tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *TLSFingerprintRouterMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		return m.AddedChatgptOauthTokenTLSFingerprintProfileID()
+	}
 	return nil, false
 }
 
@@ -33364,6 +33509,13 @@ func (m *TLSFingerprintRouterMutation) AddedField(name string) (ent.Value, bool)
 // type.
 func (m *TLSFingerprintRouterMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChatgptOauthTokenTLSFingerprintProfileID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown TLSFingerprintRouter numeric field %s", name)
 }
@@ -33374,6 +33526,9 @@ func (m *TLSFingerprintRouterMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(tlsfingerprintrouter.FieldDescription) {
 		fields = append(fields, tlsfingerprintrouter.FieldDescription)
+	}
+	if m.FieldCleared(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID) {
+		fields = append(fields, tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
 	}
 	if m.FieldCleared(tlsfingerprintrouter.FieldRules) {
 		fields = append(fields, tlsfingerprintrouter.FieldRules)
@@ -33394,6 +33549,9 @@ func (m *TLSFingerprintRouterMutation) ClearField(name string) error {
 	switch name {
 	case tlsfingerprintrouter.FieldDescription:
 		m.ClearDescription()
+		return nil
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		m.ClearChatgptOauthTokenTLSFingerprintProfileID()
 		return nil
 	case tlsfingerprintrouter.FieldRules:
 		m.ClearRules()
@@ -33420,6 +33578,12 @@ func (m *TLSFingerprintRouterMutation) ResetField(name string) error {
 		return nil
 	case tlsfingerprintrouter.FieldEnabled:
 		m.ResetEnabled()
+		return nil
+	case tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent:
+		m.ResetChatgptOauthTokenUserAgent()
+		return nil
+	case tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID:
+		m.ResetChatgptOauthTokenTLSFingerprintProfileID()
 		return nil
 	case tlsfingerprintrouter.FieldRules:
 		m.ResetRules()

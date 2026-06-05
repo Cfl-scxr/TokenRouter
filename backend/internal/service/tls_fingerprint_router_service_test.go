@@ -180,3 +180,56 @@ func TestTLSFingerprintRouterService_ValidateRules(t *testing.T) {
 		require.Error(t, router.Validate())
 	})
 }
+
+func TestTLSFingerprintRouterService_Create_NormalizesChatGPTOAuthTokenConfig(t *testing.T) {
+	profileID := int64(-1)
+	repo := &tlsFingerprintRouterRepoStub{}
+	svc := NewTLSFingerprintRouterService(repo, nil)
+
+	created, err := svc.Create(context.Background(), &model.TLSFingerprintRouter{
+		Name:                                     "  token router  ",
+		Enabled:                                  true,
+		ChatGPTOAuthTokenUserAgent:               "  codex-token-ua  ",
+		ChatGPTOAuthTokenTLSFingerprintProfileID: &profileID,
+		Rules:                                    nil,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "token router", created.Name)
+	require.Equal(t, "codex-token-ua", created.ChatGPTOAuthTokenUserAgent)
+	require.Equal(t, int64(-1), *created.ChatGPTOAuthTokenTLSFingerprintProfileID)
+	require.Empty(t, created.Rules)
+}
+
+func TestTLSFingerprintRouter_ValidateChatGPTOAuthTokenProfileID(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   *int64
+		wantErr bool
+	}{
+		{name: "未配置", value: nil},
+		{name: "内置默认模板", value: tlsRouterInt64Ptr(0)},
+		{name: "随机模板", value: tlsRouterInt64Ptr(-1)},
+		{name: "指定模板", value: tlsRouterInt64Ptr(123)},
+		{name: "非法负数", value: tlsRouterInt64Ptr(-2), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := &model.TLSFingerprintRouter{
+				Name:                                     "router",
+				ChatGPTOAuthTokenTLSFingerprintProfileID: tt.value,
+			}
+			err := router.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func tlsRouterInt64Ptr(value int64) *int64 {
+	return &value
+}

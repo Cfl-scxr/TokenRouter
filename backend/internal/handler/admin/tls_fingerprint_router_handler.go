@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/model"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/response"
@@ -21,18 +23,42 @@ func NewTLSFingerprintRouterHandler(service *service.TLSFingerprintRouterService
 
 // CreateTLSFingerprintRouterRequest 创建 TLS 路由器请求。
 type CreateTLSFingerprintRouterRequest struct {
-	Name        string                           `json:"name" binding:"required"`
-	Description *string                          `json:"description"`
-	Enabled     *bool                            `json:"enabled"`
-	Rules       []model.TLSFingerprintRouterRule `json:"rules"`
+	Name                                     string                           `json:"name" binding:"required"`
+	Description                              *string                          `json:"description"`
+	Enabled                                  *bool                            `json:"enabled"`
+	ChatGPTOAuthTokenUserAgent               string                           `json:"chatgpt_oauth_token_user_agent"`
+	ChatGPTOAuthTokenTLSFingerprintProfileID *int64                           `json:"chatgpt_oauth_token_tls_fingerprint_profile_id"`
+	Rules                                    []model.TLSFingerprintRouterRule `json:"rules"`
 }
 
 // UpdateTLSFingerprintRouterRequest 更新 TLS 路由器请求。
 type UpdateTLSFingerprintRouterRequest struct {
-	Name        *string                          `json:"name"`
-	Description *string                          `json:"description"`
-	Enabled     *bool                            `json:"enabled"`
-	Rules       []model.TLSFingerprintRouterRule `json:"rules"`
+	Name                                     *string                          `json:"name"`
+	Description                              *string                          `json:"description"`
+	Enabled                                  *bool                            `json:"enabled"`
+	ChatGPTOAuthTokenUserAgent               *string                          `json:"chatgpt_oauth_token_user_agent"`
+	ChatGPTOAuthTokenTLSFingerprintProfileID nullableInt64Patch               `json:"chatgpt_oauth_token_tls_fingerprint_profile_id"`
+	Rules                                    []model.TLSFingerprintRouterRule `json:"rules"`
+}
+
+// nullableInt64Patch 区分 JSON 字段缺失与显式 null，便于局部更新保留旧配置。
+type nullableInt64Patch struct {
+	Set   bool
+	Value *int64
+}
+
+func (p *nullableInt64Patch) UnmarshalJSON(data []byte) error {
+	p.Set = true
+	if strings.TrimSpace(string(data)) == "null" {
+		p.Value = nil
+		return nil
+	}
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	p.Value = &value
+	return nil
 }
 
 // List 获取所有 TLS 路由器。
@@ -75,10 +101,12 @@ func (h *TLSFingerprintRouterHandler) Create(c *gin.Context) {
 		return
 	}
 	router := &model.TLSFingerprintRouter{
-		Name:        req.Name,
-		Description: req.Description,
-		Enabled:     true,
-		Rules:       req.Rules,
+		Name:                                     req.Name,
+		Description:                              req.Description,
+		Enabled:                                  true,
+		ChatGPTOAuthTokenUserAgent:               req.ChatGPTOAuthTokenUserAgent,
+		ChatGPTOAuthTokenTLSFingerprintProfileID: req.ChatGPTOAuthTokenTLSFingerprintProfileID,
+		Rules:                                    req.Rules,
 	}
 	if req.Enabled != nil {
 		router.Enabled = *req.Enabled
@@ -121,11 +149,13 @@ func (h *TLSFingerprintRouterHandler) Update(c *gin.Context) {
 		return
 	}
 	router := &model.TLSFingerprintRouter{
-		ID:          id,
-		Name:        existing.Name,
-		Description: existing.Description,
-		Enabled:     existing.Enabled,
-		Rules:       existing.Rules,
+		ID:                                       id,
+		Name:                                     existing.Name,
+		Description:                              existing.Description,
+		Enabled:                                  existing.Enabled,
+		ChatGPTOAuthTokenUserAgent:               existing.ChatGPTOAuthTokenUserAgent,
+		ChatGPTOAuthTokenTLSFingerprintProfileID: existing.ChatGPTOAuthTokenTLSFingerprintProfileID,
+		Rules:                                    existing.Rules,
 	}
 	if req.Name != nil {
 		router.Name = *req.Name
@@ -135,6 +165,12 @@ func (h *TLSFingerprintRouterHandler) Update(c *gin.Context) {
 	}
 	if req.Enabled != nil {
 		router.Enabled = *req.Enabled
+	}
+	if req.ChatGPTOAuthTokenUserAgent != nil {
+		router.ChatGPTOAuthTokenUserAgent = *req.ChatGPTOAuthTokenUserAgent
+	}
+	if req.ChatGPTOAuthTokenTLSFingerprintProfileID.Set {
+		router.ChatGPTOAuthTokenTLSFingerprintProfileID = req.ChatGPTOAuthTokenTLSFingerprintProfileID.Value
 	}
 	if req.Rules != nil {
 		router.Rules = req.Rules

@@ -49,14 +49,25 @@ func (TLSFingerprintRouter) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 
-		// enabled: 是否启用该路由器。
-		field.Bool("enabled").
-			Default(true),
+			// enabled: 是否启用该路由器。
+			field.Bool("enabled").
+				Default(true),
 
-		// rules: 按顺序匹配的 UA 规则列表，命中第一条后返回对应 TLS 模板。
-		field.JSON("rules", []model.TLSFingerprintRouterRule{}).
-			Optional().
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			// chatgpt_oauth_token_user_agent: ChatGPT OAuth token 请求使用的 UA，空值使用系统兜底。
+			field.String("chatgpt_oauth_token_user_agent").
+				MaxLen(512).
+				Default(""),
+
+			// chatgpt_oauth_token_tls_fingerprint_profile_id: ChatGPT OAuth token 请求使用的 TLS 模板。
+			// nil 表示不启用 token 专用 TLS 模板；0 表示内置默认模板；-1 表示随机模板；正数表示指定模板。
+			field.Int64("chatgpt_oauth_token_tls_fingerprint_profile_id").
+				Optional().
+				Nillable(),
+
+			// rules: 按顺序匹配的 UA 规则列表，命中第一条后返回对应 TLS 模板。
+			field.JSON("rules", []model.TLSFingerprintRouterRule{}).
+				Optional().
+				SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 	}
 }
 

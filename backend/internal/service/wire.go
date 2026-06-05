@@ -115,10 +115,19 @@ func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient OpenAIOAuthClient,
 	privacyClientFactory PrivacyClientFactory,
+	settingService *SettingService,
+	tokenRouterReader OpenAIOAuthTokenRouterReader,
+	tokenProfileResolver OpenAIOAuthTokenProfileResolver,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
+	svc.SetTokenTLSRouterDeps(settingService, tokenRouterReader, tokenProfileResolver)
 	return svc
+}
+
+// ProvideOpenAIGatewayTLSFingerprintRouterServices 为 Wire 的可变参数构造显式 slice。
+func ProvideOpenAIGatewayTLSFingerprintRouterServices(tlsFPRouterService *TLSFingerprintRouterService) []*TLSFingerprintRouterService {
+	return []*TLSFingerprintRouterService{tlsFPRouterService}
 }
 
 // ProvideClaudeTokenProvider creates ClaudeTokenProvider with OAuthRefreshAPI injection
@@ -560,10 +569,13 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewModelMarketplaceService,
 	NewGatewayService,
+	ProvideOpenAIGatewayTLSFingerprintRouterServices,
 	NewOpenAIGatewayService,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
+	wire.Bind(new(OpenAIOAuthTokenRouterReader), new(*TLSFingerprintRouterService)),
+	wire.Bind(new(OpenAIOAuthTokenProfileResolver), new(*TLSFingerprintProfileService)),
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,

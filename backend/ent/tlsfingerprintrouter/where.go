@@ -79,6 +79,16 @@ func Enabled(v bool) predicate.TLSFingerprintRouter {
 	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldEnabled, v))
 }
 
+// ChatgptOauthTokenUserAgent applies equality check predicate on the "chatgpt_oauth_token_user_agent" field. It's identical to ChatgptOauthTokenUserAgentEQ.
+func ChatgptOauthTokenUserAgent(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileID applies equality check predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field. It's identical to ChatgptOauthTokenTLSFingerprintProfileIDEQ.
+func ChatgptOauthTokenTLSFingerprintProfileID(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.TLSFingerprintRouter {
 	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldCreatedAt, v))
@@ -307,6 +317,121 @@ func EnabledEQ(v bool) predicate.TLSFingerprintRouter {
 // EnabledNEQ applies the NEQ predicate on the "enabled" field.
 func EnabledNEQ(v bool) predicate.TLSFingerprintRouter {
 	return predicate.TLSFingerprintRouter(sql.FieldNEQ(FieldEnabled, v))
+}
+
+// ChatgptOauthTokenUserAgentEQ applies the EQ predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentEQ(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentNEQ applies the NEQ predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentNEQ(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldNEQ(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentIn applies the In predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentIn(vs ...string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldIn(FieldChatgptOauthTokenUserAgent, vs...))
+}
+
+// ChatgptOauthTokenUserAgentNotIn applies the NotIn predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentNotIn(vs ...string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldNotIn(FieldChatgptOauthTokenUserAgent, vs...))
+}
+
+// ChatgptOauthTokenUserAgentGT applies the GT predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentGT(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldGT(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentGTE applies the GTE predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentGTE(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldGTE(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentLT applies the LT predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentLT(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldLT(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentLTE applies the LTE predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentLTE(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldLTE(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentContains applies the Contains predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentContains(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldContains(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentHasPrefix applies the HasPrefix predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentHasPrefix(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldHasPrefix(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentHasSuffix applies the HasSuffix predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentHasSuffix(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldHasSuffix(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentEqualFold applies the EqualFold predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentEqualFold(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldEqualFold(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenUserAgentContainsFold applies the ContainsFold predicate on the "chatgpt_oauth_token_user_agent" field.
+func ChatgptOauthTokenUserAgentContainsFold(v string) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldContainsFold(FieldChatgptOauthTokenUserAgent, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDEQ applies the EQ predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDEQ(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldEQ(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDNEQ applies the NEQ predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDNEQ(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldNEQ(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDIn applies the In predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDIn(vs ...int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldIn(FieldChatgptOauthTokenTLSFingerprintProfileID, vs...))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDNotIn applies the NotIn predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDNotIn(vs ...int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldNotIn(FieldChatgptOauthTokenTLSFingerprintProfileID, vs...))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDGT applies the GT predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDGT(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldGT(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDGTE applies the GTE predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDGTE(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldGTE(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDLT applies the LT predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDLT(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldLT(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDLTE applies the LTE predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDLTE(v int64) predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldLTE(FieldChatgptOauthTokenTLSFingerprintProfileID, v))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDIsNil applies the IsNil predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDIsNil() predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldIsNull(FieldChatgptOauthTokenTLSFingerprintProfileID))
+}
+
+// ChatgptOauthTokenTLSFingerprintProfileIDNotNil applies the NotNil predicate on the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func ChatgptOauthTokenTLSFingerprintProfileIDNotNil() predicate.TLSFingerprintRouter {
+	return predicate.TLSFingerprintRouter(sql.FieldNotNull(FieldChatgptOauthTokenTLSFingerprintProfileID))
 }
 
 // RulesIsNil applies the IsNil predicate on the "rules" field.

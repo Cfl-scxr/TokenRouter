@@ -132,6 +132,8 @@ const routerRecord = {
   name: 'Codex Router',
   description: 'UA based',
   enabled: true,
+  chatgpt_oauth_token_user_agent: 'codex-token-ua/1.0',
+  chatgpt_oauth_token_tls_fingerprint_profile_id: 7,
   rules: [
     {
       name: 'codex mac',
@@ -153,6 +155,8 @@ const importedRouterYaml = [
   '  name: "Imported Router"',
   '  description: "Imported from YAML"',
   '  enabled: false',
+  '  chatgpt_oauth_token_user_agent: "import-token-ua/1.0"',
+  '  chatgpt_oauth_token_tls_fingerprint_profile_id: -1',
   '  rules:',
   '    - name: "codex exact"',
   '      enabled: true',
@@ -236,13 +240,15 @@ describe('TLSFingerprintRoutersModal', () => {
     await flushPromises()
 
     const textInputs = wrapper.findAll('input[type="text"]')
-    await textInputs[2].setValue('opencode')
-    await textInputs[3].setValue('opencode/')
-    await textInputs[4].setValue('opencode/1.0 upstream')
-    await textInputs[5].setValue('opencode')
+    await textInputs[2].setValue('token-ua/1.0')
+    await textInputs[3].setValue('opencode')
+    await textInputs[4].setValue('opencode/')
+    await textInputs[5].setValue('opencode/1.0 upstream')
+    await textInputs[6].setValue('opencode')
     const selects = wrapper.findAll('select')
     await selects[0].setValue('7')
-    await selects[1].setValue('prefix')
+    await selects[1].setValue('7')
+    await selects[2].setValue('prefix')
     await wrapper.findAll('button').find(button => button.text().includes('common.create'))!.trigger('click')
     await flushPromises()
 
@@ -250,6 +256,8 @@ describe('TLSFingerprintRoutersModal', () => {
       name: 'OpenCode Router',
       description: null,
       enabled: true,
+      chatgpt_oauth_token_user_agent: 'token-ua/1.0',
+      chatgpt_oauth_token_tls_fingerprint_profile_id: 7,
       rules: [
         {
           name: 'opencode',
@@ -300,6 +308,8 @@ describe('TLSFingerprintRoutersModal', () => {
         '  name: "Codex Router"',
         '  description: "UA based"',
         '  enabled: true',
+        '  chatgpt_oauth_token_user_agent: "codex-token-ua/1.0"',
+        '  chatgpt_oauth_token_tls_fingerprint_profile_id: 7',
         '  rules:',
         '    - name: "codex mac"',
         '      enabled: true',
@@ -338,6 +348,8 @@ describe('TLSFingerprintRoutersModal', () => {
       name: 'Imported Router',
       description: 'Imported from YAML',
       enabled: false,
+      chatgpt_oauth_token_user_agent: 'import-token-ua/1.0',
+      chatgpt_oauth_token_tls_fingerprint_profile_id: -1,
       rules: [
         {
           name: 'codex exact',
@@ -385,6 +397,8 @@ describe('TLSFingerprintRoutersModal', () => {
     expect(createRouterMock).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Imported Router',
       enabled: false,
+      chatgpt_oauth_token_user_agent: 'import-token-ua/1.0',
+      chatgpt_oauth_token_tls_fingerprint_profile_id: -1,
       rules: expect.arrayContaining([
         expect.objectContaining({
           name: 'codex exact',
@@ -421,6 +435,8 @@ describe('TLSFingerprintRoutersModal', () => {
     expect(updateRouterMock).toHaveBeenCalledWith(9, expect.objectContaining({
       name: 'Codex Router',
       description: 'UA based',
+      chatgpt_oauth_token_user_agent: 'codex-token-ua/1.0',
+      chatgpt_oauth_token_tls_fingerprint_profile_id: 7,
       rules: [
         {
           name: 'codex mac',

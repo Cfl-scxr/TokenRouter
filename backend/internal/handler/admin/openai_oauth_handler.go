@@ -61,11 +61,12 @@ func (h *OpenAIOAuthHandler) GenerateAuthURL(c *gin.Context) {
 
 // OpenAIExchangeCodeRequest represents the request for exchanging OpenAI auth code
 type OpenAIExchangeCodeRequest struct {
-	SessionID   string `json:"session_id" binding:"required"`
-	Code        string `json:"code" binding:"required"`
-	State       string `json:"state" binding:"required"`
-	RedirectURI string `json:"redirect_uri"`
-	ProxyID     *int64 `json:"proxy_id"`
+	SessionID              string `json:"session_id" binding:"required"`
+	Code                   string `json:"code" binding:"required"`
+	State                  string `json:"state" binding:"required"`
+	RedirectURI            string `json:"redirect_uri"`
+	ProxyID                *int64 `json:"proxy_id"`
+	TLSFingerprintRouterID *int64 `json:"tls_fingerprint_router_id"`
 }
 
 // ExchangeCode exchanges OpenAI authorization code for tokens
@@ -78,11 +79,12 @@ func (h *OpenAIOAuthHandler) ExchangeCode(c *gin.Context) {
 	}
 
 	tokenInfo, err := h.openaiOAuthService.ExchangeCode(c.Request.Context(), &service.OpenAIExchangeCodeInput{
-		SessionID:   req.SessionID,
-		Code:        req.Code,
-		State:       req.State,
-		RedirectURI: req.RedirectURI,
-		ProxyID:     req.ProxyID,
+		SessionID:              req.SessionID,
+		Code:                   req.Code,
+		State:                  req.State,
+		RedirectURI:            req.RedirectURI,
+		ProxyID:                req.ProxyID,
+		TLSFingerprintRouterID: req.TLSFingerprintRouterID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -94,10 +96,11 @@ func (h *OpenAIOAuthHandler) ExchangeCode(c *gin.Context) {
 
 // OpenAIRefreshTokenRequest represents the request for refreshing OpenAI token
 type OpenAIRefreshTokenRequest struct {
-	RefreshToken string `json:"refresh_token"`
-	RT           string `json:"rt"`
-	ClientID     string `json:"client_id"`
-	ProxyID      *int64 `json:"proxy_id"`
+	RefreshToken           string `json:"refresh_token"`
+	RT                     string `json:"rt"`
+	ClientID               string `json:"client_id"`
+	ProxyID                *int64 `json:"proxy_id"`
+	TLSFingerprintRouterID *int64 `json:"tls_fingerprint_router_id"`
 }
 
 // RefreshToken refreshes an OpenAI OAuth token
@@ -132,7 +135,7 @@ func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 		clientID, _ = openai.OAuthClientConfigByPlatform(platform)
 	}
 
-	tokenInfo, err := h.openaiOAuthService.RefreshTokenWithClientID(c.Request.Context(), refreshToken, proxyURL, clientID)
+	tokenInfo, err := h.openaiOAuthService.RefreshTokenWithClientIDAndRouter(c.Request.Context(), refreshToken, proxyURL, clientID, req.TLSFingerprintRouterID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -201,15 +204,16 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 // POST /api/v1/admin/openai/create-from-oauth
 func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	var req struct {
-		SessionID   string  `json:"session_id" binding:"required"`
-		Code        string  `json:"code" binding:"required"`
-		State       string  `json:"state" binding:"required"`
-		RedirectURI string  `json:"redirect_uri"`
-		ProxyID     *int64  `json:"proxy_id"`
-		Name        string  `json:"name"`
-		Concurrency int     `json:"concurrency"`
-		Priority    int     `json:"priority"`
-		GroupIDs    []int64 `json:"group_ids"`
+		SessionID              string  `json:"session_id" binding:"required"`
+		Code                   string  `json:"code" binding:"required"`
+		State                  string  `json:"state" binding:"required"`
+		RedirectURI            string  `json:"redirect_uri"`
+		ProxyID                *int64  `json:"proxy_id"`
+		TLSFingerprintRouterID *int64  `json:"tls_fingerprint_router_id"`
+		Name                   string  `json:"name"`
+		Concurrency            int     `json:"concurrency"`
+		Priority               int     `json:"priority"`
+		GroupIDs               []int64 `json:"group_ids"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -218,11 +222,12 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 
 	// Exchange code for tokens
 	tokenInfo, err := h.openaiOAuthService.ExchangeCode(c.Request.Context(), &service.OpenAIExchangeCodeInput{
-		SessionID:   req.SessionID,
-		Code:        req.Code,
-		State:       req.State,
-		RedirectURI: req.RedirectURI,
-		ProxyID:     req.ProxyID,
+		SessionID:              req.SessionID,
+		Code:                   req.Code,
+		State:                  req.State,
+		RedirectURI:            req.RedirectURI,
+		ProxyID:                req.ProxyID,
+		TLSFingerprintRouterID: req.TLSFingerprintRouterID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -243,13 +248,21 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 		name = "OpenAI OAuth Account"
 	}
 
+	var extra map[string]any
+	if req.TLSFingerprintRouterID != nil && *req.TLSFingerprintRouterID > 0 {
+		// 保留账号与 TLS Router 的绑定，确保后续后台 refresh token 也能使用同一套 token 指纹配置。
+		extra = map[string]any{
+			"tls_fingerprint_router_id": *req.TLSFingerprintRouterID,
+		}
+	}
+
 	// Create account
 	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
 		Name:        name,
 		Platform:    platform,
 		Type:        "oauth",
 		Credentials: credentials,
-		Extra:       nil,
+		Extra:       extra,
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,

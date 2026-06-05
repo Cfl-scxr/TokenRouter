@@ -23,6 +23,10 @@ const (
 	FieldDescription = "description"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldChatgptOauthTokenUserAgent holds the string denoting the chatgpt_oauth_token_user_agent field in the database.
+	FieldChatgptOauthTokenUserAgent = "chatgpt_oauth_token_user_agent"
+	// FieldChatgptOauthTokenTLSFingerprintProfileID holds the string denoting the chatgpt_oauth_token_tls_fingerprint_profile_id field in the database.
+	FieldChatgptOauthTokenTLSFingerprintProfileID = "chatgpt_oauth_token_tls_fingerprint_profile_id"
 	// FieldRules holds the string denoting the rules field in the database.
 	FieldRules = "rules"
 	// Table holds the table name of the tlsfingerprintrouter in the database.
@@ -37,6 +41,8 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldEnabled,
+	FieldChatgptOauthTokenUserAgent,
+	FieldChatgptOauthTokenTLSFingerprintProfileID,
 	FieldRules,
 }
 
@@ -61,6 +67,10 @@ var (
 	NameValidator func(string) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// DefaultChatgptOauthTokenUserAgent holds the default value on creation for the "chatgpt_oauth_token_user_agent" field.
+	DefaultChatgptOauthTokenUserAgent string
+	// ChatgptOauthTokenUserAgentValidator is a validator for the "chatgpt_oauth_token_user_agent" field. It is called by the builders before save.
+	ChatgptOauthTokenUserAgentValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the TLSFingerprintRouter queries.
@@ -94,4 +104,14 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByChatgptOauthTokenUserAgent orders the results by the chatgpt_oauth_token_user_agent field.
+func ByChatgptOauthTokenUserAgent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChatgptOauthTokenUserAgent, opts...).ToFunc()
+}
+
+// ByChatgptOauthTokenTLSFingerprintProfileID orders the results by the chatgpt_oauth_token_tls_fingerprint_profile_id field.
+func ByChatgptOauthTokenTLSFingerprintProfileID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChatgptOauthTokenTLSFingerprintProfileID, opts...).ToFunc()
 }

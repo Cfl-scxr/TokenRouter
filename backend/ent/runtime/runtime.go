@@ -1557,6 +1557,12 @@ func init() {
 	tlsfingerprintrouterDescEnabled := tlsfingerprintrouterFields[2].Descriptor()
 	// tlsfingerprintrouter.DefaultEnabled holds the default value on creation for the enabled field.
 	tlsfingerprintrouter.DefaultEnabled = tlsfingerprintrouterDescEnabled.Default.(bool)
+	// tlsfingerprintrouterDescChatgptOauthTokenUserAgent is the schema descriptor for chatgpt_oauth_token_user_agent field.
+	tlsfingerprintrouterDescChatgptOauthTokenUserAgent := tlsfingerprintrouterFields[3].Descriptor()
+	// tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent holds the default value on creation for the chatgpt_oauth_token_user_agent field.
+	tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Default.(string)
+	// tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator is a validator for the "chatgpt_oauth_token_user_agent" field. It is called by the builders before save.
+	tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Validators[0].(func(string) error)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

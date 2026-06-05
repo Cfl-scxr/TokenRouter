@@ -224,6 +224,28 @@ func (s *TLSFingerprintProfileService) ResolveRoutableTLSProfileByID(account *Ac
 	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}, true
 }
 
+// ResolveTokenTLSProfileByID 解析 ChatGPT OAuth token 请求专用的 TLS 模板。
+// 该路径可能发生在账号创建前，因此不依赖账号上的 TLS 开关。
+func (s *TLSFingerprintProfileService) ResolveTokenTLSProfileByID(id int64) (*tlsfingerprint.Profile, bool) {
+	if s == nil {
+		return nil, false
+	}
+	if id > 0 {
+		if p := s.GetProfileByID(id); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	if id == -1 {
+		if p := s.getRandomProfile(); p != nil {
+			return p, true
+		}
+		return nil, false
+	}
+	// 0 表示使用内置默认指纹模板。
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Node.js 24.x)"}, true
+}
+
 // --- 缓存管理 ---
 
 func (s *TLSFingerprintProfileService) refreshLocalCache(ctx context.Context) error {

@@ -2,14 +2,18 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
+	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -20,6 +24,50 @@ type OpenAIOAuthServiceSuite struct {
 	srv      *httptest.Server
 	svc      *openaiOAuthService
 	received chan url.Values
+}
+
+type openAIOAuthHTTPUpstreamRecorder struct {
+	calledDo           bool
+	calledDoWithTLS    bool
+	req                *http.Request
+	proxyURL           string
+	accountID          int64
+	accountConcurrency int
+	profile            *tlsfingerprint.Profile
+	form               url.Values
+	statusCode         int
+	responseBody       string
+}
+
+func (r *openAIOAuthHTTPUpstreamRecorder) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	r.calledDo = true
+	return nil, errors.New("Do should not be called")
+}
+
+func (r *openAIOAuthHTTPUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	r.calledDoWithTLS = true
+	r.req = req
+	r.proxyURL = proxyURL
+	r.accountID = accountID
+	r.accountConcurrency = accountConcurrency
+	r.profile = profile
+	body, _ := io.ReadAll(req.Body)
+	form, _ := url.ParseQuery(string(body))
+	r.form = form
+
+	statusCode := r.statusCode
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
+	responseBody := r.responseBody
+	if responseBody == "" {
+		responseBody = `{"access_token":"tls-at","refresh_token":"tls-rt","token_type":"bearer","expires_in":3600}`
+	}
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(responseBody)),
+	}, nil
 }
 
 func (s *OpenAIOAuthServiceSuite) SetupTest() {
@@ -326,8 +374,83 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_NonSuccessStatus() {
 	require.ErrorContains(s.T(), err, "status 401")
 }
 
+func (s *OpenAIOAuthServiceSuite) TestExchangeCode_WithTLSProfileUsesHTTPUpstream() {
+	upstream := &openAIOAuthHTTPUpstreamRecorder{}
+	profile := &tlsfingerprint.Profile{Name: "token-profile"}
+	s.svc = &openaiOAuthService{tokenURL: "https://auth.openai.com/oauth/token", httpUpstream: upstream}
+
+	resp, err := s.svc.ExchangeCode(s.ctx, "code", "verifier", "", "http://proxy.local:8080", "client-id", service.OpenAIOAuthTokenRequestOptions{
+		UserAgent:          "Token UA",
+		TLSProfile:         profile,
+		AccountID:          123,
+		AccountConcurrency: 2,
+	})
+
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "tls-at", resp.AccessToken)
+	require.False(s.T(), upstream.calledDo)
+	require.True(s.T(), upstream.calledDoWithTLS)
+	require.Same(s.T(), profile, upstream.profile)
+	require.Equal(s.T(), "http://proxy.local:8080", upstream.proxyURL)
+	require.Equal(s.T(), int64(123), upstream.accountID)
+	require.Equal(s.T(), 2, upstream.accountConcurrency)
+	require.Equal(s.T(), service.HTTPUpstreamProfileOpenAI, service.HTTPUpstreamProfileFromContext(upstream.req.Context()))
+	require.Equal(s.T(), "application/x-www-form-urlencoded", upstream.req.Header.Get("Content-Type"))
+	require.Equal(s.T(), "application/json", upstream.req.Header.Get("Accept"))
+	require.Equal(s.T(), "Token UA", upstream.req.Header.Get("User-Agent"))
+	require.Equal(s.T(), "authorization_code", upstream.form.Get("grant_type"))
+	require.Equal(s.T(), "client-id", upstream.form.Get("client_id"))
+	require.Equal(s.T(), "code", upstream.form.Get("code"))
+	require.Equal(s.T(), openai.DefaultRedirectURI, upstream.form.Get("redirect_uri"))
+	require.Equal(s.T(), "verifier", upstream.form.Get("code_verifier"))
+}
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_WithTLSProfileUsesHTTPUpstream() {
+	upstream := &openAIOAuthHTTPUpstreamRecorder{}
+	profile := &tlsfingerprint.Profile{Name: "refresh-profile"}
+	s.svc = &openaiOAuthService{tokenURL: "https://auth.openai.com/oauth/token", httpUpstream: upstream}
+
+	resp, err := s.svc.RefreshTokenWithClientID(s.ctx, "refresh-token", "", "client-id", service.OpenAIOAuthTokenRequestOptions{
+		UserAgent:  "Refresh UA",
+		TLSProfile: profile,
+	})
+
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "tls-at", resp.AccessToken)
+	require.True(s.T(), upstream.calledDoWithTLS)
+	require.Same(s.T(), profile, upstream.profile)
+	require.Equal(s.T(), "Refresh UA", upstream.req.Header.Get("User-Agent"))
+	require.Equal(s.T(), service.HTTPUpstreamProfileOpenAI, service.HTTPUpstreamProfileFromContext(upstream.req.Context()))
+	require.Equal(s.T(), "refresh_token", upstream.form.Get("grant_type"))
+	require.Equal(s.T(), "refresh-token", upstream.form.Get("refresh_token"))
+	require.Equal(s.T(), "client-id", upstream.form.Get("client_id"))
+	require.Equal(s.T(), openai.RefreshScopes, upstream.form.Get("scope"))
+}
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_WithOnlyUserAgentKeepsReqPath() {
+	errCh := make(chan string, 1)
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != "UA Only" {
+			errCh <- "user-agent mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600}`)
+	}))
+
+	resp, err := s.svc.RefreshTokenWithClientID(s.ctx, "rt", "", "client-id", service.OpenAIOAuthTokenRequestOptions{UserAgent: "UA Only"})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "at", resp.AccessToken)
+	select {
+	case msg := <-errCh:
+		require.Fail(s.T(), msg)
+	default:
+	}
+}
+
 func TestNewOpenAIOAuthClient_DefaultTokenURL(t *testing.T) {
-	client := NewOpenAIOAuthClient()
+	client := NewOpenAIOAuthClient(nil)
 	svc, ok := client.(*openaiOAuthService)
 	require.True(t, ok)
 	require.Equal(t, openai.TokenURL, svc.tokenURL)

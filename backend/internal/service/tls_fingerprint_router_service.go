@@ -183,6 +183,22 @@ func (s *TLSFingerprintRouterService) MatchUserAgent(routerID int64, userAgent s
 	return TLSFingerprintRouterMatchResult{RouterID: router.ID, RouterName: router.Name}
 }
 
+// GetRuntimeRouter 从本地缓存读取路由器运行时配置，供后台 token 刷新等非请求路径使用。
+func (s *TLSFingerprintRouterService) GetRuntimeRouter(routerID int64) *model.TLSFingerprintRouter {
+	if s == nil || routerID <= 0 {
+		return nil
+	}
+	cached := s.getCachedRouter(routerID)
+	if cached == nil || cached.TLSFingerprintRouter == nil {
+		return nil
+	}
+	router := *cached.TLSFingerprintRouter
+	if cached.TLSFingerprintRouter.Rules != nil {
+		router.Rules = append([]model.TLSFingerprintRouterRule(nil), cached.TLSFingerprintRouter.Rules...)
+	}
+	return &router
+}
+
 func (s *TLSFingerprintRouterService) getCachedRouter(id int64) *cachedTLSFingerprintRouter {
 	s.localMu.RLock()
 	router := s.localCache[id]
@@ -264,6 +280,7 @@ func normalizeTLSFingerprintRouter(router *model.TLSFingerprintRouter) {
 		return
 	}
 	router.Name = strings.TrimSpace(router.Name)
+	router.ChatGPTOAuthTokenUserAgent = strings.TrimSpace(router.ChatGPTOAuthTokenUserAgent)
 	for i := range router.Rules {
 		router.Rules[i].Name = strings.TrimSpace(router.Rules[i].Name)
 		router.Rules[i].Pattern = strings.TrimSpace(router.Rules[i].Pattern)

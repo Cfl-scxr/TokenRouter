@@ -50,9 +50,13 @@ func (r *tlsFingerprintRouterRepository) Create(ctx context.Context, router *mod
 	builder := r.client.TLSFingerprintRouter.Create().
 		SetName(router.Name).
 		SetEnabled(router.Enabled).
+		SetChatgptOauthTokenUserAgent(router.ChatGPTOAuthTokenUserAgent).
 		SetRules(router.Rules)
 	if router.Description != nil {
 		builder.SetDescription(*router.Description)
+	}
+	if router.ChatGPTOAuthTokenTLSFingerprintProfileID != nil {
+		builder.SetChatgptOauthTokenTLSFingerprintProfileID(*router.ChatGPTOAuthTokenTLSFingerprintProfileID)
 	}
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -66,11 +70,17 @@ func (r *tlsFingerprintRouterRepository) Update(ctx context.Context, router *mod
 	builder := r.client.TLSFingerprintRouter.UpdateOneID(router.ID).
 		SetName(router.Name).
 		SetEnabled(router.Enabled).
+		SetChatgptOauthTokenUserAgent(router.ChatGPTOAuthTokenUserAgent).
 		SetRules(router.Rules)
 	if router.Description != nil {
 		builder.SetDescription(*router.Description)
 	} else {
 		builder.ClearDescription()
+	}
+	if router.ChatGPTOAuthTokenTLSFingerprintProfileID != nil {
+		builder.SetChatgptOauthTokenTLSFingerprintProfileID(*router.ChatGPTOAuthTokenTLSFingerprintProfileID)
+	} else {
+		builder.ClearChatgptOauthTokenTLSFingerprintProfileID()
 	}
 	updated, err := builder.Save(ctx)
 	if err != nil {
@@ -86,13 +96,15 @@ func (r *tlsFingerprintRouterRepository) Delete(ctx context.Context, id int64) e
 
 func (r *tlsFingerprintRouterRepository) toModel(e *ent.TLSFingerprintRouter) *model.TLSFingerprintRouter {
 	router := &model.TLSFingerprintRouter{
-		ID:          e.ID,
-		Name:        e.Name,
-		Description: e.Description,
-		Enabled:     e.Enabled,
-		Rules:       e.Rules,
-		CreatedAt:   e.CreatedAt,
-		UpdatedAt:   e.UpdatedAt,
+		ID:                                       e.ID,
+		Name:                                     e.Name,
+		Description:                              e.Description,
+		Enabled:                                  e.Enabled,
+		ChatGPTOAuthTokenUserAgent:               e.ChatgptOauthTokenUserAgent,
+		ChatGPTOAuthTokenTLSFingerprintProfileID: e.ChatgptOauthTokenTLSFingerprintProfileID,
+		Rules:                                    e.Rules,
+		CreatedAt:                                e.CreatedAt,
+		UpdatedAt:                                e.UpdatedAt,
 	}
 	if router.Rules == nil {
 		router.Rules = []model.TLSFingerprintRouterRule{}

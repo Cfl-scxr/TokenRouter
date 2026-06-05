@@ -5334,6 +5334,11 @@ const buildOpenAIOAuthAccountName = (
   return total > 1 ? `${baseName} #${index + 1}` : baseName
 }
 
+// OpenAI OAuth token 请求只在启用 TLS 指纹路由器时携带路由器 ID。
+const selectedOpenAITokenTLSRouterId = () => {
+  return tlsFingerprintEnabled.value ? tlsFingerprintRouterId.value : null
+}
+
 // OpenAI OAuth 授权码批量兑换和创建
 const handleOpenAIExchange = async (authCodeInput: string) => {
   const oauthClient = openaiOAuth
@@ -5393,7 +5398,8 @@ const handleOpenAIExchange = async (authCodeInput: string) => {
           entry.code,
           session.sessionId,
           stateToUse,
-          form.proxy_id
+          form.proxy_id,
+          selectedOpenAITokenTLSRouterId()
         )
         oauthClient.loading.value = true
         if (!tokenInfo) {
@@ -5589,7 +5595,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const tokenInfo = await oauthClient.validateRefreshToken(
           refreshTokens[i],
           form.proxy_id,
-          clientId
+          clientId,
+          selectedOpenAITokenTLSRouterId()
         )
         oauthClient.loading.value = true
         if (!tokenInfo) {

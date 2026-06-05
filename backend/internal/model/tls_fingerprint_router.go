@@ -33,19 +33,27 @@ type TLSFingerprintRouterRule struct {
 
 // TLSFingerprintRouter TLS 指纹路由器。
 type TLSFingerprintRouter struct {
-	ID          int64                      `json:"id"`
-	Name        string                     `json:"name"`
-	Description *string                    `json:"description"`
-	Enabled     bool                       `json:"enabled"`
-	Rules       []TLSFingerprintRouterRule `json:"rules"`
-	CreatedAt   time.Time                  `json:"created_at"`
-	UpdatedAt   time.Time                  `json:"updated_at"`
+	ID                                       int64                      `json:"id"`
+	Name                                     string                     `json:"name"`
+	Description                              *string                    `json:"description"`
+	Enabled                                  bool                       `json:"enabled"`
+	ChatGPTOAuthTokenUserAgent               string                     `json:"chatgpt_oauth_token_user_agent"`
+	ChatGPTOAuthTokenTLSFingerprintProfileID *int64                     `json:"chatgpt_oauth_token_tls_fingerprint_profile_id"`
+	Rules                                    []TLSFingerprintRouterRule `json:"rules"`
+	CreatedAt                                time.Time                  `json:"created_at"`
+	UpdatedAt                                time.Time                  `json:"updated_at"`
 }
 
 // Validate 验证路由器配置的有效性。
 func (r *TLSFingerprintRouter) Validate() error {
 	if r.Name == "" {
 		return &ValidationError{Field: "name", Message: "name is required"}
+	}
+	if len(r.ChatGPTOAuthTokenUserAgent) > 512 {
+		return &ValidationError{Field: "chatgpt_oauth_token_user_agent", Message: "chatgpt_oauth_token_user_agent must be at most 512 characters"}
+	}
+	if r.ChatGPTOAuthTokenTLSFingerprintProfileID != nil && *r.ChatGPTOAuthTokenTLSFingerprintProfileID < -1 {
+		return &ValidationError{Field: "chatgpt_oauth_token_tls_fingerprint_profile_id", Message: "chatgpt_oauth_token_tls_fingerprint_profile_id must be null, 0, -1, or a positive profile ID"}
 	}
 	for i, rule := range r.Rules {
 		if err := rule.Validate(); err != nil {

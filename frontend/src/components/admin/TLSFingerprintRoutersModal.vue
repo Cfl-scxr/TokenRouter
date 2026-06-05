@@ -193,6 +193,35 @@
           </button>
         </div>
 
+        <div class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenSettings') }}</label>
+            <p class="input-hint">
+              {{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenSettingsHint') }}
+            </p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenUserAgent') }}</label>
+              <input
+                v-model="form.chatgpt_oauth_token_user_agent"
+                type="text"
+                class="input font-mono text-sm"
+              />
+              <p class="input-hint">{{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenUserAgentHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label text-xs">{{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenProfile') }}</label>
+              <Select
+                :model-value="form.chatgpt_oauth_token_tls_fingerprint_profile_id"
+                :options="tokenTLSProfileOptions"
+                @change="form.chatgpt_oauth_token_tls_fingerprint_profile_id = normalizeTokenTLSProfileId($event)"
+              />
+              <p class="input-hint">{{ t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenProfileHint') }}</p>
+            </div>
+          </div>
+        </div>
+
         <div class="space-y-3">
           <div class="flex items-center justify-between">
             <label class="input-label mb-0">{{ t('admin.tlsFingerprintRouters.form.rules') }}</label>
@@ -352,6 +381,8 @@ const form = reactive({
   name: '',
   description: '',
   enabled: true,
+  chatgpt_oauth_token_user_agent: '',
+  chatgpt_oauth_token_tls_fingerprint_profile_id: null as number | null,
   rules: [] as TLSFingerprintRouterRule[]
 })
 
@@ -361,6 +392,11 @@ const profileOptions = computed<SelectOption[]>(() => [
     ? [{ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }]
     : []),
   ...profiles.value.map((profile) => ({ value: profile.id, label: profile.name }))
+])
+
+const tokenTLSProfileOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.tlsFingerprintRouters.form.chatgptOAuthTokenProfileDisabled') },
+  ...profileOptions.value
 ])
 
 const matchTypeOptions = computed<SelectOption[]>(() => [
@@ -394,6 +430,12 @@ function normalizeMatchType(value: unknown): TLSFingerprintRouterMatchType {
   return value === 'prefix' || value === 'exact' || value === 'regex' ? value : 'contains'
 }
 
+function normalizeTokenTLSProfileId(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= -1 ? parsed : null
+}
+
 async function loadRouters() {
   loading.value = true
   try {
@@ -418,6 +460,8 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.enabled = true
+  form.chatgpt_oauth_token_user_agent = ''
+  form.chatgpt_oauth_token_tls_fingerprint_profile_id = null
   form.rules = []
   yamlInput.value = ''
 }
@@ -433,6 +477,10 @@ function handleEdit(router: TLSFingerprintRouter) {
   form.name = router.name
   form.description = router.description || ''
   form.enabled = router.enabled
+  form.chatgpt_oauth_token_user_agent = router.chatgpt_oauth_token_user_agent?.trim() || ''
+  form.chatgpt_oauth_token_tls_fingerprint_profile_id = normalizeTokenTLSProfileId(
+    router.chatgpt_oauth_token_tls_fingerprint_profile_id ?? null
+  )
   form.rules = normalizeRules(router.rules)
   yamlInput.value = ''
   showEditModal.value = true
@@ -492,6 +540,13 @@ function parseYamlNumber(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+// 解析 token TLS 模板 ID；null 表示不启用 token 专用 TLS 模板。
+function parseYamlNullableNumber(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'null' || trimmed === '~') return null
+  return normalizeTokenTLSProfileId(parseYamlScalar(value))
+}
+
 // 新建一条空规则，供手动添加和 YAML 解析共用。
 function createEmptyRule(): TLSFingerprintRouterRule {
   return {
@@ -532,6 +587,8 @@ async function handleSubmit() {
       name: form.name.trim(),
       description: form.description.trim() || null,
       enabled: form.enabled,
+      chatgpt_oauth_token_user_agent: form.chatgpt_oauth_token_user_agent.trim(),
+      chatgpt_oauth_token_tls_fingerprint_profile_id: form.chatgpt_oauth_token_tls_fingerprint_profile_id,
       rules: normalizeRules(form.rules)
     }
     if (editingRouter.value) {
@@ -554,6 +611,8 @@ interface RouterYamlDraft {
   name: string
   description: string
   enabled: boolean
+  chatgpt_oauth_token_user_agent: string
+  chatgpt_oauth_token_tls_fingerprint_profile_id: number | null
 }
 
 // YAML 中只接收路由器可配置字段，先写入草稿，确认解析成功后再覆盖表单。
@@ -569,6 +628,12 @@ function applyRouterYamlField(draft: RouterYamlDraft, key: string, rawValue: str
       return false
     case 'enabled':
       draft.enabled = parseYamlBoolean(rawValue)
+      return false
+    case 'chatgpt_oauth_token_user_agent':
+      draft.chatgpt_oauth_token_user_agent = value
+      return false
+    case 'chatgpt_oauth_token_tls_fingerprint_profile_id':
+      draft.chatgpt_oauth_token_tls_fingerprint_profile_id = parseYamlNullableNumber(rawValue)
       return false
     default:
       return false
@@ -616,7 +681,9 @@ function parseYamlInput() {
   const draft: RouterYamlDraft = {
     name: form.name,
     description: form.description,
-    enabled: form.enabled
+    enabled: form.enabled,
+    chatgpt_oauth_token_user_agent: form.chatgpt_oauth_token_user_agent,
+    chatgpt_oauth_token_tls_fingerprint_profile_id: form.chatgpt_oauth_token_tls_fingerprint_profile_id
   }
   const lines = text.split('\n')
   let currentRule: TLSFingerprintRouterRule | null = null
@@ -673,6 +740,8 @@ function parseYamlInput() {
     form.name = draft.name
     form.description = draft.description
     form.enabled = draft.enabled
+    form.chatgpt_oauth_token_user_agent = draft.chatgpt_oauth_token_user_agent
+    form.chatgpt_oauth_token_tls_fingerprint_profile_id = draft.chatgpt_oauth_token_tls_fingerprint_profile_id
     form.rules = normalizeRules(nextRules)
     appStore.showSuccess(t('admin.tlsFingerprintRouters.form.yamlParsed'))
   } else {
@@ -690,6 +759,11 @@ function formatYamlString(value: string): string {
   return JSON.stringify(value)
 }
 
+// token TLS 模板使用 null 明确表达“不启用”，避免和内置默认模板 0 混淆。
+function formatYamlNullableNumber(value: number | null | undefined): string {
+  return value === null || typeof value === 'undefined' ? 'null' : String(value)
+}
+
 // 导出的 YAML 与粘贴解析入口保持同一字段结构，便于跨环境复制。
 function buildRouterYaml(router: TLSFingerprintRouter): string {
   const lines = [
@@ -697,6 +771,8 @@ function buildRouterYaml(router: TLSFingerprintRouter): string {
     `  name: ${formatYamlString(router.name)}`,
     `  description: ${formatYamlString(router.description || '')}`,
     `  enabled: ${router.enabled ? 'true' : 'false'}`,
+    `  chatgpt_oauth_token_user_agent: ${formatYamlString(router.chatgpt_oauth_token_user_agent || '')}`,
+    `  chatgpt_oauth_token_tls_fingerprint_profile_id: ${formatYamlNullableNumber(router.chatgpt_oauth_token_tls_fingerprint_profile_id)}`,
     '  rules:'
   ]
 

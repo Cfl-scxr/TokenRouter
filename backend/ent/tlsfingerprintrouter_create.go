@@ -85,6 +85,34 @@ func (_c *TLSFingerprintRouterCreate) SetNillableEnabled(v *bool) *TLSFingerprin
 	return _c
 }
 
+// SetChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field.
+func (_c *TLSFingerprintRouterCreate) SetChatgptOauthTokenUserAgent(v string) *TLSFingerprintRouterCreate {
+	_c.mutation.SetChatgptOauthTokenUserAgent(v)
+	return _c
+}
+
+// SetNillableChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field if the given value is not nil.
+func (_c *TLSFingerprintRouterCreate) SetNillableChatgptOauthTokenUserAgent(v *string) *TLSFingerprintRouterCreate {
+	if v != nil {
+		_c.SetChatgptOauthTokenUserAgent(*v)
+	}
+	return _c
+}
+
+// SetChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (_c *TLSFingerprintRouterCreate) SetChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterCreate {
+	_c.mutation.SetChatgptOauthTokenTLSFingerprintProfileID(v)
+	return _c
+}
+
+// SetNillableChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field if the given value is not nil.
+func (_c *TLSFingerprintRouterCreate) SetNillableChatgptOauthTokenTLSFingerprintProfileID(v *int64) *TLSFingerprintRouterCreate {
+	if v != nil {
+		_c.SetChatgptOauthTokenTLSFingerprintProfileID(*v)
+	}
+	return _c
+}
+
 // SetRules sets the "rules" field.
 func (_c *TLSFingerprintRouterCreate) SetRules(v []model.TLSFingerprintRouterRule) *TLSFingerprintRouterCreate {
 	_c.mutation.SetRules(v)
@@ -138,6 +166,10 @@ func (_c *TLSFingerprintRouterCreate) defaults() {
 		v := tlsfingerprintrouter.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.ChatgptOauthTokenUserAgent(); !ok {
+		v := tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent
+		_c.mutation.SetChatgptOauthTokenUserAgent(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -158,6 +190,14 @@ func (_c *TLSFingerprintRouterCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "TLSFingerprintRouter.enabled"`)}
+	}
+	if _, ok := _c.mutation.ChatgptOauthTokenUserAgent(); !ok {
+		return &ValidationError{Name: "chatgpt_oauth_token_user_agent", err: errors.New(`ent: missing required field "TLSFingerprintRouter.chatgpt_oauth_token_user_agent"`)}
+	}
+	if v, ok := _c.mutation.ChatgptOauthTokenUserAgent(); ok {
+		if err := tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "chatgpt_oauth_token_user_agent", err: fmt.Errorf(`ent: validator failed for field "TLSFingerprintRouter.chatgpt_oauth_token_user_agent": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -205,6 +245,14 @@ func (_c *TLSFingerprintRouterCreate) createSpec() (*TLSFingerprintRouter, *sqlg
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(tlsfingerprintrouter.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.ChatgptOauthTokenUserAgent(); ok {
+		_spec.SetField(tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent, field.TypeString, value)
+		_node.ChatgptOauthTokenUserAgent = value
+	}
+	if value, ok := _c.mutation.ChatgptOauthTokenTLSFingerprintProfileID(); ok {
+		_spec.SetField(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID, field.TypeInt64, value)
+		_node.ChatgptOauthTokenTLSFingerprintProfileID = &value
 	}
 	if value, ok := _c.mutation.Rules(); ok {
 		_spec.SetField(tlsfingerprintrouter.FieldRules, field.TypeJSON, value)
@@ -313,6 +361,42 @@ func (u *TLSFingerprintRouterUpsert) SetEnabled(v bool) *TLSFingerprintRouterUps
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
 func (u *TLSFingerprintRouterUpsert) UpdateEnabled() *TLSFingerprintRouterUpsert {
 	u.SetExcluded(tlsfingerprintrouter.FieldEnabled)
+	return u
+}
+
+// SetChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field.
+func (u *TLSFingerprintRouterUpsert) SetChatgptOauthTokenUserAgent(v string) *TLSFingerprintRouterUpsert {
+	u.Set(tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent, v)
+	return u
+}
+
+// UpdateChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsert) UpdateChatgptOauthTokenUserAgent() *TLSFingerprintRouterUpsert {
+	u.SetExcluded(tlsfingerprintrouter.FieldChatgptOauthTokenUserAgent)
+	return u
+}
+
+// SetChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsert) SetChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsert {
+	u.Set(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID, v)
+	return u
+}
+
+// UpdateChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsert) UpdateChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsert {
+	u.SetExcluded(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
+	return u
+}
+
+// AddChatgptOauthTokenTLSFingerprintProfileID adds v to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsert) AddChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsert {
+	u.Add(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID, v)
+	return u
+}
+
+// ClearChatgptOauthTokenTLSFingerprintProfileID clears the value of the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsert) ClearChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsert {
+	u.SetNull(tlsfingerprintrouter.FieldChatgptOauthTokenTLSFingerprintProfileID)
 	return u
 }
 
@@ -439,6 +523,48 @@ func (u *TLSFingerprintRouterUpsertOne) SetEnabled(v bool) *TLSFingerprintRouter
 func (u *TLSFingerprintRouterUpsertOne) UpdateEnabled() *TLSFingerprintRouterUpsertOne {
 	return u.Update(func(s *TLSFingerprintRouterUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field.
+func (u *TLSFingerprintRouterUpsertOne) SetChatgptOauthTokenUserAgent(v string) *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.SetChatgptOauthTokenUserAgent(v)
+	})
+}
+
+// UpdateChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsertOne) UpdateChatgptOauthTokenUserAgent() *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.UpdateChatgptOauthTokenUserAgent()
+	})
+}
+
+// SetChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertOne) SetChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.SetChatgptOauthTokenTLSFingerprintProfileID(v)
+	})
+}
+
+// AddChatgptOauthTokenTLSFingerprintProfileID adds v to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertOne) AddChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.AddChatgptOauthTokenTLSFingerprintProfileID(v)
+	})
+}
+
+// UpdateChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsertOne) UpdateChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.UpdateChatgptOauthTokenTLSFingerprintProfileID()
+	})
+}
+
+// ClearChatgptOauthTokenTLSFingerprintProfileID clears the value of the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertOne) ClearChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsertOne {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.ClearChatgptOauthTokenTLSFingerprintProfileID()
 	})
 }
 
@@ -734,6 +860,48 @@ func (u *TLSFingerprintRouterUpsertBulk) SetEnabled(v bool) *TLSFingerprintRoute
 func (u *TLSFingerprintRouterUpsertBulk) UpdateEnabled() *TLSFingerprintRouterUpsertBulk {
 	return u.Update(func(s *TLSFingerprintRouterUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field.
+func (u *TLSFingerprintRouterUpsertBulk) SetChatgptOauthTokenUserAgent(v string) *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.SetChatgptOauthTokenUserAgent(v)
+	})
+}
+
+// UpdateChatgptOauthTokenUserAgent sets the "chatgpt_oauth_token_user_agent" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsertBulk) UpdateChatgptOauthTokenUserAgent() *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.UpdateChatgptOauthTokenUserAgent()
+	})
+}
+
+// SetChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertBulk) SetChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.SetChatgptOauthTokenTLSFingerprintProfileID(v)
+	})
+}
+
+// AddChatgptOauthTokenTLSFingerprintProfileID adds v to the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertBulk) AddChatgptOauthTokenTLSFingerprintProfileID(v int64) *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.AddChatgptOauthTokenTLSFingerprintProfileID(v)
+	})
+}
+
+// UpdateChatgptOauthTokenTLSFingerprintProfileID sets the "chatgpt_oauth_token_tls_fingerprint_profile_id" field to the value that was provided on create.
+func (u *TLSFingerprintRouterUpsertBulk) UpdateChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.UpdateChatgptOauthTokenTLSFingerprintProfileID()
+	})
+}
+
+// ClearChatgptOauthTokenTLSFingerprintProfileID clears the value of the "chatgpt_oauth_token_tls_fingerprint_profile_id" field.
+func (u *TLSFingerprintRouterUpsertBulk) ClearChatgptOauthTokenTLSFingerprintProfileID() *TLSFingerprintRouterUpsertBulk {
+	return u.Update(func(s *TLSFingerprintRouterUpsert) {
+		s.ClearChatgptOauthTokenTLSFingerprintProfileID()
 	})
 }
 
