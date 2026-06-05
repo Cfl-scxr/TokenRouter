@@ -362,6 +362,7 @@ type OpenAIForwardResult struct {
 	DataShareSessionID string // 数据共享聚合使用的稳定会话标识。
 	Duration           time.Duration
 	FirstTokenMs       *int
+	ClientDisconnect   bool
 	ImageCount         int
 	ImageSize          string
 	ImageInputSize     string
