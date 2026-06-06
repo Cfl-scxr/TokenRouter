@@ -317,8 +317,9 @@ func TestAdminService_UpdateGroup_PreservesImageGenerationControlsWhenOmitted(t 
 	repo := &groupRepoStubForAdmin{getByID: existingGroup}
 	svc := &adminServiceImpl{groupRepo: repo}
 
+	updatedDesc := "updated"
 	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
-		Description: "updated",
+		Description: &updatedDesc,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, group)
@@ -348,6 +349,45 @@ func TestAdminService_UpdateGroup_WithSessionIsolation(t *testing.T) {
 	require.NotNil(t, repo.updated)
 	require.True(t, repo.updated.SessionIsolationEnabled)
 	require.True(t, group.SessionIsolationEnabled)
+}
+
+func TestAdminService_UpdateGroup_ClearsDescriptionWhenEmptyString(t *testing.T) {
+	existingGroup := &Group{
+		ID:          1,
+		Name:        "existing-group",
+		Description: "Auto-created default group",
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	empty := ""
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: &empty,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, "", repo.updated.Description, "空字符串应清空分组描述")
+}
+
+func TestAdminService_UpdateGroup_PreservesDescriptionWhenNil(t *testing.T) {
+	existingGroup := &Group{
+		ID:          1,
+		Name:        "existing-group",
+		Description: "keep me",
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: nil,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, "keep me", repo.updated.Description, "nil 应保留原有分组描述")
 }
 
 func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.T) {

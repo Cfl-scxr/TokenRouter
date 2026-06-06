@@ -74,7 +74,7 @@ type CreateGroupRequest struct {
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
 	Name           string   `json:"name"`
-	Description    string   `json:"description"`
+	Description    *string  `json:"description"`
 	Platform       string   `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
 	DisplayBrand   *string  `json:"display_brand"`
 	SortOrder      *int     `json:"sort_order"`
