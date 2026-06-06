@@ -106,12 +106,26 @@ func TestSettingService_GetPublicSettings_ExposesAffiliateEnabled(t *testing.T) 
 	require.True(t, settings.AffiliateEnabled)
 }
 
+func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAllowUserViewErrorRequests: "true",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.AllowUserViewErrorRequests)
+}
+
 // HTML 首屏注入配置要与 /settings/public 保持一致，避免刷新后菜单先按旧默认值渲染。
 func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
 			SettingKeyAffiliateEnabled:             "true",
 			SettingKeyForceEmailOnThirdPartySignup: "true",
+			SettingKeyAllowUserViewErrorRequests:   "true",
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
@@ -125,10 +139,12 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(
 	var settings struct {
 		AffiliateEnabled             bool `json:"affiliate_enabled"`
 		ForceEmailOnThirdPartySignup bool `json:"force_email_on_third_party_signup"`
+		AllowUserViewErrorRequests   bool `json:"allow_user_view_error_requests"`
 	}
 	require.NoError(t, json.Unmarshal(encoded, &settings))
 	require.True(t, settings.AffiliateEnabled)
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
+	require.True(t, settings.AllowUserViewErrorRequests)
 }
 
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {

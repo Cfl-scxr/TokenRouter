@@ -474,3 +474,7 @@ func SettingKeyAuthSourcePlatformQuotas(source string) string {
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
 const AdminAPIKeyPrefix = "admin-"
+
+// SettingKeyAllowUserViewErrorRequests 控制终端用户是否能在用量页查看自己的失败请求。
+// 默认关闭，需要管理员显式开启。
+const SettingKeyAllowUserViewErrorRequests = "allow_user_view_error_requests"

@@ -631,6 +631,9 @@ export interface SystemSettings {
   account_quota_notify_emails: NotifyEmailEntry[];
   // OpenAI fast/flex 策略
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  // Allow user view error requests
+  allow_user_view_error_requests: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -865,6 +868,8 @@ export interface UpdateSettingsRequest {
   account_quota_notify_emails?: NotifyEmailEntry[];
   // OpenAI fast/flex 策略
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  allow_user_view_error_requests?: boolean;
 }
 
 /**

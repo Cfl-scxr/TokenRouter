@@ -73,6 +73,49 @@ const (
 	opsErrorLogBatchSize          = 32
 )
 
+// looksLikeSystemKey 粗筛"形似本系统 key"的输入:长度 16-128 且仅含 [a-zA-Z0-9_-]。
+// 不用前缀匹配(APIKeyPrefix 可配置)。用于反查审计表前挡掉随机扫描的乱码输入。
+func looksLikeSystemKey(key string) bool {
+	if len(key) < 16 || len(key) > 128 {
+		return false
+	}
+	for _, c := range key {
+		allowed := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == '-'
+		if !allowed {
+			return false
+		}
+	}
+	return true
+}
+
+// keyPrefix 返回脱敏前缀(前 n 个字符);不足 n 则原样返回。
+func keyPrefix(key string, n int) string {
+	if len(key) <= n {
+		return key
+	}
+	return key[:n]
+}
+
+// extractAttemptedKey 按认证中间件同样的顺序从请求头提取提交的 key 明文。
+// 与 api_key_auth.go:43-59 一致:Authorization 仅取 Bearer scheme,非 Bearer 则忽略并继续 x-api-key → x-goog-api-key。
+func extractAttemptedKey(c *gin.Context) string {
+	if h := c.GetHeader("Authorization"); h != "" {
+		parts := strings.SplitN(h, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
+		// 非 Bearer:与中间件一致,忽略 Authorization,继续尝试其它 header(不在此 return)。
+	}
+	if k := c.GetHeader("x-api-key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	if k := c.GetHeader("x-goog-api-key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	return ""
+}
+
 type opsErrorLogJob struct {
 	ops   *service.OpsService
 	entry *service.OpsInsertErrorLogInput
@@ -512,15 +555,15 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		if status < 400 {
-			// Even when the client request succeeds, we still want to persist upstream error attempts
-			// (retries/failover) so ops can observe upstream instability that gets "covered" by retries.
+			// 即使客户端请求最终成功，也要记录上游失败尝试（重试/切号），
+			// 让运维侧能看到被重试兜住的上游不稳定。
 			var events []*service.OpsUpstreamErrorEvent
 			if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
 				if arr, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(arr) > 0 {
 					events = arr
 				}
 			}
-			// Also accept single upstream fields set by gateway services (rare for successful requests).
+			// 同时接受网关服务写入的单个上游字段（成功请求里较少见）。
 			hasUpstreamContext := len(events) > 0
 			if !hasUpstreamContext {
 				if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
@@ -550,7 +593,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				return
 			}
 
-			apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+			apiKey := getOpsAPIKey(c)
 			clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 
 			model, _ := c.Get(opsModelKey)
@@ -566,8 +609,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				stream = b
 			}
 
-			// Prefer showing the account that experienced the upstream error (if we have events),
-			// otherwise fall back to the final selected account (best-effort).
+			// 优先展示实际发生上游错误的账号；没有事件时再兜底使用最终选中的账号。
 			var accountID *int64
 			if len(events) > 0 {
 				if last := events[len(events)-1]; last != nil && last.AccountID > 0 {
@@ -589,7 +631,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				requestID = c.Writer.Header().Get("x-request-id")
 			}
 
-			// Best-effort backfill single upstream fields from the last event (if present).
+			// 尽力从最后一个上游错误事件回填单个上游字段。
 			var upstreamStatusCode *int
 			var upstreamErrorMessage *string
 			var upstreamErrorDetail *string
@@ -642,7 +684,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 
-			// If we still have nothing meaningful, skip.
+			// 仍没有任何有意义的上游上下文时跳过。
 			if upstreamStatusCode == nil && upstreamErrorMessage == nil && upstreamErrorDetail == nil && len(events) == 0 {
 				return
 			}
@@ -725,13 +767,14 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			if apiKey != nil {
 				entry.APIKeyID = &apiKey.ID
+				entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
 				if apiKey.User != nil {
 					entry.UserID = &apiKey.User.ID
 				}
 				if apiKey.GroupID != nil {
 					entry.GroupID = apiKey.GroupID
 				}
-				// Prefer group platform if present (more stable than inferring from path).
+				// 优先使用分组平台，比从路径推断更稳定。
 				if apiKey.Group != nil && apiKey.Group.Platform != "" {
 					entry.Platform = apiKey.Group.Platform
 				}
@@ -743,7 +786,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				entry.ClientIP = &clientIP
 			}
 
-			// Skip logging if a passthrough rule with skip_monitoring=true matched.
+			// 命中 skip_monitoring=true 的透传规则时跳过日志。
 			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
 				if skip, _ := v.(bool); skip {
 					return
@@ -757,19 +800,19 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		body := w.buf.Bytes()
 		parsed := parseOpsErrorResponse(body)
 
-		// Skip logging if a passthrough rule with skip_monitoring=true matched.
+		// 命中 skip_monitoring=true 的透传规则时跳过日志。
 		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
 			if skip, _ := v.(bool); skip {
 				return
 			}
 		}
 
-		// Skip logging if the error should be filtered based on settings
+		// 按设置过滤无需记录的错误。
 		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
 			return
 		}
 
-		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+		apiKey := getOpsAPIKey(c)
 
 		clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 
@@ -849,8 +892,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			IsCountTokens:     isCountTokensRequest(c),
 
 			ErrorMessage: parsed.Message,
-			// Keep the full captured error body (capture is already capped at 64KB) so the
-			// service layer can sanitize JSON before truncating for storage.
+			// 保留完整捕获错误体（捕获层已限制 64KB），让 service 层先清洗 JSON 再截断入库。
 			ErrorBody:   string(body),
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
@@ -859,8 +901,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 		applyOpsLatencyFieldsFromContext(c, entry)
 
-		// Capture upstream error context set by gateway services (if present).
-		// This does NOT affect the client response; it enriches Ops troubleshooting data.
+		// 捕获网关服务写入的上游错误上下文（若存在）。这不影响客户端响应，只补充运维排障数据。
 		{
 			if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
 				switch t := v.(type) {
@@ -893,7 +934,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
 				if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
 					entry.UpstreamErrors = events
-					// Best-effort backfill the single upstream fields from the last event when missing.
+					// 单个上游字段缺失时，尽力从最后一个事件回填。
 					last := events[len(events)-1]
 					if last != nil {
 						if entry.UpstreamStatusCode == nil && last.UpstreamStatusCode > 0 {
@@ -915,13 +956,15 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
+			// 有效(未删除)key 报错时快照前缀,key 之后被删也保留;与 INVALID_API_KEY 的 attempted_key_prefix 互斥。
+			entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
 			if apiKey.User != nil {
 				entry.UserID = &apiKey.User.ID
 			}
 			if apiKey.GroupID != nil {
 				entry.GroupID = apiKey.GroupID
 			}
-			// Prefer group platform if present (more stable than inferring from path).
+			// 优先使用分组平台，比从路径推断更稳定。
 			if apiKey.Group != nil && apiKey.Group.Platform != "" {
 				entry.Platform = apiKey.Group.Platform
 			}
@@ -933,11 +976,27 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 		}
 
+		// 已删除 key 归因:仅 INVALID_API_KEY 才尝试。响应已写出,此处不阻塞客户端。
+		if parsed.Code == opsCodeInvalidAPIKey {
+			if attemptedKey := extractAttemptedKey(c); attemptedKey != "" {
+				entry.AttemptedKeyPrefix = keyPrefix(attemptedKey, 8)
+				if looksLikeSystemKey(attemptedKey) {
+					if res, lookupErr := ops.LookupDeletedKeyAudit(c.Request.Context(), attemptedKey); lookupErr != nil {
+						log.Printf("[OpsErrorLogger] LookupDeletedKeyAudit failed: %v", lookupErr)
+					} else if res != nil {
+						owner := res.UserID
+						entry.DeletedKeyOwnerUserID = &owner
+						entry.DeletedKeyName = res.KeyName
+					}
+				}
+			}
+		}
+
 		enqueueOpsErrorLog(ops, entry)
 	}
 }
 
-// isCountTokensRequest checks if the request is a count_tokens request
+// isCountTokensRequest 判断当前请求是否为 count_tokens 请求。
 func isCountTokensRequest(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
@@ -1037,6 +1096,20 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 	}
 
 	return parsedOpsError{Message: truncateString(string(body), 1024)}
+}
+
+// getOpsAPIKey 返回用于 Ops 错误日志的 API Key：优先取已鉴权写入的正式 key；
+// 鉴权早退（分组停用/删除、Key 停用/过期/额度、用户停用、IP 限制等）时，
+// 正式 key 尚未写入，回退到 middleware 写入的 ops fallback key
+// （含 User/Group/Platform），从而让日志能展示 用户/分组/平台。
+func getOpsAPIKey(c *gin.Context) *service.APIKey {
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil {
+		return apiKey
+	}
+	if apiKey, ok := middleware2.GetOpsFallbackAPIKey(c); ok && apiKey != nil {
+		return apiKey
+	}
+	return nil
 }
 
 func resolveOpsPlatform(apiKey *service.APIKey, fallback string) string {

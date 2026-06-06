@@ -92,6 +92,8 @@ func RegisterUserRoutes(
 		{
 			usage.GET("", h.Usage.List)
 			usage.GET("/ranking", h.Usage.Ranking)
+			usage.GET("/errors", h.Usage.ListErrors)
+			usage.GET("/errors/:id", h.Usage.GetErrorDetail)
 			usage.GET("/stats", h.Usage.Stats)
 			// 用户仪表盘接口
 			usage.GET("/dashboard/stats", h.Usage.DashboardStats)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -21,14 +22,21 @@ import (
 type UsageHandler struct {
 	usageService   *service.UsageService
 	apiKeyService  *service.APIKeyService
+	opsService     *service.OpsService
 	settingService *service.SettingService
 }
 
 // NewUsageHandler 创建用户侧用量处理器。
-func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService, settingService *service.SettingService) *UsageHandler {
+func NewUsageHandler(
+	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
+	opsService *service.OpsService,
+	settingService *service.SettingService,
+) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
+		opsService:     opsService,
 		settingService: settingService,
 	}
 }
@@ -152,6 +160,117 @@ func (h *UsageHandler) List(c *gin.Context) {
 		out = append(out, *dto.UsageLogFromService(&records[i]))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+// ListErrors 列出当前用户自己的失败请求脱敏视图。
+// GET /api/v1/usage/errors
+func (h *UsageHandler) ListErrors(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	// 可见性开关失败关闭；前端隐藏入口只是体验层防护。
+	if h.settingService == nil || !h.settingService.IsUserErrorViewAllowed(c.Request.Context()) {
+		response.Forbidden(c, "Error requests view is disabled")
+		return
+	}
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	filter := &service.OpsErrorLogFilter{Page: page, PageSize: pageSize}
+
+	// 日期范围使用半开区间 [start, end)，与用量列表语义一致。
+	userTZ := c.Query("timezone")
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return
+		}
+		filter.StartTime = &t
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return
+		}
+		t = t.AddDate(0, 0, 1)
+		filter.EndTime = &t
+	}
+
+	filter.Model = strings.TrimSpace(c.Query("model"))
+
+	if k := strings.TrimSpace(c.Query("api_key_id")); k != "" {
+		n, err := strconv.ParseInt(k, 10, 64)
+		if err != nil || n < 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		if n > 0 {
+			filter.APIKeyID = &n
+		}
+	}
+
+	if sc := strings.TrimSpace(c.Query("status_code")); sc != "" {
+		n, err := strconv.Atoi(sc)
+		if err != nil || n < 0 {
+			response.BadRequest(c, "Invalid status_code")
+			return
+		}
+		filter.StatusCodes = []int{n}
+	}
+
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
+	}
+
+	result, err := h.opsService.ListUserErrorRequests(c.Request.Context(), subject.UserID, filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, result.Items, int64(result.Total), result.Page, result.PageSize)
+}
+
+// GetErrorDetail 获取当前用户自己的单条失败请求脱敏详情。
+// GET /api/v1/usage/errors/:id
+func (h *UsageHandler) GetErrorDetail(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.settingService == nil || !h.settingService.IsUserErrorViewAllowed(c.Request.Context()) {
+		response.Forbidden(c, "Error requests view is disabled")
+		return
+	}
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid id")
+		return
+	}
+	detail, err := h.opsService.GetUserErrorRequestDetail(c.Request.Context(), subject.UserID, id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, detail)
 }
 
 // GetByID handles getting a single usage record

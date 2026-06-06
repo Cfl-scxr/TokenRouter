@@ -100,6 +100,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		AffiliateEnabled:                 settings.AffiliateEnabled,
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		AllowUserViewErrorRequests:       settings.AllowUserViewErrorRequests,
 	})
 }
 

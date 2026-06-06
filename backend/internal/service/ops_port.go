@@ -10,6 +10,8 @@ type OpsRepository interface {
 	BatchInsertErrorLogs(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error)
 	ListErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error)
 	GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error)
+	// LookupDeletedKeyAudit 按明文 key 反查最近一条已删除 key 审计;未命中返回 (nil, nil)。
+	LookupDeletedKeyAudit(ctx context.Context, key string) (*DeletedKeyAuditResult, error)
 	ListRequestDetails(ctx context.Context, filter *OpsRequestDetailFilter) ([]*OpsRequestDetail, int64, error)
 	BatchInsertSystemLogs(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error)
 	ListSystemLogs(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
@@ -18,9 +20,9 @@ type OpsRepository interface {
 
 	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error
 
-	// Lightweight window stats (for realtime WS / quick sampling).
+	// 轻量窗口统计，用于实时 WS 与快速采样。
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
-	// Lightweight realtime traffic summary (for the Ops dashboard header card).
+	// 轻量实时流量摘要，用于 Ops 仪表盘顶部卡片。
 	GetRealtimeTrafficSummary(ctx context.Context, filter *OpsDashboardFilter) (*OpsRealtimeTrafficSummary, error)
 
 	GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error)
@@ -36,7 +38,7 @@ type OpsRepository interface {
 	UpsertJobHeartbeat(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error
 	ListJobHeartbeats(ctx context.Context) ([]*OpsJobHeartbeat, error)
 
-	// Alerts (rules + events)
+	// 告警规则与告警事件。
 	ListAlertRules(ctx context.Context) ([]*OpsAlertRule, error)
 	CreateAlertRule(ctx context.Context, input *OpsAlertRule) (*OpsAlertRule, error)
 	UpdateAlertRule(ctx context.Context, input *OpsAlertRule) (*OpsAlertRule, error)
@@ -50,15 +52,21 @@ type OpsRepository interface {
 	UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error
 	UpdateAlertEventEmailSent(ctx context.Context, eventID int64, emailSent bool) error
 
-	// Alert silences
+	// 告警静默。
 	CreateAlertSilence(ctx context.Context, input *OpsAlertSilence) (*OpsAlertSilence, error)
 	IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error)
 
-	// Pre-aggregation (hourly/daily) used for long-window dashboard performance.
+	// 小时/天级预聚合，用于提升长窗口仪表盘查询性能。
 	UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	UpsertDailyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	GetLatestHourlyBucketStart(ctx context.Context) (time.Time, bool, error)
 	GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error)
+}
+
+// DeletedKeyAuditResult 是按明文 key 反查 deleted_api_key_audits 的结果。
+type DeletedKeyAuditResult struct {
+	UserID  int64
+	KeyName string
 }
 
 type OpsInsertErrorLogInput struct {
@@ -75,16 +83,16 @@ type OpsInsertErrorLogInput struct {
 	Model       string
 	RequestPath string
 	Stream      bool
-	// InboundEndpoint is the normalized client-facing API endpoint path, e.g. /v1/chat/completions.
+	// InboundEndpoint 是归一化后的客户端入口路径，例如 /v1/chat/completions。
 	InboundEndpoint string
-	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
+	// UpstreamEndpoint 是归一化后的上游路径，例如 /v1/responses。
 	UpstreamEndpoint string
-	// RequestedModel is the client-requested model name before mapping.
+	// RequestedModel 是客户端请求中、映射前的模型名。
 	RequestedModel string
-	// UpstreamModel is the actual model sent to upstream after mapping. Empty means no mapping.
+	// UpstreamModel 是映射后实际发给上游的模型名；空值表示未映射。
 	UpstreamModel string
-	// RequestType is the granular request type: 0=unknown, 1=sync, 2=stream, 3=ws_v2.
-	// Matches service.RequestType enum semantics from usage_log.go.
+	// RequestType 是细分请求类型：0=unknown，1=sync，2=stream，3=ws_v2。
+	// 语义与 usage_log.go 中的 service.RequestType 枚举一致。
 	RequestType *int16
 	UserAgent   string
 
@@ -104,11 +112,11 @@ type OpsInsertErrorLogInput struct {
 	UpstreamStatusCode   *int
 	UpstreamErrorMessage *string
 	UpstreamErrorDetail  *string
-	// UpstreamErrors captures all upstream error attempts observed during handling this request.
-	// It is populated during request processing (gin context) and sanitized+serialized by OpsService.
+	// UpstreamErrors 记录本次请求处理过程中观察到的所有上游错误尝试。
+	// 请求处理中写入 gin context，由 OpsService 清洗并序列化。
 	UpstreamErrors []*OpsUpstreamErrorEvent
-	// UpstreamErrorsJSON is the sanitized JSON string stored into ops_error_logs.upstream_errors.
-	// It is set by OpsService.RecordError before persisting.
+	// UpstreamErrorsJSON 是落入 ops_error_logs.upstream_errors 的清洗后 JSON 字符串。
+	// OpsService.RecordError 会在持久化前填充该字段。
 	UpstreamErrorsJSON *string
 
 	AuthLatencyMs      *int64
@@ -118,6 +126,15 @@ type OpsInsertErrorLogInput struct {
 	TimeToFirstTokenMs *int64
 
 	CreatedAt time.Time
+
+	// 已删除 key 归因(仅 INVALID_API_KEY 认证失败时可能非空)
+	AttemptedKeyPrefix    string // 提交 key 的脱敏前缀(前 8 位)
+	DeletedKeyOwnerUserID *int64 // 反查命中的原所有者 user_id
+	DeletedKeyName        string // 反查命中的 key 名称
+
+	// 有效(未删除)key 报错时快照的 key 脱敏前缀(前 8 位);与 AttemptedKeyPrefix 互斥。
+	// 落库快照而非读时 JOIN:key 之后被删(key 列被 tombstone 覆盖)仍保留当时前缀。
+	APIKeyPrefix string
 }
 
 type OpsInsertSystemMetricsInput struct {

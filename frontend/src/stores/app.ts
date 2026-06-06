@@ -391,6 +391,7 @@ export const useAppStore = defineStore('app', () => {
         risk_control_enabled: false,
         balance_low_notify_threshold: 0,
         balance_low_notify_recharge_url: '',
+        allow_user_view_error_requests: false,
       }
     }
 
