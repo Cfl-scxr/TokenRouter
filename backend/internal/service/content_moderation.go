@@ -1841,6 +1841,11 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 			slog.Warn("content_moderation.ban_get_user_failed", "user_id", *log.UserID, "error", err)
 			return false
 		}
+		if user.IsAdmin() {
+			slog.Warn("content_moderation.autoban_skipped_admin", "user_id", *log.UserID, "role", user.Role, "count", count, "threshold", cfg.BanThreshold)
+			// TODO: 这里接入 API Key 写能力后，应改为禁用触发本次审计命中的 API Key。
+			return false
+		}
 		if user.Status != StatusDisabled {
 			user.Status = StatusDisabled
 			if err := s.userRepo.Update(ctx, user); err != nil {
