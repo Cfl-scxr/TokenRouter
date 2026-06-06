@@ -160,13 +160,21 @@ func NeedsSetup() bool {
 	return true
 }
 
-// TestDatabaseConnection tests the database connection and creates database if not exists
-func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
-	defaultDSN := fmt.Sprintf(
+func buildPostgresDSN(cfg *DatabaseConfig, dbName string) string {
+	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, dbName, cfg.SSLMode,
 	)
+}
+
+func buildDatabaseConnectionDSNs(cfg *DatabaseConfig) (bootstrapDSN, targetDSN string) {
+	return buildPostgresDSN(cfg, "postgres"), buildPostgresDSN(cfg, cfg.DBName)
+}
+
+// 测试数据库连接，并在目标数据库不存在时创建它。
+func TestDatabaseConnection(cfg *DatabaseConfig) error {
+	// 先连接维护数据库，否则目标数据库尚未创建时会直接连接失败。
+	defaultDSN, targetDSN := buildDatabaseConnectionDSNs(cfg)
 
 	db, err := sql.Open("postgres", defaultDSN)
 	if err != nil {
@@ -196,11 +204,9 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		return fmt.Errorf("failed to check database existence: %w", err)
 	}
 
-	// Create database if not exists
+	// 目标数据库不存在时创建它。
 	if !exists {
 		// 注意：数据库名不能参数化，依赖前置输入校验保障安全。
-		// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
-		// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
 		_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
 		if err != nil {
 			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
@@ -208,16 +214,11 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
 	}
 
-	// Now connect to the target database to verify
+	// 再连接目标数据库，验证创建后的真实可用性。
 	if err := db.Close(); err != nil {
 		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	}
 	db = nil
-
-	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
-	)
 
 	targetDB, err := sql.Open("postgres", targetDSN)
 	if err != nil {
