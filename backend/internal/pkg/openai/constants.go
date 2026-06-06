@@ -1,9 +1,12 @@
-// Package openai provides helpers and types for OpenAI API integration.
+// Package openai 提供 OpenAI API 集成所需的辅助类型和函数。
 package openai
 
-import _ "embed"
+import (
+	_ "embed"
+	"strings"
+)
 
-// Model represents an OpenAI model
+// Model 表示一个 OpenAI 模型。
 type Model struct {
 	ID          string `json:"id"`
 	Object      string `json:"object"`
@@ -13,7 +16,7 @@ type Model struct {
 	DisplayName string `json:"display_name"`
 }
 
-// DefaultModels OpenAI models list
+// DefaultModels 是默认 OpenAI 模型列表。
 var DefaultModels = []Model{
 	{ID: "gpt-5.5", Object: "model", Created: 1776873600, OwnedBy: "openai", Type: "model", DisplayName: "GPT-5.5"},
 	{ID: "gpt-5.4", Object: "model", Created: 1738368000, OwnedBy: "openai", Type: "model", DisplayName: "GPT-5.4"},
@@ -26,7 +29,7 @@ var DefaultModels = []Model{
 	{ID: "gpt-image-2", Object: "model", Created: 1738368000, OwnedBy: "openai", Type: "model", DisplayName: "GPT Image 2"},
 }
 
-// DefaultModelIDs returns the default model ID list
+// DefaultModelIDs 返回默认模型 ID 列表。
 func DefaultModelIDs() []string {
 	ids := make([]string, len(DefaultModels))
 	for i, m := range DefaultModels {
@@ -35,11 +38,44 @@ func DefaultModelIDs() []string {
 	return ids
 }
 
-// DefaultTestModel default model for testing OpenAI accounts
+// DefaultTestModel 是测试 OpenAI 账号时使用的默认模型。
 const DefaultTestModel = "gpt-5.4"
 
-// DefaultInstructions default instructions for non-Codex CLI requests
-// Content loaded from instructions.txt at compile time
+// DefaultInstructions 是非 Codex CLI 请求的默认 instructions。
+// 内容为真实 Codex CLI 的 GPT-5-Codex base prompt（codex 系模型默认）。
 //
 //go:embed instructions.txt
 var DefaultInstructions string
+
+// instructionsGPT51 / instructionsGPT52 为 gpt-5.1 / gpt-5.2 非 codex 模型对应的
+// 真实 Codex 编码 agent base prompt，用于模型感知的 instructions 选择。
+//
+//go:embed instructions_gpt5_1.txt
+var instructionsGPT51 string
+
+//go:embed instructions_gpt5_2.txt
+var instructionsGPT52 string
+
+// CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
+//   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
+//   - gpt-5.2 系非 codex 模型 → GPT-5.2 prompt
+//   - gpt-5.1 / gpt-5 系非 codex 模型 → GPT-5.1 prompt
+//   - 其它 → 回退到 GPT-5-Codex prompt
+//
+// 任一专用 prompt 意外为空时回退到 DefaultInstructions，保证返回非空。
+func CodexBaseInstructionsForModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	switch {
+	case strings.Contains(m, "codex"):
+		return DefaultInstructions
+	case strings.HasPrefix(m, "gpt-5.2"):
+		if v := strings.TrimSpace(instructionsGPT52); v != "" {
+			return instructionsGPT52
+		}
+	case strings.HasPrefix(m, "gpt-5.1"), strings.HasPrefix(m, "gpt-5"):
+		if v := strings.TrimSpace(instructionsGPT51); v != "" {
+			return instructionsGPT51
+		}
+	}
+	return DefaultInstructions
+}
