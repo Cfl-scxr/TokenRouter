@@ -192,10 +192,117 @@ func convertResponsesInputToAnthropic(inputRaw json.RawMessage) (json.RawMessage
 		}
 	}
 
-	// Merge consecutive same-role messages (Anthropic requires alternating roles)
+	// 先修复 tool_use/tool_result 配对，再合并连续同角色消息（Anthropic 要求角色交替）。
+	// 第一次合并会把并行调用及其结果聚在一起，便于配对修复统一处理；配对修复可能再次拆分
+	// user 轮次（例如调用和输出之间夹了注入消息），因此最后再合并一次恢复角色交替。
+	messages = mergeConsecutiveMessages(messages)
+	messages = normalizeAnthropicToolPairing(messages)
 	messages = mergeConsecutiveMessages(messages)
 
 	return system, messages, nil
+}
+
+// normalizeAnthropicToolPairing 重建消息序列，确保满足 Anthropic 的 tool_use/tool_result 不变量。
+// 逐项转换 Responses 历史时，只要 function_call 和 function_call_output 之间夹入其他条目，就可能破坏这些不变量：
+//
+//   - 每个 tool_result 必须在前一条 assistant 消息里有对应 tool_use；
+//   - 每个 tool_use 必须在后一条 user 消息里有对应 tool_result；
+//   - user/assistant 轮次必须交替。
+//
+// Codex 的 Responses store:false 每轮会重发完整历史，并经常在调用和输出之间插入开发者/审批提示，
+// 或者留下未返回输出的并行 sibling 调用。未修复的转换器会把每个 function_call 发成独立 assistant
+// 消息、把每个 output 发成独立 user 消息，导致 tool_use 与 tool_result 不相邻并触发上游 400。
+//
+// 修复逻辑先按 tool_use id 索引所有 tool_result；随后遍历带 tool_use 的 assistant 消息，只保留
+// 已有结果的调用（丢弃未回答/悬空调用，若无其他内容则整条 assistant 消息也丢弃），并按调用顺序把
+// 对应 tool_result 作为下一条 user 消息发出。原位置的 standalone tool_result 会被移除；找不到
+// tool_use 的孤儿 tool_result 会被丢弃。非工具内容保持原位。该逻辑与 Responses→Chat 路径的
+// normalizeChatMessages 保持一致。
+func normalizeAnthropicToolPairing(messages []AnthropicMessage) []AnthropicMessage {
+	// 按 tool_use id 索引所有 tool_result；重复 id 时保留最后一个。
+	results := make(map[string]AnthropicContentBlock)
+	for _, m := range messages {
+		if m.Role != "user" {
+			continue
+		}
+		for _, b := range parseContentBlocks(m.Content) {
+			if b.Type == "tool_result" && b.ToolUseID != "" {
+				results[b.ToolUseID] = b
+			}
+		}
+	}
+
+	out := make([]AnthropicMessage, 0, len(messages))
+	for _, m := range messages {
+		blocks := parseContentBlocks(m.Content)
+		switch m.Role {
+		case "assistant":
+			var toolUses, others []AnthropicContentBlock
+			for _, b := range blocks {
+				if b.Type == "tool_use" {
+					toolUses = append(toolUses, b)
+				} else {
+					others = append(others, b)
+				}
+			}
+			if len(toolUses) == 0 {
+				out = append(out, m)
+				continue
+			}
+			kept := make([]AnthropicContentBlock, 0, len(toolUses))
+			for _, tu := range toolUses {
+				if _, ok := results[tu.ID]; ok {
+					kept = append(kept, tu)
+				}
+			}
+			if len(kept) == 0 {
+				// 没有已回答调用时，只保留非工具内容；没有非工具内容则整条丢弃。
+				if len(others) > 0 {
+					out = append(out, anthropicMessageFromBlocks("assistant", others))
+				}
+				continue
+			}
+			asstBlocks := make([]AnthropicContentBlock, 0, len(others)+len(kept))
+			asstBlocks = append(asstBlocks, others...)
+			asstBlocks = append(asstBlocks, kept...)
+			out = append(out, anthropicMessageFromBlocks("assistant", asstBlocks))
+
+			resBlocks := make([]AnthropicContentBlock, 0, len(kept))
+			for _, tu := range kept {
+				resBlocks = append(resBlocks, results[tu.ID])
+			}
+			out = append(out, anthropicMessageFromBlocks("user", resBlocks))
+
+		case "user":
+			var nonResult []AnthropicContentBlock
+			hasResult := false
+			for _, b := range blocks {
+				if b.Type == "tool_result" {
+					hasResult = true
+					continue
+				}
+				nonResult = append(nonResult, b)
+			}
+			if !hasResult {
+				out = append(out, m)
+				continue
+			}
+			// tool_result 会被重新发到对应调用旁边；本轮其他 user 内容保留在原位。
+			if len(nonResult) > 0 {
+				out = append(out, anthropicMessageFromBlocks("user", nonResult))
+			}
+
+		default:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// anthropicMessageFromBlocks 用 block 数组构造 AnthropicMessage。
+func anthropicMessageFromBlocks(role string, blocks []AnthropicContentBlock) AnthropicMessage {
+	content, _ := json.Marshal(blocks)
+	return AnthropicMessage{Role: role, Content: content}
 }
 
 // extractTextFromContent extracts text from a content field that may be a
