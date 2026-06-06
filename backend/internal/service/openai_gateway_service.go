@@ -4109,6 +4109,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	var finalResponseBody []byte
 	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamImageOutputs := make([]json.RawMessage, 0, 1)
+	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
@@ -4154,12 +4156,22 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if err := json.Unmarshal(dataBytes, &responseEvent); err == nil {
 				responseAccumulator.ProcessEvent(&responseEvent)
 			}
+			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
+				streamImageOutputs = append(streamImageOutputs, imageOutput)
+			}
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, responseAccumulator, streamImageOutputs); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				trimmedData = strings.TrimSpace(data)
+				line = "data: " + data
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
 			if eventType == "response.completed" || eventType == "response.done" {
 				if response := gjson.GetBytes(dataBytes, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
 					finalResponseBody = []byte(response.Raw)
 					// 终端事件 output 为空时，用前面累积的 delta 补出 assistant 输出。
-					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 && responseAccumulator.HasContent() {
-						if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 {
+						if outputJSON, reconstructed := buildResponsesOutputJSON(responseAccumulator, streamImageOutputs); reconstructed {
 							if patched, err := sjson.SetRawBytes(finalResponseBody, "output", outputJSON); err == nil {
 								finalResponseBody = patched
 							}
@@ -4955,6 +4967,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	needModelReplace := originalModel != mappedModel
 	var finalResponseBody []byte
 	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamImageOutputs := make([]json.RawMessage, 0, 1)
+	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
@@ -5073,12 +5087,21 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if err := json.Unmarshal(dataBytes, &responseEvent); err == nil {
 				responseAccumulator.ProcessEvent(&responseEvent)
 			}
+			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
+				streamImageOutputs = append(streamImageOutputs, imageOutput)
+			}
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, responseAccumulator, streamImageOutputs); normalized {
+				dataBytes = normalizedData
+				data = string(normalizedData)
+				line = "data: " + data
+				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			}
 			if eventType == "response.completed" || eventType == "response.done" {
 				if response := gjson.GetBytes(dataBytes, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
 					finalResponseBody = []byte(response.Raw)
 					// 终端事件 output 为空时，用前面累积的 delta 补出 assistant 输出。
-					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 && responseAccumulator.HasContent() {
-						if outputJSON, err := json.Marshal(responseAccumulator.BuildOutput()); err == nil {
+					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 {
+						if outputJSON, reconstructed := buildResponsesOutputJSON(responseAccumulator, streamImageOutputs); reconstructed {
 							if patched, err := sjson.SetRawBytes(finalResponseBody, "output", outputJSON); err == nil {
 								finalResponseBody = patched
 							}
@@ -5637,17 +5660,63 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		if imageOutput, ok := extractImageGenerationOutputFromSSEData(data, seenImages); ok {
 			imageOutputs = append(imageOutputs, imageOutput)
 		}
-		var event apicompat.ResponsesStreamEvent
-		if err := json.Unmarshal(data, &event); err == nil {
-			acc.ProcessEvent(&event)
+		eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+		if responsesStreamEventMayContributeToOutput(eventType) {
+			var event apicompat.ResponsesStreamEvent
+			if err := json.Unmarshal(data, &event); err == nil {
+				acc.ProcessEvent(&event)
+			}
 		}
 	})
-	if !acc.HasContent() && len(imageOutputs) == 0 {
+	return buildResponsesOutputJSON(acc, imageOutputs)
+}
+
+func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.BufferedResponseAccumulator, imageOutputs []json.RawMessage) ([]byte, bool) {
+	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+	switch eventType {
+	case "response.completed", "response.done", "response.incomplete", "response.cancelled", "response.canceled":
+	default:
+		return data, false
+	}
+
+	output := gjson.GetBytes(data, "response.output")
+	hasAccumulatedOutput := (acc != nil && acc.HasContent()) || len(imageOutputs) > 0
+	if output.Exists() && output.IsArray() {
+		if len(output.Array()) > 0 || !hasAccumulatedOutput {
+			return data, false
+		}
+	}
+
+	outputJSON := []byte("[]")
+	if reconstructed, ok := buildResponsesOutputJSON(acc, imageOutputs); ok {
+		outputJSON = reconstructed
+	}
+	updated, err := sjson.SetRawBytes(data, "response.output", outputJSON)
+	if err != nil {
+		return data, false
+	}
+	return updated, true
+}
+
+func responsesStreamEventMayContributeToOutput(eventType string) bool {
+	switch eventType {
+	case "response.output_text.delta",
+		"response.output_item.added",
+		"response.function_call_arguments.delta",
+		"response.reasoning_summary_text.delta":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildResponsesOutputJSON(acc *apicompat.BufferedResponseAccumulator, imageOutputs []json.RawMessage) ([]byte, bool) {
+	if (acc == nil || !acc.HasContent()) && len(imageOutputs) == 0 {
 		return nil, false
 	}
 
 	var output []json.RawMessage
-	if acc.HasContent() {
+	if acc != nil && acc.HasContent() {
 		outputJSON, err := json.Marshal(acc.BuildOutput())
 		if err != nil {
 			return nil, false
