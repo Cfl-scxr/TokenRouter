@@ -193,8 +193,8 @@ func (s *TLSFingerprintRouterService) GetRuntimeRouter(routerID int64) *model.TL
 		return nil
 	}
 	router := *cached.TLSFingerprintRouter
-	if cached.TLSFingerprintRouter.Rules != nil {
-		router.Rules = append([]model.TLSFingerprintRouterRule(nil), cached.TLSFingerprintRouter.Rules...)
+	if cached.Rules != nil {
+		router.Rules = append([]model.TLSFingerprintRouterRule(nil), cached.Rules...)
 	}
 	return &router
 }
