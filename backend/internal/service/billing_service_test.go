@@ -988,3 +988,62 @@ func TestGetModelPricingWithChannel_UnknownModelReturnsError(t *testing.T) {
 	require.Nil(t, pricing)
 	require.Contains(t, err.Error(), "pricing not found")
 }
+
+func TestGetModelPricingWithChannel_NilImageOutputPriceZerosAndMarksExplicit(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice:  testPtrFloat64(10e-6),
+		OutputPrice: testPtrFloat64(20e-6),
+		// 图片输出价格有意保持为空
+	}
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+	require.NoError(t, err)
+
+	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
+	require.True(t, pricing.ImageOutputPriceExplicit)
+}
+
+func TestComputeTokenBreakdown_ExplicitZeroImagePrice_NoFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing := &ModelPricing{
+		InputPricePerToken:       3e-6,
+		OutputPricePerToken:      15e-6,
+		ImageOutputPricePerToken: 0,
+		ImageOutputPriceExplicit: true,
+	}
+	tokens := UsageTokens{
+		InputTokens:       100,
+		OutputTokens:      200,
+		ImageOutputTokens: 50,
+	}
+	bd := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
+
+	// 图片输出令牌不应回退到常规输出价格
+	require.Equal(t, 0.0, bd.ImageOutputCost)
+	// 文本输出令牌 = 200 - 50 = 150
+	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
+}
+
+func TestComputeTokenBreakdown_NonExplicitZeroImagePrice_FallsBackToOutput(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing := &ModelPricing{
+		InputPricePerToken:       3e-6,
+		OutputPricePerToken:      15e-6,
+		ImageOutputPricePerToken: 0,
+		ImageOutputPriceExplicit: false,
+	}
+	tokens := UsageTokens{
+		InputTokens:       100,
+		OutputTokens:      200,
+		ImageOutputTokens: 50,
+	}
+	bd := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
+
+	// 未显式设置时应回退到常规输出价格
+	require.InDelta(t, 50*15e-6, bd.ImageOutputCost, 1e-12)
+	// 文本输出令牌 = 200 - 50 = 150
+	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
+}

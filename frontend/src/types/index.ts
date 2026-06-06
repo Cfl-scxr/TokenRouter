@@ -243,6 +243,7 @@ export interface PublicSettings {
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   risk_control_enabled: boolean
+  service_quota_enabled?: boolean
   balance_low_notify_threshold: number
   balance_low_notify_recharge_url?: string
   allow_user_view_error_requests?: boolean
@@ -1340,6 +1341,8 @@ export interface UsageLog {
   image_size: string | null
   image_input_size: string | null
   image_output_size: string | null
+  image_output_tokens: number
+  image_output_cost: number
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null
 

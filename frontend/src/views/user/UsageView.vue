@@ -213,7 +213,7 @@
           </template>
 
           <template #cell-tokens="{ row }">
-            <!-- 图片生成请求 -->
+            <!-- 图片生成请求（非令牌计费时显示图片格式） -->
             <div v-if="isImageUsage(row)" class="flex items-center gap-1.5">
               <svg
                 class="h-4 w-4 text-indigo-500"
@@ -248,6 +248,14 @@
                     <Icon name="arrowUp" size="sm" class="text-violet-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
                       (row.output_tokens ?? 0).toLocaleString()
+                    }}</span>
+                  </div>
+                </div>
+                <div v-if="hasImageOutputTokens(row)" class="flex items-center gap-2">
+                  <div class="inline-flex items-center gap-1">
+                    <Icon name="sparkles" size="sm" class="text-pink-500" />
+                    <span class="font-medium text-pink-600 dark:text-pink-400">{{
+                      row.image_output_tokens.toLocaleString()
                     }}</span>
                   </div>
                 </div>
@@ -400,9 +408,17 @@
               <span class="text-gray-400">{{ t('admin.usage.inputTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.input_tokens.toLocaleString() }}</span>
             </div>
-            <div v-if="tokenTooltipData && tokenTooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+            <div v-if="tokenTooltipData && tokenTooltipData.output_tokens > 0 && !hasImageOutputTokens(tokenTooltipData)" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.outputTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.output_tokens.toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && hasImageOutputTokens(tokenTooltipData) && textOutputTokens(tokenTooltipData) > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.outputTokens') }}</span>
+              <span class="font-medium text-white">{{ textOutputTokens(tokenTooltipData).toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && hasImageOutputTokens(tokenTooltipData)" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.imageOutputTokens') }}</span>
+              <span class="font-medium text-pink-300">{{ tokenTooltipData.image_output_tokens.toLocaleString() }}</span>
             </div>
             <div v-if="tokenTooltipData && tokenTooltipData.cache_creation_tokens > 0">
               <!-- 有 5m/1h 明细时，展开显示 -->
@@ -479,6 +495,10 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') }}</span>
               <span class="font-medium text-white">{{ formatUsdAmount(tooltipData.output_cost, { fractionDigits: 6 }) }}</span>
             </div>
+            <div v-if="tooltipData && hasImageOutputCost(tooltipData)" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.imageOutputCost') }}</span>
+              <span class="font-medium text-pink-300">{{ formatUsdAmount(tooltipData.image_output_cost, { fractionDigits: 6 }) }}</span>
+            </div>
             <!-- 按图片计费：显示图片元数据和单价 -->
             <template v-if="tooltipData && isImageUsage(tooltipData)">
               <div class="flex items-center justify-between gap-4">
@@ -520,9 +540,13 @@
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens, { currencySymbol: usdUnitSymbol }) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
-              <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+              <div v-if="tooltipData && tooltipData.output_cost > 0 && textOutputTokens(tooltipData) > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
-                <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens, { currencySymbol: usdUnitSymbol }) }} {{ t('usage.perMillionTokens') }}</span>
+                <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, textOutputTokens(tooltipData), { currencySymbol: usdUnitSymbol }) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+              <div v-if="tooltipData && hasImageOutputTokens(tooltipData)" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageOutputTokenPrice') }}</span>
+                <span class="font-medium text-pink-300">{{ formatTokenPricePerMillion(tooltipData.image_output_cost ?? 0, tooltipData.image_output_tokens, { currencySymbol: usdUnitSymbol }) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
             </template>
             <div v-else-if="tooltipData" class="flex items-center justify-between gap-4">
@@ -594,10 +618,12 @@ import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import {
-  BILLING_MODE_IMAGE,
   BILLING_MODE_TOKEN,
   getBillingModeBadgeClass,
   getBillingModeLabel,
+  getDisplayBillingMode,
+  imageUnitPrice,
+  isImageUsage,
 } from '@/utils/billingMode'
 import {
   formatImageBillingSize,
@@ -605,6 +631,9 @@ import {
   formatImageOutputSize,
   formatImageSizeBreakdown,
   formatImageSizeSource,
+  hasImageOutputCost,
+  hasImageOutputTokens,
+  textOutputTokens,
 } from '@/utils/imageUsage'
 
 const { t } = useI18n()
@@ -712,24 +741,6 @@ const formatDuration = (ms: number | null | undefined): string => {
   if (ms == null) return '-'
   if (ms < 1000) return `${ms.toFixed(0)}ms`
   return `${(ms / 1000).toFixed(2)}s`
-}
-
-const imageUnitPrice = (row: UsageLog | null): number => {
-  if (!row || row.image_count <= 0) return 0
-  const total = row.total_cost ?? 0
-  const price = total / row.image_count
-  return Number.isFinite(price) ? price : 0
-}
-
-const isImageUsage = (row: Pick<UsageLog, 'image_count'> | null | undefined): boolean => {
-  return (row?.image_count ?? 0) > 0
-}
-
-const getDisplayBillingMode = (row: Pick<UsageLog, 'billing_mode' | 'image_count'> | null | undefined): string | null | undefined => {
-  if (isImageUsage(row)) {
-    return BILLING_MODE_IMAGE
-  }
-  return row?.billing_mode
 }
 
 const formatUserAgent = (ua: string): string => {

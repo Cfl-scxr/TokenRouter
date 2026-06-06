@@ -661,3 +661,69 @@ func TestFilterValidIntervals(t *testing.T) {
 		})
 	}
 }
+
+// ===========================================================================
+// 9. 图片输出价格显式标记测试
+// ===========================================================================
+
+func TestApplyTokenOverrides_FlatSetsImageOutputPriceExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(3e-6),
+		OutputPrice: testPtrFloat64(15e-6),
+		// 图片输出价格有意保持为空
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, resolved.BasePricing.ImageOutputPricePerToken)
+}
+
+func TestApplyTokenOverrides_FlatWithImageOutputPriceSetsExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:         "anthropic",
+		Models:           []string{"claude-sonnet-4"},
+		BillingMode:      BillingModeToken,
+		InputPrice:       testPtrFloat64(3e-6),
+		OutputPrice:      testPtrFloat64(15e-6),
+		ImageOutputPrice: testPtrFloat64(50e-6),
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.InDelta(t, 50e-6, resolved.BasePricing.ImageOutputPricePerToken, 1e-12)
+}
+
+func TestApplyTokenOverrides_IntervalSetsImageOutputPriceExplicit(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		// 不配置图片输出价格
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(100000), InputPrice: testPtrFloat64(3e-6), OutputPrice: testPtrFloat64(15e-6)},
+		},
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	// 基础定价应带显式标记，供区间未命中时回退使用
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, resolved.BasePricing.ImageOutputPricePerToken)
+
+	// 区间定价也应带显式标记
+	pricing := r.GetIntervalPricing(resolved, 50000)
+	require.True(t, pricing.ImageOutputPriceExplicit)
+	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
+}
