@@ -104,6 +104,37 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	}
 }
 
+// TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994 固定 5h
+// 窗口的标准 used% 语义。新账号上游只报告很小的 secondary_used_percent（约 1%），
+// 本地 codex_5h_used_percent 必须直接保存该值，不能反转成约 99%。这是 issue #2994
+// 和已回滚 b65dde63（PR #2918）的回归保护，避免新账号被误判耗尽并触发自动暂停。
+func TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue2994(t *testing.T) {
+	secondaryUsed := 1.0 // 5h 窗口：几乎未使用
+	secondaryWindow := 300
+	primaryUsed := 2.0 // 7d 窗口：几乎未使用
+	primaryWindow := 10080
+
+	snapshot := &OpenAICodexUsageSnapshot{
+		PrimaryUsedPercent:     &primaryUsed,
+		PrimaryWindowMinutes:   &primaryWindow,
+		SecondaryUsedPercent:   &secondaryUsed,
+		SecondaryWindowMinutes: &secondaryWindow,
+		UpdatedAt:              "2026-02-16T10:00:00Z",
+	}
+
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC))
+	if updates == nil {
+		t.Fatal("expected non-nil updates")
+	}
+
+	if got := updates["codex_5h_used_percent"]; got != 1.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 1.0 (direct used%%, NOT inverted to 99)", got)
+	}
+	if got := updates["codex_7d_used_percent"]; got != 2.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 2.0 (direct used%%, NOT inverted to 98)", got)
+	}
+}
+
 func TestBuildCodexUsageExtraUpdates_FallbackToNowWhenUpdatedAtInvalid(t *testing.T) {
 	primaryUsed := 15.0
 	primaryReset := 30

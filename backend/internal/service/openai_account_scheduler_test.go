@@ -918,6 +918,66 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshUsageWind
 	require.Equal(t, int64(35602), account.ID)
 }
 
+// Issue #2994：曾被回滚的 #2918 反转逻辑会把账号写成虚高的 used%，从而被调度排除；
+// 暂停账号又收不到流量刷新快照。快照超过陈旧边界时必须允许一次请求，让真实响应头自愈，
+// 且不依赖当前窗口的 reset 时间。
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageSnapshotSkipsPause_Issue2994(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35701,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"auto_pause_5h_threshold": 0.95,
+			// 窗口尚未重置，因此 reset 保护不会生效。
+			"codex_5h_reset_at": time.Now().Add(time.Hour).Format(time.RFC3339),
+			// 快照已经陈旧：早于 openAICodexAutoPauseStaleAfter（2h）。
+			"codex_usage_updated_at": time.Now().Add(-3 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35701), account.ID)
+}
+
+// Issue #2994 保护：真实耗尽且快照刚刷新的账号仍然必须自动暂停。
+// 陈旧快照自愈逻辑不能让真实 99% used 的账号绕过暂停。
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshExhaustedSnapshotStillPauses_Issue2994(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35801,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"auto_pause_5h_threshold": 0.95,
+			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
+			// 快照 1 分钟前刚刷新：未陈旧，因此账号保持暂停。
+			"codex_usage_updated_at": time.Now().Add(-time.Minute).Format(time.RFC3339),
+		},
+	}
+	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5}
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondary}}, cfg: &config.Config{}}
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(35802), account.ID)
+}
+
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10102)
