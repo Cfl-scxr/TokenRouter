@@ -1294,6 +1294,25 @@ func TestOpenAIResponsesWebSocket_PassthroughUsageLogInfersReasoningFromInitialR
 		"usage log reasoning effort 必须使用渠道映射前首帧模型后缀推导")
 }
 
+func TestOpenAIResponsesWebSocket_StripsPreviousResponseIDWhenStickyPreviousMisses(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.4","stream":false,"previous_response_id":"resp_other_group","input":[{"type":"input_text","text":"hello"}]}`,
+	})
+
+	require.False(t, gjson.GetBytes(got.upstreamFirstPayload, "previous_response_id").Exists(),
+		"跨组 sticky miss 时首包应剥离 previous_response_id，避免上游会话链鉴权失败")
+	require.Equal(t, "hello", gjson.GetBytes(got.upstreamFirstPayload, "input.0.text").String())
+}
+
+func TestOpenAIResponsesWebSocket_KeepsFunctionCallOutputPreviousResponseIDWhenStickyPreviousMisses(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.4","stream":false,"previous_response_id":"resp_tool_chain","input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`,
+	})
+
+	require.Equal(t, "resp_tool_chain", gjson.GetBytes(got.upstreamFirstPayload, "previous_response_id").String(),
+		"工具续链无法用完整 input 重建，sticky miss 时也应保留 previous_response_id")
+}
+
 func TestOpenAIResponsesWebSocket_PassthroughUsageLogLeavesUserAgentNilWhenMissing(t *testing.T) {
 	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 		firstPayload: `{"type":"response.create","model":"gpt-5.4","stream":false,"reasoning":{"effort":"medium"}}`,
