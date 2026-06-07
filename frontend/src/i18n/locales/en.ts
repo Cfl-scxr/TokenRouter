@@ -952,6 +952,8 @@ export default {
     standardDescription: 'The standard billed cost. Calculated from the current model or channel base pricing, and is not affected by group multipliers, user-specific multipliers, or account billing multipliers.',
     userBilled: 'User billed',
     accountBilled: 'Account billed',
+    resetNow: 'Now',
+    resetPending: 'Pending refresh',
     accountMultiplier: 'Account rate',
     avgDuration: 'Avg Duration',
     inSelectedRange: 'in selected range',

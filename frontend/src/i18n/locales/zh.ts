@@ -956,6 +956,8 @@ export default {
     standardDescription: '标准计费费用。按当前模型或渠道的基础定价计算，不受分组倍率、用户专属倍率和账号计费倍率影响。',
     userBilled: '用户扣费',
     accountBilled: '账号计费',
+    resetNow: '现在',
+    resetPending: '待刷新',
     accountMultiplier: '账号倍率',
     avgDuration: '平均耗时',
     inSelectedRange: '所选范围内',
