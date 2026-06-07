@@ -13,22 +13,22 @@ type luaScriptSourceRecorder struct {
 	scripts []string
 }
 
-func (r *luaScriptSourceRecorder) Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
+func (r *luaScriptSourceRecorder) Eval(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
 	r.scripts = append(r.scripts, script)
 	cmd := redis.NewCmd(ctx)
 	cmd.SetVal(nil)
 	return cmd
 }
 
-func (r *luaScriptSourceRecorder) EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd {
+func (r *luaScriptSourceRecorder) EvalSha(ctx context.Context, sha1 string, keys []string, args ...any) *redis.Cmd {
 	return redis.NewCmd(ctx)
 }
 
-func (r *luaScriptSourceRecorder) EvalRO(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
+func (r *luaScriptSourceRecorder) EvalRO(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
 	return redis.NewCmd(ctx)
 }
 
-func (r *luaScriptSourceRecorder) EvalShaRO(ctx context.Context, sha1 string, keys []string, args ...interface{}) *redis.Cmd {
+func (r *luaScriptSourceRecorder) EvalShaRO(ctx context.Context, sha1 string, keys []string, args ...any) *redis.Cmd {
 	return redis.NewCmd(ctx)
 }
 
