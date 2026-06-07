@@ -184,3 +184,40 @@ func TestSubscriptionExpiryService_ExpiryReminderSettingReadErrorFailsClosed(t *
 
 	require.False(t, svc.expiryReminderEnabled(context.Background()))
 }
+
+func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {
+	cache := &fakeLeaderLockCache{}
+	_, _ = cache.TryAcquireLeaderLock(context.Background(), subscriptionExpiryReminderLeaderLockKey, "peer", time.Minute)
+
+	repo := &subscriptionExpiryRepoStub{}
+	svc := NewSubscriptionExpiryService(repo, time.Minute)
+	svc.SetSettingRepository(&subscriptionExpirySettingRepoStub{values: map[string]string{}})
+	svc.notificationEmailService = &subscriptionExpiryBlockingSender{}
+	svc.SetLeaderLock(cache, nil)
+
+	svc.sendExpiryReminders()
+
+	require.Zero(t, repo.listCalls)
+}
+
+func TestSubscriptionExpiryService_ReminderRunsEveryCycleSingleInstance(t *testing.T) {
+	cases := map[string]LeaderLockCache{
+		"cache":      &fakeLeaderLockCache{},
+		"no_backend": nil,
+	}
+	for name, cache := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := &subscriptionExpiryRepoStub{}
+			svc := NewSubscriptionExpiryService(repo, time.Minute)
+			svc.SetSettingRepository(&subscriptionExpirySettingRepoStub{values: map[string]string{}})
+			svc.notificationEmailService = &subscriptionExpiryBlockingSender{}
+			svc.SetLeaderLock(cache, nil)
+
+			svc.sendExpiryReminders()
+			svc.sendExpiryReminders()
+			svc.sendExpiryReminders()
+
+			require.Equal(t, 3, repo.listCalls)
+		})
+	}
+}

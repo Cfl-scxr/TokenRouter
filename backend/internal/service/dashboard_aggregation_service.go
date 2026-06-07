@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -9,12 +10,17 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
+	"github.com/google/uuid"
 )
 
 const (
 	defaultDashboardAggregationTimeout         = 2 * time.Minute
 	defaultDashboardAggregationBackfillTimeout = 30 * time.Minute
 	dashboardAggregationRetentionInterval      = 6 * time.Hour
+
+	dashboardAggregationLeaderLockKey = "dashboard:aggregation:leader"
+	// 锁 TTL 需长于单轮定时聚合的最坏运行时间，避免任务未结束时锁过期。
+	dashboardAggregationLeaderLockTTL = 5 * time.Minute
 )
 
 var (
@@ -46,6 +52,9 @@ type DashboardAggregationService struct {
 	cfg                  config.DashboardAggregationConfig
 	running              int32
 	lastRetentionCleanup atomic.Value // time.Time
+	lockCache            LeaderLockCache
+	db                   *sql.DB
+	instanceID           string
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -58,7 +67,17 @@ func NewDashboardAggregationService(repo DashboardAggregationRepository, timingW
 		repo:        repo,
 		timingWheel: timingWheel,
 		cfg:         aggCfg,
+		instanceID:  uuid.NewString(),
 	}
+}
+
+// SetLeaderLock 注入跨实例主实例锁，用于限制定时聚合每轮只由一个实例执行。
+func (s *DashboardAggregationService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 // Start 启动定时聚合作业（重启生效配置）。
@@ -196,6 +215,13 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	jobStart := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
 	defer cancel()
+
+	// 多实例保护：仅主实例执行本轮聚合，避免重复聚合查询与水位竞争。
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, dashboardAggregationLeaderLockKey, s.instanceID, dashboardAggregationLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
 
 	now := time.Now().UTC()
 	last, err := s.repo.GetAggregationWatermark(ctx)

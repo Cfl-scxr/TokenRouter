@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -10,12 +11,17 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
+	"github.com/google/uuid"
 )
 
 const (
 	subscriptionExpiryUpdateTimeout       = 10 * time.Second
 	subscriptionExpiryReminderListTimeout = 10 * time.Second
 	subscriptionExpiryReminderSendTimeout = emailSendTimeout
+
+	subscriptionExpiryReminderLeaderLockKey = "subscription:expiry:reminder:leader"
+	// 提醒扫描可能分页遍历大量订阅，锁存活时间需要明显长于单轮扫描时间。
+	subscriptionExpiryReminderLeaderLockTTL = 5 * time.Minute
 )
 
 type subscriptionExpiryNotificationSender interface {
@@ -34,6 +40,9 @@ type SubscriptionExpiryService struct {
 	stopCh                   chan struct{}
 	stopOnce                 sync.Once
 	wg                       sync.WaitGroup
+	lockCache                LeaderLockCache
+	db                       *sql.DB
+	instanceID               string
 }
 
 func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interval time.Duration) *SubscriptionExpiryService {
@@ -44,7 +53,17 @@ func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interv
 		reminderListTimeout: subscriptionExpiryReminderListTimeout,
 		reminderSendTimeout: subscriptionExpiryReminderSendTimeout,
 		stopCh:              make(chan struct{}),
+		instanceID:          uuid.NewString(),
 	}
+}
+
+// SetLeaderLock 注入跨实例主实例锁，用于限制到期提醒扫描每轮只由一个实例执行。
+func (s *SubscriptionExpiryService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepository) {
@@ -111,6 +130,14 @@ func (s *SubscriptionExpiryService) sendExpiryReminders() {
 	if !enabled {
 		return
 	}
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
+	release, ok := tryAcquireSingletonLeaderLock(lockCtx, s.lockCache, s.db, subscriptionExpiryReminderLeaderLockKey, s.instanceID, subscriptionExpiryReminderLeaderLockTTL)
+	lockCancel()
+	if !ok {
+		return
+	}
+	defer release()
+
 	for page := 1; ; page++ {
 		ctx, cancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
