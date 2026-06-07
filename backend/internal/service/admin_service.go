@@ -778,6 +778,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	normalizedEmail := ""
 	emailChanged := false
 	oldRPMLimit := user.RPMLimit
+	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
 	oldDisabledPublicGroups := append([]int64(nil), user.DisabledPublicGroups...)
 
 	if input.Email != "" {
@@ -850,13 +851,14 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
+		// allowed_groups/disabled_public_groups 参与 API Key 分组授权判断；
 		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
 		if user.Concurrency != oldConcurrency ||
 			user.Status != oldStatus ||
 			user.Role != oldRole ||
 			user.RPMLimit != oldRPMLimit ||
+			!sameInt64Set(user.AllowedGroups, oldAllowedGroups) ||
 			!sameInt64Set(user.DisabledPublicGroups, oldDisabledPublicGroups) ||
-			input.AllowedGroups != nil ||
 			input.GroupRates != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}

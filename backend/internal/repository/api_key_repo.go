@@ -112,7 +112,12 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
-		WithUser().
+		WithUser(func(q *dbent.UserQuery) {
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
+			q.WithUserDisabledPublicGroups()
+		}).
 		WithGroup().
 		Only(ctx)
 	if err != nil {
@@ -162,14 +167,17 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldRpmLimit,
 			)
 			q.WithUserDisabledPublicGroups()
+			q.WithAllowedGroups(func(gq *dbent.GroupQuery) {
+				gq.Select(group.FieldID)
+			})
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
 			q.Select(
 				group.FieldID,
 				group.FieldName,
 				group.FieldPlatform,
-				group.FieldStatus,
 				group.FieldIsExclusive,
+				group.FieldStatus,
 				group.FieldRateMultiplier,
 				group.FieldAllowImageGeneration,
 				group.FieldImageRateIndependent,
@@ -824,6 +832,17 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
+			out.User.AllowedGroups = make([]int64, 0, len(allowed))
+			for _, g := range allowed {
+				if g != nil {
+					out.User.AllowedGroups = append(out.User.AllowedGroups, g.ID)
+				}
+			}
+			sort.Slice(out.User.AllowedGroups, func(i, j int) bool {
+				return out.User.AllowedGroups[i] < out.User.AllowedGroups[j]
+			})
+		}
 		if disabledPublicRows, err := m.Edges.User.Edges.UserDisabledPublicGroupsOrErr(); err == nil {
 			out.User.DisabledPublicGroups = make([]int64, 0, len(disabledPublicRows))
 			for _, row := range disabledPublicRows {
