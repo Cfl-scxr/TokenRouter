@@ -320,3 +320,51 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+func TestCodexWindowStatsStart(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	window := 5 * time.Hour
+	activeReset := now.Add(2 * time.Hour)
+
+	tests := []struct {
+		name     string
+		progress *UsageProgress
+		want     time.Time
+	}{
+		{
+			name:     "active reset window",
+			progress: &UsageProgress{ResetsAt: &activeReset},
+			want:     activeReset.Add(-window),
+		},
+		{
+			name:     "missing reset falls back",
+			progress: &UsageProgress{},
+			want:     now.Add(-window),
+		},
+		{
+			name:     "nil progress falls back",
+			progress: nil,
+			want:     now.Add(-window),
+		},
+	}
+
+	expiredReset := now.Add(-time.Minute)
+	tests = append(tests, struct {
+		name     string
+		progress *UsageProgress
+		want     time.Time
+	}{
+		name:     "expired reset falls back",
+		progress: &UsageProgress{ResetsAt: &expiredReset},
+		want:     now.Add(-window),
+	})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := codexWindowStatsStart(tt.progress, window, now); !got.Equal(tt.want) {
+				t.Fatalf("codexWindowStatsStart() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
