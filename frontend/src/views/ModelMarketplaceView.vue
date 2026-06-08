@@ -126,7 +126,7 @@
                     {{ groupBrandLabel(group) }}
                   </span>
                   <span class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
-                    {{ t('marketplace.rateMultiplier') }} {{ formatMultiplier(group.rate_multiplier) }}
+                    {{ formatRateMultiplierLabel(group.rate_multiplier) }}
                   </span>
                   <span class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
                     {{ group.model_count }} {{ t('marketplace.modelsStat') }}
@@ -278,7 +278,7 @@
                           {{ groupBrandLabel(entry.group) }}
                         </span>
                         <span class="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
-                          {{ formatMultiplier(entry.group.rate_multiplier) }}
+                          {{ formatRateMultiplierLabel(entry.group.rate_multiplier) }}
                         </span>
                         <span
                           v-if="entry.group.data_sharing_enabled"
@@ -343,9 +343,10 @@
         <div class="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-950/80">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
-              <div class="text-base font-semibold text-gray-950 dark:text-white">{{ selectedPricing.model.display_name }}</div>
-              <div class="mt-1 break-all font-mono text-xs text-gray-500 dark:text-dark-400">{{ selectedPricing.model.id }}</div>
-              <div class="mt-2 text-sm text-gray-500 dark:text-dark-400">{{ selectedPricing.group.name }}</div>
+              <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <div class="text-base font-semibold text-gray-950 dark:text-white">{{ selectedPricing.model.display_name }}</div>
+                <div class="min-w-0 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ selectedPricing.model.id }}</div>
+              </div>
             </div>
             <span :class="pricingBadgeClass(selectedPricing.model.pricing)">
               {{ pricingLabel(selectedPricing.model.pricing) }}
@@ -504,6 +505,9 @@ const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore
 const selectedPricingTitle = computed(() => {
   if (!selectedPricing.value) {
     return t('marketplace.pricingDetail')
+  }
+  if (displayMode.value === 'model-group') {
+    return `${selectedPricing.value.group.name} · ${t('marketplace.groupDetail')}`
   }
   return `${selectedPricing.value.model.display_name} · ${t('marketplace.pricingDetail')}`
 })
@@ -797,6 +801,11 @@ function resetFilters() {
 
 function formatMultiplier(multiplier: number): string {
   return `x${multiplier.toFixed(multiplier % 1 === 0 ? 0 : 2)}`
+}
+
+// 分组倍率文案交给 i18n 拼接，避免不同语言的空格规则写死在模板里。
+function formatRateMultiplierLabel(multiplier: number): string {
+  return t('marketplace.rateMultiplierValue', { multiplier: formatMultiplier(multiplier) })
 }
 
 function formatOfficialPriceRatio(ratio: number): string {

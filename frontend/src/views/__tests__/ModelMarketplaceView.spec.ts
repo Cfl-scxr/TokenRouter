@@ -43,7 +43,13 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key,
+      t: (key: string, params?: Record<string, string>) => {
+        if (key === 'marketplace.rateMultiplierValue') {
+          return `marketplace.rateMultiplierValue ${params?.multiplier || ''}`
+        }
+
+        return key
+      },
     }),
   }
 })
@@ -222,6 +228,7 @@ describe('ModelMarketplaceView', () => {
     expect(gptCards).toHaveLength(1)
     expect(gptCards[0].findAll('[data-testid="marketplace-model-group-entry"]')).toHaveLength(4)
     expect(gptCards[0].text()).toContain('Plus')
+    expect(gptCards[0].text()).toContain('marketplace.rateMultiplierValue x1')
     expect(gptCards[0].text()).toContain('Pro')
     expect(gptCards[0].text()).toContain('Plus Data Sharing')
     expect(gptCards[0].text()).toContain('Pro Data Sharing')
@@ -277,8 +284,30 @@ describe('ModelMarketplaceView', () => {
     await nextTick()
 
     const dialog = wrapper.get('[data-testid="pricing-dialog"]')
+    expect(dialog.get('h2').text()).toBe('Plus · marketplace.groupDetail')
     expect(dialog.text()).toContain('GPT 5.5')
     expect(dialog.text()).toContain('gpt-5.5')
-    expect(dialog.text()).toContain('Plus')
+    expect(dialog.text().match(/Plus/g)).toHaveLength(1)
+  })
+
+  it('分组-模型模式下定价弹窗不重复显示分组名称', async () => {
+    const wrapper = await mountMarketplace()
+
+    await wrapper.get('[data-testid="select-option-group-model"]').trigger('click')
+    await nextTick()
+
+    const pricingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('marketplace.viewPricing'))
+
+    expect(pricingButton?.exists()).toBe(true)
+    await pricingButton!.trigger('click')
+    await nextTick()
+
+    const dialog = wrapper.get('[data-testid="pricing-dialog"]')
+    expect(dialog.get('h2').text()).toBe('GPT 5.5 · marketplace.pricingDetail')
+    expect(dialog.text()).toContain('GPT 5.5')
+    expect(dialog.text()).toContain('gpt-5.5')
+    expect(dialog.text()).not.toContain('Plus')
   })
 })
