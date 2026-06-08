@@ -873,6 +873,99 @@ func TestDataSharingCaptureBufferDoesNotDiffDivergedPrefix(t *testing.T) {
 	require.Equal(t, "新分支", dataShareContentText(merged[6]["content"]))
 }
 
+func TestDataSharingCaptureBufferDedupesPartialReplayWithNewTail(t *testing.T) {
+	existing := []map[string]any{
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd><shell>bash</shell></environment_context>"},
+		{"role": "user", "content": "修复按钮"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "rg button"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "Button.vue"},
+		{"role": "assistant", "content": "找到入口"},
+	}
+	incoming := []map[string]any{
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd><shell>bash</shell></environment_context>"},
+		{"role": "user", "content": "修复按钮"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "rg button"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "Button.vue"},
+		{"role": "assistant", "content": "找到入口"},
+		{"role": "user", "content": "继续修"},
+		{"role": "assistant", "content": "开始修改"},
+	}
+
+	merged := mergeBufferedDataShareMessages(existing, incoming)
+
+	require.Len(t, merged, 9)
+	require.Equal(t, 1, countDataShareMessagesWithContent(merged, "修复按钮"))
+	require.Equal(t, "继续修", dataShareContentText(merged[7]["content"]))
+	require.Equal(t, "开始修改", dataShareContentText(merged[8]["content"]))
+}
+
+func TestDataSharingCaptureBufferDedupesReplayWithoutLosingCounters(t *testing.T) {
+	costA := 0.12
+	costB := 0.34
+	existing := &DataShareSession{
+		TrajectoryID:       "traj-replay-counters",
+		SessionID:          "sess-replay-counters",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 2,
+		InputTokens:        10,
+		OutputTokens:       4,
+		TotalTokens:        14,
+		ActualCost:         &costA,
+		Messages: []map[string]any{
+			{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+			{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd></environment_context>"},
+			{"role": "user", "content": "修复按钮"},
+			{"role": "assistant", "content": "我先检查代码"},
+		},
+		Usage: map[string]any{"input_tokens": 10, "output_tokens": 4, "total_tokens": 14},
+		Meta:  map[string]any{"source_request_ids": []string{"req-1", "req-2"}},
+	}
+	incoming := &DataShareSession{
+		TrajectoryID:       "traj-replay-counters",
+		SessionID:          "sess-replay-counters",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		InputTokens:        20,
+		OutputTokens:       6,
+		TotalTokens:        26,
+		ActualCost:         &costB,
+		Messages: []map[string]any{
+			{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+			{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd></environment_context>"},
+			{"role": "user", "content": "修复按钮"},
+			{"role": "assistant", "content": "我先检查代码"},
+			{"role": "user", "content": "继续修"},
+			{"role": "assistant", "content": "开始修改"},
+		},
+		Usage: map[string]any{"input_tokens": 20, "output_tokens": 6, "total_tokens": 26},
+		Meta:  map[string]any{"source_request_ids": []string{"req-3"}},
+	}
+
+	merged := mergeBufferedDataShareSession(existing, incoming)
+
+	require.Equal(t, 3, merged.SourceRequestCount)
+	require.Equal(t, int64(30), merged.InputTokens)
+	require.Equal(t, int64(10), merged.OutputTokens)
+	require.Equal(t, int64(40), merged.TotalTokens)
+	require.NotNil(t, merged.ActualCost)
+	require.InDelta(t, 0.46, *merged.ActualCost, 1e-12)
+	require.Equal(t, 30, intFromAny(merged.Usage["input_tokens"]))
+	require.Equal(t, 10, intFromAny(merged.Usage["output_tokens"]))
+	require.Equal(t, 40, intFromAny(merged.Usage["total_tokens"]))
+	require.Equal(t, []string{"req-1", "req-2", "req-3"}, stringsFromAny(merged.Meta["source_request_ids"]))
+	require.Len(t, merged.Messages, 6)
+	require.Equal(t, 1, countDataShareMessagesWithContent(merged.Messages, "修复按钮"))
+	require.Equal(t, "开始修改", dataShareContentText(merged.Messages[len(merged.Messages)-1]["content"]))
+}
+
 func TestDataShareMessageIdentityKeepsStructuredContentDistinct(t *testing.T) {
 	first := map[string]any{
 		"role": "user",
@@ -2087,6 +2180,219 @@ func TestCompactDataShareMessagesKeepsRealRepeatedPrefix(t *testing.T) {
 	require.Equal(t, "ok", dataShareContentText(compact[3]["content"]))
 }
 
+func TestCompactDataShareMessagesDedupesSystemEnvironmentReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd><shell>bash</shell></environment_context>"},
+		{"role": "user", "content": "修复按钮"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd><shell>bash</shell></environment_context>"},
+		{"role": "user", "content": "修复按钮"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "user", "content": "继续修"},
+		{"role": "assistant", "content": "开始修改"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 6)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "修复按钮"))
+	require.Equal(t, "继续修", dataShareContentText(compact[4]["content"]))
+	require.Equal(t, "开始修改", dataShareContentText(compact[5]["content"]))
+}
+
+func TestCompactDataShareMessagesDedupesSystemReplayPrefixesAtSafeLengths(t *testing.T) {
+	base := []map[string]any{
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "<environment_context><cwd>/tmp/app</cwd></environment_context>"},
+		{"role": "user", "content": "修复按钮"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "user", "content": "继续修"},
+	}
+	for _, prefixLen := range []int{3, 4, 5} {
+		t.Run(fmt.Sprintf("prefix_%d", prefixLen), func(t *testing.T) {
+			messages := append(cloneBufferedDataShareMaps(base[:prefixLen]), cloneBufferedDataShareMaps(base[:prefixLen])...)
+			messages = append(messages, map[string]any{"role": "assistant", "content": "开始修改"})
+
+			compact := CompactDataShareMessages(messages)
+
+			require.Len(t, compact, prefixLen+1)
+			require.Equal(t, 1, countDataShareMessagesWithContent(compact, "修复按钮"))
+			require.Equal(t, "开始修改", dataShareContentText(compact[len(compact)-1]["content"]))
+		})
+	}
+}
+
+func TestCompactDataShareMessagesDedupesUserHistoryReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "第一步"},
+		{"role": "user", "content": "第二步"},
+		{"role": "user", "content": "第三步"},
+		{"role": "user", "content": "第四步"},
+		{"role": "user", "content": "第五步"},
+		{"role": "user", "content": "第一步"},
+		{"role": "user", "content": "第二步"},
+		{"role": "user", "content": "第三步"},
+		{"role": "user", "content": "第四步"},
+		{"role": "user", "content": "第五步"},
+		{"role": "assistant", "content": "我来处理"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 6)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "第一步"))
+	require.Equal(t, "我来处理", dataShareContentText(compact[5]["content"]))
+}
+
+func TestCompactDataShareMessagesKeepsShortUserHistoryReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "第一步"},
+		{"role": "user", "content": "第二步"},
+		{"role": "user", "content": "第三步"},
+		{"role": "user", "content": "第四步"},
+		{"role": "user", "content": "第一步"},
+		{"role": "user", "content": "第二步"},
+		{"role": "user", "content": "第三步"},
+		{"role": "user", "content": "第四步"},
+		{"role": "assistant", "content": "我来处理"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 9)
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "第一步"))
+	require.Equal(t, "我来处理", dataShareContentText(compact[8]["content"]))
+}
+
+func TestCompactDataShareMessagesDedupesMessagesSyntheticReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "<system-reminder> current date and tool context </system-reminder>"},
+		{"role": "system", "content": "The following skills are available for use with the Skill tool"},
+		{"role": "assistant", "content": "我会调用 skill"},
+		{"role": "tool", "tool_call_id": "skill_1", "content": "Skill loaded"},
+		{"role": "user", "content": "<system-reminder> current date and tool context </system-reminder>"},
+		{"role": "system", "content": "The following skills are available for use with the Skill tool"},
+		{"role": "assistant", "content": "我会调用 skill"},
+		{"role": "tool", "tool_call_id": "skill_1", "content": "Skill loaded"},
+		{"role": "user", "content": "继续执行"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 5)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "The following skills are available for use with the Skill tool"))
+	require.Equal(t, "继续执行", dataShareContentText(compact[4]["content"]))
+}
+
+func TestCompactDataShareMessagesDedupesSyntheticReplayMarkers(t *testing.T) {
+	for _, marker := range []string{
+		"<system_reminder>todo list is currently empty</system_reminder>",
+		"[Subagent Context] You are running as a subagent (depth 1/1).",
+		`[important: the user has invoked the "personal-health-router" skill]`,
+	} {
+		t.Run(marker, func(t *testing.T) {
+			messages := []map[string]any{
+				{"role": "system", "content": "You are a terminal assistant."},
+				{"role": "user", "content": marker},
+				{"role": "system", "content": "You are a terminal assistant."},
+				{"role": "user", "content": marker},
+				{"role": "assistant", "content": "继续执行"},
+			}
+
+			compact := CompactDataShareMessages(messages)
+
+			require.Len(t, compact, 3)
+			require.Equal(t, 1, countDataShareMessagesWithContent(compact, marker))
+			require.Equal(t, "继续执行", dataShareContentText(compact[2]["content"]))
+		})
+	}
+}
+
+func TestCompactDataShareMessagesKeepsOrdinaryShortRepeatedUserAssistant(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "count"},
+		{"role": "assistant", "content": "What would you like me to count?"},
+		{"role": "user", "content": "count"},
+		{"role": "assistant", "content": "What would you like me to count?"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 4)
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "count"))
+}
+
+func TestCompactDataShareMessagesKeepsOrdinaryRepeatedUserCommands(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "继续"},
+		{"role": "user", "content": "好的"},
+		{"role": "user", "content": "count"},
+		{"role": "user", "content": "resume"},
+		{"role": "user", "content": "继续"},
+		{"role": "user", "content": "好的"},
+		{"role": "user", "content": "count"},
+		{"role": "user", "content": "resume"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 8)
+	for _, text := range []string{"继续", "好的", "count", "resume"} {
+		require.Equal(t, 2, countDataShareMessagesWithContent(compact, text))
+	}
+}
+
+func TestCompactDataShareMessagesKeepsMarkerLikeRealUserRepeat(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "system", "content": "You are a terminal assistant."},
+		{"role": "user", "content": "what does <shell> mean?"},
+		{"role": "system", "content": "You are a terminal assistant."},
+		{"role": "user", "content": "what does <shell> mean?"},
+		{"role": "assistant", "content": "It usually refers to a command interpreter."},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 5)
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "what does <shell> mean?"))
+	require.Equal(t, "It usually refers to a command interpreter.", dataShareContentText(compact[4]["content"]))
+}
+
+func TestCompactDataShareMessagesKeepsShortDivergedSystemPrefix(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "system", "content": "你是编码助手"},
+		{"role": "user", "content": "第一步"},
+		{"role": "assistant", "content": "旧分支"},
+		{"role": "system", "content": "你是编码助手"},
+		{"role": "user", "content": "第一步"},
+		{"role": "assistant", "content": "新分支"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 6)
+	require.Equal(t, "旧分支", dataShareContentText(compact[2]["content"]))
+	require.Equal(t, "新分支", dataShareContentText(compact[5]["content"]))
+}
+
+func TestCompactDataShareMessagesDedupesToolEchoReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "assistant", "content": "", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md"},
+		{"role": "assistant", "content": "", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md"},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 3)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "README.md"))
+	require.Equal(t, "看到了 README.md", dataShareContentText(compact[2]["content"]))
+}
+
 func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
 	sys := "你是编码助手"
 	messages := []map[string]any{
@@ -2365,6 +2671,19 @@ func buildLargeDataShareMessages(systemPrompt string, rounds int, includeUnpaire
 	return messages
 }
 
+func TestCompactDataShareMessagesDedupesLargeOrderedReplay(t *testing.T) {
+	sys := "<permissions instructions> sandbox</permissions instructions>"
+	base := buildLargeDataShareMessages(sys, 150, false)
+	replayed := append(cloneBufferedDataShareMaps(base), cloneBufferedDataShareMaps(base)...)
+	replayed = append(replayed, map[string]any{"role": "user", "content": "新的尾巴"})
+
+	compact := CompactDataShareMessages(replayed)
+
+	require.Len(t, compact, len(base)+1)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "开始执行任务"))
+	require.Equal(t, "新的尾巴", dataShareContentText(compact[len(compact)-1]["content"]))
+}
+
 func benchmarkFinalizeBufferedDataShareSession(b *testing.B, rounds int, includeUnpairedTail bool) {
 	sys := "你是编码助手"
 	base := &DataShareSession{
@@ -2422,6 +2741,18 @@ func BenchmarkFinalizeBufferedDataShareSession_LargeComplete(b *testing.B) {
 
 func BenchmarkFinalizeBufferedDataShareSession_LargePartialTail(b *testing.B) {
 	benchmarkFinalizeBufferedDataShareSession(b, 1000, true)
+}
+
+func BenchmarkCompactDataShareMessages_LargeOrderedReplay(b *testing.B) {
+	sys := "<permissions instructions> sandbox</permissions instructions>"
+	base := buildLargeDataShareMessages(sys, 1000, false)
+	replayed := append(cloneBufferedDataShareMaps(base), cloneBufferedDataShareMaps(base)...)
+	replayed = append(replayed, map[string]any{"role": "user", "content": "新的尾巴"})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		CompactDataShareMessages(replayed)
+	}
 }
 
 func TestDataShareExportRedactsSensitiveFields(t *testing.T) {

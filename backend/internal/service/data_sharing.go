@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2583,6 +2584,7 @@ func contentValueFromAnthropicBlocks(blocks []any) any {
 func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(messages))
 	outIdentities := make([]string, 0, len(messages))
+	outIdentityPositions := map[string][]int{}
 	outIdentityAt := func(index int) string {
 		if outIdentities[index] == "" {
 			outIdentities[index] = dataShareMessageIdentity(out[index])
@@ -2600,8 +2602,17 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 	seenToolResults := map[string]struct{}{}
 	for i := 0; i < len(messages); {
 		if len(out) > 0 {
-			if prefix := dataShareCommonPrefixLen(len(out), outIdentityAt, i, len(messages), messageIdentityAt); prefix == len(out) && prefix >= dataShareReplayOverlapMinMessages && dataShareReplayPrefixHasSeenToolEcho(messages[i:i+prefix], seenToolCalls, seenToolResults) {
-				i += prefix
+			if replay := dataShareReplaySkipLen(
+				out,
+				len(messages),
+				i,
+				outIdentityAt,
+				messageIdentityAt,
+				outIdentityPositions,
+				seenToolCalls,
+				seenToolResults,
+			); replay >= dataShareReplayOverlapMinMessages {
+				i += replay
 				continue
 			}
 		}
@@ -2612,10 +2623,236 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 		}
 		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
 		out = append(out, msg)
-		outIdentities = append(outIdentities, "")
+		identity := messageIdentityAt(i)
+		outIdentities = append(outIdentities, identity)
+		outIdentityPositions[identity] = append(outIdentityPositions[identity], len(out)-1)
 		i++
 	}
 	return out
+}
+
+func dataShareReplaySkipLenForMessages(existing, incoming []map[string]any, incomingStart int) int {
+	if len(existing) == 0 || len(incoming) == 0 || incomingStart >= len(incoming) {
+		return 0
+	}
+	existingIdentities := make([]string, len(existing))
+	existingIdentityPositions := make(map[string][]int, len(existing))
+	existingIdentityAt := func(index int) string {
+		if existingIdentities[index] == "" {
+			existingIdentities[index] = dataShareMessageIdentity(existing[index])
+		}
+		return existingIdentities[index]
+	}
+	for i := range existing {
+		identity := existingIdentityAt(i)
+		existingIdentityPositions[identity] = append(existingIdentityPositions[identity], i)
+	}
+	incomingIdentities := make([]string, len(incoming))
+	incomingIdentityAt := func(index int) string {
+		if incomingIdentities[index] == "" {
+			incomingIdentities[index] = dataShareMessageIdentity(incoming[index])
+		}
+		return incomingIdentities[index]
+	}
+	seenToolCalls := map[string]struct{}{}
+	seenToolResults := map[string]struct{}{}
+	for _, msg := range existing {
+		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
+	}
+	return dataShareReplaySkipLen(
+		existing,
+		len(incoming),
+		incomingStart,
+		existingIdentityAt,
+		incomingIdentityAt,
+		existingIdentityPositions,
+		seenToolCalls,
+		seenToolResults,
+	)
+}
+
+func dataShareReplaySkipLen(
+	existing []map[string]any,
+	incomingLen int,
+	incomingStart int,
+	existingIdentityAt func(int) string,
+	incomingIdentityAt func(int) string,
+	existingIdentityPositions map[string][]int,
+	seenToolCalls map[string]struct{},
+	seenToolResults map[string]struct{},
+) int {
+	if len(existing) == 0 || incomingStart >= incomingLen {
+		return 0
+	}
+	prefix := dataShareCommonPrefixLen(len(existing), existingIdentityAt, incomingStart, incomingLen, incomingIdentityAt)
+	if prefix < dataShareReplayOverlapMinMessages {
+		return 0
+	}
+	if !dataShareReplayPrefixSafe(existing[:prefix], prefix, seenToolCalls, seenToolResults) {
+		return 0
+	}
+	if ordered := dataShareOrderedReplaySkipLen(existing, incomingLen, incomingStart, existingIdentityAt, incomingIdentityAt, existingIdentityPositions); ordered > prefix {
+		return ordered
+	}
+	return prefix
+}
+
+func dataShareReplayPrefixSafe(messages []map[string]any, prefix int, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
+	if prefix >= 5 {
+		return true
+	}
+	if prefix >= dataShareReplayOverlapMinMessages {
+		role := strings.TrimSpace(stringFromAny(messages[0]["role"]))
+		if role == "system" || role == "developer" {
+			if prefix >= 3 {
+				return true
+			}
+			return len(messages) > 1 && dataShareStrongSyntheticUserContextText(dataShareMessageTextForReplay(messages[1]))
+		}
+		if dataShareReplayPrefixStartsWithSyntheticUserContext(messages[:prefix]) {
+			return true
+		}
+		return dataShareReplayPrefixHasSeenToolEcho(messages[:prefix], seenToolCalls, seenToolResults)
+	}
+	return false
+}
+
+func dataShareReplayPrefixStartsWithSyntheticUserContext(messages []map[string]any) bool {
+	if len(messages) < dataShareReplayOverlapMinMessages {
+		return false
+	}
+	if strings.TrimSpace(stringFromAny(messages[0]["role"])) != "user" {
+		return false
+	}
+	first := dataShareMessageTextForReplay(messages[0])
+	if !dataShareSyntheticUserContextText(first) {
+		return false
+	}
+	secondRole := strings.TrimSpace(stringFromAny(messages[1]["role"]))
+	if secondRole == "system" || secondRole == "developer" {
+		return true
+	}
+	return dataShareSyntheticUserContextText(dataShareMessageTextForReplay(messages[1]))
+}
+
+func dataShareMessageTextForReplay(msg map[string]any) string {
+	return strings.ToLower(dataShareContentText(firstPresentAny(msg["content"], msg["text"])))
+}
+
+func dataShareSyntheticUserContextText(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if dataShareStrongSyntheticUserContextText(text) {
+		return true
+	}
+	weakMatches := 0
+	for _, marker := range []string{
+		"agents.md instructions",
+		"current_date",
+		"filesystem sandboxing",
+		"<cwd>",
+		"<shell>",
+	} {
+		if strings.Contains(text, marker) {
+			weakMatches++
+		}
+	}
+	return weakMatches >= 2
+}
+
+func dataShareStrongSyntheticUserContextText(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"<system-reminder>",
+		"<system_reminder>",
+		"<command-message>",
+		"<environment_context>",
+		"<permissions instructions>",
+		"base directory for this skill",
+		"mcp server instructions",
+		"deferred tools are now available",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	if strings.Contains(text, "subagent context") && strings.Contains(text, "you are running as a subagent") {
+		return true
+	}
+	if strings.Contains(text, "[important:") && strings.Contains(text, "the user has invoked the") && strings.Contains(text, "skill") {
+		return true
+	}
+	if strings.Contains(text, "todo list is currently empty") && strings.Contains(text, "do not mention this to the user") {
+		return true
+	}
+	return false
+}
+
+func dataShareOrderedReplaySkipLen(existing []map[string]any, incomingLen int, incomingStart int, existingIdentityAt func(int) string, incomingIdentityAt func(int) string, existingIdentityPositions map[string][]int) int {
+	if len(existing) == 0 || incomingStart >= incomingLen {
+		return 0
+	}
+	incomingIndex := incomingStart
+	existingCursor := 0
+	var lastIncomingIndex int
+	matched := 0
+	for incomingIndex < incomingLen {
+		position := dataShareNextIdentityPosition(existingIdentityPositions[incomingIdentityAt(incomingIndex)], existingCursor)
+		if position < 0 {
+			break
+		}
+		lastIncomingIndex = incomingIndex
+		matched++
+		incomingIndex++
+		existingCursor = position + 1
+	}
+	if matched < dataShareReplayOverlapMinMessages {
+		return 0
+	}
+	end := incomingIndex
+	if dataShareShouldKeepPotentialReplayTailUser(incomingLen, incomingIndex, lastIncomingIndex, incomingIdentityAt) {
+		end = lastIncomingIndex
+	}
+	if end <= incomingStart {
+		return 0
+	}
+	return end - incomingStart
+}
+
+func dataShareNextIdentityPosition(positions []int, cursor int) int {
+	if len(positions) == 0 {
+		return -1
+	}
+	index := sort.SearchInts(positions, cursor)
+	if index >= len(positions) {
+		return -1
+	}
+	return positions[index]
+}
+
+func dataShareShouldKeepPotentialReplayTailUser(incomingLen int, incomingIndex int, lastIncomingIndex int, incomingIdentityAt func(int) string) bool {
+	if lastIncomingIndex < 0 || dataShareIdentityRole(incomingIdentityAt(lastIncomingIndex)) != "user" {
+		return false
+	}
+	if incomingIndex >= incomingLen {
+		return true
+	}
+	return dataShareIdentityRole(incomingIdentityAt(incomingIndex)) == "assistant" || dataShareIdentityRole(incomingIdentityAt(incomingIndex)) == "tool"
+}
+
+func dataShareIdentityRole(identity string) string {
+	if strings.HasPrefix(identity, "assistant_tool_calls:") {
+		return "assistant"
+	}
+	if before, _, ok := strings.Cut(identity, ":"); ok {
+		return before
+	}
+	return ""
 }
 
 // dataShareReplayPrefixHasSeenToolEcho 用已出现过的工具调用/result id 作为无边界 compact 的强 replay 信号，避免误删普通文本重复。

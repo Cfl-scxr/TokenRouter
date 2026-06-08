@@ -699,9 +699,12 @@ func mergeBufferedDataShareMessages(existing, incoming []map[string]any) []map[s
 	if dataShareMessagesAreExistingPrefix(existing, incoming) {
 		return cloneBufferedDataShareMaps(existing)
 	}
-	// Responses 是 stateless 协议，请求会重放历史；只追加 replay overlap 后面的新增消息。
-	if overlap := dataShareReplayOverlapLen(existing, incoming); overlap >= dataShareReplayOverlapMinMessages && overlap < len(incoming) {
-		return append(cloneBufferedDataShareMaps(existing), cloneBufferedDataShareMaps(incoming[overlap:])...)
+	// Responses/Agent 客户端常把历史从对话开头重放；只追加已见 replay 后面的新增消息。
+	if replay := dataShareReplaySkipLenForMessages(existing, incoming, 0); replay >= dataShareReplayOverlapMinMessages {
+		if replay >= len(incoming) {
+			return cloneBufferedDataShareMaps(existing)
+		}
+		return append(cloneBufferedDataShareMaps(existing), cloneBufferedDataShareMaps(incoming[replay:])...)
 	}
 	return append(cloneBufferedDataShareMaps(existing), cloneBufferedDataShareMaps(incoming)...)
 }
