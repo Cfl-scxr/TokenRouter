@@ -35,6 +35,8 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+const waitForTransition = () => new Promise((resolve) => window.setTimeout(resolve, 250))
+
 describe('DateRangePicker', () => {
   it('uses last 24 hours as the default recognized preset', () => {
     const now = new Date()
@@ -124,6 +126,7 @@ describe('DateRangePicker', () => {
     expect(wrapper.emitted('change')?.[0]?.[0]).toMatchObject({
       preset: 'lastMonth'
     })
+    await waitForTransition()
     expect(wrapper.find('.date-picker-dropdown').exists()).toBe(false)
   })
 })

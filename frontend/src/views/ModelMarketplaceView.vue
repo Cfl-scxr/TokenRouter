@@ -240,11 +240,11 @@
             </section>
           </template>
 
-          <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div v-else class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             <article
               v-for="model in filteredModels"
               :key="model.id"
-              class="card flex min-h-[340px] flex-col overflow-hidden"
+              class="card flex flex-col overflow-hidden"
               data-testid="marketplace-model-card"
             >
               <div class="card-header px-4 py-4">
@@ -264,7 +264,7 @@
                 </div>
               </div>
 
-              <div class="flex flex-1 flex-col gap-2 p-4">
+              <div class="flex flex-col gap-2 p-4">
                 <div
                   v-for="entry in model.groups"
                   :key="`${model.id}-${entry.group.id}`"
