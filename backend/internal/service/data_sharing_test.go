@@ -2288,6 +2288,7 @@ func TestCompactDataShareMessagesDedupesMessagesSyntheticReplay(t *testing.T) {
 
 func TestCompactDataShareMessagesDedupesSyntheticReplayMarkers(t *testing.T) {
 	for _, marker := range []string{
+		`<system-reminder data-role="team-context">Agent Team Communication</system-reminder>`,
 		"<system_reminder>todo list is currently empty</system_reminder>",
 		"[Subagent Context] You are running as a subagent (depth 1/1).",
 		`[important: the user has invoked the "personal-health-router" skill]`,
@@ -2308,6 +2309,49 @@ func TestCompactDataShareMessagesDedupesSyntheticReplayMarkers(t *testing.T) {
 			require.Equal(t, "继续执行", dataShareContentText(compact[2]["content"]))
 		})
 	}
+}
+
+func TestCompactDataShareMessagesDedupesOrderedReplayAfterShortSystemPrefix(t *testing.T) {
+	base := []map[string]any{
+		{"role": "system", "content": "You are Hermes Agent."},
+		{"role": "user", "content": "can u combine pdf for me?"},
+		{"role": "assistant", "content": "Please upload the PDFs."},
+		{"role": "user", "content": "[The user sent a document: exam_paper.zip]"},
+		{"role": "assistant", "content": "Done, I combined the PDFs."},
+		{"role": "user", "content": "how much credits left"},
+		{"role": "assistant", "content": "I cannot see your credits."},
+	}
+	messages := append(cloneBufferedDataShareMaps(base), cloneBufferedDataShareMaps(base[:5])...)
+	messages = append(messages, map[string]any{"role": "user", "content": "thanks"})
+	messages = append(messages, map[string]any{"role": "assistant", "content": "You're welcome."})
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, len(base)+2)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "can u combine pdf for me?"))
+	require.Equal(t, "thanks", dataShareContentText(compact[len(compact)-2]["content"]))
+	require.Equal(t, "You're welcome.", dataShareContentText(compact[len(compact)-1]["content"]))
+}
+
+func TestCompactDataShareMessagesDedupesUserFirstSyntheticPrefixReplay(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "分析活动营销统计数量\n<image></image>"},
+		{"role": "system", "content": "<permissions instructions>workspace-write</permissions instructions>"},
+		{"role": "user", "content": "# AGENTS.md instructions for /tmp/app\n<INSTRUCTIONS>"},
+		{"role": "user", "content": "为什么预计人数提示重复\n<image></image>"},
+		{"role": "assistant", "content": "我先检查代码"},
+		{"role": "user", "content": "分析活动营销统计数量\n<image></image>"},
+		{"role": "system", "content": "<permissions instructions>workspace-write</permissions instructions>"},
+		{"role": "user", "content": "# AGENTS.md instructions for /tmp/app\n<INSTRUCTIONS>"},
+		{"role": "user", "content": "为什么预计人数提示重复\n<image></image>"},
+		{"role": "assistant", "content": "我继续处理"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 6)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "分析活动营销统计数量\n<image></image>"))
+	require.Equal(t, "我继续处理", dataShareContentText(compact[len(compact)-1]["content"]))
 }
 
 func TestCompactDataShareMessagesKeepsOrdinaryShortRepeatedUserAssistant(t *testing.T) {

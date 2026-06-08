@@ -2688,13 +2688,17 @@ func dataShareReplaySkipLen(
 	if prefix < dataShareReplayOverlapMinMessages {
 		return 0
 	}
-	if !dataShareReplayPrefixSafe(existing[:prefix], prefix, seenToolCalls, seenToolResults) {
-		return 0
+	ordered := dataShareOrderedReplaySkipLen(existing, incomingLen, incomingStart, existingIdentityAt, incomingIdentityAt, existingIdentityPositions)
+	if dataShareReplayPrefixSafe(existing[:prefix], prefix, seenToolCalls, seenToolResults) {
+		if ordered > prefix {
+			return ordered
+		}
+		return prefix
 	}
-	if ordered := dataShareOrderedReplaySkipLen(existing, incomingLen, incomingStart, existingIdentityAt, incomingIdentityAt, existingIdentityPositions); ordered > prefix {
+	if dataShareOrderedReplayPrefixSafe(prefix, ordered, incomingStart, incomingIdentityAt) {
 		return ordered
 	}
-	return prefix
+	return 0
 }
 
 func dataShareReplayPrefixSafe(messages []map[string]any, prefix int, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
@@ -2710,6 +2714,9 @@ func dataShareReplayPrefixSafe(messages []map[string]any, prefix int, seenToolCa
 			return len(messages) > 1 && dataShareStrongSyntheticUserContextText(dataShareMessageTextForReplay(messages[1]))
 		}
 		if dataShareReplayPrefixStartsWithSyntheticUserContext(messages[:prefix]) {
+			return true
+		}
+		if prefix >= 3 && dataShareReplayPrefixHasSyntheticContext(messages[:prefix]) {
 			return true
 		}
 		return dataShareReplayPrefixHasSeenToolEcho(messages[:prefix], seenToolCalls, seenToolResults)
@@ -2733,6 +2740,15 @@ func dataShareReplayPrefixStartsWithSyntheticUserContext(messages []map[string]a
 		return true
 	}
 	return dataShareSyntheticUserContextText(dataShareMessageTextForReplay(messages[1]))
+}
+
+func dataShareReplayPrefixHasSyntheticContext(messages []map[string]any) bool {
+	for _, msg := range messages {
+		if dataShareSyntheticUserContextText(dataShareMessageTextForReplay(msg)) {
+			return true
+		}
+	}
+	return false
 }
 
 func dataShareMessageTextForReplay(msg map[string]any) string {
@@ -2767,9 +2783,10 @@ func dataShareStrongSyntheticUserContextText(text string) bool {
 	if text == "" {
 		return false
 	}
+	if strings.HasPrefix(text, "<system-reminder") || strings.HasPrefix(text, "<system_reminder") {
+		return true
+	}
 	for _, marker := range []string{
-		"<system-reminder>",
-		"<system_reminder>",
 		"<command-message>",
 		"<environment_context>",
 		"<permissions instructions>",
@@ -2822,6 +2839,23 @@ func dataShareOrderedReplaySkipLen(existing []map[string]any, incomingLen int, i
 		return 0
 	}
 	return end - incomingStart
+}
+
+func dataShareOrderedReplayPrefixSafe(prefix int, ordered int, incomingStart int, incomingIdentityAt func(int) string) bool {
+	if prefix < dataShareReplayOverlapMinMessages || ordered < 5 {
+		return false
+	}
+	firstRole := dataShareIdentityRole(incomingIdentityAt(incomingStart))
+	if firstRole != "system" && firstRole != "developer" {
+		return false
+	}
+	for i := incomingStart; i < incomingStart+ordered; i++ {
+		switch dataShareIdentityRole(incomingIdentityAt(i)) {
+		case "assistant", "tool":
+			return true
+		}
+	}
+	return false
 }
 
 func dataShareNextIdentityPosition(positions []int, cursor int) int {
