@@ -62,6 +62,10 @@
           </div>
 
           <div class="w-full sm:w-[200px] xl:w-[180px]">
+            <Select v-model="displayMode" :options="displayModeOptions" />
+          </div>
+
+          <div class="w-full sm:w-[200px] xl:w-[180px]">
             <Select v-model="selectedBrand" :options="brandSelectOptions" />
           </div>
 
@@ -91,7 +95,7 @@
           </div>
         </div>
 
-        <div v-else-if="filteredGroups.length === 0" class="card px-6 py-14">
+        <div v-else-if="!hasMarketplaceResults" class="card px-6 py-14">
           <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
             <Icon name="inbox" size="xl" />
           </div>
@@ -107,11 +111,13 @@
         </div>
 
         <div v-else class="space-y-4">
-          <section
-            v-for="group in filteredGroups"
-            :key="group.id"
-            class="card overflow-hidden"
-          >
+          <template v-if="displayMode === 'group-model'">
+            <section
+              v-for="group in filteredGroups"
+              :key="group.id"
+              class="card overflow-hidden"
+              data-testid="marketplace-group-section"
+            >
             <div class="card-header flex flex-col gap-4 px-4 py-4 md:px-5 xl:flex-row xl:items-center xl:justify-between">
               <div class="min-w-0 flex-1 space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
@@ -234,7 +240,94 @@
                 </article>
               </div>
             </div>
-          </section>
+            </section>
+          </template>
+
+          <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <article
+              v-for="model in filteredModels"
+              :key="model.id"
+              class="card flex min-h-[340px] flex-col overflow-hidden"
+              data-testid="marketplace-model-card"
+            >
+              <div class="card-header px-4 py-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ model.display_name }}</h2>
+                    <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ model.id }}</p>
+                  </div>
+                  <span class="shrink-0 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
+                    {{ model.groups.length }} {{ t('marketplace.availableGroups') }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="flex flex-1 flex-col gap-2 p-4">
+                <div
+                  v-for="entry in model.groups"
+                  :key="`${model.id}-${entry.group.id}`"
+                  class="rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-dark-700 dark:bg-dark-950/80"
+                  data-testid="marketplace-model-group-entry"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0 flex-1">
+                      <h3 class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ entry.group.name }}</h3>
+                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span :class="compactBrandBadgeClass(entry.group)">
+                          <ProviderIcon :brand="groupBrandSource(entry.group)" size="12px" />
+                          {{ groupBrandLabel(entry.group) }}
+                        </span>
+                        <span class="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
+                          {{ formatMultiplier(entry.group.rate_multiplier) }}
+                        </span>
+                        <span
+                          v-if="entry.group.data_sharing_enabled"
+                          class="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
+                        >
+                          {{ t('marketplace.dataSharingTag') }}
+                        </span>
+                        <span
+                          v-if="hasOfficialPriceRatio(entry.group.official_price_ratio)"
+                          class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                        >
+                          {{ formatOfficialPriceRatio(entry.group.official_price_ratio) }}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      v-if="hasDisplayPricing(entry.model.pricing)"
+                      type="button"
+                      class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition hover:bg-primary-100 dark:bg-primary-500/15 dark:text-primary-300 dark:hover:bg-primary-500/25"
+                      :title="t('marketplace.viewGroupPricing')"
+                      :aria-label="t('marketplace.viewGroupPricing')"
+                      @click="openPricingDialog(entry.group, entry.model)"
+                    >
+                      <Icon name="eye" size="sm" />
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="entry.group.capacity"
+                    class="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80"
+                    :title="t('marketplace.capacityHint')"
+                  >
+                    <span class="text-xs font-semibold text-gray-500 dark:text-dark-400">
+                      {{ t('marketplace.capacity') }}
+                    </span>
+                    <GroupCapacityBadge
+                      layout="horizontal"
+                      :concurrency-used="entry.group.capacity.concurrency_used"
+                      :concurrency-max="entry.group.capacity.concurrency_max"
+                      :sessions-used="entry.group.capacity.sessions_used"
+                      :sessions-max="entry.group.capacity.sessions_max"
+                      :rpm-used="entry.group.capacity.rpm_used"
+                      :rpm-max="entry.group.capacity.rpm_max"
+                    />
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>
@@ -327,7 +420,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -347,6 +440,9 @@ import { useAppStore, useAuthStore } from '@/stores'
 
 type VisibleMarketplaceGroup = MarketplaceGroup
 type PricingFilter = 'all' | 'token' | 'image' | 'unpriced'
+type MarketplaceDisplayMode = 'model-group' | 'group-model'
+
+const MARKETPLACE_DISPLAY_MODE_STORAGE_KEY = 'tokenrouter:model-marketplace:view-mode'
 
 interface PricingRow {
   key: string
@@ -358,6 +454,17 @@ interface ContextIntervalPricingRow {
   key: string
   range: string
   rows: PricingRow[]
+}
+
+interface VisibleMarketplaceModelGroup {
+  group: MarketplaceGroup
+  model: MarketplaceModel
+}
+
+interface VisibleMarketplaceModel {
+  id: string
+  display_name: string
+  groups: VisibleMarketplaceModelGroup[]
 }
 
 interface SelectedPricingModel {
@@ -375,6 +482,7 @@ const groups = ref<MarketplaceGroup[]>([])
 const loading = ref(true)
 const errorMessage = ref('')
 const search = ref('')
+const displayMode = ref<MarketplaceDisplayMode>(readPersistedDisplayMode())
 const selectedBrand = ref<string | 'all'>('all')
 const selectedPricingMode = ref<PricingFilter>('all')
 const selectedGroupId = ref<number | 'all'>('all')
@@ -442,6 +550,11 @@ const pricingSelectOptions = computed(() => [
   { value: 'unpriced', label: t('marketplace.unpriced') },
 ])
 
+const displayModeOptions = computed(() => [
+  { value: 'model-group', label: t('marketplace.displayByModel') },
+  { value: 'group-model', label: t('marketplace.displayByGroup') },
+])
+
 const groupSelectOptions = computed(() => [
   { value: 'all', label: t('marketplace.allGroups') },
   ...sortedGroups.value.map((group) => ({
@@ -489,6 +602,99 @@ const filteredGroups = computed<VisibleMarketplaceGroup[]>(() => {
     }]
   })
 })
+
+const filteredModels = computed<VisibleMarketplaceModel[]>(() => {
+  const keyword = normalizedSearch.value
+  const modelsById = new Map<string, VisibleMarketplaceModel>()
+
+  for (const group of sortedGroups.value) {
+    if (!groupMatchesSelectedFilters(group)) {
+      continue
+    }
+
+    const groupKeywordMatched = groupMatchesKeyword(group, keyword)
+
+    for (const model of group.models) {
+      if (selectedPricingMode.value !== 'all' && pricingKind(model.pricing) !== selectedPricingMode.value) {
+        continue
+      }
+
+      const modelKeywordMatched = modelMatchesKeyword(model, keyword)
+      if (keyword && !groupKeywordMatched && !modelKeywordMatched) {
+        continue
+      }
+
+      // 按模型 ID 去重，展示名保留排序后首次出现的分组模型名称。
+      let visibleModel = modelsById.get(model.id)
+      if (!visibleModel) {
+        visibleModel = {
+          id: model.id,
+          display_name: model.display_name,
+          groups: [],
+        }
+        modelsById.set(model.id, visibleModel)
+      }
+
+      visibleModel.groups.push({ group, model })
+    }
+  }
+
+  return Array.from(modelsById.values())
+})
+
+const hasMarketplaceResults = computed(() => (
+  displayMode.value === 'group-model'
+    ? filteredGroups.value.length > 0
+    : filteredModels.value.length > 0
+))
+
+watch(displayMode, (mode) => {
+  persistDisplayMode(mode)
+})
+
+function readPersistedDisplayMode(): MarketplaceDisplayMode {
+  if (typeof localStorage === 'undefined') {
+    return 'model-group'
+  }
+  return normalizeDisplayMode(localStorage.getItem(MARKETPLACE_DISPLAY_MODE_STORAGE_KEY))
+}
+
+function persistDisplayMode(mode: MarketplaceDisplayMode) {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+  localStorage.setItem(MARKETPLACE_DISPLAY_MODE_STORAGE_KEY, normalizeDisplayMode(mode))
+}
+
+function normalizeDisplayMode(value: unknown): MarketplaceDisplayMode {
+  return value === 'group-model' ? 'group-model' : 'model-group'
+}
+
+function groupMatchesSelectedFilters(group: MarketplaceGroup): boolean {
+  if (selectedBrand.value !== 'all' && brandKey(groupBrandLabel(group)) !== brandKey(selectedBrand.value)) {
+    return false
+  }
+  if (selectedGroupId.value !== 'all' && group.id !== selectedGroupId.value) {
+    return false
+  }
+  return true
+}
+
+function groupMatchesKeyword(group: MarketplaceGroup, keyword: string): boolean {
+  if (!keyword) {
+    return true
+  }
+  return [group.name, group.description, groupBrandSource(group), groupBrandLabel(group)]
+    .filter(Boolean)
+    .some((value) => value.toLowerCase().includes(keyword))
+}
+
+function modelMatchesKeyword(model: MarketplaceModel, keyword: string): boolean {
+  if (!keyword) {
+    return true
+  }
+  return [model.id, model.display_name].some((value) => value.toLowerCase().includes(keyword))
+}
 
 function hasPositiveValue(value?: number | null): value is number {
   return typeof value === 'number' && value > 0
@@ -704,6 +910,11 @@ function brandKey(label: string): string {
 
 function brandBadgeClass(group: MarketplaceGroup): string {
   const base = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset'
+  return `${base} ${resolveProviderBrand(groupBrandSource(group)).badgeClass}`
+}
+
+function compactBrandBadgeClass(group: MarketplaceGroup): string {
+  const base = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset'
   return `${base} ${resolveProviderBrand(groupBrandSource(group)).badgeClass}`
 }
 
