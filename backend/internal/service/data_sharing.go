@@ -2890,21 +2890,6 @@ func dataShareMessagesAreExistingPrefix(existing, incoming []map[string]any) boo
 	return true
 }
 
-// dataShareReplayOverlapLen 查找完整历史重放长度，部分前缀相同不能当作可合并 diff。
-func dataShareReplayOverlapLen(existing, incoming []map[string]any) int {
-	if len(existing) < dataShareReplayOverlapMinMessages || len(incoming) <= len(existing) {
-		return 0
-	}
-	existingIdentities := dataShareMessageIdentities(existing)
-	incomingIdentities := dataShareMessageIdentities(incoming)
-	for i := range existingIdentities {
-		if existingIdentities[i] != incomingIdentities[i] {
-			return 0
-		}
-	}
-	return len(existing)
-}
-
 func dataShareMessageIdentities(messages []map[string]any) []string {
 	out := make([]string, len(messages))
 	for i, msg := range messages {
