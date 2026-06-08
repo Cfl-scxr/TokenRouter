@@ -228,7 +228,8 @@ describe('ModelMarketplaceView', () => {
     expect(gptCards).toHaveLength(1)
     expect(gptCards[0].findAll('[data-testid="marketplace-model-group-entry"]')).toHaveLength(4)
     expect(gptCards[0].text()).toContain('Plus')
-    expect(gptCards[0].text()).toContain('marketplace.rateMultiplierValue x1')
+    expect(gptCards[0].text()).toContain('x1')
+    expect(gptCards[0].text()).not.toContain('marketplace.rateMultiplierValue')
     expect(gptCards[0].text()).toContain('Pro')
     expect(gptCards[0].text()).toContain('Plus Data Sharing')
     expect(gptCards[0].text()).toContain('Pro Data Sharing')
@@ -275,12 +276,12 @@ describe('ModelMarketplaceView', () => {
     expect(modelCards(wrapper).some((card) => card.text().includes('legacy-unpriced'))).toBe(false)
   })
 
-  it('点击分组条目的定价按钮会打开对应分组定价弹窗', async () => {
+  it('点击分组条目会打开对应分组定价弹窗', async () => {
     const wrapper = await mountMarketplace()
-    const pricingButton = wrapper.find('button[aria-label="marketplace.viewGroupPricing"]')
+    const groupEntry = groupEntries(wrapper)[0]
 
-    expect(pricingButton.exists()).toBe(true)
-    await pricingButton.trigger('click')
+    expect(groupEntry.exists()).toBe(true)
+    await groupEntry.trigger('click')
     await nextTick()
 
     const dialog = wrapper.get('[data-testid="pricing-dialog"]')

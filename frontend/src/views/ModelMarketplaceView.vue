@@ -153,11 +153,8 @@
                 </div>
 
                 <div class="flex items-start gap-3">
-                  <span
-                    class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset"
-                    :class="groupBrandIconWrapClass(group)"
-                  >
-                    <ProviderIcon :brand="groupBrandSource(group)" size="22px" />
+                  <span class="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-950">
+                    <ModelIcon :model="groupBrandIconModel(group)" size="28px" />
                   </span>
                   <div class="min-w-0">
                     <h2 class="text-lg font-semibold text-gray-950 dark:text-white">{{ group.name }}</h2>
@@ -252,9 +249,14 @@
             >
               <div class="card-header px-4 py-4">
                 <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ model.display_name }}</h2>
-                    <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ model.id }}</p>
+                  <div class="flex min-w-0 items-start gap-3">
+                    <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-950">
+                      <ModelIcon :model="model.id" size="28px" />
+                    </span>
+                    <div class="min-w-0">
+                      <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ model.display_name }}</h2>
+                      <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ model.id }}</p>
+                    </div>
                   </div>
                   <span class="shrink-0 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
                     {{ model.groups.length }} {{ t('marketplace.availableGroups') }}
@@ -266,63 +268,46 @@
                 <div
                   v-for="entry in model.groups"
                   :key="`${model.id}-${entry.group.id}`"
-                  class="rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-dark-700 dark:bg-dark-950/80"
+                  role="button"
+                  tabindex="0"
+                  class="cursor-pointer rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-left transition hover:border-primary-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/40 dark:hover:bg-dark-900 dark:focus:ring-primary-500/30"
                   data-testid="marketplace-model-group-entry"
+                  @click="openPricingDialog(entry.group, entry.model)"
+                  @keydown.enter.prevent="openPricingDialog(entry.group, entry.model)"
+                  @keydown.space.prevent="openPricingDialog(entry.group, entry.model)"
                 >
-                  <div class="flex items-start justify-between gap-2">
-                    <div class="min-w-0 flex-1">
-                      <h3 class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ entry.group.name }}</h3>
-                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                        <span :class="compactBrandBadgeClass(entry.group)">
-                          <ProviderIcon :brand="groupBrandSource(entry.group)" size="12px" />
-                          {{ groupBrandLabel(entry.group) }}
-                        </span>
-                        <span class="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
-                          {{ formatRateMultiplierLabel(entry.group.rate_multiplier) }}
-                        </span>
-                        <span
-                          v-if="entry.group.data_sharing_enabled"
-                          class="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
-                        >
-                          {{ t('marketplace.dataSharingTag') }}
-                        </span>
-                        <span
-                          v-if="hasOfficialPriceRatio(entry.group.official_price_ratio)"
-                          class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                        >
-                          {{ formatOfficialPriceRatio(entry.group.official_price_ratio) }}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      v-if="hasDisplayPricing(entry.model.pricing)"
-                      type="button"
-                      class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700 transition hover:bg-primary-100 dark:bg-primary-500/15 dark:text-primary-300 dark:hover:bg-primary-500/25"
-                      :title="t('marketplace.viewGroupPricing')"
-                      :aria-label="t('marketplace.viewGroupPricing')"
-                      @click="openPricingDialog(entry.group, entry.model)"
-                    >
-                      <Icon name="eye" size="sm" />
-                    </button>
-                  </div>
-
-                  <div
-                    v-if="entry.group.capacity"
-                    class="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80"
-                    :title="t('marketplace.capacityHint')"
-                  >
-                    <span class="text-xs font-semibold text-gray-500 dark:text-dark-400">
-                      {{ t('marketplace.capacity') }}
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="min-w-0 shrink-0 truncate text-sm font-semibold text-gray-950 dark:text-white">{{ entry.group.name }}</h3>
+                    <span class="shrink-0 whitespace-nowrap rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
+                      {{ formatMultiplier(entry.group.rate_multiplier) }}
                     </span>
-                    <GroupCapacityBadge
-                      layout="horizontal"
-                      :concurrency-used="entry.group.capacity.concurrency_used"
-                      :concurrency-max="entry.group.capacity.concurrency_max"
-                      :sessions-used="entry.group.capacity.sessions_used"
-                      :sessions-max="entry.group.capacity.sessions_max"
-                      :rpm-used="entry.group.capacity.rpm_used"
-                      :rpm-max="entry.group.capacity.rpm_max"
-                    />
+                    <span
+                      v-if="entry.group.data_sharing_enabled"
+                      class="shrink-0 whitespace-nowrap rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
+                    >
+                      {{ t('marketplace.dataSharingTag') }}
+                    </span>
+                    <span
+                      v-if="hasOfficialPriceRatio(entry.group.official_price_ratio)"
+                      class="shrink-0 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                    >
+                      {{ formatOfficialPriceRatio(entry.group.official_price_ratio) }}
+                    </span>
+                    <div
+                      v-if="entry.group.capacity"
+                      class="ml-auto flex shrink-0 items-center rounded-lg border border-gray-200 bg-white/80 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-950/80"
+                      :title="t('marketplace.capacityHint')"
+                    >
+                      <GroupCapacityBadge
+                        layout="horizontal"
+                        :concurrency-used="entry.group.capacity.concurrency_used"
+                        :concurrency-max="entry.group.capacity.concurrency_max"
+                        :sessions-used="entry.group.capacity.sessions_used"
+                        :sessions-max="entry.group.capacity.sessions_max"
+                        :rpm-used="entry.group.capacity.rpm_used"
+                        :rpm-max="entry.group.capacity.rpm_max"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -428,6 +413,7 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import GroupCapacityBadge from '@/components/common/GroupCapacityBadge.vue'
+import ModelIcon from '@/components/common/ModelIcon.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
@@ -435,7 +421,7 @@ import Select from '@/components/common/Select.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { initTheme } from '@/composables/useTheme'
 import { getMarketplaceModels } from '@/api/marketplace'
-import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand } from '@/utils/providerBrand'
+import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand, resolveProviderBrandKey } from '@/utils/providerBrand'
 import type { MarketplaceGroup, MarketplaceModel, MarketplaceModelPricing, MarketplacePricingInterval } from '@/types'
 import { useAppStore, useAuthStore } from '@/stores'
 
@@ -922,13 +908,32 @@ function brandBadgeClass(group: MarketplaceGroup): string {
   return `${base} ${resolveProviderBrand(groupBrandSource(group)).badgeClass}`
 }
 
-function compactBrandBadgeClass(group: MarketplaceGroup): string {
-  const base = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset'
-  return `${base} ${resolveProviderBrand(groupBrandSource(group)).badgeClass}`
-}
+function groupBrandIconModel(group: MarketplaceGroup): string {
+  const brandKey = resolveProviderBrandKey(groupBrandSource(group))
 
-function groupBrandIconWrapClass(group: MarketplaceGroup): string {
-  return resolveProviderBrand(groupBrandSource(group)).iconWrapClass
+  // 大图标使用模型图标体系，避免 ProviderIcon 的品牌色和模型卡片图标不一致。
+  switch (brandKey) {
+    case 'anthropic':
+      return 'claude'
+    case 'openai':
+      return 'gpt'
+    case 'google':
+      return 'gemini'
+    case 'alibaba':
+      return 'qwen'
+    case 'baidu':
+      return 'ernie'
+    case 'iflytek':
+      return 'spark'
+    case 'tencent':
+      return 'hunyuan'
+    case 'zeroone':
+      return 'yi'
+    case 'xiaomi':
+      return 'mimo'
+    default:
+      return groupBrandSource(group)
+  }
 }
 
 function pricingBadgeClass(pricing: MarketplaceModelPricing): string {
