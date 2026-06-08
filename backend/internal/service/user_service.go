@@ -64,13 +64,16 @@ var (
 	avatarQualitySteps = []int{88, 80, 72, 64, 56, 48, 40, 32}
 )
 
-// UserListFilters contains all filter options for listing users
+// UserListFilters 包含用户列表的所有筛选项。
 type UserListFilters struct {
-	Status     string           // User status filter
-	Role       string           // User role filter
-	Search     string           // Search in email, username
-	GroupName  string           // Filter by allowed group name (fuzzy match)
-	Attributes map[int64]string // Custom attribute filters: attributeID -> value
+	Status    string // 用户状态筛选
+	Role      string // 用户角色筛选
+	Search    string // 按邮箱、用户名搜索
+	GroupName string // 按用户授权分组名称模糊筛选
+	// APIKeyGroupID 筛选至少拥有一个未软删除且绑定到该分组的 API Key 的用户。
+	// 0 表示不筛选；该条件直接匹配 api_keys.group_id，不依赖 allowed_groups。
+	APIKeyGroupID int64
+	Attributes    map[int64]string // 自定义属性筛选：attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).

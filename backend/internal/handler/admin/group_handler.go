@@ -150,15 +150,20 @@ func (h *GroupHandler) List(c *gin.Context) {
 	response.Paginated(c, outGroups, total, page, pageSize)
 }
 
-// GetAll handles getting all active groups without pagination
+// GetAll 返回所有启用分组，不分页。
+// 传入 ?include_inactive=true 时同时返回禁用分组，供 API Key 分组筛选器展示
+// 仍绑定在禁用分组上的 Key。
 // GET /api/v1/admin/groups/all
 func (h *GroupHandler) GetAll(c *gin.Context) {
 	platform := c.Query("platform")
+	includeInactive := c.Query("include_inactive") == "true"
 
 	var groups []service.Group
 	var err error
 
-	if platform != "" {
+	if includeInactive {
+		groups, err = h.adminService.GetAllGroupsIncludingInactive(c.Request.Context())
+	} else if platform != "" {
 		groups, err = h.adminService.GetAllGroupsByPlatform(c.Request.Context(), platform)
 	} else {
 		groups, err = h.adminService.GetAllGroups(c.Request.Context())

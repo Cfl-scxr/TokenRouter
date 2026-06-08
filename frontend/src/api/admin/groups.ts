@@ -58,6 +58,16 @@ export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
 }
 
 /**
+ * 获取所有分组（含禁用分组），供 API Key 分组筛选器定位仍绑定在禁用分组上的用户。
+ */
+export async function getAllIncludingInactive(): Promise<AdminGroup[]> {
+  const { data } = await apiClient.get<AdminGroup[]>('/admin/groups/all', {
+    params: { include_inactive: true }
+  })
+  return data
+}
+
+/**
  * Get active groups by platform
  * @param platform - Platform to filter by
  * @returns List of groups for the specified platform
@@ -322,6 +332,7 @@ export const groupsAPI = {
   list,
   getAll,
   getByPlatform,
+  getAllIncludingInactive,
   getById,
   getModelsListCandidates,
   create,
