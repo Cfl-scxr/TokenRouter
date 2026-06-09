@@ -969,7 +969,7 @@ import {
   type DataShareStorageLimit,
   type DataShareStats
 } from '@/api/admin/dataSharing'
-import { dataSharingAPI, type DataShareNotice, type DataShareSession, type DataShareSessionFilterOptions } from '@/api/dataSharing'
+import { dataSharingAPI, type DataShareNotice, type DataShareQualityFilterStatus, type DataShareSession, type DataShareSessionFilterOptions } from '@/api/dataSharing'
 import { useAppStore } from '@/stores/app'
 import type { Column } from '@/components/common/types'
 
@@ -1061,7 +1061,7 @@ const filters = reactive({
   request_path: 'all',
   user_agent: 'all',
   model: 'all',
-  quality_status: 'all' as 'all' | 'complete' | 'partial' | 'invalid',
+  quality_status: 'all' as DataShareQualityFilterStatus,
   user_id: 0,
   user_filter_label: '',
   start_date: '',
@@ -1070,6 +1070,7 @@ const filters = reactive({
 
 const qualityOptions = [
   { value: 'all', label: '全部质量' },
+  { value: 'non_invalid', label: '非无效' },
   { value: 'complete', label: '完整' },
   { value: 'partial', label: '部分完整' },
   { value: 'invalid', label: '无效' }

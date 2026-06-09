@@ -719,8 +719,10 @@ func dataSharePredicates(filters service.DataShareSessionFilters) []predicate.Da
 	if filters.Exportable != nil {
 		preds = append(preds, datasharesession.ExportableEQ(*filters.Exportable))
 	}
-	if filters.QualityStatus != "" {
-		preds = append(preds, datasharesession.QualityStatusEQ(filters.QualityStatus))
+	if statuses := service.DataShareQualityFilterStatuses(filters.QualityStatus); len(statuses) == 1 {
+		preds = append(preds, datasharesession.QualityStatusEQ(statuses[0]))
+	} else if len(statuses) > 1 {
+		preds = append(preds, datasharesession.QualityStatusIn(statuses...))
 	}
 	if filters.StartTime != nil {
 		preds = append(preds, datasharesession.CreatedAtGTE(*filters.StartTime))
@@ -807,8 +809,16 @@ func dataShareStatsWhere(filters service.DataShareSessionFilters) (string, []any
 	if filters.Exportable != nil {
 		add("exportable = $%d", *filters.Exportable)
 	}
-	if filters.QualityStatus != "" {
-		add("quality_status = $%d", filters.QualityStatus)
+	if statuses := service.DataShareQualityFilterStatuses(filters.QualityStatus); len(statuses) == 1 {
+		add("quality_status = $%d", statuses[0])
+	} else if len(statuses) > 1 {
+		// 非无效筛选需要同时命中完整和部分完整两种实际入库状态。
+		placeholders := make([]string, 0, len(statuses))
+		for _, status := range statuses {
+			args = append(args, status)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		clauses = append(clauses, "quality_status IN ("+strings.Join(placeholders, ", ")+")")
 	}
 	if filters.StartTime != nil {
 		add("created_at >= $%d", *filters.StartTime)

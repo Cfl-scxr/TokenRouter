@@ -126,6 +126,71 @@ func TestDataShareSessionRepository_RequestPathFilter(t *testing.T) {
 	require.Len(t, modelItems, 2)
 }
 
+func TestDataShareSessionRepository_NonInvalidQualityFilter(t *testing.T) {
+	repo, _ := newDataShareSessionRepoSQLite(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	for _, item := range []struct {
+		traj    string
+		quality string
+	}{
+		{traj: "traj-complete", quality: service.DataShareQualityComplete},
+		{traj: "traj-partial", quality: service.DataShareQualityPartial},
+		{traj: "traj-invalid", quality: service.DataShareQualityInvalid},
+	} {
+		require.NoError(t, repo.SaveCaptureSnapshot(ctx, &service.DataShareSession{
+			TrajectoryID:       item.traj,
+			SessionID:          "sess-" + item.traj,
+			Dataset:            "tokenrouter-agent",
+			Provider:           service.PlatformOpenAI,
+			Model:              "gpt-5.5",
+			RequestPath:        "/v1/responses",
+			UserAgent:          "codex-cli/1.0",
+			Status:             service.DataShareStatusCompleted,
+			IsFinalSnapshot:    true,
+			SourceRequestCount: 1,
+			Tools:              []map[string]any{},
+			Messages:           []map[string]any{},
+			Usage:              map[string]any{},
+			Meta:               map[string]any{},
+			SessionJSON:        map[string]any{},
+			QualityStatus:      item.quality,
+			QualityErrors:      []string{},
+			StorageBytes:       100,
+			TotalTokens:        10,
+			CreatedAt:          now,
+			EndedAt:            &now,
+			UpdatedAt:          now,
+		}))
+	}
+
+	items, page, err := repo.List(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.DataShareSessionFilters{
+		QualityStatus: service.DataShareQualityFilterNonInvalid,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), page.Total)
+	require.Len(t, items, 2)
+	qualities := make([]string, 0, len(items))
+	for _, item := range items {
+		qualities = append(qualities, item.QualityStatus)
+		require.NotEqual(t, service.DataShareQualityInvalid, item.QualityStatus)
+	}
+	sort.Strings(qualities)
+	require.Equal(t, []string{service.DataShareQualityComplete, service.DataShareQualityPartial}, qualities)
+}
+
+func TestDataShareStatsWhereNonInvalidQualityFilter(t *testing.T) {
+	whereSQL, args := dataShareStatsWhere(service.DataShareSessionFilters{
+		Model:         "gpt-5.5",
+		QualityStatus: service.DataShareQualityFilterNonInvalid,
+	})
+
+	require.Contains(t, whereSQL, "model = $1")
+	require.Contains(t, whereSQL, "quality_status IN ($2, $3)")
+	require.Equal(t, []any{"gpt-5.5", service.DataShareQualityComplete, service.DataShareQualityPartial}, args)
+}
+
 func TestDataShareSessionRepository_RequestPathStats(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &dataShareSessionRepository{sql: db}

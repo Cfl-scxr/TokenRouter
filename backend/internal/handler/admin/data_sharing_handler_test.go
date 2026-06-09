@@ -69,13 +69,14 @@ func (s *adminDataShareSettingRepoStub) Delete(_ context.Context, key string) er
 func TestParseAdminDataShareFiltersIncludesRequestPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodGet, "/admin/data-sharing?request_path=/v1/responses&user_agent=claude-code&model=claude-sonnet-4-5&search=/v1&user_name=alice&api_key_name=主Key&group_name=共享分组", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/admin/data-sharing?request_path=/v1/responses&user_agent=claude-code&model=claude-sonnet-4-5&quality_status=non_invalid&search=/v1&user_name=alice&api_key_name=主Key&group_name=共享分组", nil)
 
 	filters, ok := parseAdminDataShareFilters(c)
 	require.True(t, ok)
 	require.Equal(t, "/v1/responses", filters.RequestPath)
 	require.Equal(t, "claude-code", filters.UserAgent)
 	require.Equal(t, "claude-sonnet-4-5", filters.Model)
+	require.Equal(t, service.DataShareQualityFilterNonInvalid, filters.QualityStatus)
 	require.Equal(t, "/v1", filters.Search)
 	require.Equal(t, "alice", filters.UserName)
 	require.Equal(t, "主Key", filters.APIKeyName)

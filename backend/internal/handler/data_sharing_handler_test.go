@@ -123,13 +123,14 @@ func (r *dataShareHandlerRepoStub) TotalStorageBytes(context.Context) (int64, er
 func TestParseDataShareSessionFiltersIncludesRequestPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodGet, "/data-sharing?request_path=/v1/messages&user_agent=codex-cli&model=gpt-5.5&search=/v1&api_key_name=测试Key&group_name=共享分组", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/data-sharing?request_path=/v1/messages&user_agent=codex-cli&model=gpt-5.5&quality_status=non_invalid&search=/v1&api_key_name=测试Key&group_name=共享分组", nil)
 
 	filters, ok := parseDataShareSessionFilters(c)
 	require.True(t, ok)
 	require.Equal(t, "/v1/messages", filters.RequestPath)
 	require.Equal(t, "codex-cli", filters.UserAgent)
 	require.Equal(t, "gpt-5.5", filters.Model)
+	require.Equal(t, service.DataShareQualityFilterNonInvalid, filters.QualityStatus)
 	require.Equal(t, "/v1", filters.Search)
 	require.Equal(t, "测试Key", filters.APIKeyName)
 	require.Equal(t, "共享分组", filters.GroupName)

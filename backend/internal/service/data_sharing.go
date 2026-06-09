@@ -34,7 +34,9 @@ const (
 	DataShareQualityComplete  = "complete"
 	DataShareQualityPartial   = "partial"
 	DataShareQualityInvalid   = "invalid"
-	defaultDataShareDataset   = "tokenrouter-agent"
+	// DataShareQualityFilterNonInvalid 是列表筛选专用的虚拟质量状态，不会写入数据库。
+	DataShareQualityFilterNonInvalid = "non_invalid"
+	defaultDataShareDataset          = "tokenrouter-agent"
 )
 
 var (
@@ -192,6 +194,18 @@ type DataShareSessionFilters struct {
 	StartTime     *time.Time
 	EndTime       *time.Time
 	Search        string
+}
+
+// DataShareQualityFilterStatuses 将质量筛选值展开为实际入库的质量状态列表。
+func DataShareQualityFilterStatuses(qualityStatus string) []string {
+	switch strings.TrimSpace(qualityStatus) {
+	case "", "all":
+		return nil
+	case DataShareQualityFilterNonInvalid:
+		return []string{DataShareQualityComplete, DataShareQualityPartial}
+	default:
+		return []string{strings.TrimSpace(qualityStatus)}
+	}
 }
 
 // DataShareSessionFilterOptions 描述列表筛选器的全量可选值。

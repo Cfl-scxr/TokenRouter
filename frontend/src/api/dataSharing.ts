@@ -1,6 +1,11 @@
 import { apiClient } from './client'
 import type { PaginatedResponse } from '@/types'
 
+// 数据库存储的三态质量状态，筛选项会额外扩展虚拟值。
+export type DataShareQualityStatus = 'complete' | 'partial' | 'invalid'
+// non_invalid 只用于查询，表示完整和部分完整。
+export type DataShareQualityFilterStatus = DataShareQualityStatus | 'all' | 'non_invalid'
+
 export interface DataShareNotice {
   content: string
   version: number
@@ -28,7 +33,7 @@ export interface DataShareSession {
   payload_encoding?: string
   payload_bytes?: number
   exportable: boolean
-  quality_status: 'complete' | 'partial' | 'invalid'
+  quality_status: DataShareQualityStatus
   quality_errors: string[]
   storage_bytes: number
   input_tokens: number
@@ -60,7 +65,7 @@ export interface DataShareSessionFilters {
   provider?: string
   model?: string
   exportable?: boolean | 'all'
-  quality_status?: 'complete' | 'partial' | 'invalid' | 'all'
+  quality_status?: DataShareQualityFilterStatus
   start_date?: string
   end_date?: string
   sort_by?: string
