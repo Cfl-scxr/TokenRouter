@@ -512,6 +512,7 @@ func (b *DataSharingCaptureBuffer) flushEntry(ctx context.Context, key string, s
 		).Warn("data_sharing.capture_buffer_flush_failed")
 	} else {
 		b.successTotal.Add(1)
+		b.lastError.Store("")
 	}
 	b.finishFlush(key, err)
 	return err

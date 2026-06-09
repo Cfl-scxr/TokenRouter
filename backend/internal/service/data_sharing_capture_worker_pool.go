@@ -433,6 +433,8 @@ func (p *DataSharingCaptureWorkerPool) execute(workerID int, job DataSharingCapt
 			zap.Int64("group_id", job.Metadata.GroupID),
 			zap.Error(err),
 		).Warn("data_sharing.capture_failed")
+	} else {
+		p.clearLastError()
 	}
 }
 
@@ -626,6 +628,13 @@ func (p *DataSharingCaptureWorkerPool) storeLastError(msg string) {
 		return
 	}
 	p.lastError.Store(truncateDataSharingCaptureError(msg))
+}
+
+func (p *DataSharingCaptureWorkerPool) clearLastError() {
+	if p == nil {
+		return
+	}
+	p.lastError.Store("")
 }
 
 func (p *DataSharingCaptureWorkerPool) logDrop(reason string, metadata DataSharingCaptureJobMetadata) {

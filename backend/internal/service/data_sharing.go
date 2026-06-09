@@ -6,6 +6,8 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
@@ -43,6 +46,8 @@ var (
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
 const dataShareSkipRulesCacheTTL = 30 * time.Second
 const dataShareExportTicketTTL = 5 * time.Minute
+const dataSharePersistenceRetryAttempts = 3
+const dataSharePersistenceRetryInitialDelay = 50 * time.Millisecond
 
 // dataShareReplayOverlapMinMessages 限制重放去重至少命中两条连续消息，避免误删真实重复的单条发言。
 const dataShareReplayOverlapMinMessages = 2
@@ -1324,14 +1329,22 @@ func (s *DataSharingService) flushBufferedCaptureSession(ctx context.Context, se
 	if s == nil || s.repo == nil {
 		return nil
 	}
-	return s.repo.SaveCaptureSnapshot(ctx, session, s.captureStorageLimitOption(ctx))
+	return s.withDataSharePersistenceRetry(ctx, "flush", func(attemptCtx context.Context) error {
+		return s.repo.SaveCaptureSnapshot(attemptCtx, session, s.captureStorageLimitOption(attemptCtx))
+	})
 }
 
 func (s *DataSharingService) hydrateBufferedCaptureSession(ctx context.Context, key string) (*DataShareSession, error) {
 	if s == nil || s.repo == nil {
 		return nil, ErrDataShareSessionNotFound
 	}
-	return s.repo.GetCaptureByTrajectoryIDWithPayload(ctx, key)
+	var session *DataShareSession
+	err := s.withDataSharePersistenceRetry(ctx, "hydrate", func(attemptCtx context.Context) error {
+		var err error
+		session, err = s.repo.GetCaptureByTrajectoryIDWithPayload(attemptCtx, key)
+		return err
+	})
+	return session, err
 }
 
 func (s *DataSharingService) scheduleBufferedCaptureFlush(job DataSharingCaptureJob) DataSharingCaptureSubmitMode {
@@ -1349,6 +1362,72 @@ func (s *DataSharingService) submitCaptureSessionToBuffer(ctx context.Context, s
 		return s.flushBufferedCaptureSession(ctx, finalizeBufferedDataShareSession(session))
 	}
 	return s.captureBuffer.Submit(ctx, session)
+}
+
+func (s *DataSharingService) withDataSharePersistenceRetry(ctx context.Context, operation string, fn func(context.Context) error) error {
+	if fn == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	delay := dataSharePersistenceRetryInitialDelay
+	for attempt := 1; attempt <= dataSharePersistenceRetryAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := fn(ctx)
+		if err == nil {
+			return nil
+		}
+		if attempt == dataSharePersistenceRetryAttempts || !isDataShareTransientPersistenceError(err) {
+			return err
+		}
+		// 数据共享采集是后台 fail-open 链路，数据库旧连接被重置时短暂退避后重试完整幂等 upsert。
+		slog.Warn("data sharing: retry transient persistence error",
+			"operation", operation,
+			"attempt", attempt,
+			"error", err,
+		)
+		if sleepErr := sleepWithContext(ctx, delay); sleepErr != nil {
+			return sleepErr
+		}
+		delay *= 2
+	}
+	return nil
+}
+
+func isDataShareTransientPersistenceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, driver.ErrBadConn) ||
+		errors.Is(err, sql.ErrConnDone) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, pattern := range []string{
+		"connection reset by peer",
+		"broken pipe",
+		"driver: bad connection",
+		"bad connection",
+		"server closed the connection unexpectedly",
+		"terminating connection due to administrator command",
+		"connection refused",
+		"use of closed network connection",
+		"unexpected eof",
+	} {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // Stop 停止数据共享采集缓冲池，正常退出时尽量把内存中的增量落库。

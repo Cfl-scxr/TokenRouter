@@ -93,18 +93,25 @@ func resetDataShareCompressionLevel(t *testing.T) {
 }
 
 type dataShareCaptureRepoStub struct {
-	mu       sync.Mutex
-	saves    int
-	sessions []*DataShareSession
-	hydrated map[string]*DataShareSession
-	stats    *DataShareStats
-	err      error
-	seenOpts []DataShareUpsertOptions
+	mu          sync.Mutex
+	saves       int
+	sessions    []*DataShareSession
+	hydrated    map[string]*DataShareSession
+	hydrateErrs []error
+	stats       *DataShareStats
+	err         error
+	saveErrs    []error
+	seenOpts    []DataShareUpsertOptions
 }
 
 func (r *dataShareCaptureRepoStub) GetCaptureByTrajectoryIDWithPayload(_ context.Context, trajectoryID string) (*DataShareSession, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if len(r.hydrateErrs) > 0 {
+		err := r.hydrateErrs[0]
+		r.hydrateErrs = r.hydrateErrs[1:]
+		return nil, err
+	}
 	if r.hydrated == nil || r.hydrated[trajectoryID] == nil {
 		return nil, ErrDataShareSessionNotFound
 	}
@@ -118,6 +125,11 @@ func (r *dataShareCaptureRepoStub) SaveCaptureSnapshot(ctx context.Context, sess
 	r.sessions = append(r.sessions, cloneBufferedDataShareSession(session))
 	if len(opts) > 0 {
 		r.seenOpts = append(r.seenOpts, opts[0])
+	}
+	if len(r.saveErrs) > 0 {
+		err := r.saveErrs[0]
+		r.saveErrs = r.saveErrs[1:]
+		return err
 	}
 	if r.err != nil {
 		return r.err
@@ -282,6 +294,60 @@ func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
 	svc.captureBuffer.FlushAll(context.Background())
 	require.Equal(t, 1, repo.upsertCount())
 	require.Greater(t, findDataShareCaptureDurationPart(t, svc.CaptureDurationStats(), DataShareCaptureDurationPartFlushTotal).SampleCount, 0)
+}
+
+func TestDataSharingService_CaptureFlushRetriesTransientPersistenceError(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{
+		saveErrs: []error{fmt.Errorf("write tcp 172.18.0.4:45932->172.18.0.3:5432: write: connection reset by peer")},
+	}
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+	})
+	t.Cleanup(pool.Stop)
+	svc := NewDataSharingService(repo, &dataShareSettingRepoStub{values: map[string]string{}}, pool)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	mode := svc.CaptureOpenAIRequestAsync(DataShareCaptureInput{
+		APIKey: &APIKey{
+			ID:      34,
+			UserID:  56,
+			GroupID: &gid,
+			Group:   &Group{ID: gid, DataSharingEnabled: true},
+		},
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5",
+		SessionID:       "session-transient-db",
+		RequestID:       "request-transient-db",
+		RequestBody:     []byte(`{"messages":[{"role":"user","content":"hi"}]}`),
+		ResponseBody:    []byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`),
+		InboundEndpoint: "/v1/chat/completions",
+	})
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, mode)
+	require.Eventually(t, func() bool {
+		return svc.CaptureBufferStats().PendingEvents == 1
+	}, time.Second, 10*time.Millisecond)
+
+	svc.captureBuffer.FlushAll(context.Background())
+
+	require.Equal(t, 2, repo.upsertCount())
+	require.Equal(t, uint64(0), svc.CaptureWorkerStats().FailedTotal)
+	require.Empty(t, svc.CaptureWorkerStats().LastError)
+	require.Equal(t, uint64(1), svc.CaptureBufferStats().FlushSuccessTotal)
+	require.Equal(t, uint64(0), svc.CaptureBufferStats().FlushFailedTotal)
+	require.Empty(t, svc.CaptureBufferStats().LastError)
+	require.Equal(t, 0, svc.CaptureBufferStats().PendingEvents)
 }
 
 func TestDataSharingService_CaptureAsyncDisabledGroupDoesNotSubmit(t *testing.T) {
