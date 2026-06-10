@@ -97,6 +97,36 @@ func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 	require.Equal(t, 2, singleCalls)
 }
 
+func TestOpsServiceRecordErrorBatch_SkipsFallbackAfterContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var (
+		batchCalls  int
+		singleCalls int
+	)
+	repo := &opsRepoMock{
+		BatchInsertErrorLogsFn: func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error) {
+			batchCalls++
+			return 0, ctx.Err()
+		},
+		InsertErrorLogFn: func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			singleCalls++
+			return 0, ctx.Err()
+		},
+	}
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	err := svc.RecordErrorBatch(ctx, []*OpsInsertErrorLogInput{
+		{ErrorMessage: "first"},
+		{ErrorMessage: "second"},
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, batchCalls)
+	require.Equal(t, 0, singleCalls)
+}
+
 func strPtr(v string) *string {
 	return &v
 }

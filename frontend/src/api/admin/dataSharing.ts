@@ -74,6 +74,8 @@ export interface DataShareCaptureWorkerStats {
   timeout_total: number
   dropped_total: number
   last_error: string
+  last_error_at?: string | null
+  last_success_at?: string | null
 }
 
 export interface DataShareCaptureBufferStats {
@@ -90,6 +92,8 @@ export interface DataShareCaptureBufferStats {
   dropped_total: number
   last_flush_duration_millis: number
   last_error: string
+  last_error_at?: string | null
+  last_success_at?: string | null
 }
 
 export interface DataShareCaptureDurationBucket {

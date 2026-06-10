@@ -138,7 +138,7 @@
                 <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ formatNumber(captureWorkerCompletedTotal) }}</p>
               </div>
               <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">失败/超时</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">累计失败/超时</p>
                 <p class="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">
                   {{ formatNumber(captureWorkerFailedTotal) }}/{{ formatNumber(captureWorkerTimeoutTotal) }}
                 </p>
@@ -148,8 +148,12 @@
                 <p class="mt-2 text-2xl font-semibold text-red-600 dark:text-red-400">{{ formatNumber(captureWorkerDroppedTotal) }}</p>
               </div>
             </div>
-            <p v-if="stats?.capture_worker?.last_error" class="truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_worker.last_error">
-              {{ stats.capture_worker.last_error }}
+            <p
+              v-if="captureWorkerHistoryNoticeText"
+              :class="['truncate text-xs', captureWorkerLastErrorActive ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400']"
+              :title="captureWorkerLastErrorTitle"
+            >
+              {{ captureWorkerLastErrorPrefix }}：{{ captureWorkerHistoryNoticeText }}
             </p>
           </div>
 
@@ -272,8 +276,12 @@
                 </div>
               </div>
             </div>
-            <p v-if="stats?.capture_buffer?.last_error" class="truncate text-xs text-red-600 dark:text-red-400" :title="stats.capture_buffer.last_error">
-              {{ stats.capture_buffer.last_error }}
+            <p
+              v-if="captureBufferHistoryNoticeText"
+              :class="['truncate text-xs', captureBufferLastErrorActive ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400']"
+              :title="captureBufferLastErrorTitle"
+            >
+              {{ captureBufferLastErrorPrefix }}：{{ captureBufferHistoryNoticeText }}
             </p>
           </div>
 
@@ -306,7 +314,7 @@
                 <p class="mt-2 text-2xl font-semibold text-sky-600 dark:text-sky-400">{{ formatNumber(captureBufferFlushingSessions) }}</p>
               </div>
               <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
-                <p class="text-xs text-gray-500 dark:text-gray-400">成功/失败</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">累计成功/失败</p>
                 <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
                   {{ formatNumber(captureBufferFlushSuccessTotal) }}/{{ formatNumber(captureBufferFlushFailedTotal) }}
                 </p>
@@ -1481,12 +1489,36 @@ const captureWorkerCompletedTotal = computed(() => stats.value?.capture_worker?.
 const captureWorkerFailedTotal = computed(() => stats.value?.capture_worker?.failed_total || 0)
 const captureWorkerTimeoutTotal = computed(() => stats.value?.capture_worker?.timeout_total || 0)
 const captureWorkerDroppedTotal = computed(() => stats.value?.capture_worker?.dropped_total || 0)
+const captureWorkerLastErrorText = computed(() => stats.value?.capture_worker?.last_error?.trim() || '')
+const captureWorkerHistoryNoticeText = computed(() => {
+  if (captureWorkerLastErrorText.value) return captureWorkerLastErrorText.value
+  if (captureWorkerFailedTotal.value > 0 || captureWorkerTimeoutTotal.value > 0) return '暂无最近错误详情，可能来自旧版本清空的历史错误'
+  return ''
+})
+const captureWorkerLastErrorActive = computed(() => statsRecordHasActiveError(
+  stats.value?.capture_worker?.last_error_at,
+  stats.value?.capture_worker?.last_success_at
+))
+const captureWorkerLastErrorRecovered = computed(() => statsRecordHasRecoveredError(
+  stats.value?.capture_worker?.last_error_at,
+  stats.value?.capture_worker?.last_success_at
+))
+const captureWorkerLastErrorPrefix = computed(() => captureLastErrorPrefix(
+  captureWorkerLastErrorActive.value,
+  stats.value?.capture_worker?.last_error_at
+))
+const captureWorkerLastErrorTitle = computed(() => captureLastErrorTitle(
+  captureWorkerHistoryNoticeText.value,
+  stats.value?.capture_worker?.last_error_at,
+  stats.value?.capture_worker?.last_success_at
+))
 const captureWorkerStatusText = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return '未启用'
-  if (worker.dropped_total > 0) return '有丢弃'
-  if (worker.timeout_total > 0) return '有超时'
-  if (worker.failed_total > 0) return '有失败'
+  if (captureWorkerLastErrorActive.value) return '有失败'
+  if (captureWorkerLastErrorRecovered.value) return '已恢复'
+  if (worker.failed_total > 0 || worker.timeout_total > 0) return '历史失败'
+  if (worker.dropped_total > 0) return '曾丢弃'
   return '正常'
 })
 const captureWorkerTaskTimeoutSeconds = computed(() => stats.value?.capture_worker?.task_timeout_seconds || 0)
@@ -1513,8 +1545,8 @@ const captureWorkerSlots = computed(() => {
 const captureWorkerBadgeClass = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return 'badge-gray'
-  if (worker.dropped_total > 0 || worker.timeout_total > 0) return 'badge-danger'
-  if (worker.failed_total > 0) return 'badge-warning'
+  if (captureWorkerLastErrorActive.value) return 'badge-danger'
+  if (worker.dropped_total > 0 || worker.timeout_total > 0 || worker.failed_total > 0) return 'badge-warning'
   return 'badge-success'
 })
 const captureBufferEnabled = computed(() => stats.value?.capture_buffer?.enabled ?? false)
@@ -1529,6 +1561,29 @@ const captureBufferFlushSuccessTotal = computed(() => stats.value?.capture_buffe
 const captureBufferFlushFailedTotal = computed(() => stats.value?.capture_buffer?.flush_failed_total || 0)
 const captureBufferDroppedTotal = computed(() => stats.value?.capture_buffer?.dropped_total || 0)
 const captureBufferLastFlushDurationMillis = computed(() => stats.value?.capture_buffer?.last_flush_duration_millis || 0)
+const captureBufferLastErrorText = computed(() => stats.value?.capture_buffer?.last_error?.trim() || '')
+const captureBufferHistoryNoticeText = computed(() => {
+  if (captureBufferLastErrorText.value) return captureBufferLastErrorText.value
+  if (captureBufferFlushFailedTotal.value > 0) return '暂无最近错误详情，可能来自旧版本清空的历史错误'
+  return ''
+})
+const captureBufferLastErrorActive = computed(() => statsRecordHasActiveError(
+  stats.value?.capture_buffer?.last_error_at,
+  stats.value?.capture_buffer?.last_success_at
+))
+const captureBufferLastErrorRecovered = computed(() => statsRecordHasRecoveredError(
+  stats.value?.capture_buffer?.last_error_at,
+  stats.value?.capture_buffer?.last_success_at
+))
+const captureBufferLastErrorPrefix = computed(() => captureLastErrorPrefix(
+  captureBufferLastErrorActive.value,
+  stats.value?.capture_buffer?.last_error_at
+))
+const captureBufferLastErrorTitle = computed(() => captureLastErrorTitle(
+  captureBufferHistoryNoticeText.value,
+  stats.value?.capture_buffer?.last_error_at,
+  stats.value?.capture_buffer?.last_success_at
+))
 const captureDurationWindowSize = computed(() => stats.value?.capture_durations?.window_size || captureDurationWindowDefault)
 const captureDurationSampleCount = computed(() => stats.value?.capture_durations?.sample_count || 0)
 const captureDurationParts = computed(() => stats.value?.capture_durations?.parts || [])
@@ -1545,16 +1600,18 @@ const captureBufferStatusText = computed(() => {
   const buffer = stats.value?.capture_buffer
   if (!buffer) return '未启用'
   if (!buffer.enabled) return '已关闭'
-  if (buffer.dropped_total > 0) return '有丢弃'
-  if (buffer.flush_failed_total > 0) return '有失败'
+  if (captureBufferLastErrorActive.value) return '有失败'
   if (buffer.flushing_sessions > 0) return 'Flush 中'
+  if (captureBufferLastErrorRecovered.value) return '已恢复'
+  if (buffer.flush_failed_total > 0) return '历史失败'
+  if (buffer.dropped_total > 0) return '曾丢弃'
   return '正常'
 })
 const captureBufferBadgeClass = computed(() => {
   const buffer = stats.value?.capture_buffer
   if (!buffer || !buffer.enabled) return 'badge-gray'
-  if (buffer.dropped_total > 0) return 'badge-danger'
-  if (buffer.flush_failed_total > 0) return 'badge-warning'
+  if (captureBufferLastErrorActive.value) return 'badge-danger'
+  if (buffer.dropped_total > 0 || buffer.flush_failed_total > 0) return 'badge-warning'
   return 'badge-success'
 })
 const skipRulesSummary = computed(() => {
@@ -2322,6 +2379,43 @@ function displayGroup(row: DataShareSession) {
 function formatDate(value?: string | null) {
   if (!value) return '-'
   return new Date(value).toLocaleString()
+}
+
+function parseDateMillis(value?: string | null) {
+  if (!value) return 0
+  const millis = new Date(value).getTime()
+  return Number.isFinite(millis) ? millis : 0
+}
+
+function statsRecordHasActiveError(errorAt?: string | null, successAt?: string | null) {
+  const errorMillis = parseDateMillis(errorAt)
+  if (!errorMillis) return false
+  const successMillis = parseDateMillis(successAt)
+  return !successMillis || errorMillis > successMillis
+}
+
+function statsRecordHasRecoveredError(errorAt?: string | null, successAt?: string | null) {
+  const errorMillis = parseDateMillis(errorAt)
+  const successMillis = parseDateMillis(successAt)
+  return Boolean(errorMillis && successMillis && successMillis >= errorMillis)
+}
+
+function formatOptionalDateSuffix(value?: string | null) {
+  return value ? `（${formatDate(value)}）` : ''
+}
+
+function captureLastErrorPrefix(active: boolean, errorAt?: string | null) {
+  if (!errorAt) return '历史失败'
+  return active
+    ? `最近失败${formatOptionalDateSuffix(errorAt)}`
+    : `最近失败已恢复${formatOptionalDateSuffix(errorAt)}`
+}
+
+function captureLastErrorTitle(errorText: string, errorAt?: string | null, successAt?: string | null) {
+  const parts = [errorText]
+  if (errorAt) parts.push(`最近失败：${formatDate(errorAt)}`)
+  if (successAt) parts.push(`最近成功：${formatDate(successAt)}`)
+  return parts.filter(Boolean).join('\n')
 }
 
 function formatNumber(value?: number | null) {

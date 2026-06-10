@@ -175,25 +175,38 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	if len(prepared) == 1 {
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
-			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
+			logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch single insert failed: %v", err)
 		}
 		return err
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
-		log.Printf("[Ops] RecordErrorBatch failed, fallback to single inserts: %v", err)
+		logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch failed, fallback to single inserts: %v", err)
+		if isContextDoneError(ctx, err) {
+			return err
+		}
 		var firstErr error
 		for _, entry := range prepared {
 			if _, insertErr := s.opsRepo.InsertErrorLog(ctx, entry); insertErr != nil {
-				log.Printf("[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
+				logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
 				if firstErr == nil {
 					firstErr = insertErr
+				}
+				if isContextDoneError(ctx, insertErr) {
+					break
 				}
 			}
 		}
 		return firstErr
 	}
 	return nil
+}
+
+func logOpsErrorBatchWriteFailure(ctx context.Context, format string, err error) {
+	if isContextDoneError(ctx, err) {
+		return
+	}
+	log.Printf(format, err)
 }
 
 func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput) (*OpsInsertErrorLogInput, bool, error) {

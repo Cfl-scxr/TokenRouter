@@ -107,6 +107,8 @@ type DataSharingCaptureWorkerPoolStats struct {
 	TimeoutTotal       uint64                          `json:"timeout_total"`
 	DroppedTotal       uint64                          `json:"dropped_total"`
 	LastError          string                          `json:"last_error"`
+	LastErrorAt        *time.Time                      `json:"last_error_at,omitempty"`
+	LastSuccessAt      *time.Time                      `json:"last_success_at,omitempty"`
 }
 
 // DataSharingCaptureWorkerState 描述单个 worker 当前正在执行的任务类型。
@@ -143,6 +145,8 @@ type DataSharingCaptureWorkerPool struct {
 	droppedTotal     atomic.Uint64
 	lastDropLogNanos atomic.Int64
 	lastError        atomic.Value
+	lastErrorAt      atomic.Value
+	lastSuccessAt    atomic.Value
 }
 
 // SetDurationRecorder 绑定运行态耗时统计器。
@@ -317,6 +321,8 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 	stopping := p.stopping
 	p.mu.Unlock()
 	lastError, _ := p.lastError.Load().(string)
+	lastErrorAt := dataShareAtomicTimeValue(&p.lastErrorAt)
+	lastSuccessAt := dataShareAtomicTimeValue(&p.lastSuccessAt)
 	runningWorkers := p.activeTotal.Load()
 	availableWorkers := int64(workerCount) - runningWorkers
 	if availableWorkers < 0 || stopping {
@@ -339,6 +345,8 @@ func (p *DataSharingCaptureWorkerPool) Stats() DataSharingCaptureWorkerPoolStats
 		TimeoutTotal:       p.timeoutTotal.Load(),
 		DroppedTotal:       p.droppedTotal.Load(),
 		LastError:          lastError,
+		LastErrorAt:        lastErrorAt,
+		LastSuccessAt:      lastSuccessAt,
 	}
 }
 
@@ -434,7 +442,7 @@ func (p *DataSharingCaptureWorkerPool) execute(workerID int, job DataSharingCapt
 			zap.Error(err),
 		).Warn("data_sharing.capture_failed")
 	} else {
-		p.clearLastError()
+		p.recordSuccess()
 	}
 }
 
@@ -628,13 +636,14 @@ func (p *DataSharingCaptureWorkerPool) storeLastError(msg string) {
 		return
 	}
 	p.lastError.Store(truncateDataSharingCaptureError(msg))
+	p.lastErrorAt.Store(time.Now())
 }
 
-func (p *DataSharingCaptureWorkerPool) clearLastError() {
+func (p *DataSharingCaptureWorkerPool) recordSuccess() {
 	if p == nil {
 		return
 	}
-	p.lastError.Store("")
+	p.lastSuccessAt.Store(time.Now())
 }
 
 func (p *DataSharingCaptureWorkerPool) logDrop(reason string, metadata DataSharingCaptureJobMetadata) {

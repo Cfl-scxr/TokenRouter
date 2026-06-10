@@ -1251,6 +1251,131 @@ func TestDataSharingCaptureBuffer_RetainsSessionWhenFlushFails(t *testing.T) {
 	require.Contains(t, stats.LastError, "boom")
 }
 
+func TestDataSharingCaptureBuffer_RecordsLastErrorAtWhenHydrateFails(t *testing.T) {
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Hydrate: func(context.Context, string) (*DataShareSession, error) {
+			return nil, errors.New("hydrate timeout")
+		},
+		Flush: func(context.Context, *DataShareSession) error {
+			return nil
+		},
+	})
+
+	err := buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-hydrate-failed",
+		SessionID:          "sess-hydrate-failed",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+	})
+	require.ErrorContains(t, err, "hydrate timeout")
+
+	stats := buffer.Stats()
+	require.Equal(t, uint64(1), stats.FlushFailedTotal)
+	require.Contains(t, stats.LastError, "hydrate timeout")
+	require.NotNil(t, stats.LastErrorAt)
+	require.Nil(t, stats.LastSuccessAt)
+}
+
+func TestDataSharingCaptureBuffer_RecordsLastErrorAtWhenFlushQueueFull(t *testing.T) {
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		ScheduleFlush: func(DataSharingCaptureJob) DataSharingCaptureSubmitMode {
+			return DataSharingCaptureSubmitModeDropped
+		},
+		Flush: func(context.Context, *DataShareSession) error {
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 1,
+	})
+
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-flush-queue-full",
+		SessionID:          "sess-flush-queue-full",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+	}))
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-after-flush-queue-full",
+		SessionID:          "sess-after-flush-queue-full",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "again"}},
+	}))
+
+	stats := buffer.Stats()
+	require.Equal(t, uint64(1), stats.FlushFailedTotal)
+	require.Contains(t, stats.LastError, "flush queue is full")
+	require.NotNil(t, stats.LastErrorAt)
+	require.Nil(t, stats.LastSuccessAt)
+}
+
+func TestDataSharingCaptureBuffer_KeepsLastErrorAfterRecoveredFlush(t *testing.T) {
+	var flushes int
+	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
+		Flush: func(context.Context, *DataShareSession) error {
+			flushes++
+			if flushes == 1 {
+				return errors.New("db reset")
+			}
+			return nil
+		},
+	})
+	buffer.UpdateRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      16,
+		BufferMaxPendingEvents: 16,
+	})
+
+	require.NoError(t, buffer.Submit(context.Background(), &DataShareSession{
+		TrajectoryID:       "traj-recovered",
+		SessionID:          "sess-recovered",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5",
+		SourceRequestCount: 1,
+		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+		Meta:               map[string]any{"request_id": "req-recovered"},
+	}))
+
+	buffer.FlushAll(context.Background())
+	failedStats := buffer.Stats()
+	require.Equal(t, uint64(1), failedStats.FlushFailedTotal)
+	require.Contains(t, failedStats.LastError, "db reset")
+	require.NotNil(t, failedStats.LastErrorAt)
+	require.Nil(t, failedStats.LastSuccessAt)
+
+	buffer.FlushAll(context.Background())
+	recoveredStats := buffer.Stats()
+	require.Equal(t, uint64(1), recoveredStats.FlushFailedTotal)
+	require.Equal(t, uint64(1), recoveredStats.FlushSuccessTotal)
+	require.Contains(t, recoveredStats.LastError, "db reset")
+	require.NotNil(t, recoveredStats.LastErrorAt)
+	require.NotNil(t, recoveredStats.LastSuccessAt)
+	require.False(t, recoveredStats.LastSuccessAt.Before(*recoveredStats.LastErrorAt))
+	require.Equal(t, 0, recoveredStats.BufferedSessions)
+}
+
 func TestDataSharingCaptureBuffer_HydratesColdSessionBeforeMerge(t *testing.T) {
 	systemPrompt := "你是编码助手"
 	var got *DataShareSession

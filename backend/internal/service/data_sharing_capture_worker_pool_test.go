@@ -60,6 +60,40 @@ func TestDataSharingCaptureWorkerPool_TimeoutAndFailureStats(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func TestDataSharingCaptureWorkerPool_KeepsLastErrorAfterRecoveredJob(t *testing.T) {
+	var calls atomic.Int64
+	pool := NewDataSharingCaptureWorkerPoolWithOptions(DataSharingCaptureWorkerPoolOptions{
+		WorkerCount: 1,
+		QueueSize:   4,
+		TaskTimeout: time.Second,
+		Handler: func(ctx context.Context, job DataSharingCaptureJob) error {
+			if calls.Add(1) == 1 {
+				return errors.New("db reset")
+			}
+			return nil
+		},
+	})
+	t.Cleanup(pool.Stop)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{}))
+	require.Eventually(t, func() bool {
+		stats := pool.Stats()
+		return stats.FailedTotal == 1 && stats.LastErrorAt != nil && stats.LastSuccessAt == nil
+	}, time.Second, 10*time.Millisecond)
+
+	require.Equal(t, DataSharingCaptureSubmitModeEnqueued, pool.Submit(DataSharingCaptureJob{}))
+	require.Eventually(t, func() bool {
+		stats := pool.Stats()
+		return stats.CompletedTotal == 2 && stats.FailedTotal == 1 && stats.LastSuccessAt != nil
+	}, time.Second, 10*time.Millisecond)
+
+	stats := pool.Stats()
+	require.Contains(t, stats.LastError, "db reset")
+	require.NotNil(t, stats.LastErrorAt)
+	require.NotNil(t, stats.LastSuccessAt)
+	require.False(t, stats.LastSuccessAt.Before(*stats.LastErrorAt))
+}
+
 func TestDataSharingCaptureWorkerPool_QueueFullDropsWithoutSyncFallback(t *testing.T) {
 	var overflowExecuted atomic.Bool
 	block := make(chan struct{})

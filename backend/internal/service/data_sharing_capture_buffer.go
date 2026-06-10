@@ -30,19 +30,21 @@ type DataSharingCaptureBufferOptions struct {
 
 // DataSharingCaptureBufferStats 是管理端可见的采集缓冲池运行时统计。
 type DataSharingCaptureBufferStats struct {
-	Enabled                 bool   `json:"enabled"`
-	IdleFlushSeconds        int    `json:"idle_flush_seconds"`
-	MaxSessions             int    `json:"max_sessions"`
-	MaxPendingEvents        int    `json:"max_pending_events"`
-	BufferedSessions        int    `json:"buffered_sessions"`
-	PendingEvents           int    `json:"pending_events"`
-	FlushingSessions        int64  `json:"flushing_sessions"`
-	SubmittedTotal          uint64 `json:"submitted_total"`
-	FlushSuccessTotal       uint64 `json:"flush_success_total"`
-	FlushFailedTotal        uint64 `json:"flush_failed_total"`
-	DroppedTotal            uint64 `json:"dropped_total"`
-	LastFlushDurationMillis int64  `json:"last_flush_duration_millis"`
-	LastError               string `json:"last_error"`
+	Enabled                 bool       `json:"enabled"`
+	IdleFlushSeconds        int        `json:"idle_flush_seconds"`
+	MaxSessions             int        `json:"max_sessions"`
+	MaxPendingEvents        int        `json:"max_pending_events"`
+	BufferedSessions        int        `json:"buffered_sessions"`
+	PendingEvents           int        `json:"pending_events"`
+	FlushingSessions        int64      `json:"flushing_sessions"`
+	SubmittedTotal          uint64     `json:"submitted_total"`
+	FlushSuccessTotal       uint64     `json:"flush_success_total"`
+	FlushFailedTotal        uint64     `json:"flush_failed_total"`
+	DroppedTotal            uint64     `json:"dropped_total"`
+	LastFlushDurationMillis int64      `json:"last_flush_duration_millis"`
+	LastError               string     `json:"last_error"`
+	LastErrorAt             *time.Time `json:"last_error_at,omitempty"`
+	LastSuccessAt           *time.Time `json:"last_success_at,omitempty"`
 }
 
 // DataSharingCaptureBuffer 按 trajectory_id 聚合采集增量，降低热点 session 的重复落库成本。
@@ -68,6 +70,8 @@ type DataSharingCaptureBuffer struct {
 	droppedTotal     atomic.Uint64
 	lastDurationMS   atomic.Int64
 	lastError        atomic.Value
+	lastErrorAt      atomic.Value
+	lastSuccessAt    atomic.Value
 }
 
 type dataSharingCaptureBufferEntry struct {
@@ -323,6 +327,8 @@ func (b *DataSharingCaptureBuffer) Stats() DataSharingCaptureBufferStats {
 	b.mu.Unlock()
 	lastError, _ := b.lastError.Load().(string)
 	stats.LastError = lastError
+	stats.LastErrorAt = dataShareAtomicTimeValue(&b.lastErrorAt)
+	stats.LastSuccessAt = dataShareAtomicTimeValue(&b.lastSuccessAt)
 	return stats
 }
 
@@ -346,8 +352,7 @@ func (b *DataSharingCaptureBuffer) hydrateEntry(ctx context.Context, entry *data
 	}
 	if err != nil && !errors.Is(err, ErrDataShareSessionNotFound) {
 		entry.hydrateErr = err
-		b.failedTotal.Add(1)
-		b.lastError.Store(truncateDataSharingCaptureError(err.Error()))
+		b.recordFailure(err.Error())
 		logger.L().With(
 			zap.String("component", "service.data_sharing_capture_buffer"),
 			zap.String("trajectory_id", key),
@@ -455,9 +460,9 @@ func (b *DataSharingCaptureBuffer) startFlushLocked(entry *dataSharingCaptureBuf
 			return
 		}
 		b.flushWG.Done()
-		b.failedTotal.Add(1)
-		b.lastError.Store("data sharing capture flush queue is full")
-		b.finishFlushLocked(key, errors.New("data sharing capture flush queue is full"))
+		err := errors.New("data sharing capture flush queue is full")
+		b.recordFailure(err.Error())
+		b.finishFlushLocked(key, err)
 		return
 	}
 	b.flushWG.Add(1)
@@ -503,8 +508,7 @@ func (b *DataSharingCaptureBuffer) flushEntry(ctx context.Context, key string, s
 	b.lastDurationMS.Store(time.Since(start).Milliseconds())
 	b.recordDuration(DataShareCaptureDurationPartFlushTotal, time.Since(start))
 	if err != nil {
-		b.failedTotal.Add(1)
-		b.lastError.Store(truncateDataSharingCaptureError(err.Error()))
+		b.recordFailure(err.Error())
 		logger.L().With(
 			zap.String("component", "service.data_sharing_capture_buffer"),
 			zap.String("trajectory_id", session.TrajectoryID),
@@ -512,10 +516,33 @@ func (b *DataSharingCaptureBuffer) flushEntry(ctx context.Context, key string, s
 		).Warn("data_sharing.capture_buffer_flush_failed")
 	} else {
 		b.successTotal.Add(1)
-		b.lastError.Store("")
+		b.lastSuccessAt.Store(time.Now())
 	}
 	b.finishFlush(key, err)
 	return err
+}
+
+// recordFailure 记录一次缓冲池失败，并同步更新管理端展示的最近失败时间。
+func (b *DataSharingCaptureBuffer) recordFailure(msg string) {
+	if b == nil {
+		return
+	}
+	b.failedTotal.Add(1)
+	b.lastError.Store(truncateDataSharingCaptureError(msg))
+	b.lastErrorAt.Store(time.Now())
+}
+
+func dataShareAtomicTimeValue(value *atomic.Value) *time.Time {
+	if value == nil {
+		return nil
+	}
+	t, ok := value.Load().(time.Time)
+	if !ok || t.IsZero() {
+		return nil
+	}
+	// 返回副本，避免调用方拿到可修改的内部状态引用。
+	out := t
+	return &out
 }
 
 func (b *DataSharingCaptureBuffer) recordDuration(part DataShareCaptureDurationPartKey, duration time.Duration) {
