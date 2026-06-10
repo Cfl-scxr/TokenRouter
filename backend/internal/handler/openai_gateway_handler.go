@@ -1994,6 +1994,9 @@ func (h *OpenAIGatewayHandler) ensureOpenAIForwardErrorResponse(c *gin.Context, 
 	if c == nil || c.Writer == nil {
 		return false
 	}
+	if service.IsResponseCommitted(c) {
+		return false
+	}
 	errType := "upstream_error"
 	message := "Upstream request failed"
 	status := http.StatusBadGateway
