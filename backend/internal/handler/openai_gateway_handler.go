@@ -47,6 +47,32 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+type openAIModelBodyReplaceFunc func([]byte, string) []byte
+
+// openAIModelMappedBody 在存在渠道映射时返回替换模型后的请求体。
+func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
+	if !mapped || replace == nil {
+		return body
+	}
+	return replace(body, mappedModel)
+}
+
+// newOpenAIModelMappedBodyCache 缓存同一入口请求体的模型替换结果，避免账号切换重试时重复解析 JSON。
+func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFunc) func(bool, string) []byte {
+	replacedBodies := make(map[string][]byte)
+	return func(mapped bool, mappedModel string) []byte {
+		if !mapped {
+			return body
+		}
+		if cachedBody, ok := replacedBodies[mappedModel]; ok {
+			return cachedBody
+		}
+		replacedBody := openAIModelMappedBody(body, true, mappedModel, replace)
+		replacedBodies[mappedModel] = replacedBody
+		return replacedBody
+	}
+}
+
 // handleGroupModelUnsupportedError 将本地分组模型限制转换为明确的客户端侧错误。
 func handleGroupModelUnsupportedError(c *gin.Context, err error, streamStarted bool, writeError func(int, string, string, bool)) bool {
 	var modelErr *service.GroupModelUnsupportedError
@@ -248,6 +274,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
@@ -369,11 +396,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -691,6 +713,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -805,10 +828,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMappingMsg.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
-		}
+		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
