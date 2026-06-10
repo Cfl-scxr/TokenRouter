@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/util/logredact"
@@ -454,9 +455,20 @@ func (c *IdempotencyCoordinator) marshalStoredResponse(data any) (string, error)
 	}
 	redacted := logredact.RedactText(string(raw))
 	if c.cfg.MaxStoredResponseLen > 0 && len(redacted) > c.cfg.MaxStoredResponseLen {
-		redacted = redacted[:c.cfg.MaxStoredResponseLen] + "...(truncated)"
+		redacted = truncateUTF8(redacted, c.cfg.MaxStoredResponseLen) + "...(truncated)"
 	}
 	return redacted, nil
+}
+
+// truncateUTF8 按字节上限截断字符串，并回退到合法 UTF-8 边界。
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.ValidString(s[:maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }
 
 func (c *IdempotencyCoordinator) decodeStoredResponse(stored *string) (any, error) {
