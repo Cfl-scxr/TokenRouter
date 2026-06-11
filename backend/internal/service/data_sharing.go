@@ -2213,6 +2213,7 @@ func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map
 type dataShareResponsesCaptureState struct {
 	StableIDs        map[string]struct{} `json:"stable_ids,omitempty"`
 	ReplayIdentities []string            `json:"replay_identities,omitempty"`
+	ResponseKeys     map[string]struct{} `json:"response_keys,omitempty"`
 	LastTurn         int                 `json:"last_turn,omitempty"`
 	OrderUncertain   bool                `json:"order_uncertain,omitempty"`
 }
@@ -2242,11 +2243,12 @@ func (s *DataSharingService) buildOpenAIResponsesIncrementalSession(existing *Da
 	}
 	responseStart := len(messages)
 	messages = appendAssistantMessageFromResponse(messages, input.ResponseBody)
+	messages = dataShareResponsesFilterKnownResponseMessages(state, requestItems, messages, responseStart)
 	if input.CaptureIncomplete && len(messages) == responseStart {
 		out.Meta["capture_incomplete"] = true
 	}
 	out.Messages = normalizeDataShareMessages(messages)
-	out.captureState = updateDataShareResponsesCaptureState(state, requestItems[replayLen:], messages[responseStart:], input.Turn)
+	out.captureState = updateDataShareResponsesCaptureState(state, requestItems, replayLen, messages[responseStart:], input.Turn)
 	out.Meta = withDataShareInternalCaptureState(out.Meta, out.captureState)
 	return out
 }
@@ -2341,8 +2343,9 @@ func dataShareResponsesReplayPrefixLen(state *dataShareResponsesCaptureState, in
 		}
 		break
 	}
-	// 如果旧前缀只匹配了一部分且没有稳定 id 锚点，说明客户端可能分叉或乱序；保持保守追加。
-	if replay > 0 && replay < len(state.ReplayIdentities) && !dataShareResponsesPrefixHasStableAnchor(incoming[:replay]) {
+	// 如果当前请求只匹配了一部分且没有稳定 id 锚点，说明客户端可能分叉；保持保守追加。
+	// 完整匹配当前请求时，通常是旧 turn 晚到或纯历史回放，仍应跳过已见前缀。
+	if replay > 0 && replay < len(incoming) && !dataShareResponsesPrefixHasStableAnchor(incoming[:replay]) {
 		return 0, true
 	}
 	return replay, false
@@ -2357,29 +2360,105 @@ func dataShareResponsesPrefixHasStableAnchor(items []dataShareResponsesInputItem
 	return false
 }
 
-func updateDataShareResponsesCaptureState(state *dataShareResponsesCaptureState, newRequestItems []dataShareResponsesInputItem, responseMessages []map[string]any, turn int) *dataShareResponsesCaptureState {
+func dataShareResponsesFilterKnownResponseMessages(state *dataShareResponsesCaptureState, requestItems []dataShareResponsesInputItem, messages []map[string]any, responseStart int) []map[string]any {
+	if state == nil || len(state.ResponseKeys) == 0 || responseStart >= len(messages) {
+		return messages
+	}
+	out := cloneBufferedDataShareMaps(messages[:responseStart])
+	context := dataShareResponsesInputIdentityPrefix(requestItems, len(requestItems))
+	for _, msg := range messages[responseStart:] {
+		identity := dataShareMessageIdentity(msg)
+		if identity != "" {
+			key := dataShareResponsesScopedResponseKey(context, identity)
+			if _, ok := state.ResponseKeys[key]; ok {
+				continue
+			}
+		}
+		out = append(out, cloneDataShareMap(msg))
+		context = append(context, identity)
+	}
+	return out
+}
+
+func updateDataShareResponsesCaptureState(state *dataShareResponsesCaptureState, requestItems []dataShareResponsesInputItem, replayLen int, responseMessages []map[string]any, turn int) *dataShareResponsesCaptureState {
 	if state == nil {
 		state = &dataShareResponsesCaptureState{}
 	}
 	if state.StableIDs == nil {
 		state.StableIDs = map[string]struct{}{}
 	}
-	for _, item := range newRequestItems {
-		if item.StableID != "" {
-			state.StableIDs[item.StableID] = struct{}{}
+	if state.ResponseKeys == nil {
+		state.ResponseKeys = map[string]struct{}{}
+	}
+	if replayLen < 0 {
+		replayLen = 0
+	}
+	if replayLen > len(requestItems) {
+		replayLen = len(requestItems)
+	}
+	context := make([]string, 0, len(requestItems)+len(responseMessages))
+	for index, item := range requestItems {
+		if dataShareResponsesInputItemLooksAssistantOutput(item) {
+			// 只记录“前文 + assistant 输出”的作用域 key，避免两轮合法相同回答被全局文本去重误删。
+			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, item.Identity)] = struct{}{}
 		}
-		state.ReplayIdentities = append(state.ReplayIdentities, item.Identity)
+		if index >= replayLen {
+			if item.StableID != "" {
+				state.StableIDs[item.StableID] = struct{}{}
+			}
+			state.ReplayIdentities = append(state.ReplayIdentities, item.Identity)
+		}
+		context = append(context, item.Identity)
 	}
 	for _, msg := range responseMessages {
 		for _, stableID := range dataShareResponsesStableIDsFromMessage(msg) {
 			state.StableIDs[stableID] = struct{}{}
 		}
-		state.ReplayIdentities = append(state.ReplayIdentities, dataShareMessageIdentity(msg))
+		identity := dataShareMessageIdentity(msg)
+		if identity != "" {
+			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, identity)] = struct{}{}
+		}
+		state.ReplayIdentities = append(state.ReplayIdentities, identity)
+		context = append(context, identity)
 	}
 	if turn > state.LastTurn {
 		state.LastTurn = turn
 	}
 	return state
+}
+
+func dataShareResponsesInputIdentityPrefix(items []dataShareResponsesInputItem, end int) []string {
+	if end < 0 {
+		end = 0
+	}
+	if end > len(items) {
+		end = len(items)
+	}
+	out := make([]string, 0, end)
+	for _, item := range items[:end] {
+		out = append(out, item.Identity)
+	}
+	return out
+}
+
+func dataShareResponsesScopedResponseKey(context []string, responseIdentity string) string {
+	if responseIdentity == "" {
+		return ""
+	}
+	hash := sha256.New()
+	for _, identity := range context {
+		hash.Write([]byte(identity))
+		hash.Write([]byte{0})
+	}
+	hash.Write([]byte{1})
+	hash.Write([]byte(responseIdentity))
+	sum := hash.Sum(nil)
+	return hex.EncodeToString(sum[:16])
+}
+
+func dataShareResponsesInputItemLooksAssistantOutput(item dataShareResponsesInputItem) bool {
+	role := strings.TrimSpace(stringFromAny(item.Message["role"]))
+	return role == "assistant"
 }
 
 func dataShareResponsesStableIDsFromMessage(msg map[string]any) []string {
@@ -2435,12 +2514,18 @@ func dataShareResponsesCaptureStateFromMap(meta map[string]any) *dataShareRespon
 	state := &dataShareResponsesCaptureState{
 		StableIDs:        map[string]struct{}{},
 		ReplayIdentities: stringsFromAny(meta["replay_identities"]),
+		ResponseKeys:     map[string]struct{}{},
 		LastTurn:         intFromAny(meta["last_turn"]),
 		OrderUncertain:   boolFromAny(meta["order_uncertain"]),
 	}
 	for _, id := range stringsFromAny(meta["stable_ids"]) {
 		if id != "" {
 			state.StableIDs[id] = struct{}{}
+		}
+	}
+	for _, key := range stringsFromAny(meta["response_keys"]) {
+		if key != "" {
+			state.ResponseKeys[key] = struct{}{}
 		}
 	}
 	return state
@@ -2453,11 +2538,15 @@ func cloneDataShareResponsesCaptureState(state *dataShareResponsesCaptureState) 
 	out := &dataShareResponsesCaptureState{
 		StableIDs:        map[string]struct{}{},
 		ReplayIdentities: append([]string(nil), state.ReplayIdentities...),
+		ResponseKeys:     map[string]struct{}{},
 		LastTurn:         state.LastTurn,
 		OrderUncertain:   state.OrderUncertain,
 	}
 	for id := range state.StableIDs {
 		out.StableIDs[id] = struct{}{}
+	}
+	for key := range state.ResponseKeys {
+		out.ResponseKeys[key] = struct{}{}
 	}
 	return out
 }
@@ -2473,9 +2562,15 @@ func withDataShareInternalCaptureState(meta map[string]any, state *dataShareResp
 		stableIDs = append(stableIDs, id)
 	}
 	sort.Strings(stableIDs)
+	responseKeys := make([]string, 0, len(state.ResponseKeys))
+	for key := range state.ResponseKeys {
+		responseKeys = append(responseKeys, key)
+	}
+	sort.Strings(responseKeys)
 	out[dataShareInternalCaptureMetaKey] = map[string]any{
 		"stable_ids":        stableIDs,
 		"replay_identities": append([]string(nil), state.ReplayIdentities...),
+		"response_keys":     responseKeys,
 		"last_turn":         state.LastTurn,
 		"order_uncertain":   state.OrderUncertain,
 		"schema":            "openai_responses_v1",

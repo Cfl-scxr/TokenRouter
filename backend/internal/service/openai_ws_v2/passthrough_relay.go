@@ -33,6 +33,7 @@ type RelayResult struct {
 	Usage                   Usage
 	RequestID               string
 	TerminalEventType       string
+	TerminalResponseBody    []byte
 	FirstTokenMs            *int
 	Duration                time.Duration
 	ClientToUpstreamFrames  int64
@@ -41,12 +42,13 @@ type RelayResult struct {
 }
 
 type RelayTurnResult struct {
-	RequestModel      string
-	Usage             Usage
-	RequestID         string
-	TerminalEventType string
-	Duration          time.Duration
-	FirstTokenMs      *int
+	RequestModel         string
+	Usage                Usage
+	RequestID            string
+	TerminalEventType    string
+	TerminalResponseBody []byte
+	Duration             time.Duration
+	FirstTokenMs         *int
 }
 
 type RelayExit struct {
@@ -83,13 +85,14 @@ type RelayTraceEvent struct {
 }
 
 type relayState struct {
-	usage             Usage
-	requestModel      string
-	lastResponseID    string
-	terminalEventType string
-	firstTokenMs      *int
-	turnTimingByID    map[string]*relayTurnTiming
-	activeTurn        *relayTurnTiming
+	usage                Usage
+	requestModel         string
+	lastResponseID       string
+	terminalEventType    string
+	terminalResponseBody []byte
+	firstTokenMs         *int
+	turnTimingByID       map[string]*relayTurnTiming
+	activeTurn           *relayTurnTiming
 }
 
 type relayExitSignal struct {
@@ -100,12 +103,13 @@ type relayExitSignal struct {
 }
 
 type observedUpstreamEvent struct {
-	terminal   bool
-	eventType  string
-	responseID string
-	usage      Usage
-	duration   time.Duration
-	firstToken *int
+	terminal     bool
+	eventType    string
+	responseID   string
+	responseBody []byte
+	usage        Usage
+	duration     time.Duration
+	firstToken   *int
 }
 
 type relayTurnTiming struct {
@@ -662,7 +666,9 @@ func observeUpstreamMessage(
 		return observed
 	}
 	observed.terminal = true
+	observed.responseBody = terminalEventResponseBody(message)
 	state.terminalEventType = eventType
+	state.terminalResponseBody = cloneBytes(observed.responseBody)
 	if responseID != "" {
 		state.lastResponseID = responseID
 		if turnTiming, ok := openAIWSRelayDeleteTurnTiming(state, responseID); ok {
@@ -694,13 +700,33 @@ func emitTurnComplete(
 		requestModel = state.requestModel
 	}
 	onTurnComplete(RelayTurnResult{
-		RequestModel:      requestModel,
-		Usage:             observed.usage,
-		RequestID:         responseID,
-		TerminalEventType: observed.eventType,
-		Duration:          observed.duration,
-		FirstTokenMs:      openAIWSRelayCloneIntPtr(observed.firstToken),
+		RequestModel:         requestModel,
+		Usage:                observed.usage,
+		RequestID:            responseID,
+		TerminalEventType:    observed.eventType,
+		TerminalResponseBody: cloneBytes(observed.responseBody),
+		Duration:             observed.duration,
+		FirstTokenMs:         openAIWSRelayCloneIntPtr(observed.firstToken),
 	})
+}
+
+func terminalEventResponseBody(message []byte) []byte {
+	if len(message) == 0 {
+		return nil
+	}
+	response := gjson.GetBytes(message, "response")
+	if response.Exists() && response.Raw != "" {
+		// terminal event 的 response 对象等价于普通 Responses 响应体。
+		return []byte(response.Raw)
+	}
+	return cloneBytes(message)
+}
+
+func cloneBytes(value []byte) []byte {
+	if len(value) == 0 {
+		return nil
+	}
+	return append([]byte(nil), value...)
 }
 
 func openAIWSRelayGetOrInitTurnTiming(state *relayState, responseID string, now time.Time) *relayTurnTiming {
@@ -831,6 +857,7 @@ func enrichResult(result *RelayResult, state *relayState, duration time.Duration
 	result.Usage = state.usage
 	result.RequestID = state.lastResponseID
 	result.TerminalEventType = state.terminalEventType
+	result.TerminalResponseBody = cloneBytes(state.terminalResponseBody)
 	result.FirstTokenMs = state.firstTokenMs
 }
 

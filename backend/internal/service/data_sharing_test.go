@@ -934,6 +934,129 @@ func TestDataSharingService_CaptureBufferDedupesResponseToolCallReplay(t *testin
 	require.Equal(t, "目录里有 README.md", dataShareContentText(session.Messages[5]["content"]))
 }
 
+func TestDataSharingService_CaptureBufferDedupesResponsesOutOfOrderReplay(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, turn int, inputItems string, outputText string) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-out-of-order",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]}`, requestID, outputText)),
+			InboundEndpoint: "/v1/responses",
+			Turn:            turn,
+			InputTokens:     10,
+			OutputTokens:    5,
+		}
+	}
+
+	firstInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第一步"}]}
+	]`
+	secondInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第一步"}]},
+		{"type":"message","role":"assistant","id":"msg_turn_1","status":"completed","content":[{"type":"output_text","text":"第一步完成"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第二步"}]}
+	]`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-2", 2, secondInput, "第二步完成")}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-1", 1, firstInput, "第一步完成")}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Len(t, session.Messages, 5)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步完成"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步完成"))
+	require.Equal(t, true, session.Meta["capture_order_uncertain"])
+}
+
+func TestDataSharingService_CaptureBufferKeepsRepeatedResponseTextAcrossTurns(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, inputItems string) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-repeated-text",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"好的"}]}]}`, requestID)),
+			InboundEndpoint: "/v1/responses",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}
+	}
+
+	firstInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"确认第一步"}]}
+	]`
+	secondInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"确认第一步"}]},
+		{"type":"message","role":"assistant","id":"msg_turn_1","status":"completed","content":[{"type":"output_text","text":"好的"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"确认第二步"}]}
+	]`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-repeat-1", firstInput)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-repeat-2", secondInput)}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Len(t, session.Messages, 5)
+	require.Equal(t, 2, countDataShareMessagesWithContent(session.Messages, "好的"))
+	require.Equal(t, "确认第二步", dataShareContentText(session.Messages[3]["content"]))
+	require.Equal(t, "好的", dataShareContentText(session.Messages[4]["content"]))
+}
+
 func TestDataSharingCaptureBufferKeepsRealRepeatedSingleMessage(t *testing.T) {
 	var got *DataShareSession
 	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
