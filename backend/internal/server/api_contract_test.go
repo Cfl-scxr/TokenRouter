@@ -248,6 +248,7 @@ func TestAPIContracts(t *testing.T) {
 					"data_sharing_confirmed_group_id": null,
 					"data_sharing_confirmed_at": null,
 					"data_sharing_notice_version": 0,
+					"fallback_to_default_group_when_unavailable": false,
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z"
@@ -300,6 +301,7 @@ func TestAPIContracts(t *testing.T) {
 							"data_sharing_confirmed_group_id": null,
 							"data_sharing_confirmed_at": null,
 							"data_sharing_notice_version": 0,
+							"fallback_to_default_group_when_unavailable": false,
 							"expires_at": null,
 							"created_at": "2025-01-02T03:04:05Z",
 							"updated_at": "2025-01-02T03:04:05Z"

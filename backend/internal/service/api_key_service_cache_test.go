@@ -360,11 +360,12 @@ func TestAPIKeyService_GetByKey_FallsBackDisabledBoundGroupToPlatformDefaultFrom
 	repo := &authRepoStub{
 		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
 			return &APIKey{
-				ID:      1,
-				UserID:  2,
-				GroupID: &disabledGroupID,
-				Key:     key,
-				Status:  StatusActive,
+				ID:                                    1,
+				UserID:                                2,
+				GroupID:                               &disabledGroupID,
+				Key:                                   key,
+				Status:                                StatusActive,
+				FallbackToDefaultGroupWhenUnavailable: true,
 				User: &User{
 					ID:                   2,
 					Status:               StatusActive,
@@ -443,11 +444,12 @@ func TestAPIKeyService_GetByKey_FallsBackDisabledBoundGroupToPlatformDefaultFrom
 	cache.getAuthCache = func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error) {
 		return &APIKeyAuthCacheEntry{
 			Snapshot: &APIKeyAuthSnapshot{
-				Version:  apiKeyAuthSnapshotVersion,
-				APIKeyID: 1,
-				UserID:   2,
-				GroupID:  &disabledGroupID,
-				Status:   StatusActive,
+				Version:                               apiKeyAuthSnapshotVersion,
+				APIKeyID:                              1,
+				UserID:                                2,
+				GroupID:                               &disabledGroupID,
+				Status:                                StatusActive,
+				FallbackToDefaultGroupWhenUnavailable: true,
 				User: APIKeyAuthUserSnapshot{
 					ID:                   2,
 					Status:               StatusActive,
