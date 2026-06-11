@@ -1057,6 +1057,58 @@ func TestDataSharingService_CaptureBufferKeepsRepeatedResponseTextAcrossTurns(t 
 	require.Equal(t, "好的", dataShareContentText(session.Messages[4]["content"]))
 }
 
+func TestDataSharingService_CaptureStateUsesBoundedIdentityKeys(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	longText := strings.Repeat("很长的历史消息", 128)
+	inputItems := fmt.Sprintf(`[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}
+	]`, longText)
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+		APIKey:          apiKey,
+		Provider:        PlatformOpenAI,
+		Model:           "gpt-5.5",
+		SessionID:       "session-responses-bounded-state",
+		RequestID:       "request-bounded-state",
+		RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `}`),
+		ResponseBody:    []byte(`{"id":"request-bounded-state","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"收到"}]}]}`),
+		InboundEndpoint: "/v1/responses",
+		InputTokens:     10,
+		OutputTokens:    5,
+	}}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	capture := mapAnyFromAny(session.Meta[dataShareInternalCaptureMetaKey])
+	require.NotEmpty(t, capture)
+	for _, identity := range stringsFromAny(capture["replay_identities"]) {
+		require.Len(t, identity, 32)
+		require.NotContains(t, identity, longText)
+	}
+	for _, key := range stringsFromAny(capture["response_keys"]) {
+		require.Len(t, key, 32)
+	}
+}
+
 func TestDataSharingCaptureBufferKeepsRealRepeatedSingleMessage(t *testing.T) {
 	var got *DataShareSession
 	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{

@@ -703,6 +703,8 @@ func cloneBufferedDataShareSession(session *DataShareSession) *DataShareSession 
 		clone.captureInput = &input
 	}
 	clone.captureState = cloneDataShareResponsesCaptureState(session.captureState)
+	clone.captureRequestItems = cloneDataShareResponsesInputItems(session.captureRequestItems)
+	clone.captureResponseItems = cloneBufferedDataShareMaps(session.captureResponseItems)
 	return &clone
 }
 

@@ -184,6 +184,8 @@ type DataShareSession struct {
 	captureMode          dataShareCaptureMode
 	captureInput         *DataShareCaptureInput
 	captureState         *dataShareResponsesCaptureState
+	captureRequestItems  []dataShareResponsesInputItem
+	captureResponseItems []map[string]any
 }
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。
@@ -1863,35 +1865,39 @@ func (s *DataSharingService) buildOpenAIResponsesRawCaptureSession(input DataSha
 		systemPrompt = extractSystemPromptFromRequest(input.RequestBody)
 	}
 	inputCopy := cloneDataShareCaptureInput(input)
+	requestItems := normalizeOpenAIResponsesRequestInputItems(input.RequestBody)
+	responseItems := appendAssistantMessageFromResponse(nil, input.ResponseBody)
 	return &DataShareSession{
-		TrajectoryID:       trajectoryID,
-		SessionID:          sessionID,
-		Dataset:            defaultDataShareDataset,
-		Provider:           provider,
-		Model:              model,
-		RequestPath:        requestPath,
-		UserAgent:          userAgent,
-		Status:             DataShareStatusTerminated,
-		IsFinalSnapshot:    false,
-		SourceRequestCount: 1,
-		SystemPrompt:       optionalDataShareString(systemPrompt),
-		Tools:              normalizeCaptureTools(input),
-		Usage:              usage,
-		Meta:               meta,
-		QualityStatus:      DataShareQualityInvalid,
-		Exportable:         false,
-		InputTokens:        int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens),
-		OutputTokens:       int64(input.OutputTokens),
-		TotalTokens:        int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens + input.OutputTokens),
-		ActualCost:         cloneFloat64Ptr(input.ActualCost),
-		UserID:             userID,
-		APIKeyID:           apiKeyID,
-		GroupID:            groupID,
-		CreatedAt:          now,
-		EndedAt:            &now,
-		UpdatedAt:          now,
-		captureMode:        dataShareCaptureModeOpenAIResponsesRaw,
-		captureInput:       &inputCopy,
+		TrajectoryID:         trajectoryID,
+		SessionID:            sessionID,
+		Dataset:              defaultDataShareDataset,
+		Provider:             provider,
+		Model:                model,
+		RequestPath:          requestPath,
+		UserAgent:            userAgent,
+		Status:               DataShareStatusTerminated,
+		IsFinalSnapshot:      false,
+		SourceRequestCount:   1,
+		SystemPrompt:         optionalDataShareString(systemPrompt),
+		Tools:                normalizeCaptureTools(input),
+		Usage:                usage,
+		Meta:                 meta,
+		QualityStatus:        DataShareQualityInvalid,
+		Exportable:           false,
+		InputTokens:          int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens),
+		OutputTokens:         int64(input.OutputTokens),
+		TotalTokens:          int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens + input.OutputTokens),
+		ActualCost:           cloneFloat64Ptr(input.ActualCost),
+		UserID:               userID,
+		APIKeyID:             apiKeyID,
+		GroupID:              groupID,
+		CreatedAt:            now,
+		EndedAt:              &now,
+		UpdatedAt:            now,
+		captureMode:          dataShareCaptureModeOpenAIResponsesRaw,
+		captureInput:         &inputCopy,
+		captureRequestItems:  cloneDataShareResponsesInputItems(requestItems),
+		captureResponseItems: cloneBufferedDataShareMaps(responseItems),
 	}
 }
 
@@ -2232,7 +2238,10 @@ func (s *DataSharingService) buildOpenAIResponsesIncrementalSession(existing *Da
 	if input.Turn > 0 && state.LastTurn > 0 && input.Turn <= state.LastTurn {
 		state.OrderUncertain = true
 	}
-	requestItems := normalizeOpenAIResponsesRequestInputItems(input.RequestBody)
+	requestItems := cloneDataShareResponsesInputItems(raw.captureRequestItems)
+	if len(requestItems) == 0 {
+		requestItems = normalizeOpenAIResponsesRequestInputItems(input.RequestBody)
+	}
 	replayLen, orderUncertain := dataShareResponsesReplayPrefixLen(state, requestItems)
 	if orderUncertain {
 		state.OrderUncertain = true
@@ -2242,7 +2251,11 @@ func (s *DataSharingService) buildOpenAIResponsesIncrementalSession(existing *Da
 		messages = append(messages, cloneDataShareMap(item.Message))
 	}
 	responseStart := len(messages)
-	messages = appendAssistantMessageFromResponse(messages, input.ResponseBody)
+	responseItems := cloneBufferedDataShareMaps(raw.captureResponseItems)
+	if len(responseItems) == 0 {
+		responseItems = appendAssistantMessageFromResponse(nil, input.ResponseBody)
+	}
+	messages = append(messages, responseItems...)
 	messages = dataShareResponsesFilterKnownResponseMessages(state, requestItems, messages, responseStart)
 	if input.CaptureIncomplete && len(messages) == responseStart {
 		out.Meta["capture_incomplete"] = true
@@ -2254,9 +2267,10 @@ func (s *DataSharingService) buildOpenAIResponsesIncrementalSession(existing *Da
 }
 
 type dataShareResponsesInputItem struct {
-	Message  map[string]any
-	StableID string
-	Identity string
+	Message     map[string]any
+	StableID    string
+	Identity    string
+	IdentityKey string
 }
 
 func normalizeOpenAIResponsesRequestInputItems(body []byte) []dataShareResponsesInputItem {
@@ -2276,10 +2290,12 @@ func normalizeOpenAIResponsesRequestInputItems(body []byte) []dataShareResponses
 			return
 		}
 		msg = normalizeDataShareMessage(msg)
+		identity := dataShareMessageIdentity(msg)
 		out = append(out, dataShareResponsesInputItem{
-			Message:  msg,
-			StableID: dataShareResponsesStableItemID(item, msg),
-			Identity: dataShareMessageIdentity(msg),
+			Message:     msg,
+			StableID:    dataShareResponsesStableItemID(item, msg),
+			Identity:    identity,
+			IdentityKey: dataShareResponsesIdentityKey(identity),
 		})
 	}
 	if input.Type == gjson.String || input.IsObject() {
@@ -2337,7 +2353,7 @@ func dataShareResponsesReplayPrefixLen(state *dataShareResponsesCaptureState, in
 			}
 			break
 		}
-		if replay < len(state.ReplayIdentities) && state.ReplayIdentities[replay] == item.Identity {
+		if replay < len(state.ReplayIdentities) && state.ReplayIdentities[replay] == item.IdentityKey {
 			replay++
 			continue
 		}
@@ -2365,17 +2381,21 @@ func dataShareResponsesFilterKnownResponseMessages(state *dataShareResponsesCapt
 		return messages
 	}
 	out := cloneBufferedDataShareMaps(messages[:responseStart])
-	context := dataShareResponsesInputIdentityPrefix(requestItems, len(requestItems))
+	context := dataShareResponsesContextSeed()
+	for _, item := range requestItems {
+		context = dataShareResponsesAdvanceContext(context, item.IdentityKey)
+	}
 	for _, msg := range messages[responseStart:] {
 		identity := dataShareMessageIdentity(msg)
 		if identity != "" {
-			key := dataShareResponsesScopedResponseKey(context, identity)
+			identityKey := dataShareResponsesIdentityKey(identity)
+			key := dataShareResponsesScopedResponseKey(context, identityKey)
 			if _, ok := state.ResponseKeys[key]; ok {
 				continue
 			}
 		}
 		out = append(out, cloneDataShareMap(msg))
-		context = append(context, identity)
+		context = dataShareResponsesAdvanceContext(context, dataShareResponsesIdentityKey(identity))
 	}
 	return out
 }
@@ -2396,30 +2416,31 @@ func updateDataShareResponsesCaptureState(state *dataShareResponsesCaptureState,
 	if replayLen > len(requestItems) {
 		replayLen = len(requestItems)
 	}
-	context := make([]string, 0, len(requestItems)+len(responseMessages))
+	context := dataShareResponsesContextSeed()
 	for index, item := range requestItems {
 		if dataShareResponsesInputItemLooksAssistantOutput(item) {
-			// 只记录“前文 + assistant 输出”的作用域 key，避免两轮合法相同回答被全局文本去重误删。
-			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, item.Identity)] = struct{}{}
+			// 只记录“前文 + assistant 输出”的固定长度作用域 key，避免误删合法重复回答，也避免 meta 随文本长度膨胀。
+			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, item.IdentityKey)] = struct{}{}
 		}
 		if index >= replayLen {
 			if item.StableID != "" {
 				state.StableIDs[item.StableID] = struct{}{}
 			}
-			state.ReplayIdentities = append(state.ReplayIdentities, item.Identity)
+			state.ReplayIdentities = append(state.ReplayIdentities, item.IdentityKey)
 		}
-		context = append(context, item.Identity)
+		context = dataShareResponsesAdvanceContext(context, item.IdentityKey)
 	}
 	for _, msg := range responseMessages {
 		for _, stableID := range dataShareResponsesStableIDsFromMessage(msg) {
 			state.StableIDs[stableID] = struct{}{}
 		}
 		identity := dataShareMessageIdentity(msg)
+		identityKey := dataShareResponsesIdentityKey(identity)
 		if identity != "" {
-			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, identity)] = struct{}{}
+			state.ResponseKeys[dataShareResponsesScopedResponseKey(context, identityKey)] = struct{}{}
 		}
-		state.ReplayIdentities = append(state.ReplayIdentities, identity)
-		context = append(context, identity)
+		state.ReplayIdentities = append(state.ReplayIdentities, identityKey)
+		context = dataShareResponsesAdvanceContext(context, identityKey)
 	}
 	if turn > state.LastTurn {
 		state.LastTurn = turn
@@ -2427,32 +2448,44 @@ func updateDataShareResponsesCaptureState(state *dataShareResponsesCaptureState,
 	return state
 }
 
-func dataShareResponsesInputIdentityPrefix(items []dataShareResponsesInputItem, end int) []string {
-	if end < 0 {
-		end = 0
+func dataShareResponsesIdentityKey(identity string) string {
+	if identity == "" {
+		return ""
 	}
-	if end > len(items) {
-		end = len(items)
+	sum := sha256.Sum256([]byte(identity))
+	return hex.EncodeToString(sum[:16])
+}
+
+func cloneDataShareResponsesInputItems(items []dataShareResponsesInputItem) []dataShareResponsesInputItem {
+	if len(items) == 0 {
+		return nil
 	}
-	out := make([]string, 0, end)
-	for _, item := range items[:end] {
-		out = append(out, item.Identity)
+	out := make([]dataShareResponsesInputItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, dataShareResponsesInputItem{
+			Message:     cloneDataShareMap(item.Message),
+			StableID:    item.StableID,
+			Identity:    item.Identity,
+			IdentityKey: item.IdentityKey,
+		})
 	}
 	return out
 }
 
-func dataShareResponsesScopedResponseKey(context []string, responseIdentity string) string {
-	if responseIdentity == "" {
+func dataShareResponsesContextSeed() string {
+	return strings.Repeat("0", 32)
+}
+
+func dataShareResponsesAdvanceContext(context string, identityKey string) string {
+	sum := sha256.Sum256([]byte(context + "\x00" + identityKey))
+	return hex.EncodeToString(sum[:16])
+}
+
+func dataShareResponsesScopedResponseKey(context string, responseIdentityKey string) string {
+	if responseIdentityKey == "" {
 		return ""
 	}
-	hash := sha256.New()
-	for _, identity := range context {
-		hash.Write([]byte(identity))
-		hash.Write([]byte{0})
-	}
-	hash.Write([]byte{1})
-	hash.Write([]byte(responseIdentity))
-	sum := hash.Sum(nil)
+	sum := sha256.Sum256([]byte(context + "\x01" + responseIdentityKey))
 	return hex.EncodeToString(sum[:16])
 }
 
