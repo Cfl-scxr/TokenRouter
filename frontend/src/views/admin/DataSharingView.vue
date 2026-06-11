@@ -369,7 +369,7 @@
         </div>
       </div>
 
-      <div class="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+      <div class="grid gap-6 lg:grid-cols-2">
         <div class="card p-4">
           <div class="mb-4 flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">无效会话用户排行</h2>
@@ -386,13 +386,31 @@
 
         <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">模型分布</h2>
-          <div class="h-64">
-            <div v-if="statsLoading" class="flex h-full items-center justify-center">
-              <LoadingSpinner />
-            </div>
-            <Doughnut v-else-if="modelChartData" :data="modelChartData" :options="modelDoughnutChartOptions" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无模型数据</div>
+          <div v-if="statsLoading" class="flex h-64 items-center justify-center">
+            <LoadingSpinner />
           </div>
+          <div v-else-if="modelChartData" class="space-y-3">
+            <div class="h-52">
+              <Doughnut :data="modelChartData" :options="modelDoughnutChartOptions" />
+            </div>
+            <div class="grid max-h-40 gap-2 overflow-y-auto rounded-lg border border-gray-100 p-2 sm:grid-cols-2 dark:border-gray-700">
+              <div
+                v-for="item in modelLegendItems"
+                :key="item.key"
+                class="flex min-w-0 items-start justify-between gap-3 text-xs"
+                :title="item.fullLabel"
+              >
+                <span class="flex min-w-0 items-start gap-2">
+                  <span class="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ backgroundColor: item.color }"></span>
+                  <span class="min-w-0 truncate text-gray-700 dark:text-gray-300">{{ item.label }}</span>
+                </span>
+                <span class="flex-shrink-0 font-medium text-gray-500 dark:text-gray-400">
+                  {{ formatNumber(item.sessionCount) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="flex h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400">暂无模型数据</div>
         </div>
 
         <div class="card p-4">
@@ -404,7 +422,7 @@
             <div class="h-52">
               <Doughnut :data="userAgentChartData" :options="userAgentDoughnutChartOptions" />
             </div>
-            <div class="max-h-32 space-y-2 overflow-y-auto rounded-lg border border-gray-100 p-2 dark:border-dark-700">
+            <div class="max-h-32 space-y-2 overflow-y-auto rounded-lg border border-gray-100 p-2 dark:border-gray-700">
               <div
                 v-for="item in userAgentLegendItems"
                 :key="item.key"
@@ -426,13 +444,31 @@
 
         <div class="card p-4">
           <h2 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dataSharing.qualityErrorDistribution') }}</h2>
-          <div class="h-64">
-            <div v-if="statsLoading" class="flex h-full items-center justify-center">
-              <LoadingSpinner />
-            </div>
-            <Doughnut v-else-if="qualityErrorChartData" :data="qualityErrorChartData" :options="qualityErrorDoughnutChartOptions" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.dataSharing.noQualityErrorData') }}</div>
+          <div v-if="statsLoading" class="flex h-64 items-center justify-center">
+            <LoadingSpinner />
           </div>
+          <div v-else-if="qualityErrorChartData" class="space-y-3">
+            <div class="h-52">
+              <Doughnut :data="qualityErrorChartData" :options="qualityErrorDoughnutChartOptions" />
+            </div>
+            <div class="grid max-h-40 gap-2 overflow-y-auto rounded-lg border border-gray-100 p-2 sm:grid-cols-2 dark:border-gray-700">
+              <div
+                v-for="item in qualityErrorLegendItems"
+                :key="item.key"
+                class="flex min-w-0 items-start justify-between gap-3 text-xs"
+                :title="item.fullLabel"
+              >
+                <span class="flex min-w-0 items-start gap-2">
+                  <span class="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ backgroundColor: item.color }"></span>
+                  <span class="min-w-0 truncate text-gray-700 dark:text-gray-300">{{ item.label }}</span>
+                </span>
+                <span class="flex-shrink-0 font-medium text-gray-500 dark:text-gray-400">
+                  {{ formatNumber(item.sessionCount) }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="flex h-64 items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.dataSharing.noQualityErrorData') }}</div>
         </div>
       </div>
 
@@ -1042,7 +1078,7 @@ const selectAllMatching = ref(false)
 
 const loading = ref(false)
 const statsLoading = ref(false)
-const statsAutoRefreshEnabled = ref(true)
+const statsAutoRefreshEnabled = ref(false)
 const statsAutoRefreshIntervalSeconds = ref<(typeof statsAutoRefreshIntervals)[number]>(statsAutoRefreshDefaultSeconds)
 const statsAutoRefreshDropdownOpen = ref(false)
 const statsAutoRefreshDropdownRef = ref<HTMLElement | null>(null)
@@ -1218,6 +1254,15 @@ const chartColors = computed(() => ({
 
 const doughnutPalette = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
+type DoughnutLegendPoint = { session_count: number }
+type DoughnutLegendItem = {
+  key: string
+  fullLabel: string
+  label: string
+  sessionCount: number
+  color: string
+}
+
 const storageTrendChartData = computed(() => {
   const points = stats.value?.storage_trend || []
   if (!points.length) return null
@@ -1284,20 +1329,21 @@ const userAgentChartData = computed(() => buildBreakdownChartData(
   point => formatUserAgent(point.user_agent || '(unknown)')
 ))
 
-const userAgentLegendItems = computed(() =>
-  (stats.value?.user_agent_breakdown || []).map((point, index) => {
-    const fullLabel = point.user_agent || '(unknown)'
-    return {
-      key: `${index}:${fullLabel}`,
-      fullLabel,
-      label: formatUserAgent(fullLabel),
-      sessionCount: point.session_count,
-      color: doughnutPalette[index % doughnutPalette.length]
-    }
-  })
-)
+const modelLegendItems = computed(() => buildDoughnutLegendItems(
+  stats.value?.model_breakdown || [],
+  point => point.model || '(unknown)'
+))
+const userAgentLegendItems = computed(() => buildDoughnutLegendItems(
+  stats.value?.user_agent_breakdown || [],
+  point => point.user_agent || '(unknown)',
+  fullLabel => formatUserAgent(fullLabel)
+))
 
 const qualityErrorChartData = computed(() => buildBreakdownChartData(
+  stats.value?.quality_error_breakdown || [],
+  point => qualityErrorLabel(point.error_code)
+))
+const qualityErrorLegendItems = computed(() => buildDoughnutLegendItems(
   stats.value?.quality_error_breakdown || [],
   point => qualityErrorLabel(point.error_code)
 ))
@@ -1386,11 +1432,15 @@ const doughnutChartOptions = computed(() => ({
   }
 }))
 
-const modelDoughnutChartOptions = computed(() => buildDoughnutChartOptions(stats.value?.model_breakdown || []))
+const modelDoughnutChartOptions = computed(() =>
+  buildDoughnutChartOptions(stats.value?.model_breakdown || [], { legend: false })
+)
 const userAgentDoughnutChartOptions = computed(() =>
   buildDoughnutChartOptions(stats.value?.user_agent_breakdown || [], { legend: false })
 )
-const qualityErrorDoughnutChartOptions = computed(() => buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || []))
+const qualityErrorDoughnutChartOptions = computed(() =>
+  buildSessionCountDoughnutChartOptions(stats.value?.quality_error_breakdown || [], { legend: false })
+)
 const invalidUserBarChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -2459,6 +2509,24 @@ function buildBreakdownChartData<T extends { session_count: number }>(points: T[
   }
 }
 
+function buildDoughnutLegendItems<T extends DoughnutLegendPoint>(
+  points: T[],
+  fullLabelOf: (point: T) => string,
+  labelOf: (fullLabel: string, point: T) => string = fullLabel => fullLabel
+): DoughnutLegendItem[] {
+  // 自定义图例使用独立滚动容器，避免 Chart.js 内置图例挤占饼图高度后被裁切。
+  return points.map((point, index) => {
+    const fullLabel = fullLabelOf(point)
+    return {
+      key: `${index}:${fullLabel}`,
+      fullLabel,
+      label: labelOf(fullLabel, point),
+      sessionCount: point.session_count,
+      color: doughnutPalette[index % doughnutPalette.length]
+    }
+  })
+}
+
 function buildDoughnutChartOptions(
   points: Array<{ storage_bytes: number; session_count: number; total_tokens: number }>,
   options: { legend?: boolean } = {}
@@ -2483,12 +2551,17 @@ function buildDoughnutChartOptions(
   }
 }
 
-function buildSessionCountDoughnutChartOptions(points: Array<{ session_count: number }>) {
+function buildSessionCountDoughnutChartOptions(
+  points: Array<{ session_count: number }>,
+  options: { legend?: boolean } = {}
+) {
   return {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'bottom' as const, labels: { color: chartColors.value.text } },
+      legend: options.legend === false
+        ? { display: false }
+        : { position: 'bottom' as const, labels: { color: chartColors.value.text } },
       tooltip: {
         callbacks: {
           label: (ctx: any) => {
@@ -2585,7 +2658,7 @@ onMounted(() => {
   loadSkipRules()
   loadCaptureRuntimeSettings()
   refreshAll()
-  restartStatsAutoRefresh()
+  if (statsAutoRefreshEnabled.value) restartStatsAutoRefresh()
 })
 
 onUnmounted(() => {
