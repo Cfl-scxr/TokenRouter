@@ -997,6 +997,74 @@ func TestDataSharingService_CaptureBufferDedupesResponsesOutOfOrderReplay(t *tes
 	require.Equal(t, true, session.Meta["capture_order_uncertain"])
 }
 
+func TestDataSharingService_CaptureBufferDedupesOutOfOrderMultiOutputResponse(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, turn int, inputItems string, responseBody string) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-out-of-order-multi-output",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `}`),
+			ResponseBody:    []byte(responseBody),
+			InboundEndpoint: "/v1/responses",
+			Turn:            turn,
+			InputTokens:     10,
+			OutputTokens:    5,
+		}
+	}
+
+	firstInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第一步"}]}
+	]`
+	firstResponse := `{"id":"request-multi-1","output":[
+		{"type":"function_call","call_id":"call_multi_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第一步完成"}]}
+	]}`
+	secondInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第一步"}]},
+		{"type":"function_call","call_id":"call_multi_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第一步完成"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"第二步"}]}
+	]`
+	secondResponse := `{"id":"request-multi-2","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第二步完成"}]}]}`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-multi-2", 2, secondInput, secondResponse)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-multi-1", 1, firstInput, firstResponse)}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Len(t, session.Messages, 6)
+	require.Equal(t, 1, countDataShareToolCallID(session.Messages, "call_multi_1"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步完成"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步完成"))
+}
+
 func TestDataSharingService_CaptureBufferKeepsRepeatedResponseTextAcrossTurns(t *testing.T) {
 	gid := int64(12)
 	repo := &dataShareCaptureRepoStub{}

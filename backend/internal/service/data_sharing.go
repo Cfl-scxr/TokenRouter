@@ -2387,15 +2387,19 @@ func dataShareResponsesFilterKnownResponseMessages(state *dataShareResponsesCapt
 	}
 	for _, msg := range messages[responseStart:] {
 		identity := dataShareMessageIdentity(msg)
+		identityKey := dataShareResponsesIdentityKey(identity)
+		seen := false
 		if identity != "" {
-			identityKey := dataShareResponsesIdentityKey(identity)
 			key := dataShareResponsesScopedResponseKey(context, identityKey)
 			if _, ok := state.ResponseKeys[key]; ok {
-				continue
+				seen = true
 			}
 		}
+		context = dataShareResponsesAdvanceContext(context, identityKey)
+		if seen {
+			continue
+		}
 		out = append(out, cloneDataShareMap(msg))
-		context = dataShareResponsesAdvanceContext(context, dataShareResponsesIdentityKey(identity))
 	}
 	return out
 }
