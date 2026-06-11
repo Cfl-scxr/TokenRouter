@@ -248,7 +248,7 @@ func TestAPIContracts(t *testing.T) {
 					"data_sharing_confirmed_group_id": null,
 					"data_sharing_confirmed_at": null,
 					"data_sharing_notice_version": 0,
-					"fallback_to_default_group_when_unavailable": false,
+					"fallback_to_default_group_when_unavailable": true,
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z"
@@ -260,13 +260,14 @@ func TestAPIContracts(t *testing.T) {
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
 				deps.apiKeyRepo.MustSeed(&service.APIKey{
-					ID:        100,
-					UserID:    1,
-					Key:       "sk_custom_1234567890",
-					Name:      "Key One",
-					Status:    service.StatusActive,
-					CreatedAt: deps.now,
-					UpdatedAt: deps.now,
+					ID:                                    100,
+					UserID:                                1,
+					Key:                                   "sk_custom_1234567890",
+					Name:                                  "Key One",
+					Status:                                service.StatusActive,
+					FallbackToDefaultGroupWhenUnavailable: true,
+					CreatedAt:                             deps.now,
+					UpdatedAt:                             deps.now,
 				})
 			},
 			method:     http.MethodGet,
@@ -301,7 +302,7 @@ func TestAPIContracts(t *testing.T) {
 							"data_sharing_confirmed_group_id": null,
 							"data_sharing_confirmed_at": null,
 							"data_sharing_notice_version": 0,
-							"fallback_to_default_group_when_unavailable": false,
+							"fallback_to_default_group_when_unavailable": true,
 							"expires_at": null,
 							"created_at": "2025-01-02T03:04:05Z",
 							"updated_at": "2025-01-02T03:04:05Z"

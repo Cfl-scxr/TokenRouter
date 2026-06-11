@@ -170,8 +170,8 @@ type CreateAPIKeyRequest struct {
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
 
-	// FallbackToDefaultGroupWhenUnavailable 表示绑定分组停用时是否允许回退到同平台默认分组。
-	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
+	// FallbackToDefaultGroupWhenUnavailable 表示绑定分组停用时是否允许回退到同平台默认分组，nil 时默认开启。
+	FallbackToDefaultGroupWhenUnavailable *bool `json:"fallback_to_default_group_when_unavailable"`
 
 	// 数据共享确认字段：创建时直接选择数据共享分组也必须确认。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
@@ -453,6 +453,12 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
+	// 新建 API Key 默认开启分组不可用时的自动回退，仍允许调用方显式传 false 关闭。
+	fallbackToDefaultGroupWhenUnavailable := true
+	if req.FallbackToDefaultGroupWhenUnavailable != nil {
+		fallbackToDefaultGroupWhenUnavailable = *req.FallbackToDefaultGroupWhenUnavailable
+	}
+
 	// 创建API Key记录
 	apiKey := &APIKey{
 		UserID:                                userID,
@@ -467,7 +473,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		RateLimit5h:                           req.RateLimit5h,
 		RateLimit1d:                           req.RateLimit1d,
 		RateLimit7d:                           req.RateLimit7d,
-		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
+		FallbackToDefaultGroupWhenUnavailable: fallbackToDefaultGroupWhenUnavailable,
 		DataSharingNoticeVersion:              dataSharingNoticeVersion,
 		DataSharingConfirmedGroupID:           dataSharingConfirmedGroupID,
 		DataSharingConfirmedAt:                dataSharingConfirmedAt,

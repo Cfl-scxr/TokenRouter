@@ -1266,7 +1266,7 @@ const formData = ref({
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
   expiration_date: '',
-  fallback_to_default_group_when_unavailable: false
+  fallback_to_default_group_when_unavailable: true
 })
 
 // 自定义Key验证
@@ -1843,7 +1843,7 @@ const closeModals = () => {
     enable_expiration: false,
     expiration_preset: '30',
     expiration_date: '',
-    fallback_to_default_group_when_unavailable: false
+    fallback_to_default_group_when_unavailable: true
   }
 }
 

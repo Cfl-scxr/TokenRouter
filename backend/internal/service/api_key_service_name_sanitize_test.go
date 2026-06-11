@@ -145,6 +145,46 @@ func TestAPIKeyService_Create_EscapesNameBeforePersist(t *testing.T) {
 	require.Equal(t, "&lt;img src=x onerror=alert(1)&gt;", repo.created[0].Name)
 }
 
+func TestAPIKeyService_Create_DefaultsGroupFallbackEnabled(t *testing.T) {
+	repo := &apiKeyNameSanitizeRepoStub{}
+	svc := &APIKeyService{
+		apiKeyRepo: repo,
+		userRepo:   &userRepoStub{user: &User{ID: 7, Status: StatusActive, Role: RoleUser}},
+	}
+	customKey := "sk_valid_default_fallback"
+
+	created, err := svc.Create(context.Background(), 7, CreateAPIKeyRequest{
+		Name:      "default fallback",
+		CustomKey: &customKey,
+	})
+
+	require.NoError(t, err)
+	require.True(t, created.FallbackToDefaultGroupWhenUnavailable)
+	require.Len(t, repo.created, 1)
+	require.True(t, repo.created[0].FallbackToDefaultGroupWhenUnavailable)
+}
+
+func TestAPIKeyService_Create_AllowsDisablingGroupFallback(t *testing.T) {
+	repo := &apiKeyNameSanitizeRepoStub{}
+	svc := &APIKeyService{
+		apiKeyRepo: repo,
+		userRepo:   &userRepoStub{user: &User{ID: 7, Status: StatusActive, Role: RoleUser}},
+	}
+	customKey := "sk_valid_disabled_fallback"
+	fallback := false
+
+	created, err := svc.Create(context.Background(), 7, CreateAPIKeyRequest{
+		Name:                                  "disabled fallback",
+		CustomKey:                             &customKey,
+		FallbackToDefaultGroupWhenUnavailable: &fallback,
+	})
+
+	require.NoError(t, err)
+	require.False(t, created.FallbackToDefaultGroupWhenUnavailable)
+	require.Len(t, repo.created, 1)
+	require.False(t, repo.created[0].FallbackToDefaultGroupWhenUnavailable)
+}
+
 func TestAPIKeyService_Update_EscapesNameBeforePersist(t *testing.T) {
 	repo := &apiKeyNameSanitizeRepoStub{
 		apiKey: &APIKey{ID: 11, UserID: 7, Key: "sk_existing_key_01", Name: "old", Status: StatusActive},

@@ -36,7 +36,7 @@ var (
 		{Name: "data_sharing_notice_version", Type: field.TypeInt, Default: 0},
 		{Name: "data_sharing_confirmed_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "data_sharing_confirmed_at", Type: field.TypeTime, Nullable: true},
-		{Name: "fallback_to_default_group_when_unavailable", Type: field.TypeBool, Default: false},
+		{Name: "fallback_to_default_group_when_unavailable", Type: field.TypeBool, Default: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}

@@ -48,8 +48,8 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h *float64 `json:"rate_limit_5h"`
 	RateLimit1d *float64 `json:"rate_limit_1d"`
 	RateLimit7d *float64 `json:"rate_limit_7d"`
-	// 绑定分组不可用时是否自动回退到同平台默认分组。
-	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
+	// 绑定分组不可用时是否自动回退到同平台默认分组，nil 表示使用服务层默认值。
+	FallbackToDefaultGroupWhenUnavailable *bool `json:"fallback_to_default_group_when_unavailable"`
 	// 创建时直接选择数据共享分组也必须由弹窗确认。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
