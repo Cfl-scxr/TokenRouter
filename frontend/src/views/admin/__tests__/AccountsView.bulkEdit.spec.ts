@@ -10,7 +10,7 @@ const {
   getById,
   getUsage,
   getAllProxies,
-  getAllGroups,
+  getAllGroupsIncludingInactive,
   showError,
   showSuccess,
   showInfo,
@@ -22,7 +22,7 @@ const {
   getById: vi.fn(),
   getUsage: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn(),
+  getAllGroupsIncludingInactive: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   showInfo: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('@/api/admin', () => ({
       getAll: getAllProxies
     },
     groups: {
-      getAll: getAllGroups
+      getAllIncludingInactive: getAllGroupsIncludingInactive
     }
   }
 }))
@@ -116,7 +116,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getById.mockReset()
     getUsage.mockReset()
     getAllProxies.mockReset()
-    getAllGroups.mockReset()
+    getAllGroupsIncludingInactive.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     showInfo.mockReset()
@@ -138,7 +138,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getById.mockRejectedValue(new Error('unexpected getById call'))
     getUsage.mockResolvedValue({ updated_at: null, five_hour: null, seven_day: null, seven_day_sonnet: null })
     getAllProxies.mockResolvedValue([])
-    getAllGroups.mockResolvedValue([])
+    getAllGroupsIncludingInactive.mockResolvedValue([])
   })
 
   it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {

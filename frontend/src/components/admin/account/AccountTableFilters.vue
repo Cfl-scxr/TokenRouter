@@ -38,6 +38,10 @@ const privacyOpts = computed(() => [
 const gOpts = computed(() => [
   { value: '', label: t('admin.accounts.allGroups') },
   { value: 'ungrouped', label: t('admin.accounts.ungroupedGroup') },
-  ...(props.groups || []).map(g => ({ value: String(g.id), label: g.name }))
+  ...(props.groups || []).map(g => ({
+    value: String(g.id),
+    // 管理端保留禁用分组可见性，后缀只提示状态，不阻止筛选。
+    label: g.status === 'active' ? g.name : `${g.name} (${t('common.inactive')})`
+  }))
 ])
 </script>

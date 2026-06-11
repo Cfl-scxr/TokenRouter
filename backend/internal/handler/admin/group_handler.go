@@ -151,8 +151,8 @@ func (h *GroupHandler) List(c *gin.Context) {
 }
 
 // GetAll 返回所有启用分组，不分页。
-// 传入 ?include_inactive=true 时同时返回禁用分组，供 API Key 分组筛选器展示
-// 仍绑定在禁用分组上的 Key。
+// 传入 ?include_inactive=true 时同时返回禁用分组，供管理端筛选、
+// 绑定和维护已禁用分组。
 // GET /api/v1/admin/groups/all
 func (h *GroupHandler) GetAll(c *gin.Context) {
 	platform := c.Query("platform")

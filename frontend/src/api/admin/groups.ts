@@ -58,7 +58,7 @@ export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
 }
 
 /**
- * 获取所有分组（含禁用分组），供 API Key 分组筛选器定位仍绑定在禁用分组上的用户。
+ * 获取所有分组（含禁用分组），供管理端筛选、绑定和维护已禁用分组。
  */
 export async function getAllIncludingInactive(): Promise<AdminGroup[]> {
   const { data } = await apiClient.get<AdminGroup[]>('/admin/groups/all', {

@@ -8,13 +8,13 @@ const {
   listWithEtag,
   getBatchTodayStats,
   getAllProxies,
-  getAllGroups
+  getAllGroupsIncludingInactive
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroupsIncludingInactive: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -32,7 +32,7 @@ vi.mock('@/api/admin', () => ({
       getAll: getAllProxies
     },
     groups: {
-      getAll: getAllGroups
+      getAllIncludingInactive: getAllGroupsIncludingInactive
     }
   }
 }))
@@ -129,7 +129,7 @@ describe('admin AccountsView usage windows hint', () => {
     listWithEtag.mockReset()
     getBatchTodayStats.mockReset()
     getAllProxies.mockReset()
-    getAllGroups.mockReset()
+    getAllGroupsIncludingInactive.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -145,7 +145,7 @@ describe('admin AccountsView usage windows hint', () => {
     })
     getBatchTodayStats.mockResolvedValue({ stats: {} })
     getAllProxies.mockResolvedValue([])
-    getAllGroups.mockResolvedValue([])
+    getAllGroupsIncludingInactive.mockResolvedValue([])
   })
 
   it('renders an explanatory tooltip next to the usage windows column header', async () => {
@@ -160,5 +160,6 @@ describe('admin AccountsView usage windows hint', () => {
     const hint = wrapper.find('[data-test="usage-windows-hint"]')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toBe('admin.accounts.usageWindowsHint')
+    expect(getAllGroupsIncludingInactive).toHaveBeenCalledTimes(1)
   })
 })
