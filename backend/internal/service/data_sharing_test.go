@@ -2628,6 +2628,52 @@ func TestCompactDataShareMessagesDedupesToolEchoReplay(t *testing.T) {
 	require.Equal(t, "看到了 README.md", dataShareContentText(compact[2]["content"]))
 }
 
+func TestCompactDataShareMessagesDedupesCodexCommentaryEcho(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "system", "content": "<permissions instructions> sandbox</permissions instructions>"},
+		{"role": "user", "content": "查一下配置"},
+		{"role": "assistant", "content": "我先检查相关文件", "phase": "commentary"},
+		{"role": "assistant", "content": "", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "rg 配置"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "config.go"},
+		{"role": "assistant", "content": "我先检查相关文件", "phase": "commentary"},
+		{"role": "assistant", "content": "配置入口还在"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 6)
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "我先检查相关文件"))
+	require.Equal(t, "配置入口还在", dataShareContentText(compact[len(compact)-1]["content"]))
+}
+
+func TestCompactDataShareMessagesKeepsRepeatedNonCommentaryAssistantText(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "重复一次"},
+		{"role": "assistant", "content": "好的"},
+		{"role": "user", "content": "再说一次"},
+		{"role": "assistant", "content": "好的"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 4)
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "好的"))
+}
+
+func TestCompactDataShareMessagesKeepsCommentaryAfterNewUserTurn(t *testing.T) {
+	messages := []map[string]any{
+		{"role": "user", "content": "先查配置"},
+		{"role": "assistant", "content": "我先检查相关文件", "phase": "commentary"},
+		{"role": "user", "content": "再查一次"},
+		{"role": "assistant", "content": "我先检查相关文件", "phase": "commentary"},
+	}
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, 4)
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "我先检查相关文件"))
+}
+
 func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
 	sys := "你是编码助手"
 	messages := []map[string]any{

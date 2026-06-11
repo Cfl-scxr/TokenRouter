@@ -2094,6 +2094,10 @@ func normalizeResponsesOutputItem(item gjson.Result) map[string]any {
 		if content := item.Get("content"); content.Exists() {
 			out["content"] = responseInputContentValue(content)
 		}
+		if phase := strings.TrimSpace(item.Get("phase").String()); phase != "" {
+			// Codex Responses 会用 phase 标记 commentary 等可见中间输出，保留后才能和下一轮 input 回放稳定对齐。
+			out["phase"] = phase
+		}
 		return out
 	default:
 		return normalizeDataShareMessage(msg)
@@ -2693,6 +2697,8 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 	}
 	seenToolCalls := map[string]struct{}{}
 	seenToolResults := map[string]struct{}{}
+	seenAssistantText := map[string]int{}
+	assistantTextEpoch := 0
 	for i := 0; i < len(messages); {
 		if len(out) > 0 {
 			if replay := dataShareReplaySkipLen(
@@ -2714,7 +2720,15 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 			i++
 			continue
 		}
+		if dataShareAssistantTextEchoWindowReset(msg) {
+			assistantTextEpoch++
+		}
+		if dataShareCommentaryEchoAlreadySeen(msg, seenAssistantText, assistantTextEpoch) {
+			i++
+			continue
+		}
 		rememberDataShareMessage(msg, seenToolCalls, seenToolResults)
+		rememberDataShareAssistantTextMessage(msg, seenAssistantText, assistantTextEpoch)
 		out = append(out, msg)
 		identity := messageIdentityAt(i)
 		outIdentities = append(outIdentities, identity)
@@ -3056,6 +3070,53 @@ func rememberDataShareMessage(msg map[string]any, seenToolCalls map[string]struc
 	for _, id := range dataShareToolCallIDs(msg) {
 		seenToolCalls[id] = struct{}{}
 	}
+}
+
+func dataShareCommentaryEchoAlreadySeen(msg map[string]any, seenAssistantText map[string]int, currentEpoch int) bool {
+	if strings.TrimSpace(stringFromAny(msg["phase"])) != "commentary" {
+		return false
+	}
+	key := dataShareAssistantTextKey(msg)
+	if key == "" {
+		return false
+	}
+	seenEpoch, ok := seenAssistantText[key]
+	return ok && seenEpoch == currentEpoch
+}
+
+func rememberDataShareAssistantTextMessage(msg map[string]any, seenAssistantText map[string]int, currentEpoch int) {
+	key := dataShareAssistantTextKey(msg)
+	if key == "" {
+		return
+	}
+	seenAssistantText[key] = currentEpoch
+}
+
+func dataShareAssistantTextKey(msg map[string]any) string {
+	if strings.TrimSpace(stringFromAny(msg["role"])) != "assistant" {
+		return ""
+	}
+	if len(anySlice(msg["tool_calls"])) > 0 {
+		return ""
+	}
+	contentValue := firstPresentAny(msg["content"], msg["text"])
+	content := strings.TrimSpace(dataShareContentText(contentValue))
+	if content == "" || !dataShareContentIdentityCanUseText(contentValue) {
+		return ""
+	}
+	return content
+}
+
+func dataShareAssistantTextEchoWindowReset(msg map[string]any) bool {
+	if strings.TrimSpace(stringFromAny(msg["role"])) != "user" {
+		return false
+	}
+	content := strings.TrimSpace(dataShareContentText(firstPresentAny(msg["content"], msg["text"])))
+	if content == "" {
+		return false
+	}
+	// 真实用户新输入开启新的去重窗口；AGENTS/环境等合成上下文不应打断 Responses input 回放识别。
+	return !dataShareSyntheticUserContextText(strings.ToLower(content))
 }
 
 func dataShareToolCallIDs(msg map[string]any) []string {
