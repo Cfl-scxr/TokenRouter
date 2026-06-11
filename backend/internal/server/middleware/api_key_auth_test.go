@@ -778,13 +778,14 @@ func TestAPIKeyAuthFallsBackDisabledGroupToPlatformDefault(t *testing.T) {
 		Hydrated: true,
 	}
 	apiKey := &service.APIKey{
-		ID:      100,
-		UserID:  user.ID,
-		GroupID: &disabledGroupID,
-		Key:     "test-key",
-		Status:  service.StatusActive,
-		User:    user,
-		Group:   disabledGroup,
+		ID:                                    100,
+		UserID:                                user.ID,
+		GroupID:                               &disabledGroupID,
+		Key:                                   "test-key",
+		Status:                                service.StatusActive,
+		User:                                  user,
+		Group:                                 disabledGroup,
+		FallbackToDefaultGroupWhenUnavailable: true,
 	}
 
 	apiKeyRepo := &stubApiKeyRepo{
@@ -836,6 +837,77 @@ func TestAPIKeyAuthFallsBackDisabledGroupToPlatformDefault(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestAPIKeyAuthRejectsDisabledGroupWhenFallbackDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	disabledGroupID := int64(101)
+	defaultGroupID := int64(202)
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+	}
+	disabledGroup := &service.Group{
+		ID:       disabledGroupID,
+		Name:     "openai-disabled",
+		Status:   service.StatusDisabled,
+		Platform: service.PlatformOpenAI,
+		Hydrated: true,
+	}
+	apiKey := &service.APIKey{
+		ID:      100,
+		UserID:  user.ID,
+		GroupID: &disabledGroupID,
+		Key:     "test-key",
+		Status:  service.StatusActive,
+		User:    user,
+		Group:   disabledGroup,
+	}
+
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}
+	groupRepo := &stubGroupRepoForAuth{
+		groupsByPlatform: map[string][]service.Group{
+			service.PlatformOpenAI: {
+				{
+					ID:             defaultGroupID,
+					Name:           "openai-default",
+					Status:         service.StatusActive,
+					Platform:       service.PlatformOpenAI,
+					Hydrated:       true,
+					IsDefault:      true,
+					RateMultiplier: 1,
+				},
+			},
+		},
+	}
+
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, groupRepo, nil, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.GET("/t", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "GROUP_DISABLED")
 }
 
 func TestAPIKeyAuthIPRestrictionDoesNotTrustForwardedClientIPByDefault(t *testing.T) {

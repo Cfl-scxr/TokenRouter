@@ -170,6 +170,9 @@ type CreateAPIKeyRequest struct {
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
 
+	// FallbackToDefaultGroupWhenUnavailable 表示绑定分组停用时是否允许回退到同平台默认分组。
+	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
+
 	// 数据共享确认字段：创建时直接选择数据共享分组也必须确认。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
@@ -194,6 +197,9 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	// FallbackToDefaultGroupWhenUnavailable 为 nil 时保持原值。
+	FallbackToDefaultGroupWhenUnavailable *bool `json:"fallback_to_default_group_when_unavailable"`
 
 	// 数据共享确认字段：用户切换到数据共享分组时必须由弹窗确认后提交。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
@@ -449,21 +455,22 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:                      userID,
-		Key:                         key,
-		Name:                        html.EscapeString(req.Name),
-		GroupID:                     req.GroupID,
-		Status:                      StatusActive,
-		IPWhitelist:                 req.IPWhitelist,
-		IPBlacklist:                 req.IPBlacklist,
-		Quota:                       req.Quota,
-		QuotaUsed:                   0,
-		RateLimit5h:                 req.RateLimit5h,
-		RateLimit1d:                 req.RateLimit1d,
-		RateLimit7d:                 req.RateLimit7d,
-		DataSharingNoticeVersion:    dataSharingNoticeVersion,
-		DataSharingConfirmedGroupID: dataSharingConfirmedGroupID,
-		DataSharingConfirmedAt:      dataSharingConfirmedAt,
+		UserID:                                userID,
+		Key:                                   key,
+		Name:                                  html.EscapeString(req.Name),
+		GroupID:                               req.GroupID,
+		Status:                                StatusActive,
+		IPWhitelist:                           req.IPWhitelist,
+		IPBlacklist:                           req.IPBlacklist,
+		Quota:                                 req.Quota,
+		QuotaUsed:                             0,
+		RateLimit5h:                           req.RateLimit5h,
+		RateLimit1d:                           req.RateLimit1d,
+		RateLimit7d:                           req.RateLimit7d,
+		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
+		DataSharingNoticeVersion:              dataSharingNoticeVersion,
+		DataSharingConfirmedGroupID:           dataSharingConfirmedGroupID,
+		DataSharingConfirmedAt:                dataSharingConfirmedAt,
 	}
 
 	// Set expiration time if specified
@@ -596,6 +603,9 @@ func (s *APIKeyService) applyDefaultGroupFallback(ctx context.Context, apiKey *A
 			return apiKey
 		}
 		if fallbackPlatform, ok := fallbackPlatformFromBoundGroup(apiKey.Group); ok {
+			if !apiKey.FallbackToDefaultGroupWhenUnavailable {
+				return apiKey
+			}
 			return s.applyDefaultGroupByPlatform(ctx, apiKey, fallbackPlatform)
 		}
 		if apiKey.GroupID != nil && apiKey.Group.ID == *apiKey.GroupID {
@@ -803,6 +813,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if req.RateLimit7d != nil {
 		apiKey.RateLimit7d = *req.RateLimit7d
+	}
+	if req.FallbackToDefaultGroupWhenUnavailable != nil {
+		apiKey.FallbackToDefaultGroupWhenUnavailable = *req.FallbackToDefaultGroupWhenUnavailable
 	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {

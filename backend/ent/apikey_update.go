@@ -506,6 +506,20 @@ func (_u *APIKeyUpdate) ClearDataSharingConfirmedAt() *APIKeyUpdate {
 	return _u
 }
 
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (_u *APIKeyUpdate) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyUpdate {
+	_u.mutation.SetFallbackToDefaultGroupWhenUnavailable(v)
+	return _u
+}
+
+// SetNillableFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableFallbackToDefaultGroupWhenUnavailable(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetFallbackToDefaultGroupWhenUnavailable(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -784,6 +798,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DataSharingConfirmedAtCleared() {
 		_spec.ClearField(apikey.FieldDataSharingConfirmedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.FallbackToDefaultGroupWhenUnavailable(); ok {
+		_spec.SetField(apikey.FieldFallbackToDefaultGroupWhenUnavailable, field.TypeBool, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1382,6 +1399,20 @@ func (_u *APIKeyUpdateOne) ClearDataSharingConfirmedAt() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (_u *APIKeyUpdateOne) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetFallbackToDefaultGroupWhenUnavailable(v)
+	return _u
+}
+
+// SetNillableFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableFallbackToDefaultGroupWhenUnavailable(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetFallbackToDefaultGroupWhenUnavailable(*v)
+	}
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1690,6 +1721,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.DataSharingConfirmedAtCleared() {
 		_spec.ClearField(apikey.FieldDataSharingConfirmedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.FallbackToDefaultGroupWhenUnavailable(); ok {
+		_spec.SetField(apikey.FieldFallbackToDefaultGroupWhenUnavailable, field.TypeBool, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

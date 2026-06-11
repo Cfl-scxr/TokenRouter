@@ -50,6 +50,8 @@ type APIKey struct {
 	DataSharingConfirmedGroupID *int64
 	// DataSharingConfirmedAt 记录最近一次用户点击确认的时间。
 	DataSharingConfirmedAt *time.Time
+	// FallbackToDefaultGroupWhenUnavailable 控制绑定分组停用时是否回退到同平台默认分组。
+	FallbackToDefaultGroupWhenUnavailable bool
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

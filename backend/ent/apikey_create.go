@@ -349,6 +349,20 @@ func (_c *APIKeyCreate) SetNillableDataSharingConfirmedAt(v *time.Time) *APIKeyC
 	return _c
 }
 
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (_c *APIKeyCreate) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyCreate {
+	_c.mutation.SetFallbackToDefaultGroupWhenUnavailable(v)
+	return _c
+}
+
+// SetNillableFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableFallbackToDefaultGroupWhenUnavailable(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetFallbackToDefaultGroupWhenUnavailable(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -465,6 +479,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultDataSharingNoticeVersion
 		_c.mutation.SetDataSharingNoticeVersion(v)
 	}
+	if _, ok := _c.mutation.FallbackToDefaultGroupWhenUnavailable(); !ok {
+		v := apikey.DefaultFallbackToDefaultGroupWhenUnavailable
+		_c.mutation.SetFallbackToDefaultGroupWhenUnavailable(v)
+	}
 	return nil
 }
 
@@ -529,6 +547,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.DataSharingNoticeVersion(); !ok {
 		return &ValidationError{Name: "data_sharing_notice_version", err: errors.New(`ent: missing required field "APIKey.data_sharing_notice_version"`)}
+	}
+	if _, ok := _c.mutation.FallbackToDefaultGroupWhenUnavailable(); !ok {
+		return &ValidationError{Name: "fallback_to_default_group_when_unavailable", err: errors.New(`ent: missing required field "APIKey.fallback_to_default_group_when_unavailable"`)}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
@@ -655,6 +676,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DataSharingConfirmedAt(); ok {
 		_spec.SetField(apikey.FieldDataSharingConfirmedAt, field.TypeTime, value)
 		_node.DataSharingConfirmedAt = &value
+	}
+	if value, ok := _c.mutation.FallbackToDefaultGroupWhenUnavailable(); ok {
+		_spec.SetField(apikey.FieldFallbackToDefaultGroupWhenUnavailable, field.TypeBool, value)
+		_node.FallbackToDefaultGroupWhenUnavailable = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1181,6 +1206,18 @@ func (u *APIKeyUpsert) UpdateDataSharingConfirmedAt() *APIKeyUpsert {
 // ClearDataSharingConfirmedAt clears the value of the "data_sharing_confirmed_at" field.
 func (u *APIKeyUpsert) ClearDataSharingConfirmedAt() *APIKeyUpsert {
 	u.SetNull(apikey.FieldDataSharingConfirmedAt)
+	return u
+}
+
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (u *APIKeyUpsert) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldFallbackToDefaultGroupWhenUnavailable, v)
+	return u
+}
+
+// UpdateFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateFallbackToDefaultGroupWhenUnavailable() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldFallbackToDefaultGroupWhenUnavailable)
 	return u
 }
 
@@ -1723,6 +1760,20 @@ func (u *APIKeyUpsertOne) UpdateDataSharingConfirmedAt() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearDataSharingConfirmedAt() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearDataSharingConfirmedAt()
+	})
+}
+
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (u *APIKeyUpsertOne) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackToDefaultGroupWhenUnavailable(v)
+	})
+}
+
+// UpdateFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateFallbackToDefaultGroupWhenUnavailable() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackToDefaultGroupWhenUnavailable()
 	})
 }
 
@@ -2431,6 +2482,20 @@ func (u *APIKeyUpsertBulk) UpdateDataSharingConfirmedAt() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearDataSharingConfirmedAt() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearDataSharingConfirmedAt()
+	})
+}
+
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (u *APIKeyUpsertBulk) SetFallbackToDefaultGroupWhenUnavailable(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackToDefaultGroupWhenUnavailable(v)
+	})
+}
+
+// UpdateFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateFallbackToDefaultGroupWhenUnavailable() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackToDefaultGroupWhenUnavailable()
 	})
 }
 

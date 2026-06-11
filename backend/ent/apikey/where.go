@@ -175,6 +175,11 @@ func DataSharingConfirmedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldDataSharingConfirmedAt, v))
 }
 
+// FallbackToDefaultGroupWhenUnavailable applies equality check predicate on the "fallback_to_default_group_when_unavailable" field. It's identical to FallbackToDefaultGroupWhenUnavailableEQ.
+func FallbackToDefaultGroupWhenUnavailable(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldFallbackToDefaultGroupWhenUnavailable, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -1278,6 +1283,16 @@ func DataSharingConfirmedAtIsNil() predicate.APIKey {
 // DataSharingConfirmedAtNotNil applies the NotNil predicate on the "data_sharing_confirmed_at" field.
 func DataSharingConfirmedAtNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldDataSharingConfirmedAt))
+}
+
+// FallbackToDefaultGroupWhenUnavailableEQ applies the EQ predicate on the "fallback_to_default_group_when_unavailable" field.
+func FallbackToDefaultGroupWhenUnavailableEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldFallbackToDefaultGroupWhenUnavailable, v))
+}
+
+// FallbackToDefaultGroupWhenUnavailableNEQ applies the NEQ predicate on the "fallback_to_default_group_when_unavailable" field.
+func FallbackToDefaultGroupWhenUnavailableNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldFallbackToDefaultGroupWhenUnavailable, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

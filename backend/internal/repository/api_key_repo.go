@@ -54,6 +54,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
 		SetRateLimit7d(key.RateLimit7d).
+		SetFallbackToDefaultGroupWhenUnavailable(key.FallbackToDefaultGroupWhenUnavailable).
 		SetDataSharingNoticeVersion(key.DataSharingNoticeVersion).
 		SetNillableDataSharingConfirmedGroupID(key.DataSharingConfirmedGroupID).
 		SetNillableDataSharingConfirmedAt(key.DataSharingConfirmedAt)
@@ -146,6 +147,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldRateLimit5h,
 			apikey.FieldRateLimit1d,
 			apikey.FieldRateLimit7d,
+			apikey.FieldFallbackToDefaultGroupWhenUnavailable,
 		).
 		WithUser(func(q *dbent.UserQuery) {
 			q.Select(
@@ -228,6 +230,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
 		SetRateLimit7d(key.RateLimit7d).
+		SetFallbackToDefaultGroupWhenUnavailable(key.FallbackToDefaultGroupWhenUnavailable).
 		SetUsage5h(key.Usage5h).
 		SetUsage1d(key.Usage1d).
 		SetUsage7d(key.Usage7d).
@@ -802,29 +805,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:                                    m.ID,
+		UserID:                                m.UserID,
+		Key:                                   m.Key,
+		Name:                                  m.Name,
+		Status:                                m.Status,
+		IPWhitelist:                           m.IPWhitelist,
+		IPBlacklist:                           m.IPBlacklist,
+		LastUsedAt:                            m.LastUsedAt,
+		CreatedAt:                             m.CreatedAt,
+		UpdatedAt:                             m.UpdatedAt,
+		GroupID:                               m.GroupID,
+		Quota:                                 m.Quota,
+		QuotaUsed:                             m.QuotaUsed,
+		ExpiresAt:                             m.ExpiresAt,
+		RateLimit5h:                           m.RateLimit5h,
+		RateLimit1d:                           m.RateLimit1d,
+		RateLimit7d:                           m.RateLimit7d,
+		Usage5h:                               m.Usage5h,
+		Usage1d:                               m.Usage1d,
+		Usage7d:                               m.Usage7d,
+		Window5hStart:                         m.Window5hStart,
+		Window1dStart:                         m.Window1dStart,
+		Window7dStart:                         m.Window7dStart,
+		FallbackToDefaultGroupWhenUnavailable: m.FallbackToDefaultGroupWhenUnavailable,
 		// 数据共享确认信息随 API Key 返回，用户端可判断是否需要重新确认须知。
 		DataSharingNoticeVersion:    m.DataSharingNoticeVersion,
 		DataSharingConfirmedGroupID: m.DataSharingConfirmedGroupID,

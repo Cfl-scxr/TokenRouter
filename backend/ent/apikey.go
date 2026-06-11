@@ -72,6 +72,8 @@ type APIKey struct {
 	DataSharingConfirmedGroupID *int64 `json:"data_sharing_confirmed_group_id,omitempty"`
 	// 最近一次确认数据共享须知的时间
 	DataSharingConfirmedAt *time.Time `json:"data_sharing_confirmed_at,omitempty"`
+	// 绑定分组不可用时自动回退到同平台默认分组
+	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the APIKeyQuery when eager-loading is set.
 	Edges        APIKeyEdges `json:"edges"`
@@ -129,6 +131,8 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
+		case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID, apikey.FieldDataSharingNoticeVersion, apikey.FieldDataSharingConfirmedGroupID:
@@ -327,6 +331,12 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				_m.DataSharingConfirmedAt = new(time.Time)
 				*_m.DataSharingConfirmedAt = value.Time
 			}
+		case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_to_default_group_when_unavailable", values[i])
+			} else if value.Valid {
+				_m.FallbackToDefaultGroupWhenUnavailable = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -473,6 +483,9 @@ func (_m *APIKey) String() string {
 		builder.WriteString("data_sharing_confirmed_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("fallback_to_default_group_when_unavailable=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FallbackToDefaultGroupWhenUnavailable))
 	builder.WriteByte(')')
 	return builder.String()
 }

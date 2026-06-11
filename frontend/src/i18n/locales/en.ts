@@ -801,6 +801,7 @@ export default {
     namePlaceholder: 'My API Key',
     groupLabel: 'Group',
     selectGroup: 'Select a group',
+    fallbackToDefaultGroupWhenUnavailable: 'Auto fallback when unavailable',
     statusLabel: 'Status',
     selectStatus: 'Select status',
     saving: 'Saving...',

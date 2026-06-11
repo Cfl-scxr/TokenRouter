@@ -55,6 +55,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param quota - Optional quota limit in USD (0 = unlimited)
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
+ * @param fallbackToDefaultGroupWhenUnavailable - 绑定分组不可用时是否回退到平台默认分组
  * @returns Created API key
  */
 export async function create(
@@ -65,7 +66,8 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  fallbackToDefaultGroupWhenUnavailable?: boolean
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -94,6 +96,9 @@ export async function create(
   }
   if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
     payload.rate_limit_7d = rateLimitData.rate_limit_7d
+  }
+  if (fallbackToDefaultGroupWhenUnavailable !== undefined) {
+    payload.fallback_to_default_group_when_unavailable = fallbackToDefaultGroupWhenUnavailable
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)

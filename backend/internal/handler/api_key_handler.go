@@ -48,6 +48,8 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h *float64 `json:"rate_limit_5h"`
 	RateLimit1d *float64 `json:"rate_limit_1d"`
 	RateLimit7d *float64 `json:"rate_limit_7d"`
+	// 绑定分组不可用时是否自动回退到同平台默认分组。
+	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
 	// 创建时直接选择数据共享分组也必须由弹窗确认。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
@@ -69,6 +71,8 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+	// nil 表示保持原配置不变。
+	FallbackToDefaultGroupWhenUnavailable *bool `json:"fallback_to_default_group_when_unavailable"`
 	// 数据共享确认字段：倒计时弹窗确认后由前端传入。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
@@ -166,14 +170,15 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:                     req.Name,
-		GroupID:                  req.GroupID,
-		CustomKey:                req.CustomKey,
-		IPWhitelist:              req.IPWhitelist,
-		IPBlacklist:              req.IPBlacklist,
-		ExpiresInDays:            req.ExpiresInDays,
-		DataSharingConfirmed:     req.DataSharingConfirmed,
-		DataSharingNoticeVersion: req.DataSharingNoticeVersion,
+		Name:                                  req.Name,
+		GroupID:                               req.GroupID,
+		CustomKey:                             req.CustomKey,
+		IPWhitelist:                           req.IPWhitelist,
+		IPBlacklist:                           req.IPBlacklist,
+		ExpiresInDays:                         req.ExpiresInDays,
+		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
+		DataSharingConfirmed:                  req.DataSharingConfirmed,
+		DataSharingNoticeVersion:              req.DataSharingNoticeVersion,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
@@ -219,16 +224,17 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	}
 
 	svcReq := service.UpdateAPIKeyRequest{
-		IPWhitelist:              req.IPWhitelist,
-		IPBlacklist:              req.IPBlacklist,
-		Quota:                    req.Quota,
-		ResetQuota:               req.ResetQuota,
-		RateLimit5h:              req.RateLimit5h,
-		RateLimit1d:              req.RateLimit1d,
-		RateLimit7d:              req.RateLimit7d,
-		ResetRateLimitUsage:      req.ResetRateLimitUsage,
-		DataSharingConfirmed:     req.DataSharingConfirmed,
-		DataSharingNoticeVersion: req.DataSharingNoticeVersion,
+		IPWhitelist:                           req.IPWhitelist,
+		IPBlacklist:                           req.IPBlacklist,
+		Quota:                                 req.Quota,
+		ResetQuota:                            req.ResetQuota,
+		RateLimit5h:                           req.RateLimit5h,
+		RateLimit1d:                           req.RateLimit1d,
+		RateLimit7d:                           req.RateLimit7d,
+		ResetRateLimitUsage:                   req.ResetRateLimitUsage,
+		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
+		DataSharingConfirmed:                  req.DataSharingConfirmed,
+		DataSharingNoticeVersion:              req.DataSharingNoticeVersion,
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name

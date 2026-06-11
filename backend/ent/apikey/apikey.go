@@ -67,6 +67,8 @@ const (
 	FieldDataSharingConfirmedGroupID = "data_sharing_confirmed_group_id"
 	// FieldDataSharingConfirmedAt holds the string denoting the data_sharing_confirmed_at field in the database.
 	FieldDataSharingConfirmedAt = "data_sharing_confirmed_at"
+	// FieldFallbackToDefaultGroupWhenUnavailable holds the string denoting the fallback_to_default_group_when_unavailable field in the database.
+	FieldFallbackToDefaultGroupWhenUnavailable = "fallback_to_default_group_when_unavailable"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -127,6 +129,7 @@ var Columns = []string{
 	FieldDataSharingNoticeVersion,
 	FieldDataSharingConfirmedGroupID,
 	FieldDataSharingConfirmedAt,
+	FieldFallbackToDefaultGroupWhenUnavailable,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -179,6 +182,8 @@ var (
 	DefaultUsage7d float64
 	// DefaultDataSharingNoticeVersion holds the default value on creation for the "data_sharing_notice_version" field.
 	DefaultDataSharingNoticeVersion int
+	// DefaultFallbackToDefaultGroupWhenUnavailable holds the default value on creation for the "fallback_to_default_group_when_unavailable" field.
+	DefaultFallbackToDefaultGroupWhenUnavailable bool
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -307,6 +312,11 @@ func ByDataSharingConfirmedGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByDataSharingConfirmedAt orders the results by the data_sharing_confirmed_at field.
 func ByDataSharingConfirmedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDataSharingConfirmedAt, opts...).ToFunc()
+}
+
+// ByFallbackToDefaultGroupWhenUnavailable orders the results by the fallback_to_default_group_when_unavailable field.
+func ByFallbackToDefaultGroupWhenUnavailable(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackToDefaultGroupWhenUnavailable, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

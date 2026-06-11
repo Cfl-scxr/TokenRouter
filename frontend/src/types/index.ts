@@ -678,6 +678,7 @@ export interface ApiKey {
   data_sharing_notice_version?: number
   data_sharing_confirmed_group_id?: number | null
   data_sharing_confirmed_at?: string | null
+  fallback_to_default_group_when_unavailable?: boolean
 }
 
 export interface CreateApiKeyRequest {
@@ -691,6 +692,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  fallback_to_default_group_when_unavailable?: boolean
   data_sharing_confirmed?: boolean
   data_sharing_notice_version?: number
 }
@@ -708,6 +710,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  fallback_to_default_group_when_unavailable?: boolean
   data_sharing_confirmed?: boolean
   data_sharing_notice_version?: number
 }

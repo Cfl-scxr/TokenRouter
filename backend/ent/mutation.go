@@ -101,56 +101,57 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                                 Op
-	typ                                string
-	id                                 *int64
-	created_at                         *time.Time
-	updated_at                         *time.Time
-	deleted_at                         *time.Time
-	key                                *string
-	name                               *string
-	status                             *string
-	last_used_at                       *time.Time
-	ip_whitelist                       *[]string
-	appendip_whitelist                 []string
-	ip_blacklist                       *[]string
-	appendip_blacklist                 []string
-	quota                              *float64
-	addquota                           *float64
-	quota_used                         *float64
-	addquota_used                      *float64
-	expires_at                         *time.Time
-	rate_limit_5h                      *float64
-	addrate_limit_5h                   *float64
-	rate_limit_1d                      *float64
-	addrate_limit_1d                   *float64
-	rate_limit_7d                      *float64
-	addrate_limit_7d                   *float64
-	usage_5h                           *float64
-	addusage_5h                        *float64
-	usage_1d                           *float64
-	addusage_1d                        *float64
-	usage_7d                           *float64
-	addusage_7d                        *float64
-	window_5h_start                    *time.Time
-	window_1d_start                    *time.Time
-	window_7d_start                    *time.Time
-	data_sharing_notice_version        *int
-	adddata_sharing_notice_version     *int
-	data_sharing_confirmed_group_id    *int64
-	adddata_sharing_confirmed_group_id *int64
-	data_sharing_confirmed_at          *time.Time
-	clearedFields                      map[string]struct{}
-	user                               *int64
-	cleareduser                        bool
-	group                              *int64
-	clearedgroup                       bool
-	usage_logs                         map[int64]struct{}
-	removedusage_logs                  map[int64]struct{}
-	clearedusage_logs                  bool
-	done                               bool
-	oldValue                           func(context.Context) (*APIKey, error)
-	predicates                         []predicate.APIKey
+	op                                         Op
+	typ                                        string
+	id                                         *int64
+	created_at                                 *time.Time
+	updated_at                                 *time.Time
+	deleted_at                                 *time.Time
+	key                                        *string
+	name                                       *string
+	status                                     *string
+	last_used_at                               *time.Time
+	ip_whitelist                               *[]string
+	appendip_whitelist                         []string
+	ip_blacklist                               *[]string
+	appendip_blacklist                         []string
+	quota                                      *float64
+	addquota                                   *float64
+	quota_used                                 *float64
+	addquota_used                              *float64
+	expires_at                                 *time.Time
+	rate_limit_5h                              *float64
+	addrate_limit_5h                           *float64
+	rate_limit_1d                              *float64
+	addrate_limit_1d                           *float64
+	rate_limit_7d                              *float64
+	addrate_limit_7d                           *float64
+	usage_5h                                   *float64
+	addusage_5h                                *float64
+	usage_1d                                   *float64
+	addusage_1d                                *float64
+	usage_7d                                   *float64
+	addusage_7d                                *float64
+	window_5h_start                            *time.Time
+	window_1d_start                            *time.Time
+	window_7d_start                            *time.Time
+	data_sharing_notice_version                *int
+	adddata_sharing_notice_version             *int
+	data_sharing_confirmed_group_id            *int64
+	adddata_sharing_confirmed_group_id         *int64
+	data_sharing_confirmed_at                  *time.Time
+	fallback_to_default_group_when_unavailable *bool
+	clearedFields                              map[string]struct{}
+	user                                       *int64
+	cleareduser                                bool
+	group                                      *int64
+	clearedgroup                               bool
+	usage_logs                                 map[int64]struct{}
+	removedusage_logs                          map[int64]struct{}
+	clearedusage_logs                          bool
+	done                                       bool
+	oldValue                                   func(context.Context) (*APIKey, error)
+	predicates                                 []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -1563,6 +1564,42 @@ func (m *APIKeyMutation) ResetDataSharingConfirmedAt() {
 	delete(m.clearedFields, apikey.FieldDataSharingConfirmedAt)
 }
 
+// SetFallbackToDefaultGroupWhenUnavailable sets the "fallback_to_default_group_when_unavailable" field.
+func (m *APIKeyMutation) SetFallbackToDefaultGroupWhenUnavailable(b bool) {
+	m.fallback_to_default_group_when_unavailable = &b
+}
+
+// FallbackToDefaultGroupWhenUnavailable returns the value of the "fallback_to_default_group_when_unavailable" field in the mutation.
+func (m *APIKeyMutation) FallbackToDefaultGroupWhenUnavailable() (r bool, exists bool) {
+	v := m.fallback_to_default_group_when_unavailable
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackToDefaultGroupWhenUnavailable returns the old "fallback_to_default_group_when_unavailable" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldFallbackToDefaultGroupWhenUnavailable(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackToDefaultGroupWhenUnavailable is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackToDefaultGroupWhenUnavailable requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackToDefaultGroupWhenUnavailable: %w", err)
+	}
+	return oldValue.FallbackToDefaultGroupWhenUnavailable, nil
+}
+
+// ResetFallbackToDefaultGroupWhenUnavailable resets all changes to the "fallback_to_default_group_when_unavailable" field.
+func (m *APIKeyMutation) ResetFallbackToDefaultGroupWhenUnavailable() {
+	m.fallback_to_default_group_when_unavailable = nil
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1705,7 +1742,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1784,6 +1821,9 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.data_sharing_confirmed_at != nil {
 		fields = append(fields, apikey.FieldDataSharingConfirmedAt)
 	}
+	if m.fallback_to_default_group_when_unavailable != nil {
+		fields = append(fields, apikey.FieldFallbackToDefaultGroupWhenUnavailable)
+	}
 	return fields
 }
 
@@ -1844,6 +1884,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.DataSharingConfirmedGroupID()
 	case apikey.FieldDataSharingConfirmedAt:
 		return m.DataSharingConfirmedAt()
+	case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+		return m.FallbackToDefaultGroupWhenUnavailable()
 	}
 	return nil, false
 }
@@ -1905,6 +1947,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDataSharingConfirmedGroupID(ctx)
 	case apikey.FieldDataSharingConfirmedAt:
 		return m.OldDataSharingConfirmedAt(ctx)
+	case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+		return m.OldFallbackToDefaultGroupWhenUnavailable(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -2095,6 +2139,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDataSharingConfirmedAt(v)
+		return nil
+	case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackToDefaultGroupWhenUnavailable(v)
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -2414,6 +2465,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldDataSharingConfirmedAt:
 		m.ResetDataSharingConfirmedAt()
+		return nil
+	case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+		m.ResetFallbackToDefaultGroupWhenUnavailable()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)

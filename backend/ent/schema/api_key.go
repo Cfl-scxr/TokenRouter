@@ -128,6 +128,10 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("最近一次确认数据共享须知的时间"),
+		// 绑定分组停用时是否允许请求级回退到同平台默认分组。
+		field.Bool("fallback_to_default_group_when_unavailable").
+			Default(false).
+			Comment("绑定分组不可用时自动回退到同平台默认分组"),
 	}
 }
 
