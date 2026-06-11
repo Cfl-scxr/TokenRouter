@@ -6139,6 +6139,8 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	RequestBody        []byte // 原始请求体，用于数据共享 session 归一化采集
 	SessionID          string // 当前请求的会话标识，用于数据共享聚合
+	Turn               int
+	CaptureIncomplete  bool
 	APIKeyService      APIKeyQuotaUpdater
 	ChannelUsageFields
 }
@@ -6399,6 +6401,8 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIR
 		IPAddress:         input.IPAddress,
 		InboundEndpoint:   input.InboundEndpoint,
 		UpstreamEndpoint:  input.UpstreamEndpoint,
+		Turn:              input.Turn,
+		CaptureIncomplete: input.CaptureIncomplete,
 	})
 }
 

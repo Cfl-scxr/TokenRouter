@@ -254,7 +254,18 @@ type OpenAIWSIngressHooks struct {
 	BeforeRequest       func(turn int, payload []byte, originalModel, previousResponseID string) error
 	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
 	OnUpstreamError func(turn int, statusCode int, responseBody []byte, message string)
-	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	AfterTurn       func(capture OpenAIWSTurnCapture)
+}
+
+// OpenAIWSTurnCapture 描述一次 WS turn 完成后用于 usage 和数据共享采集的上下文。
+type OpenAIWSTurnCapture struct {
+	Turn               int
+	RequestBody        []byte
+	OriginalModel      string
+	PreviousResponseID string
+	Result             *OpenAIForwardResult
+	Err                error
+	PayloadSource      string
 }
 
 func normalizeOpenAIWSLogValue(value string) string {
@@ -2960,7 +2971,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				tlsRouterMatch,
 			)
 			if hooks != nil && hooks.AfterTurn != nil {
-				hooks.AfterTurn(turn, result, bridgeErr)
+				hooks.AfterTurn(OpenAIWSTurnCapture{
+					Turn:               turn,
+					RequestBody:        append([]byte(nil), bridgePayloadRaw...),
+					OriginalModel:      currentBridgePayload.originalModel,
+					PreviousResponseID: currentBridgePayload.previousResponseID,
+					Result:             result,
+					Err:                bridgeErr,
+					PayloadSource:      "http_bridge",
+				})
 			}
 			if bridgeErr != nil {
 				return bridgeErr
@@ -3200,6 +3219,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		eventCount := 0
 		tokenEventCount := 0
 		terminalEventCount := 0
+		var terminalResponseBody []byte
 		replayCollector := &openAIWSToolCallReplayCollector{}
 		firstEventType := ""
 		lastEventType := ""
@@ -3359,6 +3379,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if isTerminalEvent {
+				terminalResponseBody = openAIWSTerminalEventResponseBody(upstreamMessage)
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()
@@ -3395,6 +3416,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					Stream:          reqStream,
 					OpenAIWSMode:    true,
 					ResponseHeaders: lease.HandshakeHeaders(),
+					ResponseBody:    cloneDataSharingRequestBody(terminalResponseBody),
 					Duration:        time.Since(turnStart),
 					FirstTokenMs:    firstTokenMs,
 				}
@@ -3922,7 +3944,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				finalErr = unwrapped
 			}
 			if hooks != nil && hooks.AfterTurn != nil {
-				hooks.AfterTurn(turn, nil, finalErr)
+				hooks.AfterTurn(OpenAIWSTurnCapture{
+					Turn:               turn,
+					RequestBody:        append([]byte(nil), currentPayload...),
+					OriginalModel:      currentOriginalModel,
+					PreviousResponseID: currentPreviousResponseID,
+					Err:                finalErr,
+					PayloadSource:      "ctx_pool",
+				})
 			}
 			sessionLease.MarkBroken()
 			return finalErr
@@ -3932,7 +3961,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		lastTurnFinishedAt = time.Now()
 		lastTurnClean = true
 		if hooks != nil && hooks.AfterTurn != nil {
-			hooks.AfterTurn(turn, result, nil)
+			hooks.AfterTurn(OpenAIWSTurnCapture{
+				Turn:               turn,
+				RequestBody:        append([]byte(nil), currentPayload...),
+				OriginalModel:      currentOriginalModel,
+				PreviousResponseID: currentPreviousResponseID,
+				Result:             result,
+				PayloadSource:      "ctx_pool",
+			})
 		}
 		if result == nil {
 			return errors.New("websocket turn result is nil")
@@ -4235,6 +4271,18 @@ func isOpenAIWSTerminalEvent(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+func openAIWSTerminalEventResponseBody(message []byte) []byte {
+	if len(message) == 0 {
+		return nil
+	}
+	response := gjson.GetBytes(message, "response")
+	if response.Exists() && response.Raw != "" {
+		// 数据共享解析的是普通 Responses 响应体，这里只取 terminal event 中的 response 对象。
+		return []byte(response.Raw)
+	}
+	return cloneOpenAIWSPayloadBytes(message)
 }
 
 func openAIWSEventMayCarryUpstreamWarning(eventType string) bool {

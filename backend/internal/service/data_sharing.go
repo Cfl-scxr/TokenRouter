@@ -39,6 +39,16 @@ const (
 	defaultDataShareDataset          = "tokenrouter-agent"
 )
 
+type dataShareCaptureMode string
+
+const (
+	dataShareCaptureModeSnapshot           dataShareCaptureMode = ""
+	dataShareCaptureModeOpenAIResponsesRaw dataShareCaptureMode = "openai_responses_raw"
+	dataShareCaptureModeIncremental        dataShareCaptureMode = "incremental"
+)
+
+const dataShareInternalCaptureMetaKey = "_capture"
+
 var (
 	ErrDataShareSessionNotFound = infraerrors.NotFound("DATA_SHARE_SESSION_NOT_FOUND", "data share session not found")
 	ErrDataShareNoticeMissing   = infraerrors.BadRequest("DATA_SHARE_NOTICE_MISSING", "data sharing notice content is required")
@@ -171,6 +181,9 @@ type DataShareSession struct {
 	CreatedAt            time.Time
 	EndedAt              *time.Time
 	UpdatedAt            time.Time
+	captureMode          dataShareCaptureMode
+	captureInput         *DataShareCaptureInput
+	captureState         *dataShareResponsesCaptureState
 }
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。
@@ -366,6 +379,9 @@ type DataShareCaptureInput struct {
 	IPAddress         string
 	InboundEndpoint   string
 	UpstreamEndpoint  string
+	CaptureMode       dataShareCaptureMode
+	Turn              int
+	CaptureIncomplete bool
 }
 
 // DataShareUpsertOptions 是采集写入时的附加保护参数。
@@ -1293,6 +1309,9 @@ func (s *DataSharingService) buildCaptureSessionWithOptions(ctx context.Context,
 	if input.Model == "" && input.UpstreamModel != "" {
 		input.Model = input.UpstreamModel
 	}
+	if dataShareCaptureInputIsOpenAIResponses(input) && !opts.FinalizeQuality {
+		return s.buildOpenAIResponsesRawCaptureSession(input)
+	}
 	return s.buildSessionWithOptions(input, opts)
 }
 
@@ -1807,6 +1826,120 @@ func (s *DataSharingService) buildSession(input DataShareCaptureInput) *DataShar
 	return s.buildSessionWithOptions(input, dataShareBuildSessionOptions{FinalizeQuality: true})
 }
 
+func (s *DataSharingService) buildOpenAIResponsesRawCaptureSession(input DataShareCaptureInput) *DataShareSession {
+	now := time.Now()
+	groupID := int64(0)
+	if input.APIKey != nil && input.APIKey.GroupID != nil {
+		groupID = *input.APIKey.GroupID
+	} else if input.APIKey != nil && input.APIKey.Group != nil {
+		groupID = input.APIKey.Group.ID
+	}
+	userID := int64(0)
+	if input.User != nil {
+		userID = input.User.ID
+	} else if input.APIKey != nil {
+		userID = input.APIKey.UserID
+	}
+	apiKeyID := int64(0)
+	if input.APIKey != nil {
+		apiKeyID = input.APIKey.ID
+	}
+	provider := normalizeDataShareProvider(input.Provider, input.APIKey)
+	model := resolveDataShareActualModel(input)
+	requestPath := normalizeDataShareRequestPath(input.InboundEndpoint)
+	userAgent := normalizeDataShareUserAgent(input.UserAgent)
+	sessionID := normalizeDataShareSessionID(input.SessionID, input.RequestID, input.RequestBody, apiKeyID)
+	trajectoryID := buildTrajectoryID(provider, sessionID, apiKeyID, groupID)
+	usage := buildCaptureUsage(input)
+	meta := buildCaptureMeta(input)
+	if input.Turn > 0 {
+		meta["turn"] = input.Turn
+	}
+	if input.CaptureIncomplete {
+		meta["capture_incomplete"] = true
+	}
+	systemPrompt := strings.TrimSpace(input.SystemPrompt)
+	if systemPrompt == "" {
+		systemPrompt = extractSystemPromptFromRequest(input.RequestBody)
+	}
+	inputCopy := cloneDataShareCaptureInput(input)
+	return &DataShareSession{
+		TrajectoryID:       trajectoryID,
+		SessionID:          sessionID,
+		Dataset:            defaultDataShareDataset,
+		Provider:           provider,
+		Model:              model,
+		RequestPath:        requestPath,
+		UserAgent:          userAgent,
+		Status:             DataShareStatusTerminated,
+		IsFinalSnapshot:    false,
+		SourceRequestCount: 1,
+		SystemPrompt:       optionalDataShareString(systemPrompt),
+		Tools:              normalizeCaptureTools(input),
+		Usage:              usage,
+		Meta:               meta,
+		QualityStatus:      DataShareQualityInvalid,
+		Exportable:         false,
+		InputTokens:        int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens),
+		OutputTokens:       int64(input.OutputTokens),
+		TotalTokens:        int64(input.InputTokens + input.CacheReadTokens + input.CacheCreateTokens + input.OutputTokens),
+		ActualCost:         cloneFloat64Ptr(input.ActualCost),
+		UserID:             userID,
+		APIKeyID:           apiKeyID,
+		GroupID:            groupID,
+		CreatedAt:          now,
+		EndedAt:            &now,
+		UpdatedAt:          now,
+		captureMode:        dataShareCaptureModeOpenAIResponsesRaw,
+		captureInput:       &inputCopy,
+	}
+}
+
+func dataShareCaptureInputIsOpenAIResponses(input DataShareCaptureInput) bool {
+	if input.CaptureMode == dataShareCaptureModeOpenAIResponsesRaw {
+		return true
+	}
+	if normalizeDataShareRequestPath(input.InboundEndpoint) != "/v1/responses" {
+		return false
+	}
+	if len(input.RequestBody) == 0 {
+		return false
+	}
+	return gjson.GetBytes(input.RequestBody, "input").Exists()
+}
+
+func optionalDataShareString(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func cloneFloat64Ptr(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	out := *value
+	return &out
+}
+
+func cloneDataShareCaptureInput(input DataShareCaptureInput) DataShareCaptureInput {
+	clone := input
+	clone.RequestBody = cloneDataSharingRequestBody(input.RequestBody)
+	clone.ResponseBody = cloneDataSharingRequestBody(input.ResponseBody)
+	if input.ActualCost != nil {
+		actualCost := *input.ActualCost
+		clone.ActualCost = &actualCost
+	}
+	if len(input.Messages) > 0 {
+		clone.Messages = append([]any(nil), input.Messages...)
+	}
+	clone.Tools = cloneBufferedDataShareMaps(input.Tools)
+	return clone
+}
+
 func (s *DataSharingService) buildSessionWithOptions(input DataShareCaptureInput, opts dataShareBuildSessionOptions) *DataShareSession {
 	now := time.Now()
 	groupID := int64(0)
@@ -2074,6 +2207,288 @@ func appendAssistantMessageFromResponse(out []map[string]any, body []byte) []map
 		msg["role"] = "assistant"
 		out = append(out, msg)
 	}
+	return out
+}
+
+type dataShareResponsesCaptureState struct {
+	StableIDs        map[string]struct{} `json:"stable_ids,omitempty"`
+	ReplayIdentities []string            `json:"replay_identities,omitempty"`
+	LastTurn         int                 `json:"last_turn,omitempty"`
+	OrderUncertain   bool                `json:"order_uncertain,omitempty"`
+}
+
+func (s *DataSharingService) buildOpenAIResponsesIncrementalSession(existing *DataShareSession, raw *DataShareSession) *DataShareSession {
+	if raw == nil || raw.captureInput == nil {
+		return raw
+	}
+	out := cloneBufferedDataShareSession(raw)
+	out.captureMode = dataShareCaptureModeIncremental
+	input := *raw.captureInput
+	state := cloneDataShareResponsesCaptureState(captureStateFromDataShareSession(existing))
+	if state == nil {
+		state = &dataShareResponsesCaptureState{}
+	}
+	if input.Turn > 0 && state.LastTurn > 0 && input.Turn <= state.LastTurn {
+		state.OrderUncertain = true
+	}
+	requestItems := normalizeOpenAIResponsesRequestInputItems(input.RequestBody)
+	replayLen, orderUncertain := dataShareResponsesReplayPrefixLen(state, requestItems)
+	if orderUncertain {
+		state.OrderUncertain = true
+	}
+	messages := make([]map[string]any, 0, len(requestItems)-replayLen+2)
+	for _, item := range requestItems[replayLen:] {
+		messages = append(messages, cloneDataShareMap(item.Message))
+	}
+	responseStart := len(messages)
+	messages = appendAssistantMessageFromResponse(messages, input.ResponseBody)
+	if input.CaptureIncomplete && len(messages) == responseStart {
+		out.Meta["capture_incomplete"] = true
+	}
+	out.Messages = normalizeDataShareMessages(messages)
+	out.captureState = updateDataShareResponsesCaptureState(state, requestItems[replayLen:], messages[responseStart:], input.Turn)
+	out.Meta = withDataShareInternalCaptureState(out.Meta, out.captureState)
+	return out
+}
+
+type dataShareResponsesInputItem struct {
+	Message  map[string]any
+	StableID string
+	Identity string
+}
+
+func normalizeOpenAIResponsesRequestInputItems(body []byte) []dataShareResponsesInputItem {
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return nil
+	}
+	var out []dataShareResponsesInputItem
+	appendItem := func(item gjson.Result) {
+		msg := map[string]any(nil)
+		if item.Type == gjson.String {
+			msg = map[string]any{"role": "user", "content": item.String()}
+		} else if item.IsObject() {
+			msg = normalizeResponsesInputItem(item)
+		}
+		if len(msg) == 0 {
+			return
+		}
+		msg = normalizeDataShareMessage(msg)
+		out = append(out, dataShareResponsesInputItem{
+			Message:  msg,
+			StableID: dataShareResponsesStableItemID(item, msg),
+			Identity: dataShareMessageIdentity(msg),
+		})
+	}
+	if input.Type == gjson.String || input.IsObject() {
+		appendItem(input)
+		return out
+	}
+	if !input.IsArray() {
+		return nil
+	}
+	for _, item := range input.Array() {
+		appendItem(item)
+	}
+	return out
+}
+
+func dataShareResponsesStableItemID(item gjson.Result, msg map[string]any) string {
+	itemType := strings.TrimSpace(item.Get("type").String())
+	for _, candidate := range []string{
+		item.Get("call_id").String(),
+		item.Get("tool_call_id").String(),
+		item.Get("tool_use_id").String(),
+		stringFromAny(msg["tool_call_id"]),
+	} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" {
+			return itemType + ":" + candidate
+		}
+	}
+	if itemType != "message" {
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			return itemType + ":" + id
+		}
+	}
+	if calls := anySlice(msg["tool_calls"]); len(calls) > 0 {
+		call, _ := mapFromAny(calls[0])
+		id := firstNonBlank(stringFromAny(call["id"]), stringFromAny(call["call_id"]), stringFromAny(call["tool_call_id"]))
+		if id != "" {
+			return "function_call:" + id
+		}
+	}
+	return ""
+}
+
+func dataShareResponsesReplayPrefixLen(state *dataShareResponsesCaptureState, incoming []dataShareResponsesInputItem) (int, bool) {
+	if state == nil || len(incoming) == 0 {
+		return 0, false
+	}
+	replay := 0
+	for replay < len(incoming) {
+		item := incoming[replay]
+		if item.StableID != "" {
+			if _, ok := state.StableIDs[item.StableID]; ok {
+				replay++
+				continue
+			}
+			break
+		}
+		if replay < len(state.ReplayIdentities) && state.ReplayIdentities[replay] == item.Identity {
+			replay++
+			continue
+		}
+		break
+	}
+	// 如果旧前缀只匹配了一部分且没有稳定 id 锚点，说明客户端可能分叉或乱序；保持保守追加。
+	if replay > 0 && replay < len(state.ReplayIdentities) && !dataShareResponsesPrefixHasStableAnchor(incoming[:replay]) {
+		return 0, true
+	}
+	return replay, false
+}
+
+func dataShareResponsesPrefixHasStableAnchor(items []dataShareResponsesInputItem) bool {
+	for _, item := range items {
+		if item.StableID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func updateDataShareResponsesCaptureState(state *dataShareResponsesCaptureState, newRequestItems []dataShareResponsesInputItem, responseMessages []map[string]any, turn int) *dataShareResponsesCaptureState {
+	if state == nil {
+		state = &dataShareResponsesCaptureState{}
+	}
+	if state.StableIDs == nil {
+		state.StableIDs = map[string]struct{}{}
+	}
+	for _, item := range newRequestItems {
+		if item.StableID != "" {
+			state.StableIDs[item.StableID] = struct{}{}
+		}
+		state.ReplayIdentities = append(state.ReplayIdentities, item.Identity)
+	}
+	for _, msg := range responseMessages {
+		for _, stableID := range dataShareResponsesStableIDsFromMessage(msg) {
+			state.StableIDs[stableID] = struct{}{}
+		}
+		state.ReplayIdentities = append(state.ReplayIdentities, dataShareMessageIdentity(msg))
+	}
+	if turn > state.LastTurn {
+		state.LastTurn = turn
+	}
+	return state
+}
+
+func dataShareResponsesStableIDsFromMessage(msg map[string]any) []string {
+	if len(msg) == 0 {
+		return nil
+	}
+	var out []string
+	role := strings.TrimSpace(stringFromAny(msg["role"]))
+	if role == "assistant" {
+		for _, raw := range anySlice(msg["tool_calls"]) {
+			call, ok := mapFromAny(raw)
+			if !ok {
+				continue
+			}
+			id := firstNonBlank(stringFromAny(call["id"]), stringFromAny(call["call_id"]), stringFromAny(call["tool_call_id"]))
+			if id != "" {
+				// Responses 下一轮 input 会把上一轮 output.function_call 用 call_id 回放，必须写入 replay 锚点。
+				out = append(out, "function_call:"+id)
+			}
+		}
+	}
+	if role == "tool" {
+		id := firstNonBlank(stringFromAny(msg["tool_call_id"]), stringFromAny(msg["call_id"]), stringFromAny(msg["tool_use_id"]))
+		if id != "" {
+			out = append(out, "function_call_output:"+id)
+		}
+	}
+	return out
+}
+
+func captureStateFromDataShareSession(session *DataShareSession) *dataShareResponsesCaptureState {
+	if session == nil {
+		return nil
+	}
+	if session.captureState != nil {
+		return cloneDataShareResponsesCaptureState(session.captureState)
+	}
+	if meta := mapAnyFromAny(session.Meta[dataShareInternalCaptureMetaKey]); len(meta) > 0 {
+		return dataShareResponsesCaptureStateFromMap(meta)
+	}
+	if meta := mapAnyFromAny(session.SessionJSON["meta"]); len(meta) > 0 {
+		if captureMeta := mapAnyFromAny(meta[dataShareInternalCaptureMetaKey]); len(captureMeta) > 0 {
+			return dataShareResponsesCaptureStateFromMap(captureMeta)
+		}
+	}
+	return nil
+}
+
+func dataShareResponsesCaptureStateFromMap(meta map[string]any) *dataShareResponsesCaptureState {
+	if len(meta) == 0 {
+		return nil
+	}
+	state := &dataShareResponsesCaptureState{
+		StableIDs:        map[string]struct{}{},
+		ReplayIdentities: stringsFromAny(meta["replay_identities"]),
+		LastTurn:         intFromAny(meta["last_turn"]),
+		OrderUncertain:   boolFromAny(meta["order_uncertain"]),
+	}
+	for _, id := range stringsFromAny(meta["stable_ids"]) {
+		if id != "" {
+			state.StableIDs[id] = struct{}{}
+		}
+	}
+	return state
+}
+
+func cloneDataShareResponsesCaptureState(state *dataShareResponsesCaptureState) *dataShareResponsesCaptureState {
+	if state == nil {
+		return nil
+	}
+	out := &dataShareResponsesCaptureState{
+		StableIDs:        map[string]struct{}{},
+		ReplayIdentities: append([]string(nil), state.ReplayIdentities...),
+		LastTurn:         state.LastTurn,
+		OrderUncertain:   state.OrderUncertain,
+	}
+	for id := range state.StableIDs {
+		out.StableIDs[id] = struct{}{}
+	}
+	return out
+}
+
+func withDataShareInternalCaptureState(meta map[string]any, state *dataShareResponsesCaptureState) map[string]any {
+	out := cloneDataShareMap(meta)
+	if state == nil {
+		delete(out, dataShareInternalCaptureMetaKey)
+		return out
+	}
+	stableIDs := make([]string, 0, len(state.StableIDs))
+	for id := range state.StableIDs {
+		stableIDs = append(stableIDs, id)
+	}
+	sort.Strings(stableIDs)
+	out[dataShareInternalCaptureMetaKey] = map[string]any{
+		"stable_ids":        stableIDs,
+		"replay_identities": append([]string(nil), state.ReplayIdentities...),
+		"last_turn":         state.LastTurn,
+		"order_uncertain":   state.OrderUncertain,
+		"schema":            "openai_responses_v1",
+	}
+	if state.OrderUncertain {
+		out["capture_order_uncertain"] = true
+	}
+	return out
+}
+
+func stripDataShareInternalCaptureStateFromMeta(meta map[string]any) map[string]any {
+	out := cloneDataShareMap(meta)
+	delete(out, dataShareInternalCaptureMetaKey)
 	return out
 }
 
@@ -3683,9 +4098,23 @@ func exportPayloadFromSessionWithOptions(session *DataShareSession, finalized bo
 	return payload
 }
 
+// PublicDataShareSessionPayload 返回对外可见 payload，剥离采集内部状态。
+func PublicDataShareSessionPayload(payload map[string]any) map[string]any {
+	out := cloneDataShareMap(payload)
+	if meta := mapAnyFromAny(out["meta"]); meta != nil {
+		out["meta"] = stripDataShareInternalCaptureStateFromMeta(meta)
+	}
+	return out
+}
+
+// PublicDataShareSessionMeta 返回对外可见 meta，剥离采集内部状态。
+func PublicDataShareSessionMeta(meta map[string]any) map[string]any {
+	return stripDataShareInternalCaptureStateFromMeta(meta)
+}
+
 // exportDownloadPayloadFromSession 仅用于下载导出，在保留库内原始采集数据的同时剔除敏感字段。
 func exportDownloadPayloadFromSession(session *DataShareSession) map[string]any {
-	payload, ok := redactDataShareExportFields(exportPayloadFromSession(session)).(map[string]any)
+	payload, ok := redactDataShareExportFields(PublicDataShareSessionPayload(exportPayloadFromSession(session))).(map[string]any)
 	if !ok {
 		return map[string]any{}
 	}

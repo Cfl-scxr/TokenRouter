@@ -573,8 +573,8 @@ func adminDataShareSessionToResponse(session *service.DataShareSession, includeP
 		resp.Tools = session.Tools
 		resp.Messages = session.Messages
 		resp.Usage = session.Usage
-		resp.Meta = session.Meta
-		resp.SessionJSON = session.SessionJSON
+		resp.Meta = service.PublicDataShareSessionMeta(session.Meta)
+		resp.SessionJSON = service.PublicDataShareSessionPayload(session.SessionJSON)
 	}
 	return resp
 }

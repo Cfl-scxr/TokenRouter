@@ -1516,7 +1516,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
-		var requestPayloadHash string
+		wsFirstMessageForUsageFallback := append([]byte(nil), firstMessage...)
+		if channelMappingWS.Mapped {
+			wsFirstMessageForUsageFallback = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
+		}
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
 			BeforeRequest: func(turn int, payload []byte, originalModel, payloadPreviousResponseID string) error {
@@ -1589,7 +1592,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				model := reqModel
 				h.recordOpenAICyberWarningWithPromptExcerpt(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText, getCyberPromptExcerpt(turn))
 			},
-			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+			AfterTurn: func(capture service.OpenAIWSTurnCapture) {
+				turn := capture.Turn
+				result := capture.Result
+				turnErr := capture.Err
 				releaseTurnSlots()
 				clearCyberPromptExcerpt(turn)
 				if turnErr != nil {
@@ -1611,6 +1617,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+				turnRequestBody := capture.RequestBody
+				if len(turnRequestBody) == 0 {
+					turnRequestBody = wsFirstMessageForUsageFallback
+				}
+				turnPayloadHash := service.HashUsageRequestPayload(turnRequestBody)
 				h.submitOpenAIUsageRecordTask(c, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
@@ -1622,9 +1633,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						UpstreamEndpoint:   upstreamEndpoint,
 						UserAgent:          userAgent,
 						IPAddress:          clientIP,
-						RequestPayloadHash: requestPayloadHash,
-						RequestBody:        append([]byte(nil), firstMessage...),
+						RequestPayloadHash: turnPayloadHash,
+						RequestBody:        append([]byte(nil), turnRequestBody...),
 						SessionID:          sessionHash,
+						Turn:               turn,
+						CaptureIncomplete:  result.ResponseBody == nil,
 						APIKeyService:      h.apiKeyService,
 						ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
 					}); err != nil {
@@ -1639,10 +1652,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		// 应用渠道模型映射到 WebSocket 首条消息
-		wsFirstMessage := firstMessage
-		if channelMappingWS.Mapped {
-			wsFirstMessage = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
-		}
+		wsFirstMessage := append([]byte(nil), wsFirstMessageForUsageFallback...)
 		// 切组/会话失配防护：previous_response_id 未在当前分组命中粘连账号时，
 		// 说明该会话链不属于本次调度到的账号；原样转发会触发上游会话链鉴权失败。
 		// 因此剥离首包 previous_response_id，改用首包 input 重建上下文；工具续链无法重建，保持原样。
@@ -1654,9 +1664,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.String("schedule_layer", scheduleDecision.Layer),
 			)
 		}
-
-		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
-		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
 
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
 			var failoverErr *service.UpstreamFailoverError

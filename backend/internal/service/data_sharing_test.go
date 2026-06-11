@@ -871,6 +871,69 @@ func TestDataSharingService_CaptureBufferDedupesMultimodalReplayWithVolatileWrap
 	require.Equal(t, "file_abc", fileBlock["file_id"])
 }
 
+func TestDataSharingService_CaptureBufferDedupesResponseToolCallReplay(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	input := func(requestID string, inputItems string, responseBody string) DataShareCaptureInput {
+		return DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-tool-replay",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `,"tools":[{"type":"function","name":"exec_command","description":"运行命令","parameters":{"type":"object"}}]}`),
+			ResponseBody:    []byte(responseBody),
+			InboundEndpoint: "/v1/responses",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}
+	}
+
+	firstInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"查一下目录"}]}
+	]`
+	firstResponse := `{"id":"resp-tool-1","output":[{"type":"function_call","call_id":"call_replay_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}]}`
+	secondInput := `[
+		{"type":"message","role":"system","content":[{"type":"input_text","text":"你是编码助手"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"查一下目录"}]},
+		{"type":"function_call","call_id":"call_replay_1","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+		{"type":"function_call_output","call_id":"call_replay_1","output":"README.md"},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"总结一下"}]}
+	]`
+	secondResponse := `{"id":"resp-tool-2","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"目录里有 README.md"}]}]}`
+
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-tool-1", firstInput, firstResponse)}))
+	require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: input("request-tool-2", secondInput, secondResponse)}))
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Len(t, session.Messages, 6)
+	require.Equal(t, 1, countDataShareToolCallID(session.Messages, "call_replay_1"))
+	require.Equal(t, 1, countDataShareMessagesWithToolCallID(session.Messages, "call_replay_1"))
+	require.Equal(t, "总结一下", dataShareContentText(session.Messages[4]["content"]))
+	require.Equal(t, "目录里有 README.md", dataShareContentText(session.Messages[5]["content"]))
+}
+
 func TestDataSharingCaptureBufferKeepsRealRepeatedSingleMessage(t *testing.T) {
 	var got *DataShareSession
 	buffer := NewDataSharingCaptureBuffer(DataSharingCaptureBufferOptions{
@@ -3153,6 +3216,29 @@ func countDataShareMessagesWithContent(messages []map[string]any, content string
 	count := 0
 	for _, msg := range messages {
 		if dataShareContentText(msg["content"]) == content {
+			count++
+		}
+	}
+	return count
+}
+
+func countDataShareToolCallID(messages []map[string]any, callID string) int {
+	count := 0
+	for _, msg := range messages {
+		for _, raw := range anySlice(msg["tool_calls"]) {
+			call, ok := mapFromAny(raw)
+			if ok && stringFromAny(call["id"]) == callID {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func countDataShareMessagesWithToolCallID(messages []map[string]any, callID string) int {
+	count := 0
+	for _, msg := range messages {
+		if stringFromAny(msg["tool_call_id"]) == callID {
 			count++
 		}
 	}

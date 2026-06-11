@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
@@ -37,6 +38,46 @@ type openAIWSPolicyEnforcingFrameConn struct {
 }
 
 var _ openaiwsv2.FrameConn = (*openAIWSPolicyEnforcingFrameConn)(nil)
+
+type openAIWSTurnPayload struct {
+	RequestBody        []byte
+	OriginalModel      string
+	PreviousResponseID string
+	Source             string
+}
+
+type openAIWSTurnPayloadQueue struct {
+	mu    sync.Mutex
+	items []openAIWSTurnPayload
+}
+
+func newOpenAIWSTurnPayloadQueue() *openAIWSTurnPayloadQueue {
+	return &openAIWSTurnPayloadQueue{}
+}
+
+func (q *openAIWSTurnPayloadQueue) Push(item openAIWSTurnPayload) {
+	if q == nil {
+		return
+	}
+	item.RequestBody = append([]byte(nil), item.RequestBody...)
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.items = append(q.items, item)
+}
+
+func (q *openAIWSTurnPayloadQueue) Pop() openAIWSTurnPayload {
+	if q == nil {
+		return openAIWSTurnPayload{Source: "passthrough_missing"}
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) == 0 {
+		return openAIWSTurnPayload{Source: "passthrough_missing"}
+	}
+	item := q.items[0]
+	q.items = q.items[1:]
+	return item
+}
 
 func (c *openAIWSPolicyEnforcingFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
 	if c == nil || c.inner == nil {
@@ -310,6 +351,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage)
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
+	turnPayloads := newOpenAIWSTurnPayloadQueue()
+	turnPayloads.Push(openAIWSTurnPayload{
+		RequestBody:        firstClientMessage,
+		OriginalModel:      requestModel,
+		PreviousResponseID: requestPreviousResponseID,
+		Source:             "passthrough",
+	})
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {
@@ -451,6 +499,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if policyErr == nil && blocked == nil &&
 				strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
 				usageMeta.updateFromResponseCreate(out, requestModelForThisFrame)
+				turnPayloads.Push(openAIWSTurnPayload{
+					RequestBody:        out,
+					OriginalModel:      requestModelForThisFrame,
+					PreviousResponseID: strings.TrimSpace(gjson.GetBytes(out, "previous_response_id").String()),
+					Source:             "passthrough",
+				})
 			}
 			return out, blocked, policyErr
 		},
@@ -558,7 +612,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					turnResult.Usage.CacheReadInputTokens,
 				)
 				if hooks != nil && hooks.AfterTurn != nil {
-					hooks.AfterTurn(turnNo, turnResult, nil)
+					turnPayload := turnPayloads.Pop()
+					hooks.AfterTurn(OpenAIWSTurnCapture{
+						Turn:               turnNo,
+						RequestBody:        turnPayload.RequestBody,
+						OriginalModel:      turnPayload.OriginalModel,
+						PreviousResponseID: turnPayload.PreviousResponseID,
+						Result:             turnResult,
+						PayloadSource:      turnPayload.Source,
+					})
 				}
 			},
 			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
@@ -636,7 +698,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		)
 		// 正常路径按 terminal 事件逐 turn 已回调；仅在零 turn 场景兜底回调一次。
 		if turnCount == 0 && hooks != nil && hooks.AfterTurn != nil {
-			hooks.AfterTurn(1, result, nil)
+			turnPayload := turnPayloads.Pop()
+			hooks.AfterTurn(OpenAIWSTurnCapture{
+				Turn:               1,
+				RequestBody:        turnPayload.RequestBody,
+				OriginalModel:      turnPayload.OriginalModel,
+				PreviousResponseID: turnPayload.PreviousResponseID,
+				Result:             result,
+				PayloadSource:      turnPayload.Source,
+			})
 		}
 		return nil
 	}
@@ -667,7 +737,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		relayExit.WroteDownstream,
 	)
 	if hooks != nil && hooks.AfterTurn != nil {
-		hooks.AfterTurn(turnCount+1, nil, turnErr)
+		turnPayload := turnPayloads.Pop()
+		hooks.AfterTurn(OpenAIWSTurnCapture{
+			Turn:               turnCount + 1,
+			RequestBody:        turnPayload.RequestBody,
+			OriginalModel:      turnPayload.OriginalModel,
+			PreviousResponseID: turnPayload.PreviousResponseID,
+			Err:                turnErr,
+			PayloadSource:      turnPayload.Source,
+		})
 	}
 	return turnErr
 }

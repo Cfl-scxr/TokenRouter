@@ -193,6 +193,7 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 		return b.flush(ctx, finalizeBufferedDataShareSession(session))
 	}
 	mergeStart := time.Now()
+	session = b.prepareIncomingSessionLocked(entry.session, session)
 	entry.session = mergeBufferedDataShareSession(entry.session, session)
 	entry.eventCount++
 	entry.lastUpdated = time.Now()
@@ -202,6 +203,13 @@ func (b *DataSharingCaptureBuffer) Submit(ctx context.Context, session *DataShar
 	b.recordDuration(DataShareCaptureDurationPartBufferMerge, time.Since(mergeStart))
 	b.mu.Unlock()
 	return nil
+}
+
+func (b *DataSharingCaptureBuffer) prepareIncomingSessionLocked(existing *DataShareSession, incoming *DataShareSession) *DataShareSession {
+	if incoming == nil || incoming.captureMode != dataShareCaptureModeOpenAIResponsesRaw {
+		return incoming
+	}
+	return (&DataSharingService{}).buildOpenAIResponsesIncrementalSession(existing, incoming)
 }
 
 // FlushAll 立即落库当前缓冲内容；用于正常停机和测试。
@@ -638,6 +646,9 @@ func mergeBufferedDataShareSession(existing *DataShareSession, incoming *DataSha
 	existing.Tools = mergeBufferedDataShareTools(existing.Tools, incoming.Tools)
 	existing.Usage = mergeBufferedDataShareUsage(existing.Usage, incoming.Usage)
 	existing.Meta = mergeBufferedDataShareMeta(existing.Meta, incoming.Meta)
+	if incoming.captureState != nil {
+		existing.captureState = cloneDataShareResponsesCaptureState(incoming.captureState)
+	}
 	existing.UpdatedAt = now
 	return existing
 }
@@ -686,6 +697,12 @@ func cloneBufferedDataShareSession(session *DataShareSession) *DataShareSession 
 	clone.Meta = cloneDataShareMap(session.Meta)
 	clone.SessionJSON = cloneDataShareMap(session.SessionJSON)
 	clone.SessionJSONFinalized = session.SessionJSONFinalized
+	clone.captureMode = session.captureMode
+	if session.captureInput != nil {
+		input := cloneDataShareCaptureInput(*session.captureInput)
+		clone.captureInput = &input
+	}
+	clone.captureState = cloneDataShareResponsesCaptureState(session.captureState)
 	return &clone
 }
 
