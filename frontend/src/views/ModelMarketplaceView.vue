@@ -138,18 +138,6 @@
                   >
                     {{ t('marketplace.dataSharingTag') }}
                   </span>
-                  <span
-                    v-if="hasOfficialPriceRatio(group.official_price_ratio)"
-                    class="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                  >
-                    {{ formatOfficialPriceRatio(group.official_price_ratio) }}
-                  </span>
-                  <span
-                    v-if="hasPositiveValue(group.official_price_rmb_equivalent)"
-                    class="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-200"
-                  >
-                    {{ t('marketplace.usdRmbEquivalent', { amount: formatRMBEquivalentAmount(group.official_price_rmb_equivalent) }) }}
-                  </span>
                 </div>
 
                 <div class="flex items-start gap-3">
@@ -286,12 +274,6 @@
                       class="shrink-0 whitespace-nowrap rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
                     >
                       {{ t('marketplace.dataSharingTag') }}
-                    </span>
-                    <span
-                      v-if="hasOfficialPriceRatio(entry.group.official_price_ratio)"
-                      class="shrink-0 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                    >
-                      {{ formatOfficialPriceRatio(entry.group.official_price_ratio) }}
                     </span>
                     <div
                       v-if="entry.group.capacity"
@@ -690,10 +672,6 @@ function hasPositiveValue(value?: number | null): value is number {
   return typeof value === 'number' && value > 0
 }
 
-function hasOfficialPriceRatio(value?: number | null): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-}
-
 function hasFlatTokenPricing(pricing: MarketplaceModelPricing): boolean {
   return [
     pricing.input_price_per_token,
@@ -792,22 +770,6 @@ function formatMultiplier(multiplier: number): string {
 // 分组倍率文案交给 i18n 拼接，避免不同语言的空格规则写死在模板里。
 function formatRateMultiplierLabel(multiplier: number): string {
   return t('marketplace.rateMultiplierValue', { multiplier: formatMultiplier(multiplier) })
-}
-
-function formatOfficialPriceRatio(ratio: number): string {
-  const discount = new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(ratio * 10)
-
-  return t('marketplace.officialPriceDiscount', { discount })
-}
-
-function formatRMBEquivalentAmount(value: number): string {
-  return new Intl.NumberFormat(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(value)
 }
 
 function formatPrice(value: number): string {
