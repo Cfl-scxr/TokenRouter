@@ -70,6 +70,7 @@ const dataShareReplayWindowWidth = 3
 const dataShareReplayWindowCandidateLimit = 64
 const dataShareAdjacentReplayCompactMaxPasses = 4
 const dataShareQualityErrorReplayDuplicateBlock = "replay_duplicate_block"
+const dataShareReplayRangeHashBase uint64 = 11400714819323198485
 
 // dataShareExportExcludedFields 是导出文件中禁止外发的身份和来源字段。
 var dataShareExportExcludedFields = map[string]struct{}{
@@ -3362,27 +3363,34 @@ func dataShareCompactAdjacentReplayBlocks(messages []map[string]any) []map[strin
 	if len(messages) < dataShareLongReplayMinMessages*2 {
 		return messages
 	}
-	// 相邻重复块是存量污染数据里最确定的形态；多轮有上限，避免重叠窗口修复后留下新的相邻重复。
+	// 相邻重复块只在带 replay 信号或更早历史已有同块时清理，避免误删真实连续重复任务。
 	out := cloneBufferedDataShareMaps(messages)
 	for pass := 0; pass < dataShareAdjacentReplayCompactMaxPasses; pass++ {
 		keys := dataShareMessageIdentityKeys(out)
+		keyHash := dataShareNewReplayRangeHash(keys)
 		index := dataShareReplayWindowIndex(keys)
 		compact := make([]map[string]any, 0, len(out))
 		changed := false
 		for i := 0; i < len(out); {
-			if matchLen := dataShareAdjacentReplayBlockLen(keys, index, i); matchLen >= dataShareLongReplayMinMessages {
+			if matchLen := dataShareAdjacentReplayBlockLen(keys, keyHash, index, i); matchLen >= dataShareLongReplayMinMessages {
 				runEnd := i + matchLen
-				for runEnd+matchLen <= len(out) && dataShareKeysEqual(keys, runEnd-matchLen, runEnd, matchLen) {
+				for runEnd+matchLen <= len(out) && dataShareKeysEqualHashed(keys, keyHash, runEnd-matchLen, runEnd, matchLen) {
 					runEnd += matchLen
-					changed = true
 				}
-				if runEnd > i+matchLen && dataShareHasEarlierReplayBlock(keys, index, i, matchLen) {
+				if runEnd > i+matchLen && dataShareHasEarlierReplayBlock(keys, keyHash, index, i, matchLen) {
 					// replay run 自身相邻重复且更早历史已有同一块时，整段 run 都是污染副本。
 					i = runEnd
 					changed = true
 					continue
 				}
-				compact = append(compact, cloneBufferedDataShareMaps(out[i:i+matchLen])...)
+				if runEnd > i+matchLen &&
+					(dataShareReplayWindowSafe(out[i:runEnd]) || dataShareHasEarlierOverlappingReplayPrefix(keys, keyHash, index, i, matchLen)) {
+					compact = append(compact, cloneBufferedDataShareMaps(out[i:i+matchLen])...)
+					i = runEnd
+					changed = true
+					continue
+				}
+				compact = append(compact, cloneBufferedDataShareMaps(out[i:runEnd])...)
 				i = runEnd
 				continue
 			}
@@ -3397,7 +3405,7 @@ func dataShareCompactAdjacentReplayBlocks(messages []map[string]any) []map[strin
 	return out
 }
 
-func dataShareAdjacentReplayBlockLen(keys []string, index map[string][]int, start int) int {
+func dataShareAdjacentReplayBlockLen(keys []string, keyHash dataShareReplayRangeHash, index map[string][]int, start int) int {
 	candidates := index[dataShareReplayWindowKey(keys, start)]
 	if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
 		return 0
@@ -3411,14 +3419,14 @@ func dataShareAdjacentReplayBlockLen(keys []string, index map[string][]int, star
 		if blockLen < dataShareLongReplayMinMessages || start+blockLen*2 > len(keys) {
 			continue
 		}
-		if dataShareContiguousKeyMatchLen(keys, start, keys, other) >= blockLen && blockLen > best {
+		if dataShareKeysEqualHashed(keys, keyHash, start, other, blockLen) && blockLen > best {
 			best = blockLen
 		}
 	}
 	return best
 }
 
-func dataShareHasEarlierReplayBlock(keys []string, index map[string][]int, start int, length int) bool {
+func dataShareHasEarlierReplayBlock(keys []string, keyHash dataShareReplayRangeHash, index map[string][]int, start int, length int) bool {
 	if start <= 0 || length < dataShareLongReplayMinMessages {
 		return false
 	}
@@ -3430,7 +3438,30 @@ func dataShareHasEarlierReplayBlock(keys []string, index map[string][]int, start
 		if other >= start {
 			continue
 		}
-		if dataShareContiguousKeyMatchLen(keys, other, keys, start) >= length {
+		if dataShareKeysEqualHashed(keys, keyHash, other, start, length) {
+			return true
+		}
+	}
+	return false
+}
+
+func dataShareHasEarlierOverlappingReplayPrefix(keys []string, keyHash dataShareReplayRangeHash, index map[string][]int, start int, length int) bool {
+	if start <= 0 || length < dataShareLongReplayMinMessages {
+		return false
+	}
+	candidates := index[dataShareReplayWindowKey(keys, start)]
+	if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
+		return false
+	}
+	for _, other := range candidates {
+		if other >= start || other+length <= start {
+			continue
+		}
+		overlapLen := start - other
+		if overlapLen > length {
+			overlapLen = length
+		}
+		if overlapLen >= dataShareLongReplayMinMessages && dataShareKeysEqualHashed(keys, keyHash, other, start, overlapLen) {
 			return true
 		}
 	}
@@ -3442,9 +3473,10 @@ func dataShareCompactTrailingReplayBlock(messages []map[string]any) []map[string
 		return messages
 	}
 	keys := dataShareMessageIdentityKeys(messages)
+	keyHash := dataShareNewReplayRangeHash(keys)
 	index := dataShareReplayWindowIndex(keys)
-	bestStart, bestLength := 0, 0
-	for suffixStart := len(keys) - dataShareLongReplayMinMessages; suffixStart >= dataShareLongReplayMinMessages; suffixStart-- {
+	for suffixStart := dataShareLongReplayMinMessages; suffixStart <= len(keys)-dataShareLongReplayMinMessages; suffixStart++ {
+		suffixLen := len(keys) - suffixStart
 		candidates := index[dataShareReplayWindowKey(keys, suffixStart)]
 		if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
 			continue
@@ -3453,23 +3485,20 @@ func dataShareCompactTrailingReplayBlock(messages []map[string]any) []map[string
 			if pos >= suffixStart {
 				continue
 			}
-			length := dataShareContiguousKeyMatchLen(keys, pos, keys, suffixStart)
-			if suffixStart+length != len(keys) || pos+length > suffixStart {
+			if pos+suffixLen > suffixStart {
 				continue
 			}
-			if length > bestLength {
-				bestStart, bestLength = suffixStart, length
+			if !dataShareKeysEqualHashed(keys, keyHash, pos, suffixStart, suffixLen) {
+				continue
 			}
+			if !dataShareReplayWindowSafe(messages[suffixStart:]) {
+				return messages
+			}
+			// 尾部窗口完整重复早前历史且带强 replay 信号时，删除尾部污染副本，保留更早的真实上下文。
+			return cloneBufferedDataShareMaps(messages[:suffixStart])
 		}
 	}
-	if bestLength < dataShareLongReplayMinMessages {
-		return messages
-	}
-	if !dataShareReplayWindowSafe(messages[bestStart:]) {
-		return messages
-	}
-	// 尾部窗口完整重复早前历史且带强 replay 信号时，删除尾部污染副本，保留更早的真实上下文。
-	return cloneBufferedDataShareMaps(messages[:bestStart])
+	return messages
 }
 
 func dataShareKeysEqual(keys []string, left int, right int, length int) bool {
@@ -3482,6 +3511,94 @@ func dataShareKeysEqual(keys []string, left int, right int, length int) bool {
 		}
 	}
 	return true
+}
+
+type dataShareReplayRangeHash struct {
+	prefix []uint64
+	power  []uint64
+}
+
+func dataShareNewReplayRangeHash(keys []string) dataShareReplayRangeHash {
+	h := dataShareReplayRangeHash{
+		prefix: []uint64{0},
+		power:  []uint64{1},
+	}
+	for _, key := range keys {
+		h.append(key)
+	}
+	return h
+}
+
+func (h *dataShareReplayRangeHash) append(key string) {
+	value := dataShareReplayKeyHash(key)
+	h.prefix = append(h.prefix, h.prefix[len(h.prefix)-1]*dataShareReplayRangeHashBase+value)
+	h.power = append(h.power, h.power[len(h.power)-1]*dataShareReplayRangeHashBase)
+}
+
+func (h dataShareReplayRangeHash) rangeHash(start int, length int) (uint64, bool) {
+	if start < 0 || length < 0 || start+length >= len(h.prefix) || length >= len(h.power) {
+		return 0, false
+	}
+	return h.prefix[start+length] - h.prefix[start]*h.power[length], true
+}
+
+func dataShareReplayKeyHash(key string) uint64 {
+	hash := uint64(1469598103934665603)
+	for i := 0; i < len(key); i++ {
+		hash ^= uint64(key[i])
+		hash *= 1099511628211
+	}
+	if hash == 0 {
+		return 1
+	}
+	return hash
+}
+
+func dataShareKeysEqualHashed(keys []string, keyHash dataShareReplayRangeHash, left int, right int, length int) bool {
+	leftHash, ok := keyHash.rangeHash(left, length)
+	if !ok {
+		return false
+	}
+	rightHash, ok := keyHash.rangeHash(right, length)
+	if !ok || leftHash != rightHash {
+		return false
+	}
+	return dataShareKeysEqual(keys, left, right, length)
+}
+
+func dataShareCrossKeysEqual(leftKeys []string, leftStart int, rightKeys []string, rightStart int, length int) bool {
+	if leftStart < 0 || rightStart < 0 || length <= 0 || leftStart+length > len(leftKeys) || rightStart+length > len(rightKeys) {
+		return false
+	}
+	for i := 0; i < length; i++ {
+		if leftKeys[leftStart+i] == "" || leftKeys[leftStart+i] != rightKeys[rightStart+i] {
+			return false
+		}
+	}
+	return true
+}
+
+func dataShareContiguousKeyMatchLenHashed(leftKeys []string, leftHash dataShareReplayRangeHash, leftStart int, rightKeys []string, rightHash dataShareReplayRangeHash, rightStart int) int {
+	limit := len(leftKeys) - leftStart
+	if remaining := len(rightKeys) - rightStart; remaining < limit {
+		limit = remaining
+	}
+	if limit <= 0 || leftStart < 0 || rightStart < 0 {
+		return 0
+	}
+	low, high := 0, limit
+	for low < high {
+		mid := (low + high + 1) / 2
+		leftValue, leftOK := leftHash.rangeHash(leftStart, mid)
+		rightValue, rightOK := rightHash.rangeHash(rightStart, mid)
+		if leftOK && rightOK && leftValue == rightValue {
+			low = mid
+			continue
+		}
+		high = mid - 1
+	}
+	// hash 只做候选长度过滤；调用方在删除或报错前必须再做真实 identity 连续比较。
+	return low
 }
 
 func dataShareHasReplayDuplicateBlock(messages []map[string]any) bool {
@@ -3498,8 +3615,11 @@ func dataShareCompactGlobalReplayWindows(messages []map[string]any) []map[string
 	}
 	// 非相邻窗口只在强信号下删除，避免把用户真实重复执行的一段长任务误判为 replay。
 	keys := dataShareMessageIdentityKeys(messages)
+	keyHash := dataShareNewReplayRangeHash(keys)
+	safePrefix := dataShareReplaySafePrefix(messages)
 	out := make([]map[string]any, 0, len(messages))
 	outKeys := make([]string, 0, len(messages))
+	outKeyHash := dataShareNewReplayRangeHash(nil)
 	index := map[string][]int{}
 	for i := 0; i < len(messages); {
 		if len(outKeys) >= dataShareLongReplayMinMessages && len(keys)-i >= dataShareLongReplayMinMessages {
@@ -3507,12 +3627,17 @@ func dataShareCompactGlobalReplayWindows(messages []map[string]any) []map[string
 			candidates := index[windowKey]
 			if len(candidates) > 0 && len(candidates) <= dataShareReplayWindowCandidateLimit {
 				best := 0
+				bestPos := 0
 				for _, pos := range candidates {
-					if length := dataShareContiguousKeyMatchLen(outKeys, pos, keys, i); length > best {
+					length := dataShareContiguousKeyMatchLenHashed(outKeys, outKeyHash, pos, keys, keyHash, i)
+					if length > best {
 						best = length
+						bestPos = pos
 					}
 				}
-				if best >= dataShareLongReplayMinMessages && dataShareReplayWindowSafe(messages[i:i+best]) {
+				if best >= dataShareLongReplayMinMessages &&
+					dataShareReplayWindowSafeRange(safePrefix, i, i+best) &&
+					dataShareCrossKeysEqual(outKeys, bestPos, keys, i, best) {
 					i += best
 					continue
 				}
@@ -3520,6 +3645,7 @@ func dataShareCompactGlobalReplayWindows(messages []map[string]any) []map[string
 		}
 		out = append(out, cloneDataShareMap(messages[i]))
 		outKeys = append(outKeys, keys[i])
+		outKeyHash.append(keys[i])
 		dataShareAddReplayWindowIndex(index, outKeys, len(outKeys)-1)
 		i++
 	}
@@ -3540,20 +3666,50 @@ func dataShareAddReplayWindowIndex(index map[string][]int, keys []string, append
 
 func dataShareReplayWindowSafe(messages []map[string]any) bool {
 	for _, msg := range messages {
-		if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" || len(anySlice(msg["tool_calls"])) > 0 {
-			return true
-		}
-		if dataShareSyntheticUserContextText(dataShareMessageTextForReplay(msg)) {
+		if dataShareReplayMessageSafe(msg) {
 			return true
 		}
 	}
 	return false
 }
 
+func dataShareReplayMessageSafe(msg map[string]any) bool {
+	if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" || len(anySlice(msg["tool_calls"])) > 0 {
+		return true
+	}
+	return dataShareSyntheticUserContextText(dataShareMessageTextForReplay(msg))
+}
+
+func dataShareReplaySafePrefix(messages []map[string]any) []int {
+	prefix := make([]int, len(messages)+1)
+	for i, msg := range messages {
+		prefix[i+1] = prefix[i]
+		if dataShareReplayMessageSafe(msg) {
+			prefix[i+1]++
+		}
+	}
+	return prefix
+}
+
+func dataShareReplayWindowSafeRange(prefix []int, start int, end int) bool {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(prefix)-1 {
+		end = len(prefix) - 1
+	}
+	if start >= end || len(prefix) == 0 {
+		return false
+	}
+	return prefix[end] > prefix[start]
+}
+
 func dataShareHasUnsafeReplayDuplicateBlock(messages []map[string]any, keys []string) bool {
 	if len(messages) < dataShareLongReplayMinMessages*2 || len(keys) != len(messages) {
 		return false
 	}
+	keyHash := dataShareNewReplayRangeHash(keys)
+	safePrefix := dataShareReplaySafePrefix(messages)
 	index := dataShareReplayWindowIndex(keys)
 	for start := 0; start+dataShareLongReplayMinMessages <= len(keys); start++ {
 		candidates := index[dataShareReplayWindowKey(keys, start)]
@@ -3564,14 +3720,20 @@ func dataShareHasUnsafeReplayDuplicateBlock(messages []map[string]any, keys []st
 			if other <= start || other-start < dataShareLongReplayMinMessages {
 				continue
 			}
-			length := dataShareContiguousKeyMatchLen(keys, start, keys, other)
+			length := dataShareContiguousKeyMatchLenHashed(keys, keyHash, start, keys, keyHash, other)
 			if length < dataShareLongReplayMinMessages {
 				continue
 			}
-			if dataShareReplayWindowSafe(messages[start:start+length]) || dataShareReplayWindowSafe(messages[other:other+length]) {
-				return true
+			if dataShareReplayWindowSafeRange(safePrefix, start, start+length) ||
+				dataShareReplayWindowSafeRange(safePrefix, other, other+length) {
+				if dataShareKeysEqual(keys, start, other, length) {
+					return true
+				}
+				continue
 			}
-			if other == start+length {
+			if other == start+length &&
+				dataShareHasEarlierReplayBlock(keys, keyHash, index, start, length) &&
+				dataShareKeysEqual(keys, start, other, length) {
 				return true
 			}
 		}
@@ -3664,6 +3826,9 @@ func dataShareReplaySkipLen(
 
 func dataShareReplayPrefixSafe(messages []map[string]any, prefix int, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
 	if prefix >= 5 {
+		if prefix >= dataShareLongReplayMinMessages && !dataShareReplayWindowSafe(messages[:prefix]) {
+			return false
+		}
 		return true
 	}
 	if prefix >= dataShareReplayOverlapMinMessages {
