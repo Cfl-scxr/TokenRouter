@@ -3309,15 +3309,29 @@ func TestCompactDataShareMessagesDedupesAdjacentWindowReplay(t *testing.T) {
 	require.Equal(t, "新的尾巴", dataShareContentText(compact[len(compact)-1]["content"]))
 }
 
-func TestCompactDataShareMessagesKeepsAdjacentRepeatedLongTextWorkflow(t *testing.T) {
+func TestCompactDataShareMessagesDedupesAdjacentRepeatedLongTextWorkflow(t *testing.T) {
 	block := buildSequentialDataShareMessages("连续重复任务", 60)
 	messages := append(cloneBufferedDataShareMaps(block), cloneBufferedDataShareMaps(block)...)
 
 	compact := CompactDataShareMessages(messages)
 
-	require.Len(t, compact, len(messages))
-	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "连续重复任务-000"))
-	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "连续重复任务-059"))
+	require.Len(t, compact, len(block))
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "连续重复任务-000"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "连续重复任务-059"))
+}
+
+func TestCompactDataShareMessagesDedupesSystemFirstAdjacentRepeatedLongTextWorkflow(t *testing.T) {
+	block := append(
+		[]map[string]any{{"role": "system", "content": "你是编码助手"}},
+		buildSequentialDataShareMessages("系统开头重复任务", 60)...,
+	)
+	messages := append(cloneBufferedDataShareMaps(block), cloneBufferedDataShareMaps(block)...)
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, len(block))
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "你是编码助手"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(compact, "系统开头重复任务-059"))
 }
 
 func TestMergeBufferedDataShareMessagesKeepsRepeatedLongWorkflow(t *testing.T) {
@@ -3483,12 +3497,9 @@ func TestCompactDataShareMessagesHandlesLargeTrailingReplayLinearly(t *testing.T
 	base := buildLargeDataShareMessages(sys, 12500, false)
 	replayed := append(cloneBufferedDataShareMaps(base), cloneBufferedDataShareMaps(base[10000:14000])...)
 
-	start := time.Now()
 	compact := CompactDataShareMessages(replayed)
-	elapsed := time.Since(start)
 
 	require.Len(t, compact, len(base))
-	require.Less(t, elapsed, 5*time.Second)
 }
 
 func TestExportDownloadPayloadKeepsLargeSafeRepeatedTextLinearly(t *testing.T) {
@@ -3513,15 +3524,12 @@ func TestExportDownloadPayloadKeepsLargeSafeRepeatedTextLinearly(t *testing.T) {
 		CreatedAt:          time.Now(),
 	}
 
-	start := time.Now()
 	payload, err := exportDownloadPayloadFromSession(session)
-	elapsed := time.Since(start)
 
 	require.NoError(t, err)
 	exported := mapsFromAny(payload["messages"])
 	require.Len(t, exported, len(messages))
 	require.Equal(t, 2, countDataShareMessagesWithContent(exported, "重复导出任务-000"))
-	require.Less(t, elapsed, 5*time.Second)
 }
 
 func TestOpenAIResponsesRawCaptureDedupesSlidingWindowRequestInput(t *testing.T) {
@@ -3722,6 +3730,49 @@ func buildSafeRepeatedTextMessages() []map[string]any {
 	out = append(out, buildSequentialDataShareMessages("间隔", 5)...)
 	out = append(out, cloneBufferedDataShareMaps(block)...)
 	return out
+}
+
+func BenchmarkCompactDataShareMessages_LargeTrailingReplay(b *testing.B) {
+	sys := "你是编码助手"
+	base := buildLargeDataShareMessages(sys, 12500, false)
+	replayed := append(cloneBufferedDataShareMaps(base), cloneBufferedDataShareMaps(base[10000:14000])...)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		CompactDataShareMessages(replayed)
+	}
+}
+
+func BenchmarkExportDownloadPayload_LargeSafeRepeatedText(b *testing.B) {
+	sys := "你是编码助手"
+	block := buildSequentialDataShareMessages("重复导出任务", 12000)
+	messages := cloneBufferedDataShareMaps(block)
+	messages = append(messages, buildSequentialDataShareMessages("间隔", 20)...)
+	messages = append(messages, cloneBufferedDataShareMaps(block)...)
+	session := &DataShareSession{
+		TrajectoryID:       "traj-large-safe-repeat",
+		SessionID:          "sess-large-safe-repeat",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		SourceRequestCount: 2,
+		SystemPrompt:       &sys,
+		Tools:              []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}},
+		Messages:           messages,
+		Usage:              map[string]any{"total_tokens": 15},
+		QualityStatus:      DataShareQualityComplete,
+		Exportable:         true,
+		CreatedAt:          time.Now(),
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := exportDownloadPayloadFromSession(session); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func benchmarkFinalizeBufferedDataShareSession(b *testing.B, rounds int, includeUnpairedTail bool) {

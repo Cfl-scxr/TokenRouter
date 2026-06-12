@@ -3363,7 +3363,7 @@ func dataShareCompactAdjacentReplayBlocks(messages []map[string]any) []map[strin
 	if len(messages) < dataShareLongReplayMinMessages*2 {
 		return messages
 	}
-	// 相邻重复块只在带 replay 信号或更早历史已有同块时清理，避免误删真实连续重复任务。
+	// 相邻长重复块更符合 replay 污染形态，默认压成一份；非相邻纯文本重复由全局窗口逻辑保守处理。
 	out := cloneBufferedDataShareMaps(messages)
 	for pass := 0; pass < dataShareAdjacentReplayCompactMaxPasses; pass++ {
 		keys := dataShareMessageIdentityKeys(out)
@@ -3383,8 +3383,7 @@ func dataShareCompactAdjacentReplayBlocks(messages []map[string]any) []map[strin
 					changed = true
 					continue
 				}
-				if runEnd > i+matchLen &&
-					(dataShareReplayWindowSafe(out[i:runEnd]) || dataShareHasEarlierOverlappingReplayPrefix(keys, keyHash, index, i, matchLen)) {
+				if runEnd > i+matchLen {
 					compact = append(compact, cloneBufferedDataShareMaps(out[i:i+matchLen])...)
 					i = runEnd
 					changed = true
@@ -3439,29 +3438,6 @@ func dataShareHasEarlierReplayBlock(keys []string, keyHash dataShareReplayRangeH
 			continue
 		}
 		if dataShareKeysEqualHashed(keys, keyHash, other, start, length) {
-			return true
-		}
-	}
-	return false
-}
-
-func dataShareHasEarlierOverlappingReplayPrefix(keys []string, keyHash dataShareReplayRangeHash, index map[string][]int, start int, length int) bool {
-	if start <= 0 || length < dataShareLongReplayMinMessages {
-		return false
-	}
-	candidates := index[dataShareReplayWindowKey(keys, start)]
-	if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
-		return false
-	}
-	for _, other := range candidates {
-		if other >= start || other+length <= start {
-			continue
-		}
-		overlapLen := start - other
-		if overlapLen > length {
-			overlapLen = length
-		}
-		if overlapLen >= dataShareLongReplayMinMessages && dataShareKeysEqualHashed(keys, keyHash, other, start, overlapLen) {
 			return true
 		}
 	}
