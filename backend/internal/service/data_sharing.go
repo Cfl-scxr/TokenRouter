@@ -52,7 +52,9 @@ const dataShareInternalCaptureMetaKey = "_capture"
 var (
 	ErrDataShareSessionNotFound = infraerrors.NotFound("DATA_SHARE_SESSION_NOT_FOUND", "data share session not found")
 	ErrDataShareNoticeMissing   = infraerrors.BadRequest("DATA_SHARE_NOTICE_MISSING", "data sharing notice content is required")
-	dataShareCompressionLevel   atomic.Value
+	// ErrDataShareExportPayloadInvalid 表示导出前实时复核发现 payload 仍包含明显坏数据。
+	ErrDataShareExportPayloadInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_PAYLOAD_INVALID", "data share session failed export quality recheck")
+	dataShareCompressionLevel        atomic.Value
 )
 
 const defaultDataSharingNoticeContent = "该分组已启用数据共享。使用该分组产生的 Agent 对话数据会被保存，并可能用于训练、评估和改进模型。请确认你已理解并同意该数据共享安排。"
@@ -63,6 +65,11 @@ const dataSharePersistenceRetryInitialDelay = 50 * time.Millisecond
 
 // dataShareReplayOverlapMinMessages 限制重放去重至少命中两条连续消息，避免误删真实重复的单条发言。
 const dataShareReplayOverlapMinMessages = 2
+const dataShareLongReplayMinMessages = 16
+const dataShareReplayWindowWidth = 3
+const dataShareReplayWindowCandidateLimit = 64
+const dataShareAdjacentReplayCompactMaxPasses = 4
+const dataShareQualityErrorReplayDuplicateBlock = "replay_duplicate_block"
 
 // dataShareExportExcludedFields 是导出文件中禁止外发的身份和来源字段。
 var dataShareExportExcludedFields = map[string]struct{}{
@@ -1668,7 +1675,19 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 			return err
 		}
 		for i := range items {
-			payload := exportDownloadPayloadFromSession(&items[i])
+			payload, err := exportDownloadPayloadFromSession(&items[i])
+			if err != nil {
+				if errors.Is(err, ErrDataShareExportPayloadInvalid) && (filters.SelectAll || len(filters.IDs) != 1) {
+					slog.Warn("data sharing: skip session failed export recheck",
+						"trajectory_id", items[i].TrajectoryID,
+						"session_id", items[i].SessionID,
+						"quality_status", items[i].QualityStatus,
+						"error", err,
+					)
+					continue
+				}
+				return err
+			}
 			line, err := json.Marshal(payload)
 			if err != nil {
 				return err
@@ -2364,7 +2383,27 @@ func dataShareResponsesReplayPrefixLen(state *dataShareResponsesCaptureState, in
 	if replay > 0 && replay < len(incoming) && !dataShareResponsesPrefixHasStableAnchor(incoming[:replay]) {
 		return 0, true
 	}
+	if replay == 0 {
+		if windowReplay := dataShareResponsesReplayWindowPrefixLen(state, incoming); windowReplay > 0 {
+			return windowReplay, false
+		}
+	}
 	return replay, false
+}
+
+func dataShareResponsesReplayWindowPrefixLen(state *dataShareResponsesCaptureState, incoming []dataShareResponsesInputItem) int {
+	if state == nil || len(state.ReplayIdentities) < dataShareLongReplayMinMessages || len(incoming) < dataShareLongReplayMinMessages {
+		return 0
+	}
+	incomingKeys := make([]string, len(incoming))
+	for i, item := range incoming {
+		incomingKeys[i] = item.IdentityKey
+	}
+	best := dataShareBestIndexedReplayMatch(state.ReplayIdentities, incomingKeys, 0, true)
+	if best.length < dataShareLongReplayMinMessages {
+		return 0
+	}
+	return best.length
 }
 
 func dataShareResponsesPrefixHasStableAnchor(items []dataShareResponsesInputItem) bool {
@@ -2749,7 +2788,11 @@ type dataShareQualityReport struct {
 // ValidateDataShareSessionQuality 按附件交付规则检查 session 是否可进入正式导出。
 func ValidateDataShareSessionQuality(model string, systemPrompt string, messages []map[string]any, tools []map[string]any, usage map[string]any) []string {
 	compact := CompactDataShareMessages(messages)
-	return validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+	errs := validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+	if dataShareHasReplayDuplicateBlock(compact) {
+		errs = appendDataShareQualityError(errs, dataShareQualityErrorReplayDuplicateBlock)
+	}
+	return errs
 }
 
 // DataShareSessionQuality 一次性返回质量状态和错误列表，避免采集热路径重复扫描消息。
@@ -2783,6 +2826,9 @@ func evaluateDataShareSessionQuality(model string, systemPrompt string, messages
 // evaluateCompactDataShareSessionQuality 只接收已 compact 的消息，避免最终化阶段重复压缩同一份大快照。
 func evaluateCompactDataShareSessionQuality(model string, systemPrompt string, compact []map[string]any, tools []map[string]any, usage map[string]any) dataShareQualityReport {
 	errs := validateCompactDataShareSessionQuality(model, systemPrompt, compact, tools, usage)
+	if dataShareHasReplayDuplicateBlock(compact) {
+		errs = appendDataShareQualityError(errs, dataShareQualityErrorReplayDuplicateBlock)
+	}
 	status := DataShareQualityInvalid
 	if len(errs) == 0 {
 		status = DataShareQualityComplete
@@ -3282,7 +3328,176 @@ func CompactDataShareMessages(messages []map[string]any) []map[string]any {
 		outIdentityPositions[identity] = append(outIdentityPositions[identity], len(out)-1)
 		i++
 	}
+	return dataShareCompactGlobalReplayWindows(dataShareCompactAdjacentReplayBlocks(out))
+}
+
+func dataShareCompactAdjacentReplayBlocks(messages []map[string]any) []map[string]any {
+	if len(messages) < dataShareLongReplayMinMessages*2 {
+		return messages
+	}
+	// 相邻重复块是存量污染数据里最确定的形态；多轮有上限，避免重叠窗口修复后留下新的相邻重复。
+	out := cloneBufferedDataShareMaps(messages)
+	for pass := 0; pass < dataShareAdjacentReplayCompactMaxPasses; pass++ {
+		keys := dataShareMessageIdentityKeys(out)
+		index := dataShareReplayWindowIndex(keys)
+		compact := make([]map[string]any, 0, len(out))
+		changed := false
+		for i := 0; i < len(out); {
+			if matchLen := dataShareAdjacentReplayBlockLen(keys, index, i); matchLen >= dataShareLongReplayMinMessages {
+				compact = append(compact, cloneBufferedDataShareMaps(out[i:i+matchLen])...)
+				i += matchLen
+				for i+matchLen <= len(out) && dataShareKeysEqual(keys, i-matchLen, i, matchLen) {
+					i += matchLen
+					changed = true
+				}
+				continue
+			}
+			compact = append(compact, cloneDataShareMap(out[i]))
+			i++
+		}
+		out = compact
+		if !changed || len(out) < dataShareLongReplayMinMessages*2 {
+			return out
+		}
+	}
 	return out
+}
+
+func dataShareAdjacentReplayBlockLen(keys []string, index map[string][]int, start int) int {
+	candidates := index[dataShareReplayWindowKey(keys, start)]
+	if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
+		return 0
+	}
+	best := 0
+	for _, other := range candidates {
+		if other <= start {
+			continue
+		}
+		blockLen := other - start
+		if blockLen < dataShareLongReplayMinMessages || start+blockLen*2 > len(keys) {
+			continue
+		}
+		if dataShareContiguousKeyMatchLen(keys, start, keys, other) >= blockLen && blockLen > best {
+			best = blockLen
+		}
+	}
+	return best
+}
+
+func dataShareKeysEqual(keys []string, left int, right int, length int) bool {
+	if left < 0 || right < 0 || length <= 0 || left+length > len(keys) || right+length > len(keys) {
+		return false
+	}
+	for i := 0; i < length; i++ {
+		if keys[left+i] == "" || keys[left+i] != keys[right+i] {
+			return false
+		}
+	}
+	return true
+}
+
+func dataShareHasReplayDuplicateBlock(messages []map[string]any) bool {
+	if len(messages) < dataShareLongReplayMinMessages*2 {
+		return false
+	}
+	keys := dataShareMessageIdentityKeys(messages)
+	return dataShareHasGlobalReplayDuplicateBlock(keys)
+}
+
+func dataShareCompactGlobalReplayWindows(messages []map[string]any) []map[string]any {
+	if len(messages) < dataShareLongReplayMinMessages*2 {
+		return messages
+	}
+	// 非相邻窗口只在强信号下删除，避免把用户真实重复执行的一段长任务误判为 replay。
+	keys := dataShareMessageIdentityKeys(messages)
+	out := make([]map[string]any, 0, len(messages))
+	outKeys := make([]string, 0, len(messages))
+	index := map[string][]int{}
+	for i := 0; i < len(messages); {
+		if len(outKeys) >= dataShareLongReplayMinMessages && len(keys)-i >= dataShareLongReplayMinMessages {
+			windowKey := dataShareReplayWindowKey(keys, i)
+			candidates := index[windowKey]
+			if len(candidates) > 0 && len(candidates) <= dataShareReplayWindowCandidateLimit {
+				best := 0
+				for _, pos := range candidates {
+					if length := dataShareContiguousKeyMatchLen(outKeys, pos, keys, i); length > best {
+						best = length
+					}
+				}
+				if best >= dataShareLongReplayMinMessages && dataShareReplayWindowSafe(messages[i:i+best]) {
+					i += best
+					continue
+				}
+			}
+		}
+		out = append(out, cloneDataShareMap(messages[i]))
+		outKeys = append(outKeys, keys[i])
+		dataShareAddReplayWindowIndex(index, outKeys, len(outKeys)-1)
+		i++
+	}
+	return out
+}
+
+func dataShareAddReplayWindowIndex(index map[string][]int, keys []string, appended int) {
+	start := appended - dataShareReplayWindowWidth + 1
+	if start < 0 {
+		return
+	}
+	key := dataShareReplayWindowKey(keys, start)
+	if key == "" {
+		return
+	}
+	index[key] = append(index[key], start)
+}
+
+func dataShareReplayWindowSafe(messages []map[string]any) bool {
+	if len(messages) >= 50 {
+		return true
+	}
+	for _, msg := range messages {
+		if strings.TrimSpace(stringFromAny(msg["role"])) == "tool" || len(anySlice(msg["tool_calls"])) > 0 {
+			return true
+		}
+		if dataShareSyntheticUserContextText(dataShareMessageTextForReplay(msg)) {
+			return true
+		}
+	}
+	return false
+}
+
+func dataShareHasGlobalReplayDuplicateBlock(keys []string) bool {
+	if len(keys) < dataShareLongReplayMinMessages*2 {
+		return false
+	}
+	index := dataShareReplayWindowIndex(keys)
+	for start := 0; start+dataShareLongReplayMinMessages <= len(keys); start++ {
+		candidates := index[dataShareReplayWindowKey(keys, start)]
+		if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
+			continue
+		}
+		for _, other := range candidates {
+			if other <= start || other-start < dataShareLongReplayMinMessages {
+				continue
+			}
+			if dataShareContiguousKeyMatchLen(keys, start, keys, other) >= dataShareLongReplayMinMessages {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func appendDataShareQualityError(errs []string, code string) []string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return errs
+	}
+	for _, existing := range errs {
+		if existing == code {
+			return errs
+		}
+	}
+	return append(errs, code)
 }
 
 func dataShareReplaySkipLenForMessages(existing, incoming []map[string]any, incomingStart int) int {
@@ -3323,6 +3538,29 @@ func dataShareReplaySkipLenForMessages(existing, incoming []map[string]any, inco
 		seenToolCalls,
 		seenToolResults,
 	)
+}
+
+func dataShareDropReplayWindowsFromIncoming(existing, incoming []map[string]any) []map[string]any {
+	if len(existing) < dataShareLongReplayMinMessages || len(incoming) < dataShareLongReplayMinMessages {
+		return cloneBufferedDataShareMaps(incoming)
+	}
+	// buffer merge 有明确的新旧边界，可以删除 incoming 中已经存在于 existing 的长窗口。
+	existingKeys := dataShareMessageIdentityKeys(existing)
+	incomingKeys := dataShareMessageIdentityKeys(incoming)
+	out := make([]map[string]any, 0, len(incoming))
+	for i := 0; i < len(incoming); {
+		match := dataShareBestIndexedReplayMatch(existingKeys, incomingKeys, i, false)
+		if match.length < dataShareLongReplayMinMessages || match.incomingStart < i {
+			out = append(out, cloneDataShareMap(incoming[i]))
+			i++
+			continue
+		}
+		for ; i < match.incomingStart; i++ {
+			out = append(out, cloneDataShareMap(incoming[i]))
+		}
+		i += match.length
+	}
+	return out
 }
 
 func dataShareReplaySkipLen(
@@ -3584,6 +3822,94 @@ func dataShareMessageIdentities(messages []map[string]any) []string {
 		out[i] = dataShareMessageIdentity(msg)
 	}
 	return out
+}
+
+func dataShareMessageIdentityKeys(messages []map[string]any) []string {
+	out := make([]string, len(messages))
+	for i, msg := range messages {
+		out[i] = dataShareResponsesIdentityKey(dataShareMessageIdentity(msg))
+	}
+	return out
+}
+
+type dataShareReplayMatch struct {
+	existingStart int
+	incomingStart int
+	length        int
+}
+
+func dataShareBestIndexedReplayMatch(existingKeys, incomingKeys []string, incomingStart int, prefixOnly bool) dataShareReplayMatch {
+	if len(existingKeys) < dataShareLongReplayMinMessages || len(incomingKeys)-incomingStart < dataShareLongReplayMinMessages {
+		return dataShareReplayMatch{}
+	}
+	// 使用三元组 hash 缩小候选，再用完整 identity 连续比较确认，避免朴素双重扫描。
+	if incomingStart < 0 {
+		incomingStart = 0
+	}
+	lastIncomingStart := len(incomingKeys) - dataShareLongReplayMinMessages
+	if prefixOnly {
+		lastIncomingStart = incomingStart
+	}
+	index := dataShareReplayWindowIndex(existingKeys)
+	best := dataShareReplayMatch{}
+	for start := incomingStart; start <= lastIncomingStart; start++ {
+		if start+dataShareReplayWindowWidth > len(incomingKeys) {
+			break
+		}
+		candidates := index[dataShareReplayWindowKey(incomingKeys, start)]
+		if len(candidates) == 0 || len(candidates) > dataShareReplayWindowCandidateLimit {
+			continue
+		}
+		for _, pos := range candidates {
+			length := dataShareContiguousKeyMatchLen(existingKeys, pos, incomingKeys, start)
+			if length > best.length {
+				best = dataShareReplayMatch{existingStart: pos, incomingStart: start, length: length}
+			}
+		}
+		if prefixOnly {
+			break
+		}
+	}
+	if best.length < dataShareLongReplayMinMessages {
+		return dataShareReplayMatch{}
+	}
+	return best
+}
+
+func dataShareReplayWindowIndex(keys []string) map[string][]int {
+	index := map[string][]int{}
+	limit := len(keys) - dataShareReplayWindowWidth
+	for i := 0; i <= limit; i++ {
+		key := dataShareReplayWindowKey(keys, i)
+		if key == "" {
+			continue
+		}
+		index[key] = append(index[key], i)
+	}
+	return index
+}
+
+func dataShareReplayWindowKey(keys []string, start int) string {
+	if start < 0 || start+dataShareReplayWindowWidth > len(keys) {
+		return ""
+	}
+	for i := 0; i < dataShareReplayWindowWidth; i++ {
+		if keys[start+i] == "" {
+			return ""
+		}
+	}
+	return strings.Join(keys[start:start+dataShareReplayWindowWidth], "\x00")
+}
+
+func dataShareContiguousKeyMatchLen(existingKeys []string, existingStart int, incomingKeys []string, incomingStart int) int {
+	length := 0
+	for existingStart+length < len(existingKeys) && incomingStart+length < len(incomingKeys) {
+		if existingKeys[existingStart+length] == "" || existingKeys[existingStart+length] != incomingKeys[incomingStart+length] {
+			break
+		}
+		length++
+	}
+	return length
 }
 
 func dataShareMessageAlreadySeen(msg map[string]any, seenToolCalls map[string]struct{}, seenToolResults map[string]struct{}) bool {
@@ -4245,12 +4571,26 @@ func PublicDataShareSessionMeta(meta map[string]any) map[string]any {
 }
 
 // exportDownloadPayloadFromSession 仅用于下载导出，在保留库内原始采集数据的同时剔除敏感字段。
-func exportDownloadPayloadFromSession(session *DataShareSession) map[string]any {
+func exportDownloadPayloadFromSession(session *DataShareSession) (map[string]any, error) {
 	payload, ok := redactDataShareExportFields(PublicDataShareSessionPayload(exportPayloadFromSession(session))).(map[string]any)
 	if !ok {
-		return map[string]any{}
+		return map[string]any{}, nil
 	}
-	return payload
+	if err := recheckDataShareExportPayload(payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func recheckDataShareExportPayload(payload map[string]any) error {
+	messages := mapsFromAny(payload["messages"])
+	if len(messages) == 0 {
+		return nil
+	}
+	if dataShareHasReplayDuplicateBlock(messages) {
+		return fmt.Errorf("%w: %s", ErrDataShareExportPayloadInvalid, dataShareQualityErrorReplayDuplicateBlock)
+	}
+	return nil
 }
 
 // BuildDataShareSessionPayload 生成可导出、可压缩持久化的规范 session payload。
@@ -4585,7 +4925,10 @@ func WriteSingleSessionJSONL(w io.Writer, session *DataShareSession) error {
 		return ErrDataShareSessionNotFound
 	}
 	var buf bytes.Buffer
-	payload := exportDownloadPayloadFromSession(session)
+	payload, err := exportDownloadPayloadFromSession(session)
+	if err != nil {
+		return err
+	}
 	line, err := json.Marshal(payload)
 	if err != nil {
 		return err
