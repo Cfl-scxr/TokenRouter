@@ -3374,6 +3374,66 @@ func TestCompactDataShareMessagesKeepsNonAdjacentRepeatedLongTextWorkflow(t *tes
 	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "重复任务-059"))
 }
 
+func TestExportDownloadPayloadKeepsSafeRepeatedLongTextWorkflow(t *testing.T) {
+	sys := "你是编码助手"
+	block := buildSequentialDataShareMessages("重复任务", 60)
+	messages := buildSequentialDataShareMessages("前置", 20)
+	messages = append(messages, cloneBufferedDataShareMaps(block)...)
+	messages = append(messages, buildSequentialDataShareMessages("间隔", 5)...)
+	messages = append(messages, cloneBufferedDataShareMaps(block)...)
+	session := &DataShareSession{
+		TrajectoryID:       "traj-safe-repeat",
+		SessionID:          "sess-safe-repeat",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		SourceRequestCount: 2,
+		SystemPrompt:       &sys,
+		Tools:              []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}},
+		Messages:           messages,
+		Usage:              map[string]any{"total_tokens": 15},
+		QualityStatus:      DataShareQualityComplete,
+		Exportable:         true,
+		CreatedAt:          time.Now(),
+	}
+
+	payload, err := exportDownloadPayloadFromSession(session)
+
+	require.NoError(t, err)
+	exported := mapsFromAny(payload["messages"])
+	require.Len(t, exported, len(messages))
+	require.Equal(t, 2, countDataShareMessagesWithContent(exported, "重复任务-000"))
+}
+
+func TestExportDownloadPayloadRepairsStoredTrailingToolReplayWithoutMutatingSession(t *testing.T) {
+	sys := "你是编码助手"
+	base := buildLargeDataShareMessages(sys, 30, false)
+	replay := cloneBufferedDataShareMaps(base[10:70])
+	duplicated := append(cloneBufferedDataShareMaps(base), replay...)
+	session := &DataShareSession{
+		TrajectoryID:       "traj-trailing-tool-replay",
+		SessionID:          "sess-trailing-tool-replay",
+		Dataset:            defaultDataShareDataset,
+		Provider:           PlatformOpenAI,
+		Model:              "gpt-5.5",
+		SourceRequestCount: 3,
+		SystemPrompt:       &sys,
+		Tools:              []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}},
+		Messages:           duplicated,
+		Usage:              map[string]any{"total_tokens": 15},
+		QualityStatus:      DataShareQualityComplete,
+		Exportable:         true,
+		CreatedAt:          time.Now(),
+	}
+
+	payload, err := exportDownloadPayloadFromSession(session)
+
+	require.NoError(t, err)
+	exported := mapsFromAny(payload["messages"])
+	require.Len(t, exported, len(base))
+	require.Len(t, session.Messages, len(base)+len(replay))
+}
+
 func TestResponsesReplayPlanHandlesLargeNoMatchInputLinearly(t *testing.T) {
 	existing := buildSequentialDataShareMessages("已有", 50000)
 	incoming := buildSequentialDataShareMessages("新增", 4000)
@@ -3534,30 +3594,36 @@ func TestExportDownloadPayloadRepairsStoredAdjacentReplayWithoutMutatingSession(
 	require.Len(t, session.Messages, len(base)+100)
 }
 
-func TestWriteSingleSessionJSONLRejectsUnrepairableReplayDuplicateBlock(t *testing.T) {
-	duplicated := buildUnrepairableDuplicateMessages()
+func TestWriteSingleSessionJSONLAllowsSafeRepeatedLongTextBlock(t *testing.T) {
+	messages := buildSafeRepeatedTextMessages()
 	session := &DataShareSession{
-		TrajectoryID:       "traj-unrepairable-duplicate",
-		SessionID:          "sess-unrepairable-duplicate",
+		TrajectoryID:       "traj-safe-text-repeat",
+		SessionID:          "sess-safe-text-repeat",
 		Dataset:            defaultDataShareDataset,
 		Provider:           PlatformOpenAI,
 		Model:              "gpt-5.5",
 		SourceRequestCount: 2,
 		SystemPrompt:       optionalDataShareString("你是编码助手"),
 		Tools:              []map[string]any{{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}}},
-		Messages:           duplicated,
+		Messages:           messages,
 		Usage:              map[string]any{"total_tokens": 15},
 		QualityStatus:      DataShareQualityComplete,
 		Exportable:         true,
 		CreatedAt:          time.Now(),
 	}
 
-	err := WriteSingleSessionJSONL(&bytes.Buffer{}, session)
+	var buf bytes.Buffer
+	err := WriteSingleSessionJSONL(&buf, session)
 
-	require.ErrorIs(t, err, ErrDataShareExportPayloadInvalid)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &payload))
+	exported := mapsFromAny(payload["messages"])
+	require.Len(t, exported, len(messages))
+	require.Equal(t, 2, countDataShareMessagesWithContent(exported, "重复块-000"))
 }
 
-func TestExportJSONLSkipsUnrepairableDuplicateInBatch(t *testing.T) {
+func TestExportJSONLIncludesSafeRepeatedLongTextBlockInBatch(t *testing.T) {
 	sys := "你是编码助手"
 	good := &DataShareSession{
 		TrajectoryID:       "traj-good-export",
@@ -3574,11 +3640,11 @@ func TestExportJSONLSkipsUnrepairableDuplicateInBatch(t *testing.T) {
 		Exportable:         true,
 		CreatedAt:          time.Now(),
 	}
-	bad := cloneBufferedDataShareSession(good)
-	bad.TrajectoryID = "traj-bad-export"
-	bad.SessionID = "sess-bad-export"
-	bad.Messages = buildUnrepairableDuplicateMessages()
-	repo := &dataShareExportRepoStub{items: []DataShareSession{*bad, *good}}
+	repeated := cloneBufferedDataShareSession(good)
+	repeated.TrajectoryID = "traj-safe-repeat-export"
+	repeated.SessionID = "sess-safe-repeat-export"
+	repeated.Messages = buildSafeRepeatedTextMessages()
+	repo := &dataShareExportRepoStub{items: []DataShareSession{*repeated, *good}}
 	svc := NewDataSharingService(repo, nil)
 
 	var buf bytes.Buffer
@@ -3586,12 +3652,12 @@ func TestExportJSONLSkipsUnrepairableDuplicateInBatch(t *testing.T) {
 
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	require.Len(t, lines, 1)
-	require.Contains(t, lines[0], "sess-good-export")
-	require.NotContains(t, lines[0], "sess-bad-export")
+	require.Len(t, lines, 2)
+	require.Contains(t, buf.String(), "sess-safe-repeat-export")
+	require.Contains(t, buf.String(), "sess-good-export")
 }
 
-func buildUnrepairableDuplicateMessages() []map[string]any {
+func buildSafeRepeatedTextMessages() []map[string]any {
 	out := buildSequentialDataShareMessages("前置", 20)
 	block := buildSequentialDataShareMessages("重复块", dataShareLongReplayMinMessages+4)
 	out = append(out, cloneBufferedDataShareMaps(block)...)
