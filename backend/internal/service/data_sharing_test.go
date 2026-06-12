@@ -3270,6 +3270,18 @@ func buildSequentialDataShareMessages(prefix string, count int) []map[string]any
 	return messages
 }
 
+func buildSequentialResponsesInputJSON(prefix string, start int, end int) string {
+	items := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		items = append(items, fmt.Sprintf(`{"type":"message","role":%q,"content":[{"type":"input_text","text":%q}]}`, role, fmt.Sprintf("%s-%03d", prefix, i)))
+	}
+	return "[" + strings.Join(items, ",") + "]"
+}
+
 func TestCompactDataShareMessagesDedupesLargeOrderedReplay(t *testing.T) {
 	sys := "<permissions instructions> sandbox</permissions instructions>"
 	base := buildLargeDataShareMessages(sys, 150, false)
@@ -3296,7 +3308,7 @@ func TestCompactDataShareMessagesDedupesAdjacentWindowReplay(t *testing.T) {
 	require.Equal(t, "新的尾巴", dataShareContentText(compact[len(compact)-1]["content"]))
 }
 
-func TestMergeBufferedDataShareMessagesDedupesSlidingWindowReplay(t *testing.T) {
+func TestMergeBufferedDataShareMessagesKeepsRepeatedLongWorkflow(t *testing.T) {
 	base := buildSequentialDataShareMessages("历史", 120)
 	existing := cloneBufferedDataShareMaps(base[:100])
 	incoming := cloneBufferedDataShareMaps(base[50:120])
@@ -3304,11 +3316,94 @@ func TestMergeBufferedDataShareMessagesDedupesSlidingWindowReplay(t *testing.T) 
 
 	merged := mergeBufferedDataShareMessages(existing, incoming)
 
-	require.Len(t, merged, 121)
-	require.Equal(t, 1, countDataShareMessagesWithContent(merged, "历史-050"))
-	require.Equal(t, 1, countDataShareMessagesWithContent(merged, "历史-099"))
-	require.Equal(t, "历史-100", dataShareContentText(merged[100]["content"]))
+	require.Len(t, merged, len(existing)+len(incoming))
+	require.Equal(t, 2, countDataShareMessagesWithContent(merged, "历史-050"))
+	require.Equal(t, 2, countDataShareMessagesWithContent(merged, "历史-099"))
 	require.Equal(t, "新的响应", dataShareContentText(merged[len(merged)-1]["content"]))
+}
+
+func TestResponsesReplayPlanDedupesMixedPrefixAndSlidingWindow(t *testing.T) {
+	base := buildSequentialDataShareMessages("历史", 120)
+	existingItems := make([]dataShareResponsesInputItem, 0, 100)
+	for _, msg := range base[:100] {
+		identity := dataShareMessageIdentity(msg)
+		existingItems = append(existingItems, dataShareResponsesInputItem{
+			Message:     msg,
+			Identity:    identity,
+			IdentityKey: dataShareResponsesIdentityKey(identity),
+		})
+	}
+	state := updateDataShareResponsesCaptureState(&dataShareResponsesCaptureState{}, existingItems, nil, nil, 1)
+	incomingMessages := append(cloneBufferedDataShareMaps(base[:3]), cloneBufferedDataShareMaps(base[50:120])...)
+	incomingMessages = append(incomingMessages, map[string]any{"role": "user", "content": "新的用户问题"})
+	incoming := make([]dataShareResponsesInputItem, 0, len(incomingMessages))
+	for _, msg := range incomingMessages {
+		identity := dataShareMessageIdentity(msg)
+		incoming = append(incoming, dataShareResponsesInputItem{
+			Message:     msg,
+			Identity:    identity,
+			IdentityKey: dataShareResponsesIdentityKey(identity),
+		})
+	}
+
+	plan, orderUncertain := dataShareBuildResponsesReplayPlan(state, incoming)
+
+	require.True(t, orderUncertain)
+	require.True(t, plan.Keep[0])
+	require.True(t, plan.Keep[1])
+	require.True(t, plan.Keep[2])
+	for i := 3; i < 53; i++ {
+		require.False(t, plan.Keep[i], "replayed window item %d should be dropped", i)
+	}
+	for i := 53; i < len(plan.Keep); i++ {
+		require.True(t, plan.Keep[i], "new tail item %d should be kept", i)
+	}
+}
+
+func TestCompactDataShareMessagesKeepsNonAdjacentRepeatedLongTextWorkflow(t *testing.T) {
+	block := buildSequentialDataShareMessages("重复任务", 60)
+	messages := buildSequentialDataShareMessages("前置", 20)
+	messages = append(messages, cloneBufferedDataShareMaps(block)...)
+	messages = append(messages, buildSequentialDataShareMessages("间隔", 5)...)
+	messages = append(messages, cloneBufferedDataShareMaps(block)...)
+
+	compact := CompactDataShareMessages(messages)
+
+	require.Len(t, compact, len(messages))
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "重复任务-000"))
+	require.Equal(t, 2, countDataShareMessagesWithContent(compact, "重复任务-059"))
+}
+
+func TestResponsesReplayPlanHandlesLargeNoMatchInputLinearly(t *testing.T) {
+	existing := buildSequentialDataShareMessages("已有", 50000)
+	incoming := buildSequentialDataShareMessages("新增", 4000)
+	existingItems := make([]dataShareResponsesInputItem, 0, len(existing))
+	for _, msg := range existing {
+		identity := dataShareMessageIdentity(msg)
+		existingItems = append(existingItems, dataShareResponsesInputItem{
+			Message:     msg,
+			Identity:    identity,
+			IdentityKey: dataShareResponsesIdentityKey(identity),
+		})
+	}
+	incomingItems := make([]dataShareResponsesInputItem, 0, len(incoming))
+	for _, msg := range incoming {
+		identity := dataShareMessageIdentity(msg)
+		incomingItems = append(incomingItems, dataShareResponsesInputItem{
+			Message:     msg,
+			Identity:    identity,
+			IdentityKey: dataShareResponsesIdentityKey(identity),
+		})
+	}
+	state := updateDataShareResponsesCaptureState(&dataShareResponsesCaptureState{}, existingItems, nil, nil, 1)
+
+	start := time.Now()
+	plan, orderUncertain := dataShareBuildResponsesReplayPlan(state, incomingItems)
+	elapsed := time.Since(start)
+
+	require.False(t, orderUncertain)
+	require.Equal(t, len(incomingItems), dataShareResponsesReplayPlanKeepCount(plan))
+	require.Less(t, elapsed, 2*time.Second)
 }
 
 func TestOpenAIResponsesRawCaptureDedupesSlidingWindowRequestInput(t *testing.T) {
@@ -3331,17 +3426,6 @@ func TestOpenAIResponsesRawCaptureDedupesSlidingWindowRequestInput(t *testing.T)
 		GroupID: &gid,
 		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
 	}
-	inputJSON := func(start, end int) string {
-		items := make([]string, 0, end-start)
-		for i := start; i < end; i++ {
-			role := "user"
-			if i%2 == 1 {
-				role = "assistant"
-			}
-			items = append(items, fmt.Sprintf(`{"type":"message","role":%q,"content":[{"type":"input_text","text":%q}]}`, role, fmt.Sprintf("历史-%03d", i)))
-		}
-		return "[" + strings.Join(items, ",") + "]"
-	}
 	capture := func(requestID string, start, end int, response string) {
 		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
 			APIKey:          apiKey,
@@ -3349,7 +3433,7 @@ func TestOpenAIResponsesRawCaptureDedupesSlidingWindowRequestInput(t *testing.T)
 			Model:           "gpt-5.5",
 			SessionID:       "session-responses-sliding-window",
 			RequestID:       requestID,
-			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputJSON(start, end) + `}`),
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + buildSequentialResponsesInputJSON("历史", start, end) + `}`),
 			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]}`, requestID, response)),
 			InboundEndpoint: "/v1/responses",
 			InputTokens:     10,
@@ -3364,6 +3448,57 @@ func TestOpenAIResponsesRawCaptureDedupesSlidingWindowRequestInput(t *testing.T)
 	session := repo.lastSession()
 	require.NotNil(t, session)
 	require.Equal(t, 2, session.SourceRequestCount)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-050"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-099"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-119"))
+	require.Equal(t, "响应-120", dataShareContentText(session.Messages[len(session.Messages)-1]["content"]))
+}
+
+func TestOpenAIResponsesRawCaptureDedupesMixedPrefixSlidingWindowRequestInput(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, DataSharingEnabled: true},
+	}
+	capture := func(requestID string, inputItems string, response string) {
+		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformOpenAI,
+			Model:           "gpt-5.5",
+			SessionID:       "session-responses-mixed-window",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"gpt-5.5","input":` + inputItems + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":%q}]}]}`, requestID, response)),
+			InboundEndpoint: "/v1/responses",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}}))
+	}
+	mixedInput := "[" + strings.TrimPrefix(strings.TrimSuffix(buildSequentialResponsesInputJSON("历史", 0, 3), "]"), "[") + "," +
+		strings.TrimPrefix(strings.TrimSuffix(buildSequentialResponsesInputJSON("历史", 50, 120), "]"), "[") + "]"
+
+	capture("request-mixed-1", buildSequentialResponsesInputJSON("历史", 0, 100), "响应-100")
+	capture("request-mixed-2", mixedInput, "响应-120")
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.LessOrEqual(t, countDataShareMessagesWithContent(session.Messages, "历史-000"), 2)
 	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-050"))
 	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-099"))
 	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "历史-119"))
