@@ -98,8 +98,8 @@
               <textarea
                 id="codex-invite-reset-emails"
                 v-model="emailInput"
-                rows="6"
-                class="input-field mt-2 resize-y"
+                rows="8"
+                class="input mt-2 min-h-[180px] resize-y font-mono text-sm leading-6"
                 :placeholder="t('admin.accounts.inviteResetPlaceholder')"
               ></textarea>
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
