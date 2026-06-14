@@ -21,7 +21,7 @@ const (
 	codexInviteResetReferralKey = "codex_referral_persistent_invite"
 	codexBackendAPIBaseURL      = "https://chatgpt.com/backend-api"
 	codexInviteResetMaxEmails   = 5
-	// Codex Desktop 的邀请重置请求默认使用 Desktop UA；账号绑定 TLS 路由器时可由 Token User-Agent 覆盖。
+	// Codex Desktop 的邀请重置请求默认使用 Desktop UA；账号绑定 TLS 路由器时可配置专用 UA 覆盖。
 	codexInviteResetDefaultUserAgent = "Codex Desktop/0.0.0 (Linux; x86_64)"
 )
 
@@ -270,8 +270,8 @@ func (s *CodexInviteResetService) resolveRuntimeRouter(account *Account) *model.
 
 func (s *CodexInviteResetService) resolveUserAgent(router *model.TLSFingerprintRouter) string {
 	if router != nil {
-		// 复用 TLS 路由器里针对 ChatGPT OAuth token 请求配置的 UA，避免同一账号的敏感 ChatGPT 后台请求指纹漂移。
-		if userAgent := strings.TrimSpace(router.ChatGPTOAuthTokenUserAgent); userAgent != "" {
+		// 邀请重置走 Codex Desktop 后台请求，使用独立 UA，避免和 exchange/refresh token 指纹配置互相影响。
+		if userAgent := strings.TrimSpace(router.CodexInviteResetUserAgent); userAgent != "" {
 			return userAgent
 		}
 	}
@@ -282,8 +282,8 @@ func (s *CodexInviteResetService) resolveTLSProfile(account *Account, router *mo
 	if s == nil || s.tlsFPProfileService == nil {
 		return nil
 	}
-	if router != nil && router.ChatGPTOAuthTokenTLSFingerprintProfileID != nil {
-		if profile, ok := s.tlsFPProfileService.ResolveTokenTLSProfileByID(*router.ChatGPTOAuthTokenTLSFingerprintProfileID); ok {
+	if router != nil && router.CodexInviteResetTLSFingerprintProfileID != nil {
+		if profile, ok := s.tlsFPProfileService.ResolveTokenTLSProfileByID(*router.CodexInviteResetTLSFingerprintProfileID); ok {
 			return profile
 		}
 	}

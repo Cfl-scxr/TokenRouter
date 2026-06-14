@@ -1297,6 +1297,8 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "chatgpt_oauth_token_user_agent", Type: field.TypeString, Size: 512, Default: ""},
 		{Name: "chatgpt_oauth_token_tls_fingerprint_profile_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "codex_invite_reset_user_agent", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "codex_invite_reset_tls_fingerprint_profile_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "rules", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 	}
 	// TLSFingerprintRoutersTable holds the schema information for the "tls_fingerprint_routers" table.

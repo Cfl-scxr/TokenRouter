@@ -147,7 +147,7 @@ func TestCodexInviteResetServiceConsumeSendsRedeemRequestID(t *testing.T) {
 	require.Equal(t, result.RedeemRequestID, payload["redeem_request_id"])
 }
 
-func TestCodexInviteResetServiceUsesTLSRouterTokenUserAgent(t *testing.T) {
+func TestCodexInviteResetServiceUsesTLSRouterInviteResetUserAgent(t *testing.T) {
 	account := &Account{
 		ID:          43,
 		Platform:    PlatformOpenAI,
@@ -164,9 +164,9 @@ func TestCodexInviteResetServiceUsesTLSRouterTokenUserAgent(t *testing.T) {
 	}}
 	routerReader := &openAIOAuthTokenRouterReaderStub{routers: map[int64]*model.TLSFingerprintRouter{
 		9: {
-			ID:                         9,
-			Enabled:                    true,
-			ChatGPTOAuthTokenUserAgent: " codex-tui/0.135.0 (Windows 10.0.26200; x86_64) ",
+			ID:                        9,
+			Enabled:                   true,
+			CodexInviteResetUserAgent: " Codex Desktop/0.135.0-alpha.1 (Windows 10.0.26200; x86_64) ",
 		},
 	}}
 	svc := NewCodexInviteResetService(codexInviteResetAdminServiceStub{account: account}, upstream, nil, nil, routerReader)
@@ -174,11 +174,41 @@ func TestCodexInviteResetServiceUsesTLSRouterTokenUserAgent(t *testing.T) {
 	_, err := svc.GetStatus(context.Background(), account.ID)
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 3)
-	require.Equal(t, "codex-tui/0.135.0 (Windows 10.0.26200; x86_64)", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "Codex Desktop/0.135.0-alpha.1 (Windows 10.0.26200; x86_64)", upstream.requests[0].Header.Get("User-Agent"))
 }
 
-func TestCodexInviteResetServiceUsesTLSRouterTokenTLSProfile(t *testing.T) {
-	tokenProfileID := int64(20)
+func TestCodexInviteResetServiceDoesNotReuseTokenUserAgent(t *testing.T) {
+	account := &Account{
+		ID:          45,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "oauth-token"},
+		Extra: map[string]any{
+			"tls_fingerprint_router_id": int64(9),
+		},
+	}
+	upstream := &codexInviteResetHTTPUpstreamStub{responses: []*http.Response{
+		codexInviteResetJSONResponse(`{"requires_explicit_confirmation":true}`),
+		codexInviteResetJSONResponse(`{"rules":[]}`),
+		codexInviteResetJSONResponse(`{"available_count":0,"credits":[]}`),
+	}}
+	routerReader := &openAIOAuthTokenRouterReaderStub{routers: map[int64]*model.TLSFingerprintRouter{
+		9: {
+			ID:                         9,
+			Enabled:                    true,
+			ChatGPTOAuthTokenUserAgent: "codex-tui/0.135.0 (Windows 10.0.26200; x86_64)",
+		},
+	}}
+	svc := NewCodexInviteResetService(codexInviteResetAdminServiceStub{account: account}, upstream, nil, nil, routerReader)
+
+	_, err := svc.GetStatus(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, codexInviteResetDefaultUserAgent, upstream.requests[0].Header.Get("User-Agent"))
+}
+
+func TestCodexInviteResetServiceUsesTLSRouterInviteResetTLSProfile(t *testing.T) {
+	inviteResetProfileID := int64(20)
 	account := &Account{
 		ID:          44,
 		Platform:    PlatformOpenAI,
@@ -197,9 +227,9 @@ func TestCodexInviteResetServiceUsesTLSRouterTokenTLSProfile(t *testing.T) {
 	}}
 	routerReader := &openAIOAuthTokenRouterReaderStub{routers: map[int64]*model.TLSFingerprintRouter{
 		9: {
-			ID:                                       9,
-			Enabled:                                  true,
-			ChatGPTOAuthTokenTLSFingerprintProfileID: &tokenProfileID,
+			ID:                                      9,
+			Enabled:                                 true,
+			CodexInviteResetTLSFingerprintProfileID: &inviteResetProfileID,
 		},
 	}}
 	profileService := &TLSFingerprintProfileService{

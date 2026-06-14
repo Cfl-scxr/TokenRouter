@@ -1577,6 +1577,12 @@ func init() {
 	tlsfingerprintrouter.DefaultChatgptOauthTokenUserAgent = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Default.(string)
 	// tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator is a validator for the "chatgpt_oauth_token_user_agent" field. It is called by the builders before save.
 	tlsfingerprintrouter.ChatgptOauthTokenUserAgentValidator = tlsfingerprintrouterDescChatgptOauthTokenUserAgent.Validators[0].(func(string) error)
+	// tlsfingerprintrouterDescCodexInviteResetUserAgent is the schema descriptor for codex_invite_reset_user_agent field.
+	tlsfingerprintrouterDescCodexInviteResetUserAgent := tlsfingerprintrouterFields[5].Descriptor()
+	// tlsfingerprintrouter.DefaultCodexInviteResetUserAgent holds the default value on creation for the codex_invite_reset_user_agent field.
+	tlsfingerprintrouter.DefaultCodexInviteResetUserAgent = tlsfingerprintrouterDescCodexInviteResetUserAgent.Default.(string)
+	// tlsfingerprintrouter.CodexInviteResetUserAgentValidator is a validator for the "codex_invite_reset_user_agent" field. It is called by the builders before save.
+	tlsfingerprintrouter.CodexInviteResetUserAgentValidator = tlsfingerprintrouterDescCodexInviteResetUserAgent.Validators[0].(func(string) error)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0
