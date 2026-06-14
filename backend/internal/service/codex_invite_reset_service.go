@@ -345,7 +345,8 @@ func (s *CodexInviteResetService) doJSON(req *http.Request, accountCtx *codexInv
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// 响应体会被完整读取，关闭失败不影响本次调用结果。
+	defer func() { _ = resp.Body.Close() }()
 
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, openAIUpstreamErrorBodyReadLimit))
 	if readErr != nil {
