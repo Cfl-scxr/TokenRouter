@@ -1,6 +1,6 @@
 # sub2api 项目开发指南
 
-> 本文档记录项目环境配置、常见坑点和注意事项，供 Claude Code 和团队成员参考。
+> 本文档记录项目环境配置、常见坑点和注意事项，供 Agent 和团队成员参考。
 
 ## 一、项目基本信息
 
@@ -11,6 +11,34 @@
 | **技术栈**  | Go 后端 (Ent ORM + Gin) + Vue3 前端 (pnpm) |
 | **数据库**  | PostgreSQL 16 + Redis                  |
 | **包管理**  | 后端: go modules, 前端: **pnpm**（不是 npm）   |
+
+### 项目结构
+
+```
+sub2api/
+├── backend/                  # Go 后端服务
+│   ├── cmd/server/           # 应用入口
+│   ├── internal/             # 内部模块
+│   │   ├── config/           # 配置管理
+│   │   ├── model/            # 数据模型
+│   │   ├── service/          # 业务逻辑
+│   │   ├── handler/          # HTTP 处理器
+│   │   └── gateway/          # API 网关核心
+│   └── resources/            # 静态资源
+│
+├── frontend/                 # Vue 3 前端
+│   └── src/
+│       ├── api/              # API 调用
+│       ├── stores/           # 状态管理
+│       ├── views/            # 页面组件
+│       └── components/       # 通用组件
+│
+└── deploy/                   # 部署文件
+    ├── docker-compose.yml    # Docker Compose 配置
+    ├── .env.example          # Docker Compose 环境变量
+    ├── config.example.yaml   # 二进制部署完整配置文件
+    └── install.sh            # 一键安装脚本
+```
 
 ## 二、本地环境配置
 
@@ -161,8 +189,6 @@ git add pnpm-lock.yaml
 git commit -m "chore: update pnpm-lock.yaml"
 ```
 
----
-
 ### 坑 2：npm 和 pnpm 的 node_modules 冲突
 
 **问题**：之前用 npm 装过 `node_modules`，pnpm install 报 `EPERM` 错误。
@@ -174,8 +200,6 @@ cd frontend
 rm -rf node_modules  # 或 PowerShell: Remove-Item -Recurse -Force node_modules
 pnpm install
 ```
-
----
 
 ### 坑 3：PowerShell 中 bcrypt hash 的 `$` 被转义
 
@@ -192,8 +216,6 @@ echo "INSERT INTO users ... VALUES ('\$2a\$10\$...')" > temp.sql
 psql -U sub2api -h 127.0.0.1 -d sub2api -f temp.sql
 ```
 
----
-
 ### 坑 4：psql 不支持中文路径
 
 **问题**：`psql -f "D:\中文路径\file.sql"` 报错找不到文件。
@@ -204,8 +226,6 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f temp.sql
 cp "D:\中文路径\file.sql" "C:\temp.sql"
 psql -f "C:\temp.sql"
 ```
-
----
 
 ### 坑 5：PostgreSQL 密码重置流程
 
@@ -230,8 +250,6 @@ psql -f "C:\temp.sql"
    ```
 4. 改回 `scram-sha-256` 并重启
 
----
-
 ### 坑 6：Go interface 新增方法后 test stub 必须补全
 
 **问题**：给 interface 新增方法后，编译报错 `does not implement interface (missing method XXX)`。
@@ -249,15 +267,11 @@ grep -r "type.*Mock.*struct" internal/
 # 逐一补全新方法
 ```
 
----
-
 ### 坑 7：Windows 上 psql 连 localhost 的 IPv6 问题
 
 **问题**：psql 连 `localhost` 先尝试 IPv6 (::1)，可能报错后再回退 IPv4。
 
 **建议**：直接用 `127.0.0.1` 代替 `localhost`。
-
----
 
 ### 坑 8：Windows 没有 make 命令
 
@@ -273,8 +287,6 @@ go test -tags=unit ./...
 go test -tags=integration ./...
 ```
 
----
-
 ### 坑 9：Ent Schema 修改后必须重新生成
 
 **问题**：修改 `ent/schema/*.go` 后，代码不生效。
@@ -286,8 +298,6 @@ cd backend
 go generate ./ent  # 重新生成 ent 代码
 git add ent/       # 生成的文件也要提交
 ```
-
----
 
 ### 坑 10：前端测试看似正常，但后端调用失败（模型映射被批量误改）
 
@@ -314,8 +324,6 @@ git add ent/       # 生成的文件也要提交
 - 但当上游模型更新快于本仓库默认映射时，**手动批量添加透传映射**是最简单、最低风险的临时兜底方案；
 - 批量操作前尽量按平台分组，不要混选不同平台账号。
 
----
-
 ### 坑 11：PR 提交前检查清单
 
 提交 PR 前务必本地验证：
@@ -326,6 +334,17 @@ git add ent/       # 生成的文件也要提交
 - [ ] `pnpm-lock.yaml` 已同步（如果改了 package.json）
 - [ ] 所有 test stub 补全新接口方法（如果改了 interface）
 - [ ] Ent 生成的代码已提交（如果改了 schema）
+
+
+## 坑 12:：Nginx 反向代理注意事项
+
+通过 Nginx 反向代理 Sub2API（或 CRS 服务）并搭配 Codex CLI 使用时，需要在 Nginx 配置的 `http` 块中添加：
+
+```nginx
+underscores_in_headers on;
+```
+
+Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），这会导致多账号环境下的粘性会话功能失效。
 
 ## 五、常用命令速查
 
@@ -369,22 +388,23 @@ git rebase upstream/main
 cd frontend
 pnpm install
 
-# 开发服务器
-pnpm dev
-
 # 构建
 pnpm build
+
+# 开发服务器（支持热重载）
+pnpm run dev
 ```
 
 ### 后端操作
 
 ```bash
-# 运行服务器
+# 运行服务器（支持热重载）
 cd backend
 go run ./cmd/server/
 
-# 生成 Ent 代码
+# 修改 backend/ent/schema 后，需要重新生成 Ent + Wire
 go generate ./ent
+go generate ./cmd/server
 
 # 运行测试
 go test -tags=unit ./...
