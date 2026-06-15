@@ -335,8 +335,62 @@ git add ent/       # 生成的文件也要提交
 - [ ] 所有 test stub 补全新接口方法（如果改了 interface）
 - [ ] Ent 生成的代码已提交（如果改了 schema）
 
+### 坑 12：生产环境管理员账号被误禁用
 
-## 坑 12:：Nginx 反向代理注意事项
+**场景**：后台管理员账号被误改成 `disabled`，导致无法登录管理后台。
+
+**适用范围**：docker compose 部署，且 PostgreSQL 仍可通过 `postgres` 容器或外部数据库连接。
+
+**处理步骤**：
+
+1. 先备份数据库。
+
+```bash
+cd /path/to/deploy
+docker compose -f docker-compose.yml exec -T postgres sh -lc \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+  > sub2api_backup_$(date +%F_%H%M%S).sql
+```
+
+2. 查询目标账号状态，确认是要恢复的管理员。
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres sh -lc \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
+SELECT id, email, role, status, deleted_at, updated_at
+FROM users
+WHERE lower(email) = lower('admin@sub2api.local');
+SQL
+```
+
+3. 恢复账号。
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres sh -lc \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
+UPDATE users
+SET status = 'active',
+    role = 'admin',
+    deleted_at = NULL,
+    updated_at = NOW()
+WHERE lower(email) = lower('admin@sub2api.local')
+RETURNING id, email, role, status, deleted_at, updated_at;
+SQL
+```
+
+4. 重新登录后台；一般不需要重启 `sub2api`，如果页面仍提示无权限，再重启应用容器。
+
+```bash
+docker compose -f docker-compose.local.yml restart sub2api
+```
+
+**补充**：
+
+- 如果你用的是 `docker-compose.yml`，把命令里的 `-f docker-compose.local.yml` 改成 `-f docker-compose.yml`。
+- 如果是 `docker-compose.standalone.yml`，PostgreSQL 不在 compose 内，需要按 `.env` 里的 `DATABASE_HOST`、`DATABASE_USER`、`DATABASE_PASSWORD`、`DATABASE_DBNAME` 连接外部数据库，执行同样的 SQL。
+- 这里恢复的是 `users.status`，同时顺手校正 `role` 和 `deleted_at`，避免账号只是被禁用或误删导致仍然进不去。
+
+### 坑 13：Nginx 反向代理注意事项
 
 通过 Nginx 反向代理 Sub2API（或 CRS 服务）并搭配 Codex CLI 使用时，需要在 Nginx 配置的 `http` 块中添加：
 
