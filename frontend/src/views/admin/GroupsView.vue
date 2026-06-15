@@ -3826,6 +3826,7 @@ const resetModelsListState = (
   const fresh = createInitialModelsListState(config);
   state.enabled = fresh.enabled;
   state.savedModels = fresh.savedModels;
+  state.candidateModels = fresh.candidateModels;
   state.items = fresh.items;
 };
 

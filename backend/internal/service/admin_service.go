@@ -1631,11 +1631,13 @@ func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, erro
 
 func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id int64, platform string) ([]string, error) {
 	platform = strings.TrimSpace(platform)
+	var existingGroup *Group
 	if id > 0 {
 		group, err := s.groupRepo.GetByIDLite(ctx, id)
 		if err != nil {
 			return nil, err
 		}
+		existingGroup = group
 		if platform == "" {
 			platform = group.Platform
 		}
@@ -1654,10 +1656,56 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	}
 
 	candidates := configuredModelsListCandidateIDs(accounts, platform)
+	if existingGroup != nil && existingGroup.Platform == platform && existingGroup.CustomModelsListEnabled() {
+		return filterModelsListCandidates(candidates, existingGroup.ModelsListConfig.Models), nil
+	}
 	if len(candidates) > 0 {
 		return candidates, nil
 	}
 	return defaultModelsListCandidateIDs(platform), nil
+}
+
+func filterModelsListCandidates(candidates []string, selectedModels []string) []string {
+	normalizedSelected := normalizeGroupModelsListConfig(GroupModelsListConfig{
+		Enabled: true,
+		Models:  selectedModels,
+	}).Models
+	if len(normalizedSelected) == 0 {
+		return nil
+	}
+
+	if len(candidates) == 0 {
+		return normalizedSelected
+	}
+
+	allowed := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" {
+			allowed = append(allowed, candidate)
+		}
+	}
+
+	// 按自定义模型列表顺序输出，确保探测下拉与管理员配置顺序一致。
+	filtered := make([]string, 0, len(normalizedSelected))
+	for _, model := range normalizedSelected {
+		if modelsListCandidateAllowsModel(allowed, model) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
+}
+
+func modelsListCandidateAllowsModel(availablePatterns []string, model string) bool {
+	for _, pattern := range availablePatterns {
+		if pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
 }
 
 func configuredModelsListCandidateIDs(accounts []Account, platform string) []string {

@@ -137,12 +137,22 @@ describe("groupsModelsList", () => {
     const state = hydrateModelsListState({
       enabled: false,
       models: ["deepseek-v4-flash"],
-    }, ["gpt-5.5", "deepseek-v4-flash", "deepseek-v4-pro"]);
+    }, ["gpt-5.5", "deepseek-v4-pro"]);
 
     expect(getAvailabilityProbeCandidateModels(state)).toEqual([
-      "deepseek-v4-flash",
       "gpt-5.5",
       "deepseek-v4-pro",
     ]);
+  });
+
+  it("refreshes availability probe candidates without keeping stale models", () => {
+    const state = hydrateModelsListState({
+      enabled: false,
+      models: ["deepseek-v4-flash"],
+    }, ["gpt-5.5", "deepseek-v4-flash"]);
+
+    setModelsListCandidates(state, ["deepseek-v4-pro"]);
+
+    expect(getAvailabilityProbeCandidateModels(state)).toEqual(["deepseek-v4-pro"]);
   });
 });
