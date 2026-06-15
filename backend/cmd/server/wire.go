@@ -98,6 +98,7 @@ func provideCleanup(
 	antigravityOAuth *service.AntigravityOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
+	groupAvailabilityProbeRunner *service.GroupAvailabilityProbeRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
@@ -233,6 +234,12 @@ func provideCleanup(
 			{"ScheduledTestRunnerService", func() error {
 				if scheduledTestRunner != nil {
 					scheduledTestRunner.Stop()
+				}
+				return nil
+			}},
+			{"GroupAvailabilityProbeRunnerService", func() error {
+				if groupAvailabilityProbeRunner != nil {
+					groupAvailabilityProbeRunner.Stop()
 				}
 				return nil
 			}},

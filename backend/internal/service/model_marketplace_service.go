@@ -6,7 +6,9 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/antigravity"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/claude"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/geminicli"
@@ -26,6 +28,7 @@ type ModelMarketplaceGroup struct {
 	// DataSharingEnabled 标记公开分组是否会采集数据共享会话，供模型广场展示提示。
 	DataSharingEnabled bool
 	Capacity           *GroupCapacitySummary
+	Availability       *GroupAvailabilitySummary
 	ModelCount         int
 	Models             []ModelMarketplaceModel
 }
@@ -37,11 +40,13 @@ type ModelMarketplaceModel struct {
 }
 
 type ModelMarketplaceService struct {
-	groupRepo       GroupRepository
-	settingRepo     SettingRepository
-	gatewayService  *GatewayService
-	billingService  *BillingService
-	capacityService *GroupCapacityService
+	groupRepo        GroupRepository
+	settingRepo      SettingRepository
+	gatewayService   *GatewayService
+	billingService   *BillingService
+	capacityService  *GroupCapacityService
+	availabilityRepo GroupAvailabilityProbeRepository
+	cfg              *config.Config
 }
 
 func NewModelMarketplaceService(
@@ -50,13 +55,17 @@ func NewModelMarketplaceService(
 	gatewayService *GatewayService,
 	billingService *BillingService,
 	capacityService *GroupCapacityService,
+	availabilityRepo GroupAvailabilityProbeRepository,
+	cfg *config.Config,
 ) *ModelMarketplaceService {
 	return &ModelMarketplaceService{
-		groupRepo:       groupRepo,
-		settingRepo:     settingRepo,
-		gatewayService:  gatewayService,
-		billingService:  billingService,
-		capacityService: capacityService,
+		groupRepo:        groupRepo,
+		settingRepo:      settingRepo,
+		gatewayService:   gatewayService,
+		billingService:   billingService,
+		capacityService:  capacityService,
+		availabilityRepo: availabilityRepo,
+		cfg:              cfg,
 	}
 }
 
@@ -68,6 +77,7 @@ func (s *ModelMarketplaceService) ListPublic(ctx context.Context) ([]ModelMarket
 
 	discountConfig, showDiscount := s.getOfficialPriceRatioConfig(ctx)
 	capacityMap := s.getPublicCapacityMap(ctx, groups)
+	availabilityMap := s.getPublicAvailabilityMap(ctx, groups)
 	out := make([]ModelMarketplaceGroup, 0, len(groups))
 	for i := range groups {
 		group := &groups[i]
@@ -98,6 +108,7 @@ func (s *ModelMarketplaceService) ListPublic(ctx context.Context) ([]ModelMarket
 			OfficialPriceRMBEquivalent: officialPriceRMBEquivalent,
 			DataSharingEnabled:         group.DataSharingEnabled,
 			Capacity:                   marketplaceGroupCapacity(capacityMap, group.ID),
+			Availability:               marketplaceGroupAvailability(availabilityMap, group.ID),
 			ModelCount:                 len(models),
 			Models:                     models,
 		})
@@ -140,6 +151,45 @@ func marketplaceGroupCapacity(capacityMap map[int64]GroupCapacitySummary, groupI
 		return nil
 	}
 	return &capacity
+}
+
+func (s *ModelMarketplaceService) getPublicAvailabilityMap(ctx context.Context, groups []Group) map[int64]*GroupAvailabilitySummary {
+	if s.availabilityRepo == nil || len(groups) == 0 {
+		return nil
+	}
+
+	groupIDs := make([]int64, 0, len(groups))
+	for i := range groups {
+		group := &groups[i]
+		if group.IsExclusive || group.ActiveAccountCount <= 0 {
+			continue
+		}
+		if !group.AvailabilityProbeConfig.Enabled {
+			continue
+		}
+		groupIDs = append(groupIDs, group.ID)
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+
+	timezone := "UTC"
+	if s.cfg != nil && strings.TrimSpace(s.cfg.Timezone) != "" {
+		timezone = strings.TrimSpace(s.cfg.Timezone)
+	}
+	// 可用性是模型广场的辅助信息，获取失败时不影响模型和价格展示。
+	availabilityMap, err := s.availabilityRepo.GetSummaryByGroupIDs(ctx, groupIDs, 30, timezone, time.Now())
+	if err != nil {
+		return nil
+	}
+	return availabilityMap
+}
+
+func marketplaceGroupAvailability(availabilityMap map[int64]*GroupAvailabilitySummary, groupID int64) *GroupAvailabilitySummary {
+	if len(availabilityMap) == 0 {
+		return nil
+	}
+	return availabilityMap[groupID]
 }
 
 func marketplaceGroupDisplayBrand(group *Group) string {

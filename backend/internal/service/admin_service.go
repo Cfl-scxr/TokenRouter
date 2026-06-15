@@ -234,6 +234,8 @@ type CreateGroupInput struct {
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
+	// AvailabilityProbeConfig 控制分组主动可用性探测。
+	AvailabilityProbeConfig GroupAvailabilityProbeConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
@@ -278,6 +280,8 @@ type UpdateGroupInput struct {
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            *GroupModelsListConfig
+	// AvailabilityProbeConfig 为 nil 时不修改探测配置。
+	AvailabilityProbeConfig *GroupAvailabilityProbeConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
@@ -1775,6 +1779,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
 		}
 	}
+	availabilityProbeConfig, err := normalizeGroupAvailabilityProbeConfig(input.AvailabilityProbeConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	group := &Group{
 		Name:                            input.Name,
@@ -1806,6 +1814,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
+		AvailabilityProbeConfig:         availabilityProbeConfig,
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
@@ -2124,6 +2133,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.ModelsListConfig != nil {
 		group.ModelsListConfig = normalizeGroupModelsListConfig(*input.ModelsListConfig)
+	}
+	if input.AvailabilityProbeConfig != nil {
+		config, err := normalizeGroupAvailabilityProbeConfig(*input.AvailabilityProbeConfig)
+		if err != nil {
+			return nil, err
+		}
+		group.AvailabilityProbeConfig = config
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit

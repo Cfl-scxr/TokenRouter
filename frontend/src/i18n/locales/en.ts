@@ -454,6 +454,10 @@ export default {
     dataSharingTag: 'Data Sharing',
     capacity: 'Capacity',
     capacityHint: 'Aggregated group load: concurrency / sessions / RPM',
+    availability30d: '30d availability',
+    availabilityNoData: 'No data',
+    availabilityHint: '30-day active probe availability {rate} ({success} success / {total} total)',
+    availabilityHintNoData: 'No active probe data in the last 30 days',
     rateMultiplier: 'Group Multiplier',
     rateMultiplierValue: 'Group Multiplier {multiplier}',
     officialPriceDiscount: 'As low as {discount}/10 of official price',
@@ -2620,6 +2624,18 @@ export default {
         hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
         loading: 'Loading model list...',
         empty: 'No displayable models'
+      },
+      availabilityProbe: {
+        title: 'Group Availability Probe',
+        hint: 'Send lightweight active probes to this group on a fixed interval. The marketplace shows the last 30 days availability.',
+        model: 'Probe Model',
+        selectModel: 'Select probe model',
+        interval: 'Probe Interval (minutes)',
+        timeout: 'Timeout (seconds)',
+        prompt: 'Probe Prompt',
+        promptPlaceholder: 'e.g. hi',
+        modelRequired: 'Select a probe model before enabling group availability probes',
+        promptRequired: 'Enter a probe prompt before enabling group availability probes'
       },
       claudeCode: {
         title: 'Claude Code Client Restriction',

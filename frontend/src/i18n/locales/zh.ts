@@ -454,6 +454,10 @@ export default {
     dataSharingTag: '数据共享',
     capacity: '容量',
     capacityHint: '当前分组聚合负载：并发 / 会话 / RPM',
+    availability30d: '30d 可用率',
+    availabilityNoData: '暂无数据',
+    availabilityHint: '近 30 天主动探测可用率 {rate}（成功 {success} / 总计 {total}）',
+    availabilityHintNoData: '近 30 天暂无主动探测数据',
     rateMultiplier: '分组倍率',
     rateMultiplierValue: '分组倍率{multiplier}',
     officialPriceDiscount: '最低至官方价格的{discount}折',
@@ -2703,6 +2707,18 @@ export default {
         hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
         loading: '正在加载模型列表...',
         empty: '暂无可展示模型'
+      },
+      availabilityProbe: {
+        title: '分组可用性探测',
+        hint: '按固定间隔对该分组主动发起轻量请求，模型广场将展示近 30 天可用率。',
+        model: '探测模型',
+        selectModel: '选择探测模型',
+        interval: '探测间隔（分钟）',
+        timeout: '超时时间（秒）',
+        prompt: '探测提示词',
+        promptPlaceholder: '例如：hi',
+        modelRequired: '启用分组可用性探测时必须选择探测模型',
+        promptRequired: '启用分组可用性探测时必须填写探测提示词'
       },
       claudeCode: {
         title: 'Claude Code 客户端限制',

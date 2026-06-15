@@ -130,6 +130,9 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// AvailabilityProbeConfig 控制分组主动可用性探测。
+	AvailabilityProbeConfig domain.GroupAvailabilityProbeConfig `json:"availability_probe_config"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
