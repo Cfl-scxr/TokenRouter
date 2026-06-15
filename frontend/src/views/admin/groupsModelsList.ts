@@ -106,6 +106,19 @@ export const buildModelsListConfig = (state: ModelsListState): ModelsListConfig 
     : [...state.savedModels],
 })
 
+export const getAvailabilityProbeCandidateModels = (state: ModelsListState): string[] => {
+  // 探测模型必须跟当前分组最终对外可见的模型保持一致；自定义列表开启时只允许已勾选模型。
+  if (state.items.length > 0) {
+    const items = state.enabled
+      ? state.items.filter(item => item.selected)
+      : state.items
+    return normalizeModels(items.map(item => item.id))
+  }
+
+  // 候选项异步加载前，仅自定义列表开启时可以信任已保存模型。
+  return state.enabled ? [...state.savedModels] : []
+}
+
 const normalizeModels = (models: string[]): string[] => {
   const seen = new Set<string>()
   const out: string[] = []

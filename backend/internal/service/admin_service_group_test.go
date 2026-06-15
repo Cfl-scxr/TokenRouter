@@ -160,6 +160,74 @@ func TestAdminService_ListGroups_PassesSessionIsolationSortParams(t *testing.T) 
 	}, repo.listWithFiltersParams)
 }
 
+// groupModelsListAccountRepoStub 只实现候选模型测试需要的可调度账号查询。
+type groupModelsListAccountRepoStub struct {
+	*accountRepoStub
+	accounts      []Account
+	calledGroupID int64
+}
+
+func (s *groupModelsListAccountRepoStub) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
+	s.calledGroupID = groupID
+	out := make([]Account, len(s.accounts))
+	copy(out, s.accounts)
+	return out, nil
+}
+
+// TestAdminService_GetGroupModelsListCandidates_UsesConfiguredRequestModels 确保 OpenAI-compatible 分组不会混入 OpenAI 默认模型。
+func TestAdminService_GetGroupModelsListCandidates_UsesConfiguredRequestModels(t *testing.T) {
+	groupID := int64(10)
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: groupID, Platform: PlatformOpenAI},
+	}
+	accountRepo := &groupModelsListAccountRepoStub{
+		accountRepoStub: &accountRepoStub{},
+		accounts: []Account{
+			{
+				ID:       1,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"model_whitelist": []any{"deepseek-v4-pro", "deepseek-v4-flash"},
+				},
+			},
+			{
+				ID:       2,
+				Platform: PlatformAnthropic,
+				Credentials: map[string]any{
+					"model_whitelist": []any{"claude-sonnet-4-6"},
+				},
+			},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: groupRepo, accountRepo: accountRepo}
+
+	models, err := svc.GetGroupModelsListCandidates(context.Background(), groupID, "")
+
+	require.NoError(t, err)
+	require.Equal(t, groupID, accountRepo.calledGroupID)
+	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, models)
+}
+
+// TestAdminService_GetGroupModelsListCandidates_FallsBackToPlatformDefaults 确保未配置有限模型时仍保留旧的默认候选。
+func TestAdminService_GetGroupModelsListCandidates_FallsBackToPlatformDefaults(t *testing.T) {
+	groupID := int64(11)
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: groupID, Platform: PlatformOpenAI},
+	}
+	accountRepo := &groupModelsListAccountRepoStub{
+		accountRepoStub: &accountRepoStub{},
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: groupRepo, accountRepo: accountRepo}
+
+	models, err := svc.GetGroupModelsListCandidates(context.Background(), groupID, "")
+
+	require.NoError(t, err)
+	require.Equal(t, defaultModelsListCandidateIDs(PlatformOpenAI), models)
+}
+
 // TestAdminService_CreateGroup_WithImagePricing 测试创建分组时 ImagePrice 字段正确传递
 func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}

@@ -1644,9 +1644,8 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		platform = PlatformAnthropic
 	}
 
-	candidates := defaultModelsListCandidateIDs(platform)
 	if id <= 0 || s.accountRepo == nil {
-		return candidates, nil
+		return defaultModelsListCandidateIDs(platform), nil
 	}
 
 	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
@@ -1654,27 +1653,44 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		return nil, err
 	}
 
-	seen := make(map[string]struct{}, len(candidates))
-	for _, model := range candidates {
-		seen[model] = struct{}{}
+	candidates := configuredModelsListCandidateIDs(accounts, platform)
+	if len(candidates) > 0 {
+		return candidates, nil
 	}
+	return defaultModelsListCandidateIDs(platform), nil
+}
+
+func configuredModelsListCandidateIDs(accounts []Account, platform string) []string {
+	modelSet := make(map[string]struct{})
+	hasAnyConfiguredModels := false
 	for _, acc := range accounts {
 		if acc.Platform != platform {
 			continue
 		}
-		for model := range acc.GetModelMapping() {
+		requestModels := acc.GetConfiguredRequestModels()
+		if len(requestModels) == 0 {
+			continue
+		}
+		hasAnyConfiguredModels = true
+		for _, model := range requestModels {
 			model = strings.TrimSpace(model)
 			if model == "" {
 				continue
 			}
-			if _, ok := seen[model]; ok {
-				continue
-			}
-			seen[model] = struct{}{}
-			candidates = append(candidates, model)
+			modelSet[model] = struct{}{}
 		}
 	}
-	return candidates, nil
+	if !hasAnyConfiguredModels {
+		return nil
+	}
+
+	// 候选项按字典序稳定输出，避免编辑分组时下拉列表随机抖动。
+	models := make([]string, 0, len(modelSet))
+	for model := range modelSet {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models
 }
 
 func defaultModelsListCandidateIDs(platform string) []string {

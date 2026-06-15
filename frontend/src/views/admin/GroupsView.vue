@@ -3275,6 +3275,7 @@ import {
 import {
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
+  getAvailabilityProbeCandidateModels,
   invertModelsListSelection,
   moveModelsListItem,
   selectAllModelsListItems,
@@ -3565,10 +3566,10 @@ const editModelsListSelectedCount = computed(
   () => editModelsListState.items.filter((item) => item.selected).length,
 );
 const createAvailabilityProbeModelOptions = computed(() =>
-  buildAvailabilityProbeModelOptions(createModelsListState.items.map((item) => item.id)),
+  buildAvailabilityProbeModelOptions(getAvailabilityProbeCandidateModels(createModelsListState)),
 );
 const editAvailabilityProbeModelOptions = computed(() =>
-  buildAvailabilityProbeModelOptions(editModelsListState.items.map((item) => item.id)),
+  buildAvailabilityProbeModelOptions(getAvailabilityProbeCandidateModels(editModelsListState)),
 );
 
 const createForm = reactive({
@@ -3877,6 +3878,14 @@ function buildAvailabilityProbeModelOptions(models: string[]) {
   }
   return options;
 }
+
+const isAvailabilityProbeModelAvailable = (
+  modelID: string,
+  options: ReturnType<typeof buildAvailabilityProbeModelOptions>,
+) => {
+  // 空值代表尚未选择，始终允许保留。
+  return !modelID || options.some((option) => option.value === modelID);
+};
 
 const resetAvailabilityProbeFormState = (
   form: typeof createForm | typeof editForm,
@@ -4546,6 +4555,34 @@ watch(
     loadModelsListCandidates("create", 0, newVal);
   },
 );
+
+watch(createAvailabilityProbeModelOptions, (options) => {
+  if (!createModelsListState.enabled && createModelsListState.items.length === 0) {
+    return;
+  }
+  if (
+    !isAvailabilityProbeModelAvailable(
+      createForm.availability_probe_model_id,
+      options,
+    )
+  ) {
+    createForm.availability_probe_model_id = "";
+  }
+});
+
+watch(editAvailabilityProbeModelOptions, (options) => {
+  if (!editModelsListState.enabled && editModelsListState.items.length === 0) {
+    return;
+  }
+  if (
+    !isAvailabilityProbeModelAvailable(
+      editForm.availability_probe_model_id,
+      options,
+    )
+  ) {
+    editForm.availability_probe_model_id = "";
+  }
+});
 
 watch(
   () => editForm.platform,
