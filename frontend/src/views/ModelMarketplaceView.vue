@@ -154,14 +154,13 @@
               </div>
               <div
                 v-if="group.availability || group.capacity"
-                class="flex w-full flex-col gap-2 xl:ml-6 xl:w-[720px] xl:shrink-0 xl:flex-row xl:items-center xl:justify-end"
+                class="flex w-full flex-col gap-3 xl:ml-6 xl:w-[720px] xl:shrink-0 xl:flex-row xl:items-center xl:justify-end xl:gap-6"
               >
-                <div
+                <GroupAvailabilityBar
                   v-if="group.availability"
-                  class="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 dark:border-dark-700 dark:bg-dark-950/80"
-                >
-                  <GroupAvailabilityBar :availability="group.availability" />
-                </div>
+                  :availability="group.availability"
+                  class="min-w-0 flex-1"
+                />
                 <!-- 容量用量独立放在卡片头部右侧，避免和价格标签挤在一起。 -->
                 <div
                   v-if="group.capacity"

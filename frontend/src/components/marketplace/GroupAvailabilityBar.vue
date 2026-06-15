@@ -1,28 +1,23 @@
 <template>
-  <div
-    class="flex w-full min-w-0 items-center gap-3 xl:min-w-[520px]"
-    :title="tooltip"
-  >
+  <div class="flex w-full min-w-0 items-center gap-2" :title="tooltip">
     <div
-      class="flex h-8 min-w-0 flex-1 items-center gap-[3px]"
+      class="grid h-8 min-w-0 flex-1 items-center gap-[2px] overflow-hidden"
+      :style="barGridStyle"
       role="img"
       :aria-label="ariaLabel"
     >
       <span
-        v-for="(day, index) in normalizedDays"
-        :key="day.date || index"
+        v-for="(day, index) in visualDays"
+        :key="`${day.date || 'empty'}-${index}`"
         :class="[
-          'h-4 min-w-[3px] flex-1 rounded-[2px]',
+          'h-6 min-w-[3px] rounded-[2px]',
           dayClass(day.availability_rate, day.total_count),
         ]"
       />
     </div>
-    <div class="w-[86px] shrink-0 text-right">
-      <div class="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+    <div class="w-[96px] shrink-0 text-left">
+      <div class="text-base font-semibold leading-5 text-gray-900 dark:text-white">
         {{ rateLabel }}
-      </div>
-      <div class="mt-0.5 text-[11px] font-medium text-gray-500 dark:text-dark-400">
-        {{ t('marketplace.availability30d') }}
       </div>
     </div>
   </div>
@@ -57,6 +52,14 @@ const normalizedDays = computed<MarketplaceGroupAvailabilityDay[]>(() => {
     ...days,
   ]
 })
+
+const visualDays = computed<MarketplaceGroupAvailabilityDay[]>(() =>
+  normalizedDays.value.flatMap((day) => [day, day, day]),
+)
+
+const barGridStyle = computed(() => ({
+  gridTemplateColumns: `repeat(${visualDays.value.length}, minmax(3px, 1fr))`,
+}))
 
 const rateLabel = computed(() => {
   const rate = props.availability?.availability_rate
