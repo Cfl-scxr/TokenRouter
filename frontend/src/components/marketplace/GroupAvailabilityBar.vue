@@ -1,18 +1,19 @@
 <template>
   <div class="flex w-full min-w-0 items-center gap-2" :title="tooltip">
     <div
-      class="grid h-8 min-w-0 flex-1 items-center gap-[2px] overflow-hidden"
+      class="grid h-8 min-w-0 flex-1 items-center overflow-hidden"
       :style="barGridStyle"
       role="img"
       :aria-label="ariaLabel"
     >
       <span
-        v-for="(day, index) in visualDays"
-        :key="`${day.date || 'empty'}-${index}`"
+        v-for="(bucket, index) in normalizedBuckets"
+        :key="`${bucket.date || 'empty'}-${index}`"
         :class="[
-          'h-6 min-w-[3px] rounded-[2px]',
-          dayClass(day.availability_rate, day.total_count),
+          'h-6 max-w-full justify-self-center rounded-[2px]',
+          bucketClass(bucket.availability_rate, bucket.total_count),
         ]"
+        :style="{ width: bucketWidth }"
       />
     </div>
     <div class="w-[96px] shrink-0 text-left">
@@ -34,32 +35,52 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const windowDays = computed(() => Math.max(props.availability?.window_days ?? 30, 1))
+const windowDays = computed(() => Math.max(props.availability?.window_days ?? 7, 1))
+const bucketMinutes = computed(() => Math.max(props.availability?.bucket_minutes ?? 24 * 60, 1))
+const targetBucketCount = computed(() =>
+  Math.max(Math.ceil((windowDays.value * 24 * 60) / bucketMinutes.value), 1),
+)
 
-const normalizedDays = computed<MarketplaceGroupAvailabilityDay[]>(() => {
-  const days = props.availability?.days ?? []
-  const target = windowDays.value
-  if (days.length >= target) {
-    return days.slice(days.length - target)
+const normalizedBuckets = computed<MarketplaceGroupAvailabilityDay[]>(() => {
+  const buckets = props.availability?.days ?? []
+  const target = targetBucketCount.value
+  if (buckets.length >= target) {
+    return buckets.slice(buckets.length - target)
   }
   return [
-    ...Array.from({ length: target - days.length }, () => ({
+    ...Array.from({ length: target - buckets.length }, () => ({
       date: '',
       success_count: 0,
       total_count: 0,
       availability_rate: null,
     })),
-    ...days,
+    ...buckets,
   ]
 })
 
-const visualDays = computed<MarketplaceGroupAvailabilityDay[]>(() =>
-  normalizedDays.value.flatMap((day) => [day, day, day]),
-)
-
 const barGridStyle = computed(() => ({
-  gridTemplateColumns: `repeat(${visualDays.value.length}, minmax(3px, 1fr))`,
+  gap:
+    normalizedBuckets.value.length > 360
+      ? '0'
+      : normalizedBuckets.value.length > 180
+        ? '1px'
+        : '2px',
+  gridTemplateColumns: `repeat(${normalizedBuckets.value.length}, minmax(0, 1fr))`,
 }))
+
+const bucketWidth = computed(() => {
+  const count = normalizedBuckets.value.length
+  if (count <= 30) {
+    return '8px'
+  }
+  if (count <= 90) {
+    return '5px'
+  }
+  if (count <= 180) {
+    return '4px'
+  }
+  return '100%'
+})
 
 const rateLabel = computed(() => {
   const rate = props.availability?.availability_rate
@@ -72,18 +93,23 @@ const rateLabel = computed(() => {
 const tooltip = computed(() => {
   const availability = props.availability
   if (!availability || typeof availability.availability_rate !== 'number') {
-    return t('marketplace.availabilityHintNoData')
+    return t('marketplace.availabilityHintNoData', {
+      days: windowDays.value,
+    })
   }
   return t('marketplace.availabilityHint', {
+    days: windowDays.value,
     rate: rateLabel.value,
     success: availability.success_count,
     total: availability.total_count,
   })
 })
 
-const ariaLabel = computed(() => `${t('marketplace.availability30d')}: ${rateLabel.value}`)
+const ariaLabel = computed(
+  () => `${t('marketplace.availabilityWindow', { days: windowDays.value })}: ${rateLabel.value}`,
+)
 
-function dayClass(rate?: number | null, totalCount?: number): string {
+function bucketClass(rate?: number | null, totalCount?: number): string {
   if (!totalCount || typeof rate !== 'number') {
     return 'bg-gray-200 dark:bg-dark-700'
   }

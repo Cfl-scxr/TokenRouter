@@ -153,19 +153,21 @@ type SystemSettings struct {
 	DefaultConcurrency int
 	DefaultBalance     float64
 	// RiskControlEnabled 控制风控中心入口和网关内容审计总开关。
-	RiskControlEnabled           bool
-	AffiliateEnabled             bool
-	AffiliateRebateRate          float64
-	AffiliateRebateFreezeHours   int
-	AffiliateRebateDurationDays  int
-	AffiliateRebatePerInviteeCap float64
-	DefaultUserRPMLimit          int
-	DefaultSubscriptions         []DefaultSubscriptionSetting
-	BalanceUnitName              string
-	BalanceUnitSymbol            string
-	BalanceIconSVG               string
-	ReasoningPointRMBUnitPrice   float64
-	USDExchangeRate              float64
+	RiskControlEnabled                   bool
+	AffiliateEnabled                     bool
+	AffiliateRebateRate                  float64
+	AffiliateRebateFreezeHours           int
+	AffiliateRebateDurationDays          int
+	AffiliateRebatePerInviteeCap         float64
+	DefaultUserRPMLimit                  int
+	DefaultSubscriptions                 []DefaultSubscriptionSetting
+	BalanceUnitName                      string
+	BalanceUnitSymbol                    string
+	BalanceIconSVG                       string
+	ReasoningPointRMBUnitPrice           float64
+	USDExchangeRate                      float64
+	MarketplaceAvailabilityWindowDays    int
+	MarketplaceAvailabilityBucketMinutes int
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

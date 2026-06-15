@@ -454,10 +454,10 @@ export default {
     dataSharingTag: 'Data Sharing',
     capacity: 'Capacity',
     capacityHint: 'Aggregated group load: concurrency / sessions / RPM',
-    availability30d: '30d availability',
+    availabilityWindow: '{days}d availability',
     availabilityNoData: 'No data',
-    availabilityHint: '30-day active probe availability {rate} ({success} success / {total} total)',
-    availabilityHintNoData: 'No active probe data in the last 30 days',
+    availabilityHint: '{days}-day active probe availability {rate} ({success} success / {total} total)',
+    availabilityHintNoData: 'No active probe data in the last {days} days',
     rateMultiplier: 'Group Multiplier',
     rateMultiplierValue: 'Group Multiplier {multiplier}',
     officialPriceDiscount: 'As low as {discount}/10 of official price',
@@ -2627,7 +2627,7 @@ export default {
       },
       availabilityProbe: {
         title: 'Group Availability Probe',
-        hint: 'Send lightweight active probes to this group on a fixed interval. The marketplace shows the last 30 days availability.',
+        hint: 'Send lightweight active probes to this group on a fixed interval. The marketplace shows availability using the configured public window.',
         model: 'Probe Model',
         selectModel: 'Select probe model',
         interval: 'Probe Interval (minutes)',
@@ -5470,6 +5470,17 @@ export default {
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
+      marketplaceAvailability: {
+        title: 'Marketplace Availability',
+        description:
+          'Adjust the public marketplace availability bar window and bucket size. Saved changes apply on the next marketplace refresh.',
+        windowDays: 'Window (days)',
+        windowDaysHint: 'Range {min}-{max} days. Default is 7 days.',
+        bucketMinutes: 'Bucket size (minutes)',
+        bucketMinutesHint: 'Range {min}-{max} minutes. Default is 120 minutes.',
+        bucketLimitHint:
+          'If the window and bucket size would produce more than 720 bars, the backend widens the bucket size automatically.'
+      },
       features: {
         riskControl: {
           title: 'Risk Control',

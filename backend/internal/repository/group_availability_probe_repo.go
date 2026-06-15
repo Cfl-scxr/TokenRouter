@@ -165,38 +165,41 @@ func (r *groupAvailabilityProbeRepository) SaveResultAndScheduleNext(ctx context
 	return tx.Commit()
 }
 
-func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Context, groupIDs []int64, days int, timezoneName string, now time.Time) (map[int64]*service.GroupAvailabilitySummary, error) {
+func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Context, groupIDs []int64, days int, bucketMinutes int, timezoneName string, now time.Time) (map[int64]*service.GroupAvailabilitySummary, error) {
 	out := make(map[int64]*service.GroupAvailabilitySummary, len(groupIDs))
 	if r == nil || r.db == nil || len(groupIDs) == 0 {
 		return out, nil
 	}
-	if days <= 0 {
-		days = 30
-	}
+	days, bucketMinutes = service.NormalizeMarketplaceAvailabilityWindow(days, bucketMinutes)
 
 	loc := time.UTC
-	sqlTimezoneName := "UTC"
 	if timezoneName != "" {
 		if parsed, err := time.LoadLocation(timezoneName); err == nil && parsed != nil {
 			loc = parsed
-			sqlTimezoneName = timezoneName
 		}
 	}
 	localNow := now.In(loc)
-	startLocal := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -(days - 1))
-	endLocal := startLocal.AddDate(0, 0, days)
+	bucketDuration := time.Duration(bucketMinutes) * time.Minute
+	endLocal := nextLocalBucketBoundary(localNow, bucketDuration)
+	totalMinutes := days * 24 * 60
+	bucketCount := (totalMinutes + bucketMinutes - 1) / bucketMinutes
+	if bucketCount <= 0 {
+		bucketCount = 1
+	}
+	startLocal := endLocal.Add(-time.Duration(bucketCount) * bucketDuration)
 	startUTC := startLocal.UTC()
 	endUTC := endLocal.UTC()
 
 	for _, groupID := range groupIDs {
 		summary := &service.GroupAvailabilitySummary{
-			WindowDays: days,
-			Days:       make([]service.GroupAvailabilityDailyPoint, 0, days),
+			WindowDays:    days,
+			BucketMinutes: bucketMinutes,
+			Days:          make([]service.GroupAvailabilityBucket, 0, bucketCount),
 		}
-		for i := 0; i < days; i++ {
-			day := startLocal.AddDate(0, 0, i)
-			summary.Days = append(summary.Days, service.GroupAvailabilityDailyPoint{
-				Date: day.Format("2006-01-02"),
+		for i := 0; i < bucketCount; i++ {
+			bucketStart := startLocal.Add(time.Duration(i) * bucketDuration)
+			summary.Days = append(summary.Days, service.GroupAvailabilityBucket{
+				Date: bucketStart.Format(time.RFC3339),
 			})
 		}
 		out[groupID] = summary
@@ -205,48 +208,39 @@ func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Cont
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			group_id,
-			to_char(started_at AT TIME ZONE $4, 'YYYY-MM-DD') AS day,
+			FLOOR((EXTRACT(EPOCH FROM started_at) - EXTRACT(EPOCH FROM $2::timestamptz)) / ($4::double precision * 60))::int AS bucket_index,
 			COUNT(*) FILTER (WHERE success = true) AS success_count,
 			COUNT(*) AS total_count
 		FROM group_availability_probe_results
 		WHERE group_id = ANY($1)
 		  AND started_at >= $2
 		  AND started_at < $3
-		GROUP BY group_id, day
-	`, pq.Array(groupIDs), startUTC, endUTC, sqlTimezoneName)
+		GROUP BY group_id, bucket_index
+	`, pq.Array(groupIDs), startUTC, endUTC, bucketMinutes)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	dayIndex := make(map[int64]map[string]int, len(groupIDs))
-	for _, groupID := range groupIDs {
-		dayIndex[groupID] = make(map[string]int, days)
-		for i, day := range out[groupID].Days {
-			dayIndex[groupID][day.Date] = i
-		}
-	}
-
 	for rows.Next() {
 		var groupID int64
-		var day string
+		var bucketIndex int
 		var successCount int64
 		var totalCount int64
-		if err := rows.Scan(&groupID, &day, &successCount, &totalCount); err != nil {
+		if err := rows.Scan(&groupID, &bucketIndex, &successCount, &totalCount); err != nil {
 			return nil, err
 		}
 		summary, ok := out[groupID]
 		if !ok {
 			continue
 		}
-		idx, ok := dayIndex[groupID][day]
-		if !ok {
+		if bucketIndex < 0 || bucketIndex >= len(summary.Days) {
 			continue
 		}
 		rate := availabilityRate(successCount, totalCount)
-		summary.Days[idx].SuccessCount = successCount
-		summary.Days[idx].TotalCount = totalCount
-		summary.Days[idx].AvailabilityRate = rate
+		summary.Days[bucketIndex].SuccessCount = successCount
+		summary.Days[bucketIndex].TotalCount = totalCount
+		summary.Days[bucketIndex].AvailabilityRate = rate
 		summary.SuccessCount += successCount
 		summary.TotalCount += totalCount
 	}
@@ -288,6 +282,19 @@ func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Cont
 	}
 
 	return out, nil
+}
+
+func nextLocalBucketBoundary(t time.Time, bucketDuration time.Duration) time.Time {
+	if bucketDuration <= 0 {
+		bucketDuration = 24 * time.Hour
+	}
+	// 以本地自然日零点对齐，避免非 UTC 时区下使用 time.Truncate 产生偏移桶。
+	dayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	bucketStart := dayStart.Add(t.Sub(dayStart) / bucketDuration * bucketDuration)
+	if bucketStart.Before(t) {
+		return bucketStart.Add(bucketDuration)
+	}
+	return bucketStart
 }
 
 func (r *groupAvailabilityProbeRepository) CleanupOldResults(ctx context.Context, before time.Time) error {

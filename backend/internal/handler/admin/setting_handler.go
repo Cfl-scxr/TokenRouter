@@ -249,6 +249,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BalanceIconSVG:                         settings.BalanceIconSVG,
 		ReasoningPointRMBUnitPrice:             settings.ReasoningPointRMBUnitPrice,
 		USDExchangeRate:                        settings.USDExchangeRate,
+		MarketplaceAvailabilityWindowDays:      settings.MarketplaceAvailabilityWindowDays,
+		MarketplaceAvailabilityBucketMinutes:   settings.MarketplaceAvailabilityBucketMinutes,
 		EnableModelFallback:                    settings.EnableModelFallback,
 		FallbackModelAnthropic:                 settings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                    settings.FallbackModelOpenAI,
@@ -575,6 +577,8 @@ type UpdateSettingsRequest struct {
 	BalanceIconSVG                            string                            `json:"balance_icon_svg"`
 	ReasoningPointRMBUnitPrice                *float64                          `json:"reasoning_point_rmb_unit_price"`
 	USDExchangeRate                           *float64                          `json:"usd_exchange_rate"`
+	MarketplaceAvailabilityWindowDays         *int                              `json:"marketplace_availability_window_days"`
+	MarketplaceAvailabilityBucketMinutes      *int                              `json:"marketplace_availability_bucket_minutes"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency         *int                              `json:"auth_source_default_email_concurrency"`
 	AuthSourceDefaultEmailSubscriptions       *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_email_subscriptions"`
@@ -1728,24 +1732,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
-		DefaultUserRPMLimit:         req.DefaultUserRPMLimit,
-		DefaultSubscriptions:        defaultSubscriptions,
-		BalanceUnitName:             req.BalanceUnitName,
-		BalanceUnitSymbol:           req.BalanceUnitSymbol,
-		BalanceIconSVG:              req.BalanceIconSVG,
-		ReasoningPointRMBUnitPrice:  float64ValueOrDefault(req.ReasoningPointRMBUnitPrice, previousSettings.ReasoningPointRMBUnitPrice),
-		USDExchangeRate:             float64ValueOrDefault(req.USDExchangeRate, previousSettings.USDExchangeRate),
-		EnableModelFallback:         req.EnableModelFallback,
-		FallbackModelAnthropic:      req.FallbackModelAnthropic,
-		FallbackModelOpenAI:         req.FallbackModelOpenAI,
-		FallbackModelGemini:         req.FallbackModelGemini,
-		FallbackModelAntigravity:    req.FallbackModelAntigravity,
-		EnableIdentityPatch:         req.EnableIdentityPatch,
-		IdentityPatchPrompt:         req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:        req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:          req.BackendModeEnabled,
+		DefaultUserRPMLimit:                  req.DefaultUserRPMLimit,
+		DefaultSubscriptions:                 defaultSubscriptions,
+		BalanceUnitName:                      req.BalanceUnitName,
+		BalanceUnitSymbol:                    req.BalanceUnitSymbol,
+		BalanceIconSVG:                       req.BalanceIconSVG,
+		ReasoningPointRMBUnitPrice:           float64ValueOrDefault(req.ReasoningPointRMBUnitPrice, previousSettings.ReasoningPointRMBUnitPrice),
+		USDExchangeRate:                      float64ValueOrDefault(req.USDExchangeRate, previousSettings.USDExchangeRate),
+		MarketplaceAvailabilityWindowDays:    intValueOrDefault(req.MarketplaceAvailabilityWindowDays, previousSettings.MarketplaceAvailabilityWindowDays),
+		MarketplaceAvailabilityBucketMinutes: intValueOrDefault(req.MarketplaceAvailabilityBucketMinutes, previousSettings.MarketplaceAvailabilityBucketMinutes),
+		EnableModelFallback:                  req.EnableModelFallback,
+		FallbackModelAnthropic:               req.FallbackModelAnthropic,
+		FallbackModelOpenAI:                  req.FallbackModelOpenAI,
+		FallbackModelGemini:                  req.FallbackModelGemini,
+		FallbackModelAntigravity:             req.FallbackModelAntigravity,
+		EnableIdentityPatch:                  req.EnableIdentityPatch,
+		IdentityPatchPrompt:                  req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:                 req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:                 req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:          req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:                   req.BackendModeEnabled,
 		AllowUserViewErrorRequests: func() bool {
 			if req.AllowUserViewErrorRequests != nil {
 				return *req.AllowUserViewErrorRequests
@@ -2163,6 +2169,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BalanceIconSVG:                         updatedSettings.BalanceIconSVG,
 		ReasoningPointRMBUnitPrice:             updatedSettings.ReasoningPointRMBUnitPrice,
 		USDExchangeRate:                        updatedSettings.USDExchangeRate,
+		MarketplaceAvailabilityWindowDays:      updatedSettings.MarketplaceAvailabilityWindowDays,
+		MarketplaceAvailabilityBucketMinutes:   updatedSettings.MarketplaceAvailabilityBucketMinutes,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                 updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                    updatedSettings.FallbackModelOpenAI,
@@ -2327,6 +2335,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.USDExchangeRate != after.USDExchangeRate {
 		changed = append(changed, "usd_exchange_rate")
+	}
+	if before.MarketplaceAvailabilityWindowDays != after.MarketplaceAvailabilityWindowDays {
+		changed = append(changed, "marketplace_availability_window_days")
+	}
+	if before.MarketplaceAvailabilityBucketMinutes != after.MarketplaceAvailabilityBucketMinutes {
+		changed = append(changed, "marketplace_availability_bucket_minutes")
 	}
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")

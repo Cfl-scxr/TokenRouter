@@ -15,6 +15,16 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 )
 
+const (
+	DefaultMarketplaceAvailabilityWindowDays    = 7
+	DefaultMarketplaceAvailabilityBucketMinutes = 120
+	minMarketplaceAvailabilityWindowDays        = 1
+	maxMarketplaceAvailabilityWindowDays        = 90
+	minMarketplaceAvailabilityBucketMinutes     = 5
+	maxMarketplaceAvailabilityBucketMinutes     = 1440
+	maxMarketplaceAvailabilityBuckets           = 720
+)
+
 type ModelMarketplaceGroup struct {
 	ID                         int64
 	Name                       string
@@ -178,11 +188,66 @@ func (s *ModelMarketplaceService) getPublicAvailabilityMap(ctx context.Context, 
 		timezone = strings.TrimSpace(s.cfg.Timezone)
 	}
 	// 可用性是模型广场的辅助信息，获取失败时不影响模型和价格展示。
-	availabilityMap, err := s.availabilityRepo.GetSummaryByGroupIDs(ctx, groupIDs, 30, timezone, time.Now())
+	windowDays, bucketMinutes := s.resolveMarketplaceAvailabilityWindow(ctx)
+	availabilityMap, err := s.availabilityRepo.GetSummaryByGroupIDs(ctx, groupIDs, windowDays, bucketMinutes, timezone, time.Now())
 	if err != nil {
 		return nil
 	}
 	return availabilityMap
+}
+
+func (s *ModelMarketplaceService) resolveMarketplaceAvailabilityWindow(ctx context.Context) (int, int) {
+	if s == nil || s.settingRepo == nil {
+		return DefaultMarketplaceAvailabilityWindowDays, DefaultMarketplaceAvailabilityBucketMinutes
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyMarketplaceAvailabilityWindowDays,
+		SettingKeyMarketplaceAvailabilityBucketMinutes,
+	})
+	if err != nil {
+		return DefaultMarketplaceAvailabilityWindowDays, DefaultMarketplaceAvailabilityBucketMinutes
+	}
+	return parseMarketplaceAvailabilityWindowSettings(settings)
+}
+
+func NormalizeMarketplaceAvailabilityWindow(windowDays int, bucketMinutes int) (int, int) {
+	if windowDays <= 0 {
+		windowDays = DefaultMarketplaceAvailabilityWindowDays
+	}
+	if bucketMinutes <= 0 {
+		bucketMinutes = DefaultMarketplaceAvailabilityBucketMinutes
+	}
+	windowDays = clampInt(windowDays, minMarketplaceAvailabilityWindowDays, maxMarketplaceAvailabilityWindowDays)
+	bucketMinutes = clampInt(bucketMinutes, minMarketplaceAvailabilityBucketMinutes, maxMarketplaceAvailabilityBucketMinutes)
+
+	totalMinutes := windowDays * 24 * 60
+	// 限制公开接口返回的桶数量，避免配置过细导致模型广场响应和渲染成本失控。
+	if bucketCount := (totalMinutes + bucketMinutes - 1) / bucketMinutes; bucketCount > maxMarketplaceAvailabilityBuckets {
+		bucketMinutes = (totalMinutes + maxMarketplaceAvailabilityBuckets - 1) / maxMarketplaceAvailabilityBuckets
+	}
+	return windowDays, bucketMinutes
+}
+
+func parseMarketplaceAvailabilityWindowSettings(settings map[string]string) (int, int) {
+	windowDays := DefaultMarketplaceAvailabilityWindowDays
+	bucketMinutes := DefaultMarketplaceAvailabilityBucketMinutes
+	if parsed, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyMarketplaceAvailabilityWindowDays])); err == nil && parsed > 0 {
+		windowDays = parsed
+	}
+	if parsed, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyMarketplaceAvailabilityBucketMinutes])); err == nil && parsed > 0 {
+		bucketMinutes = parsed
+	}
+	return NormalizeMarketplaceAvailabilityWindow(windowDays, bucketMinutes)
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
 
 func marketplaceGroupAvailability(availabilityMap map[int64]*GroupAvailabilitySummary, groupID int64) *GroupAvailabilitySummary {

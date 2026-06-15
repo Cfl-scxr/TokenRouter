@@ -1611,6 +1611,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.USDExchangeRate < 0 {
 		settings.USDExchangeRate = 0
 	}
+	settings.MarketplaceAvailabilityWindowDays, settings.MarketplaceAvailabilityBucketMinutes = NormalizeMarketplaceAvailabilityWindow(
+		settings.MarketplaceAvailabilityWindowDays,
+		settings.MarketplaceAvailabilityBucketMinutes,
+	)
 	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
 	if err != nil {
 		return nil, err
@@ -1866,6 +1870,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyBalanceIconSVG] = settings.BalanceIconSVG
 	updates[SettingKeyReasoningPointRMBUnitPrice] = strconv.FormatFloat(settings.ReasoningPointRMBUnitPrice, 'f', 8, 64)
 	updates[SettingKeyUSDExchangeRate] = strconv.FormatFloat(settings.USDExchangeRate, 'f', 8, 64)
+	updates[SettingKeyMarketplaceAvailabilityWindowDays] = strconv.Itoa(settings.MarketplaceAvailabilityWindowDays)
+	updates[SettingKeyMarketplaceAvailabilityBucketMinutes] = strconv.Itoa(settings.MarketplaceAvailabilityBucketMinutes)
 
 	// Model fallback configuration
 	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
@@ -2734,6 +2740,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyBalanceIconSVG:                            "",
 		SettingKeyReasoningPointRMBUnitPrice:                "0",
 		SettingKeyUSDExchangeRate:                           "0",
+		SettingKeyMarketplaceAvailabilityWindowDays:         strconv.Itoa(DefaultMarketplaceAvailabilityWindowDays),
+		SettingKeyMarketplaceAvailabilityBucketMinutes:      strconv.Itoa(DefaultMarketplaceAvailabilityBucketMinutes),
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
 		SettingKeyAuthSourceDefaultEmailConcurrency:         "5",
 		SettingKeyAuthSourceDefaultEmailSubscriptions:       "[]",
@@ -2938,6 +2946,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if rate, err := strconv.ParseFloat(settings[SettingKeyUSDExchangeRate], 64); err == nil && rate >= 0 {
 		result.USDExchangeRate = rate
 	}
+	result.MarketplaceAvailabilityWindowDays, result.MarketplaceAvailabilityBucketMinutes = parseMarketplaceAvailabilityWindowSettings(settings)
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
 
 	// 敏感信息直接返回，方便测试连接时使用

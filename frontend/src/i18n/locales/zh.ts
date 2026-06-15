@@ -454,10 +454,10 @@ export default {
     dataSharingTag: '数据共享',
     capacity: '容量',
     capacityHint: '当前分组聚合负载：并发 / 会话 / RPM',
-    availability30d: '30d 可用率',
+    availabilityWindow: '{days}d 可用率',
     availabilityNoData: '暂无数据',
-    availabilityHint: '近 30 天主动探测可用率 {rate}（成功 {success} / 总计 {total}）',
-    availabilityHintNoData: '近 30 天暂无主动探测数据',
+    availabilityHint: '近 {days} 天主动探测可用率 {rate}（成功 {success} / 总计 {total}）',
+    availabilityHintNoData: '近 {days} 天暂无主动探测数据',
     rateMultiplier: '分组倍率',
     rateMultiplierValue: '分组倍率{multiplier}',
     officialPriceDiscount: '最低至官方价格的{discount}折',
@@ -2710,7 +2710,7 @@ export default {
       },
       availabilityProbe: {
         title: '分组可用性探测',
-        hint: '按固定间隔对该分组主动发起轻量请求，模型广场将展示近 30 天可用率。',
+        hint: '按固定间隔对该分组主动发起轻量请求，模型广场将按配置的公开窗口展示可用率。',
         model: '探测模型',
         selectModel: '选择探测模型',
         interval: '探测间隔（分钟）',
@@ -5623,6 +5623,15 @@ export default {
       },
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',
+      marketplaceAvailability: {
+        title: '模型广场可用率',
+        description: '调整公开模型广场可用率条的统计窗口和柱状粒度，保存后下次刷新模型广场立即生效。',
+        windowDays: '统计窗口（天）',
+        windowDaysHint: '范围 {min}-{max} 天，默认 7 天。',
+        bucketMinutes: '单柱时间窗口（分钟）',
+        bucketMinutesHint: '范围 {min}-{max} 分钟，默认 120 分钟。',
+        bucketLimitHint: '如果窗口和粒度会产生超过 720 根柱子，后端会自动放大单柱时间窗口。'
+      },
       features: {
         riskControl: {
           title: '风控中心',

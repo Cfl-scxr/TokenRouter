@@ -4531,6 +4531,67 @@
             </div>
           </div>
 
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.marketplaceAvailability.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.marketplaceAvailability.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.marketplaceAvailability.windowDays") }}
+                  </label>
+                  <input
+                    v-model.number="form.marketplace_availability_window_days"
+                    type="number"
+                    :min="marketplaceAvailabilityWindowDaysMin"
+                    :max="marketplaceAvailabilityWindowDaysMax"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.marketplaceAvailability.windowDaysHint", {
+                        min: marketplaceAvailabilityWindowDaysMin,
+                        max: marketplaceAvailabilityWindowDaysMax,
+                      })
+                    }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.marketplaceAvailability.bucketMinutes") }}
+                  </label>
+                  <input
+                    v-model.number="form.marketplace_availability_bucket_minutes"
+                    type="number"
+                    :min="marketplaceAvailabilityBucketMinutesMin"
+                    :max="marketplaceAvailabilityBucketMinutesMax"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.marketplaceAvailability.bucketMinutesHint", {
+                        min: marketplaceAvailabilityBucketMinutesMin,
+                        max: marketplaceAvailabilityBucketMinutesMax,
+                      })
+                    }}
+                  </p>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.marketplaceAvailability.bucketLimitHint") }}
+              </p>
+            </div>
+          </div>
+
           <!-- Site Settings -->
           <div class="card">
             <div
@@ -6865,6 +6926,12 @@ const tablePageSizeDefault = 20;
 const usageRankingLimitMin = 1;
 const usageRankingLimitMax = 100;
 const usageRankingLimitDefault = 20;
+const marketplaceAvailabilityWindowDaysMin = 1;
+const marketplaceAvailabilityWindowDaysMax = 90;
+const marketplaceAvailabilityWindowDaysDefault = 7;
+const marketplaceAvailabilityBucketMinutesMin = 5;
+const marketplaceAvailabilityBucketMinutesMax = 1440;
+const marketplaceAvailabilityBucketMinutesDefault = 120;
 
 function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
   return [
@@ -6970,6 +7037,10 @@ const form = reactive<SettingsForm>({
   balance_icon_svg: "",
   reasoning_point_rmb_unit_price: 0,
   usd_exchange_rate: 0,
+  marketplace_availability_window_days:
+    marketplaceAvailabilityWindowDaysDefault,
+  marketplace_availability_bucket_minutes:
+    marketplaceAvailabilityBucketMinutesDefault,
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
@@ -8067,6 +8138,26 @@ async function saveSettings() {
       Number(form.reasoning_point_rmb_unit_price) || 0,
     );
     form.usd_exchange_rate = Math.max(0, Number(form.usd_exchange_rate) || 0);
+    form.marketplace_availability_window_days = Math.min(
+      marketplaceAvailabilityWindowDaysMax,
+      Math.max(
+        marketplaceAvailabilityWindowDaysMin,
+        Math.floor(
+          Number(form.marketplace_availability_window_days) ||
+            marketplaceAvailabilityWindowDaysDefault,
+        ),
+      ),
+    );
+    form.marketplace_availability_bucket_minutes = Math.min(
+      marketplaceAvailabilityBucketMinutesMax,
+      Math.max(
+        marketplaceAvailabilityBucketMinutesMin,
+        Math.floor(
+          Number(form.marketplace_availability_bucket_minutes) ||
+            marketplaceAvailabilityBucketMinutesDefault,
+        ),
+      ),
+    );
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -8214,6 +8305,10 @@ async function saveSettings() {
       balance_icon_svg: form.balance_icon_svg,
       reasoning_point_rmb_unit_price: form.reasoning_point_rmb_unit_price,
       usd_exchange_rate: form.usd_exchange_rate,
+      marketplace_availability_window_days:
+        form.marketplace_availability_window_days,
+      marketplace_availability_bucket_minutes:
+        form.marketplace_availability_bucket_minutes,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name_zh || form.site_name_en || form.site_name,
