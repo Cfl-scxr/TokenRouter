@@ -1000,6 +1000,7 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    cyber: 'Cyber 阻断',
     unknown: '未知',
     in: '输入',
     out: '输出',
@@ -1057,7 +1058,7 @@ export default {
       categories: {
         auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
         invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
-        upstream: '上游错误', internal: '平台错误', other: '其他',
+        cyber: 'Cyber 风控', upstream: '上游错误', internal: '平台错误', other: '其他',
       },
       detail: {
         title: '错误请求详情',
@@ -5082,7 +5083,8 @@ export default {
         requestType: '类型',
         requestTypeSync: '同步',
         requestTypeStream: '流式',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeCyber: 'Cyber'
       },
       // Error Details Modal
       errorDetails: {
@@ -5165,6 +5167,7 @@ export default {
         requestTypeSync: '同步',
         requestTypeStream: '流式',
         requestTypeWs: 'WebSocket',
+        requestTypeCyber: 'Cyber 阻断',
         modelMapping: '模型映射',
         timings: '时序信息',
         auth: '认证',
@@ -5651,6 +5654,10 @@ export default {
           configureLink: '前往 风控中心 配置内容审计',
           enabled: '启用风控中心',
           enabledHint: '关闭后管理员侧边栏入口隐藏，网关内容审计不会执行。',
+          cyberSessionBlockEnabled: 'Cyber 会话屏蔽',
+          cyberSessionBlockEnabledHint: '上游返回 cyber_policy 后，按显式 session_id / conversation_id / prompt_cache_key 临时拒绝同会话后续请求。',
+          cyberSessionBlockTTLSeconds: '屏蔽时长（秒）',
+          cyberSessionBlockTTLSecondsHint: '默认 3600 秒；关闭后只记录审计和用量，不拦截后续会话请求。',
         },
         affiliate: {
           title: '邀请返利',

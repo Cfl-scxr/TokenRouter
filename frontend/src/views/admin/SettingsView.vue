@@ -5677,6 +5677,39 @@
                 </div>
                 <Toggle v-model="form.risk_control_enabled" />
               </div>
+
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.features.riskControl.cyberSessionBlockEnabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.features.riskControl.cyberSessionBlockEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.cyber_session_block_enabled" />
+                </div>
+
+                <div
+                  v-if="form.cyber_session_block_enabled"
+                  class="mt-4 max-w-xs"
+                >
+                  <label class="input-label">
+                    {{ t("admin.settings.features.riskControl.cyberSessionBlockTTLSeconds") }}
+                  </label>
+                  <input
+                    v-model.number="form.cyber_session_block_ttl_seconds"
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.riskControl.cyberSessionBlockTTLSecondsHint") }}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -7359,6 +7392,8 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   risk_control_enabled: false,
+  cyber_session_block_enabled: false,
+  cyber_session_block_ttl_seconds: 3600,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   openai_allow_claude_code_codex_plugin: false,
@@ -8644,6 +8679,11 @@ async function saveSettings() {
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
+      cyber_session_block_enabled: form.cyber_session_block_enabled,
+      cyber_session_block_ttl_seconds: Math.max(
+        1,
+        Math.floor(Number(form.cyber_session_block_ttl_seconds) || 3600),
+      ),
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,

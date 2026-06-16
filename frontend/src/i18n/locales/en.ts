@@ -996,6 +996,7 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    cyber: 'Cyber Blocked',
     unknown: 'Unknown',
     in: 'In',
     out: 'Out',
@@ -1053,7 +1054,7 @@ export default {
       categories: {
         auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
         invalid_request: 'Invalid request', service_unavailable: 'Service unavailable',
-        upstream: 'Upstream error', internal: 'Platform error', other: 'Other',
+        cyber: 'Cyber policy', upstream: 'Upstream error', internal: 'Platform error', other: 'Other',
       },
       detail: {
         title: 'Error Request Detail',
@@ -4930,7 +4931,8 @@ export default {
         requestType: 'Type',
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
-        requestTypeWs: 'WS'
+        requestTypeWs: 'WS',
+        requestTypeCyber: 'Cyber'
       },
       // Error Details Modal
       errorDetails: {
@@ -5013,6 +5015,7 @@ export default {
         requestTypeSync: 'Sync',
         requestTypeStream: 'Stream',
         requestTypeWs: 'WebSocket',
+        requestTypeCyber: 'Cyber Blocked',
         modelMapping: 'Model Mapping',
         timings: 'Timings',
         auth: 'Auth',
@@ -5500,6 +5503,10 @@ export default {
           configureLink: 'Configure content moderation in Risk Control',
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
+          cyberSessionBlockEnabled: 'Cyber Session Block',
+          cyberSessionBlockEnabledHint: 'After upstream returns cyber_policy, temporarily reject later requests in the same explicit session_id / conversation_id / prompt_cache_key.',
+          cyberSessionBlockTTLSeconds: 'Block Duration (seconds)',
+          cyberSessionBlockTTLSecondsHint: 'Default is 3600 seconds. When disabled, only audit and usage records are written.',
         },
         affiliate: {
           title: 'Affiliate Rebates',

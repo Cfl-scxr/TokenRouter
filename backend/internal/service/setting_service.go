@@ -167,6 +167,17 @@ const openAIAllowCodexPluginCacheTTL = 60 * time.Second
 const openAIAllowCodexPluginErrorTTL = 5 * time.Second
 const openAIAllowCodexPluginDBTimeout = 5 * time.Second
 
+// cachedCyberSessionBlockRuntime 缓存 cyber 会话屏蔽运行态，避免网关热路径每次访问 DB。
+type cachedCyberSessionBlockRuntime struct {
+	enabled   bool
+	ttl       time.Duration
+	expiresAt int64 // unix nano
+}
+
+const cyberSessionBlockRuntimeCacheTTL = 60 * time.Second
+const cyberSessionBlockRuntimeErrorTTL = 5 * time.Second
+const cyberSessionBlockRuntimeDBTimeout = 5 * time.Second
+
 const openAIQuotaAutoPauseSettingsCacheTTL = 60 * time.Second
 const openAIQuotaAutoPauseSettingsErrorTTL = 5 * time.Second
 const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
@@ -197,6 +208,8 @@ type SettingService struct {
 	openAICodexUASF             singleflight.Group
 	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
 	openAIAllowCodexPluginSF    singleflight.Group
+	cyberSessionBlockCache      atomic.Value // *cachedCyberSessionBlockRuntime
+	cyberSessionBlockSF         singleflight.Group
 
 	// openAIQuotaAutoPauseSettingsCache 保存最近一次观测到的配额自动暂停设置。
 	// GetOpenAIQuotaAutoPauseSettings 在请求热路径读取这个 atomic.Value，绝不阻塞等待 DB；
@@ -699,6 +712,61 @@ func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 		return strings.TrimSpace(val)
 	}
 	return s.cfg.Server.FrontendURL
+}
+
+// GetCyberSessionBlockRuntime 返回 cyber 会话屏蔽开关和 TTL；读取失败时短缓存默认关闭。
+func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool, time.Duration) {
+	if s == nil || s.settingRepo == nil {
+		return false, time.Hour
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if cached, ok := s.cyberSessionBlockCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.enabled, cached.ttl
+		}
+	}
+	result, _, _ := s.cyberSessionBlockSF.Do("cyber_session_block_runtime", func() (any, error) {
+		if cached, ok := s.cyberSessionBlockCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cyberSessionBlockRuntimeDBTimeout)
+		defer cancel()
+
+		enabledVal, enabledErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockEnabled)
+		ttlVal, ttlErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockTTLSeconds)
+		if enabledErr != nil && !errors.Is(enabledErr, ErrSettingNotFound) {
+			slog.Warn("failed to get cyber session block setting", "error", enabledErr)
+			entry := &cachedCyberSessionBlockRuntime{
+				enabled:   false,
+				ttl:       time.Hour,
+				expiresAt: time.Now().Add(cyberSessionBlockRuntimeErrorTTL).UnixNano(),
+			}
+			s.cyberSessionBlockCache.Store(entry)
+			return entry, nil
+		}
+
+		ttl := time.Hour
+		if ttlErr == nil {
+			if seconds, err := strconv.Atoi(strings.TrimSpace(ttlVal)); err == nil && seconds > 0 {
+				ttl = time.Duration(seconds) * time.Second
+			}
+		}
+		entry := &cachedCyberSessionBlockRuntime{
+			enabled:   enabledErr == nil && strings.TrimSpace(enabledVal) == "true",
+			ttl:       ttl,
+			expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
+		}
+		s.cyberSessionBlockCache.Store(entry)
+		return entry, nil
+	})
+	if entry, ok := result.(*cachedCyberSessionBlockRuntime); ok && entry != nil {
+		return entry.enabled, entry.ttl
+	}
+	return false, time.Hour
 }
 
 func (s *SettingService) baseEmailOAuthConfig(provider string) config.EmailOAuthProviderConfig {
@@ -1950,6 +2018,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// 风控中心总开关：控制菜单入口和网关内容审计是否执行。
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
+	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	if settings.CyberSessionBlockTTLSeconds > 0 {
+		updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
+	}
 
 	// 系统全局平台限额：整体替换语义（null/缺省 = 不限制）。
 	if settings.DefaultPlatformQuotas != nil {
@@ -2891,8 +2963,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		openAIAdvancedSchedulerSettingKey:            "false",
 
 		// 风控中心默认关闭，避免升级后未配置审计 Key 时影响现有请求。
-		SettingKeyRiskControlEnabled:         "false",
-		SettingKeyAllowUserViewErrorRequests: "false",
+		SettingKeyRiskControlEnabled:          "false",
+		SettingKeyCyberSessionBlockEnabled:    "false",
+		SettingKeyCyberSessionBlockTTLSeconds: "3600",
+		SettingKeyAllowUserViewErrorRequests:  "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2967,6 +3041,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		BalanceIconSVG:                   strings.TrimSpace(settings[SettingKeyBalanceIconSVG]),
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		RiskControlEnabled:               settings[SettingKeyRiskControlEnabled] == "true",
+		CyberSessionBlockEnabled:         settings[SettingKeyCyberSessionBlockEnabled] == "true",
+	}
+	if seconds, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds])); err == nil && seconds > 0 {
+		result.CyberSessionBlockTTLSeconds = seconds
+	} else {
+		result.CyberSessionBlockTTLSeconds = 3600
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

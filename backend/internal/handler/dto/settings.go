@@ -153,6 +153,8 @@ type SystemSettings struct {
 	DefaultConcurrency                   int                          `json:"default_concurrency"`
 	DefaultBalance                       float64                      `json:"default_balance"`
 	RiskControlEnabled                   bool                         `json:"risk_control_enabled"` // 风控中心功能开关
+	CyberSessionBlockEnabled             bool                         `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds          int                          `json:"cyber_session_block_ttl_seconds"`
 	AffiliateEnabled                     bool                         `json:"affiliate_enabled"`
 	AffiliateRebateRate                  float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours           int                          `json:"affiliate_rebate_freeze_hours"`
@@ -328,7 +330,9 @@ type PublicSettings struct {
 	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
 	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
 	RiskControlEnabled               bool                     `json:"risk_control_enabled"` // 风控中心入口开关
-	AffiliateEnabled                 bool                     `json:"affiliate_enabled"`    // 邀请返利入口开关
+	CyberSessionBlockEnabled         bool                     `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds      int                      `json:"cyber_session_block_ttl_seconds"`
+	AffiliateEnabled                 bool                     `json:"affiliate_enabled"` // 邀请返利入口开关
 	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
 
