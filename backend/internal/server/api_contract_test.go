@@ -889,6 +889,8 @@ func TestAPIContracts(t *testing.T) {
 								"rules": []
 							},
 					"custom_menu_items": [],
+					"cyber_session_block_enabled": false,
+					"cyber_session_block_ttl_seconds": 3600,
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1102,6 +1104,8 @@ func TestAPIContracts(t *testing.T) {
 					"table_page_size_options": [10, 20, 50],
 					"usage_ranking_limit": 20,
 					"custom_menu_items": [],
+					"cyber_session_block_enabled": false,
+					"cyber_session_block_ttl_seconds": 3600,
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
