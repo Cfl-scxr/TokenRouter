@@ -18,4 +18,6 @@ type SchedulerOutboxEvent struct {
 type SchedulerOutboxRepository interface {
 	ListAfter(ctx context.Context, afterID int64, limit int) ([]SchedulerOutboxEvent, error)
 	MaxID(ctx context.Context) (int64, error)
+	// MarkProcessed 清理已处理事件的去重键，允许后续同类型事件重新入队。
+	MarkProcessed(ctx context.Context, eventIDs []int64) error
 }

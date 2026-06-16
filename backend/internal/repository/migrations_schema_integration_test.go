@@ -113,6 +113,10 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireNoColumn(t, tx, "groups", "monthly_limit_usd")
 	requireNoColumn(t, tx, "groups", "default_validity_days")
 
+	// scheduler_outbox pending 事件去重支持。
+	requireColumn(t, tx, "scheduler_outbox", "dedup_key", "text", 0, true)
+	requireIndex(t, tx, "scheduler_outbox", "idx_scheduler_outbox_pending_dedup_key")
+
 	// usage_billing_dedup: billing idempotency narrow table
 	var usageBillingDedupRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.usage_billing_dedup')").Scan(&usageBillingDedupRegclass))
