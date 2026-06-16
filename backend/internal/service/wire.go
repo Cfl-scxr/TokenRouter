@@ -596,6 +596,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIGatewayTLSFingerprintRouterServices,
 	NewOpenAIGatewayService,
 	NewCodexInviteResetService,
+	NewOpenAIQuotaService,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,

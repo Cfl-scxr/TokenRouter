@@ -118,28 +118,30 @@
           :show-now-when-idle="true"
           color="emerald"
         />
-        <div class="flex items-center gap-1.5 mt-0.5">
-          <button
-            type="button"
-            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
-            :disabled="activeQueryLoading"
-            @click="loadActiveUsage"
-          >
-            <Icon
-              name="refresh"
-              size="xs"
-              :class="{ 'animate-spin': activeQueryLoading }"
-              :stroke-width="2"
-            />
-            {{ t('admin.accounts.usageWindow.activeQuery') }}
-          </button>
+        <OpenAIQuotaResetCell :account="account">
+          <template #pre-actions>
+            <button
+              type="button"
+              class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+              :disabled="activeQueryLoading"
+              @click="loadActiveUsage"
+            >
+              <Icon
+                name="refresh"
+                size="xs"
+                :class="{ 'animate-spin': activeQueryLoading }"
+                :stroke-width="2"
+              />
+              {{ t('admin.accounts.usageWindow.activeQuery') }}
+            </button>
+          </template>
           <span
             v-if="openAIQuotaAutoPaused"
             class="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
           >
             {{ t('admin.accounts.usageWindow.quotaAutoPaused') }}
           </span>
-        </div>
+        </OpenAIQuotaResetCell>
       </div>
       <div v-else-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
@@ -153,7 +155,10 @@
           <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else>
+        <div class="text-xs text-gray-400">-</div>
+        <OpenAIQuotaResetCell :account="account" class="mt-1" />
+      </div>
     </template>
 
     <!-- Antigravity OAuth accounts: fetch usage from API -->
@@ -495,6 +500,7 @@ import { formatCompactNumber } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
+import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 
 // 模块级缓存供所有 AccountUsageCell 实例共享
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
