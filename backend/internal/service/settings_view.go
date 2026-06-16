@@ -217,6 +217,10 @@ type SystemSettings struct {
 
 	// OpenAI 账号调度
 	OpenAIAdvancedSchedulerEnabled bool
+	// OpenAIQuotaAutoPauseSettings 是 OpenAI 账号配额自动暂停的全局默认阈值，存储在 ops_advanced_settings 中。
+	OpenAIQuotaAutoPauseSettings OpsOpenAIAccountQuotaAutoPauseSettings
+	// OpenAIQuotaAutoPauseSettingsSet 标记本次系统设置更新是否显式带了配额自动暂停配置，避免旧客户端误覆盖。
+	OpenAIQuotaAutoPauseSettingsSet bool
 
 	// 余额不足提醒
 	BalanceLowNotifyEnabled     bool

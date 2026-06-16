@@ -6642,6 +6642,14 @@ export default {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
       },
+      openaiQuotaAutoPause: {
+        title: 'OpenAI 账号配额自动暂停',
+        description: '当 OpenAI 账号 5h / 7d 用量达到阈值时，调度会自动跳过该账号；窗口滚动后自动恢复。账号级阈值优先于此全局默认值。',
+        default5h: '默认 5h 用量阈值 (%)',
+        default7d: '默认 7d 用量阈值 (%)',
+        thresholdHint: '取值 0-100，留空或 0 表示不启用全局默认阈值。',
+        rangeError: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
+      },
       usageRecords: {
         title: '使用记录',
         description: '与终端用户可见的用量及失败请求记录相关的设置。',

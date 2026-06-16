@@ -215,6 +215,8 @@ type SystemSettings struct {
 
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
+	// OpenAI 账号配额自动暂停全局默认阈值。后端按 0~1 存储，0 表示不启用全局默认阈值。
+	OpenAIQuotaAutoPauseSettings service.OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
 
 	// Payment configuration
 	PaymentEnabled                   bool                      `json:"payment_enabled"`

@@ -6495,6 +6495,14 @@ export default {
         title: 'OpenAI experimental scheduler policy',
         description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
       },
+      openaiQuotaAutoPause: {
+        title: 'OpenAI account quota auto-pause',
+        description: 'When an OpenAI account reaches its 5h / 7d usage threshold, the scheduler skips it automatically and resumes once the window rolls over. Per-account thresholds take precedence over this global default.',
+        default5h: 'Default 5h usage threshold (%)',
+        default7d: 'Default 7d usage threshold (%)',
+        thresholdHint: 'Value 0-100; leave blank or 0 to disable the global default threshold.',
+        rangeError: 'OpenAI quota auto-pause threshold must be between 0 and 100'
+      },
       usageRecords: {
         title: 'Usage Records',
         description: 'Settings for usage and failed-request records visible to end users.',

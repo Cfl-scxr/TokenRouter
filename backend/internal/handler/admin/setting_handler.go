@@ -280,6 +280,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentVisibleMethodAlipayEnabled:      settings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:       settings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         settings.OpenAIAdvancedSchedulerEnabled,
+		OpenAIQuotaAutoPauseSettings:           settings.OpenAIQuotaAutoPauseSettings,
 		BalanceLowNotifyEnabled:                settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:            settings.BalanceLowNotifyRechargeURL,
@@ -660,6 +661,8 @@ type UpdateSettingsRequest struct {
 
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
+	// OpenAI 账号配额自动暂停全局默认阈值。使用指针区分旧客户端未提交与显式提交零值。
+	OpenAIQuotaAutoPauseSettings *service.OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
 
 	// 余额不足提醒
 	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
@@ -1860,6 +1863,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIAdvancedSchedulerEnabled
 		}(),
+		OpenAIQuotaAutoPauseSettings: func() service.OpsOpenAIAccountQuotaAutoPauseSettings {
+			if req.OpenAIQuotaAutoPauseSettings != nil {
+				return *req.OpenAIQuotaAutoPauseSettings
+			}
+			return previousSettings.OpenAIQuotaAutoPauseSettings
+		}(),
+		OpenAIQuotaAutoPauseSettingsSet: req.OpenAIQuotaAutoPauseSettings != nil,
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -2200,6 +2210,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         updatedSettings.OpenAIAdvancedSchedulerEnabled,
+		OpenAIQuotaAutoPauseSettings:           updatedSettings.OpenAIQuotaAutoPauseSettings,
 		BalanceLowNotifyEnabled:                updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:            updatedSettings.BalanceLowNotifyRechargeURL,
@@ -2755,6 +2766,11 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")
+	}
+	// OpenAI 配额自动暂停阈值迁移到系统设置后，变更也需要进入审计日志。
+	if before.OpenAIQuotaAutoPauseSettings.DefaultThreshold5h != after.OpenAIQuotaAutoPauseSettings.DefaultThreshold5h ||
+		before.OpenAIQuotaAutoPauseSettings.DefaultThreshold7d != after.OpenAIQuotaAutoPauseSettings.DefaultThreshold7d {
+		changed = append(changed, "openai_account_quota_auto_pause")
 	}
 	// 余额、订阅到期与账号限额通知
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {

@@ -1919,6 +1919,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
+	if settings.OpenAIQuotaAutoPauseSettingsSet {
+		opsAdvanced, err := s.buildOpsAdvancedSettingsWithQuotaAutoPause(ctx, settings.OpenAIQuotaAutoPauseSettings)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(opsAdvanced)
+		if err != nil {
+			return nil, fmt.Errorf("marshal ops advanced settings: %w", err)
+		}
+		updates[SettingKeyOpsAdvancedSettings] = string(raw)
+	}
 
 	// 余额、订阅到期与账号限额通知
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
@@ -1946,6 +1957,26 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
 	return updates, nil
+}
+
+func (s *SettingService) buildOpsAdvancedSettingsWithQuotaAutoPause(ctx context.Context, quota OpsOpenAIAccountQuotaAutoPauseSettings) (*OpsAdvancedSettings, error) {
+	cfg := defaultOpsAdvancedSettings()
+	if s != nil && s.settingRepo != nil {
+		rawSettings, err := s.settingRepo.GetAll(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("get settings for ops advanced merge: %w", err)
+		}
+		raw := rawSettings[SettingKeyOpsAdvancedSettings]
+		if strings.TrimSpace(raw) != "" {
+			if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+				return nil, fmt.Errorf("unmarshal ops advanced settings: %w", err)
+			}
+		}
+	}
+	// 系统设置只接管 OpenAI 配额自动暂停子配置，其他运维高级设置必须原样保留。
+	cfg.OpenAIAccountQuotaAutoPause = quota
+	normalizeOpsAdvancedSettings(cfg)
+	return cfg, nil
 }
 
 // validateDefaultPlatformQuotaMap 校验 platform quota map 的合法性：
@@ -2073,7 +2104,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 写入一个已过期条目，GetOpenAIQuotaAutoPauseSettings 会先返回旧值并触发异步刷新，
 	// 不会阻塞后续请求。
 	s.openAIQuotaAutoPauseSettingsSF.Forget(openAIQuotaAutoPauseSettingsRefreshKey)
-	if cached, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings); cached != nil {
+	if settings.OpenAIQuotaAutoPauseSettingsSet {
+		s.SetOpenAIQuotaAutoPauseSettings(settings.OpenAIQuotaAutoPauseSettings)
+	} else if cached, _ := s.openAIQuotaAutoPauseSettingsCache.Load().(*cachedOpenAIQuotaAutoPauseSettings); cached != nil {
 		s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
 			settings:  cached.settings,
 			expiresAt: 0,
@@ -3357,6 +3390,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
+	result.OpenAIQuotaAutoPauseSettings = parseOpenAIQuotaAutoPauseSettingsFromRaw(settings[SettingKeyOpsAdvancedSettings])
 
 	// 余额、订阅到期与账号限额通知
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
@@ -3388,6 +3422,17 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
+}
+
+func parseOpenAIQuotaAutoPauseSettingsFromRaw(raw string) OpsOpenAIAccountQuotaAutoPauseSettings {
+	cfg := defaultOpsAdvancedSettings()
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+			return OpsOpenAIAccountQuotaAutoPauseSettings{}
+		}
+	}
+	normalizeOpsAdvancedSettings(cfg)
+	return cfg.OpenAIAccountQuotaAutoPause
 }
 
 func isFalseSettingValue(value string) bool {
@@ -4738,6 +4783,8 @@ func (s *SettingService) SetOpenAIQuotaAutoPauseSettings(settings OpsOpenAIAccou
 	if s == nil {
 		return
 	}
+	settings.DefaultThreshold5h = clampOpsQuotaAutoPauseThreshold(settings.DefaultThreshold5h)
+	settings.DefaultThreshold7d = clampOpsQuotaAutoPauseThreshold(settings.DefaultThreshold7d)
 	s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
 		settings:  settings,
 		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
