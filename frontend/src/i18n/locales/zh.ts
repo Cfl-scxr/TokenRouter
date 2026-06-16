@@ -3363,7 +3363,8 @@ export default {
         gemini3Image: 'G31FI',
         claude: 'Claude',
         passiveSampled: '被动采样',
-        activeQuery: '查询'
+        activeQuery: '查询',
+        quotaAutoPaused: '暂停调度中'
       },
       tier: {
         free: 'Free',

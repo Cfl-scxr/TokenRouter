@@ -4136,7 +4136,8 @@ export default {
         gemini3Image: 'G31FI',
         claude: 'Claude',
         passiveSampled: 'Passive',
-        activeQuery: 'Query'
+        activeQuery: 'Query',
+        quotaAutoPaused: 'Auto-paused'
       },
       tier: {
         free: 'Free',

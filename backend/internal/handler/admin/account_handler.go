@@ -182,6 +182,7 @@ type AccountWithConcurrency struct {
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
+	h.applyQuotaAutoPauseState(ctx, account)
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),
 		CurrentConcurrency: 0,
@@ -223,6 +224,17 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	}
 
 	return item
+}
+
+func (h *AccountHandler) applyQuotaAutoPauseState(ctx context.Context, account *service.Account) {
+	if h == nil || account == nil || !account.IsOpenAI() {
+		return
+	}
+	// 自动暂停状态是基于账号 extra 和全局阈值实时推导的运行时状态，不落库。
+	if h.settingService != nil {
+		ctx = service.WithOpenAIQuotaAutoPauseSettings(ctx, h.settingService.GetOpenAIQuotaAutoPauseSettings(ctx))
+	}
+	account.QuotaAutoPaused = service.EvaluateOpenAIQuotaAutoPause(ctx, account)
 }
 
 // List handles listing all accounts with pagination
@@ -354,6 +366,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
+		h.applyQuotaAutoPauseState(c.Request.Context(), acc)
 		item := AccountWithConcurrency{
 			Account:            dto.AccountFromService(acc),
 			CurrentConcurrency: concurrencyCounts[acc.ID],

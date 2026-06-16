@@ -987,6 +987,7 @@ export interface Account {
   overload_until: string | null
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null
+  quota_auto_paused?: boolean
 
   // Session window fields (5-hour window)
   session_window_start: string | null
@@ -1087,6 +1088,7 @@ export interface AccountUsageInfo {
   gemini_shared_minute?: UsageProgress | null
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
+  quota_auto_paused?: boolean
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
   ai_credits?: Array<{
     credit_type?: string
