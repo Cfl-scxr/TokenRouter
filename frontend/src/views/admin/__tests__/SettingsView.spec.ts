@@ -959,10 +959,10 @@ describe("admin SettingsView payment visible method controls", () => {
   it("ignores repeated provider type clicks while the same provider is updating", async () => {
     const provider = {
       id: 8,
-      provider_key: "stripe",
-      name: "Stripe",
+      provider_key: "easypay",
+      name: "EasyPay",
       config: {},
-      supported_types: ["card"],
+      supported_types: ["alipay"],
       enabled: true,
       payment_mode: "",
       refund_enabled: false,
@@ -1022,11 +1022,70 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateProvider).toHaveBeenCalledTimes(1);
     expect(updateProvider).toHaveBeenCalledWith(8, {
-      supported_types: ["card", "wxpay"],
+      supported_types: ["alipay", "wxpay"],
     });
 
-    resolveUpdate?.({ data: { ...provider, supported_types: ["card", "wxpay"] } });
+    resolveUpdate?.({ data: { ...provider, supported_types: ["alipay", "wxpay"] } });
     await flushPromises();
+  });
+
+  it("ignores Stripe subtype toggle events because Checkout uses dashboard payment methods", async () => {
+    const provider = {
+      id: 9,
+      provider_key: "stripe",
+      name: "Stripe",
+      config: {},
+      supported_types: ["card", "wxpay"],
+      enabled: true,
+      payment_mode: "",
+      refund_enabled: false,
+      allow_user_refund: false,
+      limits: "",
+      sort_order: 0,
+    };
+    getProviders.mockReset();
+    getProviders.mockResolvedValue({ data: [provider] });
+
+    const PaymentProviderListStub = defineComponent({
+      emits: ["toggleType"],
+      setup(_, { emit }) {
+        return () =>
+          h(
+            "button",
+            {
+              class: "provider-type-stub",
+              onClick: () => emit("toggleType", provider, "link"),
+            },
+            "toggle type",
+          );
+      },
+    });
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Select: SelectStub,
+          Toggle: ToggleStub,
+          Icon: true,
+          ConfirmDialog: true,
+          PaymentProviderList: PaymentProviderListStub,
+          PaymentProviderDialog: true,
+          GroupBadge: true,
+          GroupOptionItem: true,
+          ProxySelector: true,
+          ModelWhitelistSelector: true,
+          ImageUpload: ImageUploadStub,
+          BackupSettings: true,
+        },
+      },
+    });
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    await wrapper.get(".provider-type-stub").trigger("click");
+
+    expect(updateProvider).not.toHaveBeenCalled();
   });
 
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {

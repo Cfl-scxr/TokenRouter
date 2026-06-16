@@ -9663,6 +9663,10 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
   try {
     const currentProvider =
       providers.value.find((item) => item.id === provider.id) ?? provider;
+    if (currentProvider.provider_key === "stripe") {
+      // Stripe Checkout 的支付方式由 Stripe Dashboard 控制，管理端不再写入无效子方式。
+      return;
+    }
     const supportedTypes = Array.isArray(currentProvider.supported_types)
       ? currentProvider.supported_types
       : [];
