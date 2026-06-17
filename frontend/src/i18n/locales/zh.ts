@@ -5914,7 +5914,7 @@ export default {
         claudeOAuthSystemPromptPlaceholder: '留空使用内置 Claude Code 扩展提示词',
         claudeOAuthSystemPromptHint: '可在 blocks JSON 中通过 {claude_code_expansion_prompt} 引用。',
         claudeOAuthSystemPromptBlocks: 'System Blocks JSON',
-        claudeOAuthSystemPromptBlocksPlaceholder: '{"blocks":[{"type":"text","text":"{billing_header}"},{"type":"text","text":"{claude_code_system_prompt}"},{"type":"text","text":"{claude_code_expansion_prompt}","cache_control":true}]}',
+        claudeOAuthSystemPromptBlocksPlaceholder: `{'{"blocks":[{"type":"text","text":"{billing_header}"},{"type":"text","text":"{claude_code_system_prompt}"},{"type":"text","text":"{claude_code_expansion_prompt}","cache_control":true}]}'}`,
         claudeOAuthSystemPromptBlocksHint: '支持变量 {billing_header}、{cc_version}、{fp}、{claude_code_system_prompt}、{claude_code_expansion_prompt}；留空使用内置三段 blocks。',
         anthropicCacheTTL1hInjection: 'Anthropic 缓存 TTL 注入',
         anthropicCacheTTL1hInjectionHint: '开启后，对 Anthropic OAuth/Setup Token 请求体中已有的 ephemeral 缓存块强制写入 1h；响应 usage 默认按 5m 回写计费，账号级 TTL 计费设置优先。',

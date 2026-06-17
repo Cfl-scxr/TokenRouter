@@ -5768,7 +5768,7 @@ export default {
         claudeOAuthSystemPromptPlaceholder: 'Leave empty to use the built-in Claude Code expansion prompt',
         claudeOAuthSystemPromptHint: 'Reference it from blocks JSON with {claude_code_expansion_prompt}.',
         claudeOAuthSystemPromptBlocks: 'System Blocks JSON',
-        claudeOAuthSystemPromptBlocksPlaceholder: '{"blocks":[{"type":"text","text":"{billing_header}"},{"type":"text","text":"{claude_code_system_prompt}"},{"type":"text","text":"{claude_code_expansion_prompt}","cache_control":true}]}',
+        claudeOAuthSystemPromptBlocksPlaceholder: `{'{"blocks":[{"type":"text","text":"{billing_header}"},{"type":"text","text":"{claude_code_system_prompt}"},{"type":"text","text":"{claude_code_expansion_prompt}","cache_control":true}]}'}`,
         claudeOAuthSystemPromptBlocksHint: 'Supports {billing_header}, {cc_version}, {fp}, {claude_code_system_prompt}, and {claude_code_expansion_prompt}; leave empty for the built-in three blocks.',
         anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
         anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
