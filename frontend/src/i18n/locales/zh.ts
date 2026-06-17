@@ -3370,14 +3370,8 @@ export default {
       },
       openaiQuotaReset: {
         count: '次数',
-        reset: '重置',
         countTooltipLoad: '点击查询剩余重置次数',
-        countTooltipRefresh: '点击刷新剩余重置次数',
-        resetTooltipReady: '消耗 1 次重置次数以立即恢复当前窗口',
-        resetTooltipNeedQuery: '先点击“次数”加载剩余重置次数',
-        resetTooltipNoCredits: '没有可用的重置次数',
-        noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windows} 个窗口'
+        countTooltipRefresh: '点击刷新剩余重置次数'
       },
       tier: {
         free: 'Free',

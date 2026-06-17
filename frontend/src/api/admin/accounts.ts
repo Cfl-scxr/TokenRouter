@@ -94,22 +94,6 @@ export interface OpenAIQuotaUsage {
   fetched_at: number
 }
 
-export interface OpenAIQuotaResetCredit {
-  id?: string
-  reset_type?: string
-  status?: string
-  granted_at?: string
-  expires_at?: string
-  redeem_started_at?: string
-  redeemed_at?: string
-}
-
-export interface OpenAIQuotaResetResult {
-  code: string
-  credit?: OpenAIQuotaResetCredit | null
-  windows_reset: number
-}
-
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -855,16 +839,6 @@ export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
   return data
 }
 
-/**
- * 消耗一次 OpenAI OAuth 账号的上游限流重置次数。
- * @param id - 账号 ID
- * @returns 重置结果
- */
-export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResult> {
-  const { data } = await apiClient.post<OpenAIQuotaResetResult>(`/admin/openai/accounts/${id}/reset-quota`)
-  return data
-}
-
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -910,7 +884,6 @@ export const accountsAPI = {
   sendCodexInviteResetInvite,
   consumeCodexInviteReset,
   queryOpenAIQuota,
-  resetOpenAIQuota,
   revertProxyFallback
 }
 

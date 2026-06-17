@@ -3,10 +3,11 @@
     <div class="flex flex-wrap items-center gap-1.5">
       <slot name="pre-actions" />
 
+      <!-- 只保留查询/次数展示，避免在账号列表里误触真实上游重置。 -->
       <button
         type="button"
         class="inline-flex min-w-[54px] items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-        :disabled="loading || resetting"
+        :disabled="loading"
         :title="countButtonTitle"
         @click="handleQuery"
       >
@@ -20,22 +21,6 @@
         <span v-if="data">{{ availableResetCount }}</span>
       </button>
 
-      <button
-        type="button"
-        class="inline-flex min-w-[44px] items-center justify-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
-        :disabled="resetting || loading || !canReset"
-        :title="resetButtonTitle"
-        @click="handleReset"
-      >
-        <Icon
-          name="refresh"
-          size="xs"
-          :class="{ 'animate-spin': resetting }"
-          :stroke-width="2"
-        />
-        <span>{{ t('admin.accounts.openaiQuotaReset.reset') }}</span>
-      </button>
-
       <slot />
     </div>
 
@@ -46,12 +31,6 @@
     >
       {{ truncatedError }}
     </div>
-    <div
-      v-else-if="resetMessage"
-      class="text-[10px] text-emerald-600 dark:text-emerald-400"
-    >
-      {{ resetMessage }}
-    </div>
   </div>
 </template>
 
@@ -61,8 +40,6 @@ import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import {
   queryOpenAIQuota,
-  resetOpenAIQuota,
-  type OpenAIQuotaResetResult,
   type OpenAIQuotaUsage
 } from '@/api/admin/accounts'
 import Icon from '@/components/icons/Icon.vue'
@@ -75,19 +52,10 @@ const { t } = useI18n()
 
 const visible = computed(() => props.account.platform === 'openai' && props.account.type === 'oauth')
 const loading = ref(false)
-const resetting = ref(false)
 const error = ref<string | null>(null)
 const data = ref<OpenAIQuotaUsage | null>(null)
-const resetMessage = ref<string | null>(null)
 
 const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
-const canReset = computed(() => availableResetCount.value > 0)
-
-const resetButtonTitle = computed(() => {
-  if (!data.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
-  if (!canReset.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNoCredits')
-  return t('admin.accounts.openaiQuotaReset.resetTooltipReady')
-})
 
 const countButtonTitle = computed(() => {
   if (!data.value) return t('admin.accounts.openaiQuotaReset.countTooltipLoad')
@@ -118,7 +86,6 @@ const handleQuery = async () => {
   if (loading.value) return
   loading.value = true
   error.value = null
-  resetMessage.value = null
   try {
     data.value = await queryOpenAIQuota(props.account.id)
   } catch (e) {
@@ -128,36 +95,12 @@ const handleQuery = async () => {
   }
 }
 
-const handleReset = async () => {
-  if (resetting.value) return
-  if (!canReset.value) {
-    error.value = t('admin.accounts.openaiQuotaReset.noCreditsAvailable')
-    return
-  }
-  resetting.value = true
-  error.value = null
-  resetMessage.value = null
-  try {
-    const result: OpenAIQuotaResetResult = await resetOpenAIQuota(props.account.id)
-    await handleQuery()
-    resetMessage.value = t('admin.accounts.openaiQuotaReset.resetSuccess', {
-      windows: result.windows_reset
-    })
-  } catch (e) {
-    error.value = extractErrorMessage(e)
-  } finally {
-    resetting.value = false
-  }
-}
-
 watch(
   () => props.account.id,
   () => {
     data.value = null
     error.value = null
-    resetMessage.value = null
     loading.value = false
-    resetting.value = false
   }
 )
 </script>
