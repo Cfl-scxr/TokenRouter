@@ -120,6 +120,10 @@ export interface DataShareCaptureDurationStats {
   parts: DataShareCaptureDurationPart[]
 }
 
+export type DataShareExportDurationBucket = DataShareCaptureDurationBucket
+export type DataShareExportDurationPart = DataShareCaptureDurationPart
+export type DataShareExportDurationStats = DataShareCaptureDurationStats
+
 export interface DataShareCaptureRuntimeSettings {
   worker_count: number
   queue_size: number
@@ -131,6 +135,7 @@ export interface DataShareCaptureRuntimeSettings {
   buffer_max_sessions: number
   buffer_max_pending_events: number
   duration_window_size: number
+  export_batch_size: number
 }
 
 export interface DataShareStats {
@@ -155,6 +160,7 @@ export interface DataShareStats {
   capture_worker?: DataShareCaptureWorkerStats | null
   capture_buffer?: DataShareCaptureBufferStats | null
   capture_durations?: DataShareCaptureDurationStats | null
+  export_durations?: DataShareExportDurationStats | null
 }
 
 export type DataShareExportArtifactStatus = 'pending' | 'running' | 'completed' | 'failed' | 'deleted'

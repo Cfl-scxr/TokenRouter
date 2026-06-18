@@ -734,6 +734,10 @@ func (s *DataSharingService) generateExportArtifact(ctx context.Context, id int6
 }
 
 func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context, id int64) error {
+	generateStart := time.Now()
+	defer func() {
+		recordDataShareExportDuration(s.exportDurations, DataShareExportDurationPartGenerateTotal, time.Since(generateStart))
+	}()
 	artifact, err := s.GetExportArtifact(ctx, id)
 	if err != nil {
 		return err
@@ -763,7 +767,9 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 	if s.repo == nil {
 		return ErrDataShareExportArtifactStorageInvalid
 	}
+	countStart := time.Now()
 	totalSessions, err := s.repo.Count(ctx, artifact.Filters)
+	recordDataShareExportDuration(s.exportDurations, DataShareExportDurationPartCount, time.Since(countStart))
 	if err != nil {
 		return err
 	}
@@ -771,10 +777,11 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 	updateGenerateProgress := func(processed int64, total int64) {
 		s.updateExportArtifactGenerateProgress(id, processed, total)
 	}
+	batchSize := s.currentExportBatchSize()
 	switch encoding {
 	case DataShareExportEncodingJSON, DataShareExportEncodingJSONL:
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: fileWriter}
-		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, updateGenerateProgress); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, updateGenerateProgress, s.exportDurations); err != nil {
 			return err
 		}
 		fileWriter.lines = lineCounter.lines
@@ -784,7 +791,7 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 			return err
 		}
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: zw}
-		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, updateGenerateProgress); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, updateGenerateProgress, s.exportDurations); err != nil {
 			_ = zw.Close()
 			return err
 		}

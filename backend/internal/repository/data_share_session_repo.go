@@ -212,6 +212,13 @@ func recordDataShareCaptureDuration(recorder service.DataShareCaptureDurationRec
 	recorder.Observe(part, duration)
 }
 
+func recordDataShareExportDuration(recorder service.DataShareExportDurationRecorder, part service.DataShareExportDurationPartKey, duration time.Duration) {
+	if recorder == nil {
+		return
+	}
+	recorder.Observe(part, duration)
+}
+
 func (r *dataShareSessionRepository) List(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, *pagination.PaginationResult, error) {
 	return r.listSessions(ctx, params, filters, false)
 }
@@ -226,6 +233,54 @@ func (r *dataShareSessionRepository) ListWithPayloadPage(ctx context.Context, pa
 		return nil, err
 	}
 	return items, nil
+}
+
+func (r *dataShareSessionRepository) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, cursor *service.DataShareSessionExportCursor, limit int, recorder service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
+	limit = service.NormalizeDataShareExportBatchSize(limit)
+	client := clientFromContext(ctx, r.client)
+	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
+	if cursor != nil && !cursor.CreatedAt.IsZero() && cursor.ID > 0 {
+		q = q.Where(datasharesession.Or(
+			datasharesession.CreatedAtGT(cursor.CreatedAt),
+			datasharesession.And(
+				datasharesession.CreatedAtEQ(cursor.CreatedAt),
+				datasharesession.IDGT(cursor.ID),
+			),
+		))
+	}
+	params := pagination.PaginationParams{Page: 1, PageSize: limit, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
+	start := time.Now()
+	query := q.Offset(0).Limit(params.Limit())
+	for _, order := range dataShareListOrder(params) {
+		query = query.Order(order)
+	}
+	var items []*dbent.DataShareSession
+	err := query.Select(dataShareExportPayloadFields()...).Scan(ctx, &items)
+	recordDataShareExportDuration(recorder, service.DataShareExportDurationPartDBPage, time.Since(start))
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make([]service.DataShareSession, 0, len(items))
+	for i := range items {
+		item := dataShareSessionEntityToService(items[i])
+		start = time.Now()
+		if err := populateDataShareSessionPayload(item); err != nil {
+			recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(start))
+			return nil, nil, err
+		}
+		recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(start))
+		if len(item.PayloadCompressed) == 0 && len(item.SessionJSON) > 0 {
+			if err := r.persistCompressedPayload(ctx, item); err != nil {
+				return nil, nil, err
+			}
+		}
+		out = append(out, *item)
+	}
+	if len(out) == 0 {
+		return out, nil, nil
+	}
+	last := out[len(out)-1]
+	return out, &service.DataShareSessionExportCursor{CreatedAt: last.CreatedAt, ID: last.ID}, nil
 }
 
 func (r *dataShareSessionRepository) Count(ctx context.Context, filters service.DataShareSessionFilters) (int64, error) {
@@ -942,6 +997,20 @@ func dataShareMetadataFields() []string {
 		datasharesession.FieldCreatedAt,
 		datasharesession.FieldUpdatedAt,
 	}
+}
+
+func dataShareExportPayloadFields() []string {
+	fields := dataShareMetadataFields()
+	fields = append(fields,
+		datasharesession.FieldSystemPrompt,
+		datasharesession.FieldTools,
+		datasharesession.FieldMessages,
+		datasharesession.FieldUsage,
+		datasharesession.FieldMeta,
+		datasharesession.FieldSessionJSON,
+		datasharesession.FieldPayloadCompressed,
+	)
+	return fields
 }
 
 func listDataShareEntities(ctx context.Context, q *dbent.DataShareSessionQuery, params pagination.PaginationParams, includePayload bool) ([]*dbent.DataShareSession, error) {

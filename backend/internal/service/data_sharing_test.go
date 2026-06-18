@@ -156,6 +156,10 @@ func (r *dataShareCaptureRepoStub) ListWithPayloadPage(context.Context, paginati
 	panic("unexpected ListWithPayloadPage call")
 }
 
+func (r *dataShareCaptureRepoStub) ListExportPayloadPage(context.Context, DataShareSessionFilters, *DataShareSessionExportCursor, int, DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
+	panic("unexpected ListExportPayloadPage call")
+}
+
 func (r *dataShareCaptureRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
 	panic("unexpected GetByID call")
 }
@@ -199,7 +203,9 @@ func (r *dataShareCaptureRepoStub) lastSession() *DataShareSession {
 }
 
 type dataShareExportRepoStub struct {
-	items []DataShareSession
+	items      []DataShareSession
+	countCalls int
+	pageLimits []int
 }
 
 type dataShareExportObjectStoreStub struct {
@@ -286,6 +292,7 @@ func (r *dataShareExportRepoStub) SaveCaptureSnapshot(context.Context, *DataShar
 }
 
 func (r *dataShareExportRepoStub) Count(_ context.Context, filters DataShareSessionFilters) (int64, error) {
+	r.countCalls++
 	_, result, err := r.ListWithPayload(context.Background(), pagination.PaginationParams{Page: 1, PageSize: len(r.items)}, filters)
 	if err != nil {
 		return 0, err
@@ -323,6 +330,41 @@ func (r *dataShareExportRepoStub) ListWithPayload(_ context.Context, params pagi
 func (r *dataShareExportRepoStub) ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, error) {
 	items, _, err := r.ListWithPayload(ctx, params, filters)
 	return items, err
+}
+
+func (r *dataShareExportRepoStub) ListExportPayloadPage(_ context.Context, _ DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
+	r.pageLimits = append(r.pageLimits, limit)
+	start := 0
+	if cursor != nil {
+		for i := range r.items {
+			item := r.items[i]
+			if item.CreatedAt.After(cursor.CreatedAt) || (item.CreatedAt.Equal(cursor.CreatedAt) && item.ID > cursor.ID) {
+				start = i
+				break
+			}
+			start = i + 1
+		}
+	}
+	if limit <= 0 {
+		limit = len(r.items)
+	}
+	if start >= len(r.items) {
+		return nil, nil, nil
+	}
+	end := start + limit
+	if end > len(r.items) {
+		end = len(r.items)
+	}
+	if recorder != nil {
+		recorder.Observe(DataShareExportDurationPartDBPage, 0)
+		recorder.Observe(DataShareExportDurationPartPayloadDecode, 0)
+	}
+	out := r.items[start:end]
+	if len(out) == 0 {
+		return out, nil, nil
+	}
+	last := out[len(out)-1]
+	return out, &DataShareSessionExportCursor{CreatedAt: last.CreatedAt, ID: last.ID}, nil
 }
 
 func (r *dataShareExportRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
@@ -758,7 +800,8 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *
 	require.Equal(t, 7, settings.BufferIdleFlushSeconds)
 	require.Equal(t, 123, settings.BufferMaxSessions)
 	require.Equal(t, 456, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, defaultDataShareExportBatchSize, settings.ExportBatchSize)
+	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456,"duration_window_size":512,"export_batch_size":500}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
 	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
 	require.Equal(t, 12, svc.CaptureWorkerStats().FlushQueueCapacity)
@@ -785,6 +828,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 		BufferIdleFlushSeconds: maxDataSharingCaptureBufferIdleSeconds + 100,
 		BufferMaxSessions:      maxDataSharingCaptureBufferMaxSessions + 100,
 		BufferMaxPendingEvents: maxDataSharingCaptureBufferMaxEvents + 100,
+		ExportBatchSize:        maxDataShareExportBatchSize + 100,
 	})
 	require.NoError(t, err)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
@@ -795,7 +839,8 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	require.Equal(t, maxDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, maxDataShareExportBatchSize, settings.ExportBatchSize)
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000,"duration_window_size":512,"export_batch_size":2000}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().FlushQueueCapacity)
@@ -925,7 +970,8 @@ func TestDataSharingService_UpdateRuntimeSettingsBackfillsLegacyRequest(t *testi
 	require.Equal(t, defaultDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536,"duration_window_size":512}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, defaultDataShareExportBatchSize, settings.ExportBatchSize)
+	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536,"duration_window_size":512,"export_batch_size":500}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 }
 
 func TestDataSharingService_CaptureAsyncBuffersUntilFlush(t *testing.T) {
@@ -4327,6 +4373,70 @@ func TestDataSharingService_CreateExportArtifactGeneratesDownloadableFile(t *tes
 	require.NoError(t, err)
 	require.Equal(t, completed.ID, opened.ID)
 	require.Contains(t, string(raw), "sess-artifact")
+}
+
+func TestDataSharingService_CreateExportArtifactUsesRuntimeBatchAndRecordsDurations(t *testing.T) {
+	now := time.Now()
+	sessions := make([]DataShareSession, 0, 120)
+	for i := 1; i <= 120; i++ {
+		sessions = append(sessions, DataShareSession{
+			ID:            int64(i),
+			TrajectoryID:  fmt.Sprintf("traj-artifact-batch-%d", i),
+			SessionID:     fmt.Sprintf("sess-artifact-batch-%d", i),
+			Dataset:       defaultDataShareDataset,
+			Provider:      PlatformOpenAI,
+			Model:         "gpt-5.5",
+			Messages:      []map[string]any{{"role": "user", "content": "hello"}},
+			SessionJSON:   map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}},
+			Exportable:    true,
+			QualityStatus: DataShareQualityComplete,
+			UserID:        1,
+			APIKeyID:      2,
+			GroupID:       3,
+			CreatedAt:     now.Add(time.Duration(i) * time.Millisecond),
+			UpdatedAt:     now.Add(time.Duration(i) * time.Millisecond),
+		})
+	}
+	exportRepo := &dataShareExportRepoStub{items: sessions}
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingExportTicketKey: "test-secret"}}
+	svc := NewDataSharingService(exportRepo, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	_, err := svc.UpdateCaptureRuntimeSettings(context.Background(), DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              1,
+		FlushQueueSize:         1,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 1,
+		BufferMaxSessions:      1,
+		BufferMaxPendingEvents: 1,
+		DurationWindowSize:     64,
+		ExportBatchSize:        50,
+	})
+	require.NoError(t, err)
+
+	artifact, err := svc.CreateExportArtifact(context.Background(), DataShareExportArtifactCreateInput{
+		Filters:  DataShareSessionFilters{SelectAll: true},
+		Filename: "artifact-batch-test",
+		Encoding: DataShareExportEncodingJSONL,
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+		return err == nil && got.Status == DataShareExportArtifactStatusCompleted
+	}, time.Second, 10*time.Millisecond)
+
+	require.Equal(t, 1, exportRepo.countCalls)
+	require.NotEmpty(t, exportRepo.pageLimits)
+	require.Equal(t, 50, exportRepo.pageLimits[0])
+	stats := svc.ExportDurationStats()
+	require.Greater(t, stats.SampleCount, 0)
+	require.Greater(t, findDataShareExportDurationPart(t, stats, DataShareExportDurationPartCount).SampleCount, 0)
+	require.Greater(t, findDataShareExportDurationPart(t, stats, DataShareExportDurationPartGenerateTotal).SampleCount, 0)
+	require.Greater(t, findDataShareExportDurationPart(t, stats, DataShareExportDurationPartWriteCompress).SampleCount, 0)
 }
 
 func TestDataSharingService_ExportArtifactRemoteConfigDefaultsAndSavesConfig(t *testing.T) {

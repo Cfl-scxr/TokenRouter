@@ -849,13 +849,23 @@
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可下载，也可上传到数据共享专用 S3/R2 存储桶。</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading" @click="loadExportArtifacts">
-                <Icon name="refresh" size="sm" :class="exportArtifactsLoading ? 'animate-spin' : ''" />
+              <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
+                {{ testingExportRemoteConfig ? '测试中' : '测试连接' }}
+              </button>
+              <button class="btn btn-primary btn-sm" type="button" :disabled="savingExportSettings" @click="saveExportSettings">
+                {{ savingExportSettings ? '保存中' : '保存配置' }}
+              </button>
+              <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading || statsLoading" @click="refreshExportArtifacts">
+                <Icon name="refresh" size="sm" :class="exportArtifactsLoading || statsLoading ? 'animate-spin' : ''" />
                 <span class="ml-1">刷新</span>
               </button>
             </div>
           </div>
           <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4 md:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-batch-size">导出批次大小</label>
+              <input id="data-share-export-batch-size" v-model="exportBatchSizeInput" type="number" :min="exportBatchSizeMin" :max="exportBatchSizeMax" step="1" class="input w-full text-sm" />
+            </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-endpoint">端点地址</label>
               <input id="data-share-export-remote-endpoint" v-model="exportRemoteForm.endpoint" class="input w-full text-sm" placeholder="https://<账号ID>.r2.cloudflarestorage.com" />
@@ -880,19 +890,48 @@
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-secret-key">访问密钥 Secret</label>
               <input id="data-share-export-remote-secret-key" v-model="exportRemoteForm.secret_access_key" type="password" class="input w-full text-sm" :placeholder="exportRemoteSecretConfigured ? '已配置，留空则保留' : ''" />
             </div>
-            <div class="flex flex-col gap-3 md:col-span-2 md:flex-row md:items-end md:justify-between lg:col-span-2">
+            <div class="flex items-end">
               <label class="flex min-h-10 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input v-model="exportRemoteForm.force_path_style" type="checkbox" />
                 <span>使用路径样式 URL</span>
               </label>
-              <div class="flex flex-wrap items-center gap-2 md:justify-end">
-                <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
-                  {{ testingExportRemoteConfig ? '测试中' : '测试连接' }}
-                </button>
-                <button class="btn btn-primary btn-sm" type="button" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
-                  {{ savingExportRemoteConfig ? '保存中' : '保存配置' }}
-                </button>
+            </div>
+          </div>
+          <div class="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">导出生成耗时</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">窗口 {{ formatNumber(exportDurationWindowSize) }} · 样本 {{ formatNumber(exportDurationSampleCount) }}</p>
               </div>
+              <span v-if="exportGenerateTotalDurationPart?.sample_count" class="badge badge-gray">最近总耗时 {{ formatDurationMillis(exportGenerateTotalDurationPart.last_millis) }}</span>
+            </div>
+            <div v-if="exportDurationSampleCount" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
+              <div class="h-56">
+                <Bar :data="exportDurationChartData" :options="exportDurationChartOptions" />
+              </div>
+              <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
+                <table class="min-w-full divide-y divide-gray-100 text-xs dark:divide-gray-800">
+                  <thead class="bg-gray-50 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-medium">阶段</th>
+                      <th class="px-3 py-2 text-right font-medium">最近</th>
+                      <th class="px-3 py-2 text-right font-medium">P95</th>
+                      <th class="px-3 py-2 text-right font-medium">样本</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <tr v-for="part in exportDurationActiveParts" :key="part.key">
+                      <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ part.label }}</td>
+                      <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ formatDurationMillis(part.last_millis) }}</td>
+                      <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ formatDurationMillis(part.p95_millis) }}</td>
+                      <td class="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{{ formatNumber(part.sample_count) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div v-else class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              暂无导出耗时样本
             </div>
           </div>
         </div>
@@ -1193,6 +1232,7 @@ const captureBufferIdleFlushInput = ref('')
 const captureBufferMaxSessionsInput = ref('')
 const captureBufferMaxPendingEventsInput = ref('')
 const captureDurationWindowInput = ref('')
+const exportBatchSizeInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureFlushQueueSizeMax = 100000
@@ -1204,6 +1244,9 @@ const captureBufferMaxPendingEventsLimit = 1000000
 const captureDurationWindowMin = 32
 const captureDurationWindowMax = 10000
 const captureDurationWindowDefault = 512
+const exportBatchSizeMin = 50
+const exportBatchSizeMax = 2000
+const exportBatchSizeDefault = 500
 const statsAutoRefreshDefaultSeconds = 5
 const statsAutoRefreshIntervals = [5, 10, 15, 30] as const
 const captureCompressionLevelOptions = [
@@ -1246,6 +1289,7 @@ const storageLimitLoading = ref(false)
 const savingStorageLimit = ref(false)
 const savingCaptureRuntimeSettings = ref(false)
 const savingExportRemoteConfig = ref(false)
+const savingExportSettings = ref(false)
 const testingExportRemoteConfig = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
@@ -1690,6 +1734,43 @@ const durationBucketChartOptions = computed(() => ({
     }
   }
 }))
+const exportDurationChartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  indexAxis: 'y' as const,
+  scales: {
+    x: {
+      beginAtZero: true,
+      ticks: {
+        color: chartColors.value.text,
+        callback: (value: string | number) => formatDurationMillis(Number(value))
+      },
+      grid: { color: chartColors.value.grid }
+    },
+    y: {
+      ticks: { color: chartColors.value.text },
+      grid: { color: chartColors.value.grid }
+    }
+  },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      callbacks: {
+        label: (ctx: any) => {
+          const part = exportDurationActiveParts.value[ctx.dataIndex]
+          if (!part) return `P95: ${formatDurationMillis(Number(ctx.raw || 0))}`
+          return [
+            `最近: ${formatDurationMillis(part.last_millis)}`,
+            `P95: ${formatDurationMillis(part.p95_millis)}`,
+            `平均: ${formatDurationMillis(part.avg_millis)}`,
+            `最大: ${formatDurationMillis(part.max_millis)}`,
+            `样本: ${formatNumber(part.sample_count)}`
+          ]
+        }
+      }
+    }
+  }
+}))
 const captureWorkerQueueText = computed(() => {
   const worker = stats.value?.capture_worker
   if (!worker) return '-'
@@ -1818,6 +1899,23 @@ const captureDurationWindowSize = computed(() => stats.value?.capture_durations?
 const captureDurationSampleCount = computed(() => stats.value?.capture_durations?.sample_count || 0)
 const captureDurationParts = computed(() => stats.value?.capture_durations?.parts || [])
 const captureFlushTotalDurationPart = computed(() => captureDurationParts.value.find(part => part.key === 'flush_total'))
+const exportDurationWindowSize = computed(() => stats.value?.export_durations?.window_size || captureDurationWindowDefault)
+const exportDurationSampleCount = computed(() => stats.value?.export_durations?.sample_count || 0)
+const exportDurationParts = computed(() => stats.value?.export_durations?.parts || [])
+const exportDurationActiveParts = computed(() => exportDurationParts.value.filter(part => part.sample_count > 0))
+const exportGenerateTotalDurationPart = computed(() => exportDurationParts.value.find(part => part.key === 'export_generate_total'))
+const exportDurationChartData = computed(() => ({
+  labels: exportDurationActiveParts.value.map(part => part.label),
+  datasets: [
+    {
+      label: 'P95',
+      data: exportDurationActiveParts.value.map(part => part.p95_millis),
+      backgroundColor: '#0ea5e988',
+      borderColor: '#0ea5e9',
+      borderWidth: 1
+    }
+  ]
+}))
 const captureBufferRecentDurationMillis = computed(() => {
   const flushTotal = captureFlushTotalDurationPart.value
   return flushTotal && flushTotal.sample_count > 0 ? flushTotal.last_millis : captureBufferLastFlushDurationMillis.value
@@ -2019,15 +2117,39 @@ async function loadExportRemoteConfig() {
   }
 }
 
-async function saveExportRemoteConfig() {
+async function saveExportSettings() {
+  savingExportSettings.value = true
+  try {
+    await saveExportBatchSizeOnly()
+    await saveExportRemoteConfigOnly()
+    await loadStats()
+    appStore.showSuccess('导出配置已保存')
+  } catch (error) {
+    appStore.showError('保存导出配置失败')
+  } finally {
+    savingExportSettings.value = false
+  }
+}
+
+async function saveExportBatchSizeOnly() {
+  const exportBatchSize = boundedIntegerFromInput(exportBatchSizeInput.value, exportBatchSizeMin, exportBatchSizeMax)
+  if (!exportBatchSize) {
+    throw new Error('invalid export batch size')
+  }
+  const current = await adminDataSharingAPI.getRuntimeSettings()
+  const settings = await adminDataSharingAPI.updateRuntimeSettings({
+    ...current,
+    export_batch_size: exportBatchSize
+  })
+  exportBatchSizeInput.value = String(settings.export_batch_size || exportBatchSizeDefault)
+}
+
+async function saveExportRemoteConfigOnly() {
   savingExportRemoteConfig.value = true
   try {
     const cfg = await adminDataSharingAPI.updateExportRemoteConfig(buildExportRemoteConfigPayload())
     exportRemoteForm.value = normalizeExportRemoteConfig(cfg)
     exportRemoteSecretConfigured.value = Boolean(cfg.access_key_id)
-    appStore.showSuccess('远端上传配置已保存')
-  } catch (error) {
-    appStore.showError('保存远端上传配置失败')
   } finally {
     savingExportRemoteConfig.value = false
   }
@@ -2076,7 +2198,8 @@ function captureRuntimeSettingsFromForm() {
   const bufferMaxSessions = boundedPositiveIntegerFromInput(captureBufferMaxSessionsInput.value, captureBufferMaxSessionsLimit)
   const bufferMaxPendingEvents = boundedPositiveIntegerFromInput(captureBufferMaxPendingEventsInput.value, captureBufferMaxPendingEventsLimit)
   const durationWindowSize = boundedIntegerFromInput(captureDurationWindowInput.value, captureDurationWindowMin, captureDurationWindowMax)
-  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents || !durationWindowSize) {
+  const exportBatchSize = boundedIntegerFromInput(exportBatchSizeInput.value, exportBatchSizeMin, exportBatchSizeMax)
+  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents || !durationWindowSize || !exportBatchSize) {
     throw new Error('invalid capture runtime settings')
   }
   return {
@@ -2089,7 +2212,8 @@ function captureRuntimeSettingsFromForm() {
     buffer_idle_flush_seconds: bufferIdleFlushSeconds,
     buffer_max_sessions: bufferMaxSessions,
     buffer_max_pending_events: bufferMaxPendingEvents,
-    duration_window_size: durationWindowSize
+    duration_window_size: durationWindowSize,
+    export_batch_size: exportBatchSize
   }
 }
 
@@ -2125,6 +2249,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   buffer_max_sessions?: number
   buffer_max_pending_events?: number
   duration_window_size?: number
+  export_batch_size?: number
 }) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
@@ -2136,6 +2261,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   captureBufferMaxSessionsInput.value = String(settings.buffer_max_sessions || 4096)
   captureBufferMaxPendingEventsInput.value = String(settings.buffer_max_pending_events || 65536)
   captureDurationWindowInput.value = String(settings.duration_window_size || captureDurationWindowDefault)
+  exportBatchSizeInput.value = String(settings.export_batch_size || exportBatchSizeDefault)
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -2353,6 +2479,9 @@ async function loadStats() {
     if (!captureDurationWindowInput.value) {
       captureDurationWindowInput.value = String(captureDurationWindowSize.value)
     }
+    if (!exportBatchSizeInput.value) {
+      exportBatchSizeInput.value = String(exportBatchSizeDefault)
+    }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')
   } finally {
@@ -2467,6 +2596,10 @@ async function loadExportArtifacts() {
   } finally {
     exportArtifactsLoading.value = false
   }
+}
+
+async function refreshExportArtifacts() {
+  await Promise.all([loadExportArtifacts(), loadStats()])
 }
 
 function updateExportArtifactPolling() {

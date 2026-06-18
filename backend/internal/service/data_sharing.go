@@ -126,6 +126,7 @@ type DataShareCaptureRuntimeSettings struct {
 	BufferMaxSessions      int    `json:"buffer_max_sessions"`
 	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
 	DurationWindowSize     int    `json:"duration_window_size"`
+	ExportBatchSize        int    `json:"export_batch_size"`
 }
 
 // DataShareCompressionLevel 表示采集 payload 的 zstd 压缩等级。
@@ -443,6 +444,7 @@ type DataShareStats struct {
 	CaptureWorker           DataSharingCaptureWorkerPoolStats `json:"capture_worker"`
 	CaptureBuffer           DataSharingCaptureBufferStats     `json:"capture_buffer"`
 	CaptureDurations        DataShareCaptureDurationStats     `json:"capture_durations"`
+	ExportDurations         DataShareExportDurationStats      `json:"export_durations"`
 }
 
 // DataShareCaptureInput 是网关成功完成请求后的采集输入。
@@ -482,6 +484,12 @@ type DataShareUpsertOptions struct {
 	DurationRecorder DataShareCaptureDurationRecorder
 }
 
+// DataShareSessionExportCursor 是预生成导出使用的稳定游标，避免大 offset 翻页。
+type DataShareSessionExportCursor struct {
+	CreatedAt time.Time
+	ID        int64
+}
+
 // DataShareSessionRepository 定义数据共享 session 的持久化能力。
 type DataShareSessionRepository interface {
 	GetCaptureByTrajectoryIDWithPayload(ctx context.Context, trajectoryID string) (*DataShareSession, error)
@@ -491,6 +499,8 @@ type DataShareSessionRepository interface {
 	ListWithPayload(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
 	// ListWithPayloadPage 按页加载包含 payload 的 session，不重复统计总数，供导出流程使用。
 	ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, error)
+	// ListExportPayloadPage 按游标加载导出 payload，不回填展示字段，避免大导出时重复 count 和大 offset 扫描。
+	ListExportPayloadPage(ctx context.Context, filters DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error)
 	GetByID(ctx context.Context, id int64) (*DataShareSession, error)
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
@@ -524,7 +534,9 @@ type DataSharingService struct {
 	captureWorker            *DataSharingCaptureWorkerPool
 	captureBuffer            *DataSharingCaptureBuffer
 	captureDurations         *dataShareCaptureDurationRecorder
+	exportDurations          *dataShareExportDurationRecorder
 	defaultRuntimeSettings   DataShareCaptureRuntimeSettings
+	exportBatchSize          atomic.Int64
 	captureWorkerNilDropped  atomic.Uint64
 	captureWorkerNilLogNanos atomic.Int64
 	skipRulesMu              sync.RWMutex
@@ -542,9 +554,11 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		settingRepo:            settingRepo,
 		defaultRuntimeSettings: *defaultDataShareCaptureRuntimeSettings(),
 		captureDurations:       newDataShareCaptureDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
+		exportDurations:        newDataShareExportDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
 		exportUploadProgress:   make(map[int64]dataShareExportUploadProgress),
 		exportGenerateProgress: make(map[int64]dataShareExportGenerateProgress),
 	}
+	svc.exportBatchSize.Store(int64(svc.defaultRuntimeSettings.ExportBatchSize))
 	if len(captureWorker) > 0 {
 		svc.captureWorker = captureWorker[0]
 	}

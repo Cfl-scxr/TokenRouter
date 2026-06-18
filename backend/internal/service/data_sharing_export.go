@@ -12,12 +12,16 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 )
 
-// dataShareExportBatchSize 控制导出生成每次加载的 session 数，兼顾进度刷新粒度和内存峰值。
-const dataShareExportBatchSize = 100
+const (
+	// dataShareDirectExportBatchSize 控制即时下载每次读取量，保持较低内存峰值。
+	dataShareDirectExportBatchSize = 100
+	// defaultDataShareExportBatchSize 是预生成导出文件的默认批次大小。
+	defaultDataShareExportBatchSize = 500
+	minDataShareExportBatchSize     = 50
+	maxDataShareExportBatchSize     = 2000
+)
 
 // CreateExportTicket 为大文件下载签发短期票据，避免浏览器用 Blob 缓存完整导出文件。
 func (s *DataSharingService) CreateExportTicket(ctx context.Context, req DataShareExportTicketRequest) (*DataShareExportTicket, error) {
@@ -90,24 +94,27 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 	if err != nil {
 		return err
 	}
-	return s.exportJSONL(ctx, w, filters, includeNonExportable, total, nil)
+	return s.exportJSONL(ctx, w, filters, includeNonExportable, total, dataShareDirectExportBatchSize, nil, nil)
 }
 
-func (s *DataSharingService) exportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool, total int64, progress func(processed int64, total int64)) error {
+func (s *DataSharingService) exportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool, total int64, batchSize int, progress func(processed int64, total int64), recorder DataShareExportDurationRecorder) error {
 	_ = includeNonExportable
 	if s == nil || s.repo == nil {
 		return ErrDataShareExportArtifactStorageInvalid
 	}
-	params := pagination.PaginationParams{Page: 1, PageSize: dataShareExportBatchSize, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
+	batchSize = normalizeDataShareExportBatchSize(batchSize)
 	var processed int64
+	var cursor *DataShareSessionExportCursor
 	for {
-		items, err := s.repo.ListWithPayloadPage(ctx, params, filters)
+		items, nextCursor, err := s.repo.ListExportPayloadPage(ctx, filters, cursor, batchSize, recorder)
 		if err != nil {
 			return err
 		}
 		for i := range items {
 			processed++
+			start := time.Now()
 			payload, err := exportDownloadPayloadFromSession(&items[i])
+			recordDataShareExportDuration(recorder, DataShareExportDurationPartRedactRecheck, time.Since(start))
 			if err != nil {
 				if errors.Is(err, ErrDataShareExportPayloadInvalid) && (filters.SelectAll || len(filters.IDs) != 1) {
 					slog.Warn("data sharing: skip session failed export recheck",
@@ -123,25 +130,55 @@ func (s *DataSharingService) exportJSONL(ctx context.Context, w io.Writer, filte
 				}
 				return err
 			}
+			start = time.Now()
 			line, err := json.Marshal(payload)
+			recordDataShareExportDuration(recorder, DataShareExportDurationPartJSONMarshal, time.Since(start))
 			if err != nil {
 				return err
 			}
+			start = time.Now()
 			if _, err := w.Write(append(line, '\n')); err != nil {
+				recordDataShareExportDuration(recorder, DataShareExportDurationPartWriteCompress, time.Since(start))
 				return err
 			}
+			recordDataShareExportDuration(recorder, DataShareExportDurationPartWriteCompress, time.Since(start))
 			if progress != nil {
 				progress(processed, total)
 			}
 		}
-		if len(items) == 0 || len(items) < params.Limit() || (total > 0 && processed >= total) {
+		cursor = nextCursor
+		if len(items) == 0 || cursor == nil || len(items) < batchSize || (total > 0 && processed >= total) {
 			if progress != nil {
 				progress(processed, total)
 			}
 			return nil
 		}
-		params.Page++
 	}
+}
+
+func recordDataShareExportDuration(recorder DataShareExportDurationRecorder, part DataShareExportDurationPartKey, duration time.Duration) {
+	if recorder == nil {
+		return
+	}
+	recorder.Observe(part, duration)
+}
+
+func normalizeDataShareExportBatchSize(size int) int {
+	return NormalizeDataShareExportBatchSize(size)
+}
+
+// NormalizeDataShareExportBatchSize 归一化预生成导出批次大小，避免单批读取过大。
+func NormalizeDataShareExportBatchSize(size int) int {
+	if size <= 0 {
+		size = defaultDataShareExportBatchSize
+	}
+	if size < minDataShareExportBatchSize {
+		return minDataShareExportBatchSize
+	}
+	if size > maxDataShareExportBatchSize {
+		return maxDataShareExportBatchSize
+	}
+	return size
 }
 
 func validateDataShareExportTicketRequest(req DataShareExportTicketRequest) error {

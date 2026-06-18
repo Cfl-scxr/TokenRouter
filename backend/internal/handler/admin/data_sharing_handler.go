@@ -51,6 +51,7 @@ type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 	BufferMaxSessions      int    `json:"buffer_max_sessions"`
 	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
 	DurationWindowSize     int    `json:"duration_window_size"`
+	ExportBatchSize        int    `json:"export_batch_size"`
 }
 
 // UpdateDataShareExportRemoteConfigRequest 是管理端更新导出远端上传配置的请求。
@@ -246,6 +247,7 @@ func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
 		BufferMaxSessions:      req.BufferMaxSessions,
 		BufferMaxPendingEvents: req.BufferMaxPendingEvents,
 		DurationWindowSize:     req.DurationWindowSize,
+		ExportBatchSize:        req.ExportBatchSize,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -112,6 +112,15 @@ func (r *dataShareHandlerRepoStub) ListWithPayloadPage(ctx context.Context, para
 	return items, err
 }
 
+func (r *dataShareHandlerRepoStub) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, _ *service.DataShareSessionExportCursor, _ int, _ service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
+	items, _, err := r.ListWithPayload(ctx, pagination.PaginationParams{Page: 1, PageSize: len(r.items)}, filters)
+	if err != nil || len(items) == 0 {
+		return items, nil, err
+	}
+	last := items[len(items)-1]
+	return items, &service.DataShareSessionExportCursor{CreatedAt: last.CreatedAt, ID: last.ID}, nil
+}
+
 func (r *dataShareHandlerRepoStub) GetByID(context.Context, int64) (*service.DataShareSession, error) {
 	panic("unexpected GetByID call")
 }
