@@ -910,6 +910,9 @@
           <template #cell-remote_status="{ row }">
             <div class="max-w-xs">
               <span :class="['badge', exportArtifactRemoteStatusBadgeClass(row.remote_status)]">{{ exportArtifactRemoteStatusLabel(row.remote_status) }}</span>
+              <div v-if="row.remote_status === 'uploading'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ formatExportUploadProgress(row) }} · {{ formatExportUploadSpeed(row.remote_upload_speed) }}
+              </div>
               <div v-if="row.remote_key" class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                 <span class="truncate" :title="`${row.remote_bucket}/${row.remote_key}`">{{ row.remote_bucket }}/{{ row.remote_key }}</span>
                 <button
@@ -2463,7 +2466,7 @@ function updateExportArtifactPolling() {
   if (exportArtifactPollingTimer) return
   exportArtifactPollingTimer = window.setInterval(() => {
     loadExportArtifacts()
-  }, 5000)
+  }, 2000)
 }
 
 function stopExportArtifactPolling() {
@@ -3011,6 +3014,17 @@ function formatBytes(value?: number | null) {
     unit++
   }
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`
+}
+
+function formatExportUploadProgress(row: DataShareExportArtifact) {
+  if (!row.file_size || row.file_size <= 0) return '0%'
+  const percent = Math.min(100, Math.max(0, ((row.remote_upload_bytes || 0) / row.file_size) * 100))
+  return `${percent.toFixed(percent >= 10 ? 1 : 2)}%`
+}
+
+function formatExportUploadSpeed(bytesPerSecond?: number | null) {
+  const mbPerSecond = Math.max(0, bytesPerSecond || 0) / 1_000_000
+  return `${mbPerSecond.toFixed(mbPerSecond >= 10 ? 1 : 2)} MB/s`
 }
 
 onMounted(() => {

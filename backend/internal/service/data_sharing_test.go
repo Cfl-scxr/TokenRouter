@@ -223,6 +223,14 @@ func (s *dataShareExportObjectStoreStub) UploadFile(ctx context.Context, key str
 	return s.Upload(ctx, key, body, contentType)
 }
 
+func (s *dataShareExportObjectStoreStub) UploadFileWithProgress(ctx context.Context, key string, body io.Reader, contentType string, onProgress func(uploadedBytes int64)) (int64, error) {
+	size, err := s.Upload(ctx, key, body, contentType)
+	if err == nil && onProgress != nil {
+		onProgress(size)
+	}
+	return size, err
+}
+
 func (s *dataShareExportObjectStoreStub) Download(_ context.Context, key string) (io.ReadCloser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -4564,6 +4572,28 @@ func TestDataSharingService_CreateExportArtifactRemoteDownloadURLAllowsUploading
 	url, err := svc.CreateExportArtifactRemoteDownloadURL(context.Background(), artifact.ID)
 	require.NoError(t, err)
 	require.Equal(t, "https://download.example.test/share/old-artifact.jsonl", url)
+}
+
+func TestDataSharingService_ListExportArtifactsMergesUploadProgress(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	svc := NewDataSharingService(nil, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:       DataShareExportArtifactStatusCompleted,
+		Filename:     "artifact.jsonl",
+		Encoding:     string(DataShareExportEncodingJSONL),
+		FileSize:     1000,
+		RemoteStatus: DataShareExportArtifactRemoteStatusUploading,
+	})
+	require.NoError(t, err)
+
+	svc.startExportArtifactUploadProgress(artifact.ID, artifact.FileSize)
+	svc.updateExportArtifactUploadProgress(artifact.ID, 250)
+	items, _, err := svc.ListExportArtifacts(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, int64(250), items[0].RemoteUploadBytes)
+	require.Greater(t, items[0].RemoteUploadSpeed, 0.0)
 }
 
 func TestDataSharingService_GenerateExportArtifactCleansFinalFileWhenMarkCompletedFails(t *testing.T) {

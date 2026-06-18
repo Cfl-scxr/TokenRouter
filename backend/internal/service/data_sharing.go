@@ -323,6 +323,8 @@ type DataShareExportArtifact struct {
 	RemoteKey          string                              `json:"remote_key"`
 	RemoteErrorMessage string                              `json:"remote_error_message"`
 	RemoteUploadedAt   *time.Time                          `json:"remote_uploaded_at,omitempty"`
+	RemoteUploadBytes  int64                               `json:"remote_upload_bytes"`
+	RemoteUploadSpeed  float64                             `json:"remote_upload_speed"`
 	CreatedAt          time.Time                           `json:"created_at"`
 	StartedAt          *time.Time                          `json:"started_at,omitempty"`
 	CompletedAt        *time.Time                          `json:"completed_at,omitempty"`
@@ -488,6 +490,13 @@ type DataShareSessionRepository interface {
 	TotalStorageBytes(ctx context.Context) (int64, error)
 }
 
+type dataShareExportUploadProgress struct {
+	uploadedBytes int64
+	totalBytes    int64
+	startedAt     time.Time
+	updatedAt     time.Time
+}
+
 // DataSharingService 负责数据共享须知、采集、导出和统计。
 type DataSharingService struct {
 	repo                     DataShareSessionRepository
@@ -505,6 +514,8 @@ type DataSharingService struct {
 	skipRulesMu              sync.RWMutex
 	skipRulesCache           []DataShareCaptureSkipRule
 	skipRulesCacheExpiresAt  time.Time
+	exportUploadProgressMu   sync.RWMutex
+	exportUploadProgress     map[int64]dataShareExportUploadProgress
 }
 
 func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository, captureWorker ...*DataSharingCaptureWorkerPool) *DataSharingService {
@@ -513,6 +524,7 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		settingRepo:            settingRepo,
 		defaultRuntimeSettings: *defaultDataShareCaptureRuntimeSettings(),
 		captureDurations:       newDataShareCaptureDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
+		exportUploadProgress:   make(map[int64]dataShareExportUploadProgress),
 	}
 	if len(captureWorker) > 0 {
 		svc.captureWorker = captureWorker[0]

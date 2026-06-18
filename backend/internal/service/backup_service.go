@@ -112,6 +112,11 @@ type BackupObjectStore interface {
 	HeadBucket(ctx context.Context) error
 }
 
+// BackupObjectStoreProgressUploader 是支持上报上传进度的对象存储扩展接口。
+type BackupObjectStoreProgressUploader interface {
+	UploadFileWithProgress(ctx context.Context, key string, body io.Reader, contentType string, onProgress func(uploadedBytes int64)) (sizeBytes int64, err error)
+}
+
 // BackupObjectStoreFactory 根据 S3 配置创建对象存储客户端。
 type BackupObjectStoreFactory func(ctx context.Context, cfg *BackupS3Config) (BackupObjectStore, error)
 

@@ -131,6 +131,8 @@ type adminDataShareExportArtifactResponse struct {
 	RemoteKey          string     `json:"remote_key"`
 	RemoteErrorMessage string     `json:"remote_error_message"`
 	RemoteUploadedAt   *time.Time `json:"remote_uploaded_at,omitempty"`
+	RemoteUploadBytes  int64      `json:"remote_upload_bytes"`
+	RemoteUploadSpeed  float64    `json:"remote_upload_speed"`
 	CreatedAt          time.Time  `json:"created_at"`
 	StartedAt          *time.Time `json:"started_at,omitempty"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"`
@@ -798,6 +800,8 @@ func adminDataShareExportArtifactToResponse(artifact *service.DataShareExportArt
 		RemoteKey:          artifact.RemoteKey,
 		RemoteErrorMessage: artifact.RemoteErrorMessage,
 		RemoteUploadedAt:   artifact.RemoteUploadedAt,
+		RemoteUploadBytes:  artifact.RemoteUploadBytes,
+		RemoteUploadSpeed:  artifact.RemoteUploadSpeed,
 		CreatedAt:          artifact.CreatedAt,
 		StartedAt:          artifact.StartedAt,
 		CompletedAt:        artifact.CompletedAt,

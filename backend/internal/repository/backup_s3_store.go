@@ -74,11 +74,19 @@ func (s *S3BackupStore) Upload(ctx context.Context, key string, body io.Reader, 
 
 // UploadFile 面向几十 GB 级别的本地文件，超过单个分片后按固定缓冲区流式上传。
 func (s *S3BackupStore) UploadFile(ctx context.Context, key string, body io.Reader, contentType string) (int64, error) {
+	return s.UploadFileWithProgress(ctx, key, body, contentType, nil)
+}
+
+// UploadFileWithProgress 面向几十 GB 级别的本地文件，按分片完成情况上报累计上传字节数。
+func (s *S3BackupStore) UploadFileWithProgress(ctx context.Context, key string, body io.Reader, contentType string, onProgress func(uploadedBytes int64)) (int64, error) {
 	buf := make([]byte, s3MultipartPartSize)
 	firstSize, readErr := io.ReadFull(body, buf)
 	if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
 		if err := s.putObject(ctx, key, bytes.NewReader(buf[:firstSize]), contentType); err != nil {
 			return 0, err
+		}
+		if onProgress != nil {
+			onProgress(int64(firstSize))
 		}
 		return int64(firstSize), nil
 	}
@@ -122,6 +130,9 @@ func (s *S3BackupStore) UploadFile(ctx context.Context, key string, body io.Read
 		PartNumber: &completedPartNumber,
 	})
 	total += int64(firstSize)
+	if onProgress != nil {
+		onProgress(total)
+	}
 	partNumber++
 
 	for {
@@ -142,6 +153,9 @@ func (s *S3BackupStore) UploadFile(ctx context.Context, key string, body io.Read
 			PartNumber: &completedPartNumber,
 		})
 		total += int64(n)
+		if onProgress != nil {
+			onProgress(total)
+		}
 		partNumber++
 		if readErr == io.ErrUnexpectedEOF || readErr == io.EOF {
 			break

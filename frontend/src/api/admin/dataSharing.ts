@@ -184,6 +184,8 @@ export interface DataShareExportArtifact {
   remote_key: string
   remote_error_message: string
   remote_uploaded_at?: string | null
+  remote_upload_bytes: number
+  remote_upload_speed: number
   created_at: string
   started_at?: string | null
   completed_at?: string | null

@@ -53,7 +53,14 @@ func (s *DataSharingService) ListExportArtifacts(ctx context.Context, params pag
 	if s == nil || s.exportArtifactRepo == nil {
 		return nil, nil, ErrDataShareExportArtifactStorageInvalid
 	}
-	return s.exportArtifactRepo.List(ctx, params)
+	items, result, err := s.exportArtifactRepo.List(ctx, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range items {
+		s.mergeExportArtifactUploadProgress(&items[i])
+	}
+	return items, result, nil
 }
 
 // GetExportArtifact 返回单个预生成导出文件任务。
@@ -64,7 +71,12 @@ func (s *DataSharingService) GetExportArtifact(ctx context.Context, id int64) (*
 	if id <= 0 {
 		return nil, ErrDataShareExportArtifactNotFound
 	}
-	return s.exportArtifactRepo.Get(ctx, id)
+	artifact, err := s.exportArtifactRepo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.mergeExportArtifactUploadProgress(artifact)
+	return artifact, nil
 }
 
 // DeleteExportArtifact 删除本地文件并将任务标记为 deleted。
@@ -190,11 +202,13 @@ func (s *DataSharingService) UploadExportArtifactToRemote(ctx context.Context, i
 	if err := s.exportArtifactRepo.MarkRemoteUploading(ctx, id); err != nil {
 		return nil, err
 	}
+	s.startExportArtifactUploadProgress(id, artifact.FileSize)
 	go s.uploadExportArtifactToRemote(context.Background(), id)
 	return s.GetExportArtifact(ctx, id)
 }
 
 func (s *DataSharingService) uploadExportArtifactToRemote(ctx context.Context, id int64) {
+	defer s.clearExportArtifactUploadProgress(id)
 	artifact, err := s.GetExportArtifact(ctx, id)
 	if err != nil {
 		return
@@ -219,13 +233,97 @@ func (s *DataSharingService) uploadExportArtifactToRemote(ctx context.Context, i
 		return
 	}
 	key := s.buildExportArtifactRemoteKey(ctx, artifact)
-	if _, err := store.UploadFile(ctx, key, f, dataShareExportArtifactContentType(artifact)); err != nil {
+	uploadSize, err := s.uploadExportArtifactFile(ctx, store, key, f, dataShareExportArtifactContentType(artifact), id)
+	if err != nil {
 		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
 		return
 	}
+	s.updateExportArtifactUploadProgress(id, uploadSize)
 	if err := s.exportArtifactRepo.MarkRemoteUploaded(ctx, id, cfg.Bucket, key); err != nil {
 		slog.Warn("data sharing: mark export artifact remote upload completed failed", "artifact_id", id, "error", err)
 	}
+}
+
+func (s *DataSharingService) uploadExportArtifactFile(ctx context.Context, store BackupObjectStore, key string, body io.Reader, contentType string, artifactID int64) (int64, error) {
+	if progressStore, ok := store.(BackupObjectStoreProgressUploader); ok {
+		return progressStore.UploadFileWithProgress(ctx, key, body, contentType, func(uploadedBytes int64) {
+			s.updateExportArtifactUploadProgress(artifactID, uploadedBytes)
+		})
+	}
+	return store.UploadFile(ctx, key, body, contentType)
+}
+
+func (s *DataSharingService) startExportArtifactUploadProgress(id int64, totalBytes int64) {
+	if s == nil {
+		return
+	}
+	now := time.Now()
+	s.exportUploadProgressMu.Lock()
+	defer s.exportUploadProgressMu.Unlock()
+	if s.exportUploadProgress == nil {
+		s.exportUploadProgress = make(map[int64]dataShareExportUploadProgress)
+	}
+	s.exportUploadProgress[id] = dataShareExportUploadProgress{
+		totalBytes: totalBytes,
+		startedAt:  now,
+		updatedAt:  now,
+	}
+}
+
+func (s *DataSharingService) updateExportArtifactUploadProgress(id int64, uploadedBytes int64) {
+	if s == nil {
+		return
+	}
+	now := time.Now()
+	s.exportUploadProgressMu.Lock()
+	defer s.exportUploadProgressMu.Unlock()
+	progress := s.exportUploadProgress[id]
+	if progress.startedAt.IsZero() {
+		progress.startedAt = now
+	}
+	progress.uploadedBytes = uploadedBytes
+	progress.updatedAt = now
+	s.exportUploadProgress[id] = progress
+}
+
+func (s *DataSharingService) clearExportArtifactUploadProgress(id int64) {
+	if s == nil {
+		return
+	}
+	s.exportUploadProgressMu.Lock()
+	defer s.exportUploadProgressMu.Unlock()
+	delete(s.exportUploadProgress, id)
+}
+
+func (s *DataSharingService) mergeExportArtifactUploadProgress(artifact *DataShareExportArtifact) {
+	if s == nil || artifact == nil {
+		return
+	}
+	s.exportUploadProgressMu.RLock()
+	progress, ok := s.exportUploadProgress[artifact.ID]
+	s.exportUploadProgressMu.RUnlock()
+	if !ok || artifact.RemoteStatus != DataShareExportArtifactRemoteStatusUploading {
+		return
+	}
+	artifact.RemoteUploadBytes = progress.uploadedBytes
+	if artifact.RemoteUploadBytes < 0 {
+		artifact.RemoteUploadBytes = 0
+	}
+	if artifact.FileSize > 0 && artifact.RemoteUploadBytes > artifact.FileSize {
+		artifact.RemoteUploadBytes = artifact.FileSize
+	}
+	artifact.RemoteUploadSpeed = dataShareExportUploadSpeedBytesPerSecond(progress, time.Now())
+}
+
+func dataShareExportUploadSpeedBytesPerSecond(progress dataShareExportUploadProgress, now time.Time) float64 {
+	if progress.uploadedBytes <= 0 || progress.startedAt.IsZero() {
+		return 0
+	}
+	elapsed := now.Sub(progress.startedAt).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+	return float64(progress.uploadedBytes) / elapsed
 }
 
 // CreateExportArtifactRemoteDownloadURL 为已上传到 S3/R2 的导出文件生成短期预签名下载链接。
