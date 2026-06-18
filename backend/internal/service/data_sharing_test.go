@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -193,6 +194,69 @@ type dataShareExportRepoStub struct {
 	items []DataShareSession
 }
 
+type dataShareExportObjectStoreStub struct {
+	mu            sync.Mutex
+	objects       map[string][]byte
+	presignedKeys []string
+	uploadErr     error
+}
+
+func newDataShareExportObjectStoreStub() *dataShareExportObjectStoreStub {
+	return &dataShareExportObjectStoreStub{objects: map[string][]byte{}}
+}
+
+func (s *dataShareExportObjectStoreStub) Upload(_ context.Context, key string, body io.Reader, _ string) (int64, error) {
+	if s.uploadErr != nil {
+		return 0, s.uploadErr
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	s.objects[key] = data
+	s.mu.Unlock()
+	return int64(len(data)), nil
+}
+
+func (s *dataShareExportObjectStoreStub) Download(_ context.Context, key string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, ok := s.objects[key]
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", key)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func (s *dataShareExportObjectStoreStub) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	delete(s.objects, key)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *dataShareExportObjectStoreStub) PresignURL(_ context.Context, key string, _ time.Duration) (string, error) {
+	s.mu.Lock()
+	s.presignedKeys = append(s.presignedKeys, key)
+	s.mu.Unlock()
+	return "https://download.example.test/" + key, nil
+}
+
+func (s *dataShareExportObjectStoreStub) HeadBucket(context.Context) error {
+	return nil
+}
+
+type dataSharePlainEncryptor struct{}
+
+func (dataSharePlainEncryptor) Encrypt(value string) (string, error) {
+	return "ENC:" + value, nil
+}
+
+func (dataSharePlainEncryptor) Decrypt(value string) (string, error) {
+	return strings.TrimPrefix(value, "ENC:"), nil
+}
+
 func (r *dataShareExportRepoStub) GetCaptureByTrajectoryIDWithPayload(context.Context, string) (*DataShareSession, error) {
 	panic("unexpected GetCaptureByTrajectoryIDWithPayload call")
 }
@@ -341,6 +405,49 @@ func (r *dataShareExportArtifactRepoStub) MarkFailed(_ context.Context, id int64
 	item.ErrorMessage = errorMessage
 	item.CompletedAt = &now
 	item.UpdatedAt = now
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkRemoteUploading(_ context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	item.RemoteStatus = DataShareExportArtifactRemoteStatusUploading
+	item.RemoteErrorMessage = ""
+	item.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkRemoteUploaded(_ context.Context, id int64, bucket string, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	now := time.Now()
+	item.RemoteStatus = DataShareExportArtifactRemoteStatusUploaded
+	item.RemoteBucket = bucket
+	item.RemoteKey = key
+	item.RemoteErrorMessage = ""
+	item.RemoteUploadedAt = &now
+	item.UpdatedAt = now
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkRemoteUploadFailed(_ context.Context, id int64, errorMessage string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	item.RemoteStatus = DataShareExportArtifactRemoteStatusFailed
+	item.RemoteErrorMessage = errorMessage
+	item.UpdatedAt = time.Now()
 	return nil
 }
 
@@ -4156,6 +4263,165 @@ func TestDataSharingService_CreateExportArtifactGeneratesDownloadableFile(t *tes
 	require.NoError(t, err)
 	require.Equal(t, completed.ID, opened.ID)
 	require.Contains(t, string(raw), "sess-artifact")
+}
+
+func TestDataSharingService_ExportArtifactRemoteConfigDefaultsAndSavesPrefix(t *testing.T) {
+	repo := &dataShareSettingRepoStub{values: map[string]string{}}
+	svc := NewDataSharingService(nil, repo)
+
+	cfg, err := svc.GetExportRemoteConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, defaultDataShareExportArtifactRemotePrefix, cfg.Prefix)
+
+	cfg, err = svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{Prefix: "/team/../data-sharing//exports/"})
+	require.NoError(t, err)
+	require.Equal(t, "team/data-sharing/exports", cfg.Prefix)
+	require.Equal(t, "team/data-sharing/exports", repo.values[SettingKeyDataSharingExportRemotePrefix])
+}
+
+func TestDataSharingService_UploadExportArtifactToRemoteAndPresignURL(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareExportObjectStoreStub()
+	factory := func(context.Context, *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	_, err := svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{Prefix: "exports/share"})
+	require.NoError(t, err)
+	storageCfg := BackupStorageConfig{
+		Type: BackupStorageTypeS3,
+		S3: BackupS3Config{
+			Bucket:          "bucket-a",
+			AccessKeyID:     "ak",
+			SecretAccessKey: "ENC:sk",
+			Region:          "auto",
+		},
+	}
+	storageData, err := json.Marshal(storageCfg)
+	require.NoError(t, err)
+	require.NoError(t, settingRepo.Set(context.Background(), settingKeyBackupStorageConfig, string(storageData)))
+
+	path := filepath.Join(svc.exportStorageDir, "artifact.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte(`{"ok":true}`+"\n"), 0644))
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:      DataShareExportArtifactStatusCompleted,
+		Filename:    "artifact.jsonl",
+		StoragePath: path,
+		Encoding:    string(DataShareExportEncodingJSONL),
+		FileSize:    12,
+	})
+	require.NoError(t, err)
+
+	uploaded, err := svc.UploadExportArtifactToRemote(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusUploaded, uploaded.RemoteStatus)
+	require.Equal(t, "bucket-a", uploaded.RemoteBucket)
+	require.Contains(t, uploaded.RemoteKey, "exports/share/")
+	require.Contains(t, uploaded.RemoteKey, "artifact.jsonl")
+	require.NotNil(t, uploaded.RemoteUploadedAt)
+	store.mu.Lock()
+	_, exists := store.objects[uploaded.RemoteKey]
+	store.mu.Unlock()
+	require.True(t, exists)
+
+	url, err := svc.CreateExportArtifactRemoteDownloadURL(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, "https://download.example.test/"+uploaded.RemoteKey, url)
+}
+
+func TestDataSharingService_UploadExportArtifactToRemoteUsesLegacyS3SecretFallback(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareExportObjectStoreStub()
+	var usedCfg BackupS3Config
+	factory := func(_ context.Context, cfg *BackupS3Config) (BackupObjectStore, error) {
+		usedCfg = *cfg
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	storageData, err := json.Marshal(BackupStorageConfig{
+		Type: BackupStorageTypeS3,
+		S3: BackupS3Config{
+			Bucket:      "new-bucket",
+			AccessKeyID: "new-ak",
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, settingRepo.Set(context.Background(), settingKeyBackupStorageConfig, string(storageData)))
+	legacyData, err := json.Marshal(BackupS3Config{
+		Bucket:          "old-bucket",
+		AccessKeyID:     "old-ak",
+		SecretAccessKey: "ENC:old-secret",
+	})
+	require.NoError(t, err)
+	require.NoError(t, settingRepo.Set(context.Background(), settingKeyBackupS3Config, string(legacyData)))
+	path := filepath.Join(svc.exportStorageDir, "artifact.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0644))
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:      DataShareExportArtifactStatusCompleted,
+		Filename:    "artifact.jsonl",
+		StoragePath: path,
+		Encoding:    string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+
+	uploaded, err := svc.UploadExportArtifactToRemote(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusUploaded, uploaded.RemoteStatus)
+	require.Equal(t, "new-bucket", uploaded.RemoteBucket)
+	require.Equal(t, "new-bucket", usedCfg.Bucket)
+	require.Equal(t, "new-ak", usedCfg.AccessKeyID)
+	require.Equal(t, "old-secret", usedCfg.SecretAccessKey)
+}
+
+func TestDataSharingService_UploadExportArtifactToRemoteRecordsFailure(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareExportObjectStoreStub()
+	store.uploadErr = errors.New("upload failed")
+	factory := func(context.Context, *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	storageData, err := json.Marshal(BackupStorageConfig{
+		Type: BackupStorageTypeS3,
+		S3: BackupS3Config{
+			Bucket:          "bucket-a",
+			AccessKeyID:     "ak",
+			SecretAccessKey: "ENC:sk",
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, settingRepo.Set(context.Background(), settingKeyBackupStorageConfig, string(storageData)))
+	path := filepath.Join(svc.exportStorageDir, "artifact.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0644))
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:      DataShareExportArtifactStatusCompleted,
+		Filename:    "artifact.jsonl",
+		StoragePath: path,
+		Encoding:    string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UploadExportArtifactToRemote(context.Background(), artifact.ID)
+	require.ErrorContains(t, err, "upload failed")
+	got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusFailed, got.RemoteStatus)
+	require.Contains(t, got.RemoteErrorMessage, "upload failed")
 }
 
 func TestDataSharingService_GenerateExportArtifactCleansFinalFileWhenMarkCompletedFails(t *testing.T) {

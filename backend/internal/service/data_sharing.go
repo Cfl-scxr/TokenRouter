@@ -283,23 +283,43 @@ const (
 	DataShareExportArtifactStatusDeleted   DataShareExportArtifactStatus = "deleted"
 )
 
-// DataShareExportArtifact 记录一次预生成导出文件任务及其本地文件元数据。
+// DataShareExportArtifactRemoteStatus 描述导出文件上传到远端对象存储的状态。
+type DataShareExportArtifactRemoteStatus string
+
+const (
+	DataShareExportArtifactRemoteStatusNotUploaded DataShareExportArtifactRemoteStatus = "not_uploaded"
+	DataShareExportArtifactRemoteStatusUploading   DataShareExportArtifactRemoteStatus = "uploading"
+	DataShareExportArtifactRemoteStatusUploaded    DataShareExportArtifactRemoteStatus = "uploaded"
+	DataShareExportArtifactRemoteStatusFailed      DataShareExportArtifactRemoteStatus = "failed"
+)
+
+// DataShareExportRemoteConfig 描述数据共享导出文件上传到 S3/R2 的独立配置。
+type DataShareExportRemoteConfig struct {
+	Prefix string `json:"prefix"`
+}
+
+// DataShareExportArtifact 记录一次预生成导出文件任务及其本地、远端文件元数据。
 type DataShareExportArtifact struct {
-	ID           int64                         `json:"id"`
-	Status       DataShareExportArtifactStatus `json:"status"`
-	Filename     string                        `json:"filename"`
-	StoragePath  string                        `json:"-"`
-	Encoding     string                        `json:"encoding"`
-	Filters      DataShareSessionFilters       `json:"filters"`
-	SessionCount int64                         `json:"session_count"`
-	FileSize     int64                         `json:"file_size"`
-	SHA256       string                        `json:"sha256"`
-	ErrorMessage string                        `json:"error_message"`
-	CreatedAt    time.Time                     `json:"created_at"`
-	StartedAt    *time.Time                    `json:"started_at,omitempty"`
-	CompletedAt  *time.Time                    `json:"completed_at,omitempty"`
-	DeletedAt    *time.Time                    `json:"deleted_at,omitempty"`
-	UpdatedAt    time.Time                     `json:"updated_at"`
+	ID                 int64                               `json:"id"`
+	Status             DataShareExportArtifactStatus       `json:"status"`
+	Filename           string                              `json:"filename"`
+	StoragePath        string                              `json:"-"`
+	Encoding           string                              `json:"encoding"`
+	Filters            DataShareSessionFilters             `json:"filters"`
+	SessionCount       int64                               `json:"session_count"`
+	FileSize           int64                               `json:"file_size"`
+	SHA256             string                              `json:"sha256"`
+	ErrorMessage       string                              `json:"error_message"`
+	RemoteStatus       DataShareExportArtifactRemoteStatus `json:"remote_status"`
+	RemoteBucket       string                              `json:"remote_bucket"`
+	RemoteKey          string                              `json:"remote_key"`
+	RemoteErrorMessage string                              `json:"remote_error_message"`
+	RemoteUploadedAt   *time.Time                          `json:"remote_uploaded_at,omitempty"`
+	CreatedAt          time.Time                           `json:"created_at"`
+	StartedAt          *time.Time                          `json:"started_at,omitempty"`
+	CompletedAt        *time.Time                          `json:"completed_at,omitempty"`
+	DeletedAt          *time.Time                          `json:"deleted_at,omitempty"`
+	UpdatedAt          time.Time                           `json:"updated_at"`
 }
 
 // DataShareExportArtifactCreateInput 是创建预生成导出任务的输入。
@@ -317,6 +337,9 @@ type DataShareExportArtifactRepository interface {
 	MarkRunning(ctx context.Context, id int64) error
 	MarkCompleted(ctx context.Context, id int64, storagePath string, sessionCount int64, fileSize int64, sha256 string) error
 	MarkFailed(ctx context.Context, id int64, errorMessage string) error
+	MarkRemoteUploading(ctx context.Context, id int64) error
+	MarkRemoteUploaded(ctx context.Context, id int64, bucket string, key string) error
+	MarkRemoteUploadFailed(ctx context.Context, id int64, errorMessage string) error
 	// MarkInterruptedFailed 将服务启动前遗留且无人继续处理的任务标记为失败。
 	MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error)
 	MarkDeleted(ctx context.Context, id int64) error
@@ -461,6 +484,8 @@ type DataSharingService struct {
 	exportArtifactRepo       DataShareExportArtifactRepository
 	settingRepo              SettingRepository
 	exportStorageDir         string
+	exportObjectStoreFactory BackupObjectStoreFactory
+	exportSecretEncryptor    SecretEncryptor
 	captureWorker            *DataSharingCaptureWorkerPool
 	captureBuffer            *DataSharingCaptureBuffer
 	captureDurations         *dataShareCaptureDurationRecorder
@@ -515,4 +540,13 @@ func (s *DataSharingService) SetExportStorageDir(dir string) {
 		return
 	}
 	s.exportStorageDir = strings.TrimSpace(dir)
+}
+
+// SetExportObjectStoreDeps 注入数据共享导出上传 S3/R2 所需的对象存储依赖。
+func (s *DataSharingService) SetExportObjectStoreDeps(factory BackupObjectStoreFactory, encryptor SecretEncryptor) {
+	if s == nil {
+		return
+	}
+	s.exportObjectStoreFactory = factory
+	s.exportSecretEncryptor = encryptor
 }

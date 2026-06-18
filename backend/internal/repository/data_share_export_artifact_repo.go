@@ -36,7 +36,8 @@ func (r *dataShareExportArtifactRepository) Create(ctx context.Context, artifact
 		INSERT INTO data_share_export_artifacts (status, filename, encoding, filters)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, status, filename, storage_path, encoding, filters, session_count, file_size, sha256,
-			error_message, created_at, started_at, completed_at, deleted_at, updated_at
+			error_message, remote_status, remote_bucket, remote_key, remote_error_message, remote_uploaded_at,
+			created_at, started_at, completed_at, deleted_at, updated_at
 	`, artifact.Status, artifact.Filename, artifact.Encoding, filters)
 	return scanDataShareExportArtifact(row)
 }
@@ -50,7 +51,8 @@ func (r *dataShareExportArtifactRepository) Get(ctx context.Context, id int64) (
 	}
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, status, filename, storage_path, encoding, filters, session_count, file_size, sha256,
-			error_message, created_at, started_at, completed_at, deleted_at, updated_at
+			error_message, remote_status, remote_bucket, remote_key, remote_error_message, remote_uploaded_at,
+			created_at, started_at, completed_at, deleted_at, updated_at
 		FROM data_share_export_artifacts
 		WHERE id = $1
 	`, id)
@@ -74,7 +76,8 @@ func (r *dataShareExportArtifactRepository) List(ctx context.Context, params pag
 	}
 	query := fmt.Sprintf(`
 		SELECT id, status, filename, storage_path, encoding, filters, session_count, file_size, sha256,
-			error_message, created_at, started_at, completed_at, deleted_at, updated_at
+			error_message, remote_status, remote_bucket, remote_key, remote_error_message, remote_uploaded_at,
+			created_at, started_at, completed_at, deleted_at, updated_at
 		FROM data_share_export_artifacts
 		ORDER BY %s %s, id DESC
 		LIMIT $1 OFFSET $2
@@ -131,6 +134,35 @@ func (r *dataShareExportArtifactRepository) MarkFailed(ctx context.Context, id i
 	`, id, errorMessage)
 }
 
+func (r *dataShareExportArtifactRepository) MarkRemoteUploading(ctx context.Context, id int64) error {
+	return r.execArtifactUpdate(ctx, `
+		UPDATE data_share_export_artifacts
+		SET remote_status = 'uploading', remote_error_message = '', updated_at = NOW()
+		WHERE id = $1 AND status = 'completed' AND remote_status <> 'uploading'
+	`, id)
+}
+
+func (r *dataShareExportArtifactRepository) MarkRemoteUploaded(ctx context.Context, id int64, bucket string, key string) error {
+	return r.execArtifactUpdate(ctx, `
+		UPDATE data_share_export_artifacts
+		SET remote_status = 'uploaded', remote_bucket = $2, remote_key = $3, remote_error_message = '',
+			remote_uploaded_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND status = 'completed'
+	`, id, strings.TrimSpace(bucket), strings.TrimSpace(key))
+}
+
+func (r *dataShareExportArtifactRepository) MarkRemoteUploadFailed(ctx context.Context, id int64, errorMessage string) error {
+	errorMessage = strings.TrimSpace(errorMessage)
+	if len(errorMessage) > 4000 {
+		errorMessage = errorMessage[:4000]
+	}
+	return r.execArtifactUpdate(ctx, `
+		UPDATE data_share_export_artifacts
+		SET remote_status = 'failed', remote_error_message = $2, updated_at = NOW()
+		WHERE id = $1 AND status <> 'deleted'
+	`, id, errorMessage)
+}
+
 func (r *dataShareExportArtifactRepository) MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error) {
 	if r == nil || r.db == nil {
 		return 0, service.ErrDataShareExportArtifactStorageInvalid
@@ -182,12 +214,14 @@ type dataShareExportArtifactScanner interface {
 
 func scanDataShareExportArtifact(scanner dataShareExportArtifactScanner) (*service.DataShareExportArtifact, error) {
 	var (
-		item        service.DataShareExportArtifact
-		status      string
-		filtersJSON []byte
-		startedAt   sql.NullTime
-		completedAt sql.NullTime
-		deletedAt   sql.NullTime
+		item             service.DataShareExportArtifact
+		status           string
+		remoteStatus     string
+		filtersJSON      []byte
+		startedAt        sql.NullTime
+		completedAt      sql.NullTime
+		deletedAt        sql.NullTime
+		remoteUploadedAt sql.NullTime
 	)
 	err := scanner.Scan(
 		&item.ID,
@@ -200,6 +234,11 @@ func scanDataShareExportArtifact(scanner dataShareExportArtifactScanner) (*servi
 		&item.FileSize,
 		&item.SHA256,
 		&item.ErrorMessage,
+		&remoteStatus,
+		&item.RemoteBucket,
+		&item.RemoteKey,
+		&item.RemoteErrorMessage,
+		&remoteUploadedAt,
 		&item.CreatedAt,
 		&startedAt,
 		&completedAt,
@@ -213,6 +252,10 @@ func scanDataShareExportArtifact(scanner dataShareExportArtifactScanner) (*servi
 		return nil, err
 	}
 	item.Status = service.DataShareExportArtifactStatus(status)
+	item.RemoteStatus = service.DataShareExportArtifactRemoteStatus(remoteStatus)
+	if item.RemoteStatus == "" {
+		item.RemoteStatus = service.DataShareExportArtifactRemoteStatusNotUploaded
+	}
 	if len(filtersJSON) > 0 {
 		if err := json.Unmarshal(filtersJSON, &item.Filters); err != nil {
 			return nil, err
@@ -226,6 +269,9 @@ func scanDataShareExportArtifact(scanner dataShareExportArtifactScanner) (*servi
 	}
 	if deletedAt.Valid {
 		item.DeletedAt = &deletedAt.Time
+	}
+	if remoteUploadedAt.Valid {
+		item.RemoteUploadedAt = &remoteUploadedAt.Time
 	}
 	return &item, nil
 }

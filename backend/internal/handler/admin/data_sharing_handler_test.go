@@ -129,6 +129,43 @@ func (r *adminDataShareExportArtifactRepoStub) MarkFailed(_ context.Context, id 
 	return service.ErrDataShareExportArtifactNotFound
 }
 
+func (r *adminDataShareExportArtifactRepoStub) MarkRemoteUploading(_ context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if item := r.items[id]; item != nil {
+		item.RemoteStatus = service.DataShareExportArtifactRemoteStatusUploading
+		item.RemoteErrorMessage = ""
+		return nil
+	}
+	return service.ErrDataShareExportArtifactNotFound
+}
+
+func (r *adminDataShareExportArtifactRepoStub) MarkRemoteUploaded(_ context.Context, id int64, bucket string, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if item := r.items[id]; item != nil {
+		now := time.Now()
+		item.RemoteStatus = service.DataShareExportArtifactRemoteStatusUploaded
+		item.RemoteBucket = bucket
+		item.RemoteKey = key
+		item.RemoteUploadedAt = &now
+		item.RemoteErrorMessage = ""
+		return nil
+	}
+	return service.ErrDataShareExportArtifactNotFound
+}
+
+func (r *adminDataShareExportArtifactRepoStub) MarkRemoteUploadFailed(_ context.Context, id int64, errorMessage string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if item := r.items[id]; item != nil {
+		item.RemoteStatus = service.DataShareExportArtifactRemoteStatusFailed
+		item.RemoteErrorMessage = errorMessage
+		return nil
+	}
+	return service.ErrDataShareExportArtifactNotFound
+}
+
 func (r *adminDataShareExportArtifactRepoStub) MarkInterruptedFailed(context.Context, string) (int64, error) {
 	return 0, nil
 }
@@ -202,7 +239,8 @@ func TestCreateSessionExportArtifactReturnsJSONFilename(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &adminDataShareSettingRepoStub{values: map[string]string{}}
 	svc := service.NewDataSharingService(nil, repo)
-	svc.SetExportArtifactRepository(&adminDataShareExportArtifactRepoStub{})
+	artifactRepo := &adminDataShareExportArtifactRepoStub{}
+	svc.SetExportArtifactRepository(artifactRepo)
 	svc.SetExportStorageDir(t.TempDir())
 	h := NewDataSharingHandler(svc)
 
@@ -223,6 +261,10 @@ func TestCreateSessionExportArtifactReturnsJSONFilename(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
 	require.Equal(t, "admin-data-sharing-session-7.json", envelope.Data.Filename)
 	require.Equal(t, string(service.DataShareExportEncodingJSON), envelope.Data.Encoding)
+	require.Eventually(t, func() bool {
+		item, err := artifactRepo.Get(context.Background(), 1)
+		return err == nil && item.Status == service.DataShareExportArtifactStatusFailed
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestDataShareStorageLimitHandlers(t *testing.T) {

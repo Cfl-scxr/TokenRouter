@@ -118,6 +118,8 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataSharing.PUT("/storage-limit", h.Admin.DataSharing.UpdateStorageLimit)
 		dataSharing.GET("/runtime-settings", h.Admin.DataSharing.GetCaptureRuntimeSettings)
 		dataSharing.PUT("/runtime-settings", h.Admin.DataSharing.UpdateCaptureRuntimeSettings)
+		dataSharing.GET("/export-remote-config", h.Admin.DataSharing.GetExportRemoteConfig)
+		dataSharing.PUT("/export-remote-config", h.Admin.DataSharing.UpdateExportRemoteConfig)
 		dataSharing.GET("/filter-options", h.Admin.DataSharing.FilterOptions)
 		dataSharing.GET("/sessions", h.Admin.DataSharing.ListSessions)
 		dataSharing.GET("/sessions/:id", h.Admin.DataSharing.GetSession)
@@ -128,6 +130,8 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataSharing.POST("/exports", h.Admin.DataSharing.CreateExportArtifact)
 		dataSharing.GET("/exports/:id", h.Admin.DataSharing.GetExportArtifact)
 		dataSharing.POST("/exports/:id/download-ticket", h.Admin.DataSharing.CreateExportArtifactDownloadTicket)
+		dataSharing.POST("/exports/:id/upload", h.Admin.DataSharing.UploadExportArtifact)
+		dataSharing.GET("/exports/:id/download-url", h.Admin.DataSharing.GetExportArtifactRemoteDownloadURL)
 		dataSharing.DELETE("/exports/:id", h.Admin.DataSharing.DeleteExportArtifact)
 		dataSharing.GET("/stats", h.Admin.DataSharing.Stats)
 	}

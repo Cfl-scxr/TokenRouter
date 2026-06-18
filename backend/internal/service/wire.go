@@ -565,10 +565,13 @@ func ProvideDataSharingService(
 	settingRepo SettingRepository,
 	captureWorker *DataSharingCaptureWorkerPool,
 	cfg *config.Config,
+	storeFactory BackupObjectStoreFactory,
+	encryptor SecretEncryptor,
 ) *DataSharingService {
 	svc := NewDataSharingService(repo, settingRepo, captureWorker)
 	svc.SetExportArtifactRepository(exportArtifactRepo)
 	svc.SetExportStorageDir(resolveDataShareExportStorageDir(cfg))
+	svc.SetExportObjectStoreDeps(storeFactory, encryptor)
 	if recovered, err := svc.RecoverInterruptedExportArtifacts(context.Background()); err != nil {
 		logger.LegacyPrintf("service.data_sharing", "recover interrupted export artifacts failed: %v", err)
 	} else if recovered > 0 {

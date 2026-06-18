@@ -846,12 +846,26 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">导出文件</h2>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可直接下载，失败或不再需要的文件可手动删除。</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可下载，也可上传到复用备份配置的 S3/R2 存储桶。</p>
             </div>
-            <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading" @click="loadExportArtifacts">
-              <Icon name="refresh" size="sm" :class="exportArtifactsLoading ? 'animate-spin' : ''" />
-              <span class="ml-1">刷新</span>
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-2">
+                <label class="text-xs font-medium text-gray-500 dark:text-gray-400" for="data-share-export-remote-prefix">远端前缀</label>
+                <input
+                  id="data-share-export-remote-prefix"
+                  v-model="exportRemotePrefix"
+                  class="input h-9 w-56 text-sm"
+                  placeholder="data-sharing-exports"
+                />
+                <button class="btn btn-secondary btn-sm" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
+                  保存
+                </button>
+              </div>
+              <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading" @click="loadExportArtifacts">
+                <Icon name="refresh" size="sm" :class="exportArtifactsLoading ? 'animate-spin' : ''" />
+                <span class="ml-1">刷新</span>
+              </button>
+            </div>
           </div>
         </div>
         <DataTable :columns="exportArtifactColumns" :data="exportArtifacts" :loading="exportArtifactsLoading">
@@ -867,6 +881,25 @@
           </template>
           <template #cell-session_count="{ value }">{{ formatNumber(value) }}</template>
           <template #cell-file_size="{ value }">{{ formatBytes(value) }}</template>
+          <template #cell-remote_status="{ row }">
+            <div class="max-w-xs">
+              <span :class="['badge', exportArtifactRemoteStatusBadgeClass(row.remote_status)]">{{ exportArtifactRemoteStatusLabel(row.remote_status) }}</span>
+              <div v-if="row.remote_key" class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <span class="truncate" :title="`${row.remote_bucket}/${row.remote_key}`">{{ row.remote_bucket }}/{{ row.remote_key }}</span>
+                <button
+                  class="btn btn-ghost btn-xs shrink-0"
+                  type="button"
+                  title="复制远端对象 key"
+                  @click="copyRemoteKey(row)"
+                >
+                  <Icon name="copy" size="xs" />
+                </button>
+              </div>
+              <p v-else-if="row.remote_error_message" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="row.remote_error_message">
+                {{ row.remote_error_message }}
+              </p>
+            </div>
+          </template>
           <template #cell-created_at="{ value }">{{ formatDate(value) }}</template>
           <template #cell-completed_at="{ value }">{{ formatDate(value) }}</template>
           <template #cell-actions="{ row }">
@@ -874,6 +907,22 @@
               <button class="btn btn-ghost btn-sm" :disabled="row.status !== 'completed'" @click="downloadExportArtifact(row)">
                 <Icon name="download" size="sm" class="mr-1" />
                 下载
+              </button>
+              <button
+                class="btn btn-ghost btn-sm"
+                :disabled="row.status !== 'completed' || row.remote_status === 'uploading'"
+                @click="uploadExportArtifact(row)"
+              >
+                <Icon name="upload" size="sm" class="mr-1" />
+                {{ row.remote_status === 'uploaded' ? '重新上传' : '上传' }}
+              </button>
+              <button
+                class="btn btn-ghost btn-sm"
+                :disabled="row.remote_status !== 'uploaded'"
+                @click="downloadRemoteExportArtifact(row)"
+              >
+                <Icon name="externalLink" size="sm" class="mr-1" />
+                远端下载
               </button>
               <button
                 class="btn btn-ghost btn-sm text-red-600 hover:text-red-700"
@@ -1063,6 +1112,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
+import { useClipboard } from '@/composables/useClipboard'
 import {
   adminDataSharingAPI,
   type AdminDataShareSessionFilters,
@@ -1083,6 +1133,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 const appStore = useAppStore()
 const { t, te } = useI18n()
 const { balanceUnitName, formatBalanceAmount } = useBalanceDisplay()
+const { copyToClipboard } = useClipboard()
 
 const notice = ref<DataShareNotice | null>(null)
 const noticeContent = ref('')
@@ -1152,6 +1203,7 @@ const savingSkipRules = ref(false)
 const storageLimitLoading = ref(false)
 const savingStorageLimit = ref(false)
 const savingCaptureRuntimeSettings = ref(false)
+const savingExportRemoteConfig = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -1161,6 +1213,7 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const exportArtifactPagination = reactive({ page: 1, page_size: 10, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const exportArtifacts = ref<DataShareExportArtifact[]>([])
+const exportRemotePrefix = ref('data-sharing-exports')
 const filters = reactive({
   search: '',
   user_name: '',
@@ -1312,6 +1365,7 @@ const exportArtifactColumns: Column[] = [
   { key: 'filename', label: '文件' },
   { key: 'session_count', label: 'Session' },
   { key: 'file_size', label: '大小' },
+  { key: 'remote_status', label: 'S3/R2' },
   { key: 'created_at', label: '创建时间' },
   { key: 'completed_at', label: '完成时间' },
   { key: 'actions', label: '操作' }
@@ -1899,6 +1953,28 @@ async function loadCaptureRuntimeSettings() {
     applyCaptureRuntimeSettingsToForm(await adminDataSharingAPI.getRuntimeSettings())
   } catch (error) {
     appStore.showError('加载采集 Worker 配置失败')
+  }
+}
+
+async function loadExportRemoteConfig() {
+  try {
+    const cfg = await adminDataSharingAPI.getExportRemoteConfig()
+    exportRemotePrefix.value = cfg.prefix || 'data-sharing-exports'
+  } catch (error) {
+    appStore.showError('加载远端上传配置失败')
+  }
+}
+
+async function saveExportRemoteConfig() {
+  savingExportRemoteConfig.value = true
+  try {
+    const cfg = await adminDataSharingAPI.updateExportRemoteConfig({ prefix: exportRemotePrefix.value })
+    exportRemotePrefix.value = cfg.prefix || 'data-sharing-exports'
+    appStore.showSuccess('远端上传配置已保存')
+  } catch (error) {
+    appStore.showError('保存远端上传配置失败')
+  } finally {
+    savingExportRemoteConfig.value = false
   }
 }
 
@@ -2525,6 +2601,42 @@ async function downloadExportArtifact(row: DataShareExportArtifact) {
   }
 }
 
+async function uploadExportArtifact(row: DataShareExportArtifact) {
+  try {
+    const artifact = await adminDataSharingAPI.uploadExportArtifact(row.id)
+    replaceExportArtifact(artifact)
+    appStore.showSuccess('上传已完成')
+  } catch (error) {
+    appStore.showError('上传到 S3/R2 失败')
+    await loadExportArtifacts()
+  }
+}
+
+async function downloadRemoteExportArtifact(row: DataShareExportArtifact) {
+  try {
+    const result = await adminDataSharingAPI.getExportArtifactRemoteDownloadURL(row.id)
+    if (result.url) {
+      window.open(result.url, '_blank', 'noopener')
+    }
+  } catch (error) {
+    appStore.showError('远端下载链接生成失败')
+  }
+}
+
+function replaceExportArtifact(artifact: DataShareExportArtifact) {
+  const idx = exportArtifacts.value.findIndex(item => item.id === artifact.id)
+  if (idx >= 0) {
+    exportArtifacts.value.splice(idx, 1, artifact)
+  } else {
+    exportArtifacts.value.unshift(artifact)
+  }
+}
+
+function copyRemoteKey(row: DataShareExportArtifact) {
+  if (!row.remote_key) return
+  copyToClipboard(row.remote_key, '远端对象 key 已复制')
+}
+
 async function deleteExportArtifact(row: DataShareExportArtifact) {
   if (!window.confirm(`确定删除导出文件 ${row.filename} 吗？`)) return
   try {
@@ -2779,6 +2891,20 @@ function exportArtifactStatusBadgeClass(value?: string) {
   return 'badge-gray'
 }
 
+function exportArtifactRemoteStatusLabel(value?: string) {
+  if (value === 'uploading') return '上传中'
+  if (value === 'uploaded') return '已上传'
+  if (value === 'failed') return '上传失败'
+  return '未上传'
+}
+
+function exportArtifactRemoteStatusBadgeClass(value?: string) {
+  if (value === 'uploaded') return 'badge-success'
+  if (value === 'uploading') return 'badge-warning'
+  if (value === 'failed') return 'badge-danger'
+  return 'badge-gray'
+}
+
 function formatBytes(value?: number | null) {
   const bytes = value || 0
   if (bytes < 1024) return `${bytes} B`
@@ -2801,6 +2927,7 @@ onMounted(() => {
   loadNotice()
   loadSkipRules()
   loadCaptureRuntimeSettings()
+  loadExportRemoteConfig()
   refreshAll()
   if (statsAutoRefreshEnabled.value) restartStatsAutoRefresh()
 })

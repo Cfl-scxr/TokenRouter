@@ -158,6 +158,11 @@ export interface DataShareStats {
 }
 
 export type DataShareExportArtifactStatus = 'pending' | 'running' | 'completed' | 'failed' | 'deleted'
+export type DataShareExportArtifactRemoteStatus = 'not_uploaded' | 'uploading' | 'uploaded' | 'failed'
+
+export interface DataShareExportRemoteConfig {
+  prefix: string
+}
 
 export interface DataShareExportArtifact {
   id: number
@@ -168,6 +173,11 @@ export interface DataShareExportArtifact {
   file_size: number
   sha256: string
   error_message: string
+  remote_status: DataShareExportArtifactRemoteStatus
+  remote_bucket: string
+  remote_key: string
+  remote_error_message: string
+  remote_uploaded_at?: string | null
   created_at: string
   started_at?: string | null
   completed_at?: string | null
@@ -244,6 +254,16 @@ export async function updateRuntimeSettings(settings: DataShareCaptureRuntimeSet
   return data
 }
 
+export async function getExportRemoteConfig(): Promise<DataShareExportRemoteConfig> {
+  const { data } = await apiClient.get<DataShareExportRemoteConfig>('/admin/data-sharing/export-remote-config')
+  return data
+}
+
+export async function updateExportRemoteConfig(config: DataShareExportRemoteConfig): Promise<DataShareExportRemoteConfig> {
+  const { data } = await apiClient.put<DataShareExportRemoteConfig>('/admin/data-sharing/export-remote-config', config)
+  return data
+}
+
 export async function listSessions(
   page = 1,
   pageSize = 20,
@@ -309,6 +329,16 @@ export async function createExportArtifactDownloadTicket(id: number): Promise<Da
   return data
 }
 
+export async function uploadExportArtifact(id: number): Promise<DataShareExportArtifact> {
+  const { data } = await apiClient.post<DataShareExportArtifact>(`/admin/data-sharing/exports/${id}/upload`)
+  return data
+}
+
+export async function getExportArtifactRemoteDownloadURL(id: number): Promise<{ url: string }> {
+  const { data } = await apiClient.get<{ url: string }>(`/admin/data-sharing/exports/${id}/download-url`)
+  return data
+}
+
 export async function deleteExportArtifact(id: number): Promise<{ deleted: boolean }> {
   const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/data-sharing/exports/${id}`)
   return data
@@ -330,6 +360,8 @@ export const adminDataSharingAPI = {
   updateStorageLimit,
   getRuntimeSettings,
   updateRuntimeSettings,
+  getExportRemoteConfig,
+  updateExportRemoteConfig,
   listSessions,
   getFilterOptions,
   getSession,
@@ -339,6 +371,8 @@ export const adminDataSharingAPI = {
   createSessionExportArtifact,
   listExportArtifacts,
   createExportArtifactDownloadTicket,
+  uploadExportArtifact,
+  getExportArtifactRemoteDownloadURL,
   deleteExportArtifact,
   getStats
 }

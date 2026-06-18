@@ -53,6 +53,11 @@ type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 	DurationWindowSize     int    `json:"duration_window_size"`
 }
 
+// UpdateDataShareExportRemoteConfigRequest 是管理端更新导出远端上传配置的请求。
+type UpdateDataShareExportRemoteConfigRequest struct {
+	Prefix string `json:"prefix"`
+}
+
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
 type BatchDeleteDataShareSessionsRequest struct {
 	IDs []int64 `json:"ids"`
@@ -107,19 +112,24 @@ type adminDataShareExportTicketResponse struct {
 }
 
 type adminDataShareExportArtifactResponse struct {
-	ID           int64      `json:"id"`
-	Status       string     `json:"status"`
-	Filename     string     `json:"filename"`
-	Encoding     string     `json:"encoding"`
-	SessionCount int64      `json:"session_count"`
-	FileSize     int64      `json:"file_size"`
-	SHA256       string     `json:"sha256"`
-	ErrorMessage string     `json:"error_message"`
-	CreatedAt    time.Time  `json:"created_at"`
-	StartedAt    *time.Time `json:"started_at,omitempty"`
-	CompletedAt  *time.Time `json:"completed_at,omitempty"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID                 int64      `json:"id"`
+	Status             string     `json:"status"`
+	Filename           string     `json:"filename"`
+	Encoding           string     `json:"encoding"`
+	SessionCount       int64      `json:"session_count"`
+	FileSize           int64      `json:"file_size"`
+	SHA256             string     `json:"sha256"`
+	ErrorMessage       string     `json:"error_message"`
+	RemoteStatus       string     `json:"remote_status"`
+	RemoteBucket       string     `json:"remote_bucket"`
+	RemoteKey          string     `json:"remote_key"`
+	RemoteErrorMessage string     `json:"remote_error_message"`
+	RemoteUploadedAt   *time.Time `json:"remote_uploaded_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 // GetNotice 返回当前数据共享须知。
@@ -231,6 +241,33 @@ func (h *DataSharingHandler) UpdateCaptureRuntimeSettings(c *gin.Context) {
 		return
 	}
 	response.Success(c, settings)
+}
+
+// GetExportRemoteConfig 返回数据共享导出上传 S3/R2 的独立配置。
+func (h *DataSharingHandler) GetExportRemoteConfig(c *gin.Context) {
+	cfg, err := h.dataSharingService.GetExportRemoteConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateExportRemoteConfig 保存数据共享导出上传 S3/R2 的独立配置。
+func (h *DataSharingHandler) UpdateExportRemoteConfig(c *gin.Context) {
+	var req UpdateDataShareExportRemoteConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	cfg, err := h.dataSharingService.UpdateExportRemoteConfig(c.Request.Context(), service.DataShareExportRemoteConfig{
+		Prefix: req.Prefix,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
 }
 
 // ListSessions 查询所有数据共享 session。
@@ -422,6 +459,36 @@ func (h *DataSharingHandler) CreateExportArtifactDownloadTicket(c *gin.Context) 
 		return
 	}
 	response.Success(c, adminDataShareExportTicketToResponse(ticket))
+}
+
+// UploadExportArtifact 将已完成的本地导出文件上传到 S3/R2。
+func (h *DataSharingHandler) UploadExportArtifact(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	artifact, err := h.dataSharingService.UploadExportArtifactToRemote(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, adminDataShareExportArtifactToResponse(artifact))
+}
+
+// GetExportArtifactRemoteDownloadURL 为已上传到 S3/R2 的导出文件签发预签名下载链接。
+func (h *DataSharingHandler) GetExportArtifactRemoteDownloadURL(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	url, err := h.dataSharingService.CreateExportArtifactRemoteDownloadURL(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"url": url})
 }
 
 // DeleteExportArtifact 删除预生成导出文件。
@@ -683,19 +750,24 @@ func adminDataShareExportArtifactToResponse(artifact *service.DataShareExportArt
 		return adminDataShareExportArtifactResponse{}
 	}
 	return adminDataShareExportArtifactResponse{
-		ID:           artifact.ID,
-		Status:       string(artifact.Status),
-		Filename:     artifact.Filename,
-		Encoding:     artifact.Encoding,
-		SessionCount: artifact.SessionCount,
-		FileSize:     artifact.FileSize,
-		SHA256:       artifact.SHA256,
-		ErrorMessage: artifact.ErrorMessage,
-		CreatedAt:    artifact.CreatedAt,
-		StartedAt:    artifact.StartedAt,
-		CompletedAt:  artifact.CompletedAt,
-		DeletedAt:    artifact.DeletedAt,
-		UpdatedAt:    artifact.UpdatedAt,
+		ID:                 artifact.ID,
+		Status:             string(artifact.Status),
+		Filename:           artifact.Filename,
+		Encoding:           artifact.Encoding,
+		SessionCount:       artifact.SessionCount,
+		FileSize:           artifact.FileSize,
+		SHA256:             artifact.SHA256,
+		ErrorMessage:       artifact.ErrorMessage,
+		RemoteStatus:       string(artifact.RemoteStatus),
+		RemoteBucket:       artifact.RemoteBucket,
+		RemoteKey:          artifact.RemoteKey,
+		RemoteErrorMessage: artifact.RemoteErrorMessage,
+		RemoteUploadedAt:   artifact.RemoteUploadedAt,
+		CreatedAt:          artifact.CreatedAt,
+		StartedAt:          artifact.StartedAt,
+		CompletedAt:        artifact.CompletedAt,
+		DeletedAt:          artifact.DeletedAt,
+		UpdatedAt:          artifact.UpdatedAt,
 	}
 }
 
