@@ -448,9 +448,10 @@ func (h *DataSharingHandler) DownloadExportArtifact(c *gin.Context) {
 	defer func() { _ = body.Close() }()
 	encoding := service.DataShareExportEncoding(artifact.Encoding)
 	contentType := "application/octet-stream"
-	if encoding == service.DataShareExportEncodingJSON {
+	switch encoding {
+	case service.DataShareExportEncodingJSON:
 		contentType = "application/json"
-	} else if encoding == service.DataShareExportEncodingJSONL {
+	case service.DataShareExportEncodingJSONL:
 		contentType = "application/x-ndjson"
 	}
 	c.Header("Content-Type", contentType)
@@ -460,7 +461,7 @@ func (h *DataSharingHandler) DownloadExportArtifact(c *gin.Context) {
 		c.Header("Content-Length", strconv.FormatInt(artifact.FileSize, 10))
 	}
 	if _, err := io.Copy(c.Writer, body); err != nil {
-		c.Error(err)
+		_ = c.Error(err)
 	}
 }
 
