@@ -3,7 +3,6 @@ package admin
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/klauspost/compress/zstd"
 )
 
 // DataSharingHandler 处理管理端数据共享须知、session 管理、导出和统计。
@@ -328,50 +326,6 @@ func (h *DataSharingHandler) BatchDeleteSessions(c *gin.Context) {
 	response.Success(c, gin.H{"deleted": affected})
 }
 
-// CreateExportTicket 按筛选条件签发管理端数据共享下载票据。
-func (h *DataSharingHandler) CreateExportTicket(c *gin.Context) {
-	filters, ok := parseAdminDataShareFilters(c)
-	if !ok {
-		return
-	}
-	if filters.SelectAll {
-		filters.IDs = nil
-	} else if len(filters.IDs) == 0 {
-		response.BadRequest(c, "ids or select_all is required")
-		return
-	}
-	ticket, err := h.dataSharingService.CreateExportTicket(c.Request.Context(), service.DataShareExportTicketRequest{
-		Scope:    service.DataShareExportScopeAdmin,
-		Filters:  filters,
-		Filename: fmt.Sprintf("admin-data-sharing-%s", time.Now().Format("20060102-150405")),
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, adminDataShareExportTicketToResponse(ticket))
-}
-
-// CreateSessionExportTicket 为管理端单条 session 签发未压缩 JSON 下载票据。
-func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
-	id, err := parseAdminDataShareIDParam(c)
-	if err != nil {
-		response.BadRequest(c, "Invalid session ID")
-		return
-	}
-	ticket, err := h.dataSharingService.CreateExportTicket(c.Request.Context(), service.DataShareExportTicketRequest{
-		Scope:    service.DataShareExportScopeAdmin,
-		Filters:  service.DataShareSessionFilters{IDs: []int64{id}},
-		Filename: fmt.Sprintf("admin-data-sharing-session-%d", id),
-		Encoding: service.DataShareExportEncodingJSON,
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, adminDataShareExportTicketToResponse(ticket))
-}
-
 // CreateExportArtifact 按筛选条件创建预生成导出文件任务。
 func (h *DataSharingHandler) CreateExportArtifact(c *gin.Context) {
 	filters, ok := parseAdminDataShareFilters(c)
@@ -508,30 +462,6 @@ func (h *DataSharingHandler) DownloadExportArtifact(c *gin.Context) {
 	if _, err := io.Copy(c.Writer, body); err != nil {
 		c.Error(err)
 	}
-}
-
-// DownloadExport 使用短期票据下载 JSONL 或 zstd 压缩后的 JSONL。
-func (h *DataSharingHandler) DownloadExport(c *gin.Context) {
-	claims, err := h.dataSharingService.ParseExportTicket(c.Request.Context(), service.DataShareExportScopeAdmin, strings.TrimSpace(c.Query("ticket")))
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if claims.Encoding == service.DataShareExportEncodingJSON {
-		writeAdminDataSharePlainJSON(c, claims.Filename, func() error {
-			return h.dataSharingService.ExportJSONL(c.Request.Context(), c.Writer, claims.Filters, false)
-		})
-		return
-	}
-	if claims.Encoding == service.DataShareExportEncodingJSONL {
-		writeAdminDataSharePlainJSONL(c, claims.Filename, func() error {
-			return h.dataSharingService.ExportJSONL(c.Request.Context(), c.Writer, claims.Filters, false)
-		})
-		return
-	}
-	writeAdminDataShareZstdJSONL(c, claims.Filename, func(zw *zstd.Encoder) error {
-		return h.dataSharingService.ExportJSONL(c.Request.Context(), zw, claims.Filters, false)
-	})
 }
 
 // Stats 返回管理端数据共享统计和图表数据。
@@ -765,60 +695,6 @@ func adminDataShareExportArtifactToResponse(artifact *service.DataShareExportArt
 		CompletedAt:  artifact.CompletedAt,
 		DeletedAt:    artifact.DeletedAt,
 		UpdatedAt:    artifact.UpdatedAt,
-	}
-}
-
-func writeAdminDataSharePlainJSON(c *gin.Context, filename string, write func() error) {
-	if filename == "" {
-		filename = fmt.Sprintf("admin-data-sharing-%s.json", time.Now().Format("20060102-150405"))
-	}
-	c.Header("Content-Type", "application/json; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Header("Cache-Control", "no-store")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	if err := write(); err != nil {
-		_ = c.Error(err)
-	}
-}
-
-func writeAdminDataSharePlainJSONL(c *gin.Context, filename string, write func() error) {
-	if filename == "" {
-		filename = fmt.Sprintf("admin-data-sharing-%s.jsonl", time.Now().Format("20060102-150405"))
-	}
-	c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Header("Cache-Control", "no-store")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	if err := write(); err != nil {
-		_ = c.Error(err)
-	}
-}
-
-func writeAdminDataShareZstdJSONL(c *gin.Context, filename string, write func(*zstd.Encoder) error) {
-	if filename == "" {
-		filename = fmt.Sprintf("admin-data-sharing-%s.jsonl.zst", time.Now().Format("20060102-150405"))
-	}
-	c.Header("Content-Type", "application/zstd")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Header("Cache-Control", "no-store")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-
-	zw, err := zstd.NewWriter(c.Writer)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if err := write(zw); err != nil {
-		_ = zw.Close()
-		_ = c.Error(err)
-		return
-	}
-	if err := zw.Close(); err != nil {
-		_ = c.Error(err)
-		return
 	}
 }
 

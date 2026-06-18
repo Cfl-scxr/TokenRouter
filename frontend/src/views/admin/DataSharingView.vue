@@ -889,7 +889,8 @@
             <EmptyState title="暂无导出文件" description="选择数据并生成导出文件后会显示在这里。" />
           </template>
         </DataTable>
-        <div v-if="exportArtifactPagination.total > 0" class="border-t border-gray-200 p-4 dark:border-gray-700">
+        <!-- 导出文件分页直接使用通用分页器的条形样式，保持和上方 session 表一致。 -->
+        <div v-if="exportArtifactPagination.total > 0">
           <Pagination
             :page="exportArtifactPagination.page"
             :total="exportArtifactPagination.total"

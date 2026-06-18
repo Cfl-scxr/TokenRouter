@@ -131,6 +131,25 @@ func (r *dataShareExportArtifactRepository) MarkFailed(ctx context.Context, id i
 	`, id, errorMessage)
 }
 
+func (r *dataShareExportArtifactRepository) MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, service.ErrDataShareExportArtifactStorageInvalid
+	}
+	errorMessage = strings.TrimSpace(errorMessage)
+	if len(errorMessage) > 4000 {
+		errorMessage = errorMessage[:4000]
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE data_share_export_artifacts
+		SET status = 'failed', error_message = $1, completed_at = NOW(), updated_at = NOW()
+		WHERE status IN ('pending', 'running')
+	`, errorMessage)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *dataShareExportArtifactRepository) MarkDeleted(ctx context.Context, id int64) error {
 	return r.execArtifactUpdate(ctx, `
 		UPDATE data_share_export_artifacts

@@ -18,6 +18,7 @@ import (
 )
 
 const dataShareExportArtifactDownloadTicketTTL = 10 * time.Minute
+const dataShareExportArtifactInterruptedMessage = "server restarted before export artifact completed"
 
 // CreateExportArtifact 创建预生成导出文件任务，并在后台执行真实文件生成。
 func (s *DataSharingService) CreateExportArtifact(ctx context.Context, input DataShareExportArtifactCreateInput) (*DataShareExportArtifact, error) {
@@ -83,6 +84,14 @@ func (s *DataSharingService) DeleteExportArtifact(ctx context.Context, id int64)
 		}
 	}
 	return s.exportArtifactRepo.MarkDeleted(ctx, id)
+}
+
+// RecoverInterruptedExportArtifacts 标记进程重启后无法继续执行的导出任务，避免列表里长期卡在处理中。
+func (s *DataSharingService) RecoverInterruptedExportArtifacts(ctx context.Context) (int64, error) {
+	if s == nil || s.exportArtifactRepo == nil {
+		return 0, ErrDataShareExportArtifactStorageInvalid
+	}
+	return s.exportArtifactRepo.MarkInterruptedFailed(ctx, dataShareExportArtifactInterruptedMessage)
 }
 
 // CreateExportArtifactDownloadTicket 为已完成的预生成文件签发短期下载票据。

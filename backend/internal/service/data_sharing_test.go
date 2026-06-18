@@ -249,9 +249,10 @@ func (r *dataShareExportRepoStub) TotalStorageBytes(context.Context) (int64, err
 }
 
 type dataShareExportArtifactRepoStub struct {
-	mu     sync.Mutex
-	nextID int64
-	items  map[int64]*DataShareExportArtifact
+	mu                sync.Mutex
+	nextID            int64
+	items             map[int64]*DataShareExportArtifact
+	recoveredMessages []string
 }
 
 func newDataShareExportArtifactRepoStub() *dataShareExportArtifactRepoStub {
@@ -336,6 +337,25 @@ func (r *dataShareExportArtifactRepoStub) MarkFailed(_ context.Context, id int64
 	item.CompletedAt = &now
 	item.UpdatedAt = now
 	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkInterruptedFailed(_ context.Context, errorMessage string) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recoveredMessages = append(r.recoveredMessages, errorMessage)
+	now := time.Now()
+	var affected int64
+	for _, item := range r.items {
+		if item.Status != DataShareExportArtifactStatusPending && item.Status != DataShareExportArtifactStatusRunning {
+			continue
+		}
+		item.Status = DataShareExportArtifactStatusFailed
+		item.ErrorMessage = errorMessage
+		item.CompletedAt = &now
+		item.UpdatedAt = now
+		affected++
+	}
+	return affected, nil
 }
 
 func (r *dataShareExportArtifactRepoStub) MarkDeleted(_ context.Context, id int64) error {
@@ -4146,6 +4166,49 @@ func TestDataSharingService_DeleteExportArtifactRejectsRunning(t *testing.T) {
 
 	err = svc.DeleteExportArtifact(context.Background(), artifact.ID)
 	require.ErrorIs(t, err, ErrDataShareExportArtifactNotReady)
+}
+
+func TestDataSharingService_RecoverInterruptedExportArtifactsMarksActiveTasksFailed(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	svc := NewDataSharingService(nil, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	pending, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusPending,
+		Filename: "pending.jsonl",
+		Encoding: string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+	running, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusRunning,
+		Filename: "running.jsonl",
+		Encoding: string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+	completed, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusCompleted,
+		Filename: "completed.jsonl",
+		Encoding: string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+
+	affected, err := svc.RecoverInterruptedExportArtifacts(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(2), affected)
+
+	gotPending, err := svc.GetExportArtifact(context.Background(), pending.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactStatusFailed, gotPending.Status)
+	require.Equal(t, dataShareExportArtifactInterruptedMessage, gotPending.ErrorMessage)
+
+	gotRunning, err := svc.GetExportArtifact(context.Background(), running.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactStatusFailed, gotRunning.Status)
+	require.Equal(t, dataShareExportArtifactInterruptedMessage, gotRunning.ErrorMessage)
+
+	gotCompleted, err := svc.GetExportArtifact(context.Background(), completed.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactStatusCompleted, gotCompleted.Status)
+	require.Empty(t, gotCompleted.ErrorMessage)
 }
 
 func TestWriteSingleSessionJSONLRedactsSensitiveFields(t *testing.T) {

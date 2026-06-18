@@ -569,6 +569,11 @@ func ProvideDataSharingService(
 	svc := NewDataSharingService(repo, settingRepo, captureWorker)
 	svc.SetExportArtifactRepository(exportArtifactRepo)
 	svc.SetExportStorageDir(resolveDataShareExportStorageDir(cfg))
+	if recovered, err := svc.RecoverInterruptedExportArtifacts(context.Background()); err != nil {
+		logger.LegacyPrintf("service.data_sharing", "recover interrupted export artifacts failed: %v", err)
+	} else if recovered > 0 {
+		logger.LegacyPrintf("service.data_sharing", "marked %d interrupted export artifact(s) as failed", recovered)
+	}
 	svc.SetDefaultCaptureRuntimeSettings(dataShareCaptureRuntimeSettingsFromConfig(cfg))
 	if _, err := svc.LoadRuntimeSettings(context.Background()); err != nil {
 		logger.LegacyPrintf("service.data_sharing", "load data sharing runtime settings failed: %v", err)

@@ -282,13 +282,6 @@ export async function batchDeleteSessions(
   return data
 }
 
-export async function createExportTicket(filters?: AdminDataShareSessionFilters): Promise<DataShareExportTicket> {
-  const { data } = await apiClient.post<DataShareExportTicket>('/admin/data-sharing/export-ticket', null, {
-    params: filters
-  })
-  return data
-}
-
 export async function createExportArtifact(filters?: AdminDataShareSessionFilters): Promise<DataShareExportArtifact> {
   const { data } = await apiClient.post<DataShareExportArtifact>('/admin/data-sharing/exports', null, {
     params: filters
@@ -298,11 +291,6 @@ export async function createExportArtifact(filters?: AdminDataShareSessionFilter
 
 export async function createSessionExportArtifact(id: number): Promise<DataShareExportArtifact> {
   const { data } = await apiClient.post<DataShareExportArtifact>(`/admin/data-sharing/sessions/${id}/export-artifacts`)
-  return data
-}
-
-export async function createSessionExportTicket(id: number): Promise<DataShareExportTicket> {
-  const { data } = await apiClient.post<DataShareExportTicket>(`/admin/data-sharing/sessions/${id}/export-ticket`)
   return data
 }
 
@@ -347,10 +335,8 @@ export const adminDataSharingAPI = {
   getSession,
   deleteSession,
   batchDeleteSessions,
-  createExportTicket,
   createExportArtifact,
   createSessionExportArtifact,
-  createSessionExportTicket,
   listExportArtifacts,
   createExportArtifactDownloadTicket,
   deleteExportArtifact,

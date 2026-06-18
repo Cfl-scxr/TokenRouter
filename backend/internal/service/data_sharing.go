@@ -317,6 +317,8 @@ type DataShareExportArtifactRepository interface {
 	MarkRunning(ctx context.Context, id int64) error
 	MarkCompleted(ctx context.Context, id int64, storagePath string, sessionCount int64, fileSize int64, sha256 string) error
 	MarkFailed(ctx context.Context, id int64, errorMessage string) error
+	// MarkInterruptedFailed 将服务启动前遗留且无人继续处理的任务标记为失败。
+	MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error)
 	MarkDeleted(ctx context.Context, id int64) error
 }
 
