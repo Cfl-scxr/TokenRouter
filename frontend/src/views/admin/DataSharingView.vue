@@ -880,17 +880,19 @@
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-secret-key">访问密钥 Secret</label>
               <input id="data-share-export-remote-secret-key" v-model="exportRemoteForm.secret_access_key" type="password" class="input w-full text-sm" :placeholder="exportRemoteSecretConfigured ? '已配置，留空则保留' : ''" />
             </div>
-            <label class="flex items-center gap-2 pt-6 text-sm text-gray-700 dark:text-gray-300">
-              <input v-model="exportRemoteForm.force_path_style" type="checkbox" />
-              <span>使用路径样式 URL</span>
-            </label>
-            <div class="flex items-end gap-2">
-              <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
-                {{ testingExportRemoteConfig ? '测试中' : '测试连接' }}
-              </button>
-              <button class="btn btn-primary btn-sm" type="button" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
-                {{ savingExportRemoteConfig ? '保存中' : '保存配置' }}
-              </button>
+            <div class="flex flex-col gap-3 md:col-span-2 md:flex-row md:items-end md:justify-between lg:col-span-2">
+              <label class="flex min-h-10 items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="exportRemoteForm.force_path_style" type="checkbox" />
+                <span>使用路径样式 URL</span>
+              </label>
+              <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
+                  {{ testingExportRemoteConfig ? '测试中' : '测试连接' }}
+                </button>
+                <button class="btn btn-primary btn-sm" type="button" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
+                  {{ savingExportRemoteConfig ? '保存中' : '保存配置' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
