@@ -120,6 +120,7 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataSharing.PUT("/runtime-settings", h.Admin.DataSharing.UpdateCaptureRuntimeSettings)
 		dataSharing.GET("/export-remote-config", h.Admin.DataSharing.GetExportRemoteConfig)
 		dataSharing.PUT("/export-remote-config", h.Admin.DataSharing.UpdateExportRemoteConfig)
+		dataSharing.POST("/export-remote-config/test", h.Admin.DataSharing.TestExportRemoteConfig)
 		dataSharing.GET("/filter-options", h.Admin.DataSharing.FilterOptions)
 		dataSharing.GET("/sessions", h.Admin.DataSharing.ListSessions)
 		dataSharing.GET("/sessions/:id", h.Admin.DataSharing.GetSession)

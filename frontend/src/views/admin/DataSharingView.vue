@@ -846,24 +846,50 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">导出文件</h2>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可下载，也可上传到复用备份配置的 S3/R2 存储桶。</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可下载，也可上传到数据共享专用 S3/R2 存储桶。</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <div class="flex items-center gap-2">
-                <label class="text-xs font-medium text-gray-500 dark:text-gray-400" for="data-share-export-remote-prefix">远端前缀</label>
-                <input
-                  id="data-share-export-remote-prefix"
-                  v-model="exportRemotePrefix"
-                  class="input h-9 w-56 text-sm"
-                  placeholder="data-sharing-exports"
-                />
-                <button class="btn btn-secondary btn-sm" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
-                  保存
-                </button>
-              </div>
               <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading" @click="loadExportArtifacts">
                 <Icon name="refresh" size="sm" :class="exportArtifactsLoading ? 'animate-spin' : ''" />
                 <span class="ml-1">刷新</span>
+              </button>
+            </div>
+          </div>
+          <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4 md:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-endpoint">Endpoint</label>
+              <input id="data-share-export-remote-endpoint" v-model="exportRemoteForm.endpoint" class="input w-full text-sm" placeholder="https://<account_id>.r2.cloudflarestorage.com" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-region">Region</label>
+              <input id="data-share-export-remote-region" v-model="exportRemoteForm.region" class="input w-full text-sm" placeholder="auto" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-bucket">Bucket</label>
+              <input id="data-share-export-remote-bucket" v-model="exportRemoteForm.bucket" class="input w-full text-sm" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-prefix">Prefix</label>
+              <input id="data-share-export-remote-prefix" v-model="exportRemoteForm.prefix" class="input w-full text-sm" placeholder="data-sharing-exports" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-access-key">Access Key ID</label>
+              <input id="data-share-export-remote-access-key" v-model="exportRemoteForm.access_key_id" class="input w-full text-sm" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-secret-key">Secret Access Key</label>
+              <input id="data-share-export-remote-secret-key" v-model="exportRemoteForm.secret_access_key" type="password" class="input w-full text-sm" :placeholder="exportRemoteSecretConfigured ? '已配置，留空则保留' : ''" />
+            </div>
+            <label class="flex items-center gap-2 pt-6 text-sm text-gray-700 dark:text-gray-300">
+              <input v-model="exportRemoteForm.force_path_style" type="checkbox" />
+              <span>Path-style URL</span>
+            </label>
+            <div class="flex items-end gap-2">
+              <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
+                {{ testingExportRemoteConfig ? '测试中' : '测试连接' }}
+              </button>
+              <button class="btn btn-primary btn-sm" type="button" :disabled="savingExportRemoteConfig" @click="saveExportRemoteConfig">
+                {{ savingExportRemoteConfig ? '保存中' : '保存配置' }}
               </button>
             </div>
           </div>
@@ -895,7 +921,7 @@
                   <Icon name="copy" size="xs" />
                 </button>
               </div>
-              <p v-else-if="row.remote_error_message" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="row.remote_error_message">
+              <p v-if="row.remote_error_message" class="mt-1 truncate text-xs text-red-600 dark:text-red-400" :title="row.remote_error_message">
                 {{ row.remote_error_message }}
               </p>
             </div>
@@ -1121,6 +1147,7 @@ import {
   type DataShareCaptureSkipRule,
   type DataShareCaptureSkipRuleFieldScope,
   type DataShareExportArtifact,
+  type DataShareExportRemoteConfig,
   type DataShareStorageLimit,
   type DataShareStats
 } from '@/api/admin/dataSharing'
@@ -1204,6 +1231,7 @@ const storageLimitLoading = ref(false)
 const savingStorageLimit = ref(false)
 const savingCaptureRuntimeSettings = ref(false)
 const savingExportRemoteConfig = ref(false)
+const testingExportRemoteConfig = ref(false)
 const exporting = ref(false)
 const detailOpen = ref(false)
 const detailLoading = ref(false)
@@ -1213,7 +1241,16 @@ const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
 const exportArtifactPagination = reactive({ page: 1, page_size: 10, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const exportArtifacts = ref<DataShareExportArtifact[]>([])
-const exportRemotePrefix = ref('data-sharing-exports')
+const exportRemoteSecretConfigured = ref(false)
+const exportRemoteForm = ref<DataShareExportRemoteConfig>({
+  endpoint: '',
+  region: 'auto',
+  bucket: '',
+  access_key_id: '',
+  secret_access_key: '',
+  prefix: 'data-sharing-exports',
+  force_path_style: false
+})
 const filters = reactive({
   search: '',
   user_name: '',
@@ -1855,6 +1892,7 @@ const statsAutoRefreshTitle = computed(() => {
 
 let filterTimer: number | null = null
 let statsAutoRefreshTimer: number | null = null
+let exportArtifactPollingTimer: number | null = null
 
 function buildFilters(): AdminDataShareSessionFilters {
   const out: AdminDataShareSessionFilters = {
@@ -1959,7 +1997,8 @@ async function loadCaptureRuntimeSettings() {
 async function loadExportRemoteConfig() {
   try {
     const cfg = await adminDataSharingAPI.getExportRemoteConfig()
-    exportRemotePrefix.value = cfg.prefix || 'data-sharing-exports'
+    exportRemoteForm.value = normalizeExportRemoteConfig(cfg)
+    exportRemoteSecretConfigured.value = Boolean(cfg.access_key_id)
   } catch (error) {
     appStore.showError('加载远端上传配置失败')
   }
@@ -1968,14 +2007,49 @@ async function loadExportRemoteConfig() {
 async function saveExportRemoteConfig() {
   savingExportRemoteConfig.value = true
   try {
-    const cfg = await adminDataSharingAPI.updateExportRemoteConfig({ prefix: exportRemotePrefix.value })
-    exportRemotePrefix.value = cfg.prefix || 'data-sharing-exports'
+    const cfg = await adminDataSharingAPI.updateExportRemoteConfig(buildExportRemoteConfigPayload())
+    exportRemoteForm.value = normalizeExportRemoteConfig(cfg)
+    exportRemoteSecretConfigured.value = Boolean(cfg.access_key_id)
     appStore.showSuccess('远端上传配置已保存')
   } catch (error) {
     appStore.showError('保存远端上传配置失败')
   } finally {
     savingExportRemoteConfig.value = false
   }
+}
+
+async function testExportRemoteConfig() {
+  testingExportRemoteConfig.value = true
+  try {
+    const result = await adminDataSharingAPI.testExportRemoteConfig(buildExportRemoteConfigPayload())
+    if (result.ok) {
+      appStore.showSuccess(result.message || '连接成功')
+    } else {
+      appStore.showError(result.message || '连接失败')
+    }
+  } catch (error) {
+    appStore.showError('测试远端上传配置失败')
+  } finally {
+    testingExportRemoteConfig.value = false
+  }
+}
+
+function normalizeExportRemoteConfig(cfg?: Partial<DataShareExportRemoteConfig>): DataShareExportRemoteConfig {
+  return {
+    endpoint: cfg?.endpoint || '',
+    region: cfg?.region || 'auto',
+    bucket: cfg?.bucket || '',
+    access_key_id: cfg?.access_key_id || '',
+    secret_access_key: '',
+    prefix: cfg?.prefix || 'data-sharing-exports',
+    force_path_style: Boolean(cfg?.force_path_style)
+  }
+}
+
+function buildExportRemoteConfigPayload(): DataShareExportRemoteConfig {
+  const cfg = normalizeExportRemoteConfig(exportRemoteForm.value)
+  cfg.secret_access_key = exportRemoteForm.value.secret_access_key || ''
+  return cfg
 }
 
 function captureRuntimeSettingsFromForm() {
@@ -2372,10 +2446,30 @@ async function loadExportArtifacts() {
     exportArtifacts.value = res.items
     exportArtifactPagination.total = res.total
     exportArtifactPagination.pages = res.pages
+    updateExportArtifactPolling()
   } catch (error) {
     appStore.showError('加载导出文件失败')
   } finally {
     exportArtifactsLoading.value = false
+  }
+}
+
+function updateExportArtifactPolling() {
+  const hasUploading = exportArtifacts.value.some(item => item.remote_status === 'uploading')
+  if (!hasUploading) {
+    stopExportArtifactPolling()
+    return
+  }
+  if (exportArtifactPollingTimer) return
+  exportArtifactPollingTimer = window.setInterval(() => {
+    loadExportArtifacts()
+  }, 5000)
+}
+
+function stopExportArtifactPolling() {
+  if (exportArtifactPollingTimer) {
+    window.clearInterval(exportArtifactPollingTimer)
+    exportArtifactPollingTimer = null
   }
 }
 
@@ -2605,9 +2699,10 @@ async function uploadExportArtifact(row: DataShareExportArtifact) {
   try {
     const artifact = await adminDataSharingAPI.uploadExportArtifact(row.id)
     replaceExportArtifact(artifact)
-    appStore.showSuccess('上传已完成')
+    updateExportArtifactPolling()
+    appStore.showSuccess('上传任务已开始')
   } catch (error) {
-    appStore.showError('上传到 S3/R2 失败')
+    appStore.showError('启动上传到 S3/R2 失败')
     await loadExportArtifacts()
   }
 }
@@ -2938,5 +3033,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleStatsAutoRefreshViewportChange)
   window.removeEventListener('scroll', handleStatsAutoRefreshViewportChange, true)
   stopStatsAutoRefresh()
+  stopExportArtifactPolling()
 })
 </script>

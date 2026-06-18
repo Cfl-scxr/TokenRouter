@@ -105,6 +105,7 @@ type BackupDumpOptions struct {
 // BackupObjectStore 抽象备份文件存储后端。
 type BackupObjectStore interface {
 	Upload(ctx context.Context, key string, body io.Reader, contentType string) (sizeBytes int64, err error)
+	UploadFile(ctx context.Context, key string, body io.Reader, contentType string) (sizeBytes int64, err error)
 	Download(ctx context.Context, key string) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
 	PresignURL(ctx context.Context, key string, expiry time.Duration) (string, error)
@@ -1652,6 +1653,10 @@ func (s *LocalBackupStore) Upload(ctx context.Context, key string, body io.Reade
 		return 0, err
 	}
 	return written, nil
+}
+
+func (s *LocalBackupStore) UploadFile(ctx context.Context, key string, body io.Reader, contentType string) (int64, error) {
+	return s.Upload(ctx, key, body, contentType)
 }
 
 func (s *LocalBackupStore) Download(_ context.Context, key string) (io.ReadCloser, error) {

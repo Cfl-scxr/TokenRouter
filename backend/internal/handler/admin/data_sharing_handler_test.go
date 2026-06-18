@@ -159,7 +159,11 @@ func (r *adminDataShareExportArtifactRepoStub) MarkRemoteUploadFailed(_ context.
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if item := r.items[id]; item != nil {
-		item.RemoteStatus = service.DataShareExportArtifactRemoteStatusFailed
+		if item.RemoteKey != "" {
+			item.RemoteStatus = service.DataShareExportArtifactRemoteStatusUploaded
+		} else {
+			item.RemoteStatus = service.DataShareExportArtifactRemoteStatusFailed
+		}
 		item.RemoteErrorMessage = errorMessage
 		return nil
 	}
@@ -167,6 +171,10 @@ func (r *adminDataShareExportArtifactRepoStub) MarkRemoteUploadFailed(_ context.
 }
 
 func (r *adminDataShareExportArtifactRepoStub) MarkInterruptedFailed(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (r *adminDataShareExportArtifactRepoStub) MarkInterruptedRemoteUploads(context.Context, string) (int64, error) {
 	return 0, nil
 }
 

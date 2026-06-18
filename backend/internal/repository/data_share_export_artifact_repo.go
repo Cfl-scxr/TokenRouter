@@ -139,7 +139,7 @@ func (r *dataShareExportArtifactRepository) MarkRemoteUploading(ctx context.Cont
 		UPDATE data_share_export_artifacts
 		SET remote_status = 'uploading', remote_error_message = '', updated_at = NOW()
 		WHERE id = $1 AND status = 'completed' AND remote_status <> 'uploading'
-	`, id)
+	`, id, artifactUpdateConflictOnNoRows(service.ErrDataShareExportArtifactUploadInProgress))
 }
 
 func (r *dataShareExportArtifactRepository) MarkRemoteUploaded(ctx context.Context, id int64, bucket string, key string) error {
@@ -158,7 +158,12 @@ func (r *dataShareExportArtifactRepository) MarkRemoteUploadFailed(ctx context.C
 	}
 	return r.execArtifactUpdate(ctx, `
 		UPDATE data_share_export_artifacts
-		SET remote_status = 'failed', remote_error_message = $2, updated_at = NOW()
+		SET remote_status = CASE
+				WHEN remote_key <> '' THEN 'uploaded'
+				ELSE 'failed'
+			END,
+			remote_error_message = $2,
+			updated_at = NOW()
 		WHERE id = $1 AND status <> 'deleted'
 	`, id, errorMessage)
 }
@@ -182,6 +187,30 @@ func (r *dataShareExportArtifactRepository) MarkInterruptedFailed(ctx context.Co
 	return result.RowsAffected()
 }
 
+func (r *dataShareExportArtifactRepository) MarkInterruptedRemoteUploads(ctx context.Context, errorMessage string) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, service.ErrDataShareExportArtifactStorageInvalid
+	}
+	errorMessage = strings.TrimSpace(errorMessage)
+	if len(errorMessage) > 4000 {
+		errorMessage = errorMessage[:4000]
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE data_share_export_artifacts
+		SET remote_status = CASE
+				WHEN remote_key <> '' THEN 'uploaded'
+				ELSE 'failed'
+			END,
+			remote_error_message = $1,
+			updated_at = NOW()
+		WHERE remote_status = 'uploading'
+	`, errorMessage)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *dataShareExportArtifactRepository) MarkDeleted(ctx context.Context, id int64) error {
 	return r.execArtifactUpdate(ctx, `
 		UPDATE data_share_export_artifacts
@@ -190,9 +219,24 @@ func (r *dataShareExportArtifactRepository) MarkDeleted(ctx context.Context, id 
 	`, id)
 }
 
+type artifactUpdateNoRowsPolicy struct {
+	err error
+}
+
+func artifactUpdateConflictOnNoRows(err error) artifactUpdateNoRowsPolicy {
+	return artifactUpdateNoRowsPolicy{err: err}
+}
+
 func (r *dataShareExportArtifactRepository) execArtifactUpdate(ctx context.Context, query string, args ...any) error {
 	if r == nil || r.db == nil {
 		return service.ErrDataShareExportArtifactStorageInvalid
+	}
+	var noRowsErr error = service.ErrDataShareExportArtifactNotFound
+	if len(args) > 0 {
+		if policy, ok := args[len(args)-1].(artifactUpdateNoRowsPolicy); ok {
+			noRowsErr = policy.err
+			args = args[:len(args)-1]
+		}
 	}
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -203,7 +247,7 @@ func (r *dataShareExportArtifactRepository) execArtifactUpdate(ctx context.Conte
 		return err
 	}
 	if affected == 0 {
-		return service.ErrDataShareExportArtifactNotFound
+		return noRowsErr
 	}
 	return nil
 }

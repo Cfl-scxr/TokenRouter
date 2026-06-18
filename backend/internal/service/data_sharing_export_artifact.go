@@ -21,6 +21,7 @@ import (
 const dataShareExportArtifactDownloadTicketTTL = 10 * time.Minute
 const dataShareExportArtifactRemoteDownloadURLTTL = time.Hour
 const dataShareExportArtifactInterruptedMessage = "server restarted before export artifact completed"
+const dataShareExportArtifactRemoteInterruptedMessage = "server restarted before export artifact remote upload completed"
 const defaultDataShareExportArtifactRemotePrefix = "data-sharing-exports"
 
 // CreateExportArtifact 创建预生成导出文件任务，并在后台执行真实文件生成。
@@ -89,31 +90,71 @@ func (s *DataSharingService) DeleteExportArtifact(ctx context.Context, id int64)
 	return s.exportArtifactRepo.MarkDeleted(ctx, id)
 }
 
-// GetExportRemoteConfig 返回数据共享导出上传远端对象存储时使用的独立前缀配置。
+// GetExportRemoteConfig 返回数据共享导出上传远端对象存储时使用的独立 S3/R2 配置。
 func (s *DataSharingService) GetExportRemoteConfig(ctx context.Context) (DataShareExportRemoteConfig, error) {
-	prefix := defaultDataShareExportArtifactRemotePrefix
-	if s != nil && s.settingRepo != nil {
-		raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingExportRemotePrefix)
-		if err == nil && strings.TrimSpace(raw) != "" {
-			prefix = raw
-		}
-	}
-	return DataShareExportRemoteConfig{Prefix: normalizeDataShareExportRemotePrefix(prefix)}, nil
-}
-
-// UpdateExportRemoteConfig 保存数据共享导出上传远端对象存储时使用的独立前缀配置。
-func (s *DataSharingService) UpdateExportRemoteConfig(ctx context.Context, cfg DataShareExportRemoteConfig) (DataShareExportRemoteConfig, error) {
 	if s == nil || s.settingRepo == nil {
-		return DataShareExportRemoteConfig{}, ErrDataShareExportArtifactStorageInvalid
+		return DataShareExportRemoteConfig{
+			Region: "auto",
+			Prefix: defaultDataShareExportArtifactRemotePrefix,
+		}, nil
 	}
-	prefix := normalizeDataShareExportRemotePrefix(cfg.Prefix)
-	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingExportRemotePrefix, prefix); err != nil {
+	cfg, err := s.loadExportArtifactStoredRemoteConfig(ctx)
+	if err != nil {
 		return DataShareExportRemoteConfig{}, err
 	}
-	return DataShareExportRemoteConfig{Prefix: prefix}, nil
+	if strings.TrimSpace(cfg.Region) == "" {
+		cfg.Region = "auto"
+	}
+	cfg.Prefix = normalizeDataShareExportRemotePrefix(cfg.Prefix)
+	cfg.SecretAccessKey = ""
+	return cfg, nil
 }
 
-// UploadExportArtifactToRemote 将已完成的本地导出文件上传到备份 S3/R2 配置指向的对象存储。
+// UpdateExportRemoteConfig 保存数据共享导出上传远端对象存储时使用的独立 S3/R2 配置。
+func (s *DataSharingService) UpdateExportRemoteConfig(ctx context.Context, cfg DataShareExportRemoteConfig) (DataShareExportRemoteConfig, error) {
+	if s == nil || s.settingRepo == nil || s.exportSecretEncryptor == nil {
+		return DataShareExportRemoteConfig{}, ErrDataShareExportArtifactStorageInvalid
+	}
+	prepared, err := s.prepareExportArtifactRemoteConfigForSave(ctx, cfg)
+	if err != nil {
+		return DataShareExportRemoteConfig{}, err
+	}
+	data, err := json.Marshal(prepared)
+	if err != nil {
+		return DataShareExportRemoteConfig{}, fmt.Errorf("marshal data sharing export remote config: %w", err)
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyDataSharingExportRemoteConfig, string(data)); err != nil {
+		return DataShareExportRemoteConfig{}, err
+	}
+	prepared.SecretAccessKey = ""
+	return *prepared, nil
+}
+
+// TestExportRemoteConfig 使用当前表单配置测试数据共享导出独立 S3/R2 端点。
+func (s *DataSharingService) TestExportRemoteConfig(ctx context.Context, cfg DataShareExportRemoteConfig) error {
+	if s == nil || s.exportObjectStoreFactory == nil || s.exportSecretEncryptor == nil {
+		return ErrDataShareExportArtifactStorageInvalid
+	}
+	if cfg.SecretAccessKey == "" && s.settingRepo != nil {
+		cfg.SecretAccessKey = s.loadStoredEncryptedExportArtifactRemoteSecret(ctx)
+		if cfg.SecretAccessKey != "" {
+			if err := s.decryptExportArtifactRemoteSecret(&cfg); err != nil {
+				return err
+			}
+		}
+	}
+	s3Cfg := dataShareExportRemoteConfigToBackupS3Config(cfg)
+	if !s3Cfg.IsConfigured() {
+		return ErrBackupS3NotConfigured
+	}
+	store, err := s.exportObjectStoreFactory(ctx, &s3Cfg)
+	if err != nil {
+		return err
+	}
+	return store.HeadBucket(ctx)
+}
+
+// UploadExportArtifactToRemote 启动后台任务，将已完成的本地导出文件上传到数据共享独立 S3/R2 端点。
 func (s *DataSharingService) UploadExportArtifactToRemote(ctx context.Context, id int64) (*DataShareExportArtifact, error) {
 	if s == nil || s.exportArtifactRepo == nil {
 		return nil, ErrDataShareExportArtifactStorageInvalid
@@ -131,28 +172,48 @@ func (s *DataSharingService) UploadExportArtifactToRemote(ctx context.Context, i
 	if err := s.validateExportArtifactPath(artifact.StoragePath); err != nil {
 		return nil, err
 	}
-	store, cfg, err := s.exportArtifactRemoteStore(ctx)
-	if err != nil {
+	if _, _, err := s.exportArtifactRemoteStore(ctx); err != nil {
 		return nil, err
 	}
 	if err := s.exportArtifactRepo.MarkRemoteUploading(ctx, id); err != nil {
 		return nil, err
 	}
+	go s.uploadExportArtifactToRemote(context.Background(), id)
+	return s.GetExportArtifact(ctx, id)
+}
+
+func (s *DataSharingService) uploadExportArtifactToRemote(ctx context.Context, id int64) {
+	artifact, err := s.GetExportArtifact(ctx, id)
+	if err != nil {
+		return
+	}
+	if artifact.Status != DataShareExportArtifactStatusCompleted || strings.TrimSpace(artifact.StoragePath) == "" {
+		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, ErrDataShareExportArtifactNotReady.Error())
+		return
+	}
+	if err := s.validateExportArtifactPath(artifact.StoragePath); err != nil {
+		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
+		return
+	}
 	f, err := os.Open(artifact.StoragePath)
 	if err != nil {
 		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
-		return nil, err
+		return
 	}
 	defer func() { _ = f.Close() }()
-	key := s.buildExportArtifactRemoteKey(ctx, artifact)
-	if _, err := store.Upload(ctx, key, f, dataShareExportArtifactContentType(artifact)); err != nil {
+	store, cfg, err := s.exportArtifactRemoteStore(ctx)
+	if err != nil {
 		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
-		return nil, err
+		return
+	}
+	key := s.buildExportArtifactRemoteKey(ctx, artifact)
+	if _, err := store.UploadFile(ctx, key, f, dataShareExportArtifactContentType(artifact)); err != nil {
+		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
+		return
 	}
 	if err := s.exportArtifactRepo.MarkRemoteUploaded(ctx, id, cfg.Bucket, key); err != nil {
-		return nil, err
+		slog.Warn("data sharing: mark export artifact remote upload completed failed", "artifact_id", id, "error", err)
 	}
-	return s.GetExportArtifact(ctx, id)
 }
 
 // CreateExportArtifactRemoteDownloadURL 为已上传到 S3/R2 的导出文件生成短期预签名下载链接。
@@ -163,9 +224,6 @@ func (s *DataSharingService) CreateExportArtifactRemoteDownloadURL(ctx context.C
 	artifact, err := s.GetExportArtifact(ctx, id)
 	if err != nil {
 		return "", err
-	}
-	if artifact.Status == DataShareExportArtifactStatusDeleted {
-		return "", ErrDataShareExportArtifactDeleted
 	}
 	if artifact.RemoteStatus != DataShareExportArtifactRemoteStatusUploaded || strings.TrimSpace(artifact.RemoteKey) == "" {
 		return "", ErrDataShareExportArtifactNotReady
@@ -183,6 +241,14 @@ func (s *DataSharingService) RecoverInterruptedExportArtifacts(ctx context.Conte
 		return 0, ErrDataShareExportArtifactStorageInvalid
 	}
 	return s.exportArtifactRepo.MarkInterruptedFailed(ctx, dataShareExportArtifactInterruptedMessage)
+}
+
+// RecoverInterruptedExportArtifactRemoteUploads 标记进程重启后卡住的远端上传状态。
+func (s *DataSharingService) RecoverInterruptedExportArtifactRemoteUploads(ctx context.Context) (int64, error) {
+	if s == nil || s.exportArtifactRepo == nil {
+		return 0, ErrDataShareExportArtifactStorageInvalid
+	}
+	return s.exportArtifactRepo.MarkInterruptedRemoteUploads(ctx, dataShareExportArtifactRemoteInterruptedMessage)
 }
 
 // CreateExportArtifactDownloadTicket 为已完成的预生成文件签发短期下载票据。
@@ -281,51 +347,82 @@ func (s *DataSharingService) exportArtifactRemoteStore(ctx context.Context) (Bac
 }
 
 func (s *DataSharingService) loadExportArtifactRemoteS3Config(ctx context.Context) (*BackupS3Config, error) {
-	raw, err := s.settingRepo.GetValue(ctx, settingKeyBackupStorageConfig)
-	if err == nil && strings.TrimSpace(raw) != "" {
-		var storageCfg BackupStorageConfig
-		if err := json.Unmarshal([]byte(raw), &storageCfg); err != nil {
-			return nil, ErrBackupStorageConfigCorrupt
-		}
-		if !backupS3ConfigHasValue(storageCfg.S3) {
-			return s.loadExportArtifactLegacyS3Config(ctx)
-		}
-		cfg := storageCfg.S3
-		// 统一配置缺少密钥时，沿用旧版 S3 配置保存的密钥，兼容备份设置迁移期数据。
-		if cfg.SecretAccessKey == "" {
-			legacyCfg, err := s.loadExportArtifactLegacyS3Config(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if legacyCfg != nil {
-				cfg.SecretAccessKey = legacyCfg.SecretAccessKey
-			}
-		} else {
-			if err := s.decryptExportArtifactRemoteS3Secret(&cfg); err != nil {
-				return nil, err
-			}
-		}
-		return &cfg, nil
+	cfg, err := s.loadExportArtifactStoredRemoteConfig(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return s.loadExportArtifactLegacyS3Config(ctx)
-}
-
-func (s *DataSharingService) loadExportArtifactLegacyS3Config(ctx context.Context) (*BackupS3Config, error) {
-	raw, err := s.settingRepo.GetValue(ctx, settingKeyBackupS3Config)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if err := s.decryptExportArtifactRemoteSecret(&cfg); err != nil {
+		return nil, err
+	}
+	s3Cfg := dataShareExportRemoteConfigToBackupS3Config(cfg)
+	if !backupS3ConfigHasValue(s3Cfg) {
 		return nil, nil //nolint:nilnil // 未配置远端存储是合法状态，由调用方转换为业务错误。
 	}
-	var cfg BackupS3Config
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return nil, ErrBackupS3ConfigCorrupt
+	return &s3Cfg, nil
+}
+
+func (s *DataSharingService) loadExportArtifactStoredRemoteConfig(ctx context.Context) (DataShareExportRemoteConfig, error) {
+	cfg := DataShareExportRemoteConfig{
+		Region: "auto",
+		Prefix: defaultDataShareExportArtifactRemotePrefix,
 	}
-	if err := s.decryptExportArtifactRemoteS3Secret(&cfg); err != nil {
-		return nil, err
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingExportRemoteConfig)
+	if err == nil && strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+			return DataShareExportRemoteConfig{}, ErrBackupS3ConfigCorrupt
+		}
+		cfg.Region = strings.TrimSpace(cfg.Region)
+		if cfg.Region == "" {
+			cfg.Region = "auto"
+		}
+		cfg.Prefix = normalizeDataShareExportRemotePrefix(cfg.Prefix)
+		return cfg, nil
+	}
+	raw, err = s.settingRepo.GetValue(ctx, SettingKeyDataSharingExportRemotePrefix)
+	if err == nil && strings.TrimSpace(raw) != "" {
+		cfg.Prefix = normalizeDataShareExportRemotePrefix(raw)
+	}
+	return cfg, nil
+}
+
+func (s *DataSharingService) prepareExportArtifactRemoteConfigForSave(ctx context.Context, cfg DataShareExportRemoteConfig) (*DataShareExportRemoteConfig, error) {
+	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
+	cfg.Region = strings.TrimSpace(cfg.Region)
+	if cfg.Region == "" {
+		cfg.Region = "auto"
+	}
+	cfg.Bucket = strings.TrimSpace(cfg.Bucket)
+	cfg.AccessKeyID = strings.TrimSpace(cfg.AccessKeyID)
+	cfg.Prefix = normalizeDataShareExportRemotePrefix(cfg.Prefix)
+	if cfg.SecretAccessKey == "" {
+		cfg.SecretAccessKey = s.loadStoredEncryptedExportArtifactRemoteSecret(ctx)
+	} else {
+		encrypted, err := s.exportSecretEncryptor.Encrypt(cfg.SecretAccessKey)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt data sharing export remote secret: %w", err)
+		}
+		cfg.SecretAccessKey = encrypted
+	}
+	s3Cfg := dataShareExportRemoteConfigToBackupS3Config(cfg)
+	if !s3Cfg.IsConfigured() {
+		return nil, ErrBackupS3NotConfigured
 	}
 	return &cfg, nil
 }
 
-func (s *DataSharingService) decryptExportArtifactRemoteS3Secret(cfg *BackupS3Config) error {
+func (s *DataSharingService) loadStoredEncryptedExportArtifactRemoteSecret(ctx context.Context) string {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDataSharingExportRemoteConfig)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var cfg DataShareExportRemoteConfig
+	if json.Unmarshal([]byte(raw), &cfg) != nil {
+		return ""
+	}
+	return cfg.SecretAccessKey
+}
+
+func (s *DataSharingService) decryptExportArtifactRemoteSecret(cfg *DataShareExportRemoteConfig) error {
 	if cfg == nil || strings.TrimSpace(cfg.SecretAccessKey) == "" {
 		return nil
 	}
@@ -337,6 +434,18 @@ func (s *DataSharingService) decryptExportArtifactRemoteS3Secret(cfg *BackupS3Co
 	}
 	cfg.SecretAccessKey = decrypted
 	return nil
+}
+
+func dataShareExportRemoteConfigToBackupS3Config(cfg DataShareExportRemoteConfig) BackupS3Config {
+	return BackupS3Config{
+		Endpoint:        strings.TrimSpace(cfg.Endpoint),
+		Region:          strings.TrimSpace(cfg.Region),
+		Bucket:          strings.TrimSpace(cfg.Bucket),
+		AccessKeyID:     strings.TrimSpace(cfg.AccessKeyID),
+		SecretAccessKey: cfg.SecretAccessKey,
+		Prefix:          normalizeDataShareExportRemotePrefix(cfg.Prefix),
+		ForcePathStyle:  cfg.ForcePathStyle,
+	}
 }
 
 func (s *DataSharingService) buildExportArtifactRemoteKey(ctx context.Context, artifact *DataShareExportArtifact) string {

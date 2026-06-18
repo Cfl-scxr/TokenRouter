@@ -73,6 +73,7 @@ var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT
 var ErrDataShareExportArtifactNotFound = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_NOT_FOUND", "data share export artifact not found")
 var ErrDataShareExportArtifactNotReady = infraerrors.BadRequest("DATA_SHARE_EXPORT_ARTIFACT_NOT_READY", "data share export artifact is not ready")
 var ErrDataShareExportArtifactDeleted = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_DELETED", "data share export artifact was deleted")
+var ErrDataShareExportArtifactUploadInProgress = infraerrors.Conflict("DATA_SHARE_EXPORT_ARTIFACT_UPLOAD_IN_PROGRESS", "data share export artifact upload is already in progress")
 var ErrDataShareExportArtifactStorageInvalid = infraerrors.InternalServer("DATA_SHARE_EXPORT_ARTIFACT_STORAGE_INVALID", "data share export artifact storage is invalid")
 var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
 var ErrDataShareCaptureRuntimeInvalid = infraerrors.BadRequest("DATA_SHARE_CAPTURE_RUNTIME_INVALID", "data sharing capture runtime settings are invalid")
@@ -293,9 +294,15 @@ const (
 	DataShareExportArtifactRemoteStatusFailed      DataShareExportArtifactRemoteStatus = "failed"
 )
 
-// DataShareExportRemoteConfig 描述数据共享导出文件上传到 S3/R2 的独立配置。
+// DataShareExportRemoteConfig 描述数据共享导出文件上传到独立 S3/R2 端点的配置。
 type DataShareExportRemoteConfig struct {
-	Prefix string `json:"prefix"`
+	Endpoint        string `json:"endpoint"`
+	Region          string `json:"region"`
+	Bucket          string `json:"bucket"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"` //nolint:revive // 字段名沿用 AWS 约定
+	Prefix          string `json:"prefix"`
+	ForcePathStyle  bool   `json:"force_path_style"`
 }
 
 // DataShareExportArtifact 记录一次预生成导出文件任务及其本地、远端文件元数据。
@@ -342,6 +349,8 @@ type DataShareExportArtifactRepository interface {
 	MarkRemoteUploadFailed(ctx context.Context, id int64, errorMessage string) error
 	// MarkInterruptedFailed 将服务启动前遗留且无人继续处理的任务标记为失败。
 	MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error)
+	// MarkInterruptedRemoteUploads 将服务启动前遗留的远端上传任务标记为失败。
+	MarkInterruptedRemoteUploads(ctx context.Context, errorMessage string) (int64, error)
 	MarkDeleted(ctx context.Context, id int64) error
 }
 

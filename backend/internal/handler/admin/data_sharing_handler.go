@@ -55,7 +55,13 @@ type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 
 // UpdateDataShareExportRemoteConfigRequest 是管理端更新导出远端上传配置的请求。
 type UpdateDataShareExportRemoteConfigRequest struct {
-	Prefix string `json:"prefix"`
+	Endpoint        string `json:"endpoint"`
+	Region          string `json:"region"`
+	Bucket          string `json:"bucket"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	Prefix          string `json:"prefix"`
+	ForcePathStyle  bool   `json:"force_path_style"`
 }
 
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
@@ -261,13 +267,42 @@ func (h *DataSharingHandler) UpdateExportRemoteConfig(c *gin.Context) {
 		return
 	}
 	cfg, err := h.dataSharingService.UpdateExportRemoteConfig(c.Request.Context(), service.DataShareExportRemoteConfig{
-		Prefix: req.Prefix,
+		Endpoint:        req.Endpoint,
+		Region:          req.Region,
+		Bucket:          req.Bucket,
+		AccessKeyID:     req.AccessKeyID,
+		SecretAccessKey: req.SecretAccessKey,
+		Prefix:          req.Prefix,
+		ForcePathStyle:  req.ForcePathStyle,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, cfg)
+}
+
+// TestExportRemoteConfig 测试数据共享导出上传 S3/R2 的连接配置。
+func (h *DataSharingHandler) TestExportRemoteConfig(c *gin.Context) {
+	var req UpdateDataShareExportRemoteConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	err := h.dataSharingService.TestExportRemoteConfig(c.Request.Context(), service.DataShareExportRemoteConfig{
+		Endpoint:        req.Endpoint,
+		Region:          req.Region,
+		Bucket:          req.Bucket,
+		AccessKeyID:     req.AccessKeyID,
+		SecretAccessKey: req.SecretAccessKey,
+		Prefix:          req.Prefix,
+		ForcePathStyle:  req.ForcePathStyle,
+	})
+	if err != nil {
+		response.Success(c, gin.H{"ok": false, "message": err.Error()})
+		return
+	}
+	response.Success(c, gin.H{"ok": true, "message": "connection successful"})
 }
 
 // ListSessions 查询所有数据共享 session。

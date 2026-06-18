@@ -161,7 +161,13 @@ export type DataShareExportArtifactStatus = 'pending' | 'running' | 'completed' 
 export type DataShareExportArtifactRemoteStatus = 'not_uploaded' | 'uploading' | 'uploaded' | 'failed'
 
 export interface DataShareExportRemoteConfig {
+  endpoint: string
+  region: string
+  bucket: string
+  access_key_id: string
+  secret_access_key?: string
   prefix: string
+  force_path_style: boolean
 }
 
 export interface DataShareExportArtifact {
@@ -264,6 +270,11 @@ export async function updateExportRemoteConfig(config: DataShareExportRemoteConf
   return data
 }
 
+export async function testExportRemoteConfig(config: DataShareExportRemoteConfig): Promise<{ ok: boolean; message: string }> {
+  const { data } = await apiClient.post<{ ok: boolean; message: string }>('/admin/data-sharing/export-remote-config/test', config)
+  return data
+}
+
 export async function listSessions(
   page = 1,
   pageSize = 20,
@@ -362,6 +373,7 @@ export const adminDataSharingAPI = {
   updateRuntimeSettings,
   getExportRemoteConfig,
   updateExportRemoteConfig,
+  testExportRemoteConfig,
   listSessions,
   getFilterOptions,
   getSession,
