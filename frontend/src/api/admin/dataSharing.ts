@@ -157,6 +157,24 @@ export interface DataShareStats {
   capture_durations?: DataShareCaptureDurationStats | null
 }
 
+export type DataShareExportArtifactStatus = 'pending' | 'running' | 'completed' | 'failed' | 'deleted'
+
+export interface DataShareExportArtifact {
+  id: number
+  status: DataShareExportArtifactStatus
+  filename: string
+  encoding: string
+  session_count: number
+  file_size: number
+  sha256: string
+  error_message: string
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+  deleted_at?: string | null
+  updated_at: string
+}
+
 export type DataShareCaptureSkipRuleMatchMode = 'contains' | 'equals'
 export type DataShareCaptureSkipRuleFieldScope = 'system' | 'messages' | 'input' | 'instructions'
 
@@ -271,8 +289,40 @@ export async function createExportTicket(filters?: AdminDataShareSessionFilters)
   return data
 }
 
+export async function createExportArtifact(filters?: AdminDataShareSessionFilters): Promise<DataShareExportArtifact> {
+  const { data } = await apiClient.post<DataShareExportArtifact>('/admin/data-sharing/exports', null, {
+    params: filters
+  })
+  return data
+}
+
+export async function createSessionExportArtifact(id: number): Promise<DataShareExportArtifact> {
+  const { data } = await apiClient.post<DataShareExportArtifact>(`/admin/data-sharing/sessions/${id}/export-artifacts`)
+  return data
+}
+
 export async function createSessionExportTicket(id: number): Promise<DataShareExportTicket> {
   const { data } = await apiClient.post<DataShareExportTicket>(`/admin/data-sharing/sessions/${id}/export-ticket`)
+  return data
+}
+
+export async function listExportArtifacts(
+  page = 1,
+  pageSize = 10
+): Promise<PaginatedResponse<DataShareExportArtifact>> {
+  const { data } = await apiClient.get<PaginatedResponse<DataShareExportArtifact>>('/admin/data-sharing/exports', {
+    params: { page, page_size: pageSize }
+  })
+  return data
+}
+
+export async function createExportArtifactDownloadTicket(id: number): Promise<DataShareExportTicket> {
+  const { data } = await apiClient.post<DataShareExportTicket>(`/admin/data-sharing/exports/${id}/download-ticket`)
+  return data
+}
+
+export async function deleteExportArtifact(id: number): Promise<{ deleted: boolean }> {
+  const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/data-sharing/exports/${id}`)
   return data
 }
 
@@ -298,7 +348,12 @@ export const adminDataSharingAPI = {
   deleteSession,
   batchDeleteSessions,
   createExportTicket,
+  createExportArtifact,
+  createSessionExportArtifact,
   createSessionExportTicket,
+  listExportArtifacts,
+  createExportArtifactDownloadTicket,
+  deleteExportArtifact,
   getStats
 }
 

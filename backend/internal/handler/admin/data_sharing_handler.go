@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,6 +106,22 @@ type adminDataShareExportTicketResponse struct {
 	Filename    string    `json:"filename"`
 	Encoding    string    `json:"encoding"`
 	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+type adminDataShareExportArtifactResponse struct {
+	ID           int64      `json:"id"`
+	Status       string     `json:"status"`
+	Filename     string     `json:"filename"`
+	Encoding     string     `json:"encoding"`
+	SessionCount int64      `json:"session_count"`
+	FileSize     int64      `json:"file_size"`
+	SHA256       string     `json:"sha256"`
+	ErrorMessage string     `json:"error_message"`
+	CreatedAt    time.Time  `json:"created_at"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // GetNotice 返回当前数据共享须知。
@@ -355,6 +372,144 @@ func (h *DataSharingHandler) CreateSessionExportTicket(c *gin.Context) {
 	response.Success(c, adminDataShareExportTicketToResponse(ticket))
 }
 
+// CreateExportArtifact 按筛选条件创建预生成导出文件任务。
+func (h *DataSharingHandler) CreateExportArtifact(c *gin.Context) {
+	filters, ok := parseAdminDataShareFilters(c)
+	if !ok {
+		return
+	}
+	if filters.SelectAll {
+		filters.IDs = nil
+	} else if len(filters.IDs) == 0 {
+		response.BadRequest(c, "ids or select_all is required")
+		return
+	}
+	artifact, err := h.dataSharingService.CreateExportArtifact(c.Request.Context(), service.DataShareExportArtifactCreateInput{
+		Filters:  filters,
+		Filename: fmt.Sprintf("admin-data-sharing-%s", time.Now().Format("20060102-150405")),
+		Encoding: service.DataShareExportEncodingZstd,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Accepted(c, adminDataShareExportArtifactToResponse(artifact))
+}
+
+// CreateSessionExportArtifact 为单条 session 创建预生成导出文件任务。
+func (h *DataSharingHandler) CreateSessionExportArtifact(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid session ID")
+		return
+	}
+	artifact, err := h.dataSharingService.CreateExportArtifact(c.Request.Context(), service.DataShareExportArtifactCreateInput{
+		Filters:  service.DataShareSessionFilters{IDs: []int64{id}},
+		Filename: fmt.Sprintf("admin-data-sharing-session-%d", id),
+		Encoding: service.DataShareExportEncodingJSON,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Accepted(c, adminDataShareExportArtifactToResponse(artifact))
+}
+
+// ListExportArtifacts 查询预生成导出文件任务列表。
+func (h *DataSharingHandler) ListExportArtifacts(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}
+	items, result, err := h.dataSharingService.ListExportArtifacts(c.Request.Context(), params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]adminDataShareExportArtifactResponse, 0, len(items))
+	for i := range items {
+		out = append(out, adminDataShareExportArtifactToResponse(&items[i]))
+	}
+	total := int64(0)
+	if result != nil {
+		total = result.Total
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
+// GetExportArtifact 返回单个预生成导出文件任务。
+func (h *DataSharingHandler) GetExportArtifact(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	artifact, err := h.dataSharingService.GetExportArtifact(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, adminDataShareExportArtifactToResponse(artifact))
+}
+
+// CreateExportArtifactDownloadTicket 为已完成的预生成文件签发下载票据。
+func (h *DataSharingHandler) CreateExportArtifactDownloadTicket(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	ticket, err := h.dataSharingService.CreateExportArtifactDownloadTicket(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, adminDataShareExportTicketToResponse(ticket))
+}
+
+// DeleteExportArtifact 删除预生成导出文件。
+func (h *DataSharingHandler) DeleteExportArtifact(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	if err := h.dataSharingService.DeleteExportArtifact(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
+// DownloadExportArtifact 使用短期票据下载已预生成的本地文件。
+func (h *DataSharingHandler) DownloadExportArtifact(c *gin.Context) {
+	body, artifact, err := h.dataSharingService.OpenExportArtifactDownload(c.Request.Context(), strings.TrimSpace(c.Query("ticket")))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	defer func() { _ = body.Close() }()
+	encoding := service.DataShareExportEncoding(artifact.Encoding)
+	contentType := "application/octet-stream"
+	if encoding == service.DataShareExportEncodingJSON {
+		contentType = "application/json"
+	} else if encoding == service.DataShareExportEncodingJSONL {
+		contentType = "application/x-ndjson"
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeAdminDataShareFilename(artifact.Filename)))
+	c.Header("X-Content-Type-Options", "nosniff")
+	if artifact.FileSize > 0 {
+		c.Header("Content-Length", strconv.FormatInt(artifact.FileSize, 10))
+	}
+	if _, err := io.Copy(c.Writer, body); err != nil {
+		c.Error(err)
+	}
+}
+
 // DownloadExport 使用短期票据下载 JSONL 或 zstd 压缩后的 JSONL。
 func (h *DataSharingHandler) DownloadExport(c *gin.Context) {
 	claims, err := h.dataSharingService.ParseExportTicket(c.Request.Context(), service.DataShareExportScopeAdmin, strings.TrimSpace(c.Query("ticket")))
@@ -592,6 +747,27 @@ func adminDataShareExportTicketToResponse(ticket *service.DataShareExportTicket)
 	}
 }
 
+func adminDataShareExportArtifactToResponse(artifact *service.DataShareExportArtifact) adminDataShareExportArtifactResponse {
+	if artifact == nil {
+		return adminDataShareExportArtifactResponse{}
+	}
+	return adminDataShareExportArtifactResponse{
+		ID:           artifact.ID,
+		Status:       string(artifact.Status),
+		Filename:     artifact.Filename,
+		Encoding:     artifact.Encoding,
+		SessionCount: artifact.SessionCount,
+		FileSize:     artifact.FileSize,
+		SHA256:       artifact.SHA256,
+		ErrorMessage: artifact.ErrorMessage,
+		CreatedAt:    artifact.CreatedAt,
+		StartedAt:    artifact.StartedAt,
+		CompletedAt:  artifact.CompletedAt,
+		DeletedAt:    artifact.DeletedAt,
+		UpdatedAt:    artifact.UpdatedAt,
+	}
+}
+
 func writeAdminDataSharePlainJSON(c *gin.Context, filename string, write func() error) {
 	if filename == "" {
 		filename = fmt.Sprintf("admin-data-sharing-%s.json", time.Now().Format("20060102-150405"))
@@ -644,4 +820,12 @@ func writeAdminDataShareZstdJSONL(c *gin.Context, filename string, write func(*z
 		_ = c.Error(err)
 		return
 	}
+}
+
+func sanitizeAdminDataShareFilename(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return fmt.Sprintf("admin-data-sharing-%s.jsonl.zst", time.Now().Format("20060102-150405"))
+	}
+	return strings.NewReplacer("/", "-", "\\", "-", "\x00", "", `"`, "").Replace(filename)
 }

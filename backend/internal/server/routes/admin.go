@@ -16,6 +16,7 @@ func RegisterAdminRoutes(
 ) {
 	// 管理端数据共享下载链接只依赖短期签名票据，避免大文件下载经过前端 Blob。
 	v1.GET("/admin/data-sharing/export/download", h.Admin.DataSharing.DownloadExport)
+	v1.GET("/admin/data-sharing/exports/download", h.Admin.DataSharing.DownloadExportArtifact)
 
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
@@ -123,8 +124,14 @@ func registerDataSharingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dataSharing.GET("/sessions/:id", h.Admin.DataSharing.GetSession)
 		dataSharing.DELETE("/sessions/:id", h.Admin.DataSharing.DeleteSession)
 		dataSharing.POST("/sessions/:id/export-ticket", h.Admin.DataSharing.CreateSessionExportTicket)
+		dataSharing.POST("/sessions/:id/export-artifacts", h.Admin.DataSharing.CreateSessionExportArtifact)
 		dataSharing.POST("/sessions/batch-delete", h.Admin.DataSharing.BatchDeleteSessions)
 		dataSharing.POST("/export-ticket", h.Admin.DataSharing.CreateExportTicket)
+		dataSharing.GET("/exports", h.Admin.DataSharing.ListExportArtifacts)
+		dataSharing.POST("/exports", h.Admin.DataSharing.CreateExportArtifact)
+		dataSharing.GET("/exports/:id", h.Admin.DataSharing.GetExportArtifact)
+		dataSharing.POST("/exports/:id/download-ticket", h.Admin.DataSharing.CreateExportArtifactDownloadTicket)
+		dataSharing.DELETE("/exports/:id", h.Admin.DataSharing.DeleteExportArtifact)
 		dataSharing.GET("/stats", h.Admin.DataSharing.Stats)
 	}
 }

@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
@@ -558,16 +561,38 @@ func ProvideAPIKeyService(
 // ProvideDataSharingService 注入数据共享服务并绑定独立采集 worker。
 func ProvideDataSharingService(
 	repo DataShareSessionRepository,
+	exportArtifactRepo DataShareExportArtifactRepository,
 	settingRepo SettingRepository,
 	captureWorker *DataSharingCaptureWorkerPool,
 	cfg *config.Config,
 ) *DataSharingService {
 	svc := NewDataSharingService(repo, settingRepo, captureWorker)
+	svc.SetExportArtifactRepository(exportArtifactRepo)
+	svc.SetExportStorageDir(resolveDataShareExportStorageDir(cfg))
 	svc.SetDefaultCaptureRuntimeSettings(dataShareCaptureRuntimeSettingsFromConfig(cfg))
 	if _, err := svc.LoadRuntimeSettings(context.Background()); err != nil {
 		logger.LegacyPrintf("service.data_sharing", "load data sharing runtime settings failed: %v", err)
 	}
 	return svc
+}
+
+func resolveDataShareExportStorageDir(cfg *config.Config) string {
+	if cfg != nil {
+		if dir := strings.TrimSpace(cfg.Gateway.DataSharingExport.StorageDir); dir != "" {
+			return dir
+		}
+	}
+	return filepath.Join(defaultDataShareExportDataDir(), "data-sharing-exports")
+}
+
+func defaultDataShareExportDataDir() string {
+	if dir := strings.TrimSpace(os.Getenv("DATA_DIR")); dir != "" {
+		return dir
+	}
+	if info, err := os.Stat("/app/data"); err == nil && info.IsDir() {
+		return "/app/data"
+	}
+	return "."
 }
 
 // ProviderSet is the Wire provider set for all services

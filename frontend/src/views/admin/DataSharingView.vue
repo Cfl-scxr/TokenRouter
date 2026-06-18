@@ -745,7 +745,7 @@
                 </button>
                 <button class="btn btn-primary" :disabled="exporting || selectedCount === 0" @click="downloadSelected">
                   <Icon name="download" size="md" class="mr-2" />
-                  导出已选 JSONL
+                  生成导出文件
                 </button>
               </div>
             </div>
@@ -815,7 +815,7 @@
                 </button>
                 <button class="btn btn-ghost btn-sm" @click="downloadOne(row)">
                   <Icon name="download" size="sm" class="mr-1" />
-                  下载
+                  生成
                 </button>
                 <button class="btn btn-ghost btn-sm text-red-600 hover:text-red-700" @click="deleteOne(row)">
                   <Icon name="trash" size="sm" class="mr-1" />
@@ -840,6 +840,65 @@
           />
         </template>
       </TablePageLayout>
+
+      <div class="card overflow-hidden">
+        <div class="border-b border-gray-200 p-4 dark:border-gray-700">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">导出文件</h2>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">已预处理完成的文件可直接下载，失败或不再需要的文件可手动删除。</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" :disabled="exportArtifactsLoading" @click="loadExportArtifacts">
+              <Icon name="refresh" size="sm" :class="exportArtifactsLoading ? 'animate-spin' : ''" />
+              <span class="ml-1">刷新</span>
+            </button>
+          </div>
+        </div>
+        <DataTable :columns="exportArtifactColumns" :data="exportArtifacts" :loading="exportArtifactsLoading">
+          <template #cell-status="{ value }">
+            <span :class="['badge', exportArtifactStatusBadgeClass(value)]">{{ exportArtifactStatusLabel(value) }}</span>
+          </template>
+          <template #cell-filename="{ row }">
+            <div class="max-w-sm">
+              <p class="truncate font-medium text-gray-900 dark:text-white" :title="row.filename">{{ row.filename }}</p>
+              <p v-if="row.error_message" class="truncate text-xs text-red-600 dark:text-red-400" :title="row.error_message">{{ row.error_message }}</p>
+              <p v-else class="truncate text-xs text-gray-500 dark:text-gray-400">{{ row.sha256 ? `SHA256 ${row.sha256.slice(0, 12)}` : row.encoding }}</p>
+            </div>
+          </template>
+          <template #cell-session_count="{ value }">{{ formatNumber(value) }}</template>
+          <template #cell-file_size="{ value }">{{ formatBytes(value) }}</template>
+          <template #cell-created_at="{ value }">{{ formatDate(value) }}</template>
+          <template #cell-completed_at="{ value }">{{ formatDate(value) }}</template>
+          <template #cell-actions="{ row }">
+            <div class="flex items-center gap-1">
+              <button class="btn btn-ghost btn-sm" :disabled="row.status !== 'completed'" @click="downloadExportArtifact(row)">
+                <Icon name="download" size="sm" class="mr-1" />
+                下载
+              </button>
+              <button
+                class="btn btn-ghost btn-sm text-red-600 hover:text-red-700"
+                :disabled="row.status === 'deleted' || row.status === 'pending' || row.status === 'running'"
+                @click="deleteExportArtifact(row)"
+              >
+                <Icon name="trash" size="sm" class="mr-1" />
+                删除
+              </button>
+            </div>
+          </template>
+          <template #empty>
+            <EmptyState title="暂无导出文件" description="选择数据并生成导出文件后会显示在这里。" />
+          </template>
+        </DataTable>
+        <div v-if="exportArtifactPagination.total > 0" class="border-t border-gray-200 p-4 dark:border-gray-700">
+          <Pagination
+            :page="exportArtifactPagination.page"
+            :total="exportArtifactPagination.total"
+            :page-size="exportArtifactPagination.page_size"
+            @update:page="handleExportArtifactPageChange"
+            @update:pageSize="handleExportArtifactPageSizeChange"
+          />
+        </div>
+      </div>
     </div>
 
     <BaseDialog :show="detailOpen" title="数据共享详情" width="extra-wide" @close="detailOpen = false">
@@ -1010,6 +1069,7 @@ import {
   type DataShareInvalidUserPoint,
   type DataShareCaptureSkipRule,
   type DataShareCaptureSkipRuleFieldScope,
+  type DataShareExportArtifact,
   type DataShareStorageLimit,
   type DataShareStats
 } from '@/api/admin/dataSharing'
@@ -1077,6 +1137,7 @@ const excludedIds = ref<Set<number>>(new Set())
 const selectAllMatching = ref(false)
 
 const loading = ref(false)
+const exportArtifactsLoading = ref(false)
 const statsLoading = ref(false)
 const statsAutoRefreshEnabled = ref(false)
 const statsAutoRefreshIntervalSeconds = ref<(typeof statsAutoRefreshIntervals)[number]>(statsAutoRefreshDefaultSeconds)
@@ -1096,7 +1157,9 @@ const detailLoading = ref(false)
 const durationDetailOpen = ref(false)
 
 const pagination = reactive({ page: 1, page_size: 20, total: 0, pages: 1 })
+const exportArtifactPagination = reactive({ page: 1, page_size: 10, total: 0, pages: 1 })
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
+const exportArtifacts = ref<DataShareExportArtifact[]>([])
 const filters = reactive({
   search: '',
   user_name: '',
@@ -1240,6 +1303,16 @@ const columns: Column[] = [
   { key: 'storage_bytes', label: '空间', sortable: true },
   { key: 'total_tokens', label: 'Token', sortable: true },
   { key: 'created_at', label: '创建时间', sortable: true },
+  { key: 'actions', label: '操作' }
+]
+
+const exportArtifactColumns: Column[] = [
+  { key: 'status', label: '状态' },
+  { key: 'filename', label: '文件' },
+  { key: 'session_count', label: 'Session' },
+  { key: 'file_size', label: '大小' },
+  { key: 'created_at', label: '创建时间' },
+  { key: 'completed_at', label: '完成时间' },
   { key: 'actions', label: '操作' }
 ]
 
@@ -2214,8 +2287,24 @@ async function loadSessions() {
   }
 }
 
+async function loadExportArtifacts() {
+  // 导出文件列表和 session 列表分开分页，避免刷新任务状态时影响当前筛选结果。
+  exportArtifactsLoading.value = true
+  try {
+    const res = await adminDataSharingAPI.listExportArtifacts(exportArtifactPagination.page, exportArtifactPagination.page_size)
+    exportArtifacts.value = res.items
+    exportArtifactPagination.total = res.total
+    exportArtifactPagination.pages = res.pages
+  } catch (error) {
+    appStore.showError('加载导出文件失败')
+  } finally {
+    exportArtifactsLoading.value = false
+  }
+}
+
 function refreshAll() {
   loadSessions()
+  loadExportArtifacts()
   loadStats()
   loadStorageLimit()
 }
@@ -2258,6 +2347,17 @@ function handlePageSizeChange(pageSize: number) {
   pagination.page_size = pageSize
   pagination.page = 1
   loadSessions()
+}
+
+function handleExportArtifactPageChange(page: number) {
+  exportArtifactPagination.page = page
+  loadExportArtifacts()
+}
+
+function handleExportArtifactPageSizeChange(pageSize: number) {
+  exportArtifactPagination.page_size = pageSize
+  exportArtifactPagination.page = 1
+  loadExportArtifacts()
 }
 
 function clearSelection() {
@@ -2389,11 +2489,13 @@ async function downloadSelected() {
   if (selectedCount.value === 0) return
   exporting.value = true
   try {
-    const ticket = await adminDataSharingAPI.createExportTicket(buildSelectionFilters())
-    dataSharingAPI.startTicketDownload(ticket)
-    appStore.showSuccess('下载已开始')
+    // 批量导出只创建后台生成任务，实际下载从“导出文件”板块读取已生成文件。
+    await adminDataSharingAPI.createExportArtifact(buildSelectionFilters())
+    exportArtifactPagination.page = 1
+    await loadExportArtifacts()
+    appStore.showSuccess('导出文件生成任务已创建')
   } catch (error) {
-    appStore.showError('导出失败')
+    appStore.showError('创建导出任务失败')
   } finally {
     exporting.value = false
   }
@@ -2401,11 +2503,35 @@ async function downloadSelected() {
 
 async function downloadOne(row: DataShareSession) {
   try {
-    const ticket = await adminDataSharingAPI.createSessionExportTicket(row.id)
+    // 单条 session 也走预生成任务，保持管理端下载链路一致。
+    await adminDataSharingAPI.createSessionExportArtifact(row.id)
+    exportArtifactPagination.page = 1
+    await loadExportArtifacts()
+    appStore.showSuccess('单条导出文件生成任务已创建')
+  } catch (error) {
+    appStore.showError('创建导出任务失败')
+  }
+}
+
+async function downloadExportArtifact(row: DataShareExportArtifact) {
+  try {
+    // 下载票据只绑定已生成文件，不再触发实时查询和压缩。
+    const ticket = await adminDataSharingAPI.createExportArtifactDownloadTicket(row.id)
     dataSharingAPI.startTicketDownload(ticket)
     appStore.showSuccess('下载已开始')
   } catch (error) {
     appStore.showError('下载失败')
+  }
+}
+
+async function deleteExportArtifact(row: DataShareExportArtifact) {
+  if (!window.confirm(`确定删除导出文件 ${row.filename} 吗？`)) return
+  try {
+    await adminDataSharingAPI.deleteExportArtifact(row.id)
+    appStore.showSuccess('导出文件已删除')
+    loadExportArtifacts()
+  } catch (error) {
+    appStore.showError('删除导出文件失败')
   }
 }
 
@@ -2633,6 +2759,23 @@ function qualityBadgeClass(value?: string) {
   if (value === 'complete') return 'badge-success'
   if (value === 'partial') return 'badge-warning'
   return 'badge-danger'
+}
+
+function exportArtifactStatusLabel(value?: string) {
+  if (value === 'pending') return '等待中'
+  if (value === 'running') return '生成中'
+  if (value === 'completed') return '已完成'
+  if (value === 'failed') return '失败'
+  if (value === 'deleted') return '已删除'
+  return value || '-'
+}
+
+function exportArtifactStatusBadgeClass(value?: string) {
+  if (value === 'completed') return 'badge-success'
+  if (value === 'running') return 'badge-gray'
+  if (value === 'pending') return 'badge-warning'
+  if (value === 'failed') return 'badge-danger'
+  return 'badge-gray'
 }
 
 function formatBytes(value?: number | null) {

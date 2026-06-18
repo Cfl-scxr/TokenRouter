@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -245,6 +246,121 @@ func (r *dataShareExportRepoStub) FilterOptions(context.Context, DataShareSessio
 
 func (r *dataShareExportRepoStub) TotalStorageBytes(context.Context) (int64, error) {
 	return 0, nil
+}
+
+type dataShareExportArtifactRepoStub struct {
+	mu     sync.Mutex
+	nextID int64
+	items  map[int64]*DataShareExportArtifact
+}
+
+func newDataShareExportArtifactRepoStub() *dataShareExportArtifactRepoStub {
+	return &dataShareExportArtifactRepoStub{nextID: 1, items: map[int64]*DataShareExportArtifact{}}
+}
+
+func (r *dataShareExportArtifactRepoStub) Create(_ context.Context, artifact *DataShareExportArtifact) (*DataShareExportArtifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := *artifact
+	item.ID = r.nextID
+	r.nextID++
+	now := time.Now()
+	item.CreatedAt = now
+	item.UpdatedAt = now
+	r.items[item.ID] = &item
+	return cloneDataShareExportArtifact(&item), nil
+}
+
+func (r *dataShareExportArtifactRepoStub) Get(_ context.Context, id int64) (*DataShareExportArtifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return nil, ErrDataShareExportArtifactNotFound
+	}
+	return cloneDataShareExportArtifact(item), nil
+}
+
+func (r *dataShareExportArtifactRepoStub) List(_ context.Context, params pagination.PaginationParams) ([]DataShareExportArtifact, *pagination.PaginationResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]DataShareExportArtifact, 0, len(r.items))
+	for _, item := range r.items {
+		items = append(items, *cloneDataShareExportArtifact(item))
+	}
+	return items, &pagination.PaginationResult{Total: int64(len(items)), Page: params.Page, PageSize: params.PageSize, Pages: 1}, nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkRunning(_ context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	now := time.Now()
+	item.Status = DataShareExportArtifactStatusRunning
+	item.StartedAt = &now
+	item.UpdatedAt = now
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkCompleted(_ context.Context, id int64, storagePath string, sessionCount int64, fileSize int64, sha256 string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	now := time.Now()
+	item.Status = DataShareExportArtifactStatusCompleted
+	item.StoragePath = storagePath
+	item.SessionCount = sessionCount
+	item.FileSize = fileSize
+	item.SHA256 = sha256
+	item.CompletedAt = &now
+	item.UpdatedAt = now
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkFailed(_ context.Context, id int64, errorMessage string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	now := time.Now()
+	item.Status = DataShareExportArtifactStatusFailed
+	item.ErrorMessage = errorMessage
+	item.CompletedAt = &now
+	item.UpdatedAt = now
+	return nil
+}
+
+func (r *dataShareExportArtifactRepoStub) MarkDeleted(_ context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item := r.items[id]
+	if item == nil {
+		return ErrDataShareExportArtifactNotFound
+	}
+	now := time.Now()
+	item.Status = DataShareExportArtifactStatusDeleted
+	item.StoragePath = ""
+	item.DeletedAt = &now
+	item.UpdatedAt = now
+	return nil
+}
+
+func cloneDataShareExportArtifact(item *DataShareExportArtifact) *DataShareExportArtifact {
+	if item == nil {
+		return nil
+	}
+	out := *item
+	out.Filters.IDs = append([]int64(nil), item.Filters.IDs...)
+	out.Filters.ExcludeIDs = append([]int64(nil), item.Filters.ExcludeIDs...)
+	return &out
 }
 
 func TestDataSharingService_CaptureAsyncUsesWorkerContext(t *testing.T) {
@@ -3964,6 +4080,72 @@ func TestDataShareExportRedactsSensitiveFields(t *testing.T) {
 	nestedMeta, ok := meta["nested"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, true, nestedMeta["kept"])
+}
+
+func TestDataSharingService_CreateExportArtifactGeneratesDownloadableFile(t *testing.T) {
+	session := DataShareSession{
+		TrajectoryID:  "traj-artifact",
+		SessionID:     "sess-artifact",
+		Dataset:       defaultDataShareDataset,
+		Provider:      PlatformOpenAI,
+		Model:         "gpt-5.5",
+		Messages:      []map[string]any{{"role": "user", "content": "hello"}},
+		SessionJSON:   map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}},
+		Exportable:    true,
+		QualityStatus: DataShareQualityComplete,
+		UserID:        1,
+		APIKeyID:      2,
+		GroupID:       3,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{SettingKeyDataSharingExportTicketKey: "test-secret"}}
+	svc := NewDataSharingService(&dataShareExportRepoStub{items: []DataShareSession{session}}, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+
+	artifact, err := svc.CreateExportArtifact(context.Background(), DataShareExportArtifactCreateInput{
+		Filters:  DataShareSessionFilters{IDs: []int64{1}},
+		Filename: "artifact-test",
+		Encoding: DataShareExportEncodingJSONL,
+	})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+		return err == nil && got.Status == DataShareExportArtifactStatusCompleted
+	}, time.Second, 10*time.Millisecond)
+
+	completed, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), completed.SessionCount)
+	require.Greater(t, completed.FileSize, int64(0))
+	require.FileExists(t, completed.StoragePath)
+
+	ticket, err := svc.CreateExportArtifactDownloadTicket(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	body, opened, err := svc.OpenExportArtifactDownload(context.Background(), ticket.Token)
+	require.NoError(t, err)
+	defer func() { _ = body.Close() }()
+	raw, err := io.ReadAll(body)
+	require.NoError(t, err)
+	require.Equal(t, completed.ID, opened.ID)
+	require.Contains(t, string(raw), "sess-artifact")
+}
+
+func TestDataSharingService_DeleteExportArtifactRejectsRunning(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	svc := NewDataSharingService(nil, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusRunning,
+		Filename: "running.jsonl",
+		Encoding: string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+
+	err = svc.DeleteExportArtifact(context.Background(), artifact.ID)
+	require.ErrorIs(t, err, ErrDataShareExportArtifactNotReady)
 }
 
 func TestWriteSingleSessionJSONLRedactsSensitiveFields(t *testing.T) {

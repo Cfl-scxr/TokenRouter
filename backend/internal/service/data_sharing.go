@@ -70,6 +70,10 @@ var dataShareExportExcludedFields = map[string]struct{}{
 var ErrDataShareSkipRulesInvalid = infraerrors.BadRequest("DATA_SHARE_SKIP_RULES_INVALID", "data sharing capture skip rules are invalid")
 var ErrDataShareExportTicketInvalid = infraerrors.BadRequest("DATA_SHARE_EXPORT_TICKET_INVALID", "data sharing export ticket is invalid")
 var ErrDataShareExportTicketForbidden = infraerrors.Forbidden("DATA_SHARE_EXPORT_TICKET_FORBIDDEN", "data sharing export ticket scope is not allowed")
+var ErrDataShareExportArtifactNotFound = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_NOT_FOUND", "data share export artifact not found")
+var ErrDataShareExportArtifactNotReady = infraerrors.BadRequest("DATA_SHARE_EXPORT_ARTIFACT_NOT_READY", "data share export artifact is not ready")
+var ErrDataShareExportArtifactDeleted = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_DELETED", "data share export artifact was deleted")
+var ErrDataShareExportArtifactStorageInvalid = infraerrors.InternalServer("DATA_SHARE_EXPORT_ARTIFACT_STORAGE_INVALID", "data share export artifact storage is invalid")
 var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
 var ErrDataShareCaptureRuntimeInvalid = infraerrors.BadRequest("DATA_SHARE_CAPTURE_RUNTIME_INVALID", "data sharing capture runtime settings are invalid")
 
@@ -259,12 +263,61 @@ type DataShareExportTicket struct {
 
 // DataShareExportTicketClaims 是签名票据中保存的导出上下文。
 type DataShareExportTicketClaims struct {
-	Scope     DataShareExportScope    `json:"scope"`
-	UserID    int64                   `json:"user_id,omitempty"`
-	Filters   DataShareSessionFilters `json:"filters"`
-	Filename  string                  `json:"filename"`
-	Encoding  DataShareExportEncoding `json:"encoding,omitempty"`
-	ExpiresAt int64                   `json:"expires_at"`
+	Scope      DataShareExportScope    `json:"scope"`
+	UserID     int64                   `json:"user_id,omitempty"`
+	Filters    DataShareSessionFilters `json:"filters"`
+	ArtifactID int64                   `json:"artifact_id,omitempty"`
+	Filename   string                  `json:"filename"`
+	Encoding   DataShareExportEncoding `json:"encoding,omitempty"`
+	ExpiresAt  int64                   `json:"expires_at"`
+}
+
+// DataShareExportArtifactStatus 描述预生成导出文件的任务状态。
+type DataShareExportArtifactStatus string
+
+const (
+	DataShareExportArtifactStatusPending   DataShareExportArtifactStatus = "pending"
+	DataShareExportArtifactStatusRunning   DataShareExportArtifactStatus = "running"
+	DataShareExportArtifactStatusCompleted DataShareExportArtifactStatus = "completed"
+	DataShareExportArtifactStatusFailed    DataShareExportArtifactStatus = "failed"
+	DataShareExportArtifactStatusDeleted   DataShareExportArtifactStatus = "deleted"
+)
+
+// DataShareExportArtifact 记录一次预生成导出文件任务及其本地文件元数据。
+type DataShareExportArtifact struct {
+	ID           int64                         `json:"id"`
+	Status       DataShareExportArtifactStatus `json:"status"`
+	Filename     string                        `json:"filename"`
+	StoragePath  string                        `json:"-"`
+	Encoding     string                        `json:"encoding"`
+	Filters      DataShareSessionFilters       `json:"filters"`
+	SessionCount int64                         `json:"session_count"`
+	FileSize     int64                         `json:"file_size"`
+	SHA256       string                        `json:"sha256"`
+	ErrorMessage string                        `json:"error_message"`
+	CreatedAt    time.Time                     `json:"created_at"`
+	StartedAt    *time.Time                    `json:"started_at,omitempty"`
+	CompletedAt  *time.Time                    `json:"completed_at,omitempty"`
+	DeletedAt    *time.Time                    `json:"deleted_at,omitempty"`
+	UpdatedAt    time.Time                     `json:"updated_at"`
+}
+
+// DataShareExportArtifactCreateInput 是创建预生成导出任务的输入。
+type DataShareExportArtifactCreateInput struct {
+	Filename string
+	Encoding DataShareExportEncoding
+	Filters  DataShareSessionFilters
+}
+
+// DataShareExportArtifactRepository 定义导出文件任务元数据的持久化能力。
+type DataShareExportArtifactRepository interface {
+	Create(ctx context.Context, artifact *DataShareExportArtifact) (*DataShareExportArtifact, error)
+	Get(ctx context.Context, id int64) (*DataShareExportArtifact, error)
+	List(ctx context.Context, params pagination.PaginationParams) ([]DataShareExportArtifact, *pagination.PaginationResult, error)
+	MarkRunning(ctx context.Context, id int64) error
+	MarkCompleted(ctx context.Context, id int64, storagePath string, sessionCount int64, fileSize int64, sha256 string) error
+	MarkFailed(ctx context.Context, id int64, errorMessage string) error
+	MarkDeleted(ctx context.Context, id int64) error
 }
 
 // DataShareStoragePoint 用于管理端展示空间增长趋势。
@@ -403,7 +456,9 @@ type DataShareSessionRepository interface {
 // DataSharingService 负责数据共享须知、采集、导出和统计。
 type DataSharingService struct {
 	repo                     DataShareSessionRepository
+	exportArtifactRepo       DataShareExportArtifactRepository
 	settingRepo              SettingRepository
+	exportStorageDir         string
 	captureWorker            *DataSharingCaptureWorkerPool
 	captureBuffer            *DataSharingCaptureBuffer
 	captureDurations         *dataShareCaptureDurationRecorder
@@ -442,4 +497,20 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		svc.captureWorker.SetDurationRecorder(svc.captureDurations)
 	}
 	return svc
+}
+
+// SetExportArtifactRepository 绑定预生成导出文件任务仓储。
+func (s *DataSharingService) SetExportArtifactRepository(repo DataShareExportArtifactRepository) {
+	if s == nil {
+		return
+	}
+	s.exportArtifactRepo = repo
+}
+
+// SetExportStorageDir 设置预生成导出文件的本地保存目录。
+func (s *DataSharingService) SetExportStorageDir(dir string) {
+	if s == nil {
+		return
+	}
+	s.exportStorageDir = strings.TrimSpace(dir)
 }
