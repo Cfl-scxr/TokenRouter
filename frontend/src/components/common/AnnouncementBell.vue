@@ -3,9 +3,12 @@
     <!-- 铃铛按钮 -->
     <button
       @click="openModal"
-      class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800"
-      :class="{ 'text-blue-600 dark:text-blue-400': unreadCount > 0 }"
+      :class="[
+        triggerClass,
+        { 'text-blue-600 dark:text-blue-400': unreadCount > 0 }
+      ]"
       :aria-label="t('announcements.title')"
+      :title="t('announcements.title')"
     >
       <Icon name="bell" size="md" />
       <!-- 未读红点 -->
@@ -323,6 +326,12 @@ import { formatRelativeTime, formatRelativeWithDateTime } from '@/utils/format'
 import type { UserAnnouncement } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 
+const props = withDefaults(defineProps<{
+  variant?: 'default' | 'status'
+}>(), {
+  variant: 'default'
+})
+
 const { t } = useI18n()
 const appStore = useAppStore()
 const announcementStore = useAnnouncementStore()
@@ -336,6 +345,12 @@ marked.setOptions({
 // Use store state (storeToRefs for reactivity)
 const { announcements, loading } = storeToRefs(announcementStore)
 const unreadCount = computed(() => announcementStore.unreadCount)
+const triggerClass = computed(() => {
+  if (props.variant === 'status') {
+    return 'relative flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/70 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white'
+  }
+  return 'relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800'
+})
 
 // Local modal state
 const isModalOpen = ref(false)
