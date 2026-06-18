@@ -134,7 +134,7 @@ const shouldShow = computed(() => variant.value === 'status' || hasActiveSubscri
 const statusCount = computed(() => activeSubscriptions.value.length)
 const triggerClass = computed(() => {
   if (variant.value === 'status') {
-    return 'flex h-8 min-w-[50px] items-center justify-center gap-1.5 rounded-lg bg-primary-50 px-2.5 transition-colors hover:bg-primary-100 disabled:cursor-default disabled:hover:bg-primary-50 dark:bg-dark-800/80 dark:hover:bg-dark-700 dark:disabled:hover:bg-dark-800/80'
+    return 'flex h-8 min-w-[50px] items-center justify-center gap-1.5 rounded-lg border border-primary-200/70 bg-primary-100/80 px-2.5 shadow-sm transition-colors hover:bg-primary-100 disabled:cursor-default disabled:hover:bg-primary-100/80 dark:border-transparent dark:bg-dark-800/80 dark:shadow-none dark:hover:bg-dark-700 dark:disabled:hover:bg-dark-800/80'
   }
   return 'flex cursor-pointer items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 transition-colors hover:bg-primary-100 dark:bg-primary-900/20 dark:hover:bg-primary-900/30'
 })

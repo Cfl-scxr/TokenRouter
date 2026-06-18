@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-balance {
-  @apply h-8 min-w-[104px] items-center justify-center rounded-lg bg-primary-50 px-3 dark:bg-dark-800/80;
+  @apply h-8 min-w-[104px] items-center justify-center rounded-lg border border-primary-200/70 bg-primary-100/80 px-3 shadow-sm dark:border-transparent dark:bg-dark-800/80 dark:shadow-none;
 }
 
 .header-status-user-button {
