@@ -178,8 +178,8 @@ func (r *adminDataShareExportArtifactRepoStub) MarkInterruptedRemoteUploads(cont
 	return 0, nil
 }
 
-func (r *adminDataShareExportArtifactRepoStub) MarkDeleted(context.Context, int64) error {
-	return nil
+func (r *adminDataShareExportArtifactRepoStub) MarkDeleted(context.Context, int64) (string, error) {
+	return "", nil
 }
 
 func TestParseAdminDataShareFiltersIncludesRequestPath(t *testing.T) {

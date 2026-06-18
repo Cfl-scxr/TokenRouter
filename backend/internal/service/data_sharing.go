@@ -74,6 +74,7 @@ var ErrDataShareExportArtifactNotFound = infraerrors.NotFound("DATA_SHARE_EXPORT
 var ErrDataShareExportArtifactNotReady = infraerrors.BadRequest("DATA_SHARE_EXPORT_ARTIFACT_NOT_READY", "data share export artifact is not ready")
 var ErrDataShareExportArtifactDeleted = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_DELETED", "data share export artifact was deleted")
 var ErrDataShareExportArtifactUploadInProgress = infraerrors.Conflict("DATA_SHARE_EXPORT_ARTIFACT_UPLOAD_IN_PROGRESS", "data share export artifact upload is already in progress")
+var ErrDataShareExportArtifactRemoteUploadInProgress = infraerrors.Conflict("DATA_SHARE_EXPORT_ARTIFACT_REMOTE_UPLOAD_IN_PROGRESS", "data share export artifact remote upload is in progress")
 var ErrDataShareExportArtifactStorageInvalid = infraerrors.InternalServer("DATA_SHARE_EXPORT_ARTIFACT_STORAGE_INVALID", "data share export artifact storage is invalid")
 var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
 var ErrDataShareCaptureRuntimeInvalid = infraerrors.BadRequest("DATA_SHARE_CAPTURE_RUNTIME_INVALID", "data sharing capture runtime settings are invalid")
@@ -351,7 +352,7 @@ type DataShareExportArtifactRepository interface {
 	MarkInterruptedFailed(ctx context.Context, errorMessage string) (int64, error)
 	// MarkInterruptedRemoteUploads 将服务启动前遗留的远端上传任务标记为失败。
 	MarkInterruptedRemoteUploads(ctx context.Context, errorMessage string) (int64, error)
-	MarkDeleted(ctx context.Context, id int64) error
+	MarkDeleted(ctx context.Context, id int64) (storagePath string, err error)
 }
 
 // DataShareStoragePoint 用于管理端展示空间增长趋势。

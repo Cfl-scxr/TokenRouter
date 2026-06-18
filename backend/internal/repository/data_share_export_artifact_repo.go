@@ -211,12 +211,45 @@ func (r *dataShareExportArtifactRepository) MarkInterruptedRemoteUploads(ctx con
 	return result.RowsAffected()
 }
 
-func (r *dataShareExportArtifactRepository) MarkDeleted(ctx context.Context, id int64) error {
-	return r.execArtifactUpdate(ctx, `
+func (r *dataShareExportArtifactRepository) MarkDeleted(ctx context.Context, id int64) (string, error) {
+	if r == nil || r.db == nil {
+		return "", service.ErrDataShareExportArtifactStorageInvalid
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var storagePath string
+	var remoteStatus string
+	// 先锁定记录再读取旧本地路径，避免删除和远端上传状态切换并发时丢失路径。
+	err = tx.QueryRowContext(ctx, `
+		SELECT storage_path, remote_status
+		FROM data_share_export_artifacts
+		WHERE id = $1
+		FOR UPDATE
+	`, id).Scan(&storagePath, &remoteStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", service.ErrDataShareExportArtifactNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if remoteStatus == string(service.DataShareExportArtifactRemoteStatusUploading) {
+		return "", service.ErrDataShareExportArtifactRemoteUploadInProgress
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE data_share_export_artifacts
 		SET status = 'deleted', storage_path = '', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
 		WHERE id = $1
-	`, id)
+	`, id); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return storagePath, nil
 }
 
 type artifactUpdateNoRowsPolicy struct {

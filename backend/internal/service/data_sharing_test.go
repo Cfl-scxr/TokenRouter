@@ -498,19 +498,23 @@ func (r *dataShareExportArtifactRepoStub) MarkInterruptedRemoteUploads(_ context
 	return affected, nil
 }
 
-func (r *dataShareExportArtifactRepoStub) MarkDeleted(_ context.Context, id int64) error {
+func (r *dataShareExportArtifactRepoStub) MarkDeleted(_ context.Context, id int64) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	item := r.items[id]
 	if item == nil {
-		return ErrDataShareExportArtifactNotFound
+		return "", ErrDataShareExportArtifactNotFound
+	}
+	if item.RemoteStatus == DataShareExportArtifactRemoteStatusUploading {
+		return "", ErrDataShareExportArtifactRemoteUploadInProgress
 	}
 	now := time.Now()
+	storagePath := item.StoragePath
 	item.Status = DataShareExportArtifactStatusDeleted
 	item.StoragePath = ""
 	item.DeletedAt = &now
 	item.UpdatedAt = now
-	return nil
+	return storagePath, nil
 }
 
 func cloneDataShareExportArtifact(item *DataShareExportArtifact) *DataShareExportArtifact {
@@ -4530,6 +4534,38 @@ func TestDataSharingService_UploadExportArtifactToRemoteKeepsOldRemoteFileOnRetr
 	require.Equal(t, "https://download.example.test/share/2026/06/18/1-artifact.jsonl", url)
 }
 
+func TestDataSharingService_CreateExportArtifactRemoteDownloadURLAllowsUploadingWithOldKey(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareExportObjectStoreStub()
+	factory := func(context.Context, *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	_, err := svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{
+		Bucket:          "bucket-a",
+		AccessKeyID:     "ak",
+		SecretAccessKey: "sk",
+		Prefix:          "share",
+	})
+	require.NoError(t, err)
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:       DataShareExportArtifactStatusCompleted,
+		Filename:     "artifact.jsonl",
+		Encoding:     string(DataShareExportEncodingJSONL),
+		RemoteStatus: DataShareExportArtifactRemoteStatusUploading,
+		RemoteBucket: "bucket-a",
+		RemoteKey:    "share/old-artifact.jsonl",
+	})
+	require.NoError(t, err)
+
+	url, err := svc.CreateExportArtifactRemoteDownloadURL(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, "https://download.example.test/share/old-artifact.jsonl", url)
+}
+
 func TestDataSharingService_GenerateExportArtifactCleansFinalFileWhenMarkCompletedFails(t *testing.T) {
 	session := DataShareSession{
 		TrajectoryID:  "traj-artifact-cleanup",
@@ -4585,6 +4621,33 @@ func TestDataSharingService_DeleteExportArtifactRejectsRunning(t *testing.T) {
 
 	err = svc.DeleteExportArtifact(context.Background(), artifact.ID)
 	require.ErrorIs(t, err, ErrDataShareExportArtifactNotReady)
+}
+
+func TestDataSharingService_DeleteExportArtifactRejectsRemoteUploading(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	storageDir := t.TempDir()
+	svc := NewDataSharingService(nil, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(storageDir)
+	path := filepath.Join(storageDir, "uploading.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0644))
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:       DataShareExportArtifactStatusCompleted,
+		Filename:     "uploading.jsonl",
+		StoragePath:  path,
+		Encoding:     string(DataShareExportEncodingJSONL),
+		RemoteStatus: DataShareExportArtifactRemoteStatusUploading,
+	})
+	require.NoError(t, err)
+
+	err = svc.DeleteExportArtifact(context.Background(), artifact.ID)
+	require.ErrorIs(t, err, ErrDataShareExportArtifactRemoteUploadInProgress)
+	require.FileExists(t, path)
+
+	got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactStatusCompleted, got.Status)
+	require.Equal(t, path, got.StoragePath)
 }
 
 func TestDataSharingService_RecoverInterruptedExportArtifactsMarksActiveTasksFailed(t *testing.T) {

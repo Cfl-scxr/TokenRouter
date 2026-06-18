@@ -857,32 +857,32 @@
           </div>
           <div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4 md:grid-cols-2">
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-endpoint">Endpoint</label>
-              <input id="data-share-export-remote-endpoint" v-model="exportRemoteForm.endpoint" class="input w-full text-sm" placeholder="https://<account_id>.r2.cloudflarestorage.com" />
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-endpoint">端点地址</label>
+              <input id="data-share-export-remote-endpoint" v-model="exportRemoteForm.endpoint" class="input w-full text-sm" placeholder="https://<账号ID>.r2.cloudflarestorage.com" />
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-region">Region</label>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-region">区域</label>
               <input id="data-share-export-remote-region" v-model="exportRemoteForm.region" class="input w-full text-sm" placeholder="auto" />
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-bucket">Bucket</label>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-bucket">存储桶</label>
               <input id="data-share-export-remote-bucket" v-model="exportRemoteForm.bucket" class="input w-full text-sm" />
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-prefix">Prefix</label>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-prefix">对象前缀</label>
               <input id="data-share-export-remote-prefix" v-model="exportRemoteForm.prefix" class="input w-full text-sm" placeholder="data-sharing-exports" />
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-access-key">Access Key ID</label>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-access-key">访问密钥 ID</label>
               <input id="data-share-export-remote-access-key" v-model="exportRemoteForm.access_key_id" class="input w-full text-sm" />
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-secret-key">Secret Access Key</label>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-secret-key">访问密钥 Secret</label>
               <input id="data-share-export-remote-secret-key" v-model="exportRemoteForm.secret_access_key" type="password" class="input w-full text-sm" :placeholder="exportRemoteSecretConfigured ? '已配置，留空则保留' : ''" />
             </div>
             <label class="flex items-center gap-2 pt-6 text-sm text-gray-700 dark:text-gray-300">
               <input v-model="exportRemoteForm.force_path_style" type="checkbox" />
-              <span>Path-style URL</span>
+              <span>使用路径样式 URL</span>
             </label>
             <div class="flex items-end gap-2">
               <button class="btn btn-secondary btn-sm" type="button" :disabled="testingExportRemoteConfig" @click="testExportRemoteConfig">
@@ -944,7 +944,7 @@
               </button>
               <button
                 class="btn btn-ghost btn-sm"
-                :disabled="row.remote_status !== 'uploaded'"
+                :disabled="!row.remote_key"
                 @click="downloadRemoteExportArtifact(row)"
               >
                 <Icon name="externalLink" size="sm" class="mr-1" />
@@ -952,7 +952,7 @@
               </button>
               <button
                 class="btn btn-ghost btn-sm text-red-600 hover:text-red-700"
-                :disabled="row.status === 'deleted' || row.status === 'pending' || row.status === 'running'"
+                :disabled="row.status === 'deleted' || row.status === 'pending' || row.status === 'running' || row.remote_status === 'uploading'"
                 @click="deleteExportArtifact(row)"
               >
                 <Icon name="trash" size="sm" class="mr-1" />

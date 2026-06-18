@@ -79,15 +79,27 @@ func (s *DataSharingService) DeleteExportArtifact(ctx context.Context, id int64)
 	if artifact.Status == DataShareExportArtifactStatusPending || artifact.Status == DataShareExportArtifactStatusRunning {
 		return ErrDataShareExportArtifactNotReady
 	}
-	if artifact.StoragePath != "" {
+	if artifact.RemoteStatus == DataShareExportArtifactRemoteStatusUploading {
+		return ErrDataShareExportArtifactRemoteUploadInProgress
+	}
+	if strings.TrimSpace(artifact.StoragePath) != "" {
 		if err := s.validateExportArtifactPath(artifact.StoragePath); err != nil {
 			return err
 		}
-		if err := os.Remove(artifact.StoragePath); err != nil && !os.IsNotExist(err) {
+	}
+	storagePath, err := s.exportArtifactRepo.MarkDeleted(ctx, id)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(storagePath) != "" {
+		if err := s.validateExportArtifactPath(storagePath); err != nil {
+			return err
+		}
+		if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
-	return s.exportArtifactRepo.MarkDeleted(ctx, id)
+	return nil
 }
 
 // GetExportRemoteConfig 返回数据共享导出上传远端对象存储时使用的独立 S3/R2 配置。
@@ -225,7 +237,7 @@ func (s *DataSharingService) CreateExportArtifactRemoteDownloadURL(ctx context.C
 	if err != nil {
 		return "", err
 	}
-	if artifact.RemoteStatus != DataShareExportArtifactRemoteStatusUploaded || strings.TrimSpace(artifact.RemoteKey) == "" {
+	if strings.TrimSpace(artifact.RemoteKey) == "" {
 		return "", ErrDataShareExportArtifactNotReady
 	}
 	store, _, err := s.exportArtifactRemoteStore(ctx)
