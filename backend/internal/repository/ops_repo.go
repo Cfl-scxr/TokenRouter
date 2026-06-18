@@ -966,8 +966,12 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	// View filter: errors vs excluded vs all.
 	// 过滤业务限制类错误和配置的客户端侧状态码，保持 SLA 口径只统计服务侧问题。
 	// Upstream 429/529 are included in errors view to match SLA calculation.
-	businessLimitedSQL := opsBusinessLimitedSQL("e.status_code", "e.upstream_status_code", "e.upstream_errors", "e.error_owner", "e.is_business_limited", filter.IgnoredStatusCodes)
-	slaCountableSQL := opsSLACountableSQL("e.status_code", "e.upstream_status_code", "e.upstream_errors", "e.error_owner", "e.is_business_limited", filter.IgnoredStatusCodes)
+	ignoredStatusCodes := []int(nil)
+	if filter != nil {
+		ignoredStatusCodes = filter.IgnoredStatusCodes
+	}
+	businessLimitedSQL := opsBusinessLimitedSQL("e.status_code", "e.upstream_status_code", "e.upstream_errors", "e.error_owner", "e.is_business_limited", ignoredStatusCodes)
+	slaCountableSQL := opsSLACountableSQL("e.status_code", "e.upstream_status_code", "e.upstream_errors", "e.error_owner", "e.is_business_limited", ignoredStatusCodes)
 	view := ""
 	if filter != nil {
 		view = strings.ToLower(strings.TrimSpace(filter.View))
