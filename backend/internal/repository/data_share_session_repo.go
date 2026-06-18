@@ -220,6 +220,21 @@ func (r *dataShareSessionRepository) ListWithPayload(ctx context.Context, params
 	return r.listSessions(ctx, params, filters, true)
 }
 
+func (r *dataShareSessionRepository) ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters) ([]service.DataShareSession, error) {
+	items, err := r.listSessionPage(ctx, params, filters, true)
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *dataShareSessionRepository) Count(ctx context.Context, filters service.DataShareSessionFilters) (int64, error) {
+	client := clientFromContext(ctx, r.client)
+	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
+	total, err := q.Count(ctx)
+	return int64(total), err
+}
+
 func (r *dataShareSessionRepository) listSessions(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters, includePayload bool) ([]service.DataShareSession, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
@@ -227,29 +242,39 @@ func (r *dataShareSessionRepository) listSessions(ctx context.Context, params pa
 	if err != nil {
 		return nil, nil, err
 	}
-	items, err := listDataShareEntities(ctx, q, params, includePayload)
+	items, err := r.listSessionPage(ctx, params, filters, includePayload)
 	if err != nil {
 		return nil, nil, err
+	}
+	return items, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *dataShareSessionRepository) listSessionPage(ctx context.Context, params pagination.PaginationParams, filters service.DataShareSessionFilters, includePayload bool) ([]service.DataShareSession, error) {
+	client := clientFromContext(ctx, r.client)
+	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
+	items, err := listDataShareEntities(ctx, q, params, includePayload)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]service.DataShareSession, 0, len(items))
 	for i := range items {
 		item := dataShareSessionEntityToService(items[i])
 		if includePayload {
 			if err := populateDataShareSessionPayload(item); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			if len(item.PayloadCompressed) == 0 && len(item.SessionJSON) > 0 {
 				if err := r.persistCompressedPayload(ctx, item); err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 			}
 		}
 		out = append(out, *item)
 	}
 	if err := r.hydrateDisplayNames(ctx, out); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return out, paginationResultFromTotal(int64(total), params), nil
+	return out, nil
 }
 
 func (r *dataShareSessionRepository) GetByID(ctx context.Context, id int64) (*service.DataShareSession, error) {

@@ -59,6 +59,7 @@ func (s *DataSharingService) ListExportArtifacts(ctx context.Context, params pag
 	}
 	for i := range items {
 		s.mergeExportArtifactUploadProgress(&items[i])
+		s.mergeExportArtifactGenerateProgress(&items[i])
 	}
 	return items, result, nil
 }
@@ -76,6 +77,7 @@ func (s *DataSharingService) GetExportArtifact(ctx context.Context, id int64) (*
 		return nil, err
 	}
 	s.mergeExportArtifactUploadProgress(artifact)
+	s.mergeExportArtifactGenerateProgress(artifact)
 	return artifact, nil
 }
 
@@ -324,6 +326,98 @@ func dataShareExportUploadSpeedBytesPerSecond(progress dataShareExportUploadProg
 		return 0
 	}
 	return float64(progress.uploadedBytes) / elapsed
+}
+
+func (s *DataSharingService) startExportArtifactGenerateProgress(id int64, totalSessions int64) {
+	if s == nil {
+		return
+	}
+	now := time.Now()
+	s.exportGenerateProgressMu.Lock()
+	defer s.exportGenerateProgressMu.Unlock()
+	if s.exportGenerateProgress == nil {
+		s.exportGenerateProgress = make(map[int64]dataShareExportGenerateProgress)
+	}
+	s.exportGenerateProgress[id] = dataShareExportGenerateProgress{
+		totalSessions: totalSessions,
+		startedAt:     now,
+		updatedAt:     now,
+	}
+}
+
+func (s *DataSharingService) updateExportArtifactGenerateProgress(id int64, processedSessions int64, totalSessions int64) {
+	if s == nil {
+		return
+	}
+	now := time.Now()
+	s.exportGenerateProgressMu.Lock()
+	defer s.exportGenerateProgressMu.Unlock()
+	if s.exportGenerateProgress == nil {
+		s.exportGenerateProgress = make(map[int64]dataShareExportGenerateProgress)
+	}
+	progress := s.exportGenerateProgress[id]
+	if progress.startedAt.IsZero() {
+		progress.startedAt = now
+	}
+	if processedSessions < 0 {
+		processedSessions = 0
+	}
+	progress.processedSessions = processedSessions
+	if totalSessions >= 0 {
+		progress.totalSessions = totalSessions
+	}
+	if progress.totalSessions > 0 && progress.processedSessions > progress.totalSessions {
+		progress.processedSessions = progress.totalSessions
+	}
+	progress.updatedAt = now
+	s.exportGenerateProgress[id] = progress
+}
+
+func (s *DataSharingService) clearExportArtifactGenerateProgress(id int64) {
+	if s == nil {
+		return
+	}
+	s.exportGenerateProgressMu.Lock()
+	defer s.exportGenerateProgressMu.Unlock()
+	delete(s.exportGenerateProgress, id)
+}
+
+func (s *DataSharingService) mergeExportArtifactGenerateProgress(artifact *DataShareExportArtifact) {
+	if s == nil || artifact == nil {
+		return
+	}
+	s.exportGenerateProgressMu.RLock()
+	progress, ok := s.exportGenerateProgress[artifact.ID]
+	s.exportGenerateProgressMu.RUnlock()
+	if !ok || artifact.Status != DataShareExportArtifactStatusRunning {
+		return
+	}
+	artifact.GenerateProgressDone = progress.processedSessions
+	if artifact.GenerateProgressDone < 0 {
+		artifact.GenerateProgressDone = 0
+	}
+	artifact.GenerateProgressTotal = progress.totalSessions
+	if artifact.GenerateProgressTotal < 0 {
+		artifact.GenerateProgressTotal = 0
+	}
+	if artifact.GenerateProgressTotal > 0 && artifact.GenerateProgressDone > artifact.GenerateProgressTotal {
+		artifact.GenerateProgressDone = artifact.GenerateProgressTotal
+	}
+	artifact.GenerateProgressPercent = dataShareExportGenerateProgressPercent(progress)
+}
+
+func dataShareExportGenerateProgressPercent(progress dataShareExportGenerateProgress) float64 {
+	if progress.totalSessions <= 0 {
+		return 0
+	}
+	processed := progress.processedSessions
+	if processed < 0 {
+		processed = 0
+	}
+	if processed > progress.totalSessions {
+		processed = progress.totalSessions
+	}
+	return float64(processed) / float64(progress.totalSessions) * 100
 }
 
 // CreateExportArtifactRemoteDownloadURL 为已上传到 S3/R2 的导出文件生成短期预签名下载链接。
@@ -630,6 +724,7 @@ func validateDataShareExportArtifactInput(input DataShareExportArtifactCreateInp
 }
 
 func (s *DataSharingService) generateExportArtifact(ctx context.Context, id int64) {
+	defer s.clearExportArtifactGenerateProgress(id)
 	if err := s.generateExportArtifactWithError(ctx, id); err != nil {
 		slog.Warn("data sharing: generate export artifact failed", "artifact_id", id, "error", err)
 		if s != nil && s.exportArtifactRepo != nil {
@@ -665,10 +760,21 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 
 	fileWriter := &dataShareExportArtifactFileWriter{w: tmp, hash: sha256.New()}
 	encoding := normalizeDataShareExportEncoding(DataShareExportEncoding(artifact.Encoding))
+	if s.repo == nil {
+		return ErrDataShareExportArtifactStorageInvalid
+	}
+	totalSessions, err := s.repo.Count(ctx, artifact.Filters)
+	if err != nil {
+		return err
+	}
+	s.startExportArtifactGenerateProgress(id, totalSessions)
+	updateGenerateProgress := func(processed int64, total int64) {
+		s.updateExportArtifactGenerateProgress(id, processed, total)
+	}
 	switch encoding {
 	case DataShareExportEncodingJSON, DataShareExportEncodingJSONL:
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: fileWriter}
-		if err := s.ExportJSONL(ctx, lineCounter, artifact.Filters, false); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, updateGenerateProgress); err != nil {
 			return err
 		}
 		fileWriter.lines = lineCounter.lines
@@ -678,7 +784,7 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 			return err
 		}
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: zw}
-		if err := s.ExportJSONL(ctx, lineCounter, artifact.Filters, false); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, updateGenerateProgress); err != nil {
 			_ = zw.Close()
 			return err
 		}

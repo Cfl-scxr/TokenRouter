@@ -16,6 +16,9 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 )
 
+// dataShareExportBatchSize 控制导出生成每次加载的 session 数，兼顾进度刷新粒度和内存峰值。
+const dataShareExportBatchSize = 100
+
 // CreateExportTicket 为大文件下载签发短期票据，避免浏览器用 Blob 缓存完整导出文件。
 func (s *DataSharingService) CreateExportTicket(ctx context.Context, req DataShareExportTicketRequest) (*DataShareExportTicket, error) {
 	if err := validateDataShareExportTicketRequest(req); err != nil {
@@ -80,17 +83,30 @@ func (s *DataSharingService) ParseExportTicket(ctx context.Context, scope DataSh
 
 // ExportJSONL 导出选中的数据共享 session；显式选中的记录保留原始快照，不再因质量状态跳过。
 func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool) error {
+	if s == nil || s.repo == nil {
+		return ErrDataShareExportArtifactStorageInvalid
+	}
+	total, err := s.repo.Count(ctx, filters)
+	if err != nil {
+		return err
+	}
+	return s.exportJSONL(ctx, w, filters, includeNonExportable, total, nil)
+}
+
+func (s *DataSharingService) exportJSONL(ctx context.Context, w io.Writer, filters DataShareSessionFilters, includeNonExportable bool, total int64, progress func(processed int64, total int64)) error {
 	_ = includeNonExportable
 	if s == nil || s.repo == nil {
 		return ErrDataShareExportArtifactStorageInvalid
 	}
-	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
+	params := pagination.PaginationParams{Page: 1, PageSize: dataShareExportBatchSize, SortBy: "created_at", SortOrder: pagination.SortOrderAsc}
+	var processed int64
 	for {
-		items, result, err := s.repo.ListWithPayload(ctx, params, filters)
+		items, err := s.repo.ListWithPayloadPage(ctx, params, filters)
 		if err != nil {
 			return err
 		}
 		for i := range items {
+			processed++
 			payload, err := exportDownloadPayloadFromSession(&items[i])
 			if err != nil {
 				if errors.Is(err, ErrDataShareExportPayloadInvalid) && (filters.SelectAll || len(filters.IDs) != 1) {
@@ -100,6 +116,9 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 						"quality_status", items[i].QualityStatus,
 						"error", err,
 					)
+					if progress != nil {
+						progress(processed, total)
+					}
 					continue
 				}
 				return err
@@ -111,8 +130,14 @@ func (s *DataSharingService) ExportJSONL(ctx context.Context, w io.Writer, filte
 			if _, err := w.Write(append(line, '\n')); err != nil {
 				return err
 			}
+			if progress != nil {
+				progress(processed, total)
+			}
 		}
-		if result == nil || params.Page >= result.Pages || len(items) == 0 {
+		if len(items) == 0 || len(items) < params.Limit() || (total > 0 && processed >= total) {
+			if progress != nil {
+				progress(processed, total)
+			}
 			return nil
 		}
 		params.Page++

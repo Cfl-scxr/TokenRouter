@@ -325,11 +325,17 @@ type DataShareExportArtifact struct {
 	RemoteUploadedAt   *time.Time                          `json:"remote_uploaded_at,omitempty"`
 	RemoteUploadBytes  int64                               `json:"remote_upload_bytes"`
 	RemoteUploadSpeed  float64                             `json:"remote_upload_speed"`
-	CreatedAt          time.Time                           `json:"created_at"`
-	StartedAt          *time.Time                          `json:"started_at,omitempty"`
-	CompletedAt        *time.Time                          `json:"completed_at,omitempty"`
-	DeletedAt          *time.Time                          `json:"deleted_at,omitempty"`
-	UpdatedAt          time.Time                           `json:"updated_at"`
+	// GenerateProgressDone 记录当前进程中导出生成任务已处理的 session 数。
+	GenerateProgressDone int64 `json:"generate_progress_done"`
+	// GenerateProgressTotal 记录当前进程中导出生成任务需要处理的 session 总数。
+	GenerateProgressTotal int64 `json:"generate_progress_total"`
+	// GenerateProgressPercent 记录当前进程中导出生成任务的百分比进度。
+	GenerateProgressPercent float64    `json:"generate_progress_percent"`
+	CreatedAt               time.Time  `json:"created_at"`
+	StartedAt               *time.Time `json:"started_at,omitempty"`
+	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+	DeletedAt               *time.Time `json:"deleted_at,omitempty"`
+	UpdatedAt               time.Time  `json:"updated_at"`
 }
 
 // DataShareExportArtifactCreateInput 是创建预生成导出任务的输入。
@@ -480,8 +486,11 @@ type DataShareUpsertOptions struct {
 type DataShareSessionRepository interface {
 	GetCaptureByTrajectoryIDWithPayload(ctx context.Context, trajectoryID string) (*DataShareSession, error)
 	SaveCaptureSnapshot(ctx context.Context, session *DataShareSession, opts ...DataShareUpsertOptions) error
+	Count(ctx context.Context, filters DataShareSessionFilters) (int64, error)
 	List(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
 	ListWithPayload(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error)
+	// ListWithPayloadPage 按页加载包含 payload 的 session，不重复统计总数，供导出流程使用。
+	ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, error)
 	GetByID(ctx context.Context, id int64) (*DataShareSession, error)
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
@@ -495,6 +504,13 @@ type dataShareExportUploadProgress struct {
 	totalBytes    int64
 	startedAt     time.Time
 	updatedAt     time.Time
+}
+
+type dataShareExportGenerateProgress struct {
+	processedSessions int64
+	totalSessions     int64
+	startedAt         time.Time
+	updatedAt         time.Time
 }
 
 // DataSharingService 负责数据共享须知、采集、导出和统计。
@@ -516,6 +532,8 @@ type DataSharingService struct {
 	skipRulesCacheExpiresAt  time.Time
 	exportUploadProgressMu   sync.RWMutex
 	exportUploadProgress     map[int64]dataShareExportUploadProgress
+	exportGenerateProgressMu sync.RWMutex
+	exportGenerateProgress   map[int64]dataShareExportGenerateProgress
 }
 
 func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingRepository, captureWorker ...*DataSharingCaptureWorkerPool) *DataSharingService {
@@ -525,6 +543,7 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		defaultRuntimeSettings: *defaultDataShareCaptureRuntimeSettings(),
 		captureDurations:       newDataShareCaptureDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
 		exportUploadProgress:   make(map[int64]dataShareExportUploadProgress),
+		exportGenerateProgress: make(map[int64]dataShareExportGenerateProgress),
 	}
 	if len(captureWorker) > 0 {
 		svc.captureWorker = captureWorker[0]

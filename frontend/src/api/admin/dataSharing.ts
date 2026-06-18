@@ -186,6 +186,9 @@ export interface DataShareExportArtifact {
   remote_uploaded_at?: string | null
   remote_upload_bytes: number
   remote_upload_speed: number
+  generate_progress_done: number
+  generate_progress_total: number
+  generate_progress_percent: number
   created_at: string
   started_at?: string | null
   completed_at?: string | null

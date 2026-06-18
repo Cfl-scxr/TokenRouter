@@ -140,12 +140,20 @@ func (r *dataShareCaptureRepoStub) SaveCaptureSnapshot(ctx context.Context, sess
 	return ctx.Err()
 }
 
+func (r *dataShareCaptureRepoStub) Count(context.Context, DataShareSessionFilters) (int64, error) {
+	panic("unexpected Count call")
+}
+
 func (r *dataShareCaptureRepoStub) List(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
 
 func (r *dataShareCaptureRepoStub) ListWithPayload(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithPayload call")
+}
+
+func (r *dataShareCaptureRepoStub) ListWithPayloadPage(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, error) {
+	panic("unexpected ListWithPayloadPage call")
 }
 
 func (r *dataShareCaptureRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
@@ -277,6 +285,17 @@ func (r *dataShareExportRepoStub) SaveCaptureSnapshot(context.Context, *DataShar
 	panic("unexpected SaveCaptureSnapshot call")
 }
 
+func (r *dataShareExportRepoStub) Count(_ context.Context, filters DataShareSessionFilters) (int64, error) {
+	_, result, err := r.ListWithPayload(context.Background(), pagination.PaginationParams{Page: 1, PageSize: len(r.items)}, filters)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil {
+		return 0, nil
+	}
+	return result.Total, nil
+}
+
 func (r *dataShareExportRepoStub) List(context.Context, pagination.PaginationParams, DataShareSessionFilters) ([]DataShareSession, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
@@ -299,6 +318,11 @@ func (r *dataShareExportRepoStub) ListWithPayload(_ context.Context, params pagi
 		pages = (len(r.items) + pageSize - 1) / pageSize
 	}
 	return r.items[start:end], &pagination.PaginationResult{Total: int64(len(r.items)), Page: params.Page, PageSize: pageSize, Pages: pages}, nil
+}
+
+func (r *dataShareExportRepoStub) ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, error) {
+	items, _, err := r.ListWithPayload(ctx, params, filters)
+	return items, err
 }
 
 func (r *dataShareExportRepoStub) GetByID(context.Context, int64) (*DataShareSession, error) {
@@ -4594,6 +4618,28 @@ func TestDataSharingService_ListExportArtifactsMergesUploadProgress(t *testing.T
 	require.Len(t, items, 1)
 	require.Equal(t, int64(250), items[0].RemoteUploadBytes)
 	require.Greater(t, items[0].RemoteUploadSpeed, 0.0)
+}
+
+func TestDataSharingService_ListExportArtifactsMergesGenerateProgress(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	svc := NewDataSharingService(nil, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusPending,
+		Filename: "artifact.jsonl",
+		Encoding: string(DataShareExportEncodingJSONL),
+	})
+	require.NoError(t, err)
+	require.NoError(t, artifactRepo.MarkRunning(context.Background(), artifact.ID))
+
+	svc.startExportArtifactGenerateProgress(artifact.ID, 100)
+	svc.updateExportArtifactGenerateProgress(artifact.ID, 25, 100)
+	items, _, err := svc.ListExportArtifacts(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, int64(25), items[0].GenerateProgressDone)
+	require.Equal(t, int64(100), items[0].GenerateProgressTotal)
+	require.Equal(t, 25.0, items[0].GenerateProgressPercent)
 }
 
 func TestDataSharingService_GenerateExportArtifactCleansFinalFileWhenMarkCompletedFails(t *testing.T) {

@@ -897,8 +897,18 @@
           </div>
         </div>
         <DataTable :columns="exportArtifactColumns" :data="exportArtifacts" :loading="exportArtifactsLoading">
-          <template #cell-status="{ value }">
-            <span :class="['badge', exportArtifactStatusBadgeClass(value)]">{{ exportArtifactStatusLabel(value) }}</span>
+          <template #cell-status="{ row }">
+            <div class="min-w-36">
+              <span :class="['badge', exportArtifactStatusBadgeClass(row.status)]">{{ exportArtifactStatusLabel(row.status) }}</span>
+              <div v-if="row.status === 'running'" class="mt-2 w-36">
+                <div class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+                  <div class="h-full rounded-full bg-primary-600 transition-all" :style="{ width: formatExportGenerateProgress(row) }"></div>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatExportGenerateProgress(row) }} · {{ formatExportGenerateCount(row) }}
+                </p>
+              </div>
+            </div>
           </template>
           <template #cell-filename="{ row }">
             <div class="max-w-sm">
@@ -2460,8 +2470,8 @@ async function loadExportArtifacts() {
 }
 
 function updateExportArtifactPolling() {
-  const hasUploading = exportArtifacts.value.some(item => item.remote_status === 'uploading')
-  if (!hasUploading) {
+  const hasActiveTask = exportArtifacts.value.some(item => item.status === 'pending' || item.status === 'running' || item.remote_status === 'uploading')
+  if (!hasActiveTask) {
     stopExportArtifactPolling()
     return
   }
@@ -3022,6 +3032,17 @@ function formatExportUploadProgress(row: DataShareExportArtifact) {
   if (!row.file_size || row.file_size <= 0) return '0%'
   const percent = Math.min(100, Math.max(0, ((row.remote_upload_bytes || 0) / row.file_size) * 100))
   return `${percent.toFixed(percent >= 10 ? 1 : 2)}%`
+}
+
+function formatExportGenerateProgress(row: DataShareExportArtifact) {
+  if (!row.generate_progress_total || row.generate_progress_total <= 0) return '0%'
+  const percent = Math.min(100, Math.max(0, row.generate_progress_percent || 0))
+  return `${percent.toFixed(percent >= 10 ? 1 : 2)}%`
+}
+
+function formatExportGenerateCount(row: DataShareExportArtifact) {
+  if (!row.generate_progress_total || row.generate_progress_total <= 0) return '计算中'
+  return `${formatNumber(row.generate_progress_done || 0)} / ${formatNumber(row.generate_progress_total)}`
 }
 
 function formatExportUploadSpeed(bytesPerSecond?: number | null) {

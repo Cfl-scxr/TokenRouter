@@ -118,26 +118,29 @@ type adminDataShareExportTicketResponse struct {
 }
 
 type adminDataShareExportArtifactResponse struct {
-	ID                 int64      `json:"id"`
-	Status             string     `json:"status"`
-	Filename           string     `json:"filename"`
-	Encoding           string     `json:"encoding"`
-	SessionCount       int64      `json:"session_count"`
-	FileSize           int64      `json:"file_size"`
-	SHA256             string     `json:"sha256"`
-	ErrorMessage       string     `json:"error_message"`
-	RemoteStatus       string     `json:"remote_status"`
-	RemoteBucket       string     `json:"remote_bucket"`
-	RemoteKey          string     `json:"remote_key"`
-	RemoteErrorMessage string     `json:"remote_error_message"`
-	RemoteUploadedAt   *time.Time `json:"remote_uploaded_at,omitempty"`
-	RemoteUploadBytes  int64      `json:"remote_upload_bytes"`
-	RemoteUploadSpeed  float64    `json:"remote_upload_speed"`
-	CreatedAt          time.Time  `json:"created_at"`
-	StartedAt          *time.Time `json:"started_at,omitempty"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"`
-	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                      int64      `json:"id"`
+	Status                  string     `json:"status"`
+	Filename                string     `json:"filename"`
+	Encoding                string     `json:"encoding"`
+	SessionCount            int64      `json:"session_count"`
+	FileSize                int64      `json:"file_size"`
+	SHA256                  string     `json:"sha256"`
+	ErrorMessage            string     `json:"error_message"`
+	RemoteStatus            string     `json:"remote_status"`
+	RemoteBucket            string     `json:"remote_bucket"`
+	RemoteKey               string     `json:"remote_key"`
+	RemoteErrorMessage      string     `json:"remote_error_message"`
+	RemoteUploadedAt        *time.Time `json:"remote_uploaded_at,omitempty"`
+	RemoteUploadBytes       int64      `json:"remote_upload_bytes"`
+	RemoteUploadSpeed       float64    `json:"remote_upload_speed"`
+	GenerateProgressDone    int64      `json:"generate_progress_done"`
+	GenerateProgressTotal   int64      `json:"generate_progress_total"`
+	GenerateProgressPercent float64    `json:"generate_progress_percent"`
+	CreatedAt               time.Time  `json:"created_at"`
+	StartedAt               *time.Time `json:"started_at,omitempty"`
+	CompletedAt             *time.Time `json:"completed_at,omitempty"`
+	DeletedAt               *time.Time `json:"deleted_at,omitempty"`
+	UpdatedAt               time.Time  `json:"updated_at"`
 }
 
 // GetNotice 返回当前数据共享须知。
@@ -787,26 +790,29 @@ func adminDataShareExportArtifactToResponse(artifact *service.DataShareExportArt
 		return adminDataShareExportArtifactResponse{}
 	}
 	return adminDataShareExportArtifactResponse{
-		ID:                 artifact.ID,
-		Status:             string(artifact.Status),
-		Filename:           artifact.Filename,
-		Encoding:           artifact.Encoding,
-		SessionCount:       artifact.SessionCount,
-		FileSize:           artifact.FileSize,
-		SHA256:             artifact.SHA256,
-		ErrorMessage:       artifact.ErrorMessage,
-		RemoteStatus:       string(artifact.RemoteStatus),
-		RemoteBucket:       artifact.RemoteBucket,
-		RemoteKey:          artifact.RemoteKey,
-		RemoteErrorMessage: artifact.RemoteErrorMessage,
-		RemoteUploadedAt:   artifact.RemoteUploadedAt,
-		RemoteUploadBytes:  artifact.RemoteUploadBytes,
-		RemoteUploadSpeed:  artifact.RemoteUploadSpeed,
-		CreatedAt:          artifact.CreatedAt,
-		StartedAt:          artifact.StartedAt,
-		CompletedAt:        artifact.CompletedAt,
-		DeletedAt:          artifact.DeletedAt,
-		UpdatedAt:          artifact.UpdatedAt,
+		ID:                      artifact.ID,
+		Status:                  string(artifact.Status),
+		Filename:                artifact.Filename,
+		Encoding:                artifact.Encoding,
+		SessionCount:            artifact.SessionCount,
+		FileSize:                artifact.FileSize,
+		SHA256:                  artifact.SHA256,
+		ErrorMessage:            artifact.ErrorMessage,
+		RemoteStatus:            string(artifact.RemoteStatus),
+		RemoteBucket:            artifact.RemoteBucket,
+		RemoteKey:               artifact.RemoteKey,
+		RemoteErrorMessage:      artifact.RemoteErrorMessage,
+		RemoteUploadedAt:        artifact.RemoteUploadedAt,
+		RemoteUploadBytes:       artifact.RemoteUploadBytes,
+		RemoteUploadSpeed:       artifact.RemoteUploadSpeed,
+		GenerateProgressDone:    artifact.GenerateProgressDone,
+		GenerateProgressTotal:   artifact.GenerateProgressTotal,
+		GenerateProgressPercent: artifact.GenerateProgressPercent,
+		CreatedAt:               artifact.CreatedAt,
+		StartedAt:               artifact.StartedAt,
+		CompletedAt:             artifact.CompletedAt,
+		DeletedAt:               artifact.DeletedAt,
+		UpdatedAt:               artifact.UpdatedAt,
 	}
 }
 
