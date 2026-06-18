@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -252,6 +253,7 @@ type dataShareExportArtifactRepoStub struct {
 	mu                sync.Mutex
 	nextID            int64
 	items             map[int64]*DataShareExportArtifact
+	markCompletedErr  error
 	recoveredMessages []string
 }
 
@@ -309,6 +311,9 @@ func (r *dataShareExportArtifactRepoStub) MarkRunning(_ context.Context, id int6
 func (r *dataShareExportArtifactRepoStub) MarkCompleted(_ context.Context, id int64, storagePath string, sessionCount int64, fileSize int64, sha256 string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.markCompletedErr != nil {
+		return r.markCompletedErr
+	}
 	item := r.items[id]
 	if item == nil {
 		return ErrDataShareExportArtifactNotFound
@@ -4151,6 +4156,48 @@ func TestDataSharingService_CreateExportArtifactGeneratesDownloadableFile(t *tes
 	require.NoError(t, err)
 	require.Equal(t, completed.ID, opened.ID)
 	require.Contains(t, string(raw), "sess-artifact")
+}
+
+func TestDataSharingService_GenerateExportArtifactCleansFinalFileWhenMarkCompletedFails(t *testing.T) {
+	session := DataShareSession{
+		TrajectoryID:  "traj-artifact-cleanup",
+		SessionID:     "sess-artifact-cleanup",
+		Dataset:       defaultDataShareDataset,
+		Provider:      PlatformOpenAI,
+		Model:         "gpt-5.5",
+		Messages:      []map[string]any{{"role": "user", "content": "hello"}},
+		SessionJSON:   map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}},
+		Exportable:    true,
+		QualityStatus: DataShareQualityComplete,
+		UserID:        1,
+		APIKeyID:      2,
+		GroupID:       3,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	artifactRepo.markCompletedErr = errors.New("mark completed failed")
+	storageDir := t.TempDir()
+	svc := NewDataSharingService(&dataShareExportRepoStub{items: []DataShareSession{session}}, nil)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(storageDir)
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:   DataShareExportArtifactStatusPending,
+		Filename: normalizeDataShareExportFilename("artifact-cleanup", DataShareExportEncodingJSONL),
+		Encoding: string(DataShareExportEncodingJSONL),
+		Filters:  DataShareSessionFilters{IDs: []int64{1}},
+	})
+	require.NoError(t, err)
+	finalPath := filepath.Join(storageDir, dataShareExportArtifactStorageFilename(artifact.ID, artifact.Filename))
+
+	err = svc.generateExportArtifactWithError(context.Background(), artifact.ID)
+	require.ErrorContains(t, err, "mark completed failed")
+	require.NoFileExists(t, finalPath)
+
+	got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactStatusRunning, got.Status)
+	require.Empty(t, got.StoragePath)
 }
 
 func TestDataSharingService_DeleteExportArtifactRejectsRunning(t *testing.T) {

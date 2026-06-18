@@ -247,7 +247,14 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 		return err
 	}
 	cleanupTmp = false
-	return s.exportArtifactRepo.MarkCompleted(ctx, id, finalPath, fileWriter.lines, fileWriter.bytes, fileWriter.SumHex())
+	if err := s.exportArtifactRepo.MarkCompleted(ctx, id, finalPath, fileWriter.lines, fileWriter.bytes, fileWriter.SumHex()); err != nil {
+		// 完成状态写库失败时，DB 不会记录 finalPath；主动清理，避免留下界面不可见的孤儿文件。
+		if removeErr := os.Remove(finalPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("mark export artifact completed: %w; cleanup final file %s: %v", err, finalPath, removeErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *DataSharingService) ensureExportStorageDir() (string, error) {
