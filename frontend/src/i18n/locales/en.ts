@@ -5371,6 +5371,9 @@ export default {
         openaiQuotaAutoPauseDefault7d: 'Default 7d usage threshold (%)',
         openaiQuotaAutoPauseThresholdHint: 'Value 0-100; leave blank or 0 to disable the global default threshold.',
         errorFiltering: 'Error Filtering',
+        ignoredStatusCodes: 'Ignored client status codes',
+        ignoredStatusCodesPlaceholder: '401, 403',
+        ignoredStatusCodesHint: 'Comma or space separated. These client-side statuses are excluded from SLA and the default errors view unless upstream context exists. Leave empty to disable status-code exclusion.',
         ignoreCountTokensErrors: 'Ignore count_tokens errors',
         ignoreCountTokensErrorsHint: 'When enabled, errors from count_tokens requests will not be written to the error log.',
         ignoreContextCanceled: 'Ignore client disconnect errors',
@@ -5401,6 +5404,7 @@ export default {
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
           upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          ignoredStatusCodesRange: 'Ignored status codes must be HTTP codes between 100 and 599',
           openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
         }
       },

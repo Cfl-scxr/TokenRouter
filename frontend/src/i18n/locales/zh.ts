@@ -5523,6 +5523,9 @@ export default {
         openaiQuotaAutoPauseDefault7d: '默认 7d 用量阈值 (%)',
         openaiQuotaAutoPauseThresholdHint: '取值 0-100，留空或 0 表示不启用全局默认阈值。',
         errorFiltering: '错误过滤',
+        ignoredStatusCodes: '忽略客户端状态码',
+        ignoredStatusCodesPlaceholder: '401, 403',
+        ignoredStatusCodesHint: '支持逗号或空格分隔。这些客户端侧状态码会从 SLA 和默认错误视图中排除；如果存在上游错误上下文，仍会计入。留空表示不按状态码忽略。',
         ignoreCountTokensErrors: '忽略 count_tokens 错误',
         ignoreCountTokensErrorsHint: '启用后，count_tokens 请求的错误将不会写入错误日志。',
         ignoreContextCanceled: '忽略客户端断连错误',
@@ -5554,6 +5557,7 @@ export default {
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
           upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
+          ignoredStatusCodesRange: '忽略状态码必须是 100 到 599 之间的 HTTP 状态码',
           openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
         }
       },
