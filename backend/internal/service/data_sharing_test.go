@@ -3409,6 +3409,27 @@ func TestDataShareQualityAllowsMissingUsageTokens(t *testing.T) {
 	}
 }
 
+func TestDataShareQualityDoesNotApplyHardcodedModelScope(t *testing.T) {
+	sys := "你是编码助手"
+	messages := []map[string]any{
+		{"role": "system", "content": sys},
+		{"role": "user", "content": "列目录"},
+		{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_1", "name": "exec_command", "arguments": map[string]any{"cmd": "ls"}}}},
+		{"role": "tool", "tool_call_id": "call_1", "content": "README.md", "status": "success", "is_error": false},
+		{"role": "assistant", "content": "看到了 README.md"},
+	}
+	tools := []map[string]any{
+		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+	}
+
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-20250514", "gpt-4.1"} {
+		// 模型是否进入数据共享由采集跳过规则决定，质量校验不能再用硬编码模型范围判无效。
+		if errs := ValidateDataShareSessionQuality(model, sys, messages, tools, map[string]any{"total_tokens": 15}); len(errs) != 0 {
+			t.Fatalf("model %q quality_errors = %v, want none", model, errs)
+		}
+	}
+}
+
 func TestDataShareQualityStatusNormalizesLegacyPartialPayload(t *testing.T) {
 	sys := "你是编码助手"
 	messages := []map[string]any{
@@ -3495,10 +3516,10 @@ func TestDataShareQualityStatusDoesNotNormalizeUnfixableErrors(t *testing.T) {
 		{"role": "assistant", "content": "看到了 README.md"},
 	}
 	tools := []map[string]any{
-		{"name": "exec_command", "description": "运行命令", "parameters": map[string]any{"type": "object"}},
+		{"name": "other_tool", "description": "其他工具", "parameters": map[string]any{"type": "object"}},
 	}
 
-	if status := DataSharePayloadQualityStatus("gpt-4.1", sys, messages, tools, map[string]any{"total_tokens": 15}); status != DataShareQualityInvalid {
+	if status := DataSharePayloadQualityStatus("gpt-5.5", sys, messages, tools, map[string]any{"total_tokens": 15}); status != DataShareQualityInvalid {
 		t.Fatalf("quality_status = %q, want invalid", status)
 	}
 }
