@@ -2005,7 +2005,6 @@ const statsAutoRefreshTitle = computed(() => {
 
 let filterTimer: number | null = null
 let statsAutoRefreshTimer: number | null = null
-let exportArtifactPollingTimer: number | null = null
 
 function buildFilters(): AdminDataShareSessionFilters {
   const out: AdminDataShareSessionFilters = {
@@ -2590,7 +2589,7 @@ async function loadExportArtifacts() {
     exportArtifacts.value = res.items
     exportArtifactPagination.total = res.total
     exportArtifactPagination.pages = res.pages
-    updateExportArtifactPolling()
+    // 导出文件状态只在页面加载、手动刷新和任务操作后刷新，避免后台自动轮询。
   } catch (error) {
     appStore.showError('加载导出文件失败')
   } finally {
@@ -2600,25 +2599,6 @@ async function loadExportArtifacts() {
 
 async function refreshExportArtifacts() {
   await Promise.all([loadExportArtifacts(), loadStats()])
-}
-
-function updateExportArtifactPolling() {
-  const hasActiveTask = exportArtifacts.value.some(item => item.status === 'pending' || item.status === 'running' || item.remote_status === 'uploading')
-  if (!hasActiveTask) {
-    stopExportArtifactPolling()
-    return
-  }
-  if (exportArtifactPollingTimer) return
-  exportArtifactPollingTimer = window.setInterval(() => {
-    loadExportArtifacts()
-  }, 2000)
-}
-
-function stopExportArtifactPolling() {
-  if (exportArtifactPollingTimer) {
-    window.clearInterval(exportArtifactPollingTimer)
-    exportArtifactPollingTimer = null
-  }
 }
 
 function refreshAll() {
@@ -2847,7 +2827,6 @@ async function uploadExportArtifact(row: DataShareExportArtifact) {
   try {
     const artifact = await adminDataSharingAPI.uploadExportArtifact(row.id)
     replaceExportArtifact(artifact)
-    updateExportArtifactPolling()
     appStore.showSuccess('上传任务已开始')
   } catch (error) {
     appStore.showError('启动上传到 S3/R2 失败')
@@ -3203,6 +3182,5 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleStatsAutoRefreshViewportChange)
   window.removeEventListener('scroll', handleStatsAutoRefreshViewportChange, true)
   stopStatsAutoRefresh()
-  stopExportArtifactPolling()
 })
 </script>
