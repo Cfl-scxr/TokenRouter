@@ -300,13 +300,15 @@ const (
 
 // DataShareExportRemoteConfig 描述数据共享导出文件上传到独立 S3/R2 端点的配置。
 type DataShareExportRemoteConfig struct {
-	Endpoint        string `json:"endpoint"`
-	Region          string `json:"region"`
-	Bucket          string `json:"bucket"`
-	AccessKeyID     string `json:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key,omitempty"` //nolint:revive // 字段名沿用 AWS 约定
-	Prefix          string `json:"prefix"`
-	ForcePathStyle  bool   `json:"force_path_style"`
+	Endpoint          string `json:"endpoint"`
+	Region            string `json:"region"`
+	Bucket            string `json:"bucket"`
+	AccessKeyID       string `json:"access_key_id"`
+	SecretAccessKey   string `json:"secret_access_key,omitempty"` //nolint:revive // 字段名沿用 AWS 约定
+	Prefix            string `json:"prefix"`
+	ForcePathStyle    bool   `json:"force_path_style"`
+	UploadConcurrency int    `json:"upload_concurrency"`
+	UploadPartSizeMB  int    `json:"upload_part_size_mb"`
 }
 
 // DataShareExportArtifact 记录一次预生成导出文件任务及其本地、远端文件元数据。
@@ -553,6 +555,7 @@ type DataSharingService struct {
 	exportUploadProgress     map[int64]dataShareExportUploadProgress
 	exportUploadTasksMu      sync.Mutex
 	exportUploadTasks        map[int64]dataShareExportUploadTask
+	exportUploadSlots        chan struct{}
 	exportGenerateProgressMu sync.RWMutex
 	exportGenerateProgress   map[int64]dataShareExportGenerateProgress
 }
@@ -566,6 +569,7 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		exportDurations:        newDataShareExportDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
 		exportUploadProgress:   make(map[int64]dataShareExportUploadProgress),
 		exportUploadTasks:      make(map[int64]dataShareExportUploadTask),
+		exportUploadSlots:      make(chan struct{}, defaultDataShareExportRemoteUploadTaskLimit),
 		exportGenerateProgress: make(map[int64]dataShareExportGenerateProgress),
 	}
 	svc.exportBatchSize.Store(int64(svc.defaultRuntimeSettings.ExportBatchSize))

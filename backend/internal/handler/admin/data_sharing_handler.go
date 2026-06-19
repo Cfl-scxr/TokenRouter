@@ -57,13 +57,15 @@ type UpdateDataShareCaptureRuntimeSettingsRequest struct {
 
 // UpdateDataShareExportRemoteConfigRequest 是管理端更新导出远端上传配置的请求。
 type UpdateDataShareExportRemoteConfigRequest struct {
-	Endpoint        string `json:"endpoint"`
-	Region          string `json:"region"`
-	Bucket          string `json:"bucket"`
-	AccessKeyID     string `json:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key"`
-	Prefix          string `json:"prefix"`
-	ForcePathStyle  bool   `json:"force_path_style"`
+	Endpoint          string `json:"endpoint"`
+	Region            string `json:"region"`
+	Bucket            string `json:"bucket"`
+	AccessKeyID       string `json:"access_key_id"`
+	SecretAccessKey   string `json:"secret_access_key"`
+	Prefix            string `json:"prefix"`
+	ForcePathStyle    bool   `json:"force_path_style"`
+	UploadConcurrency int    `json:"upload_concurrency"`
+	UploadPartSizeMB  int    `json:"upload_part_size_mb"`
 }
 
 // BatchDeleteDataShareSessionsRequest 是管理端批量删除数据共享 session 的请求。
@@ -276,13 +278,15 @@ func (h *DataSharingHandler) UpdateExportRemoteConfig(c *gin.Context) {
 		return
 	}
 	cfg, err := h.dataSharingService.UpdateExportRemoteConfig(c.Request.Context(), service.DataShareExportRemoteConfig{
-		Endpoint:        req.Endpoint,
-		Region:          req.Region,
-		Bucket:          req.Bucket,
-		AccessKeyID:     req.AccessKeyID,
-		SecretAccessKey: req.SecretAccessKey,
-		Prefix:          req.Prefix,
-		ForcePathStyle:  req.ForcePathStyle,
+		Endpoint:          req.Endpoint,
+		Region:            req.Region,
+		Bucket:            req.Bucket,
+		AccessKeyID:       req.AccessKeyID,
+		SecretAccessKey:   req.SecretAccessKey,
+		Prefix:            req.Prefix,
+		ForcePathStyle:    req.ForcePathStyle,
+		UploadConcurrency: req.UploadConcurrency,
+		UploadPartSizeMB:  req.UploadPartSizeMB,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -299,13 +303,15 @@ func (h *DataSharingHandler) TestExportRemoteConfig(c *gin.Context) {
 		return
 	}
 	err := h.dataSharingService.TestExportRemoteConfig(c.Request.Context(), service.DataShareExportRemoteConfig{
-		Endpoint:        req.Endpoint,
-		Region:          req.Region,
-		Bucket:          req.Bucket,
-		AccessKeyID:     req.AccessKeyID,
-		SecretAccessKey: req.SecretAccessKey,
-		Prefix:          req.Prefix,
-		ForcePathStyle:  req.ForcePathStyle,
+		Endpoint:          req.Endpoint,
+		Region:            req.Region,
+		Bucket:            req.Bucket,
+		AccessKeyID:       req.AccessKeyID,
+		SecretAccessKey:   req.SecretAccessKey,
+		Prefix:            req.Prefix,
+		ForcePathStyle:    req.ForcePathStyle,
+		UploadConcurrency: req.UploadConcurrency,
+		UploadPartSizeMB:  req.UploadPartSizeMB,
 	})
 	if err != nil {
 		response.Success(c, gin.H{"ok": false, "message": err.Error()})

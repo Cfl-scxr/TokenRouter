@@ -4555,7 +4555,20 @@ func TestDataSharingService_ExportArtifactRemoteConfigDefaultsAndSavesConfig(t *
 	require.Empty(t, cfg.SecretAccessKey)
 	require.Equal(t, "team/data-sharing/exports", cfg.Prefix)
 	require.True(t, cfg.ForcePathStyle)
-	require.JSONEq(t, `{"endpoint":"https://r2.example.test","region":"auto","bucket":"shared-bucket","access_key_id":"ak","secret_access_key":"ENC:sk","prefix":"team/data-sharing/exports","force_path_style":true}`, repo.values[SettingKeyDataSharingExportRemoteConfig])
+	require.Equal(t, defaultDataShareExportRemoteUploadConcurrency, cfg.UploadConcurrency)
+	require.Equal(t, defaultDataShareExportRemoteUploadPartSizeMB, cfg.UploadPartSizeMB)
+	require.JSONEq(t, `{"endpoint":"https://r2.example.test","region":"auto","bucket":"shared-bucket","access_key_id":"ak","secret_access_key":"ENC:sk","prefix":"team/data-sharing/exports","force_path_style":true,"upload_concurrency":4,"upload_part_size_mb":64}`, repo.values[SettingKeyDataSharingExportRemoteConfig])
+	cfg, err = svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{
+		Endpoint:          "https://r2.example.test",
+		Bucket:            "shared-bucket",
+		AccessKeyID:       "ak",
+		SecretAccessKey:   "sk",
+		UploadConcurrency: 99,
+		UploadPartSizeMB:  512,
+	})
+	require.NoError(t, err)
+	require.Equal(t, maxDataShareExportRemoteUploadConcurrency, cfg.UploadConcurrency)
+	require.Equal(t, maxDataShareExportRemoteUploadPartSizeMB, cfg.UploadPartSizeMB)
 }
 
 func TestDataSharingService_UploadExportArtifactToRemoteAndPresignURL(t *testing.T) {
@@ -4630,12 +4643,14 @@ func TestDataSharingService_UploadExportArtifactToRemoteUsesDedicatedConfig(t *t
 	svc.SetExportStorageDir(t.TempDir())
 	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
 	_, err := svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{
-		Endpoint:        "https://data-share.example.test",
-		Region:          "auto",
-		Bucket:          "data-share-bucket",
-		AccessKeyID:     "data-share-ak",
-		SecretAccessKey: "data-share-secret",
-		Prefix:          "share",
+		Endpoint:          "https://data-share.example.test",
+		Region:            "auto",
+		Bucket:            "data-share-bucket",
+		AccessKeyID:       "data-share-ak",
+		SecretAccessKey:   "data-share-secret",
+		Prefix:            "share",
+		UploadConcurrency: 7,
+		UploadPartSizeMB:  128,
 	})
 	require.NoError(t, err)
 	backupData, err := json.Marshal(BackupStorageConfig{
@@ -4674,6 +4689,8 @@ func TestDataSharingService_UploadExportArtifactToRemoteUsesDedicatedConfig(t *t
 	require.Equal(t, "data-share-bucket", usedCfg.Bucket)
 	require.Equal(t, "data-share-ak", usedCfg.AccessKeyID)
 	require.Equal(t, "data-share-secret", usedCfg.SecretAccessKey)
+	require.Equal(t, 7, usedCfg.UploadConcurrency)
+	require.Equal(t, 128, usedCfg.UploadPartSizeMB)
 }
 
 func TestDataSharingService_UploadExportArtifactToRemoteRecordsFailure(t *testing.T) {
@@ -4847,6 +4864,66 @@ func TestDataSharingService_CancelExportArtifactRemoteUploadStopsRunningTask(t *
 
 	_, err = svc.CancelExportArtifactRemoteUpload(context.Background(), artifact.ID)
 	require.ErrorIs(t, err, ErrDataShareExportArtifactRemoteUploadNotRunning)
+}
+
+func TestDataSharingService_UploadExportArtifactToRemoteRejectsConcurrentTask(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareBlockingExportObjectStoreStub()
+	factory := func(context.Context, *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	_, err := svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{
+		Bucket:          "bucket-a",
+		AccessKeyID:     "ak",
+		SecretAccessKey: "sk",
+		Prefix:          "share",
+	})
+	require.NoError(t, err)
+
+	pathA := filepath.Join(svc.exportStorageDir, "upload-a.jsonl")
+	pathB := filepath.Join(svc.exportStorageDir, "upload-b.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(pathA), 0755))
+	require.NoError(t, os.WriteFile(pathA, []byte(`{"a":true}`+"\n"), 0644))
+	require.NoError(t, os.WriteFile(pathB, []byte(`{"b":true}`+"\n"), 0644))
+	artifactA, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:      DataShareExportArtifactStatusCompleted,
+		Filename:    "upload-a.jsonl",
+		StoragePath: pathA,
+		Encoding:    string(DataShareExportEncodingJSONL),
+		FileSize:    11,
+	})
+	require.NoError(t, err)
+	artifactB, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:       DataShareExportArtifactStatusCompleted,
+		Filename:     "upload-b.jsonl",
+		StoragePath:  pathB,
+		Encoding:     string(DataShareExportEncodingJSONL),
+		FileSize:     11,
+		RemoteStatus: DataShareExportArtifactRemoteStatusNotUploaded,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UploadExportArtifactToRemote(context.Background(), artifactA.ID)
+	require.NoError(t, err)
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("upload task did not start")
+	}
+
+	_, err = svc.UploadExportArtifactToRemote(context.Background(), artifactB.ID)
+	require.ErrorIs(t, err, ErrDataShareExportArtifactRemoteUploadInProgress)
+	gotB, err := svc.GetExportArtifact(context.Background(), artifactB.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusNotUploaded, gotB.RemoteStatus)
+
+	_, err = svc.CancelExportArtifactRemoteUpload(context.Background(), artifactA.ID)
+	require.NoError(t, err)
 }
 
 func TestDataSharingService_ListExportArtifactsMergesUploadProgress(t *testing.T) {

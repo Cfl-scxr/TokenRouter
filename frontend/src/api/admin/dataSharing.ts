@@ -175,6 +175,8 @@ export interface DataShareExportRemoteConfig {
   secret_access_key?: string
   prefix: string
   force_path_style: boolean
+  upload_concurrency: number
+  upload_part_size_mb: number
 }
 
 export interface DataShareExportArtifact {

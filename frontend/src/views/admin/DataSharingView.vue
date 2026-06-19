@@ -887,6 +887,14 @@
               <input id="data-share-export-remote-prefix" v-model="exportRemoteForm.prefix" class="input w-full text-sm" placeholder="data-sharing-exports" />
             </div>
             <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-upload-concurrency">上传并发数</label>
+              <input id="data-share-export-upload-concurrency" v-model.number="exportRemoteForm.upload_concurrency" type="number" :min="exportUploadConcurrencyMin" :max="exportUploadConcurrencyMax" step="1" class="input w-full text-sm" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-upload-part-size">分片大小(MB)</label>
+              <input id="data-share-export-upload-part-size" v-model.number="exportRemoteForm.upload_part_size_mb" type="number" :min="exportUploadPartSizeMBMin" :max="exportUploadPartSizeMBMax" step="1" class="input w-full text-sm" />
+            </div>
+            <div>
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-access-key">访问密钥 ID</label>
               <input id="data-share-export-remote-access-key" v-model="exportRemoteForm.access_key_id" class="input w-full text-sm" />
             </div>
@@ -1273,6 +1281,12 @@ const exportBatchSizeDefault = 500
 const exportWorkerCountMin = 1
 const exportWorkerCountMax = 8
 const exportWorkerCountDefault = 4
+const exportUploadConcurrencyMin = 1
+const exportUploadConcurrencyMax = 8
+const exportUploadConcurrencyDefault = 4
+const exportUploadPartSizeMBMin = 5
+const exportUploadPartSizeMBMax = 128
+const exportUploadPartSizeMBDefault = 64
 const statsAutoRefreshDefaultSeconds = 5
 const statsAutoRefreshIntervals = [5, 10, 15, 30] as const
 const captureCompressionLevelOptions = [
@@ -1337,7 +1351,9 @@ const exportRemoteForm = ref<DataShareExportRemoteConfig>({
   access_key_id: '',
   secret_access_key: '',
   prefix: 'data-sharing-exports',
-  force_path_style: false
+  force_path_style: false,
+  upload_concurrency: exportUploadConcurrencyDefault,
+  upload_part_size_mb: exportUploadPartSizeMBDefault
 })
 const filters = reactive({
   search: '',
@@ -2220,13 +2236,17 @@ function normalizeExportRemoteConfig(cfg?: Partial<DataShareExportRemoteConfig>)
     access_key_id: cfg?.access_key_id || '',
     secret_access_key: '',
     prefix: cfg?.prefix || 'data-sharing-exports',
-    force_path_style: Boolean(cfg?.force_path_style)
+    force_path_style: Boolean(cfg?.force_path_style),
+    upload_concurrency: boundedIntegerFromInput(String(cfg?.upload_concurrency || exportUploadConcurrencyDefault), exportUploadConcurrencyMin, exportUploadConcurrencyMax) || exportUploadConcurrencyDefault,
+    upload_part_size_mb: boundedIntegerFromInput(String(cfg?.upload_part_size_mb || exportUploadPartSizeMBDefault), exportUploadPartSizeMBMin, exportUploadPartSizeMBMax) || exportUploadPartSizeMBDefault
   }
 }
 
 function buildExportRemoteConfigPayload(): DataShareExportRemoteConfig {
   const cfg = normalizeExportRemoteConfig(exportRemoteForm.value)
   cfg.secret_access_key = exportRemoteForm.value.secret_access_key || ''
+  cfg.upload_concurrency = boundedIntegerFromInput(String(exportRemoteForm.value.upload_concurrency), exportUploadConcurrencyMin, exportUploadConcurrencyMax) || exportUploadConcurrencyDefault
+  cfg.upload_part_size_mb = boundedIntegerFromInput(String(exportRemoteForm.value.upload_part_size_mb), exportUploadPartSizeMBMin, exportUploadPartSizeMBMax) || exportUploadPartSizeMBDefault
   return cfg
 }
 
