@@ -356,6 +356,11 @@ export async function uploadExportArtifact(id: number): Promise<DataShareExportA
   return data
 }
 
+export async function cancelExportArtifactUpload(id: number): Promise<DataShareExportArtifact> {
+  const { data } = await apiClient.post<DataShareExportArtifact>(`/admin/data-sharing/exports/${id}/upload/cancel`)
+  return data
+}
+
 export async function getExportArtifactRemoteDownloadURL(id: number): Promise<{ url: string }> {
   const { data } = await apiClient.get<{ url: string }>(`/admin/data-sharing/exports/${id}/download-url`)
   return data
@@ -395,6 +400,7 @@ export const adminDataSharingAPI = {
   listExportArtifacts,
   createExportArtifactDownloadTicket,
   uploadExportArtifact,
+  cancelExportArtifactUpload,
   getExportArtifactRemoteDownloadURL,
   deleteExportArtifact,
   getStats

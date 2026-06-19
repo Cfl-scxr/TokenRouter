@@ -907,7 +907,10 @@
             </div>
             <div v-if="exportDurationSampleCount" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
               <div class="h-56">
-                <Bar :data="exportDurationChartData" :options="exportDurationChartOptions" />
+                <Bar v-if="exportDurationChartParts.length" :data="exportDurationChartData" :options="exportDurationChartOptions" />
+                <div v-else class="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  暂无阶段耗时样本
+                </div>
               </div>
               <div class="overflow-x-auto rounded-lg border border-gray-100 dark:border-gray-800">
                 <table class="min-w-full divide-y divide-gray-100 text-xs dark:divide-gray-800">
@@ -915,6 +918,7 @@
                     <tr>
                       <th class="px-3 py-2 text-left font-medium">阶段</th>
                       <th class="px-3 py-2 text-right font-medium">最近</th>
+                      <th class="px-3 py-2 text-right font-medium">平均</th>
                       <th class="px-3 py-2 text-right font-medium">P95</th>
                       <th class="px-3 py-2 text-right font-medium">样本</th>
                     </tr>
@@ -923,6 +927,7 @@
                     <tr v-for="part in exportDurationActiveParts" :key="part.key">
                       <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ part.label }}</td>
                       <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{{ formatDurationMillis(part.last_millis) }}</td>
+                      <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ formatDurationMillis(part.avg_millis) }}</td>
                       <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ formatDurationMillis(part.p95_millis) }}</td>
                       <td class="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{{ formatNumber(part.sample_count) }}</td>
                     </tr>
@@ -990,11 +995,12 @@
               </button>
               <button
                 class="btn btn-ghost btn-sm"
-                :disabled="row.status !== 'completed' || row.remote_status === 'uploading'"
-                @click="uploadExportArtifact(row)"
+                :class="row.remote_status === 'uploading' ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300' : ''"
+                :disabled="row.status !== 'completed' || isCancelingExportUpload(row.id)"
+                @click="handleExportArtifactUploadAction(row)"
               >
-                <Icon name="upload" size="sm" class="mr-1" />
-                {{ row.remote_status === 'uploaded' ? '重新上传' : '上传' }}
+                <Icon :name="row.remote_status === 'uploading' ? 'xCircle' : 'upload'" size="sm" class="mr-1" />
+                {{ exportArtifactUploadActionLabel(row) }}
               </button>
               <button
                 class="btn btn-ghost btn-sm"
@@ -1163,6 +1169,17 @@
         </div>
       </div>
     </BaseDialog>
+
+    <ConfirmDialog
+      :show="cancelUploadDialogOpen"
+      title="取消上传"
+      :message="cancelUploadDialogMessage"
+      confirm-text="取消上传"
+      cancel-text="继续上传"
+      danger
+      @confirm="confirmCancelExportArtifactUpload"
+      @cancel="closeCancelExportArtifactUploadDialog"
+    />
   </AppLayout>
 </template>
 
@@ -1189,6 +1206,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
@@ -1301,6 +1319,9 @@ const exportArtifactPagination = reactive({ page: 1, page_size: 10, total: 0, pa
 const sortState = reactive({ sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' })
 const exportArtifacts = ref<DataShareExportArtifact[]>([])
 const exportRemoteSecretConfigured = ref(false)
+const cancelUploadDialogOpen = ref(false)
+const cancelUploadTarget = ref<DataShareExportArtifact | null>(null)
+const cancelingExportUploadIds = ref<Set<number>>(new Set())
 const exportRemoteForm = ref<DataShareExportRemoteConfig>({
   endpoint: '',
   region: 'auto',
@@ -1757,7 +1778,7 @@ const exportDurationChartOptions = computed(() => ({
     tooltip: {
       callbacks: {
         label: (ctx: any) => {
-          const part = exportDurationActiveParts.value[ctx.dataIndex]
+          const part = exportDurationChartParts.value[ctx.dataIndex]
           if (!part) return `P95: ${formatDurationMillis(Number(ctx.raw || 0))}`
           return [
             `最近: ${formatDurationMillis(part.last_millis)}`,
@@ -1904,12 +1925,14 @@ const exportDurationSampleCount = computed(() => stats.value?.export_durations?.
 const exportDurationParts = computed(() => stats.value?.export_durations?.parts || [])
 const exportDurationActiveParts = computed(() => exportDurationParts.value.filter(part => part.sample_count > 0))
 const exportGenerateTotalDurationPart = computed(() => exportDurationParts.value.find(part => part.key === 'export_generate_total'))
+// 图表排除总耗时，避免总耗时数量级过大导致分页、解码等子阶段不可读。
+const exportDurationChartParts = computed(() => exportDurationActiveParts.value.filter(part => part.key !== 'export_generate_total'))
 const exportDurationChartData = computed(() => ({
-  labels: exportDurationActiveParts.value.map(part => part.label),
+  labels: exportDurationChartParts.value.map(part => part.label),
   datasets: [
     {
       label: 'P95',
-      data: exportDurationActiveParts.value.map(part => part.p95_millis),
+      data: exportDurationChartParts.value.map(part => part.p95_millis),
       backgroundColor: '#0ea5e988',
       borderColor: '#0ea5e9',
       borderWidth: 1
@@ -2001,6 +2024,11 @@ const invalidUserFilterLabel = computed(() => filters.user_filter_label || (filt
 const statsAutoRefreshTitle = computed(() => {
   if (!statsAutoRefreshEnabled.value) return '自动刷新已关闭'
   return `每 ${statsAutoRefreshIntervalSeconds.value} 秒自动刷新统计`
+})
+const cancelUploadDialogMessage = computed(() => {
+  const target = cancelUploadTarget.value
+  if (!target) return '确定取消当前上传任务吗？'
+  return `确定取消上传 ${target.filename} 吗？已上传到远端的临时分片会由对象存储清理，本地导出文件会保留。`
 })
 
 let filterTimer: number | null = null
@@ -2834,6 +2862,60 @@ async function uploadExportArtifact(row: DataShareExportArtifact) {
   }
 }
 
+function handleExportArtifactUploadAction(row: DataShareExportArtifact) {
+  if (row.remote_status === 'uploading') {
+    openCancelExportArtifactUploadDialog(row)
+    return
+  }
+  uploadExportArtifact(row)
+}
+
+function openCancelExportArtifactUploadDialog(row: DataShareExportArtifact) {
+  cancelUploadTarget.value = row
+  cancelUploadDialogOpen.value = true
+}
+
+function closeCancelExportArtifactUploadDialog() {
+  cancelUploadDialogOpen.value = false
+  cancelUploadTarget.value = null
+}
+
+function isCancelingExportUpload(id: number) {
+  return cancelingExportUploadIds.value.has(id)
+}
+
+function setCancelingExportUpload(id: number, canceling: boolean) {
+  const next = new Set(cancelingExportUploadIds.value)
+  if (canceling) {
+    next.add(id)
+  } else {
+    next.delete(id)
+  }
+  cancelingExportUploadIds.value = next
+}
+
+async function confirmCancelExportArtifactUpload() {
+  const target = cancelUploadTarget.value
+  if (!target) {
+    closeCancelExportArtifactUploadDialog()
+    return
+  }
+  setCancelingExportUpload(target.id, true)
+  cancelUploadDialogOpen.value = false
+  try {
+    // 取消只中断远端上传任务，本地生成好的导出文件仍保留，可稍后重新上传。
+    const artifact = await adminDataSharingAPI.cancelExportArtifactUpload(target.id)
+    replaceExportArtifact(artifact)
+    appStore.showSuccess('上传任务已取消')
+  } catch (error) {
+    appStore.showError('取消上传失败')
+    await loadExportArtifacts()
+  } finally {
+    setCancelingExportUpload(target.id, false)
+    cancelUploadTarget.value = null
+  }
+}
+
 async function downloadRemoteExportArtifact(row: DataShareExportArtifact) {
   try {
     const result = await adminDataSharingAPI.getExportArtifactRemoteDownloadURL(row.id)
@@ -2857,6 +2939,12 @@ function replaceExportArtifact(artifact: DataShareExportArtifact) {
 function copyRemoteKey(row: DataShareExportArtifact) {
   if (!row.remote_key) return
   copyToClipboard(row.remote_key, '远端对象 key 已复制')
+}
+
+function exportArtifactUploadActionLabel(row: DataShareExportArtifact) {
+  if (isCancelingExportUpload(row.id)) return '取消中'
+  if (row.remote_status === 'uploading') return '取消上传'
+  return row.remote_status === 'uploaded' ? '重新上传' : '上传'
 }
 
 async function deleteExportArtifact(row: DataShareExportArtifact) {

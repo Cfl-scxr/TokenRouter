@@ -75,6 +75,7 @@ var ErrDataShareExportArtifactNotReady = infraerrors.BadRequest("DATA_SHARE_EXPO
 var ErrDataShareExportArtifactDeleted = infraerrors.NotFound("DATA_SHARE_EXPORT_ARTIFACT_DELETED", "data share export artifact was deleted")
 var ErrDataShareExportArtifactUploadInProgress = infraerrors.Conflict("DATA_SHARE_EXPORT_ARTIFACT_UPLOAD_IN_PROGRESS", "data share export artifact upload is already in progress")
 var ErrDataShareExportArtifactRemoteUploadInProgress = infraerrors.Conflict("DATA_SHARE_EXPORT_ARTIFACT_REMOTE_UPLOAD_IN_PROGRESS", "data share export artifact remote upload is in progress")
+var ErrDataShareExportArtifactRemoteUploadNotRunning = infraerrors.BadRequest("DATA_SHARE_EXPORT_ARTIFACT_REMOTE_UPLOAD_NOT_RUNNING", "data share export artifact remote upload is not running")
 var ErrDataShareExportArtifactStorageInvalid = infraerrors.InternalServer("DATA_SHARE_EXPORT_ARTIFACT_STORAGE_INVALID", "data share export artifact storage is invalid")
 var ErrDataShareStorageLimitInvalid = infraerrors.BadRequest("DATA_SHARE_STORAGE_LIMIT_INVALID", "data sharing storage limit must be greater than or equal to 0")
 var ErrDataShareCaptureRuntimeInvalid = infraerrors.BadRequest("DATA_SHARE_CAPTURE_RUNTIME_INVALID", "data sharing capture runtime settings are invalid")
@@ -516,6 +517,10 @@ type dataShareExportUploadProgress struct {
 	updatedAt     time.Time
 }
 
+type dataShareExportUploadTask struct {
+	cancel context.CancelFunc
+}
+
 type dataShareExportGenerateProgress struct {
 	processedSessions int64
 	totalSessions     int64
@@ -544,6 +549,8 @@ type DataSharingService struct {
 	skipRulesCacheExpiresAt  time.Time
 	exportUploadProgressMu   sync.RWMutex
 	exportUploadProgress     map[int64]dataShareExportUploadProgress
+	exportUploadTasksMu      sync.Mutex
+	exportUploadTasks        map[int64]dataShareExportUploadTask
 	exportGenerateProgressMu sync.RWMutex
 	exportGenerateProgress   map[int64]dataShareExportGenerateProgress
 }
@@ -556,6 +563,7 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		captureDurations:       newDataShareCaptureDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
 		exportDurations:        newDataShareExportDurationRecorder(defaultDataSharingCaptureDurationWindowSize),
 		exportUploadProgress:   make(map[int64]dataShareExportUploadProgress),
+		exportUploadTasks:      make(map[int64]dataShareExportUploadTask),
 		exportGenerateProgress: make(map[int64]dataShareExportGenerateProgress),
 	}
 	svc.exportBatchSize.Store(int64(svc.defaultRuntimeSettings.ExportBatchSize))

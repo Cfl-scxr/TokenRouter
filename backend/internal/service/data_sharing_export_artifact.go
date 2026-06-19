@@ -22,6 +22,7 @@ const dataShareExportArtifactDownloadTicketTTL = 10 * time.Minute
 const dataShareExportArtifactRemoteDownloadURLTTL = time.Hour
 const dataShareExportArtifactInterruptedMessage = "server restarted before export artifact completed"
 const dataShareExportArtifactRemoteInterruptedMessage = "server restarted before export artifact remote upload completed"
+const dataShareExportArtifactRemoteCancelMessage = "remote upload canceled by administrator"
 const defaultDataShareExportArtifactRemotePrefix = "data-sharing-exports"
 
 // CreateExportArtifact 创建预生成导出文件任务，并在后台执行真实文件生成。
@@ -205,12 +206,37 @@ func (s *DataSharingService) UploadExportArtifactToRemote(ctx context.Context, i
 		return nil, err
 	}
 	s.startExportArtifactUploadProgress(id, artifact.FileSize)
-	go s.uploadExportArtifactToRemote(context.Background(), id)
+	// 上传任务不绑定发起请求生命周期，但会登记 cancel 供管理端主动取消慢速上传。
+	uploadCtx, cancel := context.WithCancel(context.Background())
+	s.registerExportArtifactUploadTask(id, cancel)
+	go s.uploadExportArtifactToRemote(uploadCtx, id)
+	return s.GetExportArtifact(ctx, id)
+}
+
+// CancelExportArtifactRemoteUpload 取消正在进行的远端上传任务。
+func (s *DataSharingService) CancelExportArtifactRemoteUpload(ctx context.Context, id int64) (*DataShareExportArtifact, error) {
+	if s == nil || s.exportArtifactRepo == nil {
+		return nil, ErrDataShareExportArtifactStorageInvalid
+	}
+	artifact, err := s.GetExportArtifact(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if artifact.RemoteStatus != DataShareExportArtifactRemoteStatusUploading {
+		return nil, ErrDataShareExportArtifactRemoteUploadNotRunning
+	}
+	if cancel := s.unregisterExportArtifactUploadTask(id); cancel != nil {
+		cancel()
+	}
+	s.clearExportArtifactUploadProgress(id)
+	if err := s.exportArtifactRepo.MarkRemoteUploadFailed(ctx, id, dataShareExportArtifactRemoteCancelMessage); err != nil {
+		return nil, err
+	}
 	return s.GetExportArtifact(ctx, id)
 }
 
 func (s *DataSharingService) uploadExportArtifactToRemote(ctx context.Context, id int64) {
-	defer s.clearExportArtifactUploadProgress(id)
+	defer s.finishExportArtifactUploadTask(id)
 	artifact, err := s.GetExportArtifact(ctx, id)
 	if err != nil {
 		return
@@ -237,13 +263,51 @@ func (s *DataSharingService) uploadExportArtifactToRemote(ctx context.Context, i
 	key := s.buildExportArtifactRemoteKey(ctx, artifact)
 	uploadSize, err := s.uploadExportArtifactFile(ctx, store, key, f, dataShareExportArtifactContentType(artifact), id)
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		_ = s.exportArtifactRepo.MarkRemoteUploadFailed(context.Background(), id, err.Error())
+		return
+	}
+	if ctx.Err() != nil {
 		return
 	}
 	s.updateExportArtifactUploadProgress(id, uploadSize)
 	if err := s.exportArtifactRepo.MarkRemoteUploaded(ctx, id, cfg.Bucket, key); err != nil {
 		slog.Warn("data sharing: mark export artifact remote upload completed failed", "artifact_id", id, "error", err)
 	}
+}
+
+func (s *DataSharingService) registerExportArtifactUploadTask(id int64, cancel context.CancelFunc) {
+	if s == nil || cancel == nil {
+		return
+	}
+	s.exportUploadTasksMu.Lock()
+	defer s.exportUploadTasksMu.Unlock()
+	if s.exportUploadTasks == nil {
+		s.exportUploadTasks = make(map[int64]dataShareExportUploadTask)
+	}
+	s.exportUploadTasks[id] = dataShareExportUploadTask{cancel: cancel}
+}
+
+func (s *DataSharingService) unregisterExportArtifactUploadTask(id int64) context.CancelFunc {
+	if s == nil {
+		return nil
+	}
+	s.exportUploadTasksMu.Lock()
+	defer s.exportUploadTasksMu.Unlock()
+	task, ok := s.exportUploadTasks[id]
+	if ok {
+		delete(s.exportUploadTasks, id)
+	}
+	return task.cancel
+}
+
+func (s *DataSharingService) finishExportArtifactUploadTask(id int64) {
+	if cancel := s.unregisterExportArtifactUploadTask(id); cancel != nil {
+		cancel()
+	}
+	s.clearExportArtifactUploadProgress(id)
 }
 
 func (s *DataSharingService) uploadExportArtifactFile(ctx context.Context, store BackupObjectStore, key string, body io.Reader, contentType string, artifactID int64) (int64, error) {

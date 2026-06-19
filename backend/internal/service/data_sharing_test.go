@@ -215,6 +215,10 @@ type dataShareExportObjectStoreStub struct {
 	uploadErr     error
 }
 
+type dataShareBlockingExportObjectStoreStub struct {
+	started chan struct{}
+}
+
 func newDataShareExportObjectStoreStub() *dataShareExportObjectStoreStub {
 	return &dataShareExportObjectStoreStub{objects: map[string][]byte{}}
 }
@@ -243,6 +247,43 @@ func (s *dataShareExportObjectStoreStub) UploadFileWithProgress(ctx context.Cont
 		onProgress(size)
 	}
 	return size, err
+}
+
+func newDataShareBlockingExportObjectStoreStub() *dataShareBlockingExportObjectStoreStub {
+	return &dataShareBlockingExportObjectStoreStub{started: make(chan struct{})}
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) Upload(context.Context, string, io.Reader, string) (int64, error) {
+	panic("unexpected Upload call")
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) UploadFile(ctx context.Context, key string, body io.Reader, contentType string) (int64, error) {
+	return s.UploadFileWithProgress(ctx, key, body, contentType, nil)
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) UploadFileWithProgress(ctx context.Context, _ string, _ io.Reader, _ string, onProgress func(uploadedBytes int64)) (int64, error) {
+	close(s.started)
+	if onProgress != nil {
+		onProgress(1)
+	}
+	<-ctx.Done()
+	return 1, ctx.Err()
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) Download(context.Context, string) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("not found")
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) Delete(context.Context, string) error {
+	return nil
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) PresignURL(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+
+func (s *dataShareBlockingExportObjectStoreStub) HeadBucket(context.Context) error {
+	return nil
 }
 
 func (s *dataShareExportObjectStoreStub) Download(_ context.Context, key string) (io.ReadCloser, error) {
@@ -4706,6 +4747,58 @@ func TestDataSharingService_CreateExportArtifactRemoteDownloadURLAllowsUploading
 	url, err := svc.CreateExportArtifactRemoteDownloadURL(context.Background(), artifact.ID)
 	require.NoError(t, err)
 	require.Equal(t, "https://download.example.test/share/old-artifact.jsonl", url)
+}
+
+func TestDataSharingService_CancelExportArtifactRemoteUploadStopsRunningTask(t *testing.T) {
+	artifactRepo := newDataShareExportArtifactRepoStub()
+	settingRepo := &dataShareSettingRepoStub{values: map[string]string{}}
+	store := newDataShareBlockingExportObjectStoreStub()
+	factory := func(context.Context, *BackupS3Config) (BackupObjectStore, error) {
+		return store, nil
+	}
+	svc := NewDataSharingService(nil, settingRepo)
+	svc.SetExportArtifactRepository(artifactRepo)
+	svc.SetExportStorageDir(t.TempDir())
+	svc.SetExportObjectStoreDeps(factory, dataSharePlainEncryptor{})
+	_, err := svc.UpdateExportRemoteConfig(context.Background(), DataShareExportRemoteConfig{
+		Bucket:          "bucket-a",
+		AccessKeyID:     "ak",
+		SecretAccessKey: "sk",
+		Prefix:          "share",
+	})
+	require.NoError(t, err)
+	path := filepath.Join(svc.exportStorageDir, "cancel-upload.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, []byte(`{"ok":true}`+"\n"), 0644))
+	artifact, err := artifactRepo.Create(context.Background(), &DataShareExportArtifact{
+		Status:      DataShareExportArtifactStatusCompleted,
+		Filename:    "cancel-upload.jsonl",
+		StoragePath: path,
+		Encoding:    string(DataShareExportEncodingJSONL),
+		FileSize:    12,
+	})
+	require.NoError(t, err)
+
+	uploaded, err := svc.UploadExportArtifactToRemote(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusUploading, uploaded.RemoteStatus)
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("upload task did not start")
+	}
+
+	cancelled, err := svc.CancelExportArtifactRemoteUpload(context.Background(), artifact.ID)
+	require.NoError(t, err)
+	require.Equal(t, DataShareExportArtifactRemoteStatusFailed, cancelled.RemoteStatus)
+	require.Equal(t, dataShareExportArtifactRemoteCancelMessage, cancelled.RemoteErrorMessage)
+	require.Eventually(t, func() bool {
+		got, err := svc.GetExportArtifact(context.Background(), artifact.ID)
+		return err == nil && got.RemoteStatus == DataShareExportArtifactRemoteStatusFailed && got.RemoteUploadBytes == 0
+	}, time.Second, 10*time.Millisecond)
+
+	_, err = svc.CancelExportArtifactRemoteUpload(context.Background(), artifact.ID)
+	require.ErrorIs(t, err, ErrDataShareExportArtifactRemoteUploadNotRunning)
 }
 
 func TestDataSharingService_ListExportArtifactsMergesUploadProgress(t *testing.T) {

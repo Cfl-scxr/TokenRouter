@@ -518,6 +518,21 @@ func (h *DataSharingHandler) UploadExportArtifact(c *gin.Context) {
 	response.Success(c, adminDataShareExportArtifactToResponse(artifact))
 }
 
+// CancelExportArtifactRemoteUpload 取消正在进行的导出文件远端上传任务。
+func (h *DataSharingHandler) CancelExportArtifactRemoteUpload(c *gin.Context) {
+	id, err := parseAdminDataShareIDParam(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid export artifact ID")
+		return
+	}
+	artifact, err := h.dataSharingService.CancelExportArtifactRemoteUpload(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, adminDataShareExportArtifactToResponse(artifact))
+}
+
 // GetExportArtifactRemoteDownloadURL 为已上传到 S3/R2 的导出文件签发预签名下载链接。
 func (h *DataSharingHandler) GetExportArtifactRemoteDownloadURL(c *gin.Context) {
 	id, err := parseAdminDataShareIDParam(c)
