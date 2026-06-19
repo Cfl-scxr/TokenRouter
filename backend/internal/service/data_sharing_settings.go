@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ func (s *DataSharingService) SetDefaultCaptureRuntimeSettings(settings DataShare
 	}
 	s.defaultRuntimeSettings = normalizeDataShareCaptureRuntimeSettings(settings)
 	s.exportBatchSize.Store(int64(s.defaultRuntimeSettings.ExportBatchSize))
+	s.exportWorkerCount.Store(int64(s.defaultRuntimeSettings.ExportWorkerCount))
 	if s.captureBuffer != nil {
 		s.captureBuffer.UpdateRuntimeSettings(s.defaultRuntimeSettings)
 	}
@@ -217,6 +219,9 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 	if exportBatchSize := int(s.exportBatchSize.Load()); exportBatchSize > 0 {
 		defaultSettings.ExportBatchSize = exportBatchSize
 	}
+	if exportWorkerCount := int(s.exportWorkerCount.Load()); exportWorkerCount > 0 {
+		defaultSettings.ExportWorkerCount = exportWorkerCount
+	}
 	if s.settingRepo == nil {
 		return defaultSettings, nil
 	}
@@ -240,9 +245,12 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 	if !gjson.Get(raw, "export_batch_size").Exists() {
 		settings.ExportBatchSize = defaultSettings.ExportBatchSize
 	}
+	if !gjson.Get(raw, "export_worker_count").Exists() {
+		settings.ExportWorkerCount = defaultSettings.ExportWorkerCount
+	}
 	if settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 ||
 		settings.BufferIdleFlushSeconds <= 0 || settings.BufferMaxSessions <= 0 || settings.BufferMaxPendingEvents <= 0 ||
-		settings.DurationWindowSize <= 0 || settings.ExportBatchSize <= 0 {
+		settings.DurationWindowSize <= 0 || settings.ExportBatchSize <= 0 || settings.ExportWorkerCount <= 0 {
 		return nil, ErrDataShareCaptureRuntimeInvalid
 	}
 	if strings.TrimSpace(settings.CompressionLevel) == "" {
@@ -255,7 +263,7 @@ func (s *DataSharingService) loadCaptureRuntimeSettings(ctx context.Context) (*D
 func (s *DataSharingService) applyCaptureRuntimeSettings(settings *DataShareCaptureRuntimeSettings) {
 	if s == nil || settings == nil || settings.WorkerCount <= 0 || settings.QueueSize <= 0 || settings.TaskTimeoutSeconds <= 0 ||
 		settings.BufferIdleFlushSeconds <= 0 || settings.BufferMaxSessions <= 0 || settings.BufferMaxPendingEvents <= 0 ||
-		settings.DurationWindowSize <= 0 || settings.ExportBatchSize <= 0 {
+		settings.DurationWindowSize <= 0 || settings.ExportBatchSize <= 0 || settings.ExportWorkerCount <= 0 {
 		return
 	}
 	SetDataShareCompressionLevel(settings.CompressionLevel)
@@ -277,6 +285,7 @@ func (s *DataSharingService) applyCaptureRuntimeSettings(settings *DataShareCapt
 		s.exportDurations.SetWindowSize(settings.DurationWindowSize)
 	}
 	s.exportBatchSize.Store(int64(normalizeDataShareExportBatchSize(settings.ExportBatchSize)))
+	s.exportWorkerCount.Store(int64(normalizeDataShareExportWorkerCount(settings.ExportWorkerCount)))
 }
 
 func defaultDataShareCaptureRuntimeSettings() *DataShareCaptureRuntimeSettings {
@@ -292,6 +301,7 @@ func defaultDataShareCaptureRuntimeSettings() *DataShareCaptureRuntimeSettings {
 		BufferMaxPendingEvents: defaultDataSharingCaptureBufferMaxEvents,
 		DurationWindowSize:     defaultDataSharingCaptureDurationWindowSize,
 		ExportBatchSize:        defaultDataShareExportBatchSize,
+		ExportWorkerCount:      defaultDataShareExportWorkerCount(),
 	})
 	return &settings
 }
@@ -326,6 +336,7 @@ func normalizeDataShareCaptureRuntimeSettings(settings DataShareCaptureRuntimeSe
 	}
 	durationWindowSize := normalizeDataShareCaptureDurationWindowSize(settings.DurationWindowSize)
 	exportBatchSize := normalizeDataShareExportBatchSize(settings.ExportBatchSize)
+	exportWorkerCount := normalizeDataShareExportWorkerCount(settings.ExportWorkerCount)
 	return DataShareCaptureRuntimeSettings{
 		WorkerCount:            opts.WorkerCount,
 		QueueSize:              opts.QueueSize,
@@ -338,6 +349,7 @@ func normalizeDataShareCaptureRuntimeSettings(settings DataShareCaptureRuntimeSe
 		BufferMaxPendingEvents: bufferMaxPendingEvents,
 		DurationWindowSize:     durationWindowSize,
 		ExportBatchSize:        exportBatchSize,
+		ExportWorkerCount:      exportWorkerCount,
 	}
 }
 
@@ -346,6 +358,25 @@ func (s *DataSharingService) currentExportBatchSize() int {
 		return defaultDataShareExportBatchSize
 	}
 	return normalizeDataShareExportBatchSize(int(s.exportBatchSize.Load()))
+}
+
+func (s *DataSharingService) currentExportWorkerCount() int {
+	if s == nil {
+		return defaultDataShareExportWorkerCount()
+	}
+	return normalizeDataShareExportWorkerCount(int(s.exportWorkerCount.Load()))
+}
+
+func defaultDataShareExportWorkerCount() int {
+	// 导出 worker 默认按 CPU 给保守并发，避免大导出压满机器影响网关请求。
+	cpus := runtime.NumCPU()
+	if cpus <= 2 {
+		return 1
+	}
+	if cpus > maxDataShareExportWorkerCount {
+		return maxDataShareExportWorkerCount
+	}
+	return cpus
 }
 
 // NormalizeDataShareCompressionLevel 归一化管理端可配置的 zstd 压缩等级。

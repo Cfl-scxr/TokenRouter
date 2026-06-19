@@ -867,6 +867,10 @@
               <input id="data-share-export-batch-size" v-model="exportBatchSizeInput" type="number" :min="exportBatchSizeMin" :max="exportBatchSizeMax" step="1" class="input w-full text-sm" />
             </div>
             <div>
+              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-worker-count">导出并发数</label>
+              <input id="data-share-export-worker-count" v-model="exportWorkerCountInput" type="number" :min="exportWorkerCountMin" :max="exportWorkerCountMax" step="1" class="input w-full text-sm" />
+            </div>
+            <div>
               <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400" for="data-share-export-remote-endpoint">端点地址</label>
               <input id="data-share-export-remote-endpoint" v-model="exportRemoteForm.endpoint" class="input w-full text-sm" placeholder="https://<账号ID>.r2.cloudflarestorage.com" />
             </div>
@@ -1251,6 +1255,7 @@ const captureBufferMaxSessionsInput = ref('')
 const captureBufferMaxPendingEventsInput = ref('')
 const captureDurationWindowInput = ref('')
 const exportBatchSizeInput = ref('')
+const exportWorkerCountInput = ref('')
 const captureWorkerCountMax = 1024
 const captureQueueSizeMax = 100000
 const captureFlushQueueSizeMax = 100000
@@ -1265,6 +1270,9 @@ const captureDurationWindowDefault = 512
 const exportBatchSizeMin = 50
 const exportBatchSizeMax = 2000
 const exportBatchSizeDefault = 500
+const exportWorkerCountMin = 1
+const exportWorkerCountMax = 8
+const exportWorkerCountDefault = 4
 const statsAutoRefreshDefaultSeconds = 5
 const statsAutoRefreshIntervals = [5, 10, 15, 30] as const
 const captureCompressionLevelOptions = [
@@ -2147,7 +2155,7 @@ async function loadExportRemoteConfig() {
 async function saveExportSettings() {
   savingExportSettings.value = true
   try {
-    await saveExportBatchSizeOnly()
+    await saveExportRuntimeSettingsOnly()
     await saveExportRemoteConfigOnly()
     await loadStats()
     appStore.showSuccess('导出配置已保存')
@@ -2158,17 +2166,23 @@ async function saveExportSettings() {
   }
 }
 
-async function saveExportBatchSizeOnly() {
+async function saveExportRuntimeSettingsOnly() {
   const exportBatchSize = boundedIntegerFromInput(exportBatchSizeInput.value, exportBatchSizeMin, exportBatchSizeMax)
   if (!exportBatchSize) {
     throw new Error('invalid export batch size')
   }
+  const exportWorkerCount = boundedIntegerFromInput(exportWorkerCountInput.value, exportWorkerCountMin, exportWorkerCountMax)
+  if (!exportWorkerCount) {
+    throw new Error('invalid export worker count')
+  }
   const current = await adminDataSharingAPI.getRuntimeSettings()
   const settings = await adminDataSharingAPI.updateRuntimeSettings({
     ...current,
-    export_batch_size: exportBatchSize
+    export_batch_size: exportBatchSize,
+    export_worker_count: exportWorkerCount
   })
   exportBatchSizeInput.value = String(settings.export_batch_size || exportBatchSizeDefault)
+  exportWorkerCountInput.value = String(settings.export_worker_count || exportWorkerCountDefault)
 }
 
 async function saveExportRemoteConfigOnly() {
@@ -2226,7 +2240,8 @@ function captureRuntimeSettingsFromForm() {
   const bufferMaxPendingEvents = boundedPositiveIntegerFromInput(captureBufferMaxPendingEventsInput.value, captureBufferMaxPendingEventsLimit)
   const durationWindowSize = boundedIntegerFromInput(captureDurationWindowInput.value, captureDurationWindowMin, captureDurationWindowMax)
   const exportBatchSize = boundedIntegerFromInput(exportBatchSizeInput.value, exportBatchSizeMin, exportBatchSizeMax)
-  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents || !durationWindowSize || !exportBatchSize) {
+  const exportWorkerCount = boundedIntegerFromInput(exportWorkerCountInput.value, exportWorkerCountMin, exportWorkerCountMax)
+  if (!workerCount || !queueSize || !flushQueueSize || !timeoutSeconds || !bufferIdleFlushSeconds || !bufferMaxSessions || !bufferMaxPendingEvents || !durationWindowSize || !exportBatchSize || !exportWorkerCount) {
     throw new Error('invalid capture runtime settings')
   }
   return {
@@ -2240,7 +2255,8 @@ function captureRuntimeSettingsFromForm() {
     buffer_max_sessions: bufferMaxSessions,
     buffer_max_pending_events: bufferMaxPendingEvents,
     duration_window_size: durationWindowSize,
-    export_batch_size: exportBatchSize
+    export_batch_size: exportBatchSize,
+    export_worker_count: exportWorkerCount
   }
 }
 
@@ -2277,6 +2293,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   buffer_max_pending_events?: number
   duration_window_size?: number
   export_batch_size?: number
+  export_worker_count?: number
 }) {
   captureWorkerCountInput.value = String(settings.worker_count)
   captureQueueSizeInput.value = String(settings.queue_size)
@@ -2289,6 +2306,7 @@ function applyCaptureRuntimeSettingsToForm(settings: {
   captureBufferMaxPendingEventsInput.value = String(settings.buffer_max_pending_events || 65536)
   captureDurationWindowInput.value = String(settings.duration_window_size || captureDurationWindowDefault)
   exportBatchSizeInput.value = String(settings.export_batch_size || exportBatchSizeDefault)
+  exportWorkerCountInput.value = String(settings.export_worker_count || exportWorkerCountDefault)
 }
 
 function applyStorageLimitToForm(limitBytes: number) {
@@ -2508,6 +2526,9 @@ async function loadStats() {
     }
     if (!exportBatchSizeInput.value) {
       exportBatchSizeInput.value = String(exportBatchSizeDefault)
+    }
+    if (!exportWorkerCountInput.value) {
+      exportWorkerCountInput.value = String(exportWorkerCountDefault)
     }
   } catch (error) {
     appStore.showError('加载数据共享统计失败')

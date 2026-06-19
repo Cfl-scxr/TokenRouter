@@ -17,6 +17,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/klauspost/compress/zstd"
 	"github.com/lib/pq"
+	"golang.org/x/sync/errgroup"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -235,8 +236,9 @@ func (r *dataShareSessionRepository) ListWithPayloadPage(ctx context.Context, pa
 	return items, nil
 }
 
-func (r *dataShareSessionRepository) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, cursor *service.DataShareSessionExportCursor, limit int, recorder service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
+func (r *dataShareSessionRepository) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, cursor *service.DataShareSessionExportCursor, limit int, workerCount int, recorder service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
 	limit = service.NormalizeDataShareExportBatchSize(limit)
+	workerCount = service.NormalizeDataShareExportWorkerCount(workerCount)
 	client := clientFromContext(ctx, r.client)
 	q := applyDataShareFilters(client.DataShareSession.Query(), filters)
 	if cursor != nil && !cursor.CreatedAt.IsZero() && cursor.ID > 0 {
@@ -260,21 +262,38 @@ func (r *dataShareSessionRepository) ListExportPayloadPage(ctx context.Context, 
 	if err != nil {
 		return nil, nil, err
 	}
-	out := make([]service.DataShareSession, 0, len(items))
+	out := make([]service.DataShareSession, len(items))
+	g, gctx := errgroup.WithContext(ctx)
+	if workerCount > len(items) && len(items) > 0 {
+		workerCount = len(items)
+	}
+	g.SetLimit(workerCount)
 	for i := range items {
-		item := dataShareSessionEntityToService(items[i])
-		start = time.Now()
-		if err := populateDataShareSessionPayload(item); err != nil {
-			recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(start))
-			return nil, nil, err
-		}
-		recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(start))
-		if len(item.PayloadCompressed) == 0 && len(item.SessionJSON) > 0 {
-			if err := r.persistCompressedPayload(ctx, item); err != nil {
+		i := i
+		g.Go(func() error {
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			item := dataShareSessionEntityToService(items[i])
+			decodeStart := time.Now()
+			if err := populateDataShareSessionPayload(item); err != nil {
+				recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(decodeStart))
+				return err
+			}
+			recordDataShareExportDuration(recorder, service.DataShareExportDurationPartPayloadDecode, time.Since(decodeStart))
+			out[i] = *item
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+	for i := range out {
+		if len(out[i].PayloadCompressed) == 0 && len(out[i].SessionJSON) > 0 {
+			if err := r.persistCompressedPayload(ctx, &out[i]); err != nil {
 				return nil, nil, err
 			}
 		}
-		out = append(out, *item)
 	}
 	if len(out) == 0 {
 		return out, nil, nil

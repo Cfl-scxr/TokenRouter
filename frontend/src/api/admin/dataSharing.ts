@@ -136,6 +136,7 @@ export interface DataShareCaptureRuntimeSettings {
   buffer_max_pending_events: number
   duration_window_size: number
   export_batch_size: number
+  export_worker_count: number
 }
 
 export interface DataShareStats {

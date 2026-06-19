@@ -156,7 +156,7 @@ func (r *dataShareCaptureRepoStub) ListWithPayloadPage(context.Context, paginati
 	panic("unexpected ListWithPayloadPage call")
 }
 
-func (r *dataShareCaptureRepoStub) ListExportPayloadPage(context.Context, DataShareSessionFilters, *DataShareSessionExportCursor, int, DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
+func (r *dataShareCaptureRepoStub) ListExportPayloadPage(context.Context, DataShareSessionFilters, *DataShareSessionExportCursor, int, int, DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
 	panic("unexpected ListExportPayloadPage call")
 }
 
@@ -203,9 +203,10 @@ func (r *dataShareCaptureRepoStub) lastSession() *DataShareSession {
 }
 
 type dataShareExportRepoStub struct {
-	items      []DataShareSession
-	countCalls int
-	pageLimits []int
+	items       []DataShareSession
+	countCalls  int
+	pageLimits  []int
+	pageWorkers []int
 }
 
 type dataShareExportObjectStoreStub struct {
@@ -373,8 +374,9 @@ func (r *dataShareExportRepoStub) ListWithPayloadPage(ctx context.Context, param
 	return items, err
 }
 
-func (r *dataShareExportRepoStub) ListExportPayloadPage(_ context.Context, _ DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
+func (r *dataShareExportRepoStub) ListExportPayloadPage(_ context.Context, _ DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, workerCount int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error) {
 	r.pageLimits = append(r.pageLimits, limit)
+	r.pageWorkers = append(r.pageWorkers, workerCount)
 	start := 0
 	if cursor != nil {
 		for i := range r.items {
@@ -842,7 +844,8 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsAppliesWorkerTimeout(t *
 	require.Equal(t, 123, settings.BufferMaxSessions)
 	require.Equal(t, 456, settings.BufferMaxPendingEvents)
 	require.Equal(t, defaultDataShareExportBatchSize, settings.ExportBatchSize)
-	require.JSONEq(t, `{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456,"duration_window_size":512,"export_batch_size":500}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, defaultDataShareExportWorkerCount(), settings.ExportWorkerCount)
+	require.JSONEq(t, fmt.Sprintf(`{"worker_count":2,"queue_size":9,"flush_queue_size":12,"task_timeout_seconds":45,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":7,"buffer_max_sessions":123,"buffer_max_pending_events":456,"duration_window_size":512,"export_batch_size":500,"export_worker_count":%d}`, defaultDataShareExportWorkerCount()), repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, 2, svc.CaptureWorkerStats().WorkerCount)
 	require.Equal(t, 9, svc.CaptureWorkerStats().QueueCapacity)
 	require.Equal(t, 12, svc.CaptureWorkerStats().FlushQueueCapacity)
@@ -870,6 +873,7 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 		BufferMaxSessions:      maxDataSharingCaptureBufferMaxSessions + 100,
 		BufferMaxPendingEvents: maxDataSharingCaptureBufferMaxEvents + 100,
 		ExportBatchSize:        maxDataShareExportBatchSize + 100,
+		ExportWorkerCount:      maxDataShareExportWorkerCount + 100,
 	})
 	require.NoError(t, err)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, settings.WorkerCount)
@@ -881,7 +885,8 @@ func TestDataSharingService_UpdateCaptureRuntimeSettingsClampsUpperBounds(t *tes
 	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
 	require.Equal(t, maxDataShareExportBatchSize, settings.ExportBatchSize)
-	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000,"duration_window_size":512,"export_batch_size":2000}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, maxDataShareExportWorkerCount, settings.ExportWorkerCount)
+	require.JSONEq(t, `{"worker_count":1024,"queue_size":100000,"flush_queue_size":100000,"task_timeout_seconds":1800,"compression_level":"fastest","buffer_enabled":true,"buffer_idle_flush_seconds":300,"buffer_max_sessions":100000,"buffer_max_pending_events":1000000,"duration_window_size":512,"export_batch_size":2000,"export_worker_count":8}`, repo.values[SettingKeyDataSharingCaptureRuntime])
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().FlushQueueCapacity)
@@ -956,6 +961,7 @@ func TestDataSharingService_LoadRuntimeSettingsClampsStoredUpperBounds(t *testin
 	require.Equal(t, maxDataSharingCaptureBufferIdleSeconds, settings.BufferIdleFlushSeconds)
 	require.Equal(t, maxDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, maxDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
+	require.Equal(t, defaultDataShareExportWorkerCount(), settings.ExportWorkerCount)
 	require.Equal(t, maxDataSharingCaptureWorkerCount, pool.Stats().WorkerCount)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().QueueCapacity)
 	require.Equal(t, maxDataSharingCaptureQueueSize, pool.Stats().FlushQueueCapacity)
@@ -1012,7 +1018,8 @@ func TestDataSharingService_UpdateRuntimeSettingsBackfillsLegacyRequest(t *testi
 	require.Equal(t, defaultDataSharingCaptureBufferMaxSessions, settings.BufferMaxSessions)
 	require.Equal(t, defaultDataSharingCaptureBufferMaxEvents, settings.BufferMaxPendingEvents)
 	require.Equal(t, defaultDataShareExportBatchSize, settings.ExportBatchSize)
-	require.JSONEq(t, `{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536,"duration_window_size":512,"export_batch_size":500}`, repo.values[SettingKeyDataSharingCaptureRuntime])
+	require.Equal(t, defaultDataShareExportWorkerCount(), settings.ExportWorkerCount)
+	require.JSONEq(t, fmt.Sprintf(`{"worker_count":3,"queue_size":8,"flush_queue_size":8,"task_timeout_seconds":60,"compression_level":"default","buffer_enabled":true,"buffer_idle_flush_seconds":30,"buffer_max_sessions":4096,"buffer_max_pending_events":65536,"duration_window_size":512,"export_batch_size":500,"export_worker_count":%d}`, defaultDataShareExportWorkerCount()), repo.values[SettingKeyDataSharingCaptureRuntime])
 }
 
 func TestDataSharingService_CaptureAsyncBuffersUntilFlush(t *testing.T) {
@@ -4173,6 +4180,44 @@ func TestExportJSONLIncludesSafeRepeatedLongTextBlockInBatch(t *testing.T) {
 	require.Contains(t, buf.String(), "sess-good-export")
 }
 
+func TestExportJSONLParallelKeepsCursorOrder(t *testing.T) {
+	now := time.Now()
+	items := make([]DataShareSession, 0, 8)
+	for i := 0; i < 8; i++ {
+		items = append(items, DataShareSession{
+			ID:            int64(i + 1),
+			TrajectoryID:  fmt.Sprintf("traj-parallel-%02d", i),
+			SessionID:     fmt.Sprintf("sess-parallel-%02d", i),
+			Dataset:       defaultDataShareDataset,
+			Provider:      PlatformOpenAI,
+			Model:         "gpt-5.5",
+			Messages:      []map[string]any{{"role": "user", "content": fmt.Sprintf("hello-%02d", i)}},
+			SessionJSON:   map[string]any{"messages": []any{map[string]any{"role": "user", "content": fmt.Sprintf("hello-%02d", i)}}},
+			Usage:         map[string]any{"total_tokens": i + 1},
+			QualityStatus: DataShareQualityComplete,
+			Exportable:    true,
+			CreatedAt:     now.Add(time.Duration(i) * time.Millisecond),
+			UpdatedAt:     now.Add(time.Duration(i) * time.Millisecond),
+		})
+	}
+	repo := &dataShareExportRepoStub{items: items}
+	svc := NewDataSharingService(repo, nil)
+
+	var buf bytes.Buffer
+	err := svc.exportJSONL(context.Background(), &buf, DataShareSessionFilters{SelectAll: true}, false, int64(len(items)), 4, 4, nil, nil)
+
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, len(items))
+	for i, line := range lines {
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &payload))
+		require.Equal(t, fmt.Sprintf("sess-parallel-%02d", i), payload["session_id"])
+	}
+	require.NotEmpty(t, repo.pageWorkers)
+	require.Equal(t, 4, repo.pageWorkers[0])
+}
+
 func buildSafeRepeatedTextMessages() []map[string]any {
 	out := buildSequentialDataShareMessages("前置", 20)
 	block := buildSequentialDataShareMessages("重复块", dataShareLongReplayMinMessages+4)
@@ -4456,6 +4501,7 @@ func TestDataSharingService_CreateExportArtifactUsesRuntimeBatchAndRecordsDurati
 		BufferMaxPendingEvents: 1,
 		DurationWindowSize:     64,
 		ExportBatchSize:        50,
+		ExportWorkerCount:      3,
 	})
 	require.NoError(t, err)
 
@@ -4473,6 +4519,8 @@ func TestDataSharingService_CreateExportArtifactUsesRuntimeBatchAndRecordsDurati
 	require.Equal(t, 1, exportRepo.countCalls)
 	require.NotEmpty(t, exportRepo.pageLimits)
 	require.Equal(t, 50, exportRepo.pageLimits[0])
+	require.NotEmpty(t, exportRepo.pageWorkers)
+	require.Equal(t, 3, exportRepo.pageWorkers[0])
 	stats := svc.ExportDurationStats()
 	require.Greater(t, stats.SampleCount, 0)
 	require.Greater(t, findDataShareExportDurationPart(t, stats, DataShareExportDurationPartCount).SampleCount, 0)

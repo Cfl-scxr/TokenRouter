@@ -842,10 +842,11 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 		s.updateExportArtifactGenerateProgress(id, processed, total)
 	}
 	batchSize := s.currentExportBatchSize()
+	workerCount := s.currentExportWorkerCount()
 	switch encoding {
 	case DataShareExportEncodingJSON, DataShareExportEncodingJSONL:
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: fileWriter}
-		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, updateGenerateProgress, s.exportDurations); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, workerCount, updateGenerateProgress, s.exportDurations); err != nil {
 			return err
 		}
 		fileWriter.lines = lineCounter.lines
@@ -855,7 +856,7 @@ func (s *DataSharingService) generateExportArtifactWithError(ctx context.Context
 			return err
 		}
 		lineCounter := &dataShareExportArtifactLineCountingWriter{w: zw}
-		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, updateGenerateProgress, s.exportDurations); err != nil {
+		if err := s.exportJSONL(ctx, lineCounter, artifact.Filters, false, totalSessions, batchSize, workerCount, updateGenerateProgress, s.exportDurations); err != nil {
 			_ = zw.Close()
 			return err
 		}

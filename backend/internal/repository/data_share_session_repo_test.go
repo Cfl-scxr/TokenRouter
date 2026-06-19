@@ -630,7 +630,7 @@ func TestDataShareSessionRepository_ListExportPayloadPageUsesCreatedAtIDCursor(t
 		}))
 	}
 
-	first, cursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, nil, 50, nil)
+	first, cursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, nil, 50, 1, nil)
 	require.NoError(t, err)
 	require.Len(t, first, 50)
 	require.NotNil(t, cursor)
@@ -638,13 +638,13 @@ func TestDataShareSessionRepository_ListExportPayloadPageUsesCreatedAtIDCursor(t
 	require.Equal(t, "traj-export-cursor-50", first[49].TrajectoryID)
 	require.NotEmpty(t, first[0].Messages)
 
-	second, nextCursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, cursor, 50, nil)
+	second, nextCursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, cursor, 50, 1, nil)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.NotNil(t, nextCursor)
 	require.Equal(t, "traj-export-cursor-51", second[0].TrajectoryID)
 
-	empty, finalCursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, nextCursor, 50, nil)
+	empty, finalCursor, err := repo.ListExportPayloadPage(ctx, service.DataShareSessionFilters{}, nextCursor, 50, 1, nil)
 	require.NoError(t, err)
 	require.Empty(t, empty)
 	require.Nil(t, finalCursor)

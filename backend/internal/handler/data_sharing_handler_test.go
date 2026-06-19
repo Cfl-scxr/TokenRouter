@@ -112,7 +112,7 @@ func (r *dataShareHandlerRepoStub) ListWithPayloadPage(ctx context.Context, para
 	return items, err
 }
 
-func (r *dataShareHandlerRepoStub) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, _ *service.DataShareSessionExportCursor, _ int, _ service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
+func (r *dataShareHandlerRepoStub) ListExportPayloadPage(ctx context.Context, filters service.DataShareSessionFilters, _ *service.DataShareSessionExportCursor, _ int, _ int, _ service.DataShareExportDurationRecorder) ([]service.DataShareSession, *service.DataShareSessionExportCursor, error) {
 	items, _, err := r.ListWithPayload(ctx, pagination.PaginationParams{Page: 1, PageSize: len(r.items)}, filters)
 	if err != nil || len(items) == 0 {
 		return items, nil, err

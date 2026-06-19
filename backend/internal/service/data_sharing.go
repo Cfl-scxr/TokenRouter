@@ -128,6 +128,7 @@ type DataShareCaptureRuntimeSettings struct {
 	BufferMaxPendingEvents int    `json:"buffer_max_pending_events"`
 	DurationWindowSize     int    `json:"duration_window_size"`
 	ExportBatchSize        int    `json:"export_batch_size"`
+	ExportWorkerCount      int    `json:"export_worker_count"`
 }
 
 // DataShareCompressionLevel 表示采集 payload 的 zstd 压缩等级。
@@ -501,7 +502,7 @@ type DataShareSessionRepository interface {
 	// ListWithPayloadPage 按页加载包含 payload 的 session，不重复统计总数，供导出流程使用。
 	ListWithPayloadPage(ctx context.Context, params pagination.PaginationParams, filters DataShareSessionFilters) ([]DataShareSession, error)
 	// ListExportPayloadPage 按游标加载导出 payload，不回填展示字段，避免大导出时重复 count 和大 offset 扫描。
-	ListExportPayloadPage(ctx context.Context, filters DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error)
+	ListExportPayloadPage(ctx context.Context, filters DataShareSessionFilters, cursor *DataShareSessionExportCursor, limit int, workerCount int, recorder DataShareExportDurationRecorder) ([]DataShareSession, *DataShareSessionExportCursor, error)
 	GetByID(ctx context.Context, id int64) (*DataShareSession, error)
 	Delete(ctx context.Context, id int64) error
 	BatchDelete(ctx context.Context, ids []int64, filters DataShareSessionFilters) (int64, error)
@@ -542,6 +543,7 @@ type DataSharingService struct {
 	exportDurations          *dataShareExportDurationRecorder
 	defaultRuntimeSettings   DataShareCaptureRuntimeSettings
 	exportBatchSize          atomic.Int64
+	exportWorkerCount        atomic.Int64
 	captureWorkerNilDropped  atomic.Uint64
 	captureWorkerNilLogNanos atomic.Int64
 	skipRulesMu              sync.RWMutex
@@ -567,6 +569,7 @@ func NewDataSharingService(repo DataShareSessionRepository, settingRepo SettingR
 		exportGenerateProgress: make(map[int64]dataShareExportGenerateProgress),
 	}
 	svc.exportBatchSize.Store(int64(svc.defaultRuntimeSettings.ExportBatchSize))
+	svc.exportWorkerCount.Store(int64(svc.defaultRuntimeSettings.ExportWorkerCount))
 	if len(captureWorker) > 0 {
 		svc.captureWorker = captureWorker[0]
 	}
