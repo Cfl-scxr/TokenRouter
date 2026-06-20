@@ -1989,6 +1989,34 @@ func TestDataSharingService_MessagesRawCaptureDedupesCompactionSinglePreservedRe
 	require.Equal(t, "完成第三步", dataShareContentText(session.Messages[6]["content"]))
 }
 
+func TestDataShareMessagesRequestDeltaUsesLongWindowIndexWhenIdentityIsCommon(t *testing.T) {
+	existing := make([]map[string]any, 0, 6000)
+	for i := 0; i < dataShareReplayWindowCandidateLimit+1; i++ {
+		existing = append(existing, map[string]any{
+			"role":    "user",
+			"content": "重复锚点",
+		})
+	}
+	existing = append(existing, map[string]any{"role": "user", "content": "重复锚点"})
+	for i := 0; i < dataShareLongReplayMinMessages; i++ {
+		existing = append(existing, map[string]any{
+			"role":    "assistant",
+			"content": fmt.Sprintf("历史尾部-%04d", i),
+		})
+	}
+	incoming := []map[string]any{
+		{"role": "assistant", "content": []any{map[string]any{"type": "compaction", "content": "摘要：保留最后一段历史。"}}},
+	}
+	incoming = append(incoming, cloneBufferedDataShareMaps(existing[len(existing)-dataShareLongReplayMinMessages-1:])...)
+	incoming = append(incoming, map[string]any{"role": "user", "content": "新的问题"})
+
+	delta := dataShareMessagesRequestDelta(existing, incoming)
+
+	require.Len(t, delta, 2)
+	require.Contains(t, dataShareContentText(delta[0]["content"]), "摘要：保留最后一段历史。")
+	require.Equal(t, "新的问题", dataShareContentText(delta[1]["content"]))
+}
+
 func TestDataShareMessageIdentityKeepsStructuredContentDistinct(t *testing.T) {
 	first := map[string]any{
 		"role": "user",

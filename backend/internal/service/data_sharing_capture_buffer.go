@@ -706,12 +706,13 @@ func dataShareMessagesRequestDelta(existing, incoming []map[string]any) []map[st
 	}
 	existingIdentities := dataShareMessageIdentities(existing)
 	incomingIdentities := dataShareMessageIdentities(incoming)
+	replayIndex := newDataShareMessagesReplayIndex(existingIdentities)
 	// Anthropic Messages 是无状态请求；compaction 后请求可能是“新摘要 + 已保存近期消息 + 新消息”。
 	// 因此这里扫描整段请求，保留新摘要等前置内容，只跳过已在历史中出现的连续重放窗口。
 	out := make([]map[string]any, 0, len(incoming))
 	hasPriorCompaction := false
 	for i := 0; i < len(incoming); {
-		match := dataShareBestRequestReplayMatchAt(existingIdentities, incomingIdentities, i, hasPriorCompaction)
+		match := dataShareBestRequestReplayMatchAt(existingIdentities, replayIndex, incomingIdentities, i, hasPriorCompaction)
 		if match.length > 0 {
 			if !hasPriorCompaction {
 				hasPriorCompaction = dataShareMessagesHaveCompaction(incoming[i : i+match.length])
@@ -728,7 +729,28 @@ func dataShareMessagesRequestDelta(existing, incoming []map[string]any) []map[st
 	return out
 }
 
-func dataShareBestRequestReplayMatchAt(existingIdentities, incomingIdentities []string, incomingStart int, hasPriorCompaction bool) dataShareReplayMatch {
+type dataShareMessagesReplayIndex struct {
+	identityPositions map[string][]int
+	windowPositions   map[string][]int
+}
+
+func newDataShareMessagesReplayIndex(existingIdentities []string) dataShareMessagesReplayIndex {
+	index := dataShareMessagesReplayIndex{
+		identityPositions: map[string][]int{},
+	}
+	for i, identity := range existingIdentities {
+		if identity == "" {
+			continue
+		}
+		index.identityPositions[identity] = append(index.identityPositions[identity], i)
+	}
+	if len(existingIdentities) >= dataShareLongReplayMinMessages {
+		index.windowPositions = dataShareReplayWindowIndex(existingIdentities)
+	}
+	return index
+}
+
+func dataShareBestRequestReplayMatchAt(existingIdentities []string, index dataShareMessagesReplayIndex, incomingIdentities []string, incomingStart int, hasPriorCompaction bool) dataShareReplayMatch {
 	if len(existingIdentities) == 0 || incomingStart < 0 || incomingStart >= len(incomingIdentities) {
 		return dataShareReplayMatch{}
 	}
@@ -737,10 +759,14 @@ func dataShareBestRequestReplayMatchAt(existingIdentities, incomingIdentities []
 		return dataShareReplayMatch{}
 	}
 	best := dataShareReplayMatch{}
-	for existingStart, existingIdentity := range existingIdentities {
-		if existingIdentity == "" || existingIdentity != identity {
-			continue
-		}
+	if longMatch := dataShareBestIndexedReplayMatch(existingIdentities, index.windowPositions, incomingIdentities, incomingStart); longMatch.length > 0 {
+		best = longMatch
+	}
+	candidates := index.identityPositions[identity]
+	if len(candidates) > dataShareReplayWindowCandidateLimit {
+		return best
+	}
+	for _, existingStart := range candidates {
 		length := dataShareContiguousKeyMatchLen(existingIdentities, existingStart, incomingIdentities, incomingStart)
 		if !dataShareRequestReplayMatchSafe(len(existingIdentities), incomingStart, existingStart, length, hasPriorCompaction) {
 			continue
