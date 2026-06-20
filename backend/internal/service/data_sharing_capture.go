@@ -64,6 +64,9 @@ func (s *DataSharingService) buildCaptureSessionWithOptions(ctx context.Context,
 	if dataShareCaptureInputIsOpenAIResponses(input) && !opts.FinalizeQuality {
 		return s.buildOpenAIResponsesRawCaptureSession(input)
 	}
+	if dataShareCaptureInputIsMessagesRaw(input) && !opts.FinalizeQuality {
+		return s.buildMessagesRawCaptureSession(input)
+	}
 	return s.buildSessionWithOptions(input, opts)
 }
 

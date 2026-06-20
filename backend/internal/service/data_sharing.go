@@ -27,6 +27,7 @@ type dataShareCaptureMode string
 const (
 	dataShareCaptureModeSnapshot           dataShareCaptureMode = ""
 	dataShareCaptureModeOpenAIResponsesRaw dataShareCaptureMode = "openai_responses_raw"
+	dataShareCaptureModeMessagesRaw        dataShareCaptureMode = "messages_raw"
 	dataShareCaptureModeIncremental        dataShareCaptureMode = "incremental"
 )
 
@@ -143,50 +144,52 @@ const (
 
 // DataShareSession 保存一条聚合后的 Agent session。
 type DataShareSession struct {
-	ID                   int64
-	TrajectoryID         string
-	SessionID            string
-	Dataset              string
-	Provider             string
-	Model                string
-	RequestPath          string
-	UserAgent            string
-	Status               string
-	IsFinalSnapshot      bool
-	SourceRequestCount   int
-	SystemPrompt         *string
-	Tools                []map[string]any
-	Messages             []map[string]any
-	Usage                map[string]any
-	Meta                 map[string]any
-	SessionJSON          map[string]any
-	SessionJSONFinalized bool
-	PayloadCompressed    []byte
-	PayloadEncoding      string
-	PayloadBytes         int64
-	Exportable           bool
-	QualityStatus        string
-	QualityErrors        []string
-	StorageBytes         int64
-	InputTokens          int64
-	OutputTokens         int64
-	TotalTokens          int64
-	ActualCost           *float64
-	UserID               int64
-	UserName             string
-	UserEmail            string
-	APIKeyID             int64
-	APIKeyName           string
-	GroupID              int64
-	GroupName            string
-	CreatedAt            time.Time
-	EndedAt              *time.Time
-	UpdatedAt            time.Time
-	captureMode          dataShareCaptureMode
-	captureInput         *DataShareCaptureInput
-	captureState         *dataShareResponsesCaptureState
-	captureRequestItems  []dataShareResponsesInputItem
-	captureResponseItems []map[string]any
+	ID                      int64
+	TrajectoryID            string
+	SessionID               string
+	Dataset                 string
+	Provider                string
+	Model                   string
+	RequestPath             string
+	UserAgent               string
+	Status                  string
+	IsFinalSnapshot         bool
+	SourceRequestCount      int
+	SystemPrompt            *string
+	Tools                   []map[string]any
+	Messages                []map[string]any
+	Usage                   map[string]any
+	Meta                    map[string]any
+	SessionJSON             map[string]any
+	SessionJSONFinalized    bool
+	PayloadCompressed       []byte
+	PayloadEncoding         string
+	PayloadBytes            int64
+	Exportable              bool
+	QualityStatus           string
+	QualityErrors           []string
+	StorageBytes            int64
+	InputTokens             int64
+	OutputTokens            int64
+	TotalTokens             int64
+	ActualCost              *float64
+	UserID                  int64
+	UserName                string
+	UserEmail               string
+	APIKeyID                int64
+	APIKeyName              string
+	GroupID                 int64
+	GroupName               string
+	CreatedAt               time.Time
+	EndedAt                 *time.Time
+	UpdatedAt               time.Time
+	captureMode             dataShareCaptureMode
+	captureInput            *DataShareCaptureInput
+	captureState            *dataShareResponsesCaptureState
+	captureRequestItems     []dataShareResponsesInputItem
+	captureResponseItems    []map[string]any
+	captureRequestMessages  []map[string]any
+	captureResponseMessages []map[string]any
 }
 
 // DataShareSessionFilters 描述列表/统计/导出筛选条件。

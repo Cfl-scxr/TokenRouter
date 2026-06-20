@@ -1744,6 +1744,251 @@ func TestDataSharingCaptureBufferDedupesReplayWithoutLosingCounters(t *testing.T
 	require.Equal(t, "开始修改", dataShareContentText(merged.Messages[len(merged.Messages)-1]["content"]))
 }
 
+func TestDataSharingService_MessagesRawCaptureDedupesStatelessReplay(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformAnthropic, DataSharingEnabled: true},
+	}
+	capture := func(requestID string, messages string, response string) {
+		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformAnthropic,
+			Model:           "claude-opus-4-8",
+			SessionID:       "session-messages-stateless-replay",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"claude-opus-4-8","messages":` + messages + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"content":[{"type":"text","text":%q}]}`, requestID, response)),
+			InboundEndpoint: "/v1/messages",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}}))
+	}
+
+	capture("messages-replay-1", `[
+		{"role":"user","content":"<system-reminder>current_date and cwd</system-reminder>"},
+		{"role":"user","content":"第一步"}
+	]`, "完成第一步")
+	capture("messages-replay-2", `[
+		{"role":"user","content":"<system-reminder>current_date and cwd</system-reminder>"},
+		{"role":"user","content":"第一步"},
+		{"role":"assistant","content":"完成第一步"},
+		{"role":"user","content":"第二步"}
+	]`, "完成第二步")
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Equal(t, int64(30), session.TotalTokens)
+	require.Len(t, session.Messages, 5)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "<system-reminder>current_date and cwd</system-reminder>"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第一步"))
+	require.Equal(t, "第二步", dataShareContentText(session.Messages[3]["content"]))
+	require.Equal(t, "完成第二步", dataShareContentText(session.Messages[4]["content"]))
+}
+
+func TestDataSharingService_MessagesRawCaptureKeepsHistoryBeforeCompaction(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformAnthropic, DataSharingEnabled: true},
+	}
+	capture := func(requestID string, messages string, response string) {
+		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformAnthropic,
+			Model:           "claude-opus-4-8",
+			SessionID:       "session-messages-compaction",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"claude-opus-4-8","messages":` + messages + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"content":[{"type":"text","text":%q}]}`, requestID, response)),
+			InboundEndpoint: "/v1/messages",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}}))
+	}
+
+	capture("messages-compact-1", `[
+		{"role":"user","content":"第一步"},
+		{"role":"assistant","content":"完成第一步"},
+		{"role":"user","content":"第二步"}
+	]`, "完成第二步")
+	capture("messages-compact-2", `[
+		{"role":"assistant","content":[{"type":"compaction","content":"摘要：已经完成第一步和第二步。"}]},
+		{"role":"user","content":"第三步"}
+	]`, "完成第三步")
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 2, session.SourceRequestCount)
+	require.Len(t, session.Messages, 7)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第二步"))
+	require.Contains(t, dataShareContentText(session.Messages[4]["content"]), "摘要：已经完成第一步和第二步。")
+	require.Equal(t, "第三步", dataShareContentText(session.Messages[5]["content"]))
+	require.Equal(t, "完成第三步", dataShareContentText(session.Messages[6]["content"]))
+}
+
+func TestDataSharingService_MessagesRawCaptureDedupesCompactionPreservedRecentMessages(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformAnthropic, DataSharingEnabled: true},
+	}
+	capture := func(requestID string, messages string, response string) {
+		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformAnthropic,
+			Model:           "claude-opus-4-8",
+			SessionID:       "session-messages-compaction-recent",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"claude-opus-4-8","messages":` + messages + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"content":[{"type":"text","text":%q}]}`, requestID, response)),
+			InboundEndpoint: "/v1/messages",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}}))
+	}
+
+	capture("messages-preserved-recent-1", `[
+		{"role":"user","content":"第一步"}
+	]`, "完成第一步")
+	capture("messages-preserved-recent-2", `[
+		{"role":"user","content":"第一步"},
+		{"role":"assistant","content":"完成第一步"},
+		{"role":"user","content":"第二步"}
+	]`, "完成第二步")
+	capture("messages-preserved-recent-3", `[
+		{"role":"assistant","content":[{"type":"compaction","content":"摘要：已经完成第一步和第二步。"}]},
+		{"role":"user","content":"第二步"},
+		{"role":"assistant","content":"完成第二步"},
+		{"role":"user","content":"第三步"}
+	]`, "完成第三步")
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 3, session.SourceRequestCount)
+	require.Len(t, session.Messages, 7)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第二步"))
+	require.Contains(t, dataShareContentText(session.Messages[4]["content"]), "摘要：已经完成第一步和第二步。")
+	require.Equal(t, "第三步", dataShareContentText(session.Messages[5]["content"]))
+	require.Equal(t, "完成第三步", dataShareContentText(session.Messages[6]["content"]))
+}
+
+func TestDataSharingService_MessagesRawCaptureDedupesCompactionSinglePreservedRecentMessage(t *testing.T) {
+	gid := int64(12)
+	repo := &dataShareCaptureRepoStub{}
+	svc := NewDataSharingService(repo, nil)
+	svc.SetDefaultCaptureRuntimeSettings(DataShareCaptureRuntimeSettings{
+		WorkerCount:            1,
+		QueueSize:              4,
+		TaskTimeoutSeconds:     1,
+		CompressionLevel:       string(DataShareCompressionLevelFastest),
+		BufferEnabled:          true,
+		BufferIdleFlushSeconds: 30,
+		BufferMaxSessions:      4096,
+		BufferMaxPendingEvents: 65536,
+	})
+	apiKey := &APIKey{
+		ID:      34,
+		UserID:  56,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformAnthropic, DataSharingEnabled: true},
+	}
+	capture := func(requestID string, messages string, response string) {
+		require.NoError(t, svc.captureRequestFromJob(context.Background(), DataSharingCaptureJob{Input: DataShareCaptureInput{
+			APIKey:          apiKey,
+			Provider:        PlatformAnthropic,
+			Model:           "claude-opus-4-8",
+			SessionID:       "session-messages-compaction-single-recent",
+			RequestID:       requestID,
+			RequestBody:     []byte(`{"model":"claude-opus-4-8","messages":` + messages + `}`),
+			ResponseBody:    []byte(fmt.Sprintf(`{"id":%q,"content":[{"type":"text","text":%q}]}`, requestID, response)),
+			InboundEndpoint: "/v1/messages",
+			InputTokens:     10,
+			OutputTokens:    5,
+		}}))
+	}
+
+	capture("messages-single-recent-1", `[
+		{"role":"user","content":"第一步"}
+	]`, "完成第一步")
+	capture("messages-single-recent-2", `[
+		{"role":"user","content":"第一步"},
+		{"role":"assistant","content":"完成第一步"},
+		{"role":"user","content":"第二步"}
+	]`, "完成第二步")
+	capture("messages-single-recent-3", `[
+		{"role":"assistant","content":[{"type":"compaction","content":"摘要：已经完成第一步和第二步。"}]},
+		{"role":"assistant","content":"完成第二步"},
+		{"role":"user","content":"第三步"}
+	]`, "完成第三步")
+	svc.captureBuffer.FlushAll(context.Background())
+
+	session := repo.lastSession()
+	require.NotNil(t, session)
+	require.Equal(t, 3, session.SourceRequestCount)
+	require.Len(t, session.Messages, 7)
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第一步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "第二步"))
+	require.Equal(t, 1, countDataShareMessagesWithContent(session.Messages, "完成第二步"))
+	require.Contains(t, dataShareContentText(session.Messages[4]["content"]), "摘要：已经完成第一步和第二步。")
+	require.Equal(t, "第三步", dataShareContentText(session.Messages[5]["content"]))
+	require.Equal(t, "完成第三步", dataShareContentText(session.Messages[6]["content"]))
+}
+
 func TestDataShareMessageIdentityKeepsStructuredContentDistinct(t *testing.T) {
 	first := map[string]any{
 		"role": "user",
