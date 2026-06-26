@@ -818,6 +818,16 @@
               />
             </div>
             <div class="md:col-span-2">
+              <label class="input-label">{{ t("admin.groups.availabilityProbe.userAgent") }}</label>
+              <input
+                v-model="createForm.availability_probe_user_agent"
+                type="text"
+                maxlength="512"
+                class="input"
+                :placeholder="t('admin.groups.availabilityProbe.userAgentPlaceholder')"
+              />
+            </div>
+            <div class="md:col-span-2">
               <label class="input-label">{{ t("admin.groups.availabilityProbe.prompt") }}</label>
               <textarea
                 v-model="createForm.availability_probe_prompt"
@@ -2224,6 +2234,16 @@
               />
             </div>
             <div class="md:col-span-2">
+              <label class="input-label">{{ t("admin.groups.availabilityProbe.userAgent") }}</label>
+              <input
+                v-model="editForm.availability_probe_user_agent"
+                type="text"
+                maxlength="512"
+                class="input"
+                :placeholder="t('admin.groups.availabilityProbe.userAgentPlaceholder')"
+              />
+            </div>
+            <div class="md:col-span-2">
               <label class="input-label">{{ t("admin.groups.availabilityProbe.prompt") }}</label>
               <textarea
                 v-model="editForm.availability_probe_prompt"
@@ -3621,6 +3641,7 @@ const createForm = reactive({
   availability_probe_prompt: "hi",
   availability_probe_interval_minutes: 30,
   availability_probe_timeout_seconds: 30,
+  availability_probe_user_agent: "",
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3897,6 +3918,7 @@ const resetAvailabilityProbeFormState = (
   form.availability_probe_prompt = config?.prompt ?? "hi";
   form.availability_probe_interval_minutes = config?.interval_minutes ?? 30;
   form.availability_probe_timeout_seconds = config?.timeout_seconds ?? 30;
+  form.availability_probe_user_agent = config?.user_agent ?? "";
 };
 
 const buildAvailabilityProbeConfig = (
@@ -3921,6 +3943,7 @@ const buildAvailabilityProbeConfig = (
     prompt,
     interval_minutes: Number(form.availability_probe_interval_minutes) || 30,
     timeout_seconds: Number(form.availability_probe_timeout_seconds) || 30,
+    user_agent: form.availability_probe_user_agent.trim(),
   };
 };
 
@@ -4021,6 +4044,7 @@ const editForm = reactive({
   availability_probe_prompt: "hi",
   availability_probe_interval_minutes: 30,
   availability_probe_timeout_seconds: 30,
+  availability_probe_user_agent: "",
 });
 
 type ImagePricingFormState = {
@@ -4317,6 +4341,7 @@ const handleCreateGroup = async () => {
     delete (requestData as any).availability_probe_prompt;
     delete (requestData as any).availability_probe_interval_minutes;
     delete (requestData as any).availability_probe_timeout_seconds;
+    delete (requestData as any).availability_probe_user_agent;
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
@@ -4457,6 +4482,7 @@ const handleUpdateGroup = async () => {
     delete (payload as any).availability_probe_prompt;
     delete (payload as any).availability_probe_interval_minutes;
     delete (payload as any).availability_probe_timeout_seconds;
+    delete (payload as any).availability_probe_user_agent;
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );

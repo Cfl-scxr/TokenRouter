@@ -607,6 +607,7 @@ export interface GroupAvailabilityProbeConfig {
   model_id?: string
   prompt?: string
   timeout_seconds?: number
+  user_agent?: string
 }
 
 export interface Group {

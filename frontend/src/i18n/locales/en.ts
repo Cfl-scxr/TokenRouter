@@ -2637,6 +2637,8 @@ export default {
         selectModel: 'Select probe model',
         interval: 'Probe Interval (minutes)',
         timeout: 'Timeout (seconds)',
+        userAgent: 'User Agent',
+        userAgentPlaceholder: 'Leave empty to use the default probe User Agent',
         prompt: 'Probe Prompt',
         promptPlaceholder: 'e.g. hi',
         modelRequired: 'Select a probe model before enabling group availability probes',

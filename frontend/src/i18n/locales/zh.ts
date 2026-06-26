@@ -2720,6 +2720,8 @@ export default {
         selectModel: '选择探测模型',
         interval: '探测间隔（分钟）',
         timeout: '超时时间（秒）',
+        userAgent: 'User Agent',
+        userAgentPlaceholder: '留空则使用默认探测 User Agent',
         prompt: '探测提示词',
         promptPlaceholder: '例如：hi',
         modelRequired: '启用分组可用性探测时必须选择探测模型',
