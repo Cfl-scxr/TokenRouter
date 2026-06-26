@@ -4075,6 +4075,7 @@ export default {
       inviteResetInviteSuccess: 'Invite sent',
       inviteResetInviteFailed: 'Failed to send invite',
       inviteResetInvitePartialFailed: 'Invite failed for: {emails}',
+      inviteResetInviteUnavailable: 'The Codex referral invite entry is currently unavailable, but existing reset credits can still be used',
       inviteResetConsumeSuccess: 'Codex usage reset',
       inviteResetConsumeFailed: 'Failed to use reset credit',
       inviteResetNothingToReset: 'There is no usage window that needs resetting',

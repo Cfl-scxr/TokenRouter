@@ -4203,6 +4203,7 @@ export default {
       inviteResetInviteSuccess: '邀请已发送',
       inviteResetInviteFailed: '发送邀请失败',
       inviteResetInvitePartialFailed: '以下邮箱邀请失败：{emails}',
+      inviteResetInviteUnavailable: '当前 Codex 推荐邀请入口暂不可用，但已有重置次数仍可使用',
       inviteResetConsumeSuccess: 'Codex 用量已重置',
       inviteResetConsumeFailed: '使用重置次数失败',
       inviteResetNothingToReset: '当前没有需要重置的用量窗口',
