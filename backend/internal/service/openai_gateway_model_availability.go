@@ -25,7 +25,7 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
-	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, PlatformOpenAI)
 	if err != nil {
 		// 查询失败时保守返回 503 分支，避免临时查询错误误判为 404 model_not_found。
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
