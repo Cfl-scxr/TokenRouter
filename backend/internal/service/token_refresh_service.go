@@ -439,6 +439,7 @@ func isNonRetryableRefreshError(err error) bool {
 		"unauthorized_client",                 // 客户端未授权
 		"access_denied",                       // 访问被拒绝
 		"refresh_token_reused",                // OpenAI refresh_token 已被消费，需要重新授权
+		"refresh_token_invalidated",           // OpenAI session 结束导致 refresh_token 被废止
 		"refresh token has already been used", // 兼容错误体未透出 code 的情况
 		"missing_project_id",                  // 缺少 project_id
 		"no refresh token available",
