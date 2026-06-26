@@ -2597,6 +2597,11 @@ export default {
         disabled: '不作为默认分组',
         hint: '当 API Key 未绑定到任何有效分组时，会自动回退到该平台的默认分组；同一平台只会保留一个默认分组。'
       },
+      unavailableFallback: {
+        title: '指定 fallback 分组',
+        noFallback: '不指定（使用默认分组）',
+        hint: '当该分组被停用时，绑定到该分组的 API Key 会优先回退到这里选择的分组；留空则继续回退到同平台默认分组。'
+      },
       dataSharing: {
         title: '数据共享分组',
         enabled: '已启用',

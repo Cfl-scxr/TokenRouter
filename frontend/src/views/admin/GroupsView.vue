@@ -582,6 +582,20 @@
         </div>
 
         <div>
+          <label class="input-label">{{
+            t("admin.groups.unavailableFallback.title")
+          }}</label>
+          <Select
+            v-model="createForm.unavailable_fallback_group_id"
+            :options="unavailableFallbackGroupOptions"
+            :placeholder="t('admin.groups.unavailableFallback.noFallback')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.unavailableFallback.hint") }}
+          </p>
+        </div>
+
+        <div>
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.dataSharing.title") }}
@@ -1988,6 +2002,20 @@
             </span>
           </div>
           <p class="input-hint">{{ t("admin.groups.defaultGroup.hint") }}</p>
+        </div>
+
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.unavailableFallback.title")
+          }}</label>
+          <Select
+            v-model="editForm.unavailable_fallback_group_id"
+            :options="unavailableFallbackGroupOptionsForEdit"
+            :placeholder="t('admin.groups.unavailableFallback.noFallback')"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.unavailableFallback.hint") }}
+          </p>
         </div>
 
         <div>
@@ -3431,6 +3459,38 @@ const fallbackGroupOptionsForEdit = computed(() => {
   return options;
 });
 
+// 不可用回退分组选项（创建时）：仅允许同平台且启用中的分组。
+const unavailableFallbackGroupOptions = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.unavailableFallback.noFallback") },
+  ];
+  const eligibleGroups = unavailableFallbackGroups.value.filter(
+    (g) => g.platform === createForm.platform && g.status === "active",
+  );
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name });
+  });
+  return options;
+});
+
+// 不可用回退分组选项（编辑时）：排除当前分组，避免配置自回退。
+const unavailableFallbackGroupOptionsForEdit = computed(() => {
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: t("admin.groups.unavailableFallback.noFallback") },
+  ];
+  const currentId = editingGroup.value?.id;
+  const eligibleGroups = unavailableFallbackGroups.value.filter(
+    (g) =>
+      g.platform === editForm.platform &&
+      g.status === "active" &&
+      g.id !== currentId,
+  );
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name });
+  });
+  return options;
+});
+
 // 无效请求兜底分组选项（创建时）- 仅包含 anthropic 平台且未配置兜底的分组
 const invalidRequestFallbackOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -3522,6 +3582,8 @@ function addEditCopyAccountsGroup(value: string | number | boolean | null) {
 }
 
 const groups = ref<AdminGroup[]>([]);
+// 不可用回退分组需要跨分页选择，因此单独保存全量 active 分组选项来源。
+const unavailableFallbackGroups = ref<AdminGroup[]>([]);
 const loading = ref(false);
 const usageMap = ref<Map<number, { today_cost: number; total_cost: number }>>(
   new Map(),
@@ -3616,6 +3678,8 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // 分组不可用时优先使用的指定回退分组。
+  unavailable_fallback_group_id: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
@@ -4018,6 +4082,8 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  // 分组不可用时优先使用的指定回退分组。
+  unavailable_fallback_group_id: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
@@ -4158,6 +4224,14 @@ const loadGroups = async () => {
   }
 };
 
+const loadUnavailableFallbackGroups = async () => {
+  try {
+    unavailableFallbackGroups.value = await adminAPI.groups.getAll();
+  } catch (error) {
+    console.error("Error loading unavailable fallback groups:", error);
+  }
+};
+
 const formatGroupBalance = (cost: number | null | undefined): string =>
   formatBalanceAmount(cost, { fractionDigits: 2 });
 
@@ -4282,6 +4356,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.unavailable_fallback_group_id = null;
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
@@ -4349,6 +4424,7 @@ const handleCreateGroup = async () => {
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
     loadGroups();
+    loadUnavailableFallbackGroups();
     // Only advance tour if active, on submit step, and creation succeeded
     if (onboardingStore.isCurrentStep('[data-tour="group-form-submit"]')) {
       onboardingStore.nextStep(500);
@@ -4388,6 +4464,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.unavailable_fallback_group_id =
+    group.unavailable_fallback_group_id;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
@@ -4431,6 +4509,7 @@ const closeEditModal = () => {
   editForm.is_default = false;
   editForm.data_sharing_enabled = false;
   editForm.session_isolation_enabled = false;
+  editForm.unavailable_fallback_group_id = null;
   editForm.copy_accounts_from_group_ids = [];
   resetAvailabilityProbeFormState(editForm);
   resetMessagesDispatchFormState(editForm);
@@ -4457,6 +4536,10 @@ const handleUpdateGroup = async () => {
         editForm.fallback_group_id_on_invalid_request === null
           ? 0
           : editForm.fallback_group_id_on_invalid_request,
+      unavailable_fallback_group_id:
+        editForm.unavailable_fallback_group_id === null
+          ? 0
+          : editForm.unavailable_fallback_group_id,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
       ),
@@ -4490,6 +4573,7 @@ const handleUpdateGroup = async () => {
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
     loadGroups();
+    loadUnavailableFallbackGroups();
   } catch (error: any) {
     appStore.showError(
       error.response?.data?.detail || error.message || t("admin.groups.failedToUpdate"),
@@ -4548,6 +4632,7 @@ const confirmDelete = async () => {
     showDeleteDialog.value = false;
     deletingGroup.value = null;
     loadGroups();
+    loadUnavailableFallbackGroups();
   } catch (error: any) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToDelete"),
@@ -4568,6 +4653,7 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.unavailable_fallback_group_id = null;
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -4614,6 +4700,17 @@ watch(editAvailabilityProbeModelOptions, (options) => {
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (
+      editForm.unavailable_fallback_group_id &&
+      !unavailableFallbackGroups.value.some(
+        (g) =>
+          g.id === editForm.unavailable_fallback_group_id &&
+          g.platform === newVal &&
+          g.status === "active",
+      )
+    ) {
+      editForm.unavailable_fallback_group_id = null;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
@@ -4689,6 +4786,7 @@ const saveSortOrder = async () => {
     appStore.showSuccess(t("admin.groups.sortOrderUpdated"));
     closeSortModal();
     loadGroups();
+    loadUnavailableFallbackGroups();
   } catch (error: any) {
     appStore.showError(
       error.response?.data?.detail || t("admin.groups.failedToUpdateSortOrder"),
@@ -4701,6 +4799,7 @@ const saveSortOrder = async () => {
 
 onMounted(() => {
   loadGroups();
+  loadUnavailableFallbackGroups();
   loadModelsListCandidates("create", 0, createForm.platform);
   document.addEventListener("click", handleClickOutside);
 });
