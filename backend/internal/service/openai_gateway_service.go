@@ -2921,6 +2921,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	// gpt-5.3-codex-spark 同样会拒绝 image_generation 工具；在功能开关外先剥离，
+	// 让 APIKey 与 OAuth /responses 路径都避免上游 400。
+	if isCodexSparkModel(upstreamModel) && openAIRequestBodyHasImageGenerationTool(body) {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if stripCodexSparkImageGenerationTools(decoded) {
+			markDecodedModified()
+		}
+	}
+
 	if account.Type == AccountTypeOAuth {
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
