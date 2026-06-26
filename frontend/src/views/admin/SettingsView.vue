@@ -9394,6 +9394,16 @@ const providerDialogRef = ref<InstanceType<
 > | null>(null);
 let providersLoadSeq = 0;
 
+function normalizePaymentProvider(provider: ProviderInstance): ProviderInstance {
+  return {
+    ...provider,
+    // 兼容旧后端把空 supported_types 序列化成 null 的情况，避免卡片和弹窗读取 includes 时抛错。
+    supported_types: Array.isArray(provider.supported_types)
+      ? provider.supported_types
+      : [],
+  };
+}
+
 const updatingProviderIds = computed(() => Array.from(providerUpdatingIds.value));
 
 function isProviderUpdating(providerId: number): boolean {
@@ -9551,7 +9561,7 @@ async function loadProviders() {
     const res = await adminAPI.payment.getProviders();
     // 只接受最后一次加载结果，避免较慢的旧请求覆盖较新的服务商列表。
     if (seq === providersLoadSeq) {
-      providers.value = res.data || [];
+      providers.value = (res.data || []).map(normalizePaymentProvider);
     }
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
