@@ -172,3 +172,27 @@ func TestDiagnoseModelAvailabilityForPlatform_WrongPlatformFiltersOut(t *testing
 	require.False(t, diag.HasAccountsInPool, "OpenAI 路由不能把 Anthropic 账号算进账号池")
 	require.False(t, diag.HasModelSupport)
 }
+
+func TestOpenAIGatewayDiagnoseModelAvailabilityForPlatform_GrokPlatformFiltersOpenAIAccounts(t *testing.T) {
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5": "gpt-5"}},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo, cfg: testConfig()}
+
+	diag := svc.DiagnoseModelAvailabilityForPlatform(context.Background(), nil, "grok-4.3", PlatformGrok)
+
+	require.False(t, diag.HasAccountsInPool, "Grok 诊断不能把 OpenAI 账号算进账号池")
+	require.False(t, diag.HasModelSupport)
+}
