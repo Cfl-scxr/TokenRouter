@@ -68,7 +68,8 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	feeBreakdown, payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrder(req.OrderType, limitAmount, methodFee, cfg.BalanceRechargeMultiplier, methodCurrency)
+	// 订阅套餐 price 是直付价，余额充值倍率只影响余额充值到账，不参与订阅 pay_amount 计算。
+	feeBreakdown, payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, methodFee, methodCurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		feeBreakdown, payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrder(req.OrderType, limitAmount, methodFee, cfg.BalanceRechargeMultiplier, selectedCurrency)
+		feeBreakdown, payAmountStr, payAmount, err = calculateCreateOrderPayAmount(limitAmount, methodFee, selectedCurrency)
 		if err != nil {
 			return nil, err
 		}
@@ -642,19 +643,6 @@ func calculateCreateOrderPayAmount(limitAmount float64, methodFee payment.FeeCon
 			WithMetadata(map[string]string{"currency": currency})
 	}
 	return feeBreakdown, payAmountStr, payAmount, nil
-}
-
-func calculateCreateOrderPayAmountForOrder(orderType string, limitAmount float64, methodFee payment.FeeConfig, multiplier float64, currency string) (payment.FeeBreakdown, string, float64, error) {
-	paymentAmount := calculateCreateOrderPaymentAmount(orderType, limitAmount, multiplier, currency)
-	return calculateCreateOrderPayAmount(paymentAmount, methodFee, currency)
-}
-
-func calculateCreateOrderPaymentAmount(orderType string, limitAmount, multiplier float64, currency string) float64 {
-	normalizedCurrency, err := payment.NormalizePaymentCurrency(currency)
-	if err != nil || normalizedCurrency != payment.DefaultPaymentCurrency || orderType != payment.OrderTypeSubscription {
-		return limitAmount
-	}
-	return calculateGatewayPaymentAmount(limitAmount, multiplier, normalizedCurrency)
 }
 
 func validateCreateOrderAmountCurrency(amount float64, currency string) error {

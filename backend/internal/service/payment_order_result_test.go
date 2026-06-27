@@ -196,69 +196,53 @@ func TestCalculateCreateOrderPayAmountUsesCurrencyPrecision(t *testing.T) {
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionAppliesCNYMultiplier(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWithFixedFee(t *testing.T) {
 	t.Parallel()
 
-	_, amountStr, amount, err := calculateCreateOrderPayAmountForOrder(payment.OrderTypeSubscription, 7.99, payment.FeeConfig{}, 0.14, "CNY")
+	_, amountStr, amount, err := calculateCreateOrderPayAmount(69.90, payment.FeeConfig{FixedFee: 2.70}, "CNY")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "57.07" || amount != 57.07 {
-		t.Fatalf("subscription CNY pay amount = (%q, %v), want (57.07, 57.07)", amountStr, amount)
+	if amountStr != "72.60" || amount != 72.60 {
+		t.Fatalf("subscription CNY pay amount = (%q, %v), want (72.60, 72.60)", amountStr, amount)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionDefaultMultiplierKeepsPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeToDirectPrice(t *testing.T) {
 	t.Parallel()
 
-	for _, multiplier := range []float64{0, 1} {
-		_, amountStr, amount, err := calculateCreateOrderPayAmountForOrder(payment.OrderTypeSubscription, 7.99, payment.FeeConfig{}, multiplier, "CNY")
-		if err != nil {
-			t.Fatalf("unexpected error for multiplier %v: %v", multiplier, err)
-		}
-		if amountStr != "7.99" || amount != 7.99 {
-			t.Fatalf("multiplier %v pay amount = (%q, %v), want (7.99, 7.99)", multiplier, amountStr, amount)
-		}
-	}
-}
-
-func TestCalculateCreateOrderPayAmountForSubscriptionDoesNotConvertNonCNY(t *testing.T) {
-	t.Parallel()
-
-	_, amountStr, amount, err := calculateCreateOrderPayAmountForOrder(payment.OrderTypeSubscription, 7.99, payment.FeeConfig{}, 0.14, "USD")
+	_, amountStr, amount, err := calculateCreateOrderPayAmount(69.90, payment.FeeConfig{FeeRate: 2.5}, "CNY")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "7.99" || amount != 7.99 {
-		t.Fatalf("subscription USD pay amount = (%q, %v), want (7.99, 7.99)", amountStr, amount)
+	if amountStr != "71.65" || amount != 71.65 {
+		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (71.65, 71.65)", amountStr, amount)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionMatchesBalanceRechargeRatio(t *testing.T) {
+func TestCalculateCreditedBalanceStillUsesRechargeMultiplier(t *testing.T) {
 	t.Parallel()
 
-	credited := calculateCreditedBalance(10, 0.14)
-	if credited != 1.4 {
-		t.Fatalf("credited balance = %v, want 1.4", credited)
+	got := calculateCreditedBalance(10, 0.14)
+	if got != 1.4 {
+		t.Fatalf("credited balance = %v, want 1.4", got)
 	}
-	_, amountStr, amount, err := calculateCreateOrderPayAmountForOrder(payment.OrderTypeSubscription, credited, payment.FeeConfig{}, 0.14, "CNY")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if amountStr != "10.00" || amount != 10 {
-		t.Fatalf("subscription CNY pay amount = (%q, %v), want (10.00, 10)", amountStr, amount)
+
+	got = calculateCreditedBalance(69.90, 10)
+	if got != 699 {
+		t.Fatalf("credited balance = %v, want 699", got)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterMultiplier(t *testing.T) {
+func TestCalculateCreateOrderPayAmountKeepsCurrencyPrecisionWithoutRechargeMultiplier(t *testing.T) {
 	t.Parallel()
 
-	_, amountStr, amount, err := calculateCreateOrderPayAmountForOrder(payment.OrderTypeSubscription, 7.99, payment.FeeConfig{FeeRate: 2.5}, 0.14, "CNY")
+	_, amountStr, amount, err := calculateCreateOrderPayAmount(100, payment.FeeConfig{FeeRate: 2.5}, "JPY")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "58.50" || amount != 58.5 {
-		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (58.50, 58.5)", amountStr, amount)
+	if amountStr != "103" || amount != 103 {
+		t.Fatalf("JPY pay amount = (%q, %v), want (103, 103)", amountStr, amount)
 	}
 }
 
