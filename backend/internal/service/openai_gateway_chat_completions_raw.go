@@ -159,8 +159,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 			}
 		}
 	}
+	if account.Platform == PlatformGrok {
+		// Grok 走 raw Chat Completions 时仍使用网关专用 UA，避免客户端 UA 为空或被透传污染 xAI 统计。
+		upstreamReq.Header.Set("User-Agent", grokGatewayUserAgent)
+	}
 	tlsRouterMatch := s.matchTLSFingerprintRouter(c, account)
-	s.applyOpenAIUpstreamUserAgent(c.Request.Context(), c, account, upstreamReq, false, tlsRouterMatch)
+	if account.Platform != PlatformGrok {
+		s.applyOpenAIUpstreamUserAgent(c.Request.Context(), c, account, upstreamReq, false, tlsRouterMatch)
+	}
 
 	// 6. Send request
 	proxyURL := ""

@@ -16,6 +16,11 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+const (
+	// grokGatewayUserAgent 标识本服务转发到 xAI/Grok 上游的网关请求。
+	grokGatewayUserAgent = "sub2api-grok/1.0"
+)
+
 func (s *OpenAIGatewayService) forwardGrokResponses(
 	ctx context.Context,
 	c *gin.Context,
@@ -162,7 +167,7 @@ func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Acc
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+	req.Header.Set("User-Agent", grokGatewayUserAgent)
 	if c != nil {
 		if v := c.GetHeader("OpenAI-Beta"); strings.TrimSpace(v) != "" {
 			req.Header.Set("OpenAI-Beta", v)

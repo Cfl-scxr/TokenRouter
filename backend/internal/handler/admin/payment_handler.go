@@ -202,7 +202,7 @@ type AdminPaymentOrderResult struct {
 	PaymentInvoiceURL    *string                         `json:"payment_invoice_url,omitempty"`
 	PaymentInvoicePdfURL *string                         `json:"payment_invoice_pdf_url,omitempty"`
 	PaymentInvoiceStatus *string                         `json:"payment_invoice_status,omitempty"`
-	BillingSnapshot      map[string]interface{}          `json:"billing_snapshot,omitempty"`
+	BillingSnapshot      map[string]any                  `json:"billing_snapshot,omitempty"`
 	OrderType            string                          `json:"order_type"`
 	PlanID               *int64                          `json:"plan_id,omitempty"`
 	PlanSnapshot         domain.SubscriptionPlanSnapshot `json:"plan_snapshot,omitempty"`

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSanitizeAdminPaymentOrderForResponseAddsCurrencyAndKeepsForkFields(t *testing.T) {
@@ -46,9 +47,7 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrencyAndKeepsForkFields(t *t
 	}
 
 	got := sanitizeAdminPaymentOrderForResponse(order)
-	if got == nil {
-		t.Fatal("expected sanitized order")
-	}
+	require.NotNil(t, got)
 	if got.Currency != "USD" {
 		t.Fatalf("expected currency USD, got %q", got.Currency)
 	}
