@@ -885,13 +885,39 @@ func TestAPIContracts(t *testing.T) {
 								"default_threshold_5h": 0,
 								"default_threshold_7d": 0
 							},
-							"openai_allow_claude_code_codex_plugin": false,
-							"openai_fast_policy_settings": {
-								"rules": []
-							},
-					"custom_menu_items": [],
-					"cyber_session_block_enabled": false,
-					"cyber_session_block_ttl_seconds": 3600,
+								"openai_allow_claude_code_codex_plugin": false,
+								"openai_fast_policy_settings": {
+									"rules": []
+								},
+								"user_prompt_replacement_config": {
+									"enabled": true,
+									"rules": [
+										{
+											"id": "environment-context-timezone-japan",
+											"name": "environment_context timezone -> Asia/Tokyo",
+											"enabled": true,
+											"pattern": "(?s)(<environment_context\\b[^>]*>.*?<timezone>)([^<]*)(</timezone>.*?</environment_context>)",
+											"target_group": 2,
+											"replacement_type": "timezone_name",
+											"scope": "environment_context",
+											"timezone": "Asia/Tokyo"
+										},
+										{
+											"id": "environment-context-current-date-japan",
+											"name": "environment_context current_date -> Asia/Tokyo today",
+											"enabled": true,
+											"pattern": "(?s)(<environment_context\\b[^>]*>.*?<current_date>)([^<]*)(</current_date>.*?</environment_context>)",
+											"target_group": 2,
+											"replacement_type": "current_time",
+											"scope": "environment_context",
+											"timezone": "Asia/Tokyo",
+											"time_format": "2006-01-02"
+										}
+									]
+								},
+						"custom_menu_items": [],
+						"cyber_session_block_enabled": false,
+						"cyber_session_block_ttl_seconds": 3600,
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1147,13 +1173,39 @@ func TestAPIContracts(t *testing.T) {
 								"default_threshold_5h": 0,
 								"default_threshold_7d": 0
 							},
-							"openai_allow_claude_code_codex_plugin": false,
-							"openai_fast_policy_settings": {
-								"rules": []
-							},
-					"payment_enabled": false,
-					"payment_min_amount": 0,
-					"payment_max_amount": 0,
+								"openai_allow_claude_code_codex_plugin": false,
+								"openai_fast_policy_settings": {
+									"rules": []
+								},
+								"user_prompt_replacement_config": {
+									"enabled": true,
+									"rules": [
+										{
+											"id": "environment-context-timezone-japan",
+											"name": "environment_context timezone -> Asia/Tokyo",
+											"enabled": true,
+											"pattern": "(?s)(<environment_context\\b[^>]*>.*?<timezone>)([^<]*)(</timezone>.*?</environment_context>)",
+											"target_group": 2,
+											"replacement_type": "timezone_name",
+											"scope": "environment_context",
+											"timezone": "Asia/Tokyo"
+										},
+										{
+											"id": "environment-context-current-date-japan",
+											"name": "environment_context current_date -> Asia/Tokyo today",
+											"enabled": true,
+											"pattern": "(?s)(<environment_context\\b[^>]*>.*?<current_date>)([^<]*)(</current_date>.*?</environment_context>)",
+											"target_group": 2,
+											"replacement_type": "current_time",
+											"scope": "environment_context",
+											"timezone": "Asia/Tokyo",
+											"time_format": "2006-01-02"
+										}
+									]
+								},
+						"payment_enabled": false,
+						"payment_min_amount": 0,
+						"payment_max_amount": 0,
 					"payment_daily_limit": 0,
 					"payment_order_timeout_minutes": 0,
 					"payment_max_pending_orders": 0,
