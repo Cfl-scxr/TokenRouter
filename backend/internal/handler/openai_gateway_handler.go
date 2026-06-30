@@ -199,7 +199,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
-	sessionHashBody := body
 	if service.IsOpenAIResponsesCompactPathForTest(c) {
 		if compactSeed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); compactSeed != "" {
 			c.Set(service.OpenAICompactSessionSeedKeyForTest(), compactSeed)
@@ -221,7 +220,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	// 用户提示词替换必须在 compact 归一化之后、模型解析之前执行。
 	body = h.gatewayService.ApplyUserPromptReplacement(c.Request.Context(), body, "openai_responses")
-	sessionHashBody = body
+	sessionHashBody := body
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -1558,14 +1557,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
-			BeforeRequest: func(turn int, payload []byte, originalModel, payloadPreviousResponseID string) ([]byte, error) {
+			BeforeRequest: func(turn int, payload []byte, originalModel, _ string) ([]byte, error) {
 				if turn == 1 {
 					return payload, nil
 				}
 				if !gjson.ValidBytes(payload) {
 					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 				}
-				payloadPreviousResponseID = strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
+				payloadPreviousResponseID := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = strings.TrimSpace(gjson.GetBytes(payload, "model").String())

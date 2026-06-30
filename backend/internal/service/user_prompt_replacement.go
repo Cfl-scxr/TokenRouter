@@ -340,15 +340,15 @@ func applyEnvironmentContextScopedUserPromptReplacementRule(text string, rule co
 		if builder.Len() == 0 {
 			builder.Grow(len(text))
 		}
-		builder.WriteString(text[cursor:start])
+		_, _ = builder.WriteString(text[cursor:start])
 		// 默认规则需要限制在单个 environment_context 块内，避免正则中的 .*? 横跨多个块误替换。
-		builder.WriteString(applySingleUserPromptReplacementRule(text[start:end], rule, now))
+		_, _ = builder.WriteString(applySingleUserPromptReplacementRule(text[start:end], rule, now))
 		cursor = end
 	}
 	if builder.Len() == 0 {
 		return text
 	}
-	builder.WriteString(text[cursor:])
+	_, _ = builder.WriteString(text[cursor:])
 	return builder.String()
 }
 
