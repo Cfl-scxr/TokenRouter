@@ -787,9 +787,9 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
 }
 
 /**
- * Set privacy for an Antigravity OAuth account
- * @param id - Account ID
- * @returns Updated account
+ * 为支持的 OAuth 账号设置隐私选项。
+ * @param id - 账号 ID
+ * @returns 更新后的账号
  */
 export async function setPrivacy(id: number): Promise<Account> {
   const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/set-privacy`)
