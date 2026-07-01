@@ -1230,6 +1230,10 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			// 但移除 id，避免上游按不可达的 item id 续链时报 404。
 			ensureCopy()
 			delete(newItem, "id")
+			if summary, ok := newItem["summary"]; !ok || summary == nil {
+				// 上游要求 reasoning item 带 summary；缺失时补空数组避免参数校验失败。
+				newItem["summary"] = []any{}
+			}
 		}
 
 		if !opts.PreserveReferences {

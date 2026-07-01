@@ -1304,6 +1304,52 @@ func TestFilterCodexInput_PreservesReasoningItems(t *testing.T) {
 	require.NotContains(t, reasoning, "id")
 }
 
+func TestFilterCodexInput_ReasoningBackfillsMissingSummary(t *testing.T) {
+	// 上游要求 reasoning item 带 summary；缺失时补空数组，同时保留 encrypted_content。
+	input := []any{
+		map[string]any{
+			"type":              "reasoning",
+			"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+			"encrypted_content": "gAAAAAB-enc-payload",
+		},
+	}
+
+	filtered := filterCodexInput(input, false)
+
+	require.Len(t, filtered, 1)
+	reasoning, ok := filtered[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "reasoning", reasoning["type"])
+	require.Equal(t, []any{}, reasoning["summary"])
+	require.Equal(t, "gAAAAAB-enc-payload", reasoning["encrypted_content"])
+	require.NotContains(t, reasoning, "id")
+}
+
+func TestFilterCodexInput_PreservesReasoningSummaryContentAndEncryptedContent(t *testing.T) {
+	// 只移除 store=false 下不可续链的 rs_* id，其余 reasoning 字段必须原样保留。
+	summary := []any{map[string]any{"type": "summary_text", "text": "checked files"}}
+	content := []any{map[string]any{"type": "reasoning_text", "text": "private state"}}
+	input := []any{
+		map[string]any{
+			"type":              "reasoning",
+			"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+			"summary":           summary,
+			"content":           content,
+			"encrypted_content": "gAAAAAB-enc-payload",
+		},
+	}
+
+	filtered := filterCodexInput(input, true)
+
+	require.Len(t, filtered, 1)
+	reasoning, ok := filtered[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, summary, reasoning["summary"])
+	require.Equal(t, content, reasoning["content"])
+	require.Equal(t, "gAAAAAB-enc-payload", reasoning["encrypted_content"])
+	require.NotContains(t, reasoning, "id")
+}
+
 func TestFilterCodexInput_StripsReasoningIDsWhenReferencesArePreserved(t *testing.T) {
 	// 续链场景仍移除 reasoning item 的 rs_* id，避免 store=false 时触发不可达引用。
 	input := []any{
