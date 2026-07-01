@@ -1114,7 +1114,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, GroupPlatform } from '@/types'
+	import type { ApiKey, Group, PublicSettings, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import type { DataShareNotice } from '@/api/dataSharing'
@@ -1289,6 +1289,13 @@ const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
   { value: 'inactive', label: t('common.inactive') }
 ])
+
+const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
+  if (key.status === 'quota_exhausted' || key.status === 'expired') {
+    return status === 'active'
+  }
+  return true
+}
 
 // 筛选下拉选项。
 const groupFilterOptions = computed(() => [
@@ -1724,10 +1731,9 @@ const submitKeyForm = async (
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
-      await keysAPI.update(selectedKey.value.id, {
+      const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
-        status: formData.value.status,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1737,7 +1743,11 @@ const submitKeyForm = async (
         rate_limit_7d: rateLimitData.rate_limit_7d,
         fallback_to_default_group_when_unavailable: formData.value.fallback_to_default_group_when_unavailable,
         ...consent
-      })
+      }
+      if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
+        updates.status = formData.value.status
+      }
+      await keysAPI.update(selectedKey.value.id, updates)
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
