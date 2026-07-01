@@ -6525,6 +6525,7 @@ type OpenAIRecordUsageInput struct {
 	Turn               int
 	CaptureIncomplete  bool
 	APIKeyService      APIKeyQuotaUpdater
+	QuotaPlatform      string // user×platform 配额计量平台，由 handler 在请求 ctx 内算定后传入。
 	CyberBlocked       bool
 	ChannelUsageFields
 }
@@ -6545,6 +6546,7 @@ type CyberPolicyUsageInput struct {
 	IPAddress          string
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
+	QuotaPlatform      string
 	ChannelUsageFields
 }
 
@@ -6575,6 +6577,7 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		IPAddress:          in.IPAddress,
 		RequestPayloadHash: in.RequestPayloadHash,
 		APIKeyService:      in.APIKeyService,
+		QuotaPlatform:      in.QuotaPlatform,
 		ChannelUsageFields: in.ChannelUsageFields,
 		CyberBlocked:       true,
 	}); err != nil {
@@ -6793,6 +6796,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		return nil
 	}
 
+	// 后扣运行在 worker 池的 background ctx 上，无法再从 ctx 读取 ForcePlatform；
+	// 未设置时回退到分组平台，兼容测试和内部直接调用方。
+	quotaPlatform := input.QuotaPlatform
+	if quotaPlatform == "" {
+		quotaPlatform = PlatformFromAPIKey(apiKey)
+	}
+
 	billingErr := func() error {
 		_, err := applyUsageBilling(ctx, requestID, usageLog, &usageBillingParams{
 			Cost:                  cost,
@@ -6803,7 +6813,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
-			Platform:              PlatformFromAPIKey(apiKey),
+			Platform:              quotaPlatform,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()
