@@ -20,8 +20,8 @@ import (
 // YYYY?MM?DD 中两个分隔符一致，避免误匹配 "Today's date is 2026-07/01." 这类混合分隔符，
 // 也避免碰触 "Today is foo."、"His date is 2026-06-30." 这类用户自然文本。
 var (
-	datelineRegexHyphen = regexp.MustCompile("Today(['’ʼʹ])s date is (\\d{4})-(\\d{2})-(\\d{2})\\.")
-	datelineRegexSlash  = regexp.MustCompile("Today(['’ʼʹ])s date is (\\d{4})/(\\d{2})/(\\d{2})\\.")
+	datelineRegexHyphen = regexp.MustCompile(`Today(['’ʼʹ])s date is (\d{4})-(\d{2})-(\d{2})\.`)
+	datelineRegexSlash  = regexp.MustCompile(`Today(['’ʼʹ])s date is (\d{4})/(\d{2})/(\d{2})\.`)
 )
 
 // systemReminderRegex 匹配 <system-reminder> 块。多轮对话后 dateline 常出现在该块中，
@@ -111,8 +111,8 @@ func NormalizeText(text string) (string, []DatelineHit) {
 			// 已经是规范形态时不记录命中。
 			continue
 		}
-		b.WriteString(text[prev:m.start])
-		b.WriteString(canonical)
+		_, _ = b.WriteString(text[prev:m.start])
+		_, _ = b.WriteString(canonical)
 		prev = m.end
 		changed = true
 		hits = append(hits, DatelineHit{
@@ -123,7 +123,7 @@ func NormalizeText(text string) (string, []DatelineHit) {
 	if !changed {
 		return text, nil
 	}
-	b.WriteString(text[prev:])
+	_, _ = b.WriteString(text[prev:])
 	return b.String(), hits
 }
 
@@ -143,20 +143,20 @@ func normalizeSystemReminderScopedText(text string) (string, []DatelineHit) {
 	var hits []DatelineHit
 	changed := false
 	for _, loc := range locs {
-		b.WriteString(text[prev:loc[0]])
+		_, _ = b.WriteString(text[prev:loc[0]])
 		block := text[loc[0]:loc[1]]
 		normalized, blockHits := NormalizeText(block)
 		if normalized != block {
 			changed = true
 		}
-		b.WriteString(normalized)
+		_, _ = b.WriteString(normalized)
 		hits = append(hits, blockHits...)
 		prev = loc[1]
 	}
 	if !changed {
 		return text, nil
 	}
-	b.WriteString(text[prev:])
+	_, _ = b.WriteString(text[prev:])
 	return b.String(), hits
 }
 
