@@ -45,6 +45,13 @@
           {{ rateMultiplier }}x 倍率
         </template>
       </span>
+      <span
+        v-if="hasPeakRate"
+        class="inline-flex items-center whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+        :title="peakRateTitle"
+      >
+        {{ peakRateText }}
+      </span>
       <!-- 选中勾 -->
       <svg
         v-if="showCheckmark && selected"
@@ -73,6 +80,10 @@ interface Props {
   displayBrand?: string | null
   rateMultiplier?: number
   userRateMultiplier?: number | null
+  peakRateEnabled?: boolean
+  peakStart?: string
+  peakEnd?: string
+  peakRateMultiplier?: number
   description?: string | null
   capacity?: MarketplaceGroupCapacity
   selected?: boolean
@@ -82,7 +93,8 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null
+  userRateMultiplier: null,
+  peakRateEnabled: false
 })
 
 const brandName = computed(() => props.displayBrand?.trim() || '')
@@ -95,6 +107,18 @@ const hasCustomRate = computed(() => {
     props.rateMultiplier !== undefined &&
     props.userRateMultiplier !== props.rateMultiplier
   )
+})
+
+const hasPeakRate = computed(() => {
+  return Boolean(props.peakRateEnabled && props.peakStart && props.peakEnd)
+})
+
+const peakRateText = computed(() => {
+  return `${props.peakStart}-${props.peakEnd} ×${props.peakRateMultiplier ?? 1}`
+})
+
+const peakRateTitle = computed(() => {
+  return `高峰倍率：${peakRateText.value}`
 })
 
 // 倍率标签跟随展示品牌；没有品牌时回退到接入格式配色。

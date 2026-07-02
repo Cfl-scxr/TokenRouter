@@ -958,6 +958,53 @@
           </div>
         </div>
 
+        <!-- 高峰时段倍率配置 -->
+        <div class="border-t pt-4">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="createForm.peak_rate_enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>{{ t("admin.groups.peakRate.enable") }}</span>
+            </label>
+          </div>
+          <div
+            v-if="createForm.peak_rate_enabled"
+            class="mb-4 grid grid-cols-3 gap-3"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
+              <input
+                v-model="createForm.peak_start"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakEnd") }}</label>
+              <input
+                v-model="createForm.peak_end"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakMultiplier") }}</label>
+              <input
+                v-model.number="createForm.peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.multiplierHint')"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2389,6 +2436,53 @@
           </div>
         </div>
 
+        <!-- 高峰时段倍率配置 -->
+        <div class="border-t pt-4">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="editForm.peak_rate_enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>{{ t("admin.groups.peakRate.enable") }}</span>
+            </label>
+          </div>
+          <div
+            v-if="editForm.peak_rate_enabled"
+            class="mb-4 grid grid-cols-3 gap-3"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakStart") }}</label>
+              <input
+                v-model="editForm.peak_start"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakEnd") }}</label>
+              <input
+                v-model="editForm.peak_end"
+                type="time"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.peakRate.peakMultiplier") }}</label>
+              <input
+                v-model.number="editForm.peak_rate_multiplier"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="1"
+                :title="t('admin.groups.peakRate.multiplierHint')"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3680,6 +3774,11 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 高峰时段倍率配置
+  peak_rate_enabled: false,
+  peak_start: "",
+  peak_end: "",
+  peak_rate_multiplier: 1.0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -4084,6 +4183,11 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // 高峰时段倍率配置
+  peak_rate_enabled: false,
+  peak_start: "",
+  peak_end: "",
+  peak_rate_multiplier: 1.0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -4126,6 +4230,10 @@ type ImagePricingFormState = {
   image_price_1k: number | string | null;
   image_price_2k: number | string | null;
   image_price_4k: number | string | null;
+  peak_rate_enabled: boolean;
+  peak_start: string;
+  peak_end: string;
+  peak_rate_multiplier: number;
 };
 
 const imagePricingTiers = [
@@ -4359,6 +4467,10 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.peak_rate_enabled = false;
+  createForm.peak_start = "";
+  createForm.peak_end = "";
+  createForm.peak_rate_multiplier = 1.0;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -4426,6 +4538,12 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
+    requestData.peak_rate_enabled = createForm.peak_rate_enabled;
+    requestData.peak_start = createForm.peak_start;
+    requestData.peak_end = createForm.peak_end;
+    requestData.peak_rate_multiplier = normalizeImageRateMultiplier(
+      createForm.peak_rate_multiplier,
+    );
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -4466,6 +4584,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
+  editForm.peak_start = group.peak_start ?? "";
+  editForm.peak_end = group.peak_end ?? "";
+  editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -4517,6 +4639,11 @@ const closeEditModal = () => {
   editForm.session_isolation_enabled = false;
   editForm.unavailable_fallback_group_id = null;
   editForm.copy_accounts_from_group_ids = [];
+  resetAvailabilityProbeFormState(editForm);
+  editForm.peak_rate_enabled = false;
+  editForm.peak_start = "";
+  editForm.peak_end = "";
+  editForm.peak_rate_multiplier = 1.0;
   resetAvailabilityProbeFormState(editForm);
   resetMessagesDispatchFormState(editForm);
   resetModelsListState(editModelsListState);
@@ -4574,6 +4701,12 @@ const handleUpdateGroup = async () => {
     delete (payload as any).availability_probe_user_agent;
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
+    );
+    payload.peak_rate_enabled = editForm.peak_rate_enabled;
+    payload.peak_start = editForm.peak_start;
+    payload.peak_end = editForm.peak_end;
+    payload.peak_rate_multiplier = normalizeImageRateMultiplier(
+      editForm.peak_rate_multiplier,
     );
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
