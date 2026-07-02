@@ -580,7 +580,9 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	total, err := q.Count(ctx)
+	// Count 前先 Clone，避免 SoftDeleteMixin 等拦截器把谓词追加到共享 builder，
+	// 进而污染后续列表查询，导致 total 与当前页 items 使用不同条件。
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
