@@ -1818,6 +1818,9 @@ func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID 
 	if s.userPlatformQuotaRepo == nil || plan == nil || len(plan.PlatformQuotas) == 0 {
 		return nil
 	}
+	// 平台配额快照是 best-effort，必须脱离调用方事务执行。
+	// 否则某平台违反 user_platform_quotas 的 CHECK 约束时，PostgreSQL 会把整笔注册事务标记为 aborted。
+	ctx = dbent.WithoutTx(ctx)
 	records := make([]UserPlatformQuotaRecord, 0, len(plan.PlatformQuotas))
 	for platform, q := range plan.PlatformQuotas {
 		rec := UserPlatformQuotaRecord{
