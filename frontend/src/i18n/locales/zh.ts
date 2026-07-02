@@ -2844,6 +2844,21 @@ export default {
         "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。模型名称按大小写不敏感匹配，已有条目已覆盖其所有大小写变体，无需重复添加。",
       mappingConflict:
         "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠。源模式按大小写不敏感匹配，已有条目已覆盖其所有大小写变体。",
+      intervalValidation: {
+        negativeMin: '区间 #{index}：最小 token 数（{value}）不能为负数',
+        maxPositive: '区间 #{index}：最大 token 数（{value}）必须大于 0',
+        maxGreaterThanMin: '区间 #{index}：最大 token 数（{max}）必须大于最小 token 数（{min}）',
+        negativePrice: '区间 #{index}：{field}不能为负数',
+        unboundedLast: '区间 #{index}：无上限区间（最大 token 数为空）必须放在最后',
+        overlap: '区间 #{previousIndex} 和 #{currentIndex} 重叠：前一个上界（{previousMax}）大于当前下界（{currentMin}）',
+        price: {
+          inputPrice: '输入价格',
+          outputPrice: '输出价格',
+          cacheWritePrice: '缓存写入价格',
+          cacheReadPrice: '缓存读取价格',
+          perRequestPrice: '单次价格'
+        }
+      },
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
