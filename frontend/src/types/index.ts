@@ -1758,7 +1758,7 @@ export interface UserSubscription {
   plan_id: number
   starts_at: string
   expires_at: string
-  status: 'active' | 'pending' | 'expired' | 'suspended'
+  status: 'active' | 'pending' | 'expired' | 'suspended' | 'revoked'
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
@@ -1770,6 +1770,7 @@ export interface UserSubscription {
   monthly_window_start: string | null
   created_at: string
   updated_at: string
+  revoked_at?: string | null
   user?: User
   plan?: SubscriptionPlan
 }
@@ -1780,7 +1781,7 @@ export interface SubscriptionProgress {
   plan_name: string
   starts_at: string
   expires_at: string
-  status: 'active' | 'pending' | 'expired' | 'suspended'
+  status: 'active' | 'pending' | 'expired' | 'suspended' | 'revoked'
   expires_in_days: number
   daily: {
     limit_usd: number

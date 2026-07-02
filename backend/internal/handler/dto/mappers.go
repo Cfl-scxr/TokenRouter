@@ -803,8 +803,8 @@ func UserSubscriptionFromService(sub *service.UserSubscription) *UserSubscriptio
 	return &out
 }
 
-// UserSubscriptionFromServiceAdmin converts a service UserSubscription to DTO for admin users.
-// It includes assignment metadata and notes.
+// UserSubscriptionFromServiceAdmin 将 service.UserSubscription 转换为管理员 DTO。
+// 管理员接口会额外返回分配人、分配时间和备注。
 func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserSubscription {
 	if sub == nil {
 		return nil
@@ -837,6 +837,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		MonthlyUsageUSD:    sub.MonthlyUsageUSD,
 		CreatedAt:          sub.CreatedAt,
 		UpdatedAt:          sub.UpdatedAt,
+		RevokedAt:          sub.DeletedAt,
 		User:               UserFromServiceShallow(sub.User),
 		Plan:               SubscriptionPlanFromServiceShallow(sub.Plan),
 	}
