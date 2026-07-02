@@ -2968,6 +2968,8 @@ export default {
       adjust: 'Adjust',
       adjusting: 'Adjusting...',
       revoke: 'Revoke',
+      restore: 'Restore',
+      restoreSubscription: 'Restore Subscription',
       cancelPending: 'Cancel',
       cancelPendingSubscription: 'Cancel Pending Subscription',
       resetQuota: 'Reset Quota',
@@ -2980,11 +2982,13 @@ export default {
       subscriptionAssigned: 'Subscription assigned successfully',
       subscriptionAdjusted: 'Subscription adjusted successfully',
       subscriptionRevoked: 'Subscription revoked successfully',
+      subscriptionRestored: 'Subscription restored successfully',
       pendingSubscriptionCancelled: 'Pending subscription cancelled successfully',
       failedToLoad: 'Failed to load subscriptions',
       failedToAssign: 'Failed to assign subscription',
       failedToAdjust: 'Failed to adjust subscription',
       failedToRevoke: 'Failed to revoke subscription',
+      failedToRestore: 'Failed to restore subscription',
       adjustWouldExpire: 'Validity length must be greater than 0',
       adjustOutOfRange: 'Validity length must be between 1 and 36500 days',
       pleaseSelectUser: 'Please select a user',
@@ -2992,6 +2996,8 @@ export default {
       validityDaysRequired: 'Please enter a valid number of days (at least 1)',
       revokeConfirm:
         "Are you sure you want to revoke the subscription for '{user}'? This action cannot be undone.",
+      restoreConfirm:
+        "Restore the revoked subscription for '{user}'? The request may fail if the subscription overlaps with an active or pending subscription for the same plan.",
       cancelPendingConfirm:
         "Cancel the pending subscription for '{user}'? Later pending subscriptions will move forward automatically. This action cannot be undone.",
       guide: {
