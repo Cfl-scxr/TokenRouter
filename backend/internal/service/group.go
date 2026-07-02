@@ -168,11 +168,29 @@ func matchModelPattern(pattern, model string) bool {
 
 // parseMinutes 把 "HH:MM" 解析为当日分钟数（0..1439），格式非法返回 (0,false)。
 func parseMinutes(hhmm string) (int, bool) {
-	t, err := time.Parse("15:04", hhmm)
-	if err != nil {
+	// 手工解析避免计费热路径反复走 time.Parse；接受集保持与 time.Parse("15:04", s) 一致：
+	// 小时允许 1-2 位数字（0..23），分钟必须是 2 位数字（00..59）。
+	colon := strings.IndexByte(hhmm, ':')
+	if (colon != 1 && colon != 2) || len(hhmm)-colon-1 != 2 {
 		return 0, false
 	}
-	return t.Hour()*60 + t.Minute(), true
+	hour := 0
+	for i := 0; i < colon; i++ {
+		digit := hhmm[i] - '0'
+		if digit > 9 {
+			return 0, false
+		}
+		hour = hour*10 + int(digit)
+	}
+	minuteTens, minuteOnes := hhmm[colon+1]-'0', hhmm[colon+2]-'0'
+	if minuteTens > 9 || minuteOnes > 9 {
+		return 0, false
+	}
+	minute := int(minuteTens)*10 + int(minuteOnes)
+	if hour > 23 || minute > 59 {
+		return 0, false
+	}
+	return hour*60 + minute, true
 }
 
 // PeakMultiplierAt 返回指定时刻 now 的高峰因子。
@@ -209,21 +227,40 @@ func ValidatePeakRateConfig(enabled bool, start, end string, multiplier float64)
 	if start == "" || end == "" {
 		return errors.New("peak_rate_enabled 为 true 时 peak_start 与 peak_end 必填")
 	}
-	st, err1 := time.Parse("15:04", start)
-	if err1 != nil {
+	st, okStart := parseMinutes(start)
+	if !okStart {
 		return fmt.Errorf("peak_start 格式应为 HH:MM，got %q", start)
 	}
-	en, err2 := time.Parse("15:04", end)
-	if err2 != nil {
+	en, okEnd := parseMinutes(end)
+	if !okEnd {
 		return fmt.Errorf("peak_end 格式应为 HH:MM，got %q", end)
 	}
-	if st.Hour()*60+st.Minute() >= en.Hour()*60+en.Minute() {
+	if st >= en {
 		return errors.New("peak_end 必须大于 peak_start（不支持跨天区间，如 22:00-02:00）")
 	}
 	if multiplier < 0 {
 		return errors.New("peak_rate_multiplier 不能为负")
 	}
 	return nil
+}
+
+// NormalizePeakRateConfig 归一化最终落库的高峰倍率配置，供 CreateGroup 与 UpdateGroup 共用。
+// 启用时保持原值并交给 ValidatePeakRateConfig 严格校验；停用时保留合法窗口与非负倍率，
+// 仅清理脏窗口与负倍率，便于管理员临时停用后按原配置重新启用。
+func NormalizePeakRateConfig(enabled bool, start, end string, multiplier float64) (bool, string, string, float64) {
+	if enabled {
+		return enabled, start, end, multiplier
+	}
+	if _, ok := parseMinutes(start); !ok {
+		start = ""
+	}
+	if _, ok := parseMinutes(end); !ok {
+		end = ""
+	}
+	if multiplier < 0 {
+		multiplier = 1.0
+	}
+	return false, start, end, multiplier
 }
 
 // computePeakAwareMultipliers 把"基础 token 倍率 base"（已含系统/分组/用户级倍率，但不含高峰）

@@ -31,6 +31,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GroupPlatform } from '@/types'
+import { currentServerTimezoneLabel, formatPeakRateWindow } from '@/utils/peak-rate'
 import PlatformIcon from './PlatformIcon.vue'
 import ProviderIcon from './ProviderIcon.vue'
 import { resolveProviderBrand } from '@/utils/providerBrand'
@@ -75,11 +76,19 @@ const hasPeakRate = computed(() => {
 })
 
 const peakRateText = computed(() => {
-  return `${props.peakStart}-${props.peakEnd} ×${props.peakRateMultiplier ?? 1}`
+  return formatPeakRateWindow(
+    {
+      peak_rate_enabled: props.peakRateEnabled,
+      peak_start: props.peakStart,
+      peak_end: props.peakEnd,
+      peak_rate_multiplier: props.peakRateMultiplier
+    },
+    currentServerTimezoneLabel()
+  )
 })
 
 const peakRateTitle = computed(() => {
-  return `高峰倍率：${peakRateText.value}`
+  return t('common.peakRateTooltip', { window: peakRateText.value })
 })
 
 // 是否显示右侧标签

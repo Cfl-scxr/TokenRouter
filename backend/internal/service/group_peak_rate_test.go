@@ -105,6 +105,7 @@ func TestValidatePeakRateConfig(t *testing.T) {
 	}{
 		{"disabled passes through", false, "", "", 0, false},
 		{"enabled valid", true, "14:00", "18:00", 3.0, false},
+		{"enabled valid single digit hour", true, "1:00", "2:00", 3.0, false},
 		{"enabled empty start", true, "", "18:00", 1.0, true},
 		{"enabled empty end", true, "14:00", "", 1.0, true},
 		{"enabled malformed start", true, "99:99", "18:00", 1.0, true},
@@ -124,6 +125,55 @@ func TestValidatePeakRateConfig(t *testing.T) {
 				t.Fatalf("expect no error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestParseMinutesMatchesLegacyTimeParseShape(t *testing.T) {
+	cases := []struct {
+		value string
+		want  int
+		ok    bool
+	}{
+		{"0:00", 0, true},
+		{"00:00", 0, true},
+		{"1:30", 90, true},
+		{"01:30", 90, true},
+		{"23:59", 1439, true},
+		{"001:30", 0, false},
+		{"9:3", 0, false},
+		{"24:00", 0, false},
+		{"1:030", 0, false},
+		{" 1:30", 0, false},
+		{"1:30 ", 0, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			got, ok := parseMinutes(c.value)
+			if ok != c.ok {
+				t.Fatalf("ok: got %v, want %v", ok, c.ok)
+			}
+			if ok && got != c.want {
+				t.Fatalf("minutes: got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestNormalizePeakRateConfig(t *testing.T) {
+	enabled, start, end, multiplier := NormalizePeakRateConfig(false, "bad", "18:00", -2)
+	if enabled || start != "" || end != "18:00" || multiplier != 1.0 {
+		t.Fatalf("disabled cleanup mismatch: enabled=%v start=%q end=%q multiplier=%v", enabled, start, end, multiplier)
+	}
+
+	enabled, start, end, multiplier = NormalizePeakRateConfig(false, "14:00", "18:00", 3)
+	if enabled || start != "14:00" || end != "18:00" || multiplier != 3 {
+		t.Fatalf("disabled valid config should be preserved: enabled=%v start=%q end=%q multiplier=%v", enabled, start, end, multiplier)
+	}
+
+	enabled, start, end, multiplier = NormalizePeakRateConfig(true, "bad", "18:00", -2)
+	if !enabled || start != "bad" || end != "18:00" || multiplier != -2 {
+		t.Fatalf("enabled config should be left for validation: enabled=%v start=%q end=%q multiplier=%v", enabled, start, end, multiplier)
 	}
 }
 

@@ -596,7 +596,7 @@ func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testin
 	require.Equal(t, []int64{1}, invalidator.groupIDs, "分组 RPMLimit 写入 auth snapshot，变更后必须失效 API Key 认证缓存")
 }
 
-func TestAdminService_UpdateGroup_ClearsPeakRateWhenDisabled(t *testing.T) {
+func TestAdminService_UpdateGroup_NormalizesPeakRateWhenDisabled(t *testing.T) {
 	existingGroup := &Group{
 		ID:                 1,
 		Name:               "existing-group",
@@ -618,8 +618,32 @@ func TestAdminService_UpdateGroup_ClearsPeakRateWhenDisabled(t *testing.T) {
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.False(t, repo.updated.PeakRateEnabled)
+	require.Equal(t, "14:00", repo.updated.PeakStart)
+	require.Equal(t, "18:00", repo.updated.PeakEnd)
+	require.Equal(t, 3.0, repo.updated.PeakRateMultiplier)
+}
+
+func TestAdminService_UpdateGroup_ScrubsInvalidDisabledPeakRate(t *testing.T) {
+	existingGroup := &Group{
+		ID:                 1,
+		Name:               "existing-group",
+		Platform:           PlatformOpenAI,
+		Status:             StatusActive,
+		PeakRateEnabled:    false,
+		PeakStart:          "bad",
+		PeakEnd:            "18:00",
+		PeakRateMultiplier: -1,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.False(t, repo.updated.PeakRateEnabled)
 	require.Equal(t, "", repo.updated.PeakStart)
-	require.Equal(t, "", repo.updated.PeakEnd)
+	require.Equal(t, "18:00", repo.updated.PeakEnd)
 	require.Equal(t, 1.0, repo.updated.PeakRateMultiplier)
 }
 

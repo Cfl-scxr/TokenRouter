@@ -294,6 +294,7 @@ export default {
   common: {
     loading: '加载中...',
     justNow: '刚刚',
+    peakRateTooltip: '高峰倍率：{window}',
     save: '保存',
     saved: '保存成功',
     deleted: '删除成功',

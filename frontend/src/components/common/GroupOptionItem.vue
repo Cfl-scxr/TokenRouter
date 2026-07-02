@@ -69,10 +69,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import GroupCapacityBadge from './GroupCapacityBadge.vue'
 import type { GroupPlatform, MarketplaceGroupCapacity } from '@/types'
+import { currentServerTimezoneLabel, formatPeakRateWindow } from '@/utils/peak-rate'
 import { resolveProviderBrand } from '@/utils/providerBrand'
+
+const { t } = useI18n()
 
 interface Props {
   name: string
@@ -114,11 +118,19 @@ const hasPeakRate = computed(() => {
 })
 
 const peakRateText = computed(() => {
-  return `${props.peakStart}-${props.peakEnd} ×${props.peakRateMultiplier ?? 1}`
+  return formatPeakRateWindow(
+    {
+      peak_rate_enabled: props.peakRateEnabled,
+      peak_start: props.peakStart,
+      peak_end: props.peakEnd,
+      peak_rate_multiplier: props.peakRateMultiplier
+    },
+    currentServerTimezoneLabel()
+  )
 })
 
 const peakRateTitle = computed(() => {
-  return `高峰倍率：${peakRateText.value}`
+  return t('common.peakRateTooltip', { window: peakRateText.value })
 })
 
 // 倍率标签跟随展示品牌；没有品牌时回退到接入格式配色。

@@ -294,6 +294,7 @@ export default {
   common: {
     loading: 'Loading...',
     justNow: 'just now',
+    peakRateTooltip: 'Peak rate: {window}',
     save: 'Save',
     saved: 'Saved successfully',
     deleted: 'Deleted successfully',
