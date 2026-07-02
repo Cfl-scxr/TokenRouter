@@ -1796,6 +1796,11 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	}
 }
 
+func defaultAllowImageGenerationForPlatform(platform string) bool {
+	// Grok 图片和视频生成路由共用历史图片生成开关；旧客户端不会显式传 true。
+	return platform == PlatformGrok
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
@@ -1860,6 +1865,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		mcpXMLInject = *input.MCPXMLInject
 	}
 
+	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
+
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
@@ -1908,7 +1915,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DataSharingEnabled:              input.DataSharingEnabled,
 		SessionIsolationEnabled:         input.SessionIsolationEnabled,
 		Status:                          StatusActive,
-		AllowImageGeneration:            input.AllowImageGeneration,
+		AllowImageGeneration:            allowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
 		PeakRateEnabled:                 peakRateEnabled,
