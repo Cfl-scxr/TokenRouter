@@ -4314,6 +4314,8 @@ export default {
       inviteResetSelectCredit: '选择重置机会',
       inviteResetCreditFallbackTitle: 'Codex 重置机会',
       inviteResetCreditFallbackDescription: '可用于重置当前 Codex 用量窗口',
+      inviteResetCreditExpirations: '重置机会到期时间',
+      inviteResetCreditExpiresAtFull: '到期时间：{time}',
       inviteResetNoCredits: '当前没有已发放的重置机会。邀请成功后奖励会出现在这里。',
       inviteResetUseReset: '使用重置次数',
       inviteResetUsing: '重置中...',

@@ -4167,6 +4167,8 @@ export default {
       inviteResetSelectCredit: 'Select reset credit',
       inviteResetCreditFallbackTitle: 'Codex reset credit',
       inviteResetCreditFallbackDescription: 'Can be used to reset the current Codex usage window',
+      inviteResetCreditExpirations: 'Reset credit expirations',
+      inviteResetCreditExpiresAtFull: 'Expires at {time}',
       inviteResetNoCredits: 'No reset credits have been granted yet. Invite rewards will appear here after they are issued.',
       inviteResetUseReset: 'Use reset credit',
       inviteResetUsing: 'Resetting...',
