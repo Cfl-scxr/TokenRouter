@@ -118,6 +118,7 @@ type cachedGatewayForwardingSettings struct {
 	claudeOAuthSystemPromptBlocks    string
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
+	clientDatelineNormalization      bool
 	expiresAt                        int64 // unix nano
 }
 
@@ -1988,6 +1989,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyClaudeOAuthSystemPromptBlocks] = settings.ClaudeOAuthSystemPromptBlocks
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] = strconv.FormatBool(settings.OpenAIAllowClaudeCodeCodexPlugin)
@@ -2163,6 +2165,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		claudeOAuthSystemPromptBlocks:    settings.ClaudeOAuthSystemPromptBlocks,
 		anthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
+		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
@@ -2317,6 +2320,7 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 
 type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
+	clientDatelineNormalization                                                           bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
 }
 
@@ -2332,6 +2336,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+				clientDatelineNormalization:      cached.clientDatelineNormalization,
 			}
 		}
 	}
@@ -2347,6 +2352,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+					clientDatelineNormalization:      cached.clientDatelineNormalization,
 				}, nil
 			}
 		}
@@ -2361,6 +2367,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyClaudeOAuthSystemPromptBlocks,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
+			SettingKeyEnableClientDatelineNormalization,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -2371,12 +2378,14 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				clientDatelineNormalization:      true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
 			return gatewayForwardingSettingsResult{
 				fp:                               true,
 				claudeOAuthSystemPromptInjection: true,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				clientDatelineNormalization:      true,
 			}, nil
 		}
 		fp := true
@@ -2396,6 +2405,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 		}
+		clientDatelineNormalization := true
+		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+			clientDatelineNormalization = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -2405,6 +2418,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    claudeOAuthSystemPromptBlocks,
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -2416,12 +2430,13 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    claudeOAuthSystemPromptBlocks,
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true}
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -2437,15 +2452,21 @@ func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Conte
 	return s.getGatewayForwardingSettingsCached(ctx).cacheTTL1h
 }
 
+// IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
+func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
+}
+
+// IsClientDatelineNormalizationEnabled 检查是否启用 Anthropic OAuth/SetupToken 请求体
+// 的客户端 dateline 归一化。默认开启。
+func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).clientDatelineNormalization
+}
+
 // GetClaudeOAuthSystemPromptInjectionSettings 返回 Claude OAuth mimic system block 注入配置。
 func (s *SettingService) GetClaudeOAuthSystemPromptInjectionSettings(ctx context.Context) (enabled bool, prompt string, blocks string) {
 	result := s.getGatewayForwardingSettingsCached(ctx)
 	return result.claudeOAuthSystemPromptInjection, result.claudeOAuthSystemPrompt, result.claudeOAuthSystemPromptBlocks
-}
-
-// IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
-func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
-	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2960,6 +2981,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
 		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyEnableClientDatelineNormalization:  "true",
 		SettingKeyAntigravityUserAgentVersion:        "",
 		SettingKeyOpenAICodexUserAgent:               "",
 		SettingKeyUserPromptReplacementConfig:        defaultUserPromptReplacementConfigJSON(),
@@ -3513,6 +3535,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RewriteMessageCacheControl = v == "true"
 	} else {
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+	}
+	if v, ok := settings[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+		result.EnableClientDatelineNormalization = v == "true"
+	} else {
+		result.EnableClientDatelineNormalization = true
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
