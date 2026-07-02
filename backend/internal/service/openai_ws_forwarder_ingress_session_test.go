@@ -4234,15 +4234,17 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberErro
 	serverErrCh := make(chan error, 1)
 	type upstreamErrorRecord struct {
 		turn       int
+		model      string
 		statusCode int
 		body       []byte
 		message    string
 	}
 	upstreamErrCh := make(chan upstreamErrorRecord, 1)
 	hooks := &OpenAIWSIngressHooks{
-		OnUpstreamError: func(turn int, statusCode int, responseBody []byte, message string) {
+		OnUpstreamError: func(turn int, originalModel string, statusCode int, responseBody []byte, message string) {
 			upstreamErrCh <- upstreamErrorRecord{
 				turn:       turn,
+				model:      originalModel,
 				statusCode: statusCode,
 				body:       append([]byte(nil), responseBody...),
 				message:    message,
@@ -4299,6 +4301,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberErro
 	select {
 	case got := <-upstreamErrCh:
 		require.Equal(t, 1, got.turn)
+		require.Equal(t, "gpt-5.1", got.model)
 		require.Equal(t, http.StatusBadRequest, got.statusCode)
 		require.JSONEq(t, string(errorEvent), string(got.body))
 		require.Contains(t, got.message, "cybersecurity risk")
@@ -4363,12 +4366,19 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberFail
 	}
 
 	serverErrCh := make(chan error, 1)
-	upstreamErrCh := make(chan int, 1)
+	type failedUpstreamErrorRecord struct {
+		model      string
+		statusCode int
+	}
+	upstreamErrCh := make(chan failedUpstreamErrorRecord, 1)
 	hooks := &OpenAIWSIngressHooks{
-		OnUpstreamError: func(_ int, statusCode int, responseBody []byte, message string) {
+		OnUpstreamError: func(_ int, originalModel string, statusCode int, responseBody []byte, message string) {
 			require.JSONEq(t, string(failedEvent), string(responseBody))
 			require.Contains(t, message, "cybersecurity risk")
-			upstreamErrCh <- statusCode
+			upstreamErrCh <- failedUpstreamErrorRecord{
+				model:      originalModel,
+				statusCode: statusCode,
+			}
 		},
 	}
 	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -4420,8 +4430,9 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ReportsCyberFail
 	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
 
 	select {
-	case statusCode := <-upstreamErrCh:
-		require.Equal(t, http.StatusBadGateway, statusCode)
+	case got := <-upstreamErrCh:
+		require.Equal(t, "gpt-5.1", got.model)
+		require.Equal(t, http.StatusBadGateway, got.statusCode)
 	case <-time.After(2 * time.Second):
 		t.Fatal("未收到上游 response.failed 事件回调")
 	}
