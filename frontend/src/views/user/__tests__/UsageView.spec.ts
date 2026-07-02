@@ -95,6 +95,10 @@ vi.mock('vue-i18n', async () => {
 
 const simpleStub = { template: '<div><slot /></div>' }
 const chartStub = { template: '<div />' }
+const UsageTableStub = {
+  props: ['columns'],
+  template: '<div data-test="usage-table" />',
+}
 
 const usageLog = {
   id: 1,
@@ -137,7 +141,7 @@ function mountUsageView() {
         DateRangePicker: true,
         Icon: true,
         UsageStatsCards: chartStub,
-        UsageTable: chartStub,
+        UsageTable: UsageTableStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
         EndpointDistributionChart: chartStub,
@@ -205,6 +209,16 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+  })
+
+  it('shows reasoning effort column by default while hiding user agent', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    const usageTable = wrapper.findComponent(UsageTableStub)
+    const columns = usageTable.props('columns') as Array<{ key: string }>
+    expect(columns.map((col) => col.key)).toContain('reasoning_effort')
+    expect(columns.map((col) => col.key)).not.toContain('user_agent')
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {
