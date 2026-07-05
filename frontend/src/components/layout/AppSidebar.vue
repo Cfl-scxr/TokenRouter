@@ -140,7 +140,7 @@
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-primary-100 p-3 dark:border-dark-600">
+    <div class="mt-auto border-t border-primary-900/10 p-3 dark:border-dark-600">
       <!-- Theme Toggle -->
       <button
         @click="toggleTheme"
