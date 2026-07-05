@@ -5522,19 +5522,28 @@
           <!-- Footer Settings -->
           <div class="card">
             <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+              class="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ localText("底栏设置", "Footer settings") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{
-                  localText(
-                    "配置首页底栏的链接分组与附加文本（如备案号）。留空时底栏仅显示版权信息。",
-                    "Configure homepage footer link groups and extra text (e.g. ICP number). When empty, the footer only shows the copyright line.",
-                  )
-                }}
-              </p>
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ localText("底栏设置", "Footer settings") }}
+                </h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    localText(
+                      "配置首页底栏的链接分组与附加文本（如备案号）。留空时底栏仅显示版权信息。",
+                      "Configure homepage footer link groups and extra text (e.g. ICP number). When empty, the footer only shows the copyright line.",
+                    )
+                  }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm shrink-0"
+                @click="applyDefaultFooterLinks"
+              >
+                {{ localText("使用默认模板", "Use default template") }}
+              </button>
             </div>
             <div class="space-y-4 p-6">
               <!-- Link groups -->
@@ -8444,6 +8453,37 @@ function removeEndpoint(index: number) {
 // Footer link group management
 function addFooterGroup() {
   form.footer_links.push({ title: "", links: [{ label: "", url: "" }] });
+}
+
+// 默认底栏模板:基于站内已有页面 + 已配置的文档/联系方式,可直接用或小改
+function applyDefaultFooterLinks() {
+  const zh = locale.value.toLowerCase().startsWith("zh");
+  const groups: Array<{ title: string; links: Array<{ label: string; url: string }> }> = [
+    {
+      title: zh ? "产品" : "Product",
+      links: [
+        { label: zh ? "模型广场" : "Models", url: "/models" },
+        { label: zh ? "用量查询" : "Key usage", url: "/key-usage" },
+        { label: zh ? "控制台" : "Dashboard", url: "/dashboard" },
+      ],
+    },
+    {
+      title: zh ? "开发者" : "Developer",
+      links: [
+        ...(form.doc_url ? [{ label: zh ? "文档" : "Documentation", url: form.doc_url }] : []),
+        ...(form.api_base_url
+          ? [{ label: "API Base URL", url: form.api_base_url }]
+          : []),
+      ],
+    },
+    {
+      title: zh ? "支持" : "Support",
+      links: [
+        { label: zh ? "登录 / 注册" : "Sign in / Sign up", url: "/login" },
+      ],
+    },
+  ];
+  form.footer_links = groups.filter((g) => g.links.length > 0);
 }
 
 function removeFooterGroup(index: number) {

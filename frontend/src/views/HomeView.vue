@@ -137,9 +137,9 @@
         </div>
       </section>
 
-      <section class="mx-auto mt-20 grid max-w-5xl gap-6 md:grid-cols-2">
+      <section class="mx-auto mt-20 grid max-w-7xl gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
-          <div class="relative h-48 overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
+          <div class="relative h-44 overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
             <div class="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-110">
               <span
                 v-for="(icon, index) in homeProviderCloudIcons"
@@ -159,14 +159,14 @@
               class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white via-white/35 to-transparent dark:from-dark-950 dark:via-dark-950/35"
             ></span>
           </div>
-          <div class="p-6">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="p-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
               {{ t('home.features.unifiedGateway') }}
             </h2>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ t('home.features.unifiedGatewayDesc') }}
             </p>
-            <router-link to="/models" class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
+            <router-link to="/models" class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
               {{ t('home.features.browseAll') }}
               <Icon name="arrowRight" size="xs" />
             </router-link>
@@ -174,31 +174,31 @@
         </article>
 
         <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
-          <div class="relative flex h-48 items-center justify-center overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
+          <div class="relative flex h-44 items-center justify-center overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
             <div class="relative h-full w-full transition-transform duration-500 ease-out group-hover:scale-110">
               <div class="absolute left-1/2 top-7 z-10 max-w-[82%] -translate-x-1/2 truncate rounded-lg bg-gray-100 px-3.5 py-1.5 text-xs font-medium text-gray-800 shadow-sm dark:bg-dark-900 dark:text-dark-100">
                 {{ homeRouteLabel }}
               </div>
               <svg
-                class="absolute left-1/2 top-12 h-28 w-[260px] -translate-x-1/2 text-gray-300 dark:text-dark-700"
-                viewBox="0 0 260 120"
+                class="absolute left-1/2 top-12 h-24 w-[220px] -translate-x-1/2 text-gray-300 dark:text-dark-700"
+                viewBox="0 0 220 110"
                 fill="none"
                 aria-hidden="true"
               >
                 <path
-                  d="M130 0V30"
+                  d="M110 0V30"
                   stroke="currentColor"
                   stroke-width="1.35"
                   stroke-linecap="round"
                 />
                 <path
-                  d="M130 30C130 63 35 55 35 92M130 30C130 58 130 68 130 92M130 30C130 63 225 55 225 92"
+                  d="M110 30C110 60 28 52 28 84M110 30C110 55 110 64 110 84M110 30C110 60 192 52 192 84"
                   stroke="currentColor"
                   stroke-width="1.35"
                   stroke-linecap="round"
                 />
               </svg>
-              <div class="absolute bottom-6 left-1/2 flex w-[226px] -translate-x-1/2 justify-between">
+              <div class="absolute bottom-6 left-1/2 flex w-[190px] -translate-x-1/2 justify-between">
                 <span
                   v-for="brand in homeRouteProviderBrands"
                   :key="brand"
@@ -209,14 +209,14 @@
               </div>
             </div>
           </div>
-          <div class="p-6">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="p-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
               {{ t('home.features.multiAccount') }}
             </h2>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ t('home.features.multiAccountDesc') }}
             </p>
-            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
+            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
               {{ t('home.features.learnMore') }}
               <Icon name="arrowRight" size="xs" />
             </router-link>
@@ -224,8 +224,8 @@
         </article>
 
         <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
-          <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 p-6 dark:border-dark-800 dark:bg-dark-950">
-            <div class="w-full max-w-[220px] rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
+          <div class="flex h-44 items-center justify-center border-b border-gray-200 bg-gray-50 p-6 dark:border-dark-800 dark:bg-dark-950">
+            <div class="w-full max-w-[200px] rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <div class="mb-4 flex items-center justify-between text-xs text-gray-500 dark:text-dark-400">
                 <span>{{ t('home.features.usageChart') }}</span>
                 <Icon name="chart" size="sm" />
@@ -238,14 +238,14 @@
               </div>
             </div>
           </div>
-          <div class="p-6">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="p-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
               {{ t('home.features.balanceQuota') }}
             </h2>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ t('home.features.balanceQuotaDesc') }}
             </p>
-            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
+            <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300">
               {{ t('home.features.viewUsage') }}
               <Icon name="arrowRight" size="xs" />
             </router-link>
@@ -253,19 +253,19 @@
         </article>
 
         <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
-          <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 dark:border-dark-800 dark:bg-dark-950">
-            <div class="relative flex h-28 w-28 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
+          <div class="flex h-44 items-center justify-center border-b border-gray-200 bg-gray-50 dark:border-dark-800 dark:bg-dark-950">
+            <div class="relative flex h-24 w-24 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <Icon name="shield" size="xl" class="text-gray-400 dark:text-dark-300" />
               <span class="absolute -right-1 -top-1 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
                 <Icon name="check" size="md" :stroke-width="2" />
               </span>
             </div>
           </div>
-          <div class="p-6">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="p-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white">
               {{ t('home.features.dataPolicies') }}
             </h2>
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ t('home.features.dataPoliciesDesc') }}
             </p>
             <a
@@ -273,7 +273,7 @@
               :href="docUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="mt-5 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300"
+              class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-300"
             >
               {{ t('home.docs') }}
               <Icon name="externalLink" size="xs" />
