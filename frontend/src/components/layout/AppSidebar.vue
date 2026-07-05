@@ -953,7 +953,7 @@ onMounted(() => {
 }
 
 .dark .sidebar-section-title::after {
-  background: rgb(53 64 108);
+  background: rgb(42 46 54);
 }
 
 .sidebar-section-title-text-collapsed {

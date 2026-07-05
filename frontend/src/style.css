@@ -19,10 +19,8 @@
   }
 
   html.dark {
-    scrollbar-color: rgba(213, 229, 251, 0.62) #10182c;
-    background:
-      radial-gradient(circle at 72% 12%, rgba(0, 210, 255, 0.12), transparent 34%),
-      linear-gradient(180deg, #10182c 0%, #1a2643 54%, #10182c 100%);
+    scrollbar-color: rgba(166, 166, 175, 0.45) #0A0A0C;
+    background: linear-gradient(180deg, #0A0A0C 0%, #111113 54%, #0A0A0C 100%);
     background-attachment: fixed;
   }
 
@@ -37,10 +35,8 @@
   }
 
   .dark body {
-    scrollbar-color: rgba(213, 229, 251, 0.62) #10182c;
-    background:
-      radial-gradient(circle at 72% 12%, rgba(0, 210, 255, 0.12), transparent 34%),
-      linear-gradient(180deg, #10182c 0%, #1a2643 54%, #10182c 100%);
+    scrollbar-color: rgba(166, 166, 175, 0.45) #0A0A0C;
+    background: linear-gradient(180deg, #0A0A0C 0%, #111113 54%, #0A0A0C 100%);
     background-attachment: fixed;
   }
 
@@ -131,7 +127,7 @@
       .sidebar-nav,
       .code-block
     ):focus-within {
-      scrollbar-color: rgba(213, 229, 251, 0.35) transparent;
+      scrollbar-color: rgba(166, 166, 175, 0.35) transparent;
     }
   }
 
@@ -147,7 +143,7 @@
 
   html.dark::-webkit-scrollbar-track,
   html.dark body::-webkit-scrollbar-track {
-    background-color: #10182c;
+    background-color: #0A0A0C;
   }
 
   html::-webkit-scrollbar-thumb,
@@ -161,7 +157,7 @@
 
   html.dark::-webkit-scrollbar-thumb,
   html.dark body::-webkit-scrollbar-thumb {
-    background-color: rgba(213, 229, 251, 0.62);
+    background-color: rgba(166, 166, 175, 0.45);
   }
 
   html::-webkit-scrollbar-thumb:hover,
@@ -171,7 +167,7 @@
 
   html.dark::-webkit-scrollbar-thumb:hover,
   html.dark body::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(213, 229, 251, 0.82);
+    background-color: rgba(166, 166, 175, 0.65);
   }
 
   :where(
@@ -257,7 +253,7 @@
     .sidebar-nav,
     .code-block
   ):focus-within::-webkit-scrollbar-thumb {
-    background-color: rgba(213, 229, 251, 0.3);
+    background-color: rgba(166, 166, 175, 0.3);
   }
 
   :where(
@@ -283,7 +279,7 @@
     .sidebar-nav,
     .code-block
   )::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(213, 229, 251, 0.42);
+    background-color: rgba(166, 166, 175, 0.5);
   }
 
   /* 选中文本样式 */
@@ -317,7 +313,7 @@
     @apply text-primary-900 dark:text-dark-50;
     @apply border border-primary-200 dark:border-dark-600;
     @apply shadow-sm hover:bg-primary-50 dark:hover:bg-dark-800;
-    @apply hover:border-primary-300 dark:hover:border-primary-500;
+    @apply hover:border-primary-300 dark:hover:border-dark-400;
   }
 
   .btn-ghost {
@@ -447,13 +443,9 @@
     @apply transition-all duration-300;
   }
 
-  .dark .card {
-    box-shadow: none;
-  }
-
   .card-hover {
     @apply hover:-translate-y-0.5 hover:shadow-card-hover;
-    @apply hover:border-primary-200 dark:hover:border-primary-500/70;
+    @apply hover:border-primary-200 dark:hover:border-dark-500;
   }
 
   .card-glass {
@@ -871,7 +863,7 @@
   .tab-active {
     @apply bg-white dark:bg-dark-700;
     @apply text-primary-900 dark:text-white;
-    @apply shadow-sm dark:ring-1 dark:ring-primary-500/90;
+    @apply shadow-sm dark:ring-1 dark:ring-dark-500/60;
   }
 
   .dark .tab-active {
@@ -985,12 +977,15 @@
 
   .dark .card,
   .dark .glass-card,
-  .dark .card-glass,
+  .dark .card-glass {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  }
+
   .dark .dropdown,
   .dark .modal-content,
   .dark .dialog-container,
   .dark .toast {
-    box-shadow: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3) !important;
   }
 
   /* 全局工程蓝图背景，网格线参考 Blue Archive 主视觉 */
@@ -1002,9 +997,7 @@
   }
 
   .dark .ba-theme-shell {
-    background:
-      radial-gradient(circle at 78% 12%, rgba(0, 210, 255, 0.13), transparent 34%),
-      linear-gradient(180deg, #10182c 0%, #1a2643 56%, #10182c 100%);
+    background: linear-gradient(180deg, #0A0A0C 0%, #111113 56%, #0A0A0C 100%);
   }
 
   .ba-theme-backdrop {
@@ -1035,8 +1028,8 @@
 
   .dark .ba-theme-backdrop {
     background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='none'%3E%3Cpath d='M0 0H150M0 0V150' stroke='%23D5E5FB' stroke-width='1' opacity='.07'/%3E%3Cpath d='M75 0V150M0 75H150' stroke='%2300D2FF' stroke-width='1' opacity='.045'/%3E%3C/g%3E%3C/svg%3E"),
-      linear-gradient(180deg, rgba(16, 24, 44, 0.92) 0%, rgba(26, 38, 67, 0.86) 52%, rgba(16, 24, 44, 0.96) 100%);
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='none'%3E%3Cpath d='M0 0H150M0 0V150' stroke='%23F0F0F1' stroke-width='1' opacity='.05'/%3E%3Cpath d='M75 0V150M0 75H150' stroke='%23F0F0F1' stroke-width='1' opacity='.03'/%3E%3C/g%3E%3C/svg%3E"),
+      linear-gradient(180deg, rgba(10, 10, 12, 0.92) 0%, rgba(17, 17, 19, 0.86) 52%, rgba(10, 10, 12, 0.96) 100%);
     background-position:
       center top,
       0 0;
