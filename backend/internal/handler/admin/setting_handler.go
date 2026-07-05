@@ -550,29 +550,29 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	SiteNameZh                  string                `json:"site_name_zh"`
-	SiteNameEn                  string                `json:"site_name_en"`
-	SiteTitleZh                 string                `json:"site_title_zh"`
-	SiteTitleEn                 string                `json:"site_title_en"`
-	SiteSubtitleZh              string                `json:"site_subtitle_zh"`
-	SiteSubtitleEn              string                `json:"site_subtitle_en"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	UsageRankingLimit           int                   `json:"usage_ranking_limit"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	SiteName                    string                 `json:"site_name"`
+	SiteLogo                    string                 `json:"site_logo"`
+	SiteSubtitle                string                 `json:"site_subtitle"`
+	SiteNameZh                  string                 `json:"site_name_zh"`
+	SiteNameEn                  string                 `json:"site_name_en"`
+	SiteTitleZh                 string                 `json:"site_title_zh"`
+	SiteTitleEn                 string                 `json:"site_title_en"`
+	SiteSubtitleZh              string                 `json:"site_subtitle_zh"`
+	SiteSubtitleEn              string                 `json:"site_subtitle_en"`
+	APIBaseURL                  string                 `json:"api_base_url"`
+	ContactInfo                 string                 `json:"contact_info"`
+	DocURL                      string                 `json:"doc_url"`
+	HomeContent                 string                 `json:"home_content"`
+	HideCcsImportButton         bool                   `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool                  `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string                `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                    `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                  `json:"table_page_size_options"`
+	UsageRankingLimit           int                    `json:"usage_ranking_limit"`
+	CustomMenuItems             *[]dto.CustomMenuItem  `json:"custom_menu_items"`
+	CustomEndpoints             *[]dto.CustomEndpoint  `json:"custom_endpoints"`
 	FooterLinks                 *[]dto.FooterLinkGroup `json:"footer_links"`
-	FooterText                  *string               `json:"footer_text"`
+	FooterText                  *string                `json:"footer_text"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -1563,11 +1563,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	// 底栏链接分组验证
 	const (
-		maxFooterGroups       = 6
-		maxFooterLinksPerGrp  = 10
-		maxFooterLabelLen     = 50
-		maxFooterURLLen       = 2048
-		maxFooterTextLen      = 500
+		maxFooterGroups      = 6
+		maxFooterLinksPerGrp = 10
+		maxFooterLabelLen    = 50
+		maxFooterURLLen      = 2048
+		maxFooterTextLen     = 500
 	)
 
 	footerLinksJSON := previousSettings.FooterLinks
