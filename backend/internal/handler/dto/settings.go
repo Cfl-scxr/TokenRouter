@@ -149,6 +149,8 @@ type SystemSettings struct {
 	UsageRankingLimit           int              `json:"usage_ranking_limit"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	FooterLinks                 []FooterLinkGroup `json:"footer_links"`
+	FooterText                  string           `json:"footer_text"`
 
 	DefaultConcurrency                   int                          `json:"default_concurrency"`
 	DefaultBalance                       float64                      `json:"default_balance"`
@@ -312,6 +314,8 @@ type PublicSettings struct {
 	UsageRankingLimit                int                      `json:"usage_ranking_limit"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
+	FooterLinks                      []FooterLinkGroup        `json:"footer_links"`
+	FooterText                       string                   `json:"footer_text"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -535,4 +539,30 @@ func ParseCustomEndpoints(raw string) []CustomEndpoint {
 		return []CustomEndpoint{}
 	}
 	return items
+}
+
+// FooterLink 首页底栏单条链接。
+type FooterLink struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+// FooterLinkGroup 首页底栏链接分组（一列）。
+type FooterLinkGroup struct {
+	Title string       `json:"title"`
+	Links []FooterLink `json:"links"`
+}
+
+// ParseFooterLinks parses a JSON string into a slice of FooterLinkGroup.
+// Returns empty slice on empty/invalid input.
+func ParseFooterLinks(raw string) []FooterLinkGroup {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []FooterLinkGroup{}
+	}
+	var groups []FooterLinkGroup
+	if err := json.Unmarshal([]byte(raw), &groups); err != nil {
+		return []FooterLinkGroup{}
+	}
+	return groups
 }

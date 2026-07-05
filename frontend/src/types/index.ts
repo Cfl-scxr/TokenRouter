@@ -183,6 +183,16 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface FooterLink {
+  label: string
+  url: string
+}
+
+export interface FooterLinkGroup {
+  title: string
+  links: FooterLink[]
+}
+
 export interface LoginAgreementDocument {
   id: string
   title: string
@@ -225,6 +235,8 @@ export interface PublicSettings {
   usage_ranking_limit: number
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
+  footer_links?: FooterLinkGroup[]
+  footer_text?: string
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean

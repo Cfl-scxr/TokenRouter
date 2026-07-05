@@ -122,8 +122,23 @@
         {{ t('home.stats.unavailable') }}
       </p>
 
+      <!-- Provider icon marquee -->
+      <section class="mx-auto mt-14 max-w-5xl" aria-hidden="true">
+        <div class="home-marquee relative overflow-hidden">
+          <div class="home-marquee-track flex w-max items-center gap-8">
+            <span
+              v-for="(brand, index) in homeMarqueeBrands"
+              :key="`${brand}-${index}`"
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-200/80 bg-white text-gray-700 shadow-sm dark:border-dark-700 dark:bg-dark-900 dark:text-dark-100"
+            >
+              <ProviderIcon :brand="brand" size="17px" />
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section class="mx-auto mt-20 grid max-w-5xl gap-6 md:grid-cols-2">
-        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
           <div class="relative h-48 overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
             <div class="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-110">
               <span
@@ -158,7 +173,7 @@
           </div>
         </article>
 
-        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
           <div class="relative flex h-48 items-center justify-center overflow-hidden border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
             <div class="relative h-full w-full transition-transform duration-500 ease-out group-hover:scale-110">
               <div class="absolute left-1/2 top-7 z-10 max-w-[82%] -translate-x-1/2 truncate rounded-lg bg-gray-100 px-3.5 py-1.5 text-xs font-medium text-gray-800 shadow-sm dark:bg-dark-900 dark:text-dark-100">
@@ -208,7 +223,7 @@
           </div>
         </article>
 
-        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
           <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 p-6 dark:border-dark-800 dark:bg-dark-950">
             <div class="w-full max-w-[220px] rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <div class="mb-4 flex items-center justify-between text-xs text-gray-500 dark:text-dark-400">
@@ -237,7 +252,7 @@
           </div>
         </article>
 
-        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50">
+        <article class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]">
           <div class="flex h-48 items-center justify-center border-b border-gray-200 bg-gray-50 dark:border-dark-800 dark:bg-dark-950">
             <div class="relative flex h-28 w-28 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-500 ease-out group-hover:scale-110 dark:border-dark-700 dark:bg-dark-900">
               <Icon name="shield" size="xl" class="text-gray-400 dark:text-dark-300" />
@@ -305,7 +320,7 @@
             <article
               v-for="provider in supportedProviders.slice(0, 6)"
               :key="provider.key"
-              class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-400 hover:ring-2 hover:ring-primary-400/60 hover:shadow-[0_18px_44px_rgba(14,165,233,0.18)] focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-400/60 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-primary-400 dark:hover:ring-primary-400/50"
+              class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-primary-300 hover:shadow-[0_12px_32px_rgba(13,42,63,0.1)] focus-within:border-primary-300 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]"
             >
               <div class="flex items-start gap-4">
                 <span
@@ -421,13 +436,77 @@
           </article>
         </div>
       </section>
+
+      <!-- CTA -->
+      <section class="mx-auto mt-24 max-w-3xl text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-gray-950 dark:text-white sm:text-4xl">
+          {{ t('home.cta.title') }}
+        </h2>
+        <p class="mx-auto mt-4 max-w-xl text-base leading-7 text-gray-600 dark:text-dark-300">
+          {{ t('home.cta.description') }}
+        </p>
+        <div class="mt-8">
+          <router-link
+            :to="isAuthenticated ? dashboardPath : '/login'"
+            class="inline-flex min-h-[44px] min-w-[180px] items-center justify-center gap-2 rounded-lg bg-primary-600 px-8 py-3 text-sm font-semibold text-white transition hover:bg-primary-700"
+          >
+            {{ isAuthenticated ? t('home.goToDashboard') : t('home.cta.button') }}
+            <Icon name="arrowRight" size="sm" :stroke-width="2" />
+          </router-link>
+        </div>
+      </section>
     </main>
 
-    <footer class="relative z-10 border-t border-gray-200 bg-white/90 px-6 py-8 backdrop-blur dark:border-dark-800 dark:bg-dark-950/90">
-      <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
-        </p>
+    <footer class="relative z-10 border-t border-gray-200 bg-white/90 px-6 py-12 backdrop-blur dark:border-dark-800 dark:bg-dark-950/90">
+      <div class="mx-auto max-w-7xl">
+        <div class="flex flex-col gap-10 lg:flex-row lg:justify-between">
+          <!-- Brand -->
+          <div class="max-w-xs">
+            <div class="flex items-center gap-2.5">
+              <span class="h-8 w-8 shrink-0 overflow-hidden rounded-lg shadow-sm">
+                <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+              </span>
+              <span class="text-sm font-semibold text-gray-950 dark:text-white">{{ siteName }}</span>
+            </div>
+            <p class="mt-4 text-sm text-gray-500 dark:text-dark-400">
+              &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+            </p>
+            <p
+              v-for="(line, index) in footerTextLines"
+              :key="index"
+              class="mt-1 text-xs text-gray-400 dark:text-dark-500"
+            >
+              {{ line }}
+            </p>
+          </div>
+
+          <!-- Link columns -->
+          <div v-if="footerColumns.length" class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:gap-16">
+            <div v-for="column in footerColumns" :key="column.title">
+              <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ column.title }}</h3>
+              <ul class="mt-3 space-y-2">
+                <li v-for="link in column.links" :key="link.label">
+                  <router-link
+                    v-if="link.url.startsWith('/')"
+                    :to="link.url"
+                    class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
+                  >
+                    {{ link.label }}
+                  </router-link>
+                  <a
+                    v-else
+                    :href="link.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
+                  >
+                    {{ link.label }}
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     </footer>
   </div>
@@ -542,6 +621,38 @@ const userInitial = computed(() => {
 })
 
 const currentYear = computed(() => new Date().getFullYear())
+
+// 底栏:管理员配置的链接分组 + 内置"快速链接"列;附加文本按行渲染
+const footerTextLines = computed<string[]>(() => {
+  const raw = appStore.cachedPublicSettings?.footer_text || ''
+  return raw.split('\n').map(line => line.trim()).filter(Boolean)
+})
+
+const footerColumns = computed(() => {
+  const configured = (appStore.cachedPublicSettings?.footer_links || [])
+    .filter(group => group.title && Array.isArray(group.links) && group.links.length > 0)
+    .map(group => ({
+      title: group.title,
+      links: group.links.filter(link => link.label && link.url),
+    }))
+    .filter(group => group.links.length > 0)
+
+  const quickLinks: Array<{ label: string; url: string }> = [
+    { label: t('home.nav.models'), url: '/models' },
+    { label: t('keyUsage.title'), url: '/key-usage' },
+  ]
+  if (docUrl.value) {
+    quickLinks.push({ label: t('home.docs'), url: docUrl.value })
+  }
+
+  return [{ title: t('home.footer.quickLinks'), links: quickLinks }, ...configured]
+})
+
+// 服务商图标滚动条:图标列表复制一份实现无缝循环
+const homeMarqueeBrands = computed(() => {
+  const brands = homeProviderVisuals.value.slice(0, 20)
+  return [...brands, ...brands]
+})
 
 const marketplaceGroups = ref<MarketplaceGroup[]>([])
 const homeStats = ref<MarketplaceStats | null>(null)
@@ -1071,5 +1182,34 @@ onUnmounted(() => {
 .home-marketplace-icon-leave-to {
   opacity: 0;
   transform: translateY(70%);
+}
+
+/* 服务商图标无缝滚动条,两端用渐隐遮罩 */
+.home-marquee {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+}
+
+.home-marquee-track {
+  animation: home-marquee-scroll 48s linear infinite;
+}
+
+.home-marquee:hover .home-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes home-marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-marquee-track {
+    animation: none;
+  }
 }
 </style>
