@@ -459,9 +459,9 @@
 
     <footer class="relative z-10 border-t border-gray-200 bg-white/90 px-6 py-12 backdrop-blur dark:border-dark-800 dark:bg-dark-950/90">
       <div class="mx-auto max-w-7xl">
-        <div class="flex flex-col gap-10 lg:flex-row lg:justify-between">
+        <div class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:flex lg:justify-between lg:gap-8">
           <!-- Brand -->
-          <div class="max-w-xs">
+          <div class="col-span-2 sm:col-span-3 lg:col-auto lg:max-w-[240px] lg:shrink-0">
             <div class="flex items-center gap-2.5">
               <span class="h-8 w-8 shrink-0 overflow-hidden rounded-lg shadow-sm">
                 <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
@@ -481,30 +481,28 @@
           </div>
 
           <!-- Link columns -->
-          <div v-if="footerColumns.length" class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:gap-16">
-            <div v-for="column in footerColumns" :key="column.title">
-              <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ column.title }}</h3>
-              <ul class="mt-3 space-y-2">
-                <li v-for="link in column.links" :key="link.label">
-                  <router-link
-                    v-if="link.url.startsWith('/')"
-                    :to="link.url"
-                    class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
-                  >
-                    {{ link.label }}
-                  </router-link>
-                  <a
-                    v-else
-                    :href="link.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
-                  >
-                    {{ link.label }}
-                  </a>
-                </li>
-              </ul>
-            </div>
+          <div v-for="column in footerColumns" :key="column.title" class="lg:min-w-[140px]">
+            <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ column.title }}</h3>
+            <ul class="mt-4 space-y-2.5">
+              <li v-for="link in column.links" :key="link.label">
+                <router-link
+                  v-if="link.url.startsWith('/')"
+                  :to="link.url"
+                  class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
+                >
+                  {{ link.label }}
+                </router-link>
+                <a
+                  v-else
+                  :href="link.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-sm text-gray-500 transition hover:text-gray-950 dark:text-dark-400 dark:hover:text-white"
+                >
+                  {{ link.label }}
+                </a>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -637,6 +635,11 @@ const footerColumns = computed(() => {
     }))
     .filter(group => group.links.length > 0)
 
+  // 管理员已配置分组时以配置为准;未配置时回退到内置"快速链接"列
+  if (configured.length > 0) {
+    return configured
+  }
+
   const quickLinks: Array<{ label: string; url: string }> = [
     { label: t('home.nav.models'), url: '/models' },
     { label: t('keyUsage.title'), url: '/key-usage' },
@@ -645,7 +648,7 @@ const footerColumns = computed(() => {
     quickLinks.push({ label: t('home.docs'), url: docUrl.value })
   }
 
-  return [{ title: t('home.footer.quickLinks'), links: quickLinks }, ...configured]
+  return [{ title: t('home.footer.quickLinks'), links: quickLinks }]
 })
 
 // 服务商图标滚动条:图标列表复制一份实现无缝循环
