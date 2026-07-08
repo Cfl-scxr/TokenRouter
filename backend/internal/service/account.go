@@ -741,6 +741,9 @@ func resolveFinalModelWhitelist(platform string, credentials map[string]any, map
 			return extractExplicitFinalModelWhitelist(platform, rawWhitelist), true
 		}
 	}
+	if platform == PlatformQoder {
+		return nil, false
+	}
 	return extractFinalModelWhitelist(platform, mapping), false
 }
 
@@ -753,6 +756,15 @@ func isModelInFinalWhitelist(platform, model string, whitelist map[string]struct
 	if _, ok := whitelist[model]; ok {
 		return true
 	}
+	if platform == PlatformQoder {
+		modelKey := normalizeQoderModelForWhitelist(model)
+		for allowedModel := range whitelist {
+			if normalizeQoderModelForWhitelist(allowedModel) == modelKey {
+				return true
+			}
+		}
+		return false
+	}
 	normalized := normalizeRequestedModelForLookup(platform, model)
 	if normalized == model {
 		return false
@@ -761,13 +773,24 @@ func isModelInFinalWhitelist(platform, model string, whitelist map[string]struct
 	return ok
 }
 
+func normalizeQoderModelForWhitelist(model string) string {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return ""
+	}
+	if info, ok := lookupQoderModelAlias(trimmed); ok {
+		return strings.TrimSpace(info.Key)
+	}
+	return trimmed
+}
+
 // IsModelSupported 检查账号是否支持该请求模型。
 // 规则：
 // 1. 未配置 model_mapping 时，直接按最终白名单（model_whitelist）判断；未配置白名单则允许所有模型；
 // 2. 已配置时，若请求模型命中映射/透传规则，则先映射，再对映射后的最终模型做白名单校验；
 // 3. 若请求模型未命中映射，则把它当作隐式透传模型，直接按最终模型做白名单校验；
 // 4. 当不存在任何白名单时，mapping 仅作为可选改写规则，不限制请求模型。
-// 5. 为兼容旧数据，若未配置独立 model_whitelist，会继续把精确自映射条目视作最终白名单。
+// 5. 为兼容旧数据，非 Qoder 平台若未配置独立 model_whitelist，会继续把精确自映射条目视作最终白名单。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	// Antigravity 仍保持“请求模型命中映射即可支持”的既有语义。
@@ -798,6 +821,9 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 func (a *Account) GetConfiguredRequestModels() []string {
 	mapping := a.GetModelMapping()
 	whitelist, _ := resolveFinalModelWhitelist(a.Platform, a.Credentials, mapping)
+	if a.Platform == PlatformQoder {
+		return configuredQoderRequestModels(mapping, whitelist)
+	}
 	if len(whitelist) == 0 {
 		return nil
 	}
@@ -810,6 +836,39 @@ func (a *Account) GetConfiguredRequestModels() []string {
 	// 无论白名单来自显式字段还是 legacy 自映射，白名单模型本身都可直接请求。
 	for model := range whitelist {
 		modelSet[model] = struct{}{}
+	}
+	models := make([]string, 0, len(modelSet))
+	for model := range modelSet {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models
+}
+
+// configuredQoderRequestModels 将 model_mapping key 作为 Qoder 请求和展示模型集合。
+// 如果没有配置 mapping，model_whitelist 仍可作为仅白名单账号的显式请求模型列表。
+func configuredQoderRequestModels(mapping map[string]string, whitelist map[string]struct{}) []string {
+	if len(mapping) == 0 && len(whitelist) == 0 {
+		return nil
+	}
+	modelSet := make(map[string]struct{}, len(mapping)+len(whitelist))
+	if len(mapping) > 0 {
+		for rawModel := range mapping {
+			model := strings.TrimSpace(rawModel)
+			if model != "" {
+				modelSet[model] = struct{}{}
+			}
+		}
+	} else {
+		for rawModel := range whitelist {
+			model := strings.TrimSpace(rawModel)
+			if model != "" {
+				modelSet[model] = struct{}{}
+			}
+		}
+	}
+	if len(modelSet) == 0 {
+		return nil
 	}
 	models := make([]string, 0, len(modelSet))
 	for model := range modelSet {
@@ -1240,6 +1299,14 @@ func (a *Account) IsOpenAI() bool {
 
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
+}
+
+func (a *Account) IsQoder() bool {
+	return a.Platform == PlatformQoder
+}
+
+func (a *Account) IsQoderCosy() bool {
+	return a.IsQoder() && a.Type == AccountTypeCosy
 }
 
 func (a *Account) IsOpenAIOAuth() bool {
@@ -1870,7 +1937,7 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 }
 
 // SupportsTLSFingerprint 返回账号是否支持 TLS 指纹伪装。
-// 当前仅 Anthropic OAuth/SetupToken 与 OpenAI OAuth 支持，OpenAI API Key 不开放。
+// 当前支持 Anthropic OAuth/SetupToken、OpenAI OAuth 与 Qoder COSY。
 func (a *Account) SupportsTLSFingerprint() bool {
 	if a == nil {
 		return false
@@ -1878,7 +1945,7 @@ func (a *Account) SupportsTLSFingerprint() bool {
 	if a.IsAnthropicOAuthOrSetupToken() {
 		return true
 	}
-	return a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth
+	return (a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth) || a.IsQoderCosy()
 }
 
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装

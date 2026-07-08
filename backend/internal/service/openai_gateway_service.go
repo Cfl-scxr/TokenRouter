@@ -6787,6 +6787,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result.BillingModel != "" {
 		billingModel = strings.TrimSpace(result.BillingModel)
 	}
+	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
+		billingModel = result.UpstreamModel
+	}
 	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
 		billingModel = input.ChannelMappedModel
 	}
@@ -6924,10 +6927,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.SubscriptionID = &subscription.ID
 	}
 
-	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
+	// 计算账号统计定价费用（Qoder 会先按原始请求 alias、再按渠道 route key / 最终 upstream 匹配自定义规则）
 	if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+			account.ID, *apiKey.GroupID, result.UpstreamModel, requestedModel, input.ChannelMappedModel,
 			tokens, cost.TotalCost,
 		)
 	}

@@ -157,6 +157,48 @@ func (p *ChannelModelPricing) GetTierByLabel(label string) *PricingInterval {
 	return nil
 }
 
+// HasEffectivePricing 判断该行是否配置了明确价格。
+// nil 价格指针表示“未配置”；指向 0 的指针表示显式免费价格，因此仍然有效。
+func (p *ChannelModelPricing) HasEffectivePricing() bool {
+	if p == nil {
+		return false
+	}
+	mode := p.BillingMode
+	if mode == "" {
+		mode = BillingModeToken
+	}
+	switch mode {
+	case BillingModePerRequest, BillingModeImage:
+		if p.PerRequestPrice != nil {
+			return true
+		}
+		for i := range p.Intervals {
+			if p.Intervals[i].PerRequestPrice != nil {
+				return true
+			}
+		}
+		return false
+	default:
+		if p.InputPrice != nil ||
+			p.OutputPrice != nil ||
+			p.CacheWritePrice != nil ||
+			p.CacheReadPrice != nil ||
+			p.ImageOutputPrice != nil {
+			return true
+		}
+		for i := range p.Intervals {
+			iv := p.Intervals[i]
+			if iv.InputPrice != nil ||
+				iv.OutputPrice != nil ||
+				iv.CacheWritePrice != nil ||
+				iv.CacheReadPrice != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Clone 返回 ChannelModelPricing 的拷贝（切片独立，指针字段共享，调用方只读安全）
 func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	cp := p

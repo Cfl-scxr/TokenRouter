@@ -61,6 +61,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
+	"qoder_quota_snapshot":       {},
+	"qoder_quota_updated_at":     {},
 	"session_window_utilization": {},
 }
 
@@ -684,8 +686,10 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 		FROM accounts
 		WHERE deleted_at IS NULL
 			AND status = 'active'
-			AND type = 'oauth'
-			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
+			AND (
+				(type = 'oauth' AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity'))
+				OR (platform = 'qoder' AND type = 'cosy')
+			)
 			AND credentials ? 'refresh_token'
 			AND btrim(credentials->>'refresh_token') <> ''
 			AND (

@@ -322,6 +322,7 @@ export default {
     no: 'No',
     all: 'All',
     none: 'None',
+    or: 'or',
     noData: 'No data',
     expand: 'Expand',
     collapse: 'Collapse',
@@ -2239,6 +2240,7 @@ export default {
         usageOpenAI: 'Usage (OpenAI)',
         usageGemini: 'Usage (Gemini)',
         usageAntigravity: 'Usage (Antigravity)',
+        usageQoder: 'Usage (Qoder)',
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
@@ -2620,6 +2622,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        qoder: 'Qoder',
         grok: 'Grok',
       },
       deleteConfirm:
@@ -3039,6 +3042,7 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      addQoderAccount: 'Add Qoder',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',
@@ -3154,6 +3158,7 @@ export default {
         openai: 'OpenAI',
         gemini: 'Gemini',
         antigravity: 'Antigravity',
+        qoder: 'Qoder',
         grok: 'Grok',
       },
       types: {
@@ -3165,6 +3170,7 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
+        qoderCosy: 'Qoder COSY',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
       },
@@ -3925,6 +3931,24 @@ export default {
           failedToValidateRT: 'Failed to validate Grok refresh token',
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
+        qoder: {
+          title: 'Qoder Account Authorization',
+          followSteps: 'Follow these steps to authorize your Qoder account:',
+          step1GenerateUrl: 'Generate the authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, choose your Qoder account, and authorize.',
+          importantNotice: 'Qoder uses a device authorization flow. This page opens the Qoder authorization window and checks completion automatically. A localhost callback URL is not expected for this flow.',
+          step3EnterCode: 'Complete Authorization',
+          authCodeDesc: 'After browser authorization, this page will complete automatically. If automatic checking is interrupted, click Complete Authorization to retry the device status check.',
+          authCode: 'Manual callback input (optional)',
+          authCodePlaceholder: 'Usually leave this empty for Qoder device authorization',
+          authCodeHint: 'Qoder authorization is checked by polling the device session; localhost callback capture is not required.',
+          failedToGenerateUrl: 'Failed to generate Qoder auth URL',
+          missingExchangeParams: 'Missing session ID or state',
+          failedToExchangeCode: 'Failed to check Qoder authorization',
+          popupBlocked: 'The browser blocked the Qoder authorization popup. Use the open-link button to continue authorization.'
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -4146,7 +4170,29 @@ export default {
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
+      qoderAccount: 'Qoder Account',
       grokAccount: 'Grok Account',
+      qoder: {
+        accountType: {
+          oauthTitle: 'Authorization Link',
+          oauthDesc: 'Recommended: complete Qoder login in the browser.',
+          manualTitle: 'Manual Credentials',
+          manualDesc: 'Import a PAT, or import an existing token and machine_id.'
+        },
+        pat: 'Qoder PAT (optional)',
+        patHint: 'When a PAT is provided, the backend bootstraps the COSY session; leave it empty to use an existing token and machine_id below.',
+        securityOauthToken: 'Security OAuth Token',
+        securityOauthTokenHint: 'Existing Qoder security_oauth_token, usually starting with dt-.',
+        machineId: 'Machine ID',
+        machineIdHint: 'Required together with security_oauth_token.',
+        uidAid: 'Qoder UID / AID',
+        uidAidHint: 'Required for COSY headers. Enter the UID or AID from the same Qoder account.',
+        refreshToken: 'Refresh Token (optional)',
+        userType: 'User Type (optional)',
+        pleaseEnterSecurityOauthToken: 'Please enter Security OAuth Token',
+        pleaseEnterMachineId: 'Please enter Machine ID',
+        pleaseEnterUidAid: 'Please enter Qoder UID / AID'
+      },
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       inviteReset: 'Invite Reset',

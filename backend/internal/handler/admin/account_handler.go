@@ -23,6 +23,7 @@ import (
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/geminicli"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/response"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/timezone"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
@@ -60,6 +61,14 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+}
+
+type qoderAdminTokenRefresher interface {
+	Refresh(ctx context.Context, account *service.Account) (map[string]any, error)
+}
+
+var newQoderTokenRefresherForAdmin = func(adminService service.AdminService, qoderOAuthService *service.QoderOAuthService) qoderAdminTokenRefresher {
+	return service.NewQoderTokenRefresherForAdmin(adminService, qoderOAuthService)
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -102,7 +111,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account cosy"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -121,7 +130,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account cosy"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -880,7 +889,7 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 // refreshSingleAccount refreshes credentials for a single OAuth account.
 // Returns (updatedAccount, warning, error) where warning is used for Antigravity ProjectIDMissing scenario.
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
-	if !account.IsOAuth() {
+	if !account.IsOAuth() && !account.IsQoderCosy() {
 		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
 	}
 	// spark 影子凭据由母账号管理、自身恒空,刷新无意义且会先打上游;在调用上游前早拒
@@ -892,7 +901,14 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 
 	var newCredentials map[string]any
 
-	if account.IsOpenAI() {
+	if account.IsQoderCosy() {
+		refresher := newQoderTokenRefresherForAdmin(h.adminService, nil)
+		credentials, err := refresher.Refresh(ctx, account)
+		if err != nil {
+			return nil, "", err
+		}
+		newCredentials = credentials
+	} else if account.IsOpenAI() {
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
@@ -1170,7 +1186,7 @@ func (h *AccountHandler) ClearError(c *gin.Context) {
 
 	// 清除错误后，同时清除 token 缓存，确保下次请求会获取最新的 token（触发刷新或从 DB 读取）
 	// 这解决了管理员重置账号状态后，旧的失效 token 仍在缓存中导致立即再次 401 的问题
-	if h.tokenCacheInvalidator != nil && account.IsOAuth() {
+	if h.tokenCacheInvalidator != nil {
 		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), account); invalidateErr != nil {
 			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
 		}
@@ -1236,7 +1252,7 @@ func (h *AccountHandler) BatchClearError(c *gin.Context) {
 			}
 
 			// 清除错误后，同时清除 token 缓存
-			if h.tokenCacheInvalidator != nil && account.IsOAuth() {
+			if h.tokenCacheInvalidator != nil {
 				if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(gctx, account); invalidateErr != nil {
 					log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
 				}
@@ -1402,6 +1418,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,
+				LoadFactor:            item.LoadFactor,
 				GroupIDs:              item.GroupIDs,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
@@ -2114,6 +2131,38 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// 处理 Qoder COSY 账号。
+	if account.IsQoder() {
+		requestModels := account.GetConfiguredRequestModels()
+		if len(requestModels) == 0 {
+			response.Success(c, qoder.DefaultModels)
+			return
+		}
+
+		var models []qoder.Model
+		for _, requestedModel := range requestModels {
+			var found bool
+			for _, dm := range qoder.DefaultModels {
+				if dm.ID == requestedModel {
+					models = append(models, dm)
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, qoder.Model{
+					ID:          requestedModel,
+					Type:        "model",
+					DisplayName: requestedModel,
+					CreatedAt:   "",
+				})
+			}
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// 处理 Grok/xAI 账号。
 	if account.Platform == service.PlatformGrok {
 		defaultModels := xai.DefaultModels()
 		requestModels := account.GetConfiguredRequestModels()

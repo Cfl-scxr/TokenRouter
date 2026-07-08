@@ -5337,8 +5337,7 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 	}
 	parsed := map[string]*DefaultPlatformQuotaSetting{}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		slog.Warn("[Setting] unmarshal default_platform_quotas failed (fail-open)", "error", err)
-		return out, nil
+		return out, nil // 配置损坏 fail-open，避免注册失败
 	}
 	for _, platform := range AllowedQuotaPlatforms {
 		if v := parsed[platform]; v != nil {

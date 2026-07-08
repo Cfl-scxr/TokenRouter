@@ -1483,6 +1483,45 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenM
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
 }
 
+func TestOpenAIGatewayServiceRecordUsage_UpstreamBillingSourceOverridesRequestedModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.4-mini", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_upstream_billing",
+			Model:         "gpt-5.4",
+			BillingModel:  "gpt-5.4",
+			UpstreamModel: "gpt-5.4-mini",
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "gpt-5.4",
+			ChannelMappedModel: "gpt-5.4",
+			BillingModelSource: BillingModelSourceUpstream,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+}
+
 func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -2058,7 +2097,11 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 		context.Background(),
 		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: "1K"},
 		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
+		nil,
 		"gemini-image",
+		"gemini-image",
+		"",
+		"",
 		0.15,
 		1.0,
 		nil,
@@ -2097,7 +2140,11 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 		context.Background(),
 		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: "4K"},
 		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
+		nil,
 		"gemini-image",
+		"gemini-image",
+		"",
+		"",
 		1.0,
 		1.0,
 		nil,
@@ -2136,7 +2183,11 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 		context.Background(),
 		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: ""},
 		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
+		nil,
 		"gemini-image",
+		"gemini-image",
+		"",
+		"",
 		1.0,
 		1.0,
 		nil,

@@ -77,6 +77,23 @@ const antigravityModels = [
   'tab_flash_lite_preview'
 ]
 
+// Qoder 上游模型变化较快。账号级 model_mapping 的 key 才是 Qoder
+// 前端/客户端应展示的请求模型；这里仅保留创建账号时的快捷候选。
+const qoderModels = [
+  'claude-opus-4-6',
+  'auto',
+  'performance',
+  'efficient',
+  'lite',
+  'qwen3.7-max',
+  'qwen3.7-plus',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'glm-5.2',
+  'kimi-k2.7-code',
+  'minimax-m3'
+]
+
 // 智谱 GLM
 const zhipuModels = [
   'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
@@ -209,10 +226,11 @@ const perplexityModels = [
 ]
 
 // 所有模型（去重）
-const allModelsList: string[] = [
+const allModelsList: string[] = Array.from(new Set([
   ...openaiModels,
   ...claudeModels,
   ...geminiModels,
+  ...qoderModels,
   ...zhipuModels,
   ...qwenModels,
   ...deepseekModels,
@@ -228,7 +246,7 @@ const allModelsList: string[] = [
   ...sparkModels,
   ...hunyuanModels,
   ...perplexityModels
-]
+]))
 
 // 转换为下拉选项格式
 export const allModels = allModelsList.map(m => ({ value: m, label: m }))
@@ -276,6 +294,25 @@ const geminiPresetMappings = [
   { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
 ]
 
+const qoderPresetMappings = [
+  { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'ultimate', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Auto', from: 'auto', to: 'auto', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Performance', from: 'performance', to: 'performance', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'Efficient', from: 'efficient', to: 'efficient', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'Lite', from: 'lite', to: 'lite', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Qwen 3.7 Max', from: 'qwen3.7-max', to: 'qmodel_latest', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
+  { label: 'Qwen 3.7 Plus', from: 'qwen3.7-plus', to: 'qmodel', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'DeepSeek V4 Pro', from: 'deepseek-v4-pro', to: 'dmodel', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
+  { label: 'DeepSeek V4 Flash', from: 'deepseek-v4-flash', to: 'dfmodel', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
+  { label: 'GLM 5.2', from: 'glm-5.2', to: 'gm51model', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Kimi K2.7 Code', from: 'kimi-k2.7-code', to: 'kmodel', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: 'MiniMax M3', from: 'minimax-m3', to: 'mmodel', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' }
+]
+
+const qoderModelKeyByAlias: Record<string, string> = Object.fromEntries(
+  qoderPresetMappings.map(({ from, to }) => [from, to])
+)
+
 const grokPresetMappings = [
   { label: 'Grok 4.3', from: 'grok-4.3', to: 'grok-4.3', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
   { label: 'Grok Latest', from: 'grok-latest', to: 'grok-4.3', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
@@ -283,7 +320,6 @@ const grokPresetMappings = [
   { label: '4.20 Reasoning', from: 'grok-4.20-reasoning', to: 'grok-4.20-0309-reasoning', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' }
 ]
-
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
   // Claude 通配符映射
@@ -378,6 +414,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
+    case 'qoder': return qoderModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -404,6 +441,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
+  if (platform === 'qoder') return qoderPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
 }
@@ -547,6 +585,33 @@ export function buildPersistedModelRestriction(
   return {
     modelMapping,
     modelWhitelist
+  }
+}
+
+export function qoderModelKeyByPublicAlias(alias: string): string | undefined {
+  return qoderModelKeyByAlias[alias.trim()]
+}
+
+export function splitQoderPersistedModelRestriction(
+  existingMappings?: Record<string, string>,
+  rawWhitelist?: unknown
+): { allowedModels: string[]; modelMappings: { from: string; to: string }[] } {
+  const modelMappings: { from: string; to: string }[] = []
+
+  if (existingMappings && typeof existingMappings === 'object') {
+    for (const [rawFrom, rawTo] of Object.entries(existingMappings)) {
+      const from = rawFrom.trim()
+      const to = String(rawTo).trim()
+      if (!from || !to) {
+        continue
+      }
+      modelMappings.push({ from, to })
+    }
+  }
+
+  return {
+    allowedModels: normalizeModelWhitelist(rawWhitelist),
+    modelMappings
   }
 }
 

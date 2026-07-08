@@ -142,7 +142,7 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector :model-value="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" @update:model-value="setAllowedModels" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -422,9 +422,9 @@
 
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OAuth/COSY 模型映射：这类账号没有 apikey 容器，需要独立的模型映射区域 -->
       <div
-        v-if="account.platform === 'openai' && account.type === 'oauth'"
+        v-if="supportsOAuthLikeModelRestriction"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -472,7 +472,12 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector
+              :model-value="allowedModels"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              @update:modelValue="setAllowedModels"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{
@@ -671,7 +676,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector :model-value="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" @update:model-value="setAllowedModels" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{
@@ -896,7 +901,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <ModelWhitelistSelector :model-value="allowedModels" platform="anthropic" @update:model-value="setAllowedModels" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -1714,9 +1719,9 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth TLS 指纹伪装 -->
+      <!-- OAuth/COSY TLS 指纹伪装 -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        v-if="showStandaloneTLSFingerprint"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -1749,7 +1754,7 @@
             data-testid="edit-openai-tls-fingerprint-profile"
             :options="tlsFingerprintProfileOptions"
           />
-          <div>
+          <div v-if="supportsTLSFingerprintRouter">
             <Select
               v-model="tlsFingerprintRouterId"
               data-testid="edit-openai-tls-fingerprint-router"
@@ -2478,6 +2483,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   buildPersistedModelRestriction,
+  splitQoderPersistedModelRestriction,
   splitPersistedModelRestriction,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
@@ -2549,6 +2555,10 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const qoderModelRestrictionConfigured = ref(false)
+const qoderModelRestrictionTouched = ref(false)
+const qoderModelWhitelistConfigured = ref(false)
+const qoderModelWhitelistTouched = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -2696,12 +2706,31 @@ const {
 } = useQuotaNotifyState()
 
 const supportsTLSFingerprint = (account: Account | null | undefined) => {
-  // TLS 指纹伪装仅开放给 Anthropic OAuth/SetupToken 和 OpenAI OAuth。
+  // TLS 指纹伪装开放给实际走 OAuth/COSY 客户端模拟链路的账号。
   return !!account && (
     (account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')) ||
-    (account.platform === 'openai' && account.type === 'oauth')
+    (account.platform === 'openai' && account.type === 'oauth') ||
+    (account.platform === 'qoder' && account.type === 'cosy')
   )
 }
+
+const isQoderCosyAccount = computed(() =>
+  props.account?.platform === 'qoder' && props.account?.type === 'cosy'
+)
+const supportsOAuthLikeModelRestriction = computed(() =>
+  (props.account?.platform === 'openai' && props.account?.type === 'oauth') ||
+  isQoderCosyAccount.value
+)
+const isAnthropicOAuthLikeAccount = computed(() =>
+  props.account?.platform === 'anthropic' &&
+  (props.account?.type === 'oauth' || props.account?.type === 'setup-token')
+)
+const supportsTLSFingerprintRouter = computed(() =>
+  props.account?.platform === 'openai' && props.account?.type === 'oauth'
+)
+const showStandaloneTLSFingerprint = computed(() =>
+  supportsTLSFingerprint(props.account) && !isAnthropicOAuthLikeAccount.value
+)
 
 // Load global feature states once
 adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
@@ -3019,10 +3048,57 @@ const hydrateModelRestrictionFromMapping = (
   modelRestrictionMode.value = parsed.modelMappings.length > 0 ? 'mapping' : 'whitelist'
 }
 
+const hasConfiguredModelRestriction = (
+  existingMappings?: Record<string, string>,
+  rawWhitelist?: unknown
+) =>
+  (!!existingMappings && typeof existingMappings === 'object' && Object.keys(existingMappings).length > 0) ||
+  Array.isArray(rawWhitelist)
+
+const hydrateQoderModelRestrictionFromMapping = (
+  existingMappings?: Record<string, string>,
+  rawWhitelist?: unknown
+) => {
+  qoderModelRestrictionConfigured.value = hasConfiguredModelRestriction(existingMappings, rawWhitelist)
+  qoderModelWhitelistConfigured.value = Array.isArray(rawWhitelist)
+  qoderModelRestrictionTouched.value = false
+  qoderModelWhitelistTouched.value = false
+  if (!qoderModelRestrictionConfigured.value) {
+    allowedModels.value = []
+    modelMappings.value = []
+    modelRestrictionMode.value = 'mapping'
+    return
+  }
+
+  const parsed = splitQoderPersistedModelRestriction(existingMappings, rawWhitelist)
+  allowedModels.value = parsed.allowedModels
+  modelMappings.value = parsed.modelMappings
+  modelRestrictionMode.value = modelMappings.value.length > 0 ? 'mapping' : 'whitelist'
+}
+
 const applyPersistedModelRestriction = (credentials: Record<string, unknown>) => {
   // 普通账号将请求侧映射与最终白名单分开持久化。
   // 这里即使白名单为空，也要显式写入 []，避免后端回退到 legacy 的自映射白名单解析。
   const persisted = buildPersistedModelRestriction(allowedModels.value, modelMappings.value)
+  if (persisted.modelMapping) {
+    credentials.model_mapping = persisted.modelMapping
+  } else {
+    delete credentials.model_mapping
+  }
+  credentials.model_whitelist = persisted.modelWhitelist
+}
+
+const applyQoderModelRestriction = (credentials: Record<string, unknown>) => {
+  if (!qoderModelRestrictionConfigured.value && !qoderModelRestrictionTouched.value) {
+    delete credentials.model_mapping
+    delete credentials.model_whitelist
+    return
+  }
+
+  const persisted = buildPersistedModelRestriction(
+    qoderModelWhitelistConfigured.value || qoderModelWhitelistTouched.value ? allowedModels.value : [],
+    modelMappings.value
+  )
   if (persisted.modelMapping) {
     credentials.model_mapping = persisted.modelMapping
   } else {
@@ -3336,11 +3412,19 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI OAuth accounts
-    if (newAccount.platform === 'openai' && newAccount.credentials) {
+    // 加载 OpenAI OAuth 和 Qoder COSY 账号的模型映射。
+    if (
+      ((newAccount.platform === 'openai' && newAccount.type === 'oauth') ||
+        (newAccount.platform === 'qoder' && newAccount.type === 'cosy')) &&
+      newAccount.credentials
+    ) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
-      hydrateModelRestrictionFromMapping(existingMappings, oauthCredentials.model_whitelist)
+      if (newAccount.platform === 'qoder') {
+        hydrateQoderModelRestrictionFromMapping(existingMappings, oauthCredentials.model_whitelist)
+      } else {
+        hydrateModelRestrictionFromMapping(existingMappings, oauthCredentials.model_whitelist)
+      }
     } else {
       hydrateModelRestrictionFromMapping()
     }
@@ -3394,15 +3478,32 @@ watch(
 )
 
 // Model mapping helpers
+const touchQoderModelRestriction = () => {
+  if (isQoderCosyAccount.value) {
+    qoderModelRestrictionTouched.value = true
+  }
+}
+
+const setAllowedModels = (models: string[]) => {
+  touchQoderModelRestriction()
+  if (isQoderCosyAccount.value) {
+    qoderModelWhitelistTouched.value = true
+  }
+  allowedModels.value = models
+}
+
 const addModelMapping = () => {
+  touchQoderModelRestriction()
   modelMappings.value.push({ from: '', to: '' })
 }
 
 const removeModelMapping = (index: number) => {
+  touchQoderModelRestriction()
   modelMappings.value.splice(index, 1)
 }
 
 const addPresetMapping = (from: string, to: string) => {
+  touchQoderModelRestriction()
   const exists = modelMappings.value.some((m) => m.from === from)
   if (exists) {
     appStore.showInfo(t('admin.accounts.mappingExists', { model: from }))
@@ -3599,6 +3700,26 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   return true
 }
 
+const applyTLSFingerprintExtra = (extra: Record<string, unknown>) => {
+  if (tlsFingerprintEnabled.value) {
+    extra.enable_tls_fingerprint = true
+    if (tlsFingerprintProfileId.value) {
+      extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
+    } else {
+      delete extra.tls_fingerprint_profile_id
+    }
+    if (supportsTLSFingerprintRouter.value && tlsFingerprintRouterId.value) {
+      extra.tls_fingerprint_router_id = tlsFingerprintRouterId.value
+    } else {
+      delete extra.tls_fingerprint_router_id
+    }
+  } else {
+    delete extra.enable_tls_fingerprint
+    delete extra.tls_fingerprint_profile_id
+    delete extra.tls_fingerprint_router_id
+  }
+}
+
 function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   tempUnschedEnabled.value = credentials?.temp_unschedulable_enabled === true
   const rawRules = credentials?.temp_unschedulable_rules
@@ -3643,9 +3764,13 @@ function loadQuotaControlSettings(account: Account) {
 
   // TLS 指纹伪装跨 Anthropic OAuth/SetupToken 与 OpenAI OAuth 复用同一组字段。
   if (supportsTLSFingerprint(account)) {
-    tlsFingerprintEnabled.value = account.enable_tls_fingerprint === true
-    tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
-    tlsFingerprintRouterId.value = account.tls_fingerprint_router_id ?? null
+    const extra = account.extra as Record<string, unknown> | undefined
+    tlsFingerprintEnabled.value =
+      account.enable_tls_fingerprint === true || extra?.enable_tls_fingerprint === true
+    tlsFingerprintProfileId.value =
+      account.tls_fingerprint_profile_id ?? toPositiveOrSpecialID(extra?.tls_fingerprint_profile_id)
+    tlsFingerprintRouterId.value =
+      account.tls_fingerprint_router_id ?? toPositiveOrSpecialID(extra?.tls_fingerprint_router_id)
   }
 
   // Remaining quota control settings only apply to Anthropic accounts
@@ -3724,6 +3849,14 @@ const splitTempUnschedKeywords = (value: string) => {
 function toPositiveNumber(value: unknown) {
   const num = Number(value)
   if (!Number.isFinite(num) || num <= 0) {
+    return null
+  }
+  return Math.trunc(num)
+}
+
+function toPositiveOrSpecialID(value: unknown) {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num === 0) {
     return null
   }
   return Math.trunc(num)
@@ -3895,7 +4028,11 @@ const handleSubmit = async () => {
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
-        applyPersistedModelRestriction(newCredentials)
+        if (props.account.platform === 'qoder') {
+          applyQoderModelRestriction(newCredentials)
+        } else {
+          applyPersistedModelRestriction(newCredentials)
+        }
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
         if ('model_whitelist' in currentCredentials) {
@@ -4077,14 +4214,21 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI OAuth: persist model mapping to credentials
-    if (props.account.platform === 'openai' && props.account.type === 'oauth') {
-      const currentCredentials = isSparkShadow.value
+    // OpenAI OAuth / Qoder COSY：将模型映射保存到 credentials。
+    if (supportsOAuthLikeModelRestriction.value) {
+      const currentCredentials = props.account.platform === 'openai' && isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
           ((props.account.credentials as Record<string, unknown>) || {})
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
-      applyOpenAIModelMappingCredentials(newCredentials)
+
+      if (props.account.platform === 'qoder') {
+        applyQoderModelRestriction(newCredentials)
+      } else if (props.account.platform === 'openai') {
+        applyOpenAIModelMappingCredentials(newCredentials)
+      } else {
+        applyPersistedModelRestriction(newCredentials)
+      }
 
       updatePayload.credentials = newCredentials
     }
@@ -4243,6 +4387,13 @@ const handleSubmit = async () => {
       } else {
         newExtra.web_search_emulation = webSearchEmulationMode.value
       }
+      updatePayload.extra = newExtra
+    }
+
+    if (isQoderCosyAccount.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      applyTLSFingerprintExtra(newExtra)
       updatePayload.extra = newExtra
     }
 

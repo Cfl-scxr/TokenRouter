@@ -513,7 +513,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
 export type MarketplacePricingMode = 'token' | 'image' | 'unknown'
 export type MarketplacePriceStatus = 'priced' | 'unpriced'
 
@@ -851,8 +851,8 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
-export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
+export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account' | 'cosy'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
@@ -1155,6 +1155,47 @@ export interface AccountUsageInfo {
     amount?: number
     minimum_balance?: number
   }> | null
+  qoder_quota?: {
+    user_type?: string
+    usage_type?: string
+    total_usage_percentage?: number
+    is_quota_exceeded?: boolean
+    expires_at?: string | null
+    upgrade_url?: string
+    user_quota?: {
+      total?: number
+      used?: number
+      remaining?: number
+      percentage?: number
+      unit?: string
+      detail_url?: string
+      cap?: number
+      available?: boolean
+    } | null
+    add_on_quota?: {
+      total?: number
+      used?: number
+      remaining?: number
+      percentage?: number
+      unit?: string
+      detail_url?: string
+      cap?: number
+      available?: boolean
+    } | null
+    org_resource_package?: {
+      total?: number
+      used?: number
+      remaining?: number
+      percentage?: number
+      unit?: string
+      detail_url?: string
+      cap?: number
+      available?: boolean
+    } | null
+    is_plan_quota_prorated?: boolean
+    last_updated_at?: string | null
+    snapshot_from_account?: boolean
+  } | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean
   forbidden_reason?: string

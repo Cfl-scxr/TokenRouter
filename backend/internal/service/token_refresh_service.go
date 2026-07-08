@@ -50,7 +50,56 @@ func NewTokenRefreshService(
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
 	tempUnschedCache TempUnschedCache,
-	grokOAuthServices ...*GrokOAuthService,
+	qoderOAuthServices []*QoderOAuthService,
+	grokOAuthServices []*GrokOAuthService,
+) *TokenRefreshService {
+	var qoderOAuthService *QoderOAuthService
+	if len(qoderOAuthServices) > 0 {
+		qoderOAuthService = qoderOAuthServices[0]
+	}
+	var grokOAuthService *GrokOAuthService
+	if len(grokOAuthServices) > 0 {
+		grokOAuthService = grokOAuthServices[0]
+	}
+	return newTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, qoderOAuthService, grokOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, nil, nil)
+}
+
+func NewTokenRefreshServiceWithHTTPUpstream(
+	accountRepo AccountRepository,
+	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
+	geminiOAuthService *GeminiOAuthService,
+	antigravityOAuthService *AntigravityOAuthService,
+	cacheInvalidator TokenCacheInvalidator,
+	schedulerCache SchedulerCache,
+	cfg *config.Config,
+	tempUnschedCache TempUnschedCache,
+	qoderOAuthService *QoderOAuthService,
+	grokOAuthServices []*GrokOAuthService,
+	httpUpstream HTTPUpstream,
+	tlsFPProfileService *TLSFingerprintProfileService,
+) *TokenRefreshService {
+	var grokOAuthService *GrokOAuthService
+	if len(grokOAuthServices) > 0 {
+		grokOAuthService = grokOAuthServices[0]
+	}
+	return newTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, qoderOAuthService, grokOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, httpUpstream, tlsFPProfileService)
+}
+
+func newTokenRefreshService(
+	accountRepo AccountRepository,
+	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
+	geminiOAuthService *GeminiOAuthService,
+	antigravityOAuthService *AntigravityOAuthService,
+	qoderOAuthService *QoderOAuthService,
+	grokOAuthService *GrokOAuthService,
+	cacheInvalidator TokenCacheInvalidator,
+	schedulerCache SchedulerCache,
+	cfg *config.Config,
+	tempUnschedCache TempUnschedCache,
+	httpUpstream HTTPUpstream,
+	tlsFPProfileService *TLSFingerprintProfileService,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
@@ -67,10 +116,7 @@ func NewTokenRefreshService(
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
 	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
-	var grokOAuthService *GrokOAuthService
-	if len(grokOAuthServices) > 0 {
-		grokOAuthService = grokOAuthServices[0]
-	}
+	qoderRefresher := NewQoderTokenRefresherWithHTTPUpstream(qoderOAuthService, httpUpstream, tlsFPProfileService)
 	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
 
 	// 注册平台特定的刷新器（TokenRefresher 接口）
@@ -79,6 +125,7 @@ func NewTokenRefreshService(
 		openAIRefresher,
 		geminiRefresher,
 		agRefresher,
+		qoderRefresher,
 		grokRefresher,
 	}
 
@@ -88,6 +135,7 @@ func NewTokenRefreshService(
 		openAIRefresher,
 		geminiRefresher,
 		agRefresher,
+		qoderRefresher,
 		grokRefresher,
 	}
 
@@ -405,7 +453,7 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 		}
 	}
 	// 对所有 OAuth 账号调用缓存失效（InvalidateToken 内部根据平台判断是否需要处理）
-	if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth {
+	if s.cacheInvalidator != nil && (account.Type == AccountTypeOAuth || account.IsQoderCosy()) {
 		if err := s.cacheInvalidator.InvalidateToken(ctx, account); err != nil {
 			slog.Warn("token_refresh.invalidate_token_cache_failed",
 				"account_id", account.ID,

@@ -93,6 +93,13 @@ const ModelWhitelistSelectorStub = defineComponent({
       >
         rewrite
       </button>
+      <button
+        type="button"
+        data-testid="rewrite-to-qoder-defaults"
+        @click="$emit('update:modelValue', ['claude-opus-4-6', 'auto'])"
+      >
+        rewrite qoder
+      </button>
       <span data-testid="model-whitelist-value">
         {{ Array.isArray(modelValue) ? modelValue.join(',') : '' }}
       </span>
@@ -219,6 +226,34 @@ function buildVertexAccount() {
       client_email: 'sa@example.iam.gserviceaccount.com',
       location: 'us-central1',
       tier_id: 'vertex'
+    },
+    extra: {},
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
+function buildQoderAccount() {
+  return {
+    id: 3,
+    name: 'Qoder COSY',
+    notes: '',
+    platform: 'qoder',
+    type: 'cosy',
+    credentials: {
+      security_oauth_token: 'redacted',
+      machine_id: 'machine',
+      model_mapping: {
+        'claude-opus-4-6': 'ultimate',
+        auto: 'auto'
+      },
+      model_whitelist: []
     },
     extra: {},
     proxy_id: null,
@@ -597,6 +632,113 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.enable_tls_fingerprint).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.tls_fingerprint_profile_id).toBe(7)
+  })
+
+  it('loads and submits Qoder COSY model mappings', async () => {
+    const account = buildQoderAccount()
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'claude-opus-4-6': 'ultimate',
+      auto: 'auto'
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toEqual([])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.security_oauth_token).toBe('redacted')
+  })
+
+  it('does not persist generated Qoder model mappings on unrelated edits', async () => {
+    const account = buildQoderAccount()
+    delete account.credentials.model_mapping
+    delete account.credentials.model_whitelist
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.security_oauth_token).toBe('redacted')
+  })
+
+  it('does not persist generated Qoder model mappings after only viewing the mapping tab', async () => {
+    const account = buildQoderAccount()
+    delete account.credentials.model_mapping
+    delete account.credentials.model_whitelist
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const mappingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.modelMapping'))
+    expect(mappingButton).toBeTruthy()
+
+    await mappingButton!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toBeUndefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toBeUndefined()
+  })
+
+  it('persists Qoder model_mapping after explicit mapping edit', async () => {
+    const account = buildQoderAccount()
+    delete account.credentials.model_mapping
+    delete account.credentials.model_whitelist
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    const addMappingButton = wrapper.findAll('button').find(button => button.text().includes('admin.accounts.addMapping'))
+    expect(addMappingButton).toBeTruthy()
+    await addMappingButton!.trigger('click')
+
+    const requestInput = wrapper.findAll('input').find(input => input.attributes('placeholder') === 'admin.accounts.requestModel')
+    const targetInput = wrapper.findAll('input').find(input => input.attributes('placeholder') === 'admin.accounts.actualModel')
+    expect(requestInput).toBeTruthy()
+    expect(targetInput).toBeTruthy()
+    await requestInput!.setValue('glm-5.2')
+    await targetInput!.setValue('gm51model')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ 'glm-5.2': 'gm51model' })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toEqual([])
+  })
+
+  it('loads and submits Qoder COSY TLS fingerprint settings', async () => {
+    const account = buildQoderAccount()
+    account.extra = {
+      enable_tls_fingerprint: true,
+      tls_fingerprint_profile_id: -1,
+      tls_fingerprint_router_id: 9
+    }
+    listTLSProfilesMock.mockResolvedValue([{ id: 7, name: 'Profile 7' }])
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="edit-openai-tls-fingerprint-profile"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-openai-tls-fingerprint-router"]').exists()).toBe(false)
+    const profileSelect = wrapper.get('[data-testid="edit-openai-tls-fingerprint-profile"]')
+    expect((profileSelect.element as HTMLSelectElement).value).toBe('-1')
+
+    await profileSelect.setValue('7')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.enable_tls_fingerprint).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.tls_fingerprint_profile_id).toBe(7)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('tls_fingerprint_router_id')
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {
