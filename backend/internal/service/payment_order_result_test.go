@@ -161,6 +161,55 @@ func TestBuildProviderCreatePaymentRequestCopiesExpiresAt(t *testing.T) {
 	}
 }
 
+func TestSanitizeCreatePaymentResponseDetailsRemovesNULBytes(t *testing.T) {
+	t.Parallel()
+
+	resp := &payment.CreatePaymentResponse{
+		TradeNo:       "trade\x00-no",
+		PayURL:        "https://pay.example.com/\x00checkout",
+		QRCode:        "wxp://payment-token\x00",
+		ClientSecret:  "secret\x00unchanged",
+		CustomerID:    "cus\x00-1",
+		InvoiceID:     "in\x00-1",
+		InvoiceURL:    "https://pay.example.com/invoice\x00",
+		InvoicePDF:    "https://pay.example.com/invoice\x00.pdf",
+		InvoiceStatus: "op\x00en",
+	}
+
+	sanitizeCreatePaymentResponseDetails(resp)
+
+	if strings.ContainsRune(resp.TradeNo, 0) {
+		t.Fatalf("trade_no still contains NUL: %q", resp.TradeNo)
+	}
+	if strings.ContainsRune(resp.PayURL, 0) {
+		t.Fatalf("pay_url still contains NUL: %q", resp.PayURL)
+	}
+	if strings.ContainsRune(resp.QRCode, 0) {
+		t.Fatalf("qr_code still contains NUL: %q", resp.QRCode)
+	}
+	if resp.TradeNo != "trade-no" {
+		t.Fatalf("trade_no = %q, want trade-no", resp.TradeNo)
+	}
+	if resp.PayURL != "https://pay.example.com/checkout" {
+		t.Fatalf("pay_url = %q, want sanitized URL", resp.PayURL)
+	}
+	if resp.QRCode != "wxp://payment-token" {
+		t.Fatalf("qr_code = %q, want sanitized QR code", resp.QRCode)
+	}
+	if resp.CustomerID != "cus-1" || resp.InvoiceID != "in-1" {
+		t.Fatalf("stripe ids were not sanitized: customer=%q invoice=%q", resp.CustomerID, resp.InvoiceID)
+	}
+	if resp.InvoiceURL != "https://pay.example.com/invoice" || resp.InvoicePDF != "https://pay.example.com/invoice.pdf" {
+		t.Fatalf("stripe invoice urls were not sanitized: url=%q pdf=%q", resp.InvoiceURL, resp.InvoicePDF)
+	}
+	if resp.InvoiceStatus != "open" {
+		t.Fatalf("invoice_status = %q, want open", resp.InvoiceStatus)
+	}
+	if resp.ClientSecret != "secret\x00unchanged" {
+		t.Fatalf("client_secret = %q, should not be touched by payment detail sanitization", resp.ClientSecret)
+	}
+}
+
 func TestValidateSelectedCreateOrderAmountCurrencyRejectsFractionalZeroDecimal(t *testing.T) {
 	t.Parallel()
 
