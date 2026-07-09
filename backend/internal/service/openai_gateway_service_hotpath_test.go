@@ -643,11 +643,10 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "max",
 		},
 		{
-			name:      "保留 ultra 档位",
-			body:      []byte(`{"reasoning":{"effort":"ultra"}}`),
-			model:     "gpt-5.6-terra",
-			wantNil:   false,
-			wantValue: "ultra",
+			name:    "不提取 ultra 档位",
+			body:    []byte(`{"reasoning":{"effort":"ultra"}}`),
+			model:   "gpt-5.6-terra",
+			wantNil: true,
 		},
 		{
 			name:    "旧模型拒绝 max 档位",
@@ -675,11 +674,10 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "high",
 		},
 		{
-			name:      "从 GPT-5.6 后缀推导 ultra",
-			body:      []byte(`{"input":"hi"}`),
-			model:     "gpt-5.6-sol-ultra",
-			wantNil:   false,
-			wantValue: "ultra",
+			name:    "不从 GPT-5.6 后缀推导 ultra",
+			body:    []byte(`{"input":"hi"}`),
+			model:   "gpt-5.6-sol-ultra",
+			wantNil: true,
 		},
 		{
 			name:    "旧模型后缀拒绝 ultra",
@@ -712,6 +710,83 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			require.Equal(t, tt.wantValue, *got)
 		})
 	}
+}
+
+func TestValidateOpenAIReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    []byte
+		model   string
+		wantErr bool
+	}{
+		{name: "max 档位通过", body: []byte(`{"reasoning":{"effort":"max"}}`), model: "gpt-5.6-sol"},
+		{name: "拒绝 Responses ultra", body: []byte(`{"reasoning":{"effort":"ultra"}}`), model: "gpt-5.6-sol", wantErr: true},
+		{name: "拒绝 Chat Completions ultra", body: []byte(`{"reasoning_effort":"ULTRA"}`), model: "gpt-5.6-terra", wantErr: true},
+		{name: "拒绝 Anthropic ultra", body: []byte(`{"output_config":{"effort":" ultra "}}`), model: "gpt-5.6-luna", wantErr: true},
+		{name: "拒绝请求模型 ultra 后缀", body: []byte(`{"input":"hi"}`), model: "openai/gpt-5.6-sol-ultra", wantErr: true},
+		{name: "拒绝请求体模型 ultra 后缀", body: []byte(`{"model":"gpt-5.6-terra_ultra"}`), wantErr: true},
+		{name: "拒绝 WS 会话模型 ultra 后缀", body: []byte(`{"type":"session.update","session":{"model":"gpt-5.6-luna-ultra"}}`), wantErr: true},
+		{name: "拒绝 WS 会话 ultra 档位", body: []byte(`{"type":"session.update","session":{"reasoning":{"effort":"ultra"}}}`), wantErr: true},
+		{name: "拒绝 Realtime 响应 ultra 档位", body: []byte(`{"type":"response.create","response":{"reasoning":{"effort":"ultra"}}}`), wantErr: true},
+		{name: "不误伤非 OpenAI 模型", body: []byte(`{"model":"spark-ultra"}`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOpenAIReasoningEffort(tt.body, tt.model)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "not supported")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestOpenAIGatewayEntrypointsRejectUltraBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_responses_mode": "force_chat_completions"},
+	}
+
+	t.Run("Responses", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","input":"hi","reasoning":{"effort":"ultra"}}`)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+
+		result, err := svc.Forward(context.Background(), c, account, body)
+		require.ErrorContains(t, err, "not supported")
+		require.Nil(t, result)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("Chat Completions 原始透传", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","messages":[],"reasoning_effort":"ultra"}`)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+
+		result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+		require.ErrorContains(t, err, "not supported")
+		require.Nil(t, result)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("Anthropic Messages", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","max_tokens":1024,"messages":[],"output_config":{"effort":"ultra"}}`)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(string(body)))
+
+		result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+		require.ErrorContains(t, err, "not supported")
+		require.Nil(t, result)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }
 
 func TestGetOpenAIRequestBodyMap_ParseError(t *testing.T) {

@@ -66,21 +66,14 @@ func openAIModelSupportsReasoningEffort(model string, effort string) bool {
 	case "max":
 		return openAIModelSupportsMaxReasoningEffort(model)
 	case "ultra":
-		return openAIModelSupportsUltraReasoningEffort(model)
+		// Ultra 不是上游 reasoning effort，任何模型都不应声明支持。
+		return false
 	default:
 		return true
 	}
 }
 
 func openAIModelSupportsMaxReasoningEffort(model string) bool {
-	return isOpenAIModelAtLeastVersion(model, 5, 6)
-}
-
-func openAIModelSupportsUltraReasoningEffort(model string) bool {
-	// Codex 官方模型元数据里 Luna 暂未开放 ultra，仅开放到 max。
-	if normalizeKnownOpenAICodexModel(model) == "gpt-5.6-luna" {
-		return false
-	}
 	return isOpenAIModelAtLeastVersion(model, 5, 6)
 }
 

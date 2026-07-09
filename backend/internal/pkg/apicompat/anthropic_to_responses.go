@@ -60,6 +60,9 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
 		effort = req.OutputConfig.Effort
 	}
+	if isUltraReasoningEffort(effort) {
+		return nil, fmt.Errorf("reasoning effort %q is not supported", strings.TrimSpace(effort))
+	}
 	out.Reasoning = &ResponsesReasoning{
 		Effort:  mapAnthropicEffortToResponsesForModel(req.Model, effort),
 		Summary: "auto",
@@ -405,27 +408,12 @@ func mapAnthropicEffortToResponsesForModel(model, effort string) string {
 			return "max"
 		}
 		return "xhigh"
-	case "ultra":
-		if supportsResponsesUltraReasoningEffort(model) {
-			return "ultra"
-		}
-		if supportsResponsesMaxReasoningEffort(model) {
-			return "max"
-		}
-		return "xhigh"
 	default:
 		return normalized
 	}
 }
 
 func supportsResponsesMaxReasoningEffort(model string) bool {
-	return isResponsesGPTModelAtLeastVersion(model, 5, 6)
-}
-
-func supportsResponsesUltraReasoningEffort(model string) bool {
-	if strings.HasPrefix(normalizeResponsesGPTModel(model), "gpt-5.6-luna") {
-		return false
-	}
 	return isResponsesGPTModelAtLeastVersion(model, 5, 6)
 }
 

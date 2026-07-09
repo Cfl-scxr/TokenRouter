@@ -115,7 +115,7 @@ func TestGetModelPricing_Gpt56UsesOfficialStaticFallback(t *testing.T) {
 		output    float64
 		cacheRead float64
 	}{
-		{model: "gpt-5.6-sol-ultra", input: 5e-6, output: 3e-5, cacheRead: 5e-7},
+		{model: "gpt-5.6-sol-max", input: 5e-6, output: 3e-5, cacheRead: 5e-7},
 		{model: "gpt-5.6-terra-max", input: 2.5e-6, output: 1.5e-5, cacheRead: 2.5e-7},
 		{model: "gpt-5.6-luna-high", input: 1e-6, output: 6e-6, cacheRead: 1e-7},
 	}

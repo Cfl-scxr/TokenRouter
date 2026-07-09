@@ -53,6 +53,9 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 
 	// reasoning.effort → output_config.effort + thinking
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
+		if isUltraReasoningEffort(req.Reasoning.Effort) {
+			return nil, fmt.Errorf("reasoning effort %q is not supported", strings.TrimSpace(req.Reasoning.Effort))
+		}
 		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
 		// Enable thinking for non-low efforts
@@ -92,7 +95,7 @@ func defaultThinkingBudget(effort string) int {
 //	xhigh  → max
 func mapResponsesEffortToAnthropic(effort string) string {
 	switch strings.ToLower(strings.TrimSpace(effort)) {
-	case "xhigh", "max", "ultra":
+	case "xhigh", "max":
 		return "max"
 	default:
 		return effort // low→low, medium→medium, high→high, unknown→passthrough

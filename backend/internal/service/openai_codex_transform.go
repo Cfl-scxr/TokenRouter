@@ -582,7 +582,7 @@ func isKnownCodexModelSuffixForTarget(target string, suffix string) bool {
 		return true
 	}
 	switch suffix {
-	case "max", "ultra":
+	case "max":
 		return openAIModelSupportsReasoningEffort(target, suffix)
 	default:
 		return false
@@ -609,8 +609,11 @@ func hasUnsupportedOpenAIReasoningSuffix(model string) bool {
 
 	suffix := parts[len(parts)-1]
 	switch suffix {
-	case "max", "ultra":
+	case "max":
 		return !openAIModelSupportsReasoningEffort(normalized, suffix)
+	case "ultra":
+		// Ultra 是 Codex 客户端的多代理模式，不是上游模型 ID 后缀。
+		return true
 	default:
 		return false
 	}

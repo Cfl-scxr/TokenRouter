@@ -926,7 +926,7 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 		"gpt-5.5-max":               "gpt-5.5-max",
 		"gpt5.6sol":                 "gpt-5.6-sol",
 		"gpt-5.6-sol-max":           "gpt-5.6-sol",
-		"gpt-5.6-terra-ultra":       "gpt-5.6-terra",
+		"gpt-5.6-terra-ultra":       "gpt-5.6-terra-ultra",
 		"openai/gpt5.6luna-high":    "gpt-5.6-luna",
 		"gpt-5.6-luna-max":          "gpt-5.6-luna",
 		"gpt-5.6-luna-ultra":        "gpt-5.6-luna-ultra",

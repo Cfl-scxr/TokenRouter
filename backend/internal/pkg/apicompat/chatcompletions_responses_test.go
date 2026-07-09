@@ -256,6 +256,18 @@ func TestChatCompletionsToResponses_ReasoningEffort(t *testing.T) {
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 }
 
+func TestChatCompletionsToResponses_RejectsUltraReasoningEffort(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:           "gpt-5.6-sol",
+		ReasoningEffort: "ultra",
+		Messages:        []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.ErrorContains(t, err, "not supported")
+	require.Nil(t, resp)
+}
+
 func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"}}]`
 	req := &ChatCompletionsRequest{

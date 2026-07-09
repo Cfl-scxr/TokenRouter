@@ -753,8 +753,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         medium: {},
         high: {},
         xhigh: {},
-        max: {},
-        ultra: {}
+        max: {}
       }
     },
     'gpt-5.6-terra': {
@@ -771,8 +770,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         medium: {},
         high: {},
         xhigh: {},
-        max: {},
-        ultra: {}
+        max: {}
       }
     },
     'gpt-5.6-luna': {
