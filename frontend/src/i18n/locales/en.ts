@@ -3031,7 +3031,7 @@ export default {
           resetQuota: 'Reset Quota',
           resetQuotaDesc: 'Reset daily/weekly/monthly usage to zero',
           revoke: 'Revoke',
-          revokeDesc: 'Terminate an active subscription or cancel a pending one (irreversible)'
+          revokeDesc: 'Terminate an active subscription or cancel a pending one (restorable from the revoked list)'
         },
         tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
       }
