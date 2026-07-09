@@ -407,6 +407,14 @@ func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
 	_ = s.cache.ReleaseRedeemLock(ctx, code)
 }
 
+// unsupportedRedeemTypeError 将邀请码和未知类型统一转换为客户端可处理的请求错误。
+func unsupportedRedeemTypeError(codeType string) error {
+	if codeType == RedeemTypeInvitation {
+		return infraerrors.BadRequest("REDEEM_CODE_UNSUPPORTED_TYPE", "invitation codes can only be used during registration")
+	}
+	return infraerrors.BadRequest("REDEEM_CODE_UNSUPPORTED_TYPE", fmt.Sprintf("unsupported redeem type: %s", codeType))
+}
+
 // Redeem 使用兑换码
 func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
 	code = strings.TrimSpace(code)
@@ -449,8 +457,15 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, err
 	}
 
-	if redeemCode.Type == RedeemTypeSubscription && (redeemCode.PlanID == nil || *redeemCode.PlanID <= 0) {
-		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing plan_id")
+	// 邀请码只允许在注册流程使用，普通兑换接口仅接受能直接发放权益的类型。
+	switch redeemCode.Type {
+	case RedeemTypeBalance, RedeemTypeConcurrency:
+	case RedeemTypeSubscription:
+		if redeemCode.PlanID == nil || *redeemCode.PlanID <= 0 {
+			return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing plan_id")
+		}
+	default:
+		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -492,7 +507,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported redeem type: %s", redeemCode.Type)
+		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
 	usageTime := time.Now()
