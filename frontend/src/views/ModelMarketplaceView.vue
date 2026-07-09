@@ -189,12 +189,12 @@
               </div>
             </div>
 
-            <div class="space-y-3 p-4 md:columns-2 md:gap-3 xl:columns-3 2xl:columns-4 md:p-5">
-              <!-- 模型卡片高度不一致，用 CSS columns 自然填充，避免手动分列留下大块空白。 -->
+            <div class="grid items-start gap-3 p-4 md:grid-cols-2 lg:grid-cols-3 md:p-5">
+              <!-- 大屏固定三列展示，避免宽屏下只排两列造成右侧留白。 -->
               <article
                 v-for="model in group.models"
                 :key="`${group.id}-${model.id}`"
-                class="group mb-3 break-inside-avoid rounded-xl border border-gray-100 bg-gray-50/80 p-4 transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-card dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/50"
+                class="group rounded-xl border border-gray-100 bg-gray-50/80 p-4 transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-card dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/50"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
@@ -239,7 +239,7 @@
             </section>
           </template>
 
-          <div v-else class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div v-else class="grid items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
             <article
               v-for="model in filteredModels"
               :key="model.id"
