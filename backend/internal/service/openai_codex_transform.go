@@ -659,16 +659,23 @@ func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
 	return false
 }
 
-// stripCodexSparkImageGenerationTools 会从 reqBody["tools"] 中移除 image_generation。
-// gpt-5.3-codex-spark 上游会以 param=tools 拒绝该工具，而 Codex CLI 默认会携带它。
-// 当 tools 被清空时同步删除字段；返回值表示请求体是否被修改。
-func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
+// stripOpenAIImageGenerationTools 移除 image_generation 工具及指向它的 tool_choice。
+// 当工具列表被清空时同步删除 tools；返回值表示请求体是否被修改。
+func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
+		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+			delete(reqBody, "tool_choice")
+			return true
+		}
 		return false
 	}
 	filtered := make([]any, 0, len(tools))
@@ -681,15 +688,26 @@ func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 		}
 		filtered = append(filtered, rawTool)
 	}
-	if !removed {
+	if !removed && !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
 		return false
 	}
-	if len(filtered) == 0 {
-		delete(reqBody, "tools")
-	} else {
-		reqBody["tools"] = filtered
+	if removed {
+		if len(filtered) == 0 {
+			delete(reqBody, "tools")
+		} else {
+			reqBody["tools"] = filtered
+		}
+	}
+	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
 	}
 	return true
+}
+
+// stripCodexSparkImageGenerationTools 会从 Spark 请求中移除 image_generation 工具。
+// gpt-5.3-codex-spark 上游会以 param=tools 拒绝该工具，而 Codex CLI 默认会携带它。
+func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
+	return stripOpenAIImageGenerationTools(reqBody)
 }
 
 func hasOpenAIInputImage(reqBody map[string]any) bool {
