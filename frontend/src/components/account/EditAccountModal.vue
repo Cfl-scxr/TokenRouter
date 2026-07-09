@@ -2719,6 +2719,7 @@ const isQoderCosyAccount = computed(() =>
 )
 const supportsOAuthLikeModelRestriction = computed(() =>
   (props.account?.platform === 'openai' && props.account?.type === 'oauth') ||
+  (props.account?.platform === 'grok' && props.account?.type === 'oauth') ||
   isQoderCosyAccount.value
 )
 const isAnthropicOAuthLikeAccount = computed(() =>
@@ -3412,9 +3413,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // 加载 OpenAI OAuth 和 Qoder COSY 账号的模型映射。
+    // 加载 OpenAI/Grok OAuth 和 Qoder COSY 账号的模型映射。
     if (
       ((newAccount.platform === 'openai' && newAccount.type === 'oauth') ||
+        (newAccount.platform === 'grok' && newAccount.type === 'oauth') ||
         (newAccount.platform === 'qoder' && newAccount.type === 'cosy')) &&
       newAccount.credentials
     ) {
@@ -4214,7 +4216,7 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI OAuth / Qoder COSY：将模型映射保存到 credentials。
+    // OpenAI/Grok OAuth 与 Qoder COSY：将模型映射保存到 credentials。
     if (supportsOAuthLikeModelRestriction.value) {
       const currentCredentials = props.account.platform === 'openai' && isSparkShadow.value
         ? {}
