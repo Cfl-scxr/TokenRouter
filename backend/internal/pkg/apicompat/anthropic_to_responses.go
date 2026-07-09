@@ -397,10 +397,6 @@ func extractAnthropicTextFromBlocks(blocks []AnthropicContentBlock) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func mapAnthropicEffortToResponses(effort string) string {
-	return mapAnthropicEffortToResponsesForModel("", effort)
-}
-
 func mapAnthropicEffortToResponsesForModel(model, effort string) string {
 	normalized := strings.ToLower(strings.TrimSpace(effort))
 	switch normalized {
