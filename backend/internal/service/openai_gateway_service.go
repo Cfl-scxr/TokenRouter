@@ -3565,6 +3565,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsAttempts,
 			)
 			wsResult.UpstreamModel = upstreamModel
+			// WS 转发未单独返回计费模型时，使用请求映射阶段确定的模型。
+			if wsResult.BillingModel == "" {
+				wsResult.BillingModel = billingModel
+			}
 			if wsResult.ImageCount > 0 {
 				wsResult.ImageSize = imageSizeTier
 				wsResult.ImageInputSize = imageInputSize
@@ -3722,11 +3726,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = &OpenAIUsage{}
 		}
 
+		// 保留请求模型用于展示，同时将映射后模型传给后续计费来源选择。
 		forwardResult := &OpenAIForwardResult{
 			RequestID:       resp.Header.Get("x-request-id"),
 			ResponseID:      responseID,
 			Usage:           *usage,
 			Model:           originalModel,
+			BillingModel:    billingModel,
 			UpstreamModel:   upstreamModel,
 			ServiceTier:     serviceTier,
 			ReasoningEffort: reasoningEffort,
