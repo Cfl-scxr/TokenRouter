@@ -781,6 +781,7 @@ func TestOpenAISelectAccountWithScheduler_GroupModelUnsupportedError(t *testing.
 		OpenAIUpstreamTransportAny,
 		OpenAIEndpointCapabilityChatCompletions,
 		false,
+		false,
 	)
 	if err == nil {
 		t.Fatalf("expected group model unsupported error")
