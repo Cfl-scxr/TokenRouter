@@ -1371,6 +1371,19 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+// IsOpenAIChatGPTSubscription 判断 OpenAI OAuth 账号是否为可优先调度的 ChatGPT 订阅账号。
+func (a *Account) IsOpenAIChatGPTSubscription() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(a.GetCredential("plan_type"))) {
+	case "", "free", "abnormal":
+		return false
+	default:
+		return true
+	}
+}
+
 // IsOpenAIPersonalAccessToken 判断 OpenAI OAuth 账号是否使用 Codex PAT 认证模式。
 func (a *Account) IsOpenAIPersonalAccessToken() bool {
 	if a == nil || !a.IsOpenAIOAuth() {

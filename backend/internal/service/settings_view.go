@@ -225,7 +225,29 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI 账号调度
-	OpenAIAdvancedSchedulerEnabled bool
+	OpenAIAdvancedSchedulerEnabled                         bool
+	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
+	OpenAIAdvancedSchedulerLBTopK                          string
+	OpenAIAdvancedSchedulerWeightPriority                  string
+	OpenAIAdvancedSchedulerWeightLoad                      string
+	OpenAIAdvancedSchedulerWeightQueue                     string
+	OpenAIAdvancedSchedulerWeightErrorRate                 string
+	OpenAIAdvancedSchedulerWeightTTFT                      string
+	OpenAIAdvancedSchedulerWeightReset                     string
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
+	OpenAIAdvancedSchedulerWeightPreviousResponse          string
+	OpenAIAdvancedSchedulerWeightSessionSticky             string
+	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
+	OpenAIAdvancedSchedulerEffectiveWeightPriority         string
+	OpenAIAdvancedSchedulerEffectiveWeightLoad             string
+	OpenAIAdvancedSchedulerEffectiveWeightQueue            string
+	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string
+	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
+	OpenAIAdvancedSchedulerEffectiveWeightReset            string
+	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
+	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
 	// OpenAIQuotaAutoPauseSettings 是 OpenAI 账号配额自动暂停的全局默认阈值，存储在 ops_advanced_settings 中。
 	OpenAIQuotaAutoPauseSettings OpsOpenAIAccountQuotaAutoPauseSettings
 	// OpenAIQuotaAutoPauseSettingsSet 标记本次系统设置更新是否显式带了配额自动暂停配置，避免旧客户端误覆盖。

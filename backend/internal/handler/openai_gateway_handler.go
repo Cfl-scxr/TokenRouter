@@ -1344,6 +1344,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
 		return
 	}
+	firstMessageToolContext := service.ValidateFunctionCallOutputContextBytes(firstMessage)
+	previousResponseCanMove := !firstMessageToolContext.HasFunctionCallOutput || firstMessageToolContext.HasToolCallContext
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
 		zap.String("model", reqModel),
@@ -1493,6 +1495,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
 			requestPlatform,
+			func() string {
+				if previousResponseCanMove {
+					return "previous_response_can_move"
+				}
+				return ""
+			}(),
 		)
 		if err != nil {
 			reqLog.Warn("openai.websocket_account_select_failed",
@@ -1744,9 +1752,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		wsFirstMessage := append([]byte(nil), wsFirstMessageForUsageFallback...)
 		// 切组/会话失配防护：previous_response_id 未在当前分组命中粘连账号时，
 		// 说明该会话链不属于本次调度到的账号；原样转发会触发上游会话链鉴权失败。
-		// 因此剥离首包 previous_response_id，改用首包 input 重建上下文；工具续链无法重建，保持原样。
-		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit &&
-			!service.ValidateFunctionCallOutputContextBytes(wsFirstMessage).HasFunctionCallOutput {
+		// 因此只在上下文可迁移时剥离首包 previous_response_id，后续 turn 仍由 WS 转发层处理。
+		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
 			wsFirstMessage = service.RemovePreviousResponseIDFromBody(wsFirstMessage)
 			reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_group",
 				zap.Int64("account_id", account.ID),
