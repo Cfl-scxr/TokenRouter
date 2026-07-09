@@ -1171,6 +1171,38 @@ func TestAnthropicToResponses_OutputConfigUltraForGPT56(t *testing.T) {
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 }
 
+func TestAnthropicToResponses_OutputConfigUltraForLunaFallsBackToMax(t *testing.T) {
+	for _, model := range []string{"gpt-5.6-luna", "gpt-5.6-luna-ultra"} {
+		req := &AnthropicRequest{
+			Model:        model,
+			MaxTokens:    1024,
+			Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+			OutputConfig: &AnthropicOutputConfig{Effort: "ultra"},
+		}
+
+		resp, err := AnthropicToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.Reasoning)
+		assert.Equal(t, "max", resp.Reasoning.Effort)
+		assert.Equal(t, "auto", resp.Reasoning.Summary)
+	}
+}
+
+func TestAnthropicToResponses_OutputConfigUltraForOldGPTFallsBackToXHigh(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:        "gpt-5.5",
+		MaxTokens:    1024,
+		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		OutputConfig: &AnthropicOutputConfig{Effort: "ultra"},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "auto", resp.Reasoning.Summary)
+}
+
 func TestAnthropicToResponses_NoOutputConfig(t *testing.T) {
 	// No output_config → default medium regardless of thinking.type.
 	req := &AnthropicRequest{

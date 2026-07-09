@@ -78,6 +78,9 @@ func TestNormalizeOpenAICompatRequestedModel(t *testing.T) {
 		{name: "gpt reasoning alias strips xhigh", input: "gpt-5.4-xhigh", want: "gpt-5.4"},
 		{name: "gpt reasoning alias strips max", input: "gpt-5.6-sol-max", want: "gpt-5.6-sol"},
 		{name: "gpt reasoning alias strips ultra", input: "gpt-5.6-terra-ultra", want: "gpt-5.6-terra"},
+		{name: "gpt luna strips max", input: "gpt-5.6-luna-max", want: "gpt-5.6-luna"},
+		{name: "gpt luna keeps unsupported ultra suffix", input: "gpt-5.6-luna-ultra", want: "gpt-5.6-luna-ultra"},
+		{name: "old gpt keeps unsupported max suffix", input: "gpt-5.5-max", want: "gpt-5.5-max"},
 		{name: "gpt reasoning alias strips none", input: "gpt-5.4-none", want: "gpt-5.4"},
 		{name: "codex max model stays intact", input: "gpt-5.1-codex-max", want: "gpt-5.1-codex-max"},
 		{name: "non openai model unchanged", input: "claude-opus-4-6", want: "claude-opus-4-6"},
@@ -103,14 +106,23 @@ func TestApplyOpenAICompatModelNormalization(t *testing.T) {
 		require.Equal(t, "max", req.OutputConfig.Effort)
 	})
 
-	t.Run("derives ultra from gpt 5.6 model suffix as upstream max effort", func(t *testing.T) {
+	t.Run("derives ultra from gpt 5.6 model suffix", func(t *testing.T) {
+		req := &apicompat.AnthropicRequest{Model: "gpt-5.6-terra-ultra"}
+
+		applyOpenAICompatModelNormalization(req)
+
+		require.Equal(t, "gpt-5.6-terra", req.Model)
+		require.NotNil(t, req.OutputConfig)
+		require.Equal(t, "ultra", req.OutputConfig.Effort)
+	})
+
+	t.Run("does not derive unsupported luna ultra suffix", func(t *testing.T) {
 		req := &apicompat.AnthropicRequest{Model: "gpt-5.6-luna-ultra"}
 
 		applyOpenAICompatModelNormalization(req)
 
-		require.Equal(t, "gpt-5.6-luna", req.Model)
-		require.NotNil(t, req.OutputConfig)
-		require.Equal(t, "max", req.OutputConfig.Effort)
+		require.Equal(t, "gpt-5.6-luna-ultra", req.Model)
+		require.Nil(t, req.OutputConfig)
 	})
 
 	t.Run("explicit output config wins over model suffix", func(t *testing.T) {

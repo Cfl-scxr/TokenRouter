@@ -789,8 +789,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         medium: {},
         high: {},
         xhigh: {},
-        max: {},
-        ultra: {}
+        max: {}
       }
     },
     'gpt-5.5': {

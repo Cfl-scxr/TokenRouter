@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -402,21 +403,112 @@ func mapAnthropicEffortToResponses(effort string) string {
 
 func mapAnthropicEffortToResponsesForModel(model, effort string) string {
 	normalized := strings.ToLower(strings.TrimSpace(effort))
-	if normalized == "max" && !isGPT56ReasoningModel(model) {
+	switch normalized {
+	case "max":
+		if supportsResponsesMaxReasoningEffort(model) {
+			return "max"
+		}
 		return "xhigh"
+	case "ultra":
+		if supportsResponsesUltraReasoningEffort(model) {
+			return "ultra"
+		}
+		if supportsResponsesMaxReasoningEffort(model) {
+			return "max"
+		}
+		return "xhigh"
+	default:
+		return normalized
 	}
-	return normalized
 }
 
-func isGPT56ReasoningModel(model string) bool {
-	model = strings.ToLower(strings.TrimSpace(model))
-	if strings.Contains(model, "/") {
-		parts := strings.Split(model, "/")
-		model = parts[len(parts)-1]
+func supportsResponsesMaxReasoningEffort(model string) bool {
+	return isResponsesGPTModelAtLeastVersion(model, 5, 6)
+}
+
+func supportsResponsesUltraReasoningEffort(model string) bool {
+	if strings.HasPrefix(normalizeResponsesGPTModel(model), "gpt-5.6-luna") {
+		return false
 	}
-	return strings.HasPrefix(model, "gpt-5.6-sol") ||
-		strings.HasPrefix(model, "gpt-5.6-terra") ||
-		strings.HasPrefix(model, "gpt-5.6-luna")
+	return isResponsesGPTModelAtLeastVersion(model, 5, 6)
+}
+
+func isResponsesGPTModelAtLeastVersion(model string, minMajor, minMinor int) bool {
+	major, minor, ok := parseResponsesGPTModelVersion(model)
+	if !ok {
+		return false
+	}
+	if major != minMajor {
+		return major > minMajor
+	}
+	return minor >= minMinor
+}
+
+func parseResponsesGPTModelVersion(model string) (major int, minor int, ok bool) {
+	normalized := normalizeResponsesGPTModel(model)
+	if normalized == "" || !strings.HasPrefix(normalized, "gpt-") {
+		return 0, 0, false
+	}
+
+	rest := strings.TrimPrefix(normalized, "gpt-")
+	majorEnd := 0
+	for majorEnd < len(rest) && rest[majorEnd] >= '0' && rest[majorEnd] <= '9' {
+		majorEnd++
+	}
+	if majorEnd == 0 {
+		return 0, 0, false
+	}
+
+	major, err := strconv.Atoi(rest[:majorEnd])
+	if err != nil {
+		return 0, 0, false
+	}
+
+	minor = 0
+	if majorEnd < len(rest) && rest[majorEnd] == '.' {
+		minorStart := majorEnd + 1
+		minorEnd := minorStart
+		for minorEnd < len(rest) && rest[minorEnd] >= '0' && rest[minorEnd] <= '9' {
+			minorEnd++
+		}
+		if minorEnd == minorStart {
+			return 0, 0, false
+		}
+		minor, err = strconv.Atoi(rest[minorStart:minorEnd])
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+
+	return major, minor, true
+}
+
+func normalizeResponsesGPTModel(model string) string {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if strings.Contains(normalized, "/") {
+		parts := strings.Split(normalized, "/")
+		normalized = strings.TrimSpace(parts[len(parts)-1])
+	}
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	normalized = strings.Join(strings.Fields(normalized), "-")
+	for strings.Contains(normalized, "--") {
+		normalized = strings.ReplaceAll(normalized, "--", "-")
+	}
+	if strings.HasPrefix(normalized, "gpt5") {
+		normalized = "gpt-5" + strings.TrimPrefix(normalized, "gpt5")
+	}
+	replacements := []struct {
+		from string
+		to   string
+	}{
+		{"gpt-5.6sol", "gpt-5.6-sol"},
+		{"gpt-5.6terra", "gpt-5.6-terra"},
+		{"gpt-5.6luna", "gpt-5.6-luna"},
+	}
+	for _, replacement := range replacements {
+		normalized = strings.ReplaceAll(normalized, replacement.from, replacement.to)
+	}
+	return normalized
 }
 
 // convertAnthropicToolsToResponses maps Anthropic tool definitions to

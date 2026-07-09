@@ -1,6 +1,9 @@
 package service
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 func lastOpenAIModelSegment(model string) string {
 	model = strings.TrimSpace(model)
@@ -51,6 +54,84 @@ func canonicalizeOpenAIModelAliasSpelling(model string) string {
 		normalized = strings.ReplaceAll(normalized, replacement.from, replacement.to)
 	}
 	return normalized
+}
+
+func openAIModelSupportsReasoningEffort(model string, effort string) bool {
+	value := strings.ToLower(strings.TrimSpace(effort))
+	if value == "" {
+		return false
+	}
+	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+	switch value {
+	case "max":
+		return openAIModelSupportsMaxReasoningEffort(model)
+	case "ultra":
+		return openAIModelSupportsUltraReasoningEffort(model)
+	default:
+		return true
+	}
+}
+
+func openAIModelSupportsMaxReasoningEffort(model string) bool {
+	return isOpenAIModelAtLeastVersion(model, 5, 6)
+}
+
+func openAIModelSupportsUltraReasoningEffort(model string) bool {
+	// Codex 官方模型元数据里 Luna 暂未开放 ultra，仅开放到 max。
+	if normalizeKnownOpenAICodexModel(model) == "gpt-5.6-luna" {
+		return false
+	}
+	return isOpenAIModelAtLeastVersion(model, 5, 6)
+}
+
+func isOpenAIModelAtLeastVersion(model string, minMajor, minMinor int) bool {
+	major, minor, ok := parseOpenAIModelVersion(model)
+	if !ok {
+		return false
+	}
+	if major != minMajor {
+		return major > minMajor
+	}
+	return minor >= minMinor
+}
+
+func parseOpenAIModelVersion(model string) (major int, minor int, ok bool) {
+	normalized := canonicalizeOpenAIModelAliasSpelling(model)
+	if normalized == "" || !strings.HasPrefix(normalized, "gpt-") {
+		return 0, 0, false
+	}
+
+	rest := strings.TrimPrefix(normalized, "gpt-")
+	majorEnd := 0
+	for majorEnd < len(rest) && rest[majorEnd] >= '0' && rest[majorEnd] <= '9' {
+		majorEnd++
+	}
+	if majorEnd == 0 {
+		return 0, 0, false
+	}
+
+	major, err := strconv.Atoi(rest[:majorEnd])
+	if err != nil {
+		return 0, 0, false
+	}
+
+	minor = 0
+	if majorEnd < len(rest) && rest[majorEnd] == '.' {
+		minorStart := majorEnd + 1
+		minorEnd := minorStart
+		for minorEnd < len(rest) && rest[minorEnd] >= '0' && rest[minorEnd] <= '9' {
+			minorEnd++
+		}
+		if minorEnd == minorStart {
+			return 0, 0, false
+		}
+		minor, err = strconv.Atoi(rest[minorStart:minorEnd])
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+
+	return major, minor, true
 }
 
 func normalizeKnownOpenAICodexModel(model string) string {

@@ -532,9 +532,6 @@ func normalizeKnownCodexModel(model string) (string, bool) {
 	if normalized := canonicalizeOpenAIModelAliasSpelling(modelID); normalized != "" {
 		modelID = normalized
 	}
-	if mapped := normalizeKnownOpenAICodexModel(modelID); mapped != "" {
-		return mapped, true
-	}
 	key := codexModelLookupKey(modelID)
 	if key == "" {
 		return "", false
@@ -542,12 +539,18 @@ func normalizeKnownCodexModel(model string) (string, bool) {
 	if mapped := getNormalizedCodexModel(key); mapped != "" {
 		return mapped, true
 	}
+	if hasUnsupportedOpenAIReasoningSuffix(modelID) {
+		return "", false
+	}
+	if mapped := normalizeKnownOpenAICodexModel(modelID); mapped != "" {
+		return mapped, true
+	}
 	for _, item := range codexVersionModelPrefixes {
 		if key == item.prefix {
 			return item.target, true
 		}
 		suffix, ok := strings.CutPrefix(key, item.prefix+"-")
-		if ok && isKnownCodexModelSuffix(suffix) {
+		if ok && isKnownCodexModelSuffixForTarget(item.target, suffix) {
 			return item.target, true
 		}
 	}
@@ -568,10 +571,49 @@ func codexModelLookupKey(modelID string) string {
 
 func isKnownCodexModelSuffix(suffix string) bool {
 	switch suffix {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
+	case "none", "minimal", "low", "medium", "high", "xhigh":
 		return true
 	}
 	return isCodexDateSuffix(suffix)
+}
+
+func isKnownCodexModelSuffixForTarget(target string, suffix string) bool {
+	if isKnownCodexModelSuffix(suffix) {
+		return true
+	}
+	switch suffix {
+	case "max", "ultra":
+		return openAIModelSupportsReasoningEffort(target, suffix)
+	default:
+		return false
+	}
+}
+
+func hasUnsupportedOpenAIReasoningSuffix(model string) bool {
+	normalized := canonicalizeOpenAIModelAliasSpelling(model)
+	if normalized == "" || !strings.HasPrefix(normalized, "gpt-") {
+		return false
+	}
+
+	parts := strings.FieldsFunc(normalized, func(r rune) bool {
+		switch r {
+		case '-', '_', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(parts) == 0 {
+		return false
+	}
+
+	suffix := parts[len(parts)-1]
+	switch suffix {
+	case "max", "ultra":
+		return !openAIModelSupportsReasoningEffort(normalized, suffix)
+	default:
+		return false
+	}
 }
 
 func isCodexDateSuffix(suffix string) bool {
