@@ -636,6 +636,20 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "xhigh",
 		},
 		{
+			name:      "保留 max 档位",
+			body:      []byte(`{"reasoning":{"effort":"max"}}`),
+			model:     "gpt-5.6-sol",
+			wantNil:   false,
+			wantValue: "max",
+		},
+		{
+			name:      "保留 ultra 档位",
+			body:      []byte(`{"reasoning":{"effort":"ultra"}}`),
+			model:     "gpt-5.6-terra",
+			wantNil:   false,
+			wantValue: "ultra",
+		},
+		{
 			name:    "minimal 归一化为空",
 			body:    []byte(`{"reasoning":{"effort":"minimal"}}`),
 			model:   "gpt-5-high",

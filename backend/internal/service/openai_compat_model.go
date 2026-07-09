@@ -84,6 +84,13 @@ func splitOpenAICompatReasoningModel(model string) (normalizedModel string, reas
 		reasoningEffort = last
 	case "xhigh", "extrahigh":
 		reasoningEffort = "xhigh"
+	case "max", "ultra":
+		// max / ultra 是 GPT-5.6 的新增 reasoning 档位；旧模型
+		// gpt-5.1-codex-max 中的 max 是模型名组成部分，不能剥离。
+		if !isOpenAIGPT56ReasoningModel(modelID) {
+			return trimmed, "", false
+		}
+		reasoningEffort = last
 	default:
 		return trimmed, "", false
 	}
@@ -91,11 +98,16 @@ func splitOpenAICompatReasoningModel(model string) (normalizedModel string, reas
 	return normalizeCodexModel(modelID), reasoningEffort, true
 }
 
+func isOpenAIGPT56ReasoningModel(model string) bool {
+	normalized := normalizeKnownOpenAICodexModel(model)
+	return normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" || normalized == "gpt-5.6-luna"
+}
+
 func openAIReasoningEffortToClaudeOutputEffort(effort string) string {
 	switch strings.TrimSpace(effort) {
 	case "low", "medium", "high":
 		return effort
-	case "xhigh":
+	case "xhigh", "max", "ultra":
 		return "max"
 	default:
 		return ""

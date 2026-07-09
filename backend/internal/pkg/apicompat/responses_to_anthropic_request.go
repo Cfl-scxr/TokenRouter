@@ -91,10 +91,12 @@ func defaultThinkingBudget(effort string) int {
 //	high   → high
 //	xhigh  → max
 func mapResponsesEffortToAnthropic(effort string) string {
-	if effort == "xhigh" {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "xhigh", "max", "ultra":
 		return "max"
+	default:
+		return effort // low→low, medium→medium, high→high, unknown→passthrough
 	}
-	return effort // low→low, medium→medium, high→high, unknown→passthrough
 }
 
 // convertResponsesInputToAnthropic extracts system prompt and messages from
