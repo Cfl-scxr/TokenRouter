@@ -17,6 +17,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/payment"
 	"github.com/TokenFlux/TokenRouter/internal/payment/provider"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	"github.com/shopspring/decimal"
 )
 
 // --- Order Creation ---
@@ -68,8 +69,8 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	// 订阅套餐 price 是直付价，余额充值倍率只影响余额充值到账，不参与订阅 pay_amount 计算。
-	feeBreakdown, payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, methodFee, methodCurrency)
+	// 订阅订单先换算网关扣款基数，再统一应用 fork 的固定费与比例费模型。
+	feeBreakdown, payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, methodFee, methodCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		feeBreakdown, payAmountStr, payAmount, err = calculateCreateOrderPayAmount(limitAmount, methodFee, selectedCurrency)
+		feeBreakdown, payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, methodFee, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
 		if err != nil {
 			return nil, err
 		}
@@ -666,6 +667,28 @@ func calculateCreateOrderPayAmount(limitAmount float64, methodFee payment.FeeCon
 			WithMetadata(map[string]string{"currency": currency})
 	}
 	return feeBreakdown, payAmountStr, payAmount, nil
+}
+
+func calculateCreateOrderPayAmountForOrderType(limitAmount float64, methodFee payment.FeeConfig, currency, orderType string, usdToCnyRate float64) (payment.FeeBreakdown, string, float64, error) {
+	paymentAmount := limitAmount
+	if orderType == payment.OrderTypeSubscription {
+		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToCnyRate, currency)
+	}
+	return calculateCreateOrderPayAmount(paymentAmount, methodFee, currency)
+}
+
+// calculateSubscriptionGatewayBaseAmount 计算订阅订单的网关扣款基数。
+// 换算是显式 opt-in：仅当管理员配置了订阅汇率（rate > 0，1 USD = rate CNY）
+// 且网关币种为 CNY 时，按 price × rate 换算；未配置时保持 price 直付的存量行为。
+func calculateSubscriptionGatewayBaseAmount(amount, usdToCnyRate float64, currency string) float64 {
+	rate := normalizeSubscriptionUSDToCNYRate(usdToCnyRate)
+	if rate <= 0 || currency != payment.DefaultPaymentCurrency {
+		return amount
+	}
+	return decimal.NewFromFloat(amount).
+		Mul(decimal.NewFromFloat(rate)).
+		Round(int32(payment.CurrencyMaxFractionDigits(currency))).
+		InexactFloat64()
 }
 
 func validateCreateOrderAmountCurrency(amount float64, currency string) error {
