@@ -29,6 +29,12 @@ describe('AppSidebar header styles', () => {
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
+
+  it('links the logo and site name to the role-specific dashboard', () => {
+    expect(componentSource).toContain("const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))")
+    expect(componentSource.match(/:to="homePath"/g)).toHaveLength(2)
+    expect(componentSource).toContain(':tabindex="sidebarCollapsed ? -1 : undefined"')
+  })
 })
 
 describe('AppSidebar admin personal menu', () => {
