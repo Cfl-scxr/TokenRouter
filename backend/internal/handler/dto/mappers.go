@@ -108,6 +108,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		DataSharingConfirmedGroupID:           k.DataSharingConfirmedGroupID,
 		DataSharingConfirmedAt:                k.DataSharingConfirmedAt,
 		FallbackToDefaultGroupWhenUnavailable: k.FallbackToDefaultGroupWhenUnavailable,
+		CurrentConcurrency:                    k.CurrentConcurrency,
 		User:                                  UserFromServiceShallow(k.User),
 		Group:                                 GroupFromServiceShallow(k.Group),
 	}

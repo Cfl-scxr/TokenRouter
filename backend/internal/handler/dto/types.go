@@ -71,6 +71,8 @@ type APIKey struct {
 	DataSharingConfirmedAt      *time.Time `json:"data_sharing_confirmed_at"`
 	// 绑定分组不可用时是否自动回退到同平台默认分组。
 	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
+	// CurrentConcurrency 表示当前 API Key 的实时活跃请求数。
+	CurrentConcurrency int `json:"current_concurrency"`
 
 	// Rate limit fields
 	RateLimit5h   float64    `json:"rate_limit_5h"`
