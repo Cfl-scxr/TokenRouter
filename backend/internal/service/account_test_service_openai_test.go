@@ -159,14 +159,15 @@ func TestAccountTestService_OpenAIOAuthUsesConfiguredUserAgent(t *testing.T) {
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"access_token": "test-token",
-			"user_agent":   "account-client/1.0",
+			"user_agent":   "codex-tui/9.9.0 test-terminal",
 		},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.NoError(t, err)
 	require.Len(t, upstream.requests, 1)
-	require.Equal(t, "account-client/1.0", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "codex-tui/9.9.0 test-terminal", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "codex-tui", upstream.requests[0].Header.Get("Originator"))
 }
 
 func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *testing.T) {
@@ -276,12 +277,13 @@ func TestAccountTestService_RunTestBackgroundWithPromptAndUserAgentOverridesHead
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
 
-	result, err := svc.RunTestBackgroundWithPromptAndUserAgent(context.Background(), account.ID, "gpt-5.4", "hi", "probe-client/9.9")
+	result, err := svc.RunTestBackgroundWithPromptAndUserAgent(context.Background(), account.ID, "gpt-5.4", "hi", "codex-tui/9.9.1 test-terminal")
 
 	require.NoError(t, err)
 	require.Equal(t, "success", result.Status)
 	require.Len(t, upstream.requests, 1)
-	require.Equal(t, "probe-client/9.9", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "codex-tui/9.9.1 test-terminal", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "codex-tui", upstream.requests[0].Header.Get("Originator"))
 }
 
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {

@@ -949,6 +949,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 根据 TLS 路由规则、账号配置与全局兜底决定最终上游 User-Agent。
 	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, false, routerMatch...)
 
+	// 终态收口：originator 必须与最终 User-Agent 首段配套且为官方身份，否则上游 404（issue #3901）。
+	if account.Type == AccountTypeOAuth {
+		enforceCodexIdentityHeaders(req.Header)
+	}
+
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")

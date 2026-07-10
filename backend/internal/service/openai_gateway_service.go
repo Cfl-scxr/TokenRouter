@@ -1178,8 +1178,8 @@ func (s *OpenAIGatewayService) applyOpenAIUpstreamUserAgent(
 	}
 	wasBrowserUA := account != nil && account.Type == AccountTypeOAuth && openai.IsBrowserUserAgent(req.Header.Get("user-agent"))
 	s.overrideBrowserUserAgent(ctx, account, req)
-	if passthrough && account != nil && account.Type == AccountTypeOAuth && !wasBrowserUA && !openai.IsCodexCLIRequest(req.Header.Get("user-agent")) {
-		// OAuth 安全透传：非浏览器、非 Codex UA 继续使用历史 Codex CLI 兜底。
+	if passthrough && account != nil && account.Type == AccountTypeOAuth && !wasBrowserUA && !openai.IsCodexOfficialClientRequest(req.Header.Get("user-agent")) {
+		// OAuth 安全透传：非浏览器、非官方 Codex UA 继续使用历史 Codex CLI 兜底。
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
 }
