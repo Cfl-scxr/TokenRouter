@@ -9,14 +9,15 @@ import (
 )
 
 type User struct {
-	ID            int64   `json:"id"`
-	Email         string  `json:"email"`
-	Username      string  `json:"username"`
-	Role          string  `json:"role"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	Status        string  `json:"status"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	ID            int64      `json:"id"`
+	Email         string     `json:"email"`
+	Username      string     `json:"username"`
+	Role          string     `json:"role"`
+	Balance       float64    `json:"balance"`
+	FrozenBalance float64    `json:"frozen_balance"`
+	Concurrency   int        `json:"concurrency"`
+	Status        string     `json:"status"`
+	AllowedGroups []int64    `json:"allowed_groups"`
 	// DisabledPublicGroups 为管理员显式禁止该用户使用的公开分组 ID。
 	DisabledPublicGroups []int64    `json:"disabled_public_groups"`
 	LastActiveAt         *time.Time `json:"last_active_at,omitempty"`
@@ -109,9 +110,12 @@ type Group struct {
 	SessionIsolationEnabled bool `json:"session_isolation_enabled"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration bool    `json:"allow_image_generation"`
-	ImageRateIndependent bool    `json:"image_rate_independent"`
-	ImageRateMultiplier  float64 `json:"image_rate_multiplier"`
+	AllowImageGeneration         bool    `json:"allow_image_generation"`
+	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageRateIndependent         bool    `json:"image_rate_independent"`
+	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`
 	// 高峰时段倍率配置
 	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
 	PeakStart          string   `json:"peak_start"`

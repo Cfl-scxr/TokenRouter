@@ -88,6 +88,7 @@ export interface User {
   wechat_bound?: boolean
   role: 'admin' | 'user' // 用户角色
   balance: number // 用户余额
+  frozen_balance?: number // 异步批量任务当前冻结的余额
   concurrency: number // 允许的并发请求数
   rpm_limit?: number // 用户级 RPM 上限（0 表示无限制）；分组未配置时作为兜底
   status: 'active' | 'disabled' // 账号状态
@@ -643,8 +644,11 @@ export interface Group {
   status: 'active' | 'inactive'
   // 图片生成计费配置
   allow_image_generation: boolean
+  allow_batch_image_generation: boolean
   image_rate_independent: boolean
   image_rate_multiplier: number
+  batch_image_discount_multiplier: number
+  batch_image_hold_multiplier: number
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
@@ -780,8 +784,11 @@ export interface CreateGroupRequest {
   data_sharing_enabled?: boolean
   session_isolation_enabled?: boolean
   allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
@@ -822,8 +829,11 @@ export interface UpdateGroupRequest {
   session_isolation_enabled?: boolean
   status?: 'active' | 'inactive'
   allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null

@@ -60,6 +60,7 @@ type Handlers struct {
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	DataSharing      *DataSharingHandler
+	BatchImage       *BatchImageHandler
 }
 
 // BuildInfo contains build-time information

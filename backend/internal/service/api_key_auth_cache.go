@@ -70,6 +70,7 @@ type APIKeyAuthGroupSnapshot struct {
 	DataSharingEnabled              bool     `json:"data_sharing_enabled"`
 	SessionIsolationEnabled         bool     `json:"session_isolation_enabled"`
 	AllowImageGeneration            bool     `json:"allow_image_generation"`
+	AllowBatchImageGeneration       bool     `json:"allow_batch_image_generation"`
 	ImageRateIndependent            bool     `json:"image_rate_independent"`
 	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`

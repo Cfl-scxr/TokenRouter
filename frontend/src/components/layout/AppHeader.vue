@@ -48,7 +48,14 @@
 
           <div class="header-status-balance hidden sm:flex">
             <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
-              {{ formatBalanceAmount(user.balance, { fractionDigits: 2 }) }}
+              {{ formatHeaderMoney(availableBalance) }}
+            </span>
+            <span
+              v-if="frozenBalance > 0"
+              class="ml-2 text-xs font-medium text-amber-600 dark:text-amber-300"
+              :title="balanceFrozenLabel"
+            >
+              {{ balanceFrozenLabel }}
             </span>
           </div>
 
@@ -90,7 +97,10 @@
                   {{ t('common.balance') }}
                 </div>
                 <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                  {{ formatBalanceAmount(user.balance, { fractionDigits: 2 }) }}
+                  {{ formatHeaderMoney(availableBalance) }}
+                </div>
+                <div v-if="frozenBalance > 0" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                  {{ balanceFrozenText }} {{ formatHeaderMoney(frozenBalance) }}
                 </div>
               </div>
 
@@ -270,6 +280,10 @@ const contactEntries = computed<ContactEntry[]>(() => {
 })
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const availableBalance = computed(() => Number(user.value?.balance || 0))
+const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
+const balanceFrozenText = computed(() => t('common.frozenBalance') === 'common.frozenBalance' ? '冻结金额' : t('common.frozenBalance'))
+const balanceFrozenLabel = computed(() => `${balanceFrozenText.value} ${formatHeaderMoney(frozenBalance.value)}`)
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -345,6 +359,10 @@ async function handleLogout() {
 function handleReplayGuide() {
   closeDropdown()
   onboardingStore.replay()
+}
+
+function formatHeaderMoney(value: number) {
+  return formatBalanceAmount(Number.isFinite(value) ? value : 0, { fractionDigits: 2 })
 }
 
 function handleClickOutside(event: MouseEvent) {

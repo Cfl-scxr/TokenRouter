@@ -60,11 +60,14 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDataSharingEnabled(groupIn.DataSharingEnabled).
 		SetSessionIsolationEnabled(groupIn.SessionIsolationEnabled).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
+		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
 		SetNillableFallbackGroupIDOnInvalidRequest(groupIn.FallbackGroupIDOnInvalidRequest).
@@ -149,11 +152,14 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDataSharingEnabled(groupIn.DataSharingEnabled).
 		SetSessionIsolationEnabled(groupIn.SessionIsolationEnabled).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
+		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
 		SetMcpXMLInject(groupIn.MCPXMLInject).
