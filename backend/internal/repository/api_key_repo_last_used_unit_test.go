@@ -123,6 +123,18 @@ func TestAPIKeyRepositoryListByUserIDAttachesLastUsedIP(t *testing.T) {
 	require.Equal(t, newestIP, *byID[withLogs.ID].LastUsedIP)
 	require.Nil(t, byID[emptyOnly.ID].LastUsedIP)
 	require.Nil(t, byID[noLogs.ID].LastUsedIP)
+
+	allKeys, err := repo.ListAllByUserID(ctx, user.ID, service.APIKeyListFilters{})
+	require.NoError(t, err)
+
+	allByID := make(map[int64]service.APIKey, len(allKeys))
+	for _, key := range allKeys {
+		allByID[key.ID] = key
+	}
+	require.NotNil(t, allByID[withLogs.ID].LastUsedIP)
+	require.Equal(t, newestIP, *allByID[withLogs.ID].LastUsedIP)
+	require.Nil(t, allByID[emptyOnly.ID].LastUsedIP)
+	require.Nil(t, allByID[noLogs.ID].LastUsedIP)
 }
 
 func TestAPIKeyRepository_CreateWithLastUsedAt(t *testing.T) {
