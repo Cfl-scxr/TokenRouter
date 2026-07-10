@@ -153,16 +153,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		skipBilling := c.Request.URL.Path == "/v1/usage"
 
 		var subscription *service.UserSubscription
-		needsMaintenance := false
 		if subscriptionService != nil {
-			sub, maintenance, subErr := subscriptionService.GetUsableSubscription(c.Request.Context(), apiKey.User.ID)
+			sub, _, subErr := subscriptionService.GetUsableSubscription(c.Request.Context(), apiKey.User.ID)
 			if subErr != nil && !errors.Is(subErr, service.ErrSubscriptionNotFound) {
 				AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to validate subscription")
 				return
 			}
 			if subErr == nil {
 				subscription = sub
-				needsMaintenance = maintenance
 			}
 		}
 
@@ -190,9 +188,27 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			}
 
 			if subscription != nil {
+				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if needsMaintenance {
-					maintenanceCopy := *subscription
-					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
+					refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)
+					if maintenanceErr != nil {
+						AbortWithError(c, 500, "SUBSCRIPTION_MAINTENANCE_FAILED", "Failed to maintain subscription usage windows")
+						return
+					}
+					subscription = refreshed
+					_, validateErr = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				}
+				if validateErr != nil {
+					code := "SUBSCRIPTION_INVALID"
+					status := 403
+					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+						code = "USAGE_LIMIT_EXCEEDED"
+						status = 429
+					}
+					AbortWithError(c, status, code, validateErr.Error())
+					return
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查

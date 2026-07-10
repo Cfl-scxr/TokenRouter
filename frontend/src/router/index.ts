@@ -846,21 +846,24 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
-  // Check payment requirement (internal payment system only)
-  if (to.meta.requiresPayment) {
-    const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
-    if (!paymentEnabled) {
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-      return
-    }
+  // 只有成功加载设置后的明确值才能禁用路由；临时加载失败属于未知状态，
+  // 不能据此判定功能已关闭。
+  if (
+    to.meta.requiresPayment &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.payment_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
   }
 
-  if (to.meta.requiresRiskControl) {
-    const riskControlEnabled = appStore.cachedPublicSettings?.risk_control_enabled === true
-    if (!riskControlEnabled) {
-      next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
-      return
-    }
+  if (
+    to.meta.requiresRiskControl &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.risk_control_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
   }
 
   if (to.meta.requiresAffiliate) {
