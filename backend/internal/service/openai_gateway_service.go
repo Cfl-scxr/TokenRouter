@@ -3304,6 +3304,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, blocked
 			case BetaPolicyActionFilter:
 				markPatchDelete("service_tier")
+			case OpenAIFastPolicyActionForcePriority:
+				if rawTier != OpenAIFastTierPriority {
+					markPatchSet("service_tier", OpenAIFastTierPriority)
+				}
 			default:
 				if normTier != rawTier {
 					markPatchSet("service_tier", normTier)
@@ -7837,11 +7841,11 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 	return nil
 }
 
-// applyOpenAIFastPolicyToBody applies the OpenAI fast policy to a raw request
-// body. When action=filter it removes the service_tier field; when
-// action=block it returns (body, *OpenAIFastBlockedError). On pass it
-// normalizes the service_tier value (e.g. client alias "fast" → "priority"),
-// rewriting the body so the upstream receives a slug it recognizes.
+// applyOpenAIFastPolicyToBody 对原始请求体应用 OpenAI fast policy。
+// action=filter 时删除 service_tier，action=block 时返回
+// (body, *OpenAIFastBlockedError)，action=pass 时归一化 service_tier
+// （例如将客户端别名 "fast" 改为 "priority"），action=force_priority 时
+// 将所有命中的已知 tier 强制改为 "priority"。
 //
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
 // 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
@@ -7874,6 +7878,12 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 			return body, fmt.Errorf("strip service_tier from body: %w", err)
 		}
 		return trimmed, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return body, fmt.Errorf("force service_tier priority on body: %w", err)
+		}
+		return updated, nil
 	default:
 		// pass：把别名（如 "fast"）写回为规范值（"priority"）。
 		if normTier == rawTier {
@@ -7909,6 +7919,7 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 //
 //   - pass：保留 service_tier，并将 "fast" 等别名归一化为 "priority"
 //   - filter：返回删除顶层 service_tier 的副本
+//   - force_priority：保留 service_tier，并将其强制改写为 "priority"
 //   - block：返回 (frame, *OpenAIFastBlockedError)
 //
 // 所有帧先校验 Ultra；只有 "type" 字段严格等于 "response.create" 的帧
@@ -7970,6 +7981,12 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 			return frame, nil, fmt.Errorf("strip service_tier from ws frame: %w", err)
 		}
 		return trimmed, nil, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(frame, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return frame, nil, fmt.Errorf("force service_tier priority in ws frame: %w", err)
+		}
+		return updated, nil, nil
 	default:
 		// pass 路径也要把客户端别名 fast 归一化为上游接受的 priority，
 		// 保持 WS 与 HTTP body 入口的 service_tier 语义一致。
