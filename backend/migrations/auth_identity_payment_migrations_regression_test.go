@@ -236,6 +236,18 @@ func TestMigration193AllowsVideoUsageWithoutImageSize(t *testing.T) {
 	require.Contains(t, sql, "image_size IN ('1K', '2K', '4K', 'mixed')")
 }
 
+func TestMigration194AddsVideoPerSecondBillingMetadata(t *testing.T) {
+	content, err := FS.ReadFile("194_video_per_second_billing_metadata.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "video_count INTEGER NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "video_resolution VARCHAR(10)")
+	require.Contains(t, sql, "video_duration_seconds INTEGER")
+	require.Contains(t, sql, "OR COALESCE(video_count, 0) > 0")
+	require.Contains(t, sql, "每秒单价 (USD/s)")
+}
+
 func TestMigration175AddsSparkShadowColumnsAndConstraintsWithoutHotIndexes(t *testing.T) {
 	content, err := FS.ReadFile("175_account_spark_shadow.sql")
 	require.NoError(t, err)

@@ -83,6 +83,9 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // 图片输出尺寸
 			sqlmock.AnyArg(), // 图片尺寸来源
 			sqlmock.AnyArg(), // 图片尺寸明细
+			sqlmock.AnyArg(), // 视频数量
+			sqlmock.AnyArg(), // 视频分辨率
+			sqlmock.AnyArg(), // 视频时长
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
@@ -169,6 +172,9 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // 图片输出尺寸
 			sqlmock.AnyArg(), // 图片尺寸来源
 			sqlmock.AnyArg(), // 图片尺寸明细
+			sqlmock.AnyArg(), // 视频数量
+			sqlmock.AnyArg(), // 视频分辨率
+			sqlmock.AnyArg(), // 视频时长
 			serviceTier,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -893,6 +899,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "3840x2160"},
 			sql.NullString{Valid: true, String: "output"},
 			sql.NullString{Valid: true, String: `{"4K":2}`},
+			0,                // video_count
+			sql.NullString{}, // video_resolution
+			sql.NullInt64{},  // video_duration_seconds
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
@@ -964,6 +973,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // 图片输出尺寸
 			sql.NullString{}, // 图片尺寸来源
 			sql.NullString{}, // 图片尺寸明细
+			0,                // 视频数量
+			sql.NullString{}, // 视频分辨率
+			sql.NullInt64{},  // 视频时长
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
 			sql.NullString{},
@@ -1017,6 +1029,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // 图片输出尺寸
 			sql.NullString{}, // 图片尺寸来源
 			sql.NullString{}, // 图片尺寸明细
+			0,                // 视频数量
+			sql.NullString{}, // 视频分辨率
+			sql.NullInt64{},  // 视频时长
 			sql.NullString{Valid: true, String: "flex"},
 			sql.NullString{},
 			sql.NullString{},
@@ -1070,6 +1085,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{}, // 图片输出尺寸
 			sql.NullString{}, // 图片尺寸来源
 			sql.NullString{}, // 图片尺寸明细
+			0,                // 视频数量
+			sql.NullString{}, // 视频分辨率
+			sql.NullInt64{},  // 视频时长
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
 			sql.NullString{},
