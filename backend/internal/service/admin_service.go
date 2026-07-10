@@ -135,6 +135,8 @@ type CreateUserInput struct {
 	AllowedGroups []int64
 	// DisabledPublicGroups 记录管理员禁止该用户使用的公开分组 ID。
 	DisabledPublicGroups []int64
+	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
+	ActorAdminID int64
 }
 
 type UpdateUserInput struct {
@@ -153,6 +155,8 @@ type UpdateUserInput struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
+	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
+	ActorAdminID int64
 }
 
 type AdminBindAuthIdentityInput struct {

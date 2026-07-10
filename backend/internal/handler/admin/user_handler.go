@@ -289,6 +289,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		RPMLimit:             req.RPMLimit,
 		AllowedGroups:        req.AllowedGroups,
 		DisabledPublicGroups: req.DisabledPublicGroups,
+		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -334,6 +335,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		AllowedGroups:        req.AllowedGroups,
 		DisabledPublicGroups: req.DisabledPublicGroups,
 		GroupRates:           req.GroupRates,
+		ActorAdminID:         getAdminIDFromContext(c),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
