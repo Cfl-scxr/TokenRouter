@@ -642,7 +642,7 @@ func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
 	if toolsContainImageGeneration(reqBody["tools"]) {
 		return true
 	}
-	return inputContainsImageGenNamespace(reqBody["input"])
+	return inputContainsImageGenerationTool(reqBody["input"])
 }
 
 func toolsContainImageGeneration(rawTools any) bool {
@@ -658,23 +658,27 @@ func toolsContainImageGeneration(rawTools any) bool {
 		if !ok {
 			continue
 		}
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
-			return true
-		}
-		if isImageGenNamespaceToolMap(toolMap) {
+		if isOpenAIImageGenerationToolMap(toolMap) {
 			return true
 		}
 	}
 	return false
 }
 
-func isImageGenNamespaceToolMap(tool map[string]any) bool {
-	return strings.TrimSpace(firstNonEmptyString(tool["type"])) == "namespace" &&
-		strings.TrimSpace(firstNonEmptyString(tool["name"])) == "image_gen"
+// isOpenAIImageGenerationToolMap 判断 map 工具是否为扁平或命名空间格式的生图声明。
+func isOpenAIImageGenerationToolMap(tool map[string]any) bool {
+	return isOpenAIImageGenerationType(firstNonEmptyString(tool["type"])) ||
+		isImageGenNamespaceToolMap(tool)
 }
 
-// inputContainsImageGenNamespace 检测 Responses Lite input 中嵌套的生图工具声明。
-func inputContainsImageGenNamespace(rawInput any) bool {
+// isImageGenNamespaceToolMap 判断 map 工具是否为 Codex 生图命名空间。
+func isImageGenNamespaceToolMap(tool map[string]any) bool {
+	return strings.TrimSpace(firstNonEmptyString(tool["type"])) == "namespace" &&
+		isOpenAIImageGenNamespaceName(firstNonEmptyString(tool["name"]))
+}
+
+// inputContainsImageGenerationTool 检测 Responses Lite input 中嵌套的生图工具声明。
+func inputContainsImageGenerationTool(rawInput any) bool {
 	input, ok := rawInput.([]any)
 	if !ok {
 		return false
@@ -694,53 +698,110 @@ func inputContainsImageGenNamespace(rawInput any) bool {
 	return false
 }
 
-// stripOpenAIImageGenerationTools 移除 image_generation 工具及指向它的 tool_choice。
-// 当工具列表被清空时同步删除 tools；返回值表示请求体是否被修改。
+// stripOpenAIImageGenerationTools 对称处理顶层 tools、Responses Lite additional_tools
+// 和 tool_choice 中的生图声明；返回值表示请求体是否被修改。
 func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
-	rawTools, ok := reqBody["tools"]
+	if reqBody == nil {
+		return false
+	}
+	modified := stripOpenAIImageGenerationToolList(reqBody, "tools")
+	if stripOpenAIImageGenerationToolsFromInput(reqBody) {
+		modified = true
+	}
+	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
+		modified = true
+	}
+	return modified
+}
+
+// stripOpenAIImageGenerationToolList 从指定工具数组中移除所有生图声明。
+func stripOpenAIImageGenerationToolList(container map[string]any, key string) bool {
+	rawTools, ok := container[key]
 	if !ok || rawTools == nil {
-		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
-			delete(reqBody, "tool_choice")
-			return true
-		}
 		return false
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
-		if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
-			delete(reqBody, "tool_choice")
-			return true
-		}
 		return false
 	}
 	filtered := make([]any, 0, len(tools))
 	removed := false
 	for _, rawTool := range tools {
-		if toolMap, ok := rawTool.(map[string]any); ok &&
-			strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+		if toolMap, ok := rawTool.(map[string]any); ok && isOpenAIImageGenerationToolMap(toolMap) {
 			removed = true
 			continue
 		}
 		filtered = append(filtered, rawTool)
 	}
-	if !removed && !openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+	if !removed {
 		return false
 	}
-	if removed {
-		if len(filtered) == 0 {
-			delete(reqBody, "tools")
-		} else {
-			reqBody["tools"] = filtered
-		}
-	}
-	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
-		delete(reqBody, "tool_choice")
+	if len(filtered) == 0 {
+		delete(container, key)
+	} else {
+		container[key] = filtered
 	}
 	return true
 }
 
-// stripCodexSparkImageGenerationTools 会从 Spark 请求中移除 image_generation 工具。
-// gpt-5.3-codex-spark 上游会以 param=tools 拒绝该工具，而 Codex CLI 默认会携带它。
+// stripOpenAIImageGenerationToolsFromInput 清理 Responses Lite input 内的生图工具。
+func stripOpenAIImageGenerationToolsFromInput(reqBody map[string]any) bool {
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return false
+	}
+
+	filteredInput := make([]any, 0, len(input))
+	modified := false
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			filteredInput = append(filteredInput, rawItem)
+			continue
+		}
+		if !stripOpenAIImageGenerationToolList(item, "tools") {
+			filteredInput = append(filteredInput, rawItem)
+			continue
+		}
+		modified = true
+		if _, hasTools := item["tools"]; hasTools {
+			filteredInput = append(filteredInput, rawItem)
+		}
+		// 移除唯一声明的能力后，空 additional_tools 容器对上游无意义，直接丢弃。
+	}
+	if modified {
+		reqBody["input"] = filteredInput
+	}
+	return modified
+}
+
+// stripOpenAIImageGenerationToolsFromRawPayload 为直接转发原始 HTTP 或 WebSocket
+// 请求体的路径提供统一清理入口。
+func stripOpenAIImageGenerationToolsFromRawPayload(payload []byte) ([]byte, bool, error) {
+	if !openAIRequestBodyHasImageGenerationDeclaration(payload) {
+		if json.Valid(payload) {
+			return payload, false, nil
+		}
+		var invalidPayload map[string]any
+		return payload, false, json.Unmarshal(payload, &invalidPayload)
+	}
+	payloadMap := make(map[string]any)
+	if err := json.Unmarshal(payload, &payloadMap); err != nil {
+		return payload, false, err
+	}
+	if !stripOpenAIImageGenerationTools(payloadMap) {
+		return payload, false, nil
+	}
+	rebuilt, err := json.Marshal(payloadMap)
+	if err != nil {
+		return payload, false, err
+	}
+	return rebuilt, true, nil
+}
+
+// stripCodexSparkImageGenerationTools 会从 Spark 请求中移除生图声明和选择。
+// gpt-5.3-codex-spark 会拒绝这些能力，而 Codex 客户端可能默认携带它们。
 func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 	return stripOpenAIImageGenerationTools(reqBody)
 }

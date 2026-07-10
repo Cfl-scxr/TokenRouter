@@ -761,27 +761,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 }
 
 // stripCodexSparkImageGenerationToolFromRawPayload 会在上游模型为 Spark 时，从原始
-// /responses payload 中剥离 image_generation 工具。Spark 上游会以 param=tools 拒绝该工具，
+// /responses payload 中剥离生图声明。Spark 上游会以 param=tools 拒绝该工具，
 // 而 Codex 客户端默认会携带它；返回值包含可能更新后的 payload、是否修改以及 JSON 错误。
 func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model string) ([]byte, bool, error) {
-	if !isCodexSparkModel(model) || !openAIRequestBodyHasImageGenerationTool(payload) {
+	if !isCodexSparkModel(model) {
 		return payload, false, nil
 	}
-	return stripOpenAIImageGenerationToolFromRawPayload(payload)
-}
-
-// stripOpenAIImageGenerationToolFromRawPayload 从 WebSocket 原始请求中剥离图片工具并重建 JSON。
-func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
-	payloadMap := make(map[string]any)
-	if err := json.Unmarshal(payload, &payloadMap); err != nil {
-		return payload, false, err
-	}
-	if !stripOpenAIImageGenerationTools(payloadMap) {
-		return payload, false, nil
-	}
-	rebuilt, err := json.Marshal(payloadMap)
-	if err != nil {
-		return payload, false, err
-	}
-	return rebuilt, true, nil
+	return stripOpenAIImageGenerationToolsFromRawPayload(payload)
 }
