@@ -642,7 +642,9 @@ export async function syncFromCrs(params: {
       action: string
       error?: string
     }>
-  }>('/admin/accounts/sync/crs', params)
+  }>('/admin/accounts/sync/crs', params, {
+    timeout: 180_000 // 同步会串行刷新已有账号的 OAuth token，允许最长 180 秒。
+  })
   return data
 }
 
