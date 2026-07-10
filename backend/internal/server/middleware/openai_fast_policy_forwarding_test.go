@@ -181,6 +181,7 @@ type openAIFastPolicyForwardingHTTPUpstream struct {
 }
 
 func (u *openAIFastPolicyForwardingHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	// #nosec G704 -- 测试请求仅发送到本地 httptest.Server，不接受外部目标地址。
 	return u.client.Do(req)
 }
 

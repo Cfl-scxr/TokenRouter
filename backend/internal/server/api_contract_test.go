@@ -554,6 +554,7 @@ func TestAPIContracts(t *testing.T) {
 						"username": "alice",
 						"role": "user",
 						"balance": 0,
+						"frozen_balance": 0,
 						"concurrency": 0,
 						"rpm_limit": 0,
 						"status": "active",
