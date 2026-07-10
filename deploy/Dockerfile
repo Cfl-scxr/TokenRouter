@@ -18,9 +18,10 @@ ARG GOSUMDB=sum.golang.google.cn
 FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
+ENV NODE_OPTIONS=--max-old-space-size=1536
 
-# 安装 pnpm，并固定到 v9 以匹配 CI、保证镜像构建可复现
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# 安装 pnpm，并固定到与 lockfile 兼容的精确版本，避免配置校验规则变化破坏构建。
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
