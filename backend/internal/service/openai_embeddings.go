@@ -206,17 +206,8 @@ func extractOpenAIEmbeddingsUsage(body []byte) OpenAIUsage {
 		usage.Get("completion_tokens"),
 		usage.Get("output_tokens"),
 	)
-	cacheReadTokens := firstPositiveGJSONInt(
-		usage.Get("prompt_tokens_details.cached_tokens"),
-		usage.Get("input_tokens_details.cached_tokens"),
-		usage.Get("cache_read_tokens"),
-		usage.Get("cache_read_input_tokens"),
-	)
-	cacheCreationTokens := firstPositiveGJSONInt(
-		usage.Get("cache_creation_tokens"),
-		usage.Get("cache_creation_input_tokens"),
-		usage.Get("input_tokens_details.cache_creation_tokens"),
-	)
+	cacheReadTokens := openAICacheReadTokensFromUsage(usage)
+	cacheCreationTokens := openAICacheCreationTokensFromUsage(usage)
 	// 多模态 embedding 会返回图文 token 拆分，用于图文不同价计费。
 	imageInputTokens := firstPositiveGJSONInt(
 		usage.Get("prompt_tokens_details.image_tokens"),

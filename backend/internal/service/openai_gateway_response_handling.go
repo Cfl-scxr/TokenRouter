@@ -780,10 +780,8 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
 	}
-	cacheReadTokens := value.Get("input_tokens_details.cached_tokens").Int()
-	if cacheReadTokens == 0 {
-		cacheReadTokens = value.Get("prompt_tokens_details.cached_tokens").Int()
-	}
+	cacheReadTokens := openAICacheReadTokensFromUsage(value)
+	cacheCreationTokens := openAICacheCreationTokensFromUsage(value)
 	imageInputTokens := value.Get("input_tokens_details.image_tokens").Int()
 	if imageInputTokens == 0 {
 		imageInputTokens = value.Get("prompt_tokens_details.image_tokens").Int()
@@ -796,10 +794,33 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		InputTokens:              int(inputTokens),
 		ImageInputTokens:         int(imageInputTokens),
 		OutputTokens:             int(outputTokens),
-		CacheCreationInputTokens: int(value.Get("cache_creation_input_tokens").Int()),
-		CacheReadInputTokens:     int(cacheReadTokens),
+		CacheCreationInputTokens: cacheCreationTokens,
+		CacheReadInputTokens:     cacheReadTokens,
 		ImageOutputTokens:        int(imageOutputTokens),
 	}, true
+}
+
+func openAICacheReadTokensFromUsage(value gjson.Result) int {
+	return firstPositiveGJSONInt(
+		value.Get("input_tokens_details.cached_tokens"),
+		value.Get("prompt_tokens_details.cached_tokens"),
+		value.Get("cache_read_input_tokens"),
+		value.Get("cache_read_tokens"),
+		value.Get("cached_tokens"),
+	)
+}
+
+func openAICacheCreationTokensFromUsage(value gjson.Result) int {
+	return firstPositiveGJSONInt(
+		value.Get("input_tokens_details.cache_write_tokens"),
+		value.Get("prompt_tokens_details.cache_write_tokens"),
+		value.Get("input_tokens_details.cache_creation_tokens"),
+		value.Get("prompt_tokens_details.cache_creation_tokens"),
+		value.Get("cache_write_tokens"),
+		value.Get("cache_creation_input_tokens"),
+		value.Get("cache_write_input_tokens"),
+		value.Get("cache_creation_tokens"),
+	)
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
