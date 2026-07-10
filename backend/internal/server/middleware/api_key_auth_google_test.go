@@ -514,6 +514,127 @@ func TestApiKeyAuthWithSubscriptionGoogle_DisabledKey(t *testing.T) {
 	require.Equal(t, "UNAUTHENTICATED", resp.Error.Status)
 }
 
+func TestApiKeyAuthWithSubscriptionGoogle_RejectsRuntimeKeyRestrictions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	expiredAt := time.Now().Add(-time.Minute)
+	tests := []struct {
+		name            string
+		configureAPIKey func(*service.APIKey)
+		wantCode        int
+		wantMessage     string
+		wantStatus      string
+	}{
+		{
+			name: "expired_at",
+			configureAPIKey: func(apiKey *service.APIKey) {
+				apiKey.ExpiresAt = &expiredAt
+			},
+			wantCode:    http.StatusForbidden,
+			wantMessage: "API key 已过期",
+			wantStatus:  "PERMISSION_DENIED",
+		},
+		{
+			name: "quota_exhausted",
+			configureAPIKey: func(apiKey *service.APIKey) {
+				apiKey.Quota = 10
+				apiKey.QuotaUsed = 10
+			},
+			wantCode:    http.StatusTooManyRequests,
+			wantMessage: "API key 额度已用完",
+			wantStatus:  "RESOURCE_EXHAUSTED",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			apiKey := &service.APIKey{
+				ID:     1,
+				Key:    "runtime-restricted",
+				Status: service.StatusActive,
+				User: &service.User{
+					ID:      123,
+					Status:  service.StatusActive,
+					Balance: 10,
+				},
+			}
+			tt.configureAPIKey(apiKey)
+
+			apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+				getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+					clone := *apiKey
+					return &clone, nil
+				},
+			})
+			cfg := &config.Config{RunMode: config.RunModeStandard}
+			r := gin.New()
+			r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+			r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+			req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+			req.Header.Set("x-goog-api-key", apiKey.Key)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			require.Equal(t, tt.wantCode, rec.Code)
+			var resp googleErrorResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			require.Equal(t, tt.wantCode, resp.Error.Code)
+			require.Equal(t, tt.wantMessage, resp.Error.Message)
+			require.Equal(t, tt.wantStatus, resp.Error.Status)
+		})
+	}
+}
+
+func TestApiKeyAuthWithSubscriptionGoogle_IPRestrictionDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	apiKey := &service.APIKey{
+		ID:          1,
+		Key:         "google-ip-restricted",
+		Status:      service.StatusActive,
+		IPWhitelist: []string{"1.2.3.4"},
+		User: &service.User{
+			ID:      123,
+			Status:  service.StatusActive,
+			Balance: 10,
+		},
+	}
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			clone := *apiKey
+			return &clone, nil
+		},
+	})
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	var businessLimitedReason string
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		if value, ok := c.Get(service.OpsClientBusinessLimitedReasonKey); ok {
+			businessLimitedReason, _ = value.(string)
+		}
+	})
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	req.Header.Set("CF-Connecting-IP", "1.2.3.4")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "Access denied. Your IP is 9.9.9.9", resp.Error.Message)
+	require.Equal(t, service.OpsClientBusinessLimitedReasonIPRestriction, businessLimitedReason)
+}
+
 func TestApiKeyAuthWithSubscriptionGoogle_InsufficientBalance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -265,15 +265,23 @@ async function renderQR() {
   })
 }
 
+let pollInFlight = false
 async function pollStatus() {
-  if (!props.orderId || outcome.value) return
-  // Stripe 直接查上游；微信在本地仍 pending 时再节流补查，避免漏回调导致一直等待。
-  const upstreamOutTradeNo = upstreamVerificationOutTradeNo()
-  let order = upstreamOutTradeNo && props.paymentType === 'stripe'
-    ? await verifyOrderWithUpstream(upstreamOutTradeNo)
-    : await paymentStore.pollOrderStatus(props.orderId)
-  order = await tryRecoverPendingWxpayOrder(order)
-  applyResolvedOrderStatus(order)
+  if (!props.orderId || outcome.value || pollInFlight) return
+  pollInFlight = true
+  try {
+    // Stripe 直接查上游；微信在本地仍 pending 时再节流补查，避免漏回调导致一直等待。
+    const upstreamOutTradeNo = upstreamVerificationOutTradeNo()
+    let order = upstreamOutTradeNo && props.paymentType === 'stripe'
+      ? await verifyOrderWithUpstream(upstreamOutTradeNo)
+      : await paymentStore.pollOrderStatus(props.orderId)
+    if (outcome.value) return
+    order = await tryRecoverPendingWxpayOrder(order)
+    if (outcome.value) return
+    applyResolvedOrderStatus(order)
+  } finally {
+    pollInFlight = false
+  }
 }
 
 function applyResolvedOrderStatus(order: PaymentOrder | null): boolean {

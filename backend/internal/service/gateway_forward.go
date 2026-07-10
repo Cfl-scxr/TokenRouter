@@ -154,7 +154,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
-	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
+	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
+	// 真正的 Claude Code 客户端自带完整的 system prompt、cache_control 断点和 header，
+	// 不需要代理做任何 body 级别的 mimicry；强行替换反而会破坏客户端的缓存策略
+	// （长 system prompt 被替换为 ~45 tokens 的短 prompt，低于 Anthropic 1024 token
+	// 最低缓存门槛，导致系统级缓存失效）。
+	//
+	// 对于非 Claude Code 的第三方客户端（opencode 等），仍然走完整 mimicry。
+	var clientUserAgent string
+	if c != nil {
+		clientUserAgent = c.GetHeader("User-Agent")
+	}
+	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
@@ -172,7 +183,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
-		if s.identityService != nil {
+		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
 
@@ -199,7 +210,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
 				return nil, err
 			}
-			c.Set(toolNameRewriteKey, rw)
+			if c != nil {
+				c.Set(toolNameRewriteKey, rw)
+			}
 		} else {
 			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
 				return nil, err
