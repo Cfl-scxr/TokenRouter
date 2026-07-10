@@ -1161,3 +1161,58 @@ func TestIntervalToModelPricingWithBaseClearsImageOutputWhenChannelUnset(t *test
 	require.True(t, pricing.ImageOutputPriceExplicit)
 	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
 }
+
+// TestApplyTokenOverrides_FlatDoesNotPolluteFallbackPrices 验证平铺覆盖路径
+// 会先克隆 BasePricing，避免写穿 fallbackPrices 中的共享条目。
+func TestApplyTokenOverrides_FlatDoesNotPolluteFallbackPrices(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(10e-6), // 基础价格为 3e-6
+		OutputPrice: testPtrFloat64(50e-6), // 基础价格为 15e-6
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	// 解析结果应采用渠道覆盖价格。
+	require.NotNil(t, resolved)
+	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+
+	// 全局 fallbackPrices 不得被污染。
+	fp := r.billingService.fallbackPrices["claude-sonnet-4"]
+	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "fallback InputPricePerToken polluted")
+	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "fallback OutputPricePerToken polluted")
+	require.False(t, fp.ImageOutputPriceExplicit, "fallback ImageOutputPriceExplicit polluted")
+}
+
+// TestApplyTokenOverrides_IntervalDoesNotPolluteFallbackPrices 验证区间覆盖路径
+// 同样会在修改前克隆基础定价。
+func TestApplyTokenOverrides_IntervalDoesNotPolluteFallbackPrices(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(100000), InputPrice: testPtrFloat64(2e-6), OutputPrice: testPtrFloat64(8e-6)},
+		},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.NotNil(t, resolved)
+	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
+
+	// 全局 fallbackPrices 不得被污染。
+	fp := r.billingService.fallbackPrices["claude-sonnet-4"]
+	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "fallback InputPricePerToken polluted")
+	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "fallback OutputPricePerToken polluted")
+	require.False(t, fp.ImageOutputPriceExplicit, "fallback ImageOutputPriceExplicit polluted")
+}
