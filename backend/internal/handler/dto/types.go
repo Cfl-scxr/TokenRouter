@@ -61,9 +61,10 @@ type APIKey struct {
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
-	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
+	LastUsedIP  *string    `json:"last_used_ip"` // 最近一条带 IP 的用量日志。
+	Quota       float64    `json:"quota"`        // Quota limit in USD (0 = unlimited)
+	QuotaUsed   float64    `json:"quota_used"`   // Used quota amount in USD
+	ExpiresAt   *time.Time `json:"expires_at"`   // Expiration time (nil = never expires)
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	// 数据共享确认记录，用于前端判断切换分组时是否需要重新弹窗。

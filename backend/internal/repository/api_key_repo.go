@@ -18,6 +18,7 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/lib/pq"
 )
@@ -456,8 +457,102 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
+	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
+}
+
+// attachLastUsedIPs 为当前页 API Key 批量附加最近一条非空使用 IP。
+func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
+	if len(keys) == 0 || r.sql == nil {
+		return nil
+	}
+
+	apiKeyIDs := make([]int64, 0, len(keys))
+	for i := range keys {
+		apiKeyIDs = append(apiKeyIDs, keys[i].ID)
+	}
+
+	lastUsedIPs, err := r.latestUsageLogIPs(ctx, apiKeyIDs)
+	if err != nil {
+		return err
+	}
+	for i := range keys {
+		if ipAddress, ok := lastUsedIPs[keys[i].ID]; ok {
+			keys[i].LastUsedIP = &ipAddress
+		}
+	}
+	return nil
+}
+
+// latestUsageLogIPs 从 usage_logs 查询每个 API Key 最新的非空 IP。
+func (r *apiKeyRepository) latestUsageLogIPs(ctx context.Context, apiKeyIDs []int64) (result map[int64]string, err error) {
+	if len(apiKeyIDs) == 0 || r.sql == nil {
+		return map[int64]string{}, nil
+	}
+
+	query, args := latestUsageLogIPsQuery(apiKeyIDs, r.client.Driver().Dialect())
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	out := make(map[int64]string, len(apiKeyIDs))
+	for rows.Next() {
+		var apiKeyID int64
+		var ipAddress string
+		if err := rows.Scan(&apiKeyID, &ipAddress); err != nil {
+			return nil, err
+		}
+		out[apiKeyID] = ipAddress
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// latestUsageLogIPsQuery 按数据库方言生成批量查询：PostgreSQL 使用数组，
+// 其它方言使用逐项占位符，便于 SQLite 回归测试覆盖真实 SQL。
+func latestUsageLogIPsQuery(apiKeyIDs []int64, dialectName string) (string, []any) {
+	if dialectName == dialect.Postgres {
+		return `
+		SELECT api_key_id, ip_address
+		FROM (
+			SELECT api_key_id, ip_address,
+				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM usage_logs
+			WHERE api_key_id = ANY($1::bigint[])
+				AND ip_address IS NOT NULL
+				AND ip_address <> ''
+		) ranked
+		WHERE rn = 1`, []any{pq.Array(apiKeyIDs)}
+	}
+
+	placeholders := make([]string, len(apiKeyIDs))
+	args := make([]any, len(apiKeyIDs))
+	for i, id := range apiKeyIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	return fmt.Sprintf(`
+		SELECT api_key_id, ip_address
+		FROM (
+			SELECT api_key_id, ip_address,
+				ROW_NUMBER() OVER (PARTITION BY api_key_id ORDER BY created_at DESC, id DESC) AS rn
+			FROM usage_logs
+			WHERE api_key_id IN (%s)
+				AND ip_address IS NOT NULL
+				AND ip_address <> ''
+		) ranked
+		WHERE rn = 1`, strings.Join(placeholders, ", ")), args
 }
 
 func (r *apiKeyRepository) listByUserIDWithUsageSort(ctx context.Context, q *dbent.APIKeyQuery, params pagination.PaginationParams, total int) ([]service.APIKey, *pagination.PaginationResult, error) {
@@ -498,7 +593,11 @@ func (r *apiKeyRepository) listByUserIDWithUsageSort(ctx context.Context, q *dbe
 		return left > right
 	})
 
-	return paginateSlice(outKeys, params), paginationResultFromTotal(int64(total), params), nil
+	pageKeys := paginateSlice(outKeys, params)
+	if err := r.attachLastUsedIPs(ctx, pageKeys); err != nil {
+		return nil, nil, err
+	}
+	return pageKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
 func (r *apiKeyRepository) loadAPIKeyUsageTotals(ctx context.Context, keyIDs []int64) (map[int64]float64, error) {

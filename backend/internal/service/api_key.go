@@ -40,6 +40,7 @@ type APIKey struct {
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
 	LastUsedAt          *time.Time
+	LastUsedIP          *string // 来自该 Key 最新一条带 IP 的用量日志。
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 	User                *User
