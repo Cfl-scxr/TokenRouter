@@ -857,6 +857,7 @@ func normalizeQoderModelForWhitelist(model string) string {
 // 3. 若请求模型未命中映射，则把它当作隐式透传模型，直接按最终模型做白名单校验；
 // 4. 当不存在任何白名单时，mapping 仅作为可选改写规则，不限制请求模型。
 // 5. 为兼容旧数据，非 Qoder 平台若未配置独立 model_whitelist，会继续把精确自映射条目视作最终白名单。
+// 6. OpenAI OAuth 非透传账号还会排除明确属于其他厂商的模型，避免 Codex 上游返回不可重试的 400。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	// Antigravity 仍保持“请求模型命中映射即可支持”的既有语义。
@@ -870,7 +871,13 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	}
 	whitelist, _ := resolveFinalModelWhitelist(a.Platform, a.Credentials, mapping)
 	if len(mapping) == 0 {
-		return isModelInFinalWhitelist(a.Platform, requestedModel, whitelist)
+		if !isModelInFinalWhitelist(a.Platform, requestedModel, whitelist) {
+			return false
+		}
+		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
+			return isOpenAIOAuthServableModel(requestedModel)
+		}
+		return true
 	}
 	mappedModel, matched := a.ResolveMappedModel(requestedModel)
 	if matched {
