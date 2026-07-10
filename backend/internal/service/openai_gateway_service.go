@@ -249,6 +249,8 @@ type OpenAIForwardResult struct {
 	ImageSizeBreakdown map[string]int
 	// UpstreamWarning 仅在上游成功完成传输但 terminal 事件携带风控拒绝时填充。
 	UpstreamWarning *OpenAIUpstreamWarning
+	VideoCount      int
+	VideoResolution string
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool

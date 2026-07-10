@@ -651,6 +651,10 @@ func (s *GatewayService) calculateImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	groupConfig := imagePriceConfigFromAPIKey(apiKey)
+	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
+		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	}
 	if resolved == nil {
 		resolved, resolvedModel = s.resolveChannelPricingForUsage(ctx, billingModel, requestedModel, billingModelSource, channelMappedModel, result.UpstreamModel, apiKey, account)
 	}
@@ -679,14 +683,6 @@ func (s *GatewayService) calculateImageCost(
 		return cost
 	}
 
-	var groupConfig *ImagePriceConfig
-	if apiKey.Group != nil {
-		groupConfig = &ImagePriceConfig{
-			Price1K: apiKey.Group.ImagePrice1K,
-			Price2K: apiKey.Group.ImagePrice2K,
-			Price4K: apiKey.Group.ImagePrice4K,
-		}
-	}
 	if isQoderBillingContext(account, apiKey) {
 		for _, model := range qoderDefaultPricingCandidates(billingModel, requestedModel, billingModelSource) {
 			if !s.qoderCanUseDefaultImagePricing(model) {
