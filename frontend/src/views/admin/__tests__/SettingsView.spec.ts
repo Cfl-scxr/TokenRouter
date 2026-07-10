@@ -853,6 +853,42 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("preserves OpenAI Fast policy user IDs when saving", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_fast_policy_settings: {
+        rules: [
+          {
+            service_tier: "priority",
+            action: "pass",
+            scope: "all",
+            user_ids: [42, 43],
+            model_whitelist: [],
+            fallback_action: "pass",
+          },
+        ],
+      },
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_fast_policy_settings: {
+          rules: [
+            expect.objectContaining({
+              user_ids: [42, 43],
+            }),
+          ],
+        },
+      }),
+    );
+  });
+
   it("submits Claude OAuth system prompt gateway settings", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	"github.com/TokenFlux/TokenRouter/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -659,24 +660,22 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	}
 }
 
-// OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast
-// policy (action=block). Mirrors BetaBlockedError on the Claude side.
+// OpenAIFastBlockedError 表示请求被 OpenAI Fast 策略的 block 动作拒绝。
 type OpenAIFastBlockedError struct {
 	Message string
 }
 
 func (e *OpenAIFastBlockedError) Error() string { return e.Message }
 
-// evaluateOpenAIFastPolicy returns the action and error message that should be
-// applied for a request with the given account/model/service_tier. When the
-// policy service is unavailable or no rule matches, it returns
-// (BetaPolicyActionPass, "") so callers can short-circuit safely.
+// evaluateOpenAIFastPolicy 返回指定账号、模型和 service_tier 应执行的动作及错误消息。
+// 策略服务不可用或没有规则命中时返回 pass，调用方可安全地直接放行。
 //
-// Matching rules:
-//   - Scope filters by account type (all / oauth / apikey / bedrock)
-//   - ServiceTier must be empty (= any), "all", or equal the normalized tier
-//   - ModelWhitelist narrows the rule to specific models; FallbackAction
-//     handles the non-matching case (default: pass)
+// 匹配规则：
+//   - Scope 按账号类型过滤（all / oauth / apikey / bedrock）
+//   - UserIDs 非空时按 API Key 所属的可信用户 ID 过滤
+//   - ServiceTier 必须为空、all 或等于归一化后的 tier
+//   - ModelWhitelist 将规则限制到指定模型，FallbackAction 处理未匹配模型
+//   - 用户专属规则优先于全局规则，两组内部均保持配置顺序并首条命中
 //
 // 与 Claude BetaPolicy 的差异（保留首条匹配 short-circuit）：
 //   - BetaPolicy 处理的是 anthropic-beta header 中的 token 集合，不同
@@ -702,37 +701,68 @@ func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, acc
 		}
 		settings = fetched
 	}
-	return evaluateOpenAIFastPolicyWithSettings(settings, account, model, tier)
+	return evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, tier)
 }
 
-// evaluateOpenAIFastPolicyWithSettings is the pure-function core extracted so
-// long-lived sessions (e.g. WS) can prefetch settings once and avoid hitting
-// the settingService on every frame. See WSSession entry and
-// openAIFastPolicySettingsFromContext for the caching glue.
-func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, account *Account, model, tier string) (action, errMsg string) {
+// evaluateOpenAIFastPolicyWithSettings 是策略求值的纯函数核心，让 WS 等长会话
+// 只预取一次配置，避免每一帧都访问 settingService。
+func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, userID int64, account *Account, model, tier string) (action, errMsg string) {
 	if settings == nil {
 		return BetaPolicyActionPass, ""
 	}
 	isOAuth := account != nil && account.IsOAuth()
 	isBedrock := account != nil && account.IsBedrock()
-	for _, rule := range settings.Rules {
-		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
-			continue
+
+	// 用户专属规则先于全局规则。规则组内仍按配置顺序首条命中，允许
+	// 管理员为某位用户配置例外，而不被先出现的全局规则覆盖。
+	for _, userScoped := range []bool{true, false} {
+		for _, rule := range settings.Rules {
+			if (len(rule.UserIDs) > 0) != userScoped || !openAIFastPolicyUserMatches(rule.UserIDs, userID) {
+				continue
+			}
+			if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
+				continue
+			}
+			ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
+			if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
+				continue
+			}
+			eff := BetaPolicyRule{
+				Action:               rule.Action,
+				ErrorMessage:         rule.ErrorMessage,
+				ModelWhitelist:       rule.ModelWhitelist,
+				FallbackAction:       rule.FallbackAction,
+				FallbackErrorMessage: rule.FallbackErrorMessage,
+			}
+			return resolveRuleAction(eff, model)
 		}
-		ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
-		if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
-			continue
-		}
-		eff := BetaPolicyRule{
-			Action:               rule.Action,
-			ErrorMessage:         rule.ErrorMessage,
-			ModelWhitelist:       rule.ModelWhitelist,
-			FallbackAction:       rule.FallbackAction,
-			FallbackErrorMessage: rule.FallbackErrorMessage,
-		}
-		return resolveRuleAction(eff, model)
 	}
 	return BetaPolicyActionPass, ""
+}
+
+// openAIFastPolicyUserID 从可信请求上下文读取 API Key 所属用户 ID。
+func openAIFastPolicyUserID(ctx context.Context) int64 {
+	if ctx == nil {
+		return 0
+	}
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	if userID <= 0 {
+		return 0
+	}
+	return userID
+}
+
+// openAIFastPolicyUserMatches 判断全局规则或指定用户规则是否匹配当前用户。
+func openAIFastPolicyUserMatches(ruleUserIDs []int64, userID int64) bool {
+	if len(ruleUserIDs) == 0 {
+		return true
+	}
+	for _, ruleUserID := range ruleUserIDs {
+		if ruleUserID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // openAIFastPolicyCtxKey 是 context 中预取的 OpenAIFastPolicySettings 缓存
