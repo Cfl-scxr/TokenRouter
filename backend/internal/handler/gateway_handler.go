@@ -20,7 +20,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	pkgerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/geminicli"
-	pkghttputil "github.com/TokenFlux/TokenRouter/internal/pkg/httputil"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
@@ -139,7 +138,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -1775,7 +1774,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
-	pkghttputil "github.com/TokenFlux/TokenRouter/internal/pkg/httputil"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	middleware2 "github.com/TokenFlux/TokenRouter/internal/server/middleware"
@@ -194,7 +193,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Read request body
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -751,7 +750,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
