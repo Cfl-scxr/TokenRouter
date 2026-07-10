@@ -5192,6 +5192,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
 		return nil, err
 	}
+	// 剥离上游不接受的 web search 历史块；模拟块始终剥离，真实块仅对
+	// passback-required 第三方协议族剥离。reqModel 此时已是映射后的模型 ID。
+	if err := replaceBody(FilterWebSearchHistoryBlocks(body, reqModel)); err != nil {
+		return nil, err
+	}
 	// 仅 Anthropic 官方语义需要剥离无效 thinking；国产兼容上游要求原样回传。
 	if err := replaceBody(FilterThinkingBlocks(body, reqModel)); err != nil {
 		return nil, err
@@ -5763,8 +5768,11 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if c != nil {
 		c.Set("anthropic_passthrough", true)
 	}
-	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
+	// 预过滤空文本块，包括 tool_result 内的嵌套块，避免上游返回 400。
 	input.Body = StripEmptyTextBlocks(input.Body)
+	// 剥离上游不接受的 web search 历史块；模拟块始终剥离，真实块仅对
+	// passback-required 第三方协议族剥离。input.RequestModel 已是映射后的模型 ID。
+	input.Body = FilterWebSearchHistoryBlocks(input.Body, input.RequestModel)
 	if input.Parsed != nil {
 		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
 		if err := input.Parsed.ReplaceBody(input.Body); err != nil {
