@@ -196,8 +196,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 				RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 			}
 		}
-		writeAnthropicError(c, mapUpstreamStatusToAnthropicStatus(resp.StatusCode), "api_error", "Upstream error: "+upstreamMsg)
-		return nil, fmt.Errorf("upstream %d: %s", resp.StatusCode, upstreamMsg)
+		// 非 failover 错误交给共享兼容处理器返回 Anthropic 格式，确保错误
+		// 透传规则、ops 记录和 cyber_policy 检测保持一致。
+		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
 	// 5. 转换上游响应。
@@ -363,6 +364,21 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
+		// 上游读取中断时跳过收尾，避免合成 message_stop 掩盖截断，并返回错误
+		// 标记 usage 不完整，与 forwardResponsesViaRawChatCompletions 保持一致。
+		return &OpenAIForwardResult{
+			RequestID:        requestID,
+			Usage:            usage,
+			Model:            originalModel,
+			BillingModel:     billingModel,
+			UpstreamModel:    upstreamModel,
+			ReasoningEffort:  reasoningEffort,
+			ServiceTier:      serviceTier,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
+		}, fmt.Errorf("stream usage incomplete: %w", err)
 	}
 
 	// 收尾 Chat Completions 到 Responses 的流转换，并发出 response.completed。
@@ -390,7 +406,11 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	if !clientDisconnected {
 		c.Writer.Flush()
 	}
-	_ = sawDone
+	if !sawDone {
+		logger.L().Debug("openai messages chat fallback: upstream stream ended without done sentinel",
+			zap.String("request_id", requestID),
+		)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:        requestID,
@@ -405,17 +425,4 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnected,
 	}, nil
-}
-
-func mapUpstreamStatusToAnthropicStatus(status int) int {
-	switch {
-	case status == 401:
-		return http.StatusBadGateway
-	case status == 429:
-		return http.StatusTooManyRequests
-	case status >= 500:
-		return http.StatusBadGateway
-	default:
-		return status
-	}
 }
