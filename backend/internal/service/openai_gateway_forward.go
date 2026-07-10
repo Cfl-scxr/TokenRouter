@@ -918,6 +918,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 				req.Header.Set("conversation_id", isolated)
 			}
 		}
+	} else if isOpenAIResponsesCompactPath(c) {
+		// compact 上游是 unary JSON 协议：API-key 账号也显式声明 Accept，
+		// 避免 OpenAI 兼容网关按 SSE 返回（#3777 期望行为 4）。
+		req.Header.Set("accept", "application/json")
 	}
 
 	// 根据 TLS 路由规则、账号配置与全局兜底决定最终上游 User-Agent。
