@@ -358,7 +358,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
 	if GetOpsCyberPolicy(c) != nil {
 		if handleErr == nil {
@@ -440,6 +440,7 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -474,6 +475,13 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", clientMsg)
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
+		message := openAICompatFailedResponseMessage(finalResponse)
+		if openAIStreamFailedEventShouldFailover(payload, message) {
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
+		}
+		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
+		writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
+		return nil, fmt.Errorf("upstream response failed: %s", message)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -719,6 +727,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	responseAccumulator := &anthropicStreamResponseAccumulator{}
 	var finalResponseBody []byte
 	var cyberPolicyErr error
+	var streamFailoverErr error
+	var streamNonFailoverErr error
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
@@ -785,7 +795,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" {
-			if hit, code, msg := detectOpenAICyberPolicy([]byte(payload)); hit {
+			payloadBytes := []byte(payload)
+			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 				MarkOpsCyberPolicy(c, CyberPolicyMark{
 					Code:           code,
 					Message:        msg,
@@ -807,6 +818,25 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				cyberPolicyErr = errOpenAICyberPolicyForwarded
 				return true
 			}
+			message := extractOpenAISSEErrorMessage(payloadBytes)
+			if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+				streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
+				return true
+			}
+			message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+			if !clientDisconnected {
+				if !clientOutputStarted {
+					writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
+					clientOutputStarted = true
+				} else {
+					writeStreamHeaders()
+					if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("api_error", message)); err == nil {
+						c.Writer.Flush()
+					}
+				}
+			}
+			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			return true
 		}
 
 		// Convert to Anthropic events
@@ -853,6 +883,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	finalizeStream := func() (*OpenAIForwardResult, error) {
 		if cyberPolicyErr != nil {
 			return resultWithUsage(), cyberPolicyErr
+		}
+		if streamFailoverErr != nil {
+			return resultWithUsage(), streamFailoverErr
+		}
+		if streamNonFailoverErr != nil {
+			return resultWithUsage(), streamNonFailoverErr
 		}
 		finalEvents := apicompat.FinalizeResponsesAnthropicStream(state)
 		for _, evt := range finalEvents {
