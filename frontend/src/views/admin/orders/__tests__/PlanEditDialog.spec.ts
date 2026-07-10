@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import PlanEditDialog from '../PlanEditDialog.vue'
 import { useAppStore } from '@/stores/app'
+import { formatPaymentAmount } from '@/components/payment/currency'
+import type { AdminPaymentConfig } from '@/api/admin/payment'
 
 const mockCreatePlan = vi.fn()
 const mockUpdatePlan = vi.fn()
@@ -45,7 +47,11 @@ function createTestI18n() {
             forSale: 'For Sale',
             planNameRequired: 'Plan name is required',
             priceRequired: 'Price must be greater than 0',
-            validityDaysRequired: 'Validity days must be greater than 0'
+            validityDaysRequired: 'Validity days must be greater than 0',
+            subscriptionCnyPayPreview: ({ named }: { named: (key: string) => unknown }) =>
+              `CNY charge: ${named('amount')}`,
+            subscriptionCnyPayPreviewWithFee: ({ named }: { named: (key: string) => unknown }) =>
+              `fee ${named('feeRate')}%, total ${named('total')}`
           }
         },
         common: {
@@ -60,14 +66,15 @@ function createTestI18n() {
   })
 }
 
-function mountDialog() {
+function mountDialog(paymentConfig: Pick<AdminPaymentConfig, 'subscription_usd_to_cny_rate' | 'recharge_fee_rate'> | null = null) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const i18n = createTestI18n()
   return mount(PlanEditDialog, {
     props: {
       show: true,
-      plan: null
+      plan: null,
+      paymentConfig: paymentConfig as AdminPaymentConfig | null
     },
     global: {
       plugins: [pinia, i18n],
@@ -175,5 +182,30 @@ describe('PlanEditDialog', () => {
         monthly_limit_usd: 100
       })
     )
+  })
+
+  it('shows the CNY charge preview when the subscription rate is enabled', async () => {
+    const wrapper = mountDialog({
+      subscription_usd_to_cny_rate: 7.15,
+      recharge_fee_rate: 2.5
+    })
+
+    await wrapper.findAll('input')[2].setValue('9.99')
+
+    expect(wrapper.text()).toContain(formatPaymentAmount(71.43, 'CNY'))
+    expect(wrapper.text()).toContain('fee 2.5%')
+    expect(wrapper.text()).toContain(formatPaymentAmount(73.22, 'CNY'))
+  })
+
+  it('hides the CNY charge preview when the subscription rate is disabled', async () => {
+    const wrapper = mountDialog({
+      subscription_usd_to_cny_rate: 0,
+      recharge_fee_rate: 2.5
+    })
+
+    await wrapper.findAll('input')[2].setValue('9.99')
+
+    expect(wrapper.text()).not.toContain('CNY charge:')
+    expect(wrapper.text()).not.toContain(formatPaymentAmount(71.43, 'CNY'))
   })
 })
