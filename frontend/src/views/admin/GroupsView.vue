@@ -5015,6 +5015,10 @@ const normalizeImageRateMultiplier = (
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
 };
 
+// 创建请求中空字符串表示未配置，转换为后端可解析的 null。
+const emptyToNull = <T>(value: T | ""): T | null =>
+  value === "" ? null : value;
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
