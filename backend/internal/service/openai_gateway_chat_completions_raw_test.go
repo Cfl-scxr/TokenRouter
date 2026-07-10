@@ -582,7 +582,8 @@ func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedCh
 	account := rawChatCompletionsTestAccount()
 	account.Credentials["base_url"] = "https://open.bigmodel.cn/api/paas/v4"
 
-	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	tlsMatch := TLSFingerprintRouterMatchResult{Matched: true, UpstreamUserAgent: "router-agent"}
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "", tlsMatch)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.Usage.InputTokens)
@@ -591,6 +592,8 @@ func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedCh
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", upstream.requests[0].URL.String())
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/chat/completions", upstream.requests[1].URL.String())
+	require.Equal(t, "router-agent", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "router-agent", upstream.requests[1].Header.Get("User-Agent"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"content":"ok"`)
 }

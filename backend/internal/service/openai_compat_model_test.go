@@ -644,11 +644,14 @@ func TestForwardAsAnthropic_ReplaysWithoutContinuationWhenPreviousResponseMissin
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(secondBody))
 	c.Request.Header.Set("Content-Type", "application/json")
 
-	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, secondBody, "stable-cache-key", "gpt-5.3-codex")
+	tlsMatch := TLSFingerprintRouterMatchResult{Matched: true, UpstreamUserAgent: "router-agent"}
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, secondBody, "stable-cache-key", "gpt-5.3-codex", tlsMatch)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resp_replayed", result.ResponseID)
 	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "router-agent", upstream.requests[0].Header.Get("User-Agent"))
+	require.Equal(t, "router-agent", upstream.requests[1].Header.Get("User-Agent"))
 	require.Equal(t, "resp_missing", gjson.GetBytes(upstream.bodies[0], "previous_response_id").String())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 	require.Equal(t, int64(4), gjson.GetBytes(upstream.bodies[1], "input.#").Int())
