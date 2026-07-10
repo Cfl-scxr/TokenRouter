@@ -573,6 +573,14 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:  false,
 	}
 
+	// xAI Grok 4.5（官方文档：每百万 token 输入 $2、缓存输入 $0.50、输出 $6）
+	s.fallbackPrices["grok-4.5"] = &ModelPricing{
+		InputPricePerToken:     2e-6,
+		OutputPricePerToken:    6e-6,
+		CacheReadPricePerToken: 0.5e-6,
+		SupportsCacheBreakdown: false,
+	}
+
 	// xAI Grok 4.3（官方文档：输入 $1.25/百万 token，输出 $2.50/百万 token）
 	s.fallbackPrices["grok-4.3"] = &ModelPricing{
 		InputPricePerToken:         1.25e-6,
@@ -743,7 +751,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 
 	switch modelLower {
-	case "grok", "grok-latest", "grok-4.3":
+	case "grok", "grok-latest", "grok-4.5", "grok-4.5-latest", "grok-build-latest":
+		return s.fallbackPrices["grok-4.5"]
+	case "grok-4.3":
 		return s.fallbackPrices["grok-4.3"]
 	case "grok-build", "grok-build-0.1":
 		return s.fallbackPrices["grok-build-0.1"]
