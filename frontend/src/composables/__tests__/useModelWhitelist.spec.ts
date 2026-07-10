@@ -19,18 +19,19 @@ describe('useModelWhitelist', () => {
   it('openai 模型列表使用当前默认白名单', () => {
     const models = getModelsByPlatform('openai')
 
-    expect(models).toEqual([
-      'gpt-5.2',
-      'gpt-5.3',
-      'gpt-5.3-spark',
-      'codex-auto-review',
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-      'gpt-5.4',
-      'gpt-5.4-mini',
-      'gpt-5.5'
-    ])
+		expect(models).toEqual([
+			'gpt-5.2',
+			'gpt-5.3',
+			'gpt-5.3-spark',
+			'codex-auto-review',
+			'gpt-5.6',
+			'gpt-5.6-sol',
+			'gpt-5.6-terra',
+			'gpt-5.6-luna',
+			'gpt-5.4',
+			'gpt-5.4-mini',
+			'gpt-5.5'
+		])
   })
 
   it('openai 模型列表不再暴露旧快照、Codex、音频和图片模型', () => {

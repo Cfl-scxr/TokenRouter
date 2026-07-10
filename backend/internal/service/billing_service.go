@@ -325,6 +325,9 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken:             0.5e-6,
 		CacheReadPricePerTokenPriority:     1e-6,
 		SupportsServiceTier:                true,
+		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
+		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
+		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-terra"] = &ModelPricing{
 		InputPricePerToken:                 2.5e-6,
@@ -336,6 +339,9 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken:             0.25e-6,
 		CacheReadPricePerTokenPriority:     0.5e-6,
 		SupportsServiceTier:                true,
+		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
+		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
+		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-luna"] = &ModelPricing{
 		InputPricePerToken:                 1e-6,
@@ -347,6 +353,9 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken:             0.1e-6,
 		CacheReadPricePerTokenPriority:     0.2e-6,
 		SupportsServiceTier:                true,
+		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
+		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
+		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 
 	s.fallbackPrices["gpt-5.4-mini"] = &ModelPricing{
@@ -1112,7 +1121,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 	if !isGPT56 && !usesLegacyLongContextPricing {
 		return pricing
 	}
-	needsLongContextPolicy := usesLegacyLongContextPricing &&
+	needsLongContextPolicy := (isGPT56 || usesLegacyLongContextPricing) &&
 		(pricing.LongContextInputThreshold <= 0 || pricing.LongContextInputMultiplier <= 0 || pricing.LongContextOutputMultiplier <= 0)
 	needsCacheCreationPolicy := isGPT56 && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
@@ -1120,7 +1129,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 		return pricing
 	}
 	cloned := *pricing
-	if isGPT56 {
+	if isGPT56 && !cloned.CacheCreationPriceExplicit {
 		if cloned.CacheCreationPricePerToken <= 0 {
 			cloned.CacheCreationPricePerToken = cloned.InputPricePerToken * 1.25
 		}
@@ -1128,7 +1137,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 			cloned.CacheCreationPricePerTokenPriority = cloned.InputPricePerTokenPriority * 1.25
 		}
 	}
-	if usesLegacyLongContextPricing {
+	if isGPT56 || usesLegacyLongContextPricing {
 		if cloned.LongContextInputThreshold <= 0 {
 			cloned.LongContextInputThreshold = openAIGPT54LongContextInputThreshold
 		}

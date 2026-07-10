@@ -62,6 +62,9 @@ var (
 		CacheCreationInputTokenCostPriority: 1.25e-5, // $12.5 per MTok
 		CacheReadInputTokenCost:             5e-07,   // $0.50 per MTok
 		CacheReadInputTokenCostPriority:     1e-06,   // $1 per MTok
+		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
+		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
+		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -76,6 +79,9 @@ var (
 		CacheCreationInputTokenCostPriority: 6.25e-6,  // $6.25 per MTok
 		CacheReadInputTokenCost:             2.5e-07,  // $0.25 per MTok
 		CacheReadInputTokenCostPriority:     5e-07,    // $0.50 per MTok
+		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
+		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
+		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -90,6 +96,9 @@ var (
 		CacheCreationInputTokenCostPriority: 2.5e-6,  // $2.5 per MTok
 		CacheReadInputTokenCost:             1e-07,   // $0.10 per MTok
 		CacheReadInputTokenCostPriority:     2e-07,   // $0.20 per MTok
+		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
+		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
+		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
 		SupportsServiceTier:                 true,
 		LiteLLMProvider:                     "openai",
 		Mode:                                "chat",
@@ -788,6 +797,12 @@ func normalizeModelNameForPricing(model string) string {
 
 	model = strings.TrimLeft(model, "/")
 	if canonical := canonicalizeOpenAIModelAliasSpelling(model); canonical != "" {
+		if canonical == "gpt-5.6" {
+			return "gpt-5.6-sol"
+		}
+		if suffix, ok := strings.CutPrefix(canonical, "gpt-5.6-"); ok && (suffix == "max" || isKnownCodexModelSuffix(suffix)) {
+			return "gpt-5.6-sol"
+		}
 		return canonical
 	}
 	return model
