@@ -521,6 +521,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels, getMarketplaceStats } from '@/api/marketplace'
 import type { MarketplaceGroup, MarketplaceStats } from '@/types'
+import { sanitizeUrl } from '@/utils/url'
 import {
   providerBrandDisplayName,
   providerBrandFilterKey,
@@ -580,7 +581,7 @@ const appStore = useAppStore()
 // 站点设置直接读取已注入或已缓存的公开配置。
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
+const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const currentLanguage = computed(() => String(locale.value).toLowerCase().startsWith('zh') ? 'zh' : 'en')
 const numberLocale = computed(() => currentLanguage.value === 'zh' ? 'zh-CN' : 'en-US')

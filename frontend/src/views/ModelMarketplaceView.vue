@@ -416,6 +416,7 @@ import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { initTheme } from '@/composables/useTheme'
 import { getMarketplaceModels } from '@/api/marketplace'
 import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand, resolveProviderBrandKey } from '@/utils/providerBrand'
+import { sanitizeUrl } from '@/utils/url'
 import type { MarketplaceGroup, MarketplaceModel, MarketplaceModelPricing, MarketplacePricingInterval } from '@/types'
 import { useAppStore, useAuthStore } from '@/stores'
 
@@ -480,7 +481,7 @@ const dashboardPath = computed(() => {
 
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
+const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const selectedPricingTitle = computed(() => {
   if (!selectedPricing.value) {
     return t('marketplace.pricingDetail')
