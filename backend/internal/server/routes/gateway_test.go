@@ -15,6 +15,11 @@ import (
 )
 
 func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
+	return newGatewayRoutesTestRouterWithGatewayHandler(nil, platform...)
+}
+
+// newGatewayRoutesTestRouterWithGatewayHandler 允许路由测试注入可实际处理请求的网关 handler。
+func newGatewayRoutesTestRouterWithGatewayHandler(gatewayHandler *handler.GatewayHandler, platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -22,11 +27,14 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 	if len(platform) > 0 && platform[0] != "" {
 		groupPlatform = platform[0]
 	}
+	if gatewayHandler == nil {
+		gatewayHandler = &handler.GatewayHandler{}
+	}
 
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
-			Gateway:       &handler.GatewayHandler{},
+			Gateway:       gatewayHandler,
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
 			QoderGateway:  &handler.QoderGatewayHandler{},
 		},
@@ -35,7 +43,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				User:    &service.User{ID: 1, Status: service.StatusActive, Concurrency: 1},
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: groupPlatform},
+				Group:   &service.Group{ID: groupID, Platform: groupPlatform},
 			})
 			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
 			c.Next()
