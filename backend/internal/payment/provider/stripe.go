@@ -137,13 +137,13 @@ func buildStripeCheckoutSessionCreateParams(customerID string, req payment.Creat
 		normalizedCurrency = payment.DefaultPaymentCurrency
 	}
 	metadata := stripePaymentMetadata(req.OrderID, instanceID)
+	// 账单资料来自本地表单预建的 Customer；不要允许 Checkout 或 Link 回写并覆盖发票抬头和地址。
 	params := &stripe.CheckoutSessionCreateParams{
 		Mode:              stripe.String(string(stripe.CheckoutSessionModePayment)),
 		Customer:          stripe.String(customerID),
 		ClientReferenceID: stripe.String(req.OrderID),
 		SuccessURL:        stripe.String(stripeCheckoutReturnURL(req.ReturnURL, "success")),
 		CancelURL:         stripe.String(stripeCheckoutReturnURL(req.ReturnURL, "cancelled")),
-		CustomerUpdate:    buildStripeCheckoutCustomerUpdateParams(),
 		InvoiceCreation:   buildStripeCheckoutInvoiceCreationParams(req, instanceID),
 		LineItems:         buildStripeCheckoutLineItems(req, amountInMinorUnit, normalizedCurrency),
 		Metadata:          metadata,
@@ -160,13 +160,6 @@ func buildStripeCheckoutSessionCreateParams(customerID string, req payment.Creat
 	params.AddExpand("invoice")
 	params.AddExpand("payment_intent")
 	return params
-}
-
-func buildStripeCheckoutCustomerUpdateParams() *stripe.CheckoutSessionCreateCustomerUpdateParams {
-	return &stripe.CheckoutSessionCreateCustomerUpdateParams{
-		Address: stripe.String("auto"),
-		Name:    stripe.String("auto"),
-	}
 }
 
 func buildStripeCheckoutInvoiceCreationParams(req payment.CreatePaymentRequest, instanceID string) *stripe.CheckoutSessionCreateInvoiceCreationParams {

@@ -44,6 +44,12 @@ func TestBuildStripeCheckoutSessionCreateParamsUsesDashboardPaymentMethods(t *te
 	if params.PaymentMethodTypes != nil {
 		t.Fatalf("payment method types = %#v, want nil so Stripe Dashboard can decide", params.PaymentMethodTypes)
 	}
+	if params.CustomerUpdate != nil {
+		t.Fatalf("customer update = %#v, want nil so Checkout cannot overwrite invoice billing details", params.CustomerUpdate)
+	}
+	if params.BillingAddressCollection == nil || *params.BillingAddressCollection != string(stripe.CheckoutSessionBillingAddressCollectionAuto) {
+		t.Fatalf("billing address collection = %#v, want auto", params.BillingAddressCollection)
+	}
 	if params.InvoiceCreation == nil || params.InvoiceCreation.Enabled == nil || !*params.InvoiceCreation.Enabled {
 		t.Fatalf("invoice_creation should be enabled")
 	}
@@ -75,6 +81,49 @@ func TestBuildStripeCheckoutSessionCreateParamsUsesDashboardPaymentMethods(t *te
 	gotExpand := strings.Join(stripeStringValues(params.Expand), ",")
 	if !strings.Contains(gotExpand, "invoice") || !strings.Contains(gotExpand, "payment_intent") {
 		t.Fatalf("expand = %q, want invoice and payment_intent", gotExpand)
+	}
+}
+
+func TestBuildStripeCustomerCreateParamsPreservesApplicationBillingDetails(t *testing.T) {
+	t.Parallel()
+
+	req := payment.CreatePaymentRequest{
+		OrderID:   "sub2_order_hk_company",
+		Subject:   "TokenRouter Subscription",
+		UserEmail: "account@example.com",
+		BillingInfo: &payment.BillingInfo{
+			Name:  " HK SYC Limited ",
+			Email: " billing@example.com ",
+			Address: &payment.BillingAddress{
+				Country: " hk ",
+				Line1:   " 新界葵涌大连排道 36-40 号桂盛工业大厦 1-2 楼 B534 ",
+				City:    " 葵涌 ",
+			},
+		},
+	}
+	billing := normalizeStripeBillingInfo(req)
+	params := buildStripeCustomerCreateParams(req, billing, "42")
+
+	if params.Name == nil || *params.Name != "HK SYC Limited" {
+		t.Fatalf("customer name = %#v, want application billing name", params.Name)
+	}
+	if params.Email == nil || *params.Email != "billing@example.com" {
+		t.Fatalf("customer email = %#v, want application billing email", params.Email)
+	}
+	if params.Address == nil {
+		t.Fatal("customer address should be populated from application billing details")
+	}
+	if params.Address.Country == nil || *params.Address.Country != "HK" {
+		t.Fatalf("customer country = %#v, want HK", params.Address.Country)
+	}
+	if params.Address.Line1 == nil || *params.Address.Line1 != "新界葵涌大连排道 36-40 号桂盛工业大厦 1-2 楼 B534" {
+		t.Fatalf("customer line1 = %#v, want application billing address", params.Address.Line1)
+	}
+	if params.Address.City == nil || *params.Address.City != "葵涌" {
+		t.Fatalf("customer city = %#v, want application billing city", params.Address.City)
+	}
+	if params.Address.State != nil || params.Address.PostalCode != nil {
+		t.Fatalf("optional address fields should stay empty: state=%#v postal_code=%#v", params.Address.State, params.Address.PostalCode)
 	}
 }
 
