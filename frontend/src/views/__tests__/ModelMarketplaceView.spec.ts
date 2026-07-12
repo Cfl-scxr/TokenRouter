@@ -264,6 +264,27 @@ describe('ModelMarketplaceView', () => {
     expect(restored.findAll('[data-testid="marketplace-group-section"]')).toHaveLength(4)
   })
 
+  it('xAI 品牌在分组模式下展示 Grok 图标而不是字母占位', async () => {
+    const fixture = marketplaceFixture()
+    fixture[0] = {
+      ...fixture[0],
+      name: 'Grok',
+      display_brand: 'xAI',
+    }
+    getMarketplaceModels.mockResolvedValue(fixture)
+
+    const wrapper = await mountMarketplace()
+
+    await wrapper.get('[data-testid="select-option-group-model"]').trigger('click')
+    await nextTick()
+
+    // 品牌名 xAI 应映射到现有 Grok SVG，不能退回紫色字母 X。
+    const grokGroup = wrapper.findAll('[data-testid="marketplace-group-section"]')
+      .find((section) => section.get('h2').text() === 'Grok')
+    expect(grokGroup?.find('.model-icon').exists()).toBe(true)
+    expect(grokGroup?.find('.model-icon-fallback').exists()).toBe(false)
+  })
+
   it('展示开启独立配置的生图倍率', async () => {
     const fixture = marketplaceFixture()
     fixture[0] = {

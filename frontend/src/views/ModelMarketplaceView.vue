@@ -870,6 +870,9 @@ function groupBrandIconModel(group: MarketplaceGroup): string {
       return 'gemini'
     case 'alibaba':
       return 'qwen'
+    // xAI 是品牌名，需转换为 ModelIcon 能识别的 Grok 模型标识。
+    case 'xai':
+      return 'grok'
     case 'baidu':
       return 'ernie'
     case 'iflytek':
