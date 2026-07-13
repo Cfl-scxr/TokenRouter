@@ -30,6 +30,21 @@ TokenRouter 基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 开发，在�
 </tr>
 </table>
 
+## Grok / xAI 支持
+
+TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API-key 账号，并通过 OpenAI 兼容的
+Responses、Chat Completions、Messages 和 WebSocket 入口转发请求。管理员可在控制台
+选择 OAuth 或 API Key 创建账号；用户可在 API Key 页面通过“使用密钥”生成 Grok
+Build CLI 或 OpenCode 配置。
+
+Grok Build CLI 的模型配置应指向 TokenRouter 对外地址（以 `/v1` 结尾），不能直接使用
+`api.x.ai` 或内部 OAuth 代理地址。OAuth 流量默认转发到 Grok CLI 订阅代理；可通过
+`XAI_GROK_CLI_VERSION` 覆盖客户端版本，但版本不得低于内置支持版本。
+
+OAuth 账号可通过控制台创建或重新授权；API-key 账号默认使用
+`https://api.x.ai/v1`。创建 Grok 分组并绑定账号后，用户即可生成分组 API Key；现有
+`config.toml` 应先备份再合并新模型配置。
+
 ## 许可证
 
 This project is licensed under the [GNU Lesser General Public License v3.0](LICENSE) (or later).

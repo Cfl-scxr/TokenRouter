@@ -20,7 +20,7 @@ import (
 
 const (
 	// grokGatewayUserAgent 标识本服务转发到 xAI/Grok 上游的网关请求。
-	grokGatewayUserAgent = "sub2api-grok/1.0"
+	grokGatewayUserAgent = "tokenrouter-grok/1.0"
 	// Composer 图片桥接使用 Grok Build 生成简洁描述，限制输出长度以控制额外用量。
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
@@ -37,8 +37,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	if account.Type != AccountTypeOAuth {
-		return nil, fmt.Errorf("grok account type %s is not supported by subscription forwarding", account.Type)
+	if account.Type != AccountTypeOAuth && account.Type != AccountTypeAPIKey {
+		return nil, fmt.Errorf("grok account type %s is not supported by Responses forwarding", account.Type)
 	}
 
 	upstreamModel := account.GetMappedModel(originalModel)
@@ -156,6 +156,10 @@ func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	out, err = sanitizeGrokResponsesModelCapabilities(out, upstreamModel)
+	if err != nil {
+		return nil, err
+	}
 	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"} {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
@@ -178,11 +182,49 @@ func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	out, err = sanitizeGrokResponsesInput(out)
+	if err != nil {
+		return nil, err
+	}
 	out, err = sanitizeGrokResponsesTools(out)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// sanitizeGrokResponsesModelCapabilities 移除目标模型明确不支持的 Responses 参数。
+func sanitizeGrokResponsesModelCapabilities(body []byte, upstreamModel string) ([]byte, error) {
+	if !grokModelRejectsReasoningEffort(upstreamModel) {
+		return body, nil
+	}
+
+	out := body
+	for _, field := range []string{"reasoning", "reasoning_effort", "reasoningEffort"} {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		var err error
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, fmt.Errorf("remove unsupported Grok Composer %s: %w", field, err)
+		}
+	}
+	return out, nil
+}
+
+// grokModelRejectsReasoningEffort 判断 Composer 别名是否拒绝 reasoning 参数。
+func grokModelRejectsReasoningEffort(model string) bool {
+	model = strings.TrimSpace(strings.ToLower(model))
+	if slash := strings.LastIndex(model, "/"); slash >= 0 {
+		model = strings.TrimSpace(model[slash+1:])
+	}
+	switch model {
+	case "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
+		return true
+	default:
+		return false
+	}
 }
 
 var grokResponsesUnsupportedRecursiveFields = map[string]struct{}{
@@ -231,6 +273,36 @@ func deleteJSONFields(value any, fields map[string]struct{}) bool {
 	default:
 		return false
 	}
+}
+
+// sanitizeGrokResponsesInput 移除 Codex/Responses Lite 私有的 additional_tools 输入项。
+// xAI Responses 接受普通消息和函数调用输入，但会在推理前拒绝该载体；顶层受支持工具
+// 仍由 sanitizeGrokResponsesTools 独立保留。
+func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
+	if !bytes.Contains(body, []byte(`"additional_tools"`)) {
+		return body, nil
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || !input.IsArray() {
+		return body, nil
+	}
+
+	rawItems := input.Array()
+	filtered := make([]json.RawMessage, 0, len(rawItems))
+	for _, item := range rawItems {
+		if strings.TrimSpace(item.Get("type").String()) == "additional_tools" {
+			continue
+		}
+		filtered = append(filtered, json.RawMessage(item.Raw))
+	}
+	if len(filtered) == len(rawItems) {
+		return body, nil
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "input", encoded)
 }
 
 var grokResponsesSupportedToolTypes = map[string]struct{}{
@@ -847,9 +919,9 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
 	switch statusCode {
 	case http.StatusUnauthorized:
-		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok oauth token unauthorized")
+		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusForbidden:
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok entitlement or subscription tier denied")
+		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot 已同时写入运行时和持久化限流状态。
 	default:

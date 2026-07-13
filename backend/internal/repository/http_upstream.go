@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/TokenFlux/TokenRouter/internal/util/urlvalidator"
+	"golang.org/x/mod/semver"
 )
 
 // 默认配置常量
@@ -58,6 +60,12 @@ const (
 	defaultOpenAIHTTP2FallbackErrorThreshold = 2
 	defaultOpenAIHTTP2FallbackWindow         = 60 * time.Second
 	defaultOpenAIHTTP2FallbackTTL            = 10 * time.Minute
+
+	// Grok CLI 代理会拒绝未标识受支持客户端版本的请求。二进制内置已验证版本，
+	// 同时允许运维人员通过环境变量升级，无需等待 TokenRouter 发版。
+	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
+	grokCLIStableVersion   = "0.2.93"
+	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 )
 
 const (
@@ -162,6 +170,7 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	applyGrokCLIProxyHeaders(req)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 	}
@@ -208,6 +217,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
 		upstreamProfile = service.HTTPUpstreamProfileFromContext(req.Context())
@@ -251,6 +261,34 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	})
 
 	return resp, nil
+}
+
+// applyGrokCLIProxyHeaders 在最终共享 transport 边界写入官方 Grok Build 客户端身份。
+// 仅精确匹配 CLI 代理主机，避免改变直连 api.x.ai 的流量，并统一覆盖 Responses、
+// Chat Completions、媒体、额度探测和账号测试请求。
+func applyGrokCLIProxyHeaders(req *http.Request) {
+	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
+		return
+	}
+	if req.Header == nil {
+		req.Header = make(http.Header)
+	}
+	version := strings.TrimSpace(os.Getenv(grokCLIVersionOverride))
+	if !isSupportedGrokCLIVersion(version) {
+		version = grokCLIStableVersion
+	}
+	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
+	req.Header.Set("x-grok-client-version", version)
+	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+}
+
+// isSupportedGrokCLIVersion 校验覆盖版本是否为规范 SemVer，且不低于内置最低版本。
+func isSupportedGrokCLIVersion(version string) bool {
+	canonical := "v" + version
+	minimum := "v" + grokCLIStableVersion
+	return semver.IsValid(canonical) &&
+		semver.Canonical(canonical) == canonical &&
+		semver.Compare(canonical, minimum) >= 0
 }
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端

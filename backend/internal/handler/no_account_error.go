@@ -85,3 +85,33 @@ func classifyNoAccountErrorFromGin(
 	}
 	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
 }
+
+// classifyOpenAICompatibleNoAccountErrorFromGin 按 API Key 分组平台诊断 OpenAI 兼容请求。
+func classifyOpenAICompatibleNoAccountErrorFromGin(
+	c *gin.Context,
+	diag service.ModelAvailabilityDiagnoser,
+	apiKey *service.APIKey,
+	routingModel string,
+	displayModel string,
+) noAccountErrorClassification {
+	return classifyNoAccountErrorFromGin(
+		c,
+		diag,
+		apiKey,
+		routingModel,
+		displayModel,
+		openAICompatibleRequestPlatform(apiKey),
+	)
+}
+
+// openAICompatibleSelectionErrorForLog 将 Grok 选择失败日志中的平台名称改为实际平台。
+func openAICompatibleSelectionErrorForLog(err error, platform string) error {
+	if err == nil || platform != service.PlatformGrok {
+		return err
+	}
+	message := strings.ReplaceAll(err.Error(), "OpenAI accounts", "Grok accounts")
+	if message == err.Error() {
+		return err
+	}
+	return fmt.Errorf("%s", message)
+}
