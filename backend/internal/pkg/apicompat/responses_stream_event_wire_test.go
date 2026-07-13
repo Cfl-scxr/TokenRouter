@@ -127,3 +127,61 @@ func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {
 	})
 	require.Contains(t, m, "response")
 }
+
+// TestResponsesOutputUnmarshal_ToolSearchObjectArguments 验证单个工具搜索条目可以解析
+// 对象形态的 arguments，并在重新序列化后保持对象形态。
+func TestResponsesOutputUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var item ResponsesOutput
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type":"tool_search_call",
+		"id":"item_1",
+		"call_id":"call_1",
+		"execution":"client",
+		"arguments":{"query":"gmail","limit":2}
+	}`), &item))
+	require.Equal(t, "tool_search_call", item.Type)
+	require.Equal(t, `{"query":"gmail","limit":2}`, item.Arguments)
+
+	wire, err := json.Marshal(item)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(wire, &decoded))
+	args, ok := decoded["arguments"].(map[string]any)
+	require.True(t, ok, "tool_search_call arguments must remain an object")
+	require.Equal(t, "gmail", args["query"])
+}
+
+// TestResponsesResponseUnmarshal_ToolSearchObjectArguments 验证完整响应中的工具搜索参数。
+func TestResponsesResponseUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var response ResponsesResponse
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id":"response_1",
+		"object":"response",
+		"status":"completed",
+		"output":[{
+			"type":"tool_search_call",
+			"id":"item_1",
+			"call_id":"call_1",
+			"arguments":{"query":"gmail"}
+		}]
+	}`), &response))
+	require.Len(t, response.Output, 1)
+	require.Equal(t, `{"query":"gmail"}`, response.Output[0].Arguments)
+}
+
+// TestResponsesStreamEventUnmarshal_ToolSearchObjectArguments 验证流式完成事件中的
+// 工具搜索参数对象可以进入统一的内部字符串表示。
+func TestResponsesStreamEventUnmarshal_ToolSearchObjectArguments(t *testing.T) {
+	var event ResponsesStreamEvent
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type":"response.output_item.done",
+		"item":{
+			"type":"tool_search_call",
+			"id":"item_1",
+			"call_id":"call_1",
+			"arguments":{"query":"gmail"}
+		}
+	}`), &event))
+	require.NotNil(t, event.Item)
+	require.Equal(t, `{"query":"gmail"}`, event.Item.Arguments)
+}
