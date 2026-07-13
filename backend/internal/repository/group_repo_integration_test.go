@@ -49,12 +49,14 @@ func TestGroupRepoSuite(t *testing.T) {
 // --- Create / GetByID / Update / Delete ---
 
 func (s *GroupRepoSuite) TestCreate() {
+	webSearchPrice := 0.008
 	group := &service.Group{
-		Name:           "test-create",
-		Platform:       service.PlatformAnthropic,
-		RateMultiplier: 1.0,
-		IsExclusive:    false,
-		Status:         service.StatusActive,
+		Name:                  "test-create",
+		Platform:              service.PlatformOpenAI,
+		RateMultiplier:        1.0,
+		IsExclusive:           false,
+		Status:                service.StatusActive,
+		WebSearchPricePerCall: &webSearchPrice,
 	}
 
 	err := s.repo.Create(s.ctx, group)
@@ -64,6 +66,8 @@ func (s *GroupRepoSuite) TestCreate() {
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("test-create", got.Name)
+	s.Require().NotNil(got.WebSearchPricePerCall)
+	s.Require().InDelta(webSearchPrice, *got.WebSearchPricePerCall, 1e-12)
 }
 
 func (s *GroupRepoSuite) TestGetByID_NotFound() {

@@ -20,20 +20,23 @@ const (
 )
 
 // ForwardAlphaSearch 透传 Codex 独立网页搜索，不绑定仍在演进的 alpha 请求和响应结构。
+//
+// 仅当上游返回 2xx 时返回带 WebSearchCalls=1 的结果供按次计费；上游错误原样透传时
+// 返回 nil 结果，不产生费用。
 func (s *OpenAIGatewayService) ForwardAlphaSearch(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	body []byte,
 	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
-) error {
+) (*OpenAIForwardResult, error) {
 	if s == nil || c == nil || account == nil {
-		return fmt.Errorf("service, context, and account are required")
+		return nil, fmt.Errorf("service, context, and account are required")
 	}
 	modelResult := gjson.GetBytes(body, "model")
 	requestedModel := strings.TrimSpace(modelResult.String())
 	if modelResult.Type != gjson.String || requestedModel == "" {
-		return fmt.Errorf("model is required")
+		return nil, fmt.Errorf("model is required")
 	}
 
 	upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(requestedModel))
@@ -43,12 +46,12 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req, err := s.buildOpenAIAlphaSearchRequest(ctx, c, account, body, token, tlsRouterMatch...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	proxyURL := ""
@@ -59,13 +62,13 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, tlsRouterMatch...))
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
-		return s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		return fmt.Errorf("read alpha search response: %w", err)
+		return nil, fmt.Errorf("read alpha search response: %w", err)
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -73,7 +76,7 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
-			return &UpstreamFailoverError{
+			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
@@ -90,7 +93,17 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 		contentType = "application/json"
 	}
 	c.Data(resp.StatusCode, contentType, respBody)
-	return nil
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		// 非 2xx（错误/重定向）已原样透传给客户端：不是一次成功的搜索，不计费。
+		return nil, nil
+	}
+	return &OpenAIForwardResult{
+		RequestID:      strings.TrimSpace(resp.Header.Get("x-request-id")),
+		Model:          requestedModel,
+		UpstreamModel:  upstreamModel,
+		Duration:       time.Since(upstreamStart),
+		WebSearchCalls: 1,
+	}, nil
 }
 
 // buildOpenAIAlphaSearchRequest 基于 Responses 透传头规则构建独立搜索请求，并保留查询参数。

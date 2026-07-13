@@ -86,13 +86,14 @@ func (s *APIKeyRepoSuite) TestGetByKey_NotFound() {
 	s.Require().Error(err, "expected error for non-existent key")
 }
 
-func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConfig() {
+func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesSelectedGroupFields() {
 	user := s.mustCreateUser("getbykey-auth-dispatch@test.com")
 	group, err := s.client.Group.Create().
 		SetName("g-auth-dispatch").
 		SetPlatform(service.PlatformOpenAI).
 		SetStatus(service.StatusActive).
 		SetRateMultiplier(1).
+		SetWebSearchPricePerCall(0.008).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -118,6 +119,8 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesMessagesDispatchModelConf
 	got, err := s.repo.GetByKeyForAuth(s.ctx, key.Key)
 	s.Require().NoError(err)
 	s.Require().NotNil(got.Group)
+	s.Require().NotNil(got.Group.WebSearchPricePerCall)
+	s.Require().InDelta(0.008, *got.Group.WebSearchPricePerCall, 1e-12)
 	s.Require().True(got.Group.AllowMessagesDispatch)
 	s.Require().Equal("gpt-5.4", got.Group.DefaultMappedModel)
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.OpusMappedModel)
