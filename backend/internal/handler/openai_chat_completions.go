@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
@@ -323,7 +324,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
+		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		cyberBlocked := cyberPolicyHandled
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
@@ -363,13 +364,21 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 }
 
-// resolveOpenAIUpstreamEndpoint 返回 OpenAI 账号的实际上游端点。
-// API Key 账号如果被强制或探测为不支持 Responses API，即使入口不是
-// Chat Completions，也会直转 /v1/chat/completions；其它路径继续按入口映射。
-func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account) string {
+// resolveOpenAIUpstreamEndpoint 返回 OpenAI 兼容账号的实际上游端点。
+// 同一入站路由可能在运行时选择原始 Chat 或 Responses 桥接，因此优先采用转发结果；
+// 尚未报告端点的转发路径则回退到请求上下文和账号配置推导。
+func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account, result *service.OpenAIForwardResult) string {
+	if result != nil {
+		if endpoint := strings.TrimSpace(result.UpstreamEndpoint); endpoint != "" {
+			return endpoint
+		}
+	}
+	if endpoint := service.GetActualOpenAIUpstreamEndpoint(c); endpoint != "" {
+		return endpoint
+	}
 	if account != nil && account.Type == service.AccountTypeAPIKey &&
 		!openai_compat.ShouldUseResponsesAPI(account.Extra) {
-		return "/v1/chat/completions"
+		return EndpointChatCompletions
 	}
 	return GetUpstreamEndpoint(c, account.Platform)
 }
