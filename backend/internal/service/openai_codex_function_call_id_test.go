@@ -111,14 +111,13 @@ func TestFilterCodexInput_OutputTypeKeepsItemID(t *testing.T) {
 	require.Equal(t, "o1", out["id"], "output item id should be preserved")
 }
 
-// TestFilterCodexInput_NonToolCallItemKeepsID 验证续链模式下非工具调用项
-// （例如 message）仍会保留 id。
+// TestFilterCodexInput_NonToolCallItemKeepsID 验证续链模式下，不受 fc* 调用输入
+// 和 msg* message 前缀约束的条目仍会保留 id；message 另有独立测试覆盖。
 func TestFilterCodexInput_NonToolCallItemKeepsID(t *testing.T) {
 	input := []any{
 		map[string]any{
-			"type": "message",
-			"id":   "item_msg_001",
-			"role": "user",
+			"type": "web_search_call",
+			"id":   "ws_001",
 		},
 	}
 
@@ -127,7 +126,7 @@ func TestFilterCodexInput_NonToolCallItemKeepsID(t *testing.T) {
 	})
 
 	require.Len(t, filtered, 1)
-	msg, ok := filtered[0].(map[string]any)
+	item, ok := filtered[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "item_msg_001", msg["id"], "non-tool-call items keep their id in preserve mode")
+	require.Equal(t, "ws_001", item["id"], "unconstrained items keep their id in preserve mode")
 }
