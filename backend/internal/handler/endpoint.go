@@ -20,6 +20,7 @@ const (
 	EndpointMessages          = "/v1/messages"
 	EndpointChatCompletions   = "/v1/chat/completions"
 	EndpointEmbeddings        = "/v1/embeddings"
+	EndpointAlphaSearch       = "/v1/alpha/search"
 	EndpointResponses         = "/v1/responses"
 	EndpointResponsesCompact  = "/v1/responses/compact"
 	EndpointImagesGenerations = "/v1/images/generations"
@@ -72,6 +73,8 @@ func NormalizeInboundEndpoint(path string) string {
 	switch {
 	case strings.Contains(path, EndpointEmbeddings):
 		return EndpointEmbeddings
+	case strings.Contains(path, EndpointAlphaSearch) || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/alpha/search") || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/backend-api/codex/alpha/search"):
+		return EndpointAlphaSearch
 	case strings.Contains(path, EndpointChatCompletions):
 		return EndpointChatCompletions
 	case strings.Contains(path, EndpointMessages):
@@ -139,26 +142,20 @@ func isBareOrSubpathOf(path, root string) bool {
 	return path == root || strings.HasPrefix(path, root+"/")
 }
 
-// DeriveUpstreamEndpoint determines the upstream endpoint from the
-// account platform and the normalized inbound endpoint.
+// DeriveUpstreamEndpoint 根据账号平台和归一化后的入站端点推导上游端点。
 //
-// Platform-specific rules:
-//   - OpenAI always forwards to /v1/responses (with optional subpath
-//     such as /v1/responses/compact preserved from the raw URL).
-//   - Anthropic  → /v1/messages
-//   - Gemini     → /v1beta/models
-//   - Antigravity → /v1/messages (Claude) or gemini (Gemini)
-//   - Antigravity routes may target either Claude or Gemini, so the
-//     inbound endpoint is used to distinguish.
+// 平台规则：OpenAI 文本兼容请求转到 /v1/responses，embeddings、alpha search
+// 等原生端点保留自身路径；Anthropic 转到 /v1/messages；Gemini 转到
+// /v1beta/models；Antigravity 根据入站端点区分 Claude 与 Gemini。
 func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 	inbound = strings.TrimSpace(inbound)
 
 	switch platform {
 	case service.PlatformOpenAI, service.PlatformGrok:
-		if inbound == EndpointEmbeddings || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideos {
+		if inbound == EndpointEmbeddings || inbound == EndpointAlphaSearch || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideos {
 			return inbound
 		}
-		// OpenAI forwards everything to the Responses API.
+		// OpenAI 的非原生端点统一转到 Responses API。
 		// 保留从原始路径派生的子资源后缀，例如 /compact 或 /compact/detail。
 		if suffix := responsesSubpathSuffix(rawRequestPath); suffix != "" {
 			return EndpointResponses + suffix
@@ -177,14 +174,14 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		return EndpointGeminiModels
 
 	case service.PlatformAntigravity:
-		// Antigravity accounts serve both Claude and Gemini.
+		// Antigravity 账号同时承载 Claude 与 Gemini。
 		if inbound == EndpointGeminiModels {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
 	}
 
-	// Unknown platform — fall back to inbound.
+	// 未知平台回退到入站端点。
 	return inbound
 }
 
