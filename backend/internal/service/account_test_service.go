@@ -42,23 +42,36 @@ const (
 
 type accountTestContextKey string
 
-const accountTestUserAgentContextKey accountTestContextKey = "account_test_user_agent"
+const accountTestBackgroundOptionsContextKey accountTestContextKey = "account_test_background_options"
 
-// withAccountTestUserAgent 只给后台主动探测覆盖上游 User-Agent，避免影响普通账号测试入口。
+const openAIAutomaticProbeDecisionKey = "openai_automatic_probe_decision"
+
+type accountTestBackgroundOptions struct {
+	userAgent string
+}
+
+type openAIAutomaticProbeDecision struct {
+	tlsRouterMatch TLSFingerprintRouterMatchResult
+}
+
+// withAccountTestUserAgent 标记无人值守测试，并保留显式配置的探针 User-Agent。
 func withAccountTestUserAgent(ctx context.Context, userAgent string) context.Context {
-	userAgent = strings.TrimSpace(userAgent)
-	if userAgent == "" {
-		return ctx
+	return context.WithValue(ctx, accountTestBackgroundOptionsContextKey, accountTestBackgroundOptions{
+		userAgent: strings.TrimSpace(userAgent),
+	})
+}
+
+func accountTestBackgroundOptionsFromContext(ctx context.Context) (accountTestBackgroundOptions, bool) {
+	if ctx == nil {
+		return accountTestBackgroundOptions{}, false
 	}
-	return context.WithValue(ctx, accountTestUserAgentContextKey, userAgent)
+	options, ok := ctx.Value(accountTestBackgroundOptionsContextKey).(accountTestBackgroundOptions)
+	return options, ok
 }
 
 func accountTestUserAgentFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	userAgent, _ := ctx.Value(accountTestUserAgentContextKey).(string)
-	return strings.TrimSpace(userAgent)
+	options, _ := accountTestBackgroundOptionsFromContext(ctx)
+	return options.userAgent
 }
 
 func applyAccountTestUserAgent(req *http.Request) {
@@ -110,6 +123,7 @@ type AccountTestService struct {
 	claudeTokenProvider       *ClaudeTokenProvider
 	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	openAIGatewayService      *OpenAIGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
@@ -125,6 +139,7 @@ func NewAccountTestService(
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	openAIGatewayService *OpenAIGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -137,6 +152,7 @@ func NewAccountTestService(
 		claudeTokenProvider:       claudeTokenProvider,
 		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
+		openAIGatewayService:      openAIGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -151,6 +167,84 @@ func (s *AccountTestService) resolveTLSProfile(account *Account) *tlsfingerprint
 	}
 	// ResolveTLSProfile 会校验账号能力，OpenAI API Key 即使手写 extra 也不会启用。
 	return s.tlsFPProfileService.ResolveTLSProfile(account)
+}
+
+// prepareOpenAIAutomaticProbe 在读取上游令牌前完成探针身份、TLS 路由和客户端策略决策。
+func (s *AccountTestService) prepareOpenAIAutomaticProbe(c *gin.Context, account *Account) error {
+	options, automatic := accountTestBackgroundOptionsFromContext(c.Request.Context())
+	if !automatic {
+		return nil
+	}
+	if s.openAIGatewayService == nil {
+		return errors.New("OpenAI automatic probe routing is not configured")
+	}
+
+	userAgent := options.userAgent
+	if userAgent == "" && account.IsOpenAIOAuth() {
+		credentialAccount := account
+		if account.IsCredentialShadow() {
+			resolved, err := resolveCredentialAccount(c.Request.Context(), s.accountRepo, account)
+			if err != nil {
+				return err
+			}
+			credentialAccount = resolved
+		}
+		userAgent = strings.TrimSpace(credentialAccount.GetOpenAIUserAgent())
+		if userAgent == "" {
+			userAgent = codexCLIUserAgent
+		}
+	}
+
+	if c.Request.Header == nil {
+		c.Request.Header = make(http.Header)
+	}
+	c.Request.Header.Set("User-Agent", userAgent)
+	c.Request.Header.Del("originator")
+	if originator, _, ok := openai.PairCodexClientIdentity(userAgent); ok {
+		c.Request.Header.Set("originator", originator)
+	}
+
+	routerMatch := s.openAIGatewayService.matchTLSFingerprintRouter(c, account)
+	policyResult := s.openAIGatewayService.detectCodexClientRestriction(c, account, routerMatch)
+	if policyResult.Enabled && !policyResult.Matched {
+		return fmt.Errorf("OpenAI automatic probe rejected: policy=%s reason=%s", policyResult.Policy, policyResult.Reason)
+	}
+	c.Set(openAIAutomaticProbeDecisionKey, openAIAutomaticProbeDecision{tlsRouterMatch: routerMatch})
+	return nil
+}
+
+func openAIAutomaticProbeDecisionFromContext(c *gin.Context) (openAIAutomaticProbeDecision, bool) {
+	value, ok := c.Get(openAIAutomaticProbeDecisionKey)
+	if !ok {
+		return openAIAutomaticProbeDecision{}, false
+	}
+	decision, ok := value.(openAIAutomaticProbeDecision)
+	return decision, ok
+}
+
+// applyOpenAIAccountTestRouting 让自动探针复用正常网关的上游身份优先级，手动测试保持原样。
+func (s *AccountTestService) applyOpenAIAccountTestRouting(c *gin.Context, account *Account, req *http.Request, isOAuth bool) {
+	decision, automatic := openAIAutomaticProbeDecisionFromContext(c)
+	if !automatic {
+		applyAccountTestUserAgent(req)
+		return
+	}
+
+	if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+	if isOAuth {
+		isOfficialClient := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
+		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isOfficialClient, decision.tlsRouterMatch))
+	}
+	s.openAIGatewayService.applyOpenAIUpstreamUserAgent(req.Context(), c, account, req, false, decision.tlsRouterMatch)
+}
+
+func (s *AccountTestService) resolveOpenAIAccountTestTLSProfile(c *gin.Context, account *Account) *tlsfingerprint.Profile {
+	if decision, automatic := openAIAutomaticProbeDecisionFromContext(c); automatic {
+		return s.openAIGatewayService.resolveOpenAITLSProfile(account, decision.tlsRouterMatch)
+	}
+	return s.resolveTLSProfile(account)
 }
 
 func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
@@ -245,6 +339,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
+		if err := s.prepareOpenAIAutomaticProbe(c, account); err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
 
@@ -683,7 +780,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 	}
-	applyAccountTestUserAgent(req)
+	s.applyOpenAIAccountTestRouting(c, account, req, isOAuth)
 	if account.Type == AccountTypeOAuth {
 		// 必须在测试专用 UA 覆写之后配对身份，否则测试请求仍可能因头部错配返回 404。
 		enforceCodexIdentityHeaders(req.Header)
@@ -698,7 +795,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -861,7 +958,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	applyAccountTestUserAgent(req)
+	s.applyOpenAIAccountTestRouting(c, account, req, false)
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
@@ -871,7 +968,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
@@ -952,7 +1049,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)
-	applyAccountTestUserAgent(req)
+	s.applyOpenAIAccountTestRouting(c, account, req, isOAuth)
 
 	if isOAuth {
 		req.Host = "chatgpt.com"
@@ -969,7 +1066,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, time.Now())
@@ -1889,7 +1986,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	applyAccountTestUserAgent(req)
+	s.applyOpenAIAccountTestRouting(c, account, req, false)
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
@@ -1899,7 +1996,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -1991,7 +2088,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	} else {
 		req.Header.Set("User-Agent", codexCLIUserAgent)
 	}
-	applyAccountTestUserAgent(req)
+	s.applyOpenAIAccountTestRouting(c, account, req, true)
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
 	// 与真实转发一致：originator 与最终 User-Agent 首段配套（原 opencode 与 Codex UA 错配会 404，issue #3901）。
 	enforceCodexIdentityHeaders(req.Header)
@@ -2000,7 +2097,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
 	}

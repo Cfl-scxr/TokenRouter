@@ -267,7 +267,6 @@ func TestAccountTestService_RunTestBackgroundWithPromptAndUserAgentOverridesHead
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"access_token": "test-token",
-			"user_agent":   "account-client/1.0",
 		},
 	}
 	repo := &snapshotUpdateAccountRepo{
@@ -275,7 +274,11 @@ func TestAccountTestService_RunTestBackgroundWithPromptAndUserAgentOverridesHead
 		updateExtraCalls:      make(chan map[string]any, 1),
 	}
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	svc := &AccountTestService{
+		accountRepo:          repo,
+		httpUpstream:         upstream,
+		openAIGatewayService: &OpenAIGatewayService{},
+	}
 
 	result, err := svc.RunTestBackgroundWithPromptAndUserAgent(context.Background(), account.ID, "gpt-5.4", "hi", "codex-tui/9.9.1 test-terminal")
 
