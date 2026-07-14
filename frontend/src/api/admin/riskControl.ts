@@ -44,6 +44,10 @@ export interface ContentModerationConfig {
   blocked_keywords: string[]
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
+  audit_user_text_max_chars: number
+  audit_images: boolean
+  audit_tool_outputs: boolean
+  audit_tool_output_max_chars: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -62,6 +66,20 @@ export interface ContentModerationAPIKeyStatus {
   last_http_status: number
   last_tested: boolean
   configured: boolean
+  priority: number
+  note: string
+}
+
+export interface ContentModerationAPIKeyEntryInput {
+  api_key: string
+  priority: number
+  note: string
+}
+
+export interface ContentModerationAPIKeyMetadataUpdate {
+  key_hash: string
+  priority: number
+  note: string
 }
 
 export interface TestContentModerationAPIKeysPayload {
@@ -95,6 +113,8 @@ export interface UpdateContentModerationConfig {
   model?: string
   api_key?: string
   api_keys?: string[]
+  api_key_entries?: ContentModerationAPIKeyEntryInput[]
+  api_key_updates?: ContentModerationAPIKeyMetadataUpdate[]
   api_keys_mode?: 'append' | 'replace'
   delete_api_key_hashes?: string[]
   clear_api_key?: boolean
@@ -123,6 +143,10 @@ export interface UpdateContentModerationConfig {
   blocked_keywords?: string[]
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
+  audit_user_text_max_chars?: number
+  audit_images?: boolean
+  audit_tool_outputs?: boolean
+  audit_tool_output_max_chars?: number
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -169,6 +193,8 @@ export interface ContentModerationAPIKeyLoad {
   avg_latency_ms: number
   last_latency_ms: number
   last_http_status: number
+  priority: number
+  note: string
 }
 
 export interface ContentModerationLog {

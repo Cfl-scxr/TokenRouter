@@ -119,6 +119,10 @@
                       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {{ t('admin.riskControl.preBlockAPIKeyTotals', { total: formatNumber(item.total), success: formatNumber(item.success), errors: formatNumber(item.errors) }) }}
                       </p>
+                      <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.riskControl.apiKeyPriorityValue', { priority: item.priority || 100 }) }}
+                        <span v-if="item.note"> / {{ item.note }}</span>
+                      </p>
                     </div>
                     <div class="grid grid-cols-4 gap-2 text-right text-xs text-gray-500 dark:text-gray-400 sm:min-w-[280px]">
                       <div>
@@ -743,6 +747,34 @@
                         <p v-if="row.last_error" class="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
                           {{ row.last_error }}
                         </p>
+                        <div v-if="row.configured && row.key_hash && !configForm.clear_api_key" class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[120px_minmax(0,1fr)]">
+                          <div>
+                            <label class="mb-1 block text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyPriority') }}</label>
+                            <input
+                              :value="apiKeyDraftPriority(row)"
+                              type="number"
+                              data-test="api-key-priority"
+                              min="1"
+                              max="1000"
+                              class="input h-9 text-sm"
+                              :disabled="isStoredApiKeyPendingDelete(row)"
+                              @input="setApiKeyDraftPriority(row, $event)"
+                            />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyNote') }}</label>
+                            <input
+                              :value="apiKeyDraftNote(row)"
+                              type="text"
+                              data-test="api-key-note"
+                              maxlength="200"
+                              class="input h-9 text-sm"
+                              :placeholder="t('admin.riskControl.apiKeyNotePlaceholder')"
+                              :disabled="isStoredApiKeyPendingDelete(row)"
+                              @input="setApiKeyDraftNote(row, $event)"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -897,6 +929,39 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.riskControl.modelFilterModelCount', { count: modelFilterModelCount }) }}
                 </p>
+              </div>
+            </div>
+
+            <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700" data-test="audit-content-scope">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.auditContentScope') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditContentScopeHint') }}</p>
+              </div>
+              <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.auditUserTextMaxChars') }}</label>
+                  <input v-model.number="configForm.audit_user_text_max_chars" data-test="audit-user-text-max-chars" type="number" min="1" max="1000000" class="input" />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditUserTextMaxCharsHint') }}</p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.auditToolOutputMaxChars') }}</label>
+                  <input v-model.number="configForm.audit_tool_output_max_chars" data-test="audit-tool-output-max-chars" type="number" min="1" max="1000000" class="input" :disabled="!configForm.audit_tool_outputs" />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditToolOutputMaxCharsHint') }}</p>
+                </div>
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                  <div class="pr-4">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.auditImages') }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditImagesHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.audit_images" />
+                </div>
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+                  <div class="pr-4">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.auditToolOutputs') }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.auditToolOutputsHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.audit_tool_outputs" />
+                </div>
               </div>
             </div>
           </div>
@@ -1380,6 +1445,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import { adminAPI } from '@/api/admin'
 import type {
   ContentModerationAPIKeyLoad,
+  ContentModerationAPIKeyEntryInput,
   ContentModerationAPIKeyStatus,
   ContentModerationConfig,
   ContentModerationCyberWarning,
@@ -1404,6 +1470,10 @@ type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'riskThresholds'
 type RecordTab = 'moderation' | 'cyber'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
+type APIKeyMetadataDraft = {
+  priority: number
+  note: string
+}
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
 type OverviewItem = {
   key: string
@@ -1478,6 +1548,8 @@ const cyberSummary = ref<CyberSummary | null>(null)
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
+// 状态轮询只刷新可用性，独立草稿用于避免覆盖管理员尚未保存的 Key 属性编辑。
+const apiKeyMetadataDrafts = reactive<Record<string, APIKeyMetadataDraft>>({})
 const apiKeyRowsExpanded = ref<boolean>(false)
 const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
@@ -1529,6 +1601,10 @@ const configForm = reactive({
   keyword_blocking_mode: 'keyword_and_api' as KeywordBlockingMode,
   model_filter_type: 'all' as ContentModerationModelFilterType,
   model_filter_models: [] as string[],
+  audit_user_text_max_chars: 1000000,
+  audit_images: true,
+  audit_tool_outputs: true,
+  audit_tool_output_max_chars: 1000000,
 })
 
 const pagination = reactive({
@@ -1991,6 +2067,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.api_key_count = config.api_key_count || 0
   configForm.api_key_masks = Array.isArray(config.api_key_masks) ? [...config.api_key_masks] : []
   configForm.api_key_statuses = Array.isArray(config.api_key_statuses) ? [...config.api_key_statuses] : []
+  resetAPIKeyMetadataDrafts(configForm.api_key_statuses)
   configForm.api_keys_mode = 'append'
   configForm.clear_api_key = false
   pendingDeleteApiKeyHashes.value = []
@@ -2023,6 +2100,10 @@ function applyConfig(config: ContentModerationConfig) {
   const modelFilter = normalizeModelFilter(config.model_filter)
   configForm.model_filter_type = modelFilter.type
   configForm.model_filter_models = modelFilter.models
+  configForm.audit_user_text_max_chars = config.audit_user_text_max_chars || 1000000
+  configForm.audit_images = config.audit_images ?? true
+  configForm.audit_tool_outputs = config.audit_tool_outputs ?? true
+  configForm.audit_tool_output_max_chars = config.audit_tool_output_max_chars || 1000000
 }
 
 async function loadAll() {
@@ -2105,19 +2186,33 @@ async function saveConfig() {
       blocked_keywords: blockedKeywordList.value,
       keyword_blocking_mode: configForm.keyword_blocking_mode,
       model_filter: modelFilterPayload,
+      audit_user_text_max_chars: Math.min(Math.max(Number(configForm.audit_user_text_max_chars) || 1000000, 1), 1000000),
+      audit_images: configForm.audit_images,
+      audit_tool_outputs: configForm.audit_tool_outputs,
+      audit_tool_output_max_chars: Math.min(Math.max(Number(configForm.audit_tool_output_max_chars) || 1000000, 1), 1000000),
     }
-    const keys = parseApiKeys(configForm.api_keys_text)
-    if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keys.length === 0) {
+    const keyEntries = parseApiKeyEntries(configForm.api_keys_text)
+    if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keyEntries.length === 0) {
       appStore.showError(t('admin.riskControl.apiKeysReplaceNoInput'))
       return
     }
-    if (keys.length > 0) {
-      payload.api_keys = keys
+    if (keyEntries.length > 0) {
+      payload.api_key_entries = keyEntries
       payload.api_keys_mode = configForm.api_keys_mode
       payload.clear_api_key = false
     }
     if (!payload.clear_api_key && configForm.api_keys_mode !== 'replace' && pendingDeleteApiKeyHashes.value.length > 0) {
       payload.delete_api_key_hashes = [...pendingDeleteApiKeyHashes.value]
+    }
+    if (!payload.clear_api_key && configForm.api_keys_mode !== 'replace') {
+      const deleted = new Set(pendingDeleteApiKeyHashes.value)
+      payload.api_key_updates = Object.entries(apiKeyMetadataDrafts)
+        .filter(([keyHash]) => !deleted.has(keyHash))
+        .map(([keyHash, metadata]) => ({
+          key_hash: keyHash,
+          priority: normalizeAPIKeyPriority(metadata.priority),
+          note: metadata.note.trim().slice(0, 200),
+        }))
     }
 
     const updated = await adminAPI.riskControl.updateConfig(payload)
@@ -2428,7 +2523,8 @@ function setModelFilterType(type: ContentModerationModelFilterType) {
 }
 
 async function testApiKeys(useInputKeys: boolean) {
-  const keys = useInputKeys ? parseApiKeys(configForm.api_keys_text) : []
+  const inputEntries = useInputKeys ? parseApiKeyEntries(configForm.api_keys_text) : []
+  const keys = inputEntries.map((item) => item.api_key)
   if (useInputKeys && keys.length === 0) {
     appStore.showError(t('admin.riskControl.apiKeyTestNoInput'))
     return
@@ -2445,7 +2541,12 @@ async function testApiKeys(useInputKeys: boolean) {
     })
     moderationTestResult.value = result.audit_result ?? null
     if (useInputKeys) {
-      testedApiKeyStatuses.value = result.items.map((item) => ({ ...item, configured: false }))
+      testedApiKeyStatuses.value = result.items.map((item, index) => ({
+        ...item,
+        configured: false,
+        priority: inputEntries[index]?.priority ?? 100,
+        note: inputEntries[index]?.note ?? '',
+      }))
     } else {
       mergeConfiguredAPIKeyStatuses(result.items)
       testedApiKeyStatuses.value = []
@@ -2670,11 +2771,70 @@ function apiKeyStatusMeta(row: ContentModerationAPIKeyStatus): string {
   return parts.join(' / ')
 }
 
+function resetAPIKeyMetadataDrafts(rows: ContentModerationAPIKeyStatus[]) {
+  for (const key of Object.keys(apiKeyMetadataDrafts)) {
+    delete apiKeyMetadataDrafts[key]
+  }
+  for (const row of rows) {
+    if (!row.configured || !row.key_hash) continue
+    apiKeyMetadataDrafts[row.key_hash] = {
+      priority: normalizeAPIKeyPriority(row.priority),
+      note: row.note || '',
+    }
+  }
+}
+
+function ensureAPIKeyMetadataDraft(row: ContentModerationAPIKeyStatus): APIKeyMetadataDraft {
+  if (!apiKeyMetadataDrafts[row.key_hash]) {
+    apiKeyMetadataDrafts[row.key_hash] = {
+      priority: normalizeAPIKeyPriority(row.priority),
+      note: row.note || '',
+    }
+  }
+  return apiKeyMetadataDrafts[row.key_hash]
+}
+
+function apiKeyDraftPriority(row: ContentModerationAPIKeyStatus): number {
+  return ensureAPIKeyMetadataDraft(row).priority
+}
+
+function apiKeyDraftNote(row: ContentModerationAPIKeyStatus): string {
+  return ensureAPIKeyMetadataDraft(row).note
+}
+
+function setApiKeyDraftPriority(row: ContentModerationAPIKeyStatus, event: Event) {
+  ensureAPIKeyMetadataDraft(row).priority = normalizeAPIKeyPriority(Number((event.target as HTMLInputElement).value))
+}
+
+function setApiKeyDraftNote(row: ContentModerationAPIKeyStatus, event: Event) {
+  ensureAPIKeyMetadataDraft(row).note = (event.target as HTMLInputElement).value.slice(0, 200)
+}
+
+function normalizeAPIKeyPriority(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 100
+  return Math.min(1000, Math.max(1, Math.round(value || 100)))
+}
+
+function parseApiKeyEntries(value: string): ContentModerationAPIKeyEntryInput[] {
+  // 保持旧的一行一个 Key 用法，并兼容“Key | 优先级 | 备注”的扩展格式。
+  const byKey = new Map<string, ContentModerationAPIKeyEntryInput>()
+  for (const line of value.split(/\r?\n/)) {
+    const parts = line.split('|')
+    const apiKey = parts.shift()?.trim() || ''
+    if (!apiKey) continue
+    const rawPriority = parts.shift()?.trim() || ''
+    const parsedPriority = rawPriority === '' ? 100 : Number(rawPriority)
+    byKey.set(apiKey, {
+      api_key: apiKey,
+      priority: normalizeAPIKeyPriority(parsedPriority),
+      note: parts.join('|').trim().slice(0, 200),
+    })
+  }
+  return [...byKey.values()]
+}
+
 function parseApiKeys(value: string): string[] {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter((item, index, arr) => item && arr.indexOf(item) === index)
+  return parseApiKeyEntries(value).map((item) => item.api_key)
 }
 
 function normalizeKeywordBlockingMode(value: unknown): KeywordBlockingMode {

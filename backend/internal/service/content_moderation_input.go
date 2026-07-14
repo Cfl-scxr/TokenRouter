@@ -3,9 +3,87 @@ package service
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
 )
+
+// contentModerationAuditInput 根据配置生成仅供上游审核的副本，完整原文仍保留在原输入中。
+func contentModerationAuditInput(input ContentModerationInput, cfg *ContentModerationConfig) ContentModerationInput {
+	if cfg == nil {
+		return input
+	}
+	input.Normalize()
+	userRemaining := cfg.AuditUserTextMaxChars
+	toolRemaining := cfg.AuditToolOutputMaxChars
+	items := make([]ContentModerationInputItem, 0, len(input.Items))
+	textParts := make([]string, 0, len(input.Items))
+	for _, item := range input.Items {
+		if item.Type != ContentModerationItemTypeText {
+			continue
+		}
+		source := normalizeContentModerationSource(item.Source)
+		remaining := &userRemaining
+		if source == ContentModerationSourceTool {
+			if !cfg.AuditToolOutputs {
+				continue
+			}
+			remaining = &toolRemaining
+		}
+		text, consumed := contentModerationRunePrefix(item.Text, *remaining)
+		*remaining -= consumed
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		copyItem := item
+		copyItem.Text = text
+		items = append(items, copyItem)
+		textParts = append(textParts, text)
+	}
+
+	images := make([]string, 0, len(input.ImageItems))
+	imageItems := make([]ContentModerationImage, 0, len(input.ImageItems))
+	if cfg.AuditImages {
+		for _, image := range input.ImageItems {
+			if normalizeContentModerationSource(image.Source) == ContentModerationSourceTool && !cfg.AuditToolOutputs {
+				continue
+			}
+			images = append(images, image.Reference)
+			imageItems = append(imageItems, image)
+			items = append(items, ContentModerationInputItem{
+				Index:    image.SourceIndex,
+				Source:   image.Source,
+				Type:     ContentModerationItemTypeImage,
+				ImageRef: image.Reference,
+			})
+		}
+	}
+	return ContentModerationInput{
+		Text:       strings.Join(textParts, "\n"),
+		Images:     images,
+		Items:      items,
+		ImageItems: imageItems,
+		Source:     contentModerationInputSource(items),
+	}
+}
+
+func contentModerationRunePrefix(text string, limit int) (string, int) {
+	if limit <= 0 || text == "" {
+		return "", 0
+	}
+	runeCount := utf8.RuneCountInString(text)
+	if runeCount <= limit {
+		return text, runeCount
+	}
+	count := 0
+	for index := range text {
+		if count == limit {
+			return text[:index], count
+		}
+		count++
+	}
+	return text, count
+}
 
 func ExtractContentModerationText(protocol string, body []byte) string {
 	return ExtractContentModerationInput(protocol, body).Text

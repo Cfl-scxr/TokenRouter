@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +38,200 @@ func TestContentModerationNormalizePreservesFullOriginalText(t *testing.T) {
 
 	require.Equal(t, "  first line\nsecond line  ", input.Text)
 	require.Equal(t, input.Text, input.Items[0].Text)
+}
+
+func TestContentModerationAuditInputAppliesSourceLimitsAndToggles(t *testing.T) {
+	input := ContentModerationInput{
+		Text: "abcdef\n123456",
+		Items: []ContentModerationInputItem{
+			{Index: 0, Source: ContentModerationSourceUser, Type: ContentModerationItemTypeText, Text: "abcdef"},
+			{Index: 1, Source: ContentModerationSourceTool, Type: ContentModerationItemTypeText, Text: "123456"},
+			{Index: 2, Source: ContentModerationSourceUser, Type: ContentModerationItemTypeImage, ImageRef: "https://example.com/user.png"},
+			{Index: 3, Source: ContentModerationSourceTool, Type: ContentModerationItemTypeImage, ImageRef: "https://example.com/tool.png"},
+		},
+		Images: []string{"https://example.com/user.png", "https://example.com/tool.png"},
+		ImageItems: []ContentModerationImage{
+			{SourceIndex: 2, Source: ContentModerationSourceUser, Reference: "https://example.com/user.png"},
+			{SourceIndex: 3, Source: ContentModerationSourceTool, Reference: "https://example.com/tool.png"},
+		},
+	}
+	cfg := defaultContentModerationConfig()
+	cfg.AuditUserTextMaxChars = 3
+	cfg.AuditToolOutputMaxChars = 2
+
+	audit := contentModerationAuditInput(input, cfg)
+
+	require.Equal(t, "abc\n12", audit.Text)
+	require.Equal(t, input.Images, audit.Images)
+	require.Equal(t, []int{2, 3}, []int{audit.ImageItems[0].SourceIndex, audit.ImageItems[1].SourceIndex})
+
+	cfg.AuditToolOutputs = false
+	audit = contentModerationAuditInput(input, cfg)
+	require.Equal(t, "abc", audit.Text)
+	require.Equal(t, []string{"https://example.com/user.png"}, audit.Images)
+
+	cfg.AuditImages = false
+	audit = contentModerationAuditInput(input, cfg)
+	require.Empty(t, audit.Images)
+	require.Empty(t, audit.ImageItems)
+}
+
+func TestContentModerationAuditScopeLimitsUpstreamButStoresFullInput(t *testing.T) {
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inputs := decodeModerationTextInputs(t, r)
+		received <- inputs[0]
+		require.NoError(t, json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.01}}}}))
+	}))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"}
+	cfg.RetryCount = 0
+	cfg.RecordNonHits = true
+	cfg.AuditUserTextMaxChars = 5
+	cfg.AuditToolOutputMaxChars = 4
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		repo,
+		&contentModerationTestHashCache{},
+		nil, nil, nil, nil,
+	)
+	body := []byte(`{"messages":[{"role":"user","content":"old"},{"role":"assistant","content":"answer"},{"role":"tool","content":"tool-output"},{"role":"user","content":"user-content"}]}`)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{Protocol: ContentModerationProtocolOpenAIChat, Body: body})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, "tool\nuser-", <-received)
+	logs := requireContentModerationLogCount(t, repo, 1)
+	require.Len(t, logs[0].InputItems, 2)
+	require.Equal(t, "tool-output", logs[0].InputItems[0].Text)
+	require.Equal(t, "user-content", logs[0].InputItems[1].Text)
+}
+
+func TestContentModerationEmptyAuditScopeSkipsObserveQueue(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModeObserve
+	cfg.AuditToolOutputs = false
+	cfg.AuditImages = false
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationTestRepo{}
+	svc := &ContentModerationService{
+		settingRepo: &contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		repo:       repo,
+		asyncQueue: make(chan contentModerationTask, 1),
+	}
+	body := []byte(`{"messages":[{"role":"assistant","content":"answer"},{"role":"tool","content":"tool-output"}]}`)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{Protocol: ContentModerationProtocolOpenAIChat, Body: body})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Empty(t, svc.asyncQueue)
+	require.Empty(t, repo.snapshotLogs())
+}
+
+func TestContentModerationWeightedAPIKeySelectionHonorsPriorityAndFreeze(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.APIKeys = []string{"sk-high", "sk-low"}
+	cfg.APIKeyMetadata = []ContentModerationAPIKeyMetadata{
+		{KeyHash: moderationAPIKeyHash("sk-high"), Priority: 100, Note: "Tier 5"},
+		{KeyHash: moderationAPIKeyHash("sk-low"), Priority: 20, Note: "Tier 1"},
+	}
+	cfg.normalize()
+	svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil)
+	counts := map[string]int{}
+	for index := 0; index < 60; index++ {
+		key, ok := svc.nextUsableAPIKey(cfg)
+		require.True(t, ok)
+		counts[key]++
+	}
+	require.Equal(t, 50, counts["sk-high"])
+	require.Equal(t, 10, counts["sk-low"])
+
+	svc.keyHealthMu.Lock()
+	svc.keyHealth[moderationAPIKeyHash("sk-high")] = &contentModerationKeyHealth{FrozenUntil: time.Now().Add(time.Minute)}
+	svc.keyHealthMu.Unlock()
+	for index := 0; index < 10; index++ {
+		key, ok := svc.nextUsableAPIKey(cfg)
+		require.True(t, ok)
+		require.Equal(t, "sk-low", key)
+	}
+}
+
+func TestContentModerationUpdateConfigPersistsKeyMetadataAndAuditScope(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.APIKeys = []string{"sk-high", "sk-low"}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationTestSettingRepo{values: map[string]string{SettingKeyContentModerationConfig: string(rawCfg)}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	updates := []ContentModerationAPIKeyMetadata{
+		{KeyHash: moderationAPIKeyHash("sk-high"), Priority: 100, Note: "Tier 5"},
+		{KeyHash: moderationAPIKeyHash("sk-low"), Priority: 20, Note: "Tier 1"},
+	}
+	userLimit := 8000
+	toolLimit := 2000
+	auditImages := false
+	auditTools := false
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		APIKeyUpdates:           &updates,
+		AuditUserTextMaxChars:   &userLimit,
+		AuditImages:             &auditImages,
+		AuditToolOutputs:        &auditTools,
+		AuditToolOutputMaxChars: &toolLimit,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 8000, view.AuditUserTextMaxChars)
+	require.False(t, view.AuditImages)
+	require.False(t, view.AuditToolOutputs)
+	require.Equal(t, 2000, view.AuditToolOutputMaxChars)
+	require.Equal(t, 100, view.APIKeyStatuses[0].Priority)
+	require.Equal(t, "Tier 5", view.APIKeyStatuses[0].Note)
+	require.Equal(t, 20, view.APIKeyStatuses[1].Priority)
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, updates, saved.APIKeyMetadata)
+}
+
+func TestContentModerationUpdateConfigAddsKeyWithPriorityAndNote(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	repo := &contentModerationTestSettingRepo{values: map[string]string{SettingKeyContentModerationConfig: string(rawCfg)}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	entries := []ContentModerationAPIKeyEntryInput{{APIKey: "sk-tier-five", Priority: 250, Note: "Tier 5 primary"}}
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{APIKeyEntries: &entries})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, view.APIKeyCount)
+	require.Equal(t, 250, view.APIKeyStatuses[0].Priority)
+	require.Equal(t, "Tier 5 primary", view.APIKeyStatuses[0].Note)
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, []string{"sk-tier-five"}, saved.APIKeys)
+	require.Equal(t, []ContentModerationAPIKeyMetadata{{
+		KeyHash: moderationAPIKeyHash("sk-tier-five"), Priority: 250, Note: "Tier 5 primary",
+	}}, saved.APIKeyMetadata)
 }
 
 func TestContentModerationAsyncQueueDropsDuplicateBodyAndTracksBytes(t *testing.T) {

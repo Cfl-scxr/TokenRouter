@@ -1371,7 +1371,7 @@ func TestContentModerationCallModeration_400DoesNotFreezeAPIKey(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, 1, requestCount)
-	status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true)
+	status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true, defaultContentModerationAPIKeyPriority, "")
 	require.Equal(t, "error", status.Status)
 	require.Equal(t, http.StatusBadRequest, status.LastHTTPStatus)
 	require.Zero(t, status.FailureCount)
@@ -1409,7 +1409,7 @@ func TestContentModerationCallModeration_FreezesByHTTPStatus(t *testing.T) {
 			_, err := svc.callModeration(context.Background(), cfg, "hello")
 
 			require.Error(t, err)
-			status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true)
+			status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true, defaultContentModerationAPIKeyPriority, "")
 			require.Equal(t, "frozen", status.Status)
 			require.Equal(t, tt.statusCode, status.LastHTTPStatus)
 			require.Equal(t, 1, status.FailureCount)

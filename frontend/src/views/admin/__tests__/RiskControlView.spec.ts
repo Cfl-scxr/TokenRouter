@@ -124,6 +124,10 @@ const baseConfig = (): ContentModerationConfig => ({
     type: 'all',
     models: [],
   },
+  audit_user_text_max_chars: 1000000,
+  audit_images: true,
+  audit_tool_outputs: true,
+  audit_tool_output_max_chars: 1000000,
 })
 
 const runtimeStatus = () => ({
@@ -410,6 +414,93 @@ describe('admin RiskControlView', () => {
       },
     }))
     expect(showError).not.toHaveBeenCalled()
+  })
+
+  it('saves upstream audit content limits from the existing scope tab', async () => {
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.scope').trigger('click')
+
+    expect(wrapper.get('[data-test="audit-content-scope"]').text()).toContain('admin.riskControl.auditContentScope')
+    await wrapper.get('[data-test="audit-user-text-max-chars"]').setValue('8000')
+    await wrapper.get('[data-test="audit-tool-output-max-chars"]').setValue('2000')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      audit_user_text_max_chars: 8000,
+      audit_images: true,
+      audit_tool_outputs: true,
+      audit_tool_output_max_chars: 2000,
+    }))
+  })
+
+  it('saves priority and note edits for a stored moderation key', async () => {
+    const keyHash = 'a'.repeat(64)
+    const keyStatus = {
+      index: 0,
+      key_hash: keyHash,
+      masked: 'sk-...main',
+      status: 'ok' as const,
+      failure_count: 0,
+      success_count: 10,
+      last_error: '',
+      last_latency_ms: 80,
+      last_http_status: 200,
+      last_tested: true,
+      configured: true,
+      priority: 100,
+      note: 'old note',
+    }
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      api_key_configured: true,
+      api_key_count: 1,
+      api_key_masks: ['sk-...main'],
+      api_key_statuses: [keyStatus],
+    })
+    getStatus.mockResolvedValue({
+      ...runtimeStatus(),
+      api_key_statuses: [keyStatus],
+    })
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await wrapper.get('[data-test="api-key-priority"]').setValue('20')
+    await wrapper.get('[data-test="api-key-note"]').setValue('Tier 1 backup')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      api_key_updates: [{ key_hash: keyHash, priority: 20, note: 'Tier 1 backup' }],
+    }))
   })
 
   it('submits edited risk control thresholds when saving moderation config', async () => {

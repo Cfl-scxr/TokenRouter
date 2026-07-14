@@ -16,9 +16,10 @@ describe('risk control locale copy', () => {
     expect(en.admin.riskControl.preBlockAPIKeyLoadSummary).toContain('worker: {workerActive} / {workerTotal}')
   })
 
-  it('does not describe pre-block audit key polling as bypassing the worker pool', () => {
-    expect(zh.admin.riskControl.preBlockAPIKeyLoadHint).toBe('同步前置拦截直接轮询可用审核 Key。')
+  it('describes weighted pre-block audit key distribution', () => {
+    expect(zh.admin.riskControl.preBlockAPIKeyLoadHint).toContain('按优先级权重分配')
     expect(zh.admin.riskControl.preBlockAPIKeyLoadHint).not.toContain('Worker 池')
+    expect(en.admin.riskControl.preBlockAPIKeyLoadHint).toContain('priority-weighted')
     expect(en.admin.riskControl.preBlockAPIKeyLoadHint).not.toContain('worker pool')
   })
 })
