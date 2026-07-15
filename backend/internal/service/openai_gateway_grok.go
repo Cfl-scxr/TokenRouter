@@ -26,6 +26,7 @@ const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
 	grokCLIVersion                         = "0.2.93"
+	grokDefaultResponsesModel              = "grok-4.5"
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 )
 
@@ -44,7 +45,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	upstreamModel := account.GetMappedModel(originalModel)
 	if strings.TrimSpace(upstreamModel) == "" {
-		upstreamModel = "grok-4.3"
+		upstreamModel = grokDefaultResponsesModel
 	}
 	cacheIdentity := resolveGrokCacheIdentity(c, body, "", upstreamModel)
 	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)

@@ -442,7 +442,7 @@ func resolveGrokWSUpstreamModel(account *Account, body []byte, originalModel str
 		}
 	}
 	if upstreamModel == "" {
-		upstreamModel = "grok-4.3"
+		upstreamModel = grokDefaultResponsesModel
 	}
 	return upstreamModel
 }
