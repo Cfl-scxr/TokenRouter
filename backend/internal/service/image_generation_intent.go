@@ -9,8 +9,24 @@ import (
 const (
 	openAIResponsesEndpoint          = "/v1/responses"
 	openAIResponsesCompactEndpoint   = "/v1/responses/compact"
+	responsesLiteHeader              = "X-OpenAI-Internal-Codex-Responses-Lite"
+	responsesLiteHeaderKey           = "x-openai-internal-codex-responses-lite"
+	responsesLiteWSMetadataKey       = "ws_request_header_x_openai_internal_codex_responses_lite"
 	imageGenerationPermissionMessage = "Image generation is not enabled for this group"
 )
+
+// isOpenAIResponsesLiteHeader 判断请求是否来自 Codex Responses Lite 通道。
+func isOpenAIResponsesLiteHeader(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "true")
+}
+
+// isOpenAIResponsesLiteWebSocketPayload 从 WS client_metadata 中读取对应的 Lite 标记。
+func isOpenAIResponsesLiteWebSocketPayload(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	return isOpenAIResponsesLiteHeader(gjson.GetBytes(body, "client_metadata."+responsesLiteWSMetadataKey).String())
+}
 
 // ImageGenerationPermissionMessage returns the stable end-user error text for disabled groups.
 func ImageGenerationPermissionMessage() string {
