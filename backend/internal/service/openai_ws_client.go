@@ -42,6 +42,11 @@ type openAIWSClientConn interface {
 	Close() error
 }
 
+// openAIWSIdlePingCapable 与 openAIWSClientConn 分离，显式标记实现能否在无人读取时探测空闲连接。
+type openAIWSIdlePingCapable interface {
+	SupportsIdlePingWithoutReader() bool
+}
+
 // openAIWSClientDialer 抽象 WS 建连器。
 type openAIWSClientDialer interface {
 	Dial(ctx context.Context, wsURL string, headers http.Header, proxyURL string, profile *tlsfingerprint.Profile) (openAIWSClientConn, int, http.Header, error)
@@ -337,6 +342,12 @@ func (c *coderOpenAIWSClientConn) Ping(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	return c.conn.Ping(ctx)
+}
+
+// SupportsIdlePingWithoutReader 反映 coder/websocket 的实际契约：Conn.Ping 会等待 pong，
+// 而控制帧只能由 Read 消费。连接池不会读取空闲连接，因此 Ping 会让健康连接必然超时。
+func (*coderOpenAIWSClientConn) SupportsIdlePingWithoutReader() bool {
+	return false
 }
 
 func (c *coderOpenAIWSClientConn) Close() error {

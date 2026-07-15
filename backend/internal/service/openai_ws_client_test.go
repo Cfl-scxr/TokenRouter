@@ -156,3 +156,7 @@ func TestCoderOpenAIWSClientDialer_ProxyHTTPClientCacheUsesHTTP1TLSProfile(t *te
 	require.True(t, hasWSKey, "WS 缓存键应使用剥离 h2 后的 TLS 模板")
 	require.False(t, hasRawKey, "WS 缓存键不应使用仍声明 h2 的 TLS 模板")
 }
+
+func TestCoderOpenAIWSClientConn_DoesNotSupportIdlePingWithoutReader(t *testing.T) {
+	require.False(t, (&coderOpenAIWSClientConn{}).SupportsIdlePingWithoutReader())
+}
