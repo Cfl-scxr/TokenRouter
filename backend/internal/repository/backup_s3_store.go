@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/servertiming"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
@@ -104,12 +105,14 @@ func (s *S3BackupStore) UploadFileWithProgress(ctx context.Context, key string, 
 		o.FailTimeout = s3UploadFailTimeout
 		o.ObjectProgressListeners.Register(progress)
 	})
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	out, err := uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:      &s.bucket,
 		Key:         &key,
 		Body:        body,
 		ContentType: &contentType,
 	})
+	finish()
 	if err != nil {
 		return progress.UploadedBytes(), fmt.Errorf("S3 transfer upload object: %w", err)
 	}
@@ -124,12 +127,14 @@ func (s *S3BackupStore) UploadFileWithProgress(ctx context.Context, key string, 
 }
 
 func (s *S3BackupStore) putObject(ctx context.Context, key string, body io.Reader, contentType string) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      &s.bucket,
 		Key:         &key,
 		Body:        body,
 		ContentType: &contentType,
 	})
+	finish()
 	if err != nil {
 		return fmt.Errorf("S3 PutObject: %w", err)
 	}
@@ -137,10 +142,12 @@ func (s *S3BackupStore) putObject(ctx context.Context, key string, body io.Reade
 }
 
 func (s *S3BackupStore) Download(ctx context.Context, key string) (io.ReadCloser, error) {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,
 	})
+	finish()
 	if err != nil {
 		return nil, fmt.Errorf("S3 GetObject: %w", err)
 	}
@@ -148,10 +155,12 @@ func (s *S3BackupStore) Download(ctx context.Context, key string) (io.ReadCloser
 }
 
 func (s *S3BackupStore) Delete(ctx context.Context, key string) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,
 	})
+	finish()
 	return err
 }
 
@@ -168,9 +177,11 @@ func (s *S3BackupStore) PresignURL(ctx context.Context, key string, expiry time.
 }
 
 func (s *S3BackupStore) HeadBucket(ctx context.Context) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: &s.bucket,
 	})
+	finish()
 	if err != nil {
 		return fmt.Errorf("S3 HeadBucket failed: %w", err)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/payment"
 	"github.com/TokenFlux/TokenRouter/internal/payment/provider"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/servertiming"
 	"github.com/shopspring/decimal"
 )
 
@@ -467,7 +468,9 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		BillingInfo: req.BillingInfo,
 	}, sel, outTradeNo, payAmountStr, subject, order.ExpiresAt)
 	providerReq.UserEmail = order.UserEmail
+	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
+	finishProviderCall()
 	if err != nil {
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
 		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
