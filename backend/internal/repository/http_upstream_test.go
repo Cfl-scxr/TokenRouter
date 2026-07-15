@@ -294,6 +294,8 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintUsesHTTP2WhenALPNAllo
 	transport, ok := entry.client.Transport.(*http2.Transport)
 	require.True(s.T(), ok, "声明 h2 的 TLS 模板应启用 HTTP/2 transport")
 	require.NotNil(s.T(), transport.DialTLSContext)
+	require.Equal(s.T(), openAIHTTP2ReadIdleTimeout, transport.ReadIdleTimeout, "TLS 指纹 H2 也必须启用空闲 PING")
+	require.Equal(s.T(), openAIHTTP2PingTimeout, transport.PingTimeout, "TLS 指纹 H2 的 PING 必须有超时")
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, entry.protocolMode)
 }
 
@@ -316,6 +318,9 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintHTTP2HeaderTimeout() 
 	require.Equal(s.T(), time.Second, transport.timeout)
 	_, ok = transport.base.(*http2.Transport)
 	require.True(s.T(), ok, "响应头超时包装内层应保持 HTTP/2 transport")
+	h2Transport := transport.base.(*http2.Transport)
+	require.Equal(s.T(), openAIHTTP2ReadIdleTimeout, h2Transport.ReadIdleTimeout, "包装后的 TLS 指纹 H2 仍须启用空闲 PING")
+	require.Equal(s.T(), openAIHTTP2PingTimeout, h2Transport.PingTimeout, "包装后的 TLS 指纹 H2 的 PING 必须有超时")
 }
 
 func TestResponseHeaderTimeoutRoundTripperTimesOut(t *testing.T) {
