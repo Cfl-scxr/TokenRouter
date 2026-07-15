@@ -69,7 +69,7 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 	if err != nil {
 		return "", err
 	}
-	baseURL := account.GetGrokBaseURL()
+	baseURL := account.GetGrokMediaBaseURL()
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations:
 		return xai.BuildImagesGenerationsURLWithValidator(baseURL, validator)

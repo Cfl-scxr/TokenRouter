@@ -120,3 +120,21 @@ func TestGrokOAuthURLPolicyIgnoresAPIKeyOverrides(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", target)
 }
+
+func TestGrokOAuthMediaURLStaysOnCLIGateway(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"base_url": "https://custom.example.test/v1",
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+
+	target, err := buildGrokMediaURL(account, cfg, GrokMediaEndpointVideosGenerations, "")
+	require.NoError(t, err)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/videos/generations", target)
+}

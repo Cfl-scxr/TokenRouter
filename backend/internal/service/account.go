@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1440,47 +1439,35 @@ func (a *Account) GetOpenAIRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+// GetGrokBaseURL 返回 Grok 文本与 Responses 流量使用的上游地址。
+// 媒体流量必须通过 GetGrokMediaBaseURL 明确选择其独立的凭据边界。
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	baseURL := a.GetCredential("base_url")
 	if a.IsGrokOAuth() {
-		if strings.TrimSpace(baseURL) == "" || isOfficialGrokAPIBaseURL(baseURL) {
-			return xai.DefaultCLIBaseURL
-		}
-		if _, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
-			return baseURL
-		}
+		// OAuth bearer token 是订阅凭据，只能发送到受支持的 CLI 网关。
+		// 存储的 base_url 与 unsafe 开发开关仅影响 API-key 账号。
 		return xai.DefaultCLIBaseURL
 	}
+	baseURL := a.GetCredential("base_url")
 	if baseURL != "" {
 		return baseURL
 	}
 	return xai.DefaultBaseURL
 }
 
-// isOfficialGrokAPIBaseURL 判断地址是否为可在运行时迁移到订阅代理的官方 xAI API 根路径。
-func isOfficialGrokAPIBaseURL(raw string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
+// GetGrokMediaBaseURL 返回 Grok Imagine 媒体接口使用的上游地址。
+// OAuth 媒体凭据与文本凭据共享信任边界，即使请求体很大也固定到 CLI 网关；
+// API-key 账号继续保留其公开或自定义上游地址。
+func (a *Account) GetGrokMediaBaseURL() string {
+	if !a.IsGrok() {
+		return ""
 	}
-	defaultURL, err := url.Parse(xai.DefaultBaseURL)
-	if err != nil {
-		return false
+	if a.IsGrokOAuth() {
+		return xai.DefaultCLIBaseURL
 	}
-	if !strings.EqualFold(parsed.Scheme, defaultURL.Scheme) || !strings.EqualFold(parsed.Hostname(), defaultURL.Hostname()) {
-		return false
-	}
-	if port := parsed.Port(); port != "" {
-		portNumber, err := strconv.Atoi(port)
-		if err != nil || portNumber != 443 {
-			return false
-		}
-	}
-	path := strings.TrimRight(parsed.Path, "/")
-	return path == "" || path == strings.TrimRight(defaultURL.Path, "/")
+	return a.GetGrokBaseURL()
 }
 
 func (a *Account) GetGrokAccessToken() string {
