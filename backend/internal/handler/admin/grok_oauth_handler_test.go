@@ -168,3 +168,69 @@ func TestGrokOAuthHandlerRuntimeSanityDoesNotExposeSecrets(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "secret")
 	require.NotContains(t, rec.Body.String(), "client-secret-like-value")
 }
+
+func TestGrokSSOImportExpiryUsesTokenExpiryWithoutRefreshToken(t *testing.T) {
+	tokenExpiry := time.Now().Add(6 * time.Hour).Unix()
+	expiresAt, autoPause := grokSSOImportExpiry(nil, nil, &service.GrokTokenInfo{
+		ExpiresAt: tokenExpiry,
+	})
+
+	require.NotNil(t, expiresAt)
+	require.Equal(t, tokenExpiry, *expiresAt)
+	require.NotNil(t, autoPause)
+	require.True(t, *autoPause)
+}
+
+func TestGrokSSOImportExpiryUsesEarlierRequestedExpiryWithoutRefreshToken(t *testing.T) {
+	requestedExpiry := time.Now().Add(2 * time.Hour).Unix()
+	tokenExpiry := time.Now().Add(6 * time.Hour).Unix()
+	requestedAutoPause := false
+	expiresAt, autoPause := grokSSOImportExpiry(&requestedExpiry, &requestedAutoPause, &service.GrokTokenInfo{
+		ExpiresAt: tokenExpiry,
+	})
+
+	require.NotNil(t, expiresAt)
+	require.Equal(t, requestedExpiry, *expiresAt)
+	require.NotNil(t, autoPause)
+	require.True(t, *autoPause)
+}
+
+func TestGrokSSOImportExpiryPreservesRequestSettingsWithRefreshToken(t *testing.T) {
+	requestedExpiry := time.Now().Add(2 * time.Hour).Unix()
+	requestedAutoPause := false
+	expiresAt, autoPause := grokSSOImportExpiry(&requestedExpiry, &requestedAutoPause, &service.GrokTokenInfo{
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(6 * time.Hour).Unix(),
+	})
+
+	require.Same(t, &requestedExpiry, expiresAt)
+	require.Same(t, &requestedAutoPause, autoPause)
+}
+
+type grokSSOPanicClient struct{}
+
+func (grokSSOPanicClient) ExchangeCode(context.Context, string, string, string, string, string) (*xai.TokenResponse, error) {
+	return nil, nil
+}
+
+func (grokSSOPanicClient) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
+	return nil, nil
+}
+
+func (grokSSOPanicClient) ConvertSSOToBuild(_ context.Context, ssoToken, _ string) (*xai.TokenResponse, error) {
+	panic(ssoToken)
+}
+
+func TestGrokSSOImportWorkerRecoversPanicWithoutExposingToken(t *testing.T) {
+	const sensitiveToken = "sensitive-sso-token"
+	oauthService := service.NewGrokOAuthService(nil, grokSSOPanicClient{})
+	defer oauthService.Stop()
+	h := &GrokOAuthHandler{grokOAuthService: oauthService}
+
+	// worker 必须把 panic 转换为失败项，同时不能在响应中回显令牌。
+	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{}, sensitiveToken, 2, 3)
+	require.False(t, result.created)
+	require.Equal(t, 2, result.item.Index)
+	require.Equal(t, "internal worker panic", result.item.Error)
+	require.NotContains(t, result.item.Error, sensitiveToken)
+}

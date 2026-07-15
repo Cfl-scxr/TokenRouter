@@ -47,4 +47,29 @@ describe('OAuthAuthorizationFlow', () => {
     expect(wrapper.emitted('update:inputMethod')?.at(-1)).toEqual(['codex_pat'])
     expect(wrapper.emitted('import-codex-pat')).toEqual([['at-test-token']])
   })
+
+  it('emits trimmed batch input for Grok SSO auth mode', async () => {
+    const wrapper = mount(OAuthAuthorizationFlow, {
+      props: {
+        addMethod: 'oauth',
+        platform: 'grok',
+        showSsoOption: true
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    const ssoRadio = wrapper.find('input[value="sso_cookie"]')
+    expect(ssoRadio.exists()).toBe(true)
+
+    await ssoRadio.setValue(true)
+    await wrapper.find('textarea').setValue('  sso-one\nsso-two  ')
+    await wrapper.find('button.btn-primary').trigger('click')
+
+    expect(wrapper.emitted('update:inputMethod')?.at(-1)).toEqual(['sso_cookie'])
+    expect(wrapper.emitted('import-sso')).toEqual([['sso-one\nsso-two']])
+  })
 })
