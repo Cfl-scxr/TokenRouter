@@ -269,7 +269,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	qoderGatewayHandler := handler.NewQoderGatewayHandler(gatewayService, qoderGatewayService, concurrencyService, billingCacheService, usageRecordWorkerPool, apiKeyService, errorPassthroughService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
-	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService, channelService)
+	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	handlerDataSharingHandler := handler.NewDataSharingHandler(dataSharingService)
 	batchImageRepository := repository.NewBatchImageRepository(db)
