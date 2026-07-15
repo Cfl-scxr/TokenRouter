@@ -1493,13 +1493,14 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		remaining := h.calculateSubscriptionRemaining(subscription)
 		resp["remaining"] = remaining
 		resp["subscription"] = gin.H{
-			"daily_usage_usd":   subscription.DailyUsageUSD,
-			"weekly_usage_usd":  subscription.WeeklyUsageUSD,
-			"monthly_usage_usd": subscription.MonthlyUsageUSD,
-			"daily_limit_usd":   subscription.DailyLimitUSD,
-			"weekly_limit_usd":  subscription.WeeklyLimitUSD,
-			"monthly_limit_usd": subscription.MonthlyLimitUSD,
-			"expires_at":        subscription.ExpiresAt,
+			"daily_usage_usd":     subscription.DailyUsageUSD,
+			"weekly_usage_usd":    subscription.WeeklyUsageUSD,
+			"monthly_usage_usd":   subscription.MonthlyUsageUSD,
+			"daily_limit_usd":     subscription.DailyLimitUSD,
+			"weekly_limit_usd":    subscription.WeeklyLimitUSD,
+			"monthly_limit_usd":   subscription.MonthlyLimitUSD,
+			"weekly_window_start": subscription.WeeklyWindowStart,
+			"expires_at":          subscription.ExpiresAt,
 		}
 
 		if usageData != nil {

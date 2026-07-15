@@ -148,6 +148,7 @@ describe('KeyUsageView', () => {
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     await new Promise(resolve => setTimeout(resolve, 60))
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
@@ -264,6 +265,27 @@ describe('KeyUsageView', () => {
     expect(text).toContain('30')
     expect(text).toContain('10')
     expect(text).toContain('0.12')
+
+    wrapper.unmount()
+  })
+
+  it('queries the current local calendar date near midnight', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 6, 13, 0, 30))
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ mode: 'unrestricted', isValid: true, remaining: 0 })
+    })
+
+    const wrapper = await mountView()
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+
+    const requestUrl = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(requestUrl).toContain('start_date=2026-07-13')
+    expect(requestUrl).toContain('end_date=2026-07-13')
 
     wrapper.unmount()
   })
