@@ -109,7 +109,8 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			return
 		}
 
-		// Serve static files normally
+		// 仅为带构建指纹的嵌入式静态资源设置长期缓存。
+		applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
@@ -273,6 +274,7 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			if tryServeOverrideFile(c, overrideDir, cleanPath) {
 				return
 			}
+			applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
