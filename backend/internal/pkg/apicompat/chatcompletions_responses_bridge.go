@@ -34,8 +34,12 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
 	}
-	if len(req.Tools) > 0 {
-		tools, err := responsesToolsToChatTools(req.Tools)
+	effectiveTools, err := EffectiveResponsesTools(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(effectiveTools) > 0 {
+		tools, err := responsesToolsToChatTools(effectiveTools)
 		if err != nil {
 			return nil, err
 		}
@@ -60,6 +64,49 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 	}
 
 	return out, nil
+}
+
+// EffectiveResponsesTools 汇总 Responses 请求声明的所有客户端可执行工具。
+// 新版 Codex 会把运行时工具放在 input 内的 additional_tools 项中，
+// 只支持 Chat Completions 的上游必须同时收到顶层和 input 内的工具。
+func EffectiveResponsesTools(req *ResponsesRequest) ([]ResponsesTool, error) {
+	if req == nil {
+		return nil, nil
+	}
+
+	tools := append([]ResponsesTool(nil), req.Tools...)
+	inputRaw := bytesTrimSpace(req.Input)
+	if len(inputRaw) == 0 || string(inputRaw) == "null" || inputRaw[0] != '[' {
+		return tools, nil
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(inputRaw, &items); err != nil {
+		return nil, fmt.Errorf("parse responses input for additional tools: %w", err)
+	}
+	for _, raw := range items {
+		raw = bytesTrimSpace(raw)
+		if len(raw) == 0 || raw[0] != '{' {
+			continue
+		}
+		var discriminator struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &discriminator); err != nil {
+			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
+		}
+		if discriminator.Type != "additional_tools" {
+			continue
+		}
+		var item struct {
+			Tools []ResponsesTool `json:"tools"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, fmt.Errorf("parse responses additional tools item: %w", err)
+		}
+		tools = append(tools, item.Tools...)
+	}
+	return tools, nil
 }
 
 // CustomToolNames 收集 Responses 请求中 custom/freeform 工具的名字。Chat 桥回程时
