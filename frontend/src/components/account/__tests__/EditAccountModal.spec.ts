@@ -213,6 +213,23 @@ function buildOpenAISparkShadowAccount() {
   } as any
 }
 
+function buildOpenAIOAuthAccount() {
+  const account = buildAccount()
+  return {
+    ...account,
+    id: 7,
+    name: 'OpenAI OAuth',
+    type: 'oauth',
+    credentials: {
+      email: 'oauth@example.com',
+      plan_type: 'chatgptpro',
+      model_mapping: {
+        'gpt-5.4': 'gpt-5.4'
+      }
+    }
+  } as any
+}
+
 function buildVertexAccount() {
   return {
     id: 2,
@@ -476,6 +493,8 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
+    expect(wrapper.find('[data-testid="openai-plan-type-select"]').exists()).toBe(false)
+
     await wrapper.get('[data-testid="set-shadow-group"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
@@ -490,6 +509,34 @@ describe('EditAccountModal', () => {
         'gpt-5.3-codex-spark': 'gpt-5.3-codex-spark-compact'
       }
     })
+  })
+
+  it('loads and submits a manual plan type for a non-shadow OpenAI OAuth account', async () => {
+    const account = buildOpenAIOAuthAccount()
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const planTypeSelect = wrapper.get<HTMLSelectElement>('[data-testid="openai-plan-type-select"]')
+
+    expect(planTypeSelect.element.value).toBe('chatgptpro')
+
+    await planTypeSelect.setValue('free')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      email: 'oauth@example.com',
+      plan_type: 'free',
+      model_mapping: {
+        'gpt-5.4': 'gpt-5.4'
+      }
+    })
+  })
+
+  it('does not show the plan type override for OpenAI API-key accounts', () => {
+    const wrapper = mountModal(buildAccount())
+
+    expect(wrapper.find('[data-testid="openai-plan-type-select"]').exists()).toBe(false)
   })
 
   it('submits OpenAI APIKey Responses support override mode', async () => {
