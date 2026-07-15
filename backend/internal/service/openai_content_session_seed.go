@@ -7,15 +7,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// contentSessionSeedPrefix prevents collisions between content-derived seeds
-// and explicit session IDs (e.g. "sess-xxx" or "compat_cc_xxx").
+// contentSessionSeedPrefix 用于避免内容派生种子与显式会话 ID（如 "sess-xxx"）冲突。
 const contentSessionSeedPrefix = "compat_cs_"
 
-// deriveOpenAIContentSessionSeed builds a stable session seed from an
-// OpenAI-format request body. Only fields constant across conversation turns
-// are included: model, tools/functions definitions, system/developer prompts,
-// instructions (Responses API), and the first user message.
-// Supports both Chat Completions (messages) and Responses API (input).
+// contentStablePrefixSessionSeedPrefix 标识仅由跨独立提示仍保持稳定的请求字段派生的缓存身份。
+const contentStablePrefixSessionSeedPrefix = "compat_csp_"
+
+// deriveOpenAIContentSessionSeed 从 OpenAI 格式请求体构建稳定会话种子。
+// 仅包含跨对话轮次不变的字段，并同时支持 Chat Completions 与 Responses API。
 func deriveOpenAIContentSessionSeed(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -104,4 +103,151 @@ func deriveOpenAIContentSessionSeed(body []byte) string {
 		return ""
 	}
 	return contentSessionSeedPrefix + b.String()
+}
+
+// deriveOpenAIAnchoredContentSessionSeed 仅在存在有效用户输入锚点时返回旧版内容派生种子，
+// 防止只有模型字段的请求形成租户级缓存路由身份。
+func deriveOpenAIAnchoredContentSessionSeed(body []byte) string {
+	if !hasOpenAIContentSessionUserAnchor(body) {
+		return ""
+	}
+	return deriveOpenAIContentSessionSeed(body)
+}
+
+func hasOpenAIContentSessionUserAnchor(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+
+	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
+		anchored := false
+		messages.ForEach(func(_, message gjson.Result) bool {
+			if strings.TrimSpace(message.Get("role").String()) != "user" {
+				return true
+			}
+			anchored = hasMeaningfulOpenAIContent(message.Get("content"))
+			return false
+		})
+		return anchored
+	}
+
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return false
+	}
+	if input.Type == gjson.String {
+		return strings.TrimSpace(input.String()) != ""
+	}
+	if !input.IsArray() {
+		return false
+	}
+
+	anchored := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if strings.TrimSpace(item.Get("role").String()) == "user" {
+			anchored = hasMeaningfulOpenAIContent(item.Get("content"))
+			return false
+		}
+		if strings.TrimSpace(item.Get("type").String()) == "input_text" {
+			anchored = strings.TrimSpace(item.Get("text").String()) != ""
+			return false
+		}
+		return true
+	})
+	return anchored
+}
+
+func hasMeaningfulOpenAIContent(content gjson.Result) bool {
+	if !content.Exists() || content.Type == gjson.Null {
+		return false
+	}
+	if content.Type == gjson.String {
+		return strings.TrimSpace(content.String()) != ""
+	}
+	if !content.IsArray() {
+		normalized, ok := normalizeNonEmptyCompatSeedJSON(content)
+		return ok && strings.TrimSpace(normalized) != ""
+	}
+
+	meaningful := false
+	content.ForEach(func(_, item gjson.Result) bool {
+		if item.Type == gjson.String {
+			meaningful = strings.TrimSpace(item.String()) != ""
+		} else if text := item.Get("text"); text.Exists() {
+			meaningful = strings.TrimSpace(text.String()) != ""
+		} else {
+			_, meaningful = normalizeNonEmptyCompatSeedJSON(item)
+		}
+		return !meaningful
+	})
+	return meaningful
+}
+
+// deriveOpenAIStablePrefixSessionSeed 根据 OpenAI 格式请求的可复用前缀构建种子。
+// 用户与助手内容会被排除，使共享系统提示或工具前缀的独立请求能够复用上游提示缓存身份。
+//
+// 返回空值表示请求没有有效的稳定前缀，调用方必须使用范围更小的回退身份。
+func deriveOpenAIStablePrefixSessionSeed(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	hasStablePrefix := false
+	appendJSON := func(label string, value gjson.Result) {
+		normalized, ok := normalizeNonEmptyCompatSeedJSON(value)
+		if !ok {
+			return
+		}
+		_, _ = b.WriteString("|")
+		_, _ = b.WriteString(label)
+		_, _ = b.WriteString("=")
+		_, _ = b.WriteString(normalized)
+		hasStablePrefix = true
+	}
+
+	if tools := gjson.GetBytes(body, "tools"); tools.Exists() && tools.IsArray() {
+		appendJSON("tools", tools)
+	}
+	if funcs := gjson.GetBytes(body, "functions"); funcs.Exists() && funcs.IsArray() {
+		appendJSON("functions", funcs)
+	}
+	if instructions := gjson.GetBytes(body, "instructions"); strings.TrimSpace(instructions.String()) != "" {
+		appendJSON("instructions", instructions)
+	}
+
+	appendSystemMessages := func(items gjson.Result) {
+		items.ForEach(func(_, item gjson.Result) bool {
+			role := strings.TrimSpace(item.Get("role").String())
+			switch role {
+			case "system", "developer":
+				appendJSON(role, item.Get("content"))
+			}
+			return true
+		})
+	}
+
+	if messages := gjson.GetBytes(body, "messages"); messages.Exists() && messages.IsArray() {
+		appendSystemMessages(messages)
+	} else if input := gjson.GetBytes(body, "input"); input.Exists() && input.IsArray() {
+		appendSystemMessages(input)
+	}
+
+	if !hasStablePrefix {
+		return ""
+	}
+	return contentStablePrefixSessionSeedPrefix + b.String()
+}
+
+func normalizeNonEmptyCompatSeedJSON(value gjson.Result) (string, bool) {
+	if !value.Exists() || value.Type == gjson.Null {
+		return "", false
+	}
+	normalized := normalizeCompatSeedJSON(json.RawMessage(value.Raw))
+	switch normalized {
+	case "", `""`, "[]", "{}", "null":
+		return "", false
+	default:
+		return normalized, true
+	}
 }

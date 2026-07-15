@@ -39,7 +39,12 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 
 	seed := explicitGrokCacheSeed(c, body, explicitKey)
 	if seed == "" {
-		seed = deriveOpenAIContentSessionSeed(body)
+		seed = deriveOpenAIStablePrefixSessionSeed(body)
+		if seed == "" {
+			// 仅使用模型会让缓存路由范围过大；没有可复用前缀时回退到首个用户输入派生身份，
+			// 避免无关提示共享同一个租户级缓存键。
+			seed = deriveOpenAIAnchoredContentSessionSeed(body)
+		}
 	}
 	if seed == "" {
 		return ""
