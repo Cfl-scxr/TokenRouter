@@ -119,6 +119,8 @@ backend/.installed
 SYNC.md
 PLAN.md
 tests
+!deploy/tests/
+!deploy/tests/**
 CLAUDE.md
 .claude
 scripts
