@@ -887,6 +887,10 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
 		return false
 	}
+	// Codex 命名空间和 hosted 工具不能并存，统一复用完整检测逻辑避免重复注入。
+	if hasOpenAIImageGenerationTool(reqBody) {
+		return false
+	}
 
 	tool := map[string]any{
 		"type":          "image_generation",
@@ -904,16 +908,6 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 		reqBody["tools"] = []any{tool}
 		return true
 	}
-	for _, rawTool := range tools {
-		toolMap, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
-			return false
-		}
-	}
-
 	reqBody["tools"] = append(tools, tool)
 	return true
 }
