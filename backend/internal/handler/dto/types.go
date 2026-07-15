@@ -527,6 +527,8 @@ type UsageLog struct {
 	BalanceAmountUSD      float64                    `json:"balance_amount_usd"`
 	BillingAllocations    []domain.BillingAllocation `json:"billing_allocations,omitempty"`
 	RateMultiplier        float64                    `json:"rate_multiplier"`
+	// LongContextBillingApplied 表示该请求是否实际应用长上下文加价。
+	LongContextBillingApplied bool `json:"long_context_billing_applied"`
 
 	BillingType  int8   `json:"billing_type"`
 	RequestType  string `json:"request_type"`
