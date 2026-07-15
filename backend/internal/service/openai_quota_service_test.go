@@ -146,11 +146,13 @@ func TestOpenAIQuotaServiceUsesTLSRouterInviteResetSettings(t *testing.T) {
 
 	_, err := svc.QueryUsage(context.Background(), account.ID)
 	require.NoError(t, err)
-	require.Len(t, upstream.requests, 1)
-	require.Equal(t, "Codex Desktop/0.135.0-alpha.1 (Windows 10.0.26200; x86_64)", upstream.requests[0].Header.Get("User-Agent"))
-	require.Len(t, upstream.profiles, 1)
-	require.NotNil(t, upstream.profiles[0])
-	require.Equal(t, "router-token", upstream.profiles[0].Name)
+	require.Len(t, upstream.requests, 2)
+	require.Len(t, upstream.profiles, 2)
+	for i := range upstream.requests {
+		require.Equal(t, "Codex Desktop/0.135.0-alpha.1 (Windows 10.0.26200; x86_64)", upstream.requests[i].Header.Get("User-Agent"))
+		require.NotNil(t, upstream.profiles[i])
+		require.Equal(t, "router-token", upstream.profiles[i].Name)
+	}
 }
 
 func TestOpenAIQuotaServiceRejectsUnsupportedAccount(t *testing.T) {

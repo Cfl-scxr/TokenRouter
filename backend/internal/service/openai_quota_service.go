@@ -141,29 +141,40 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		return nil, err
 	}
 	usage.FetchedAt = time.Now().Unix()
-	if usage.RateLimitResetCredits != nil && usage.RateLimitResetCredits.AvailableCount > 0 {
-		usage.RateLimitResetCredits.Credits = s.queryResetCreditDetails(ctx, accountCtx)
+	details := s.queryResetCreditDetails(ctx, accountCtx)
+	if details != nil {
+		hasDetailCount := details.AvailableCount != nil
+		if usage.RateLimitResetCredits == nil {
+			usage.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+		}
+		if details.CreditListPresent {
+			usage.RateLimitResetCredits.Credits = details.Credits
+		}
+		switch {
+		case hasDetailCount:
+			usage.RateLimitResetCredits.AvailableCount = *details.AvailableCount
+		case details.CreditListPresent:
+			usage.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+		}
 	}
 	return &usage, nil
 }
 
-func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, accountCtx *openAIQuotaAccountContext) []OpenAIRateLimitResetCreditDetail {
-	raw, err := s.getJSON(ctx, accountCtx, chatGPTRateLimitCreditsPath, nil)
+func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, accountCtx *openAIQuotaAccountContext) *openAIRateLimitResetCreditDetails {
+	raw, err := s.getJSONRaw(ctx, accountCtx, chatGPTRateLimitCreditsPath, nil)
 	if err != nil {
 		slog.Warn("openai_quota_reset_credit_details_failed", "account_id", accountCtx.account.ID, "error", err)
 		return nil
 	}
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		slog.Warn("openai_quota_reset_credit_details_marshal_failed", "account_id", accountCtx.account.ID, "error", err)
-		return nil
-	}
-	credits, err := parseOpenAIRateLimitResetCreditDetails(encoded)
+	details, err := parseOpenAIRateLimitResetCreditDetails(raw)
 	if err != nil {
 		slog.Warn("openai_quota_reset_credit_details_parse_failed", "account_id", accountCtx.account.ID, "error", err)
 		return nil
 	}
-	return credits
+	if details.AvailableCount == nil && !details.CreditListPresent {
+		return nil
+	}
+	return &details
 }
 
 // ResetCredit 消耗一次限流窗口重置次数。
@@ -340,6 +351,22 @@ func (s *OpenAIQuotaService) getJSON(ctx context.Context, accountCtx *openAIQuot
 	return s.doJSON(req, accountCtx)
 }
 
+// getJSONRaw 获取未经对象反序列化的 JSON，供明细接口兼容数组等顶层结构。
+func (s *OpenAIQuotaService) getJSONRaw(ctx context.Context, accountCtx *openAIQuotaAccountContext, path string, query map[string]string) ([]byte, error) {
+	target, err := buildCodexInviteResetURL(path, query)
+	if err != nil {
+		return nil, err
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	s.applyHeaders(req, accountCtx)
+	return s.doJSONRaw(req, accountCtx)
+}
+
 func (s *OpenAIQuotaService) postJSON(ctx context.Context, accountCtx *openAIQuotaAccountContext, path string, body map[string]any) (map[string]any, error) {
 	target, err := buildCodexInviteResetURL(path, nil)
 	if err != nil {
@@ -379,6 +406,23 @@ func (s *OpenAIQuotaService) applyHeaders(req *http.Request, accountCtx *openAIQ
 }
 
 func (s *OpenAIQuotaService) doJSON(req *http.Request, accountCtx *openAIQuotaAccountContext) (map[string]any, error) {
+	body, err := s.doJSONRaw(req, accountCtx)
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return map[string]any{}, nil
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode openai quota response: %w", err)
+	}
+	return result, nil
+}
+
+// doJSONRaw 执行请求并保留原始响应，统一处理状态码和响应体读取限制。
+func (s *OpenAIQuotaService) doJSONRaw(req *http.Request, accountCtx *openAIQuotaAccountContext) ([]byte, error) {
 	resp, err := s.httpUpstream.DoWithTLS(req, accountCtx.proxyURL, accountCtx.account.ID, accountCtx.account.Concurrency, accountCtx.tlsProfile)
 	if err != nil {
 		return nil, err
@@ -397,15 +441,7 @@ func (s *OpenAIQuotaService) doJSON(req *http.Request, accountCtx *openAIQuotaAc
 		slog.Warn("openai_quota_upstream_failed", "account_id", accountCtx.account.ID, "status", resp.StatusCode, "body", truncate(message, 240))
 		return nil, infraerrors.Newf(mapOpenAIQuotaUpstreamStatus(resp.StatusCode), "OPENAI_QUOTA_UPSTREAM_ERROR", "openai quota upstream returned %d: %s", resp.StatusCode, message)
 	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return map[string]any{}, nil
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("decode openai quota response: %w", err)
-	}
-	return result, nil
+	return body, nil
 }
 
 func remarshalOpenAIQuotaPayload(raw map[string]any, target any) error {
@@ -414,65 +450,6 @@ func remarshalOpenAIQuotaPayload(raw map[string]any, target any) error {
 		return err
 	}
 	return json.Unmarshal(encoded, target)
-}
-
-type openAIRateLimitResetCreditDetailPayload struct {
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	ExpiresAtCamel string `json:"expiresAt,omitempty"`
-}
-
-type openAIRateLimitResetCreditDetailsPayload struct {
-	Credits               []openAIRateLimitResetCreditDetailPayload `json:"credits,omitempty"`
-	RateLimitResetCredits []openAIRateLimitResetCreditDetailPayload `json:"rate_limit_reset_credits,omitempty"`
-	Items                 []openAIRateLimitResetCreditDetailPayload `json:"items,omitempty"`
-	Data                  []openAIRateLimitResetCreditDetailPayload `json:"data,omitempty"`
-}
-
-func parseOpenAIRateLimitResetCreditDetails(body []byte) ([]OpenAIRateLimitResetCreditDetail, error) {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 {
-		return nil, nil
-	}
-
-	var rawCredits []openAIRateLimitResetCreditDetailPayload
-	if trimmed[0] == '[' {
-		if err := json.Unmarshal(trimmed, &rawCredits); err != nil {
-			return nil, err
-		}
-	} else {
-		var payload openAIRateLimitResetCreditDetailsPayload
-		if err := json.Unmarshal(trimmed, &payload); err != nil {
-			return nil, err
-		}
-		rawCredits = firstNonEmptyResetCreditPayload(
-			payload.Credits,
-			payload.RateLimitResetCredits,
-			payload.Items,
-			payload.Data,
-		)
-	}
-
-	credits := make([]OpenAIRateLimitResetCreditDetail, 0, len(rawCredits))
-	for _, raw := range rawCredits {
-		expiresAt := strings.TrimSpace(raw.ExpiresAt)
-		if expiresAt == "" {
-			expiresAt = strings.TrimSpace(raw.ExpiresAtCamel)
-		}
-		if expiresAt == "" {
-			continue
-		}
-		credits = append(credits, OpenAIRateLimitResetCreditDetail{ExpiresAt: expiresAt})
-	}
-	return credits, nil
-}
-
-func firstNonEmptyResetCreditPayload(lists ...[]openAIRateLimitResetCreditDetailPayload) []openAIRateLimitResetCreditDetailPayload {
-	for _, list := range lists {
-		if len(list) > 0 {
-			return list
-		}
-	}
-	return nil
 }
 
 func generateOpenAIQuotaRedeemRequestID() (string, error) {
