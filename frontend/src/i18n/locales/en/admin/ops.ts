@@ -29,6 +29,9 @@ export default {
       noData: 'No data.',
       loadingText: 'loading',
       ready: 'ready',
+      systemLogs: {
+        host: 'Host'
+      },
       requestsTotal: 'Requests (total)',
       slaScope: 'SLA scope:',
       tokens: 'Tokens',

@@ -29,6 +29,9 @@ export default {
       noData: '暂无数据',
       loadingText: '加载中...',
       ready: '就绪',
+      systemLogs: {
+        host: 'Host'
+      },
       requestsTotal: '请求（总计）',
       slaScope: 'SLA 范围：',
       tokens: 'Token数',

@@ -196,7 +196,9 @@ type OpsInsertSystemMetricsInput struct {
 }
 
 type OpsInsertSystemLogInput struct {
-	CreatedAt       time.Time
+	CreatedAt time.Time
+	// Host 是产生日志的进程主机名；历史记录或未知主机可为空。
+	Host            string
 	Level           string
 	Component       string
 	Message         string
@@ -213,6 +215,7 @@ type OpsInsertSystemLogInput struct {
 type OpsSystemLogFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
+	Host      string
 
 	Level     string
 	Component string
@@ -233,6 +236,7 @@ type OpsSystemLogFilter struct {
 type OpsSystemLogCleanupFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
+	Host      string
 
 	Level     string
 	Component string
