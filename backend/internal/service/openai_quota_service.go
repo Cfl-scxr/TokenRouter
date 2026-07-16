@@ -23,9 +23,6 @@ import (
 // ErrSparkShadowResetNotSupported 表示不允许直接通过 spark 影子账号消耗母账号重置次数。
 var ErrSparkShadowResetNotSupported = infraerrors.New(http.StatusConflict, "SPARK_SHADOW_RESET_NOT_SUPPORTED", "spark shadow account does not support credit reset; reset the parent account")
 
-// ErrAgentIdentityResetNotSupported 表示 Agent Identity 暂不支持消耗限流重置次数。
-var ErrAgentIdentityResetNotSupported = infraerrors.New(http.StatusConflict, "AGENT_IDENTITY_RESET_NOT_SUPPORTED", "agent identity does not support rate-limit reset credit consumption")
-
 const (
 	chatGPTUsagePath            = "/wham/usage"
 	chatGPTRateLimitCreditsPath = "/wham/rate-limit-reset-credits"
@@ -198,10 +195,6 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 	if account.IsShadow() {
 		return nil, ErrSparkShadowResetNotSupported
 	}
-	if account.IsOpenAIAgentIdentity() {
-		return nil, ErrAgentIdentityResetNotSupported
-	}
-
 	accountCtx, err := s.prepareAccount(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -361,10 +354,11 @@ func (s *OpenAIQuotaService) getJSON(ctx context.Context, accountCtx *openAIQuot
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyHeaders(req, accountCtx); err != nil {
+	expectedTaskID, err := s.applyHeaders(req, accountCtx)
+	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", err)
 	}
-	return s.doJSON(req, accountCtx)
+	return s.doJSON(req, accountCtx, expectedTaskID)
 }
 
 // getJSONRaw 获取未经对象反序列化的 JSON，供明细接口兼容数组等顶层结构。
@@ -379,10 +373,11 @@ func (s *OpenAIQuotaService) getJSONRaw(ctx context.Context, accountCtx *openAIQ
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applyHeaders(req, accountCtx); err != nil {
+	expectedTaskID, err := s.applyHeaders(req, accountCtx)
+	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", err)
 	}
-	return s.doJSONRaw(req, accountCtx)
+	return s.doJSONRaw(req, accountCtx, expectedTaskID)
 }
 
 func (s *OpenAIQuotaService) postJSON(ctx context.Context, accountCtx *openAIQuotaAccountContext, path string, body map[string]any) (map[string]any, error) {
@@ -401,24 +396,27 @@ func (s *OpenAIQuotaService) postJSON(ctx context.Context, accountCtx *openAIQuo
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if err := s.applyHeaders(req, accountCtx); err != nil {
+	expectedTaskID, err := s.applyHeaders(req, accountCtx)
+	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", err)
 	}
-	return s.doJSON(req, accountCtx)
+	return s.doJSON(req, accountCtx, expectedTaskID)
 }
 
-// applyHeaders 每次调用都重新生成 Agent Assertion，避免在重试或后台探针之间复用签名。
-func (s *OpenAIQuotaService) applyHeaders(req *http.Request, accountCtx *openAIQuotaAccountContext) error {
+// applyHeaders 每次调用都重新生成 Agent Assertion，并返回签名实际使用的 task ID。
+func (s *OpenAIQuotaService) applyHeaders(req *http.Request, accountCtx *openAIQuotaAccountContext) (string, error) {
 	if req == nil || accountCtx == nil || accountCtx.account == nil {
-		return errors.New("openai quota request context is unavailable")
+		return "", errors.New("openai quota request context is unavailable")
 	}
 	*req = *req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Host = "chatgpt.com"
+	expectedTaskID := ""
 	if accountCtx.account.IsOpenAIAgentIdentity() {
-		authHeaders, err := buildAgentIdentityAuthenticationHeaders(req.Context(), s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, accountCtx.account)
+		authHeaders, signedTaskID, err := buildAgentIdentityAuthenticationHeadersWithTask(req.Context(), s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, accountCtx.account)
 		if err != nil {
-			return err
+			return "", err
 		}
+		expectedTaskID = signedTaskID
 		req.Header.Set("Authorization", authHeaders.Get("Authorization"))
 	} else {
 		req.Header.Set("Authorization", "Bearer "+accountCtx.token)
@@ -435,11 +433,11 @@ func (s *OpenAIQuotaService) applyHeaders(req *http.Request, accountCtx *openAIQ
 	req.Header.Set("sec-fetch-dest", openaiQuotaSecFetchDest)
 	req.Header.Set("priority", "u=4, i")
 	setOpenAIChatGPTAccountHeaders(req.Header, accountCtx.account)
-	return nil
+	return expectedTaskID, nil
 }
 
-func (s *OpenAIQuotaService) doJSON(req *http.Request, accountCtx *openAIQuotaAccountContext) (map[string]any, error) {
-	body, err := s.doJSONRaw(req, accountCtx)
+func (s *OpenAIQuotaService) doJSON(req *http.Request, accountCtx *openAIQuotaAccountContext, expectedTaskID string) (map[string]any, error) {
+	body, err := s.doJSONRaw(req, accountCtx, expectedTaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +453,7 @@ func (s *OpenAIQuotaService) doJSON(req *http.Request, accountCtx *openAIQuotaAc
 }
 
 // doJSONRaw 执行请求并保留原始响应；Agent task 失效时最多注册并重放一次。
-func (s *OpenAIQuotaService) doJSONRaw(req *http.Request, accountCtx *openAIQuotaAccountContext) ([]byte, error) {
+func (s *OpenAIQuotaService) doJSONRaw(req *http.Request, accountCtx *openAIQuotaAccountContext, expectedTaskID string) ([]byte, error) {
 	for recovered := false; ; {
 		resp, err := s.httpUpstream.DoWithTLS(req, accountCtx.proxyURL, accountCtx.account.ID, accountCtx.account.Concurrency, accountCtx.tlsProfile)
 		if err != nil {
@@ -470,7 +468,6 @@ func (s *OpenAIQuotaService) doJSONRaw(req *http.Request, accountCtx *openAIQuot
 			return body, nil
 		}
 		if !recovered && accountCtx.account.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
-			expectedTaskID := accountCtx.account.GetCredential("task_id")
 			if err := ensureAgentIdentityTaskForAccount(req.Context(), s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, accountCtx.account, expectedTaskID); err != nil {
 				return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "agent identity task recovery failed: %v", err)
 			}
@@ -478,10 +475,12 @@ func (s *OpenAIQuotaService) doJSONRaw(req *http.Request, accountCtx *openAIQuot
 			if err != nil {
 				return nil, err
 			}
-			if err := s.applyHeaders(retryReq, accountCtx); err != nil {
+			refreshedTaskID, err := s.applyHeaders(retryReq, accountCtx)
+			if err != nil {
 				return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to refresh upstream authentication: %v", err)
 			}
 			req = retryReq
+			expectedTaskID = refreshedTaskID
 			recovered = true
 			continue
 		}

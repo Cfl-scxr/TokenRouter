@@ -390,23 +390,29 @@ func (s *OpenAIGatewayService) buildOpenAIAuthenticationHeaders(ctx context.Cont
 }
 
 func buildAgentIdentityAuthenticationHeaders(ctx context.Context, repo AccountRepository, wsInvalidator agentIdentityWSConnectionInvalidator, taskMu *sync.Mutex, account *Account) (http.Header, error) {
+	headers, _, err := buildAgentIdentityAuthenticationHeadersWithTask(ctx, repo, wsInvalidator, taskMu, account)
+	return headers, err
+}
+
+// buildAgentIdentityAuthenticationHeadersWithTask 同时返回本次签名使用的 task，供失败恢复执行 CAS。
+func buildAgentIdentityAuthenticationHeadersWithTask(ctx context.Context, repo AccountRepository, wsInvalidator agentIdentityWSConnectionInvalidator, taskMu *sync.Mutex, account *Account) (http.Header, string, error) {
 	if account == nil || !account.IsOpenAIAgentIdentity() {
-		return nil, errors.New("agent identity account is required")
+		return nil, "", errors.New("agent identity account is required")
 	}
 	if err := ensureAgentIdentityTaskForAccount(ctx, repo, wsInvalidator, taskMu, account, ""); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	key, err := agentIdentityKeyFromAccount(account)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	assertion, err := buildAgentAssertion(key, time.Now())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	headers := make(http.Header)
 	headers.Set("Authorization", assertion)
-	return headers, nil
+	return headers, key.taskID, nil
 }
 
 func (s *OpenAIGatewayService) refreshOpenAIAgentIdentityHeaders(ctx context.Context, account *Account, headers http.Header) (http.Header, error) {

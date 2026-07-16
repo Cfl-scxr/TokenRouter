@@ -232,22 +232,123 @@ func TestResetCreditShadowRejected(t *testing.T) {
 		"shadow ResetCredit 应映射为 409 Conflict 而非 500")
 }
 
-func TestResetCreditAgentIdentityRejectedBeforeUpstream(t *testing.T) {
+func TestResetCreditAgentIdentityUsesAssertionAndRecoversInvalidTaskOnce(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	require.NoError(t, err)
 	account := &Account{
 		ID:       201,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"auth_mode": OpenAIAuthModeAgentIdentity,
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   "runtime-reset-recovery",
+			"agent_private_key":  base64.StdEncoding.EncodeToString(der),
+			"task_id":            "task-reset-old",
+			"chatgpt_account_id": "account-reset-recovery",
 		},
 	}
 	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
-	svc := NewOpenAIQuotaService(stubQuotaAdminService{repo: repo}, nil, nil, nil, nil)
-	svc.accountRepo = repo
+	resetCalls := 0
+	registerCalls := 0
+	var assertions []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-reset-new"}`))
+			return
+		}
+		resetCalls++
+		assertions = append(assertions, r.Header.Get("authorization"))
+		require.Equal(t, "account-reset-recovery", r.Header.Get("chatgpt-account-id"))
+		if resetCalls == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":"ok","windows_reset":2}`))
+	}))
+	defer srv.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = srv.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase })
 
-	_, err := svc.ResetCredit(context.Background(), account.ID)
-	require.ErrorIs(t, err, ErrAgentIdentityResetNotSupported)
-	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	invalidator := &agentIdentityWSInvalidationRecorder{}
+	svc := NewOpenAIQuotaService(stubQuotaAdminService{repo: repo}, newQuotaRedirectingUpstream(t, srv), nil, nil, nil)
+	svc.accountRepo = repo
+	svc.agentIdentityWS = invalidator
+
+	result, err := svc.ResetCredit(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, "ok", result.Code)
+	require.Equal(t, 2, result.WindowsReset)
+	require.Equal(t, 2, resetCalls)
+	require.Equal(t, 1, registerCalls)
+	require.Len(t, assertions, 2)
+	require.True(t, strings.HasPrefix(assertions[0], "AgentAssertion "))
+	require.True(t, strings.HasPrefix(assertions[1], "AgentAssertion "))
+	require.NotEqual(t, assertions[0], assertions[1])
+	require.Equal(t, "task-reset-new", account.GetCredential("task_id"))
+	require.Equal(t, []int64{account.ID}, invalidator.accountIDs)
+}
+
+// 验证并发请求已恢复 task 时，重置请求复用新 task 而不重复注册。
+func TestResetCreditAgentIdentityReusesConcurrentlyRecoveredTask(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	require.NoError(t, err)
+	account := &Account{
+		ID:       202,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_mode":          OpenAIAuthModeAgentIdentity,
+			"agent_runtime_id":   "runtime-reset-concurrent",
+			"agent_private_key":  base64.StdEncoding.EncodeToString(der),
+			"task_id":            "task-reset-old",
+			"chatgpt_account_id": "account-reset-concurrent",
+		},
+	}
+	repo := &stubQuotaAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	resetCalls := 0
+	registerCalls := 0
+	var assertions []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		if strings.Contains(r.URL.Path, "/task/register") {
+			registerCalls++
+			_, _ = w.Write([]byte(`{"task_id":"task-reset-unexpected"}`))
+			return
+		}
+		resetCalls++
+		assertions = append(assertions, r.Header.Get("authorization"))
+		if resetCalls == 1 {
+			credentials := shallowCopyMap(account.Credentials)
+			credentials["task_id"] = "task-reset-concurrent"
+			account.Credentials = credentials
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"invalid_task_id"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"code":"ok","windows_reset":1}`))
+	}))
+	defer srv.Close()
+	oldBase := openAIAgentIdentityAuthAPIBaseURL
+	openAIAgentIdentityAuthAPIBaseURL = srv.URL
+	t.Cleanup(func() { openAIAgentIdentityAuthAPIBaseURL = oldBase })
+
+	svc := NewOpenAIQuotaService(stubQuotaAdminService{repo: repo}, newQuotaRedirectingUpstream(t, srv), nil, nil, nil)
+	svc.accountRepo = repo
+	result, err := svc.ResetCredit(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, "ok", result.Code)
+	require.Equal(t, 2, resetCalls)
+	require.Zero(t, registerCalls)
+	require.Equal(t, "task-reset-old", decodeAgentAssertionTask(t, assertions[0]))
+	require.Equal(t, "task-reset-concurrent", decodeAgentAssertionTask(t, assertions[1]))
 }
 
 // ── Part B: prepareAccount 影子 resolve ──────────────────────────────

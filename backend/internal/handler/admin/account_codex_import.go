@@ -774,6 +774,11 @@ func resolveCodexImportExpiry(req CodexSessionImportRequest, item *codexImportAc
 	if item == nil {
 		return nil, nil, nil, nil, errors.New("导入项为空")
 	}
+	// Agent Identity 没有 OAuth access token 有效期，其 runtime/task 生命周期由上游恢复链处理。
+	// 因此导入时不能套用 OAuth 过期拒绝或自动暂停策略。
+	if item.IsAgentIdentity {
+		return nil, nil, nil, nil, nil
+	}
 
 	var requestExpiresAt *time.Time
 	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
