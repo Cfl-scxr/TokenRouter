@@ -35,6 +35,29 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadImageStorageConfigFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("IMAGE_STORAGE_ENABLED", "true")
+	t.Setenv("IMAGE_STORAGE_ENDPOINT", "https://storage.example.test")
+	t.Setenv("IMAGE_STORAGE_REGION", "test-region")
+	t.Setenv("IMAGE_STORAGE_BUCKET", " image-bucket ")
+	t.Setenv("IMAGE_STORAGE_ACCESS_KEY_ID", " access-key ")
+	t.Setenv("IMAGE_STORAGE_SECRET_ACCESS_KEY", " secret-key ")
+	t.Setenv("IMAGE_STORAGE_PUBLIC_BASE_URL", "https://cdn.example.test/images")
+	t.Setenv("IMAGE_STORAGE_MAX_DOWNLOAD_BYTES", "1024")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.ImageStorage.Active())
+	require.Equal(t, "https://storage.example.test", cfg.ImageStorage.Endpoint)
+	require.Equal(t, "test-region", cfg.ImageStorage.Region)
+	require.Equal(t, " image-bucket ", cfg.ImageStorage.Bucket)
+	require.Equal(t, " access-key ", cfg.ImageStorage.AccessKeyID)
+	require.Equal(t, " secret-key ", cfg.ImageStorage.SecretAccessKey)
+	require.Equal(t, "https://cdn.example.test/images", cfg.ImageStorage.PublicBaseURL)
+	require.Equal(t, int64(1024), cfg.ImageStorage.MaxDownloadBytes)
+}
+
 func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	viper.Reset()
 	t.Setenv("JWT_SECRET", "")

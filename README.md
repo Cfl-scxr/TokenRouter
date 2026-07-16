@@ -57,6 +57,13 @@ gateway:
     client_first_message_timeout_seconds: 30
 ```
 
+## 异步图片任务
+
+耗时较长的 OpenAI/Grok 图片生成与编辑请求可以提交到
+`/v1/images/generations/async` 或 `/v1/images/edits/async`，再通过
+`/v1/images/tasks/{task_id}` 轮询结果，无需长时间保持 CDN 连接。请求与响应示例见
+[异步图片任务文档](docs/ASYNC_IMAGE_TASKS.md)。
+
 ## 许可证
 
 This project is licensed under the [GNU Lesser General Public License v3.0](LICENSE) (or later).
