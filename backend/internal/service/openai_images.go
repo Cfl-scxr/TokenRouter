@@ -455,8 +455,13 @@ func applyOpenAIImagesDefaults(req *OpenAIImagesRequest) {
 }
 
 func isOpenAIImageGenerationModel(model string) bool {
+	return IsGPTImageGenerationModel(model) || isGrokImageGenerationModel(model)
+}
+
+// IsGPTImageGenerationModel 判断模型是否属于 GPT 原生生图模型族。
+func IsGPTImageGenerationModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
-	return strings.HasPrefix(model, "gpt-image-") || isGrokImageGenerationModel(model)
+	return strings.HasPrefix(model, "gpt-image-")
 }
 
 func isGrokImageGenerationModel(model string) bool {
