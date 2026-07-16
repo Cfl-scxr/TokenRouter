@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -40,7 +41,7 @@ func TestVerifyPendingOAuthToken_RegularJWTRejected(t *testing.T) {
 	svc := newAuthServiceForPendingOAuthTest()
 
 	// 签发一个普通 access token（JWTClaims，无 Purpose 字段）
-	accessToken, err := svc.GenerateToken(&User{
+	accessToken, err := svc.GenerateToken(context.Background(), &User{
 		ID:    1,
 		Email: "user@example.com",
 		Role:  RoleUser,
