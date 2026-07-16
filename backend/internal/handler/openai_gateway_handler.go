@@ -74,6 +74,25 @@ func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFu
 	}
 }
 
+// appendOpenAIAccountProxyLogFields 只追加可公开定位代理的字段，避免把代理凭据写入日志。
+func appendOpenAIAccountProxyLogFields(fields []zap.Field, account *service.Account) []zap.Field {
+	if account == nil {
+		return fields
+	}
+	if account.Proxy != nil {
+		return append(fields,
+			zap.Int64("proxy_id", account.Proxy.ID),
+			zap.String("proxy_name", account.Proxy.Name),
+			zap.String("proxy_host", account.Proxy.Host),
+			zap.Int("proxy_port", account.Proxy.Port),
+		)
+	}
+	if account.ProxyID != nil {
+		return append(fields, zap.Int64p("proxy_id", account.ProxyID))
+	}
+	return fields
+}
+
 // handleGroupModelUnsupportedError 将本地分组模型限制转换为明确的客户端侧错误。
 func handleGroupModelUnsupportedError(c *gin.Context, err error, streamStarted bool, writeError func(int, string, string, bool)) bool {
 	var modelErr *service.GroupModelUnsupportedError
@@ -529,16 +548,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						zap.Int("switch_count", switchCount),
 						zap.Int("max_switches", maxAccountSwitches),
 					}
-					if account.Proxy != nil {
-						failoverSwitchFields = append(failoverSwitchFields,
-							zap.Int64("proxy_id", account.Proxy.ID),
-							zap.String("proxy_name", account.Proxy.Name),
-							zap.String("proxy_host", account.Proxy.Host),
-							zap.Int("proxy_port", account.Proxy.Port),
-						)
-					} else if account.ProxyID != nil {
-						failoverSwitchFields = append(failoverSwitchFields, zap.Int64p("proxy_id", account.ProxyID))
-					}
+					failoverSwitchFields = appendOpenAIAccountProxyLogFields(failoverSwitchFields, account)
 					reqLog.Warn("openai.upstream_failover_switching", failoverSwitchFields...)
 					continue
 				}
@@ -2001,12 +2011,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
-			reqLog.Warn("openai.websocket_proxy_failed",
+			proxyFailedFields := []zap.Field{
 				zap.Int64("account_id", account.ID),
 				zap.Error(err),
 				zap.String("close_status", closeStatus),
 				zap.String("close_reason", closeReason),
-			)
+			}
+			proxyFailedFields = appendOpenAIAccountProxyLogFields(proxyFailedFields, account)
+			reqLog.Warn("openai.websocket_proxy_failed", proxyFailedFields...)
 			if errors.As(err, &closeErr) {
 				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
 				return
