@@ -1,42 +1,141 @@
 package middleware
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/service"
+
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
+
+type stubStepUpGrantChecker struct {
+	granted bool
+	err     error
+}
+
+func (s stubStepUpGrantChecker) HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error) {
+	return s.granted, s.err
+}
+
+type stubStepUpUserReader struct {
+	user *service.User
+	err  error
+}
+
+func (s stubStepUpUserReader) GetByID(ctx context.Context, id int64) (*service.User, error) {
+	return s.user, s.err
+}
+
+func newStepUpTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/sensitive", nil)
+	return c, rec
+}
+
+func TestEnforceStepUpRejectsAdminAPIKey(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set("auth_method", service.AuditAuthMethodAdminAPIKey)
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{TotpEnabled: true}})
+
+	require.False(t, ok)
+	require.True(t, c.IsAborted())
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_ADMIN_API_KEY_FORBIDDEN")
+}
+
+func TestEnforceStepUpRequiresAuthSubject(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{TotpEnabled: true}})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestEnforceStepUpRequiresTotpEnabled(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: false}})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_TOTP_NOT_ENABLED")
+}
+
+func TestEnforceStepUpFailsClosedOnNilUser(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestEnforceStepUpFailsClosedOnGrantError(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{err: errors.New("redis down")}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_UNAVAILABLE")
+}
+
+func TestEnforceStepUpRequiresGrant(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: false}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
+
+	require.False(t, ok)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_REQUIRED")
+}
+
+func TestEnforceStepUpPassesWithGrant(t *testing.T) {
+	c, _ := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := enforceStepUp(c, stubStepUpGrantChecker{granted: true}, stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}})
+
+	require.True(t, ok)
+	require.False(t, c.IsAborted())
+}
 
 func TestStepUpSessionKeyUsesSessionID(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("POST", "/", nil)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
 	c.Set(ContextKeySessionID, "family-1")
-	if got := StepUpSessionKey(c, 42); got != "family-1" {
-		t.Fatalf("StepUpSessionKey() = %q, want family-1", got)
-	}
+	require.Equal(t, "family-1", StepUpSessionKey(c, 42))
 }
 
 func TestStepUpSessionKeySeparatesLegacyTokens(t *testing.T) {
 	keyFor := func(token string) string {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest("POST", "/", nil)
+		c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
 		c.Request.Header.Set("Authorization", "Bearer "+token)
 		return StepUpSessionKey(c, 42)
 	}
 
 	first := keyFor("legacy-token-a")
-	if first != keyFor("legacy-token-a") {
-		t.Fatal("同一个旧 token 应生成稳定的会话键")
-	}
-	if first == keyFor("legacy-token-b") {
-		t.Fatal("不同旧 token 不应共享 step-up 会话键")
-	}
+	require.Equal(t, first, keyFor("legacy-token-a"))
+	require.NotEqual(t, first, keyFor("legacy-token-b"))
 }
 
 func TestStepUpSessionKeyFallsBackWithoutCredential(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("POST", "/", nil)
-	if got := StepUpSessionKey(c, 42); got != "u42" {
-		t.Fatalf("StepUpSessionKey() = %q, want u42", got)
-	}
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	require.Equal(t, "u42", StepUpSessionKey(c, 42))
 }
