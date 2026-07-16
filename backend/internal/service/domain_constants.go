@@ -384,6 +384,10 @@ const (
 	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
 
 	// =========================
+	// SettingKeyUpstreamBillingProbeSettings 保存远端 TokenRouter 兼容实例 API Key 倍率探测的全局开关与周期。
+	SettingKeyUpstreamBillingProbeSettings = "upstream_billing_probe_settings"
+
+	// =========================
 	// Overload Cooldown (529)
 	// =========================
 

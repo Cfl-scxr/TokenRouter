@@ -90,6 +90,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // paymentOrderExpiry
 		nil, // quotaFlusher
 		nil, // tlsFingerprintCollector
+		nil, // upstreamBillingProbe
 	)
 
 	require.NotPanics(t, func() {
