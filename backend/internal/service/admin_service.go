@@ -621,6 +621,12 @@ type adminServiceImpl struct {
 	runtimeBlocker       AccountRuntimeBlocker
 	httpUpstream         HTTPUpstream
 	tlsFPProfileService  *TLSFingerprintProfileService
+	affiliateService     adminRechargeAffiliateAccruer
+}
+
+// adminRechargeAffiliateAccruer 抽象管理员充值返利能力，便于隔离测试计提行为。
+type adminRechargeAffiliateAccruer interface {
+	AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error)
 }
 
 type userGroupRateBatchReader interface {
@@ -649,6 +655,7 @@ func NewAdminService(
 	runtimeBlocker AccountRuntimeBlocker,
 	httpUpstream HTTPUpstream,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	affiliateService *AffiliateService,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -672,6 +679,7 @@ func NewAdminService(
 		runtimeBlocker:       runtimeBlocker,
 		httpUpstream:         httpUpstream,
 		tlsFPProfileService:  tlsFPProfileService,
+		affiliateService:     affiliateService,
 	}
 }
 

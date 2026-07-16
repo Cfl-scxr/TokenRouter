@@ -5988,6 +5988,22 @@
                 <Toggle v-model="form.affiliate_enabled" />
               </div>
 
+              <!-- 管理员充值返利仅在邀请返利总开关开启时可配置。 -->
+              <div
+                v-if="form.affiliate_enabled"
+                class="flex items-center justify-between gap-4 border-t border-gray-100 pt-5 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.features.affiliate.adminRechargeRebate") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.affiliate.adminRechargeRebateHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.affiliate_admin_recharge_enabled" />
+              </div>
+
               <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label class="input-label">
@@ -7743,6 +7759,7 @@ const form = reactive<SettingsForm>({
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
+  affiliate_admin_recharge_enabled: false,
   default_concurrency: 1,
   default_subscriptions: [],
   balance_unit_name: "USD",
@@ -9295,6 +9312,7 @@ async function saveSettings() {
         0,
         Number(form.affiliate_rebate_per_invitee_cap) || 0,
       ),
+      affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       balance_unit_name: form.balance_unit_name,

@@ -77,6 +77,15 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsAffiliateAdminRechargeEnabled 检查管理员加余额是否参与邀请返利。
+func (s *SettingService) IsAffiliateAdminRechargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateAdminRechargeEnabled)
+	if err != nil {
+		return AdminRechargeRebateEnabledDefault
+	}
+	return value == "true"
+}
+
 // GetAffiliateRebateRatePercent 读取全局邀请返利比例，并限制在安全范围内。
 func (s *SettingService) GetAffiliateRebateRatePercent(ctx context.Context) float64 {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRebateRate)

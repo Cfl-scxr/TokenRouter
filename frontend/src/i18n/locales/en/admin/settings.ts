@@ -64,6 +64,8 @@ dataSharing: {
           description: 'Existing users invite new users and earn percentage-based rebate quota after invitees recharge.',
           enabled: 'Enable Affiliate Rebates',
           enabledHint: 'When off, affiliate menus are hidden, signup ignores invite codes, and new recharges generate no rebate.',
+          adminRechargeRebate: 'Rebate Admin Deposits',
+          adminRechargeRebateHint: 'When enabled, balance added through User Management > Deposit generates affiliate rebates. Setting a balance or withdrawing funds does not.',
           rebateRate: 'Global Rebate Rate',
           rebateRateHint: 'Default percentage credited to inviters after recharge, 0-100. Example: 10 means 10%.',
           freezeHours: 'Rebate Freeze Period (hours)',
