@@ -16,7 +16,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/claude"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
-	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -346,10 +345,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		if account.Platform == PlatformGrok {
-			s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
-			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		}
 		if previousResponseID != "" && (isOpenAICompatPreviousResponseNotFound(resp.StatusCode, upstreamMsg, respBody) || isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody)) {
 			if isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody) {
 				s.disableOpenAICompatSessionContinuation(ctx, c, account, promptCacheKey)
