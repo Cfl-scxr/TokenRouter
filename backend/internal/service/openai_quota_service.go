@@ -177,7 +177,10 @@ func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, accoun
 	details, err := parseOpenAIRateLimitResetCreditDetails(raw)
 	if err != nil {
 		slog.Warn("openai_quota_reset_credit_details_parse_failed", "account_id", accountCtx.account.ID, "error", err)
-		return nil
+		// 列表解析失败时只接受独立有效的可用次数，列表本身仍保持 fail-closed。
+		if details.AvailableCount == nil {
+			return nil
+		}
 	}
 	if details.AvailableCount == nil && !details.CreditListPresent {
 		return nil
