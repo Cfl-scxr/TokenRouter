@@ -45,6 +45,18 @@ OAuth 账号可通过控制台创建或重新授权；API-key 账号默认使用
 `https://api.x.ai/v1`。创建 Grok 分组并绑定账号后，用户即可生成分组 API Key；现有
 `config.toml` 应先备份再合并新模型配置。
 
+## OpenAI Responses WebSocket 首消息超时
+
+`gateway.openai_ws.client_first_message_timeout_seconds` 限制 WebSocket 升级后完整读取并
+解压首条客户端 `response.create` 消息的总时间，默认 30 秒。大上下文、图片较多或慢链路
+场景可调高到 120-300 秒。该截止时间在 HTTP bridge 路由判断前生效，bridge 模式不会绕过它。
+
+```yaml
+gateway:
+  openai_ws:
+    client_first_message_timeout_seconds: 30
+```
+
 ## 许可证
 
 This project is licensed under the [GNU Lesser General Public License v3.0](LICENSE) (or later).
