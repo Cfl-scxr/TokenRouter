@@ -276,7 +276,7 @@
           </div>
         </div>
 
-        <!-- Codex JSON / AT 批量输入 -->
+        <!-- Codex auth.json / 会话凭据批量导入 -->
         <div v-if="inputMethod === 'codex_session'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"

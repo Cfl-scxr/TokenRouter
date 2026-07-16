@@ -177,6 +177,86 @@ func ProvideOpenAITokenProvider(
 	return p
 }
 
+// ProvideOpenAIQuotaService 注入 Agent Identity 连接失效器，并保留 fork 的 TLS 指纹配额请求链路。
+func ProvideOpenAIQuotaService(
+	adminService AdminService,
+	httpUpstream HTTPUpstream,
+	tokenProvider *OpenAITokenProvider,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	tlsFPRouterService *TLSFingerprintRouterService,
+	openAIGatewayService *OpenAIGatewayService,
+) *OpenAIQuotaService {
+	service := NewOpenAIQuotaService(adminService, httpUpstream, tokenProvider, tlsFPProfileService, tlsFPRouterService)
+	if openAIGatewayService != nil {
+		service.accountRepo = openAIGatewayService.accountRepo
+	}
+	service.agentIdentityWS = openAIGatewayService
+	return service
+}
+
+// ProvideAccountUsageService 为后台配额探针注入 Agent Identity task 恢复所需的连接失效器。
+func ProvideAccountUsageService(
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	usageFetcher ClaudeUsageFetcher,
+	geminiQuotaService *GeminiQuotaService,
+	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	grokQuotaFetcher *GrokQuotaFetcher,
+	grokQuotaService *GrokQuotaService,
+	openAIQuotaService *OpenAIQuotaService,
+	cache *UsageCache,
+	identityCache IdentityCache,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	httpUpstream HTTPUpstream,
+	quotaAutoPauseSettings OpenAIQuotaAutoPauseSettingsReader,
+	openAIGatewayService *OpenAIGatewayService,
+) *AccountUsageService {
+	service := NewAccountUsageService(
+		accountRepo,
+		usageLogRepo,
+		usageFetcher,
+		geminiQuotaService,
+		antigravityQuotaFetcher,
+		grokQuotaFetcher,
+		grokQuotaService,
+		openAIQuotaService,
+		cache,
+		identityCache,
+		tlsFPProfileService,
+		httpUpstream,
+		quotaAutoPauseSettings,
+	)
+	service.agentIdentityWS = openAIGatewayService
+	return service
+}
+
+// ProvideAccountTestService 为管理端账号测试复用网关的 Agent Identity 连接失效能力。
+func ProvideAccountTestService(
+	accountRepo AccountRepository,
+	geminiTokenProvider *GeminiTokenProvider,
+	claudeTokenProvider *ClaudeTokenProvider,
+	grokTokenProvider *GrokTokenProvider,
+	antigravityGatewayService *AntigravityGatewayService,
+	openAIGatewayService *OpenAIGatewayService,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+	tlsFPProfileService *TLSFingerprintProfileService,
+) *AccountTestService {
+	service := NewAccountTestService(
+		accountRepo,
+		geminiTokenProvider,
+		claudeTokenProvider,
+		grokTokenProvider,
+		antigravityGatewayService,
+		openAIGatewayService,
+		httpUpstream,
+		cfg,
+		tlsFPProfileService,
+	)
+	service.agentIdentityWS = openAIGatewayService
+	return service
+}
+
 func ProvideGrokQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
@@ -680,7 +760,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIGatewayTLSFingerprintRouterServices,
 	NewOpenAIGatewayService,
 	NewCodexInviteResetService,
-	NewOpenAIQuotaService,
+	ProvideOpenAIQuotaService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,
@@ -709,8 +789,8 @@ var ProviderSet = wire.NewSet(
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
-	NewAccountUsageService,
-	NewAccountTestService,
+	ProvideAccountUsageService,
+	ProvideAccountTestService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,

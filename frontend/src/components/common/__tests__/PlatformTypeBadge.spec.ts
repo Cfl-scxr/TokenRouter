@@ -32,4 +32,29 @@ describe('PlatformTypeBadge', () => {
     expect(wrapper.text()).toContain('COSY')
     expect(wrapper.text()).not.toContain('Gemini')
   })
+
+  it('distinguishes Agent Identity, PAT, and OAuth accounts', async () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'openai',
+        type: 'oauth',
+        authMode: 'agentIdentity'
+      },
+      global: {
+        stubs: {
+          PlatformIcon: true,
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('Agent Identity')
+
+    await wrapper.setProps({ authMode: 'personalAccessToken' })
+    expect(wrapper.text()).toContain('PAT')
+    expect(wrapper.text()).not.toContain('Agent Identity')
+
+    await wrapper.setProps({ authMode: undefined })
+    expect(wrapper.text()).toContain('OAuth')
+  })
 })
