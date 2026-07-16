@@ -94,6 +94,19 @@ func BuildBillingURL(formatCredits bool) string {
 	return base + BillingMonthlyPath
 }
 
+// BuildBillingURLWithValidator 按调用方解析的基础地址构造周度或月度 billing URL，
+// 并先应用调用方的出站 URL 信任策略。使用自定义上游转发的账号会在同一上游执行额度探测。
+func BuildBillingURLWithValidator(baseURL string, formatCredits bool, validator BaseURLValidator) (string, error) {
+	validatedBaseURL, err := validatedBaseURLWithValidator(baseURL, validator)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	if formatCredits {
+		return validatedBaseURL + BillingWeeklyPath, nil
+	}
+	return validatedBaseURL + BillingMonthlyPath, nil
+}
+
 // ApplyCLIBillingHeaders 为 billing GET 请求设置 Authorization 和 CLI 身份请求头。
 func ApplyCLIBillingHeaders(req *http.Request, accessToken string) {
 	if req == nil {

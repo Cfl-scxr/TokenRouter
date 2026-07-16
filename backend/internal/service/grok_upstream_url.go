@@ -15,26 +15,41 @@ func grokBaseURLValidator(account *Account, cfg *config.Config) (xai.BaseURLVali
 	}
 	switch account.Type {
 	case AccountTypeOAuth:
-		// 订阅凭据不受运营方的 API-key URL 策略影响，始终限制在受支持的 CLI 网关。
-		return redactedGrokBaseURLValidator(xai.ValidateTrustedBaseURL), nil
-	case AccountTypeAPIKey:
-		if cfg == nil {
-			return redactedGrokBaseURLValidator(xai.ValidateBaseURL), nil
-		}
-		if !cfg.Security.URLAllowlist.Enabled {
-			return redactedGrokBaseURLValidator(func(raw string) (string, error) {
-				return urlvalidator.ValidateURLFormat(raw, cfg.Security.URLAllowlist.AllowInsecureHTTP)
-			}), nil
-		}
+		// 即使运营方启用了严格白名单，官方网关也始终受信任并可用；
+		// 自定义转发主机则必须通过与 API-key 账号相同的运营方策略。
+		// 此处直接按主机区分官方与自定义地址，避免 ValidateTrustedBaseURL 在
+		// XAI_ALLOW_UNSAFE_URL_OVERRIDES 调试开关下放宽校验，导致 OAuth 凭据泄露到任意主机。
+		policyValidator := grokOperatorPolicyValidator(cfg)
 		return redactedGrokBaseURLValidator(func(raw string) (string, error) {
-			return urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
-				AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
-				RequireAllowlist: true,
-				AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
-			})
+			if xai.IsOfficialBaseURL(raw) {
+				return xai.ValidateTrustedBaseURL(raw)
+			}
+			return policyValidator(raw)
 		}), nil
+	case AccountTypeAPIKey:
+		return redactedGrokBaseURLValidator(grokOperatorPolicyValidator(cfg)), nil
 	default:
 		return nil, fmt.Errorf("unsupported grok account type: %s", account.Type)
+	}
+}
+
+// grokOperatorPolicyValidator 按全局出站 URL 安全策略校验自定义 base_url：
+// 白名单开启时强制 UpstreamHosts；关闭时仅做格式校验（HTTP 允许与否跟随配置）。
+func grokOperatorPolicyValidator(cfg *config.Config) xai.BaseURLValidator {
+	if cfg == nil {
+		return xai.ValidateBaseURL
+	}
+	if !cfg.Security.URLAllowlist.Enabled {
+		return func(raw string) (string, error) {
+			return urlvalidator.ValidateURLFormat(raw, cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		}
+	}
+	return func(raw string) (string, error) {
+		return urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+			AllowedHosts:     cfg.Security.URLAllowlist.UpstreamHosts,
+			RequireAllowlist: true,
+			AllowPrivate:     cfg.Security.URLAllowlist.AllowPrivateHosts,
+		})
 	}
 }
 
@@ -62,6 +77,16 @@ func buildGrokChatCompletionsURL(account *Account, cfg *config.Config) (string, 
 		return "", err
 	}
 	return xai.BuildChatCompletionsURLWithValidator(account.GetGrokBaseURL(), validator)
+}
+
+// buildGrokBillingURL 解析 billing 探测端点：跟随账号的转发 base_url，
+// 未定制的账号仍指向官方 CLI 网关。
+func buildGrokBillingURL(account *Account, cfg *config.Config, weekly bool) (string, error) {
+	validator, err := grokBaseURLValidator(account, cfg)
+	if err != nil {
+		return "", err
+	}
+	return xai.BuildBillingURLWithValidator(account.GetGrokBaseURL(), weekly, validator)
 }
 
 func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaEndpoint, requestID string) (string, error) {

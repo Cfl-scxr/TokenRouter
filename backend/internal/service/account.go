@@ -1452,16 +1452,20 @@ func (a *Account) GetOpenAIRefreshToken() string {
 
 // GetGrokBaseURL 返回 Grok 文本与 Responses 流量使用的上游地址。
 // 媒体流量必须通过 GetGrokMediaBaseURL 明确选择其独立的凭据边界。
+// 存储的 base_url 只改写转发端点；OAuth 授权与令牌刷新始终使用官方认证端点。
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// OAuth bearer token 是订阅凭据，只能发送到受支持的 CLI 网关。
-		// 存储的 base_url 与 unsafe 开发开关仅影响 API-key 账号。
-		return xai.DefaultCLIBaseURL
+		// 订阅流量默认使用受支持的 CLI 网关。创建或刷新凭据时写入的官方地址及其历史变体
+		// 均表示“未自定义”，只有显式配置的自定义主机才会改写转发地址。
+		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
+			return xai.DefaultCLIBaseURL
+		}
+		return baseURL
 	}
-	baseURL := a.GetCredential("base_url")
 	if baseURL != "" {
 		return baseURL
 	}
@@ -1469,14 +1473,10 @@ func (a *Account) GetGrokBaseURL() string {
 }
 
 // GetGrokMediaBaseURL 返回 Grok Imagine 媒体接口使用的上游地址。
-// OAuth 媒体凭据与文本凭据共享信任边界，即使请求体很大也固定到 CLI 网关；
-// API-key 账号继续保留其公开或自定义上游地址。
+// 当前解析规则与文本流量一致，独立访问器用于在调用点保留媒体与文本的语义边界。
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
-	}
-	if a.IsGrokOAuth() {
-		return xai.DefaultCLIBaseURL
 	}
 	return a.GetGrokBaseURL()
 }
