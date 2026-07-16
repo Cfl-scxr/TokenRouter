@@ -81,6 +81,54 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	return imageIntent
 }
 
+// IsImageGenerationIntentForPlatform 按平台应用生图意图判定规则。
+//
+// Codex 会在普通 Responses 请求中声明 image_gen 命名空间，供模型按需调用。
+// Grok 转发前会移除命名空间和 Responses Lite additional_tools 声明，因此仅有
+// 这些被动声明时不能把所有 Codex 请求都判为生图请求。原生 image_generation
+// 工具、显式生图选择和生图模型仍属于生图意图；其他平台保持原有声明语义。
+func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
+	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
+		return IsImageGenerationIntent(endpoint, requestedModel, body)
+	}
+	return isExplicitGrokImageGenerationIntent(endpoint, requestedModel, body)
+}
+
+func isExplicitGrokImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
+	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
+		return true
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+
+	var modelSeen, toolsSeen, toolChoiceSeen bool
+	imageIntent := false
+	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "model":
+			if !modelSeen {
+				modelSeen = true
+				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
+			}
+		case "tools":
+			if !toolsSeen {
+				toolsSeen = true
+				// Grok 会在转发前移除命名空间目录；原生 image_generation
+				// 仍表示显式能力请求。
+				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
+			}
+		case "tool_choice":
+			if !toolChoiceSeen {
+				toolChoiceSeen = true
+				imageIntent = openAIJSONToolChoiceSelectsExplicitImageGeneration(value)
+			}
+		}
+		return !imageIntent && (!modelSeen || !toolsSeen || !toolChoiceSeen)
+	})
+	return imageIntent
+}
+
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {
@@ -138,6 +186,18 @@ func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 			return false
 		}
 		return true
+	})
+	return found
+}
+
+func openAIJSONToolsContainNativeImageGeneration(tools gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+	}
+	found := false
+	tools.ForEach(func(_, item gjson.Result) bool {
+		found = isOpenAIImageGenerationType(openAIJSONString(item.Get("type")))
+		return !found
 	})
 	return found
 }
@@ -236,6 +296,45 @@ func openAIJSONToolChoiceSelectsImageGeneration(choice gjson.Result) bool {
 		return true
 	}
 	return false
+}
+
+func openAIJSONToolChoiceSelectsExplicitImageGeneration(choice gjson.Result) bool {
+	if openAIJSONToolChoiceSelectsImageGeneration(choice) {
+		return true
+	}
+	if !choice.IsObject() {
+		return false
+	}
+	if tool := choice.Get("tool"); tool.IsObject() && openAIJSONToolChoiceSelectsExplicitImageGeneration(tool) {
+		return true
+	}
+	if isOpenAIImageGenFunctionReference(
+		openAIJSONString(choice.Get("namespace")),
+		openAIJSONString(choice.Get("name")),
+	) {
+		return true
+	}
+	if fn := choice.Get("function"); fn.IsObject() {
+		return isOpenAIImageGenFunctionReference(
+			openAIJSONString(fn.Get("namespace")),
+			openAIJSONString(fn.Get("name")),
+		)
+	}
+	return false
+}
+
+func isOpenAIImageGenFunctionReference(namespace string, name string) bool {
+	namespace = strings.TrimSpace(namespace)
+	name = strings.TrimSpace(name)
+	if namespace == "image_gen" && name == "imagegen" {
+		return true
+	}
+	switch name {
+	case "image_gen.imagegen", "image_gen__imagegen":
+		return true
+	default:
+		return false
+	}
 }
 
 func openAIAnyToolChoiceSelectsImageGeneration(choice any) bool {
