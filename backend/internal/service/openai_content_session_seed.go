@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -20,31 +21,94 @@ func deriveOpenAIContentSessionSeed(body []byte) string {
 		return ""
 	}
 
+	const (
+		modelField = iota
+		toolsField
+		functionsField
+		instructionsField
+		messagesField
+		inputField
+		contentSessionSeedFieldCount
+		allContentSessionSeedFields = 1<<contentSessionSeedFieldCount - 1
+	)
+	var fields [contentSessionSeedFieldCount]gjson.Result
+	var seen uint8
+	// 从首个根容器开始扫描，以匹配 gjson.GetBytes 对带非 JSON 前缀畸形输入的行为。
+	root := body
+	for i := 0; i < len(body); i++ {
+		switch body[i] {
+		case '{':
+			root = body[i:]
+			goto scanRoot
+		case '[':
+			return ""
+		}
+	}
+	return ""
+
+scanRoot:
+	nextKeyOffset := 1
+	parseRawJSONView(root).ForEach(func(key, value gjson.Result) bool {
+		if key.Index < nextKeyOffset || key.Index > len(root) {
+			return false
+		}
+		// 畸形输入下 Result.ForEach 可能越过根对象右花括号；分隔区间不会包含前一个值内部的花括号。
+		if bytes.IndexByte(root[nextKeyOffset:key.Index], '}') >= 0 {
+			return false
+		}
+		nextKeyOffset = value.Index + len(value.Raw)
+
+		field := -1
+		switch key.Str {
+		case "model":
+			field = modelField
+		case "tools":
+			field = toolsField
+		case "functions":
+			field = functionsField
+		case "instructions":
+			field = instructionsField
+		case "messages":
+			field = messagesField
+		case "input":
+			field = inputField
+		}
+		if field < 0 {
+			return true
+		}
+		mask := uint8(1 << field)
+		if seen&mask == 0 {
+			fields[field] = value
+			seen |= mask
+		}
+		return seen != allContentSessionSeedFields
+	})
+
 	var b strings.Builder
 
-	if model := gjson.GetBytes(body, "model").String(); model != "" {
+	if model := fields[modelField].String(); model != "" {
 		_, _ = b.WriteString("model=")
 		_, _ = b.WriteString(model)
 	}
 
-	if tools := gjson.GetBytes(body, "tools"); tools.Exists() && tools.IsArray() && tools.Raw != "[]" {
+	if tools := fields[toolsField]; tools.Exists() && tools.IsArray() && tools.Raw != "[]" {
 		_, _ = b.WriteString("|tools=")
 		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(tools.Raw)))
 	}
 
-	if funcs := gjson.GetBytes(body, "functions"); funcs.Exists() && funcs.IsArray() && funcs.Raw != "[]" {
+	if funcs := fields[functionsField]; funcs.Exists() && funcs.IsArray() && funcs.Raw != "[]" {
 		_, _ = b.WriteString("|functions=")
 		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(funcs.Raw)))
 	}
 
-	if instr := gjson.GetBytes(body, "instructions").String(); instr != "" {
+	if instr := fields[instructionsField].String(); instr != "" {
 		_, _ = b.WriteString("|instructions=")
 		_, _ = b.WriteString(instr)
 	}
 
 	firstUserCaptured := false
 
-	msgs := gjson.GetBytes(body, "messages")
+	msgs := fields[messagesField]
 	if msgs.Exists() && msgs.IsArray() {
 		msgs.ForEach(func(_, msg gjson.Result) bool {
 			role := msg.Get("role").String()
@@ -65,7 +129,7 @@ func deriveOpenAIContentSessionSeed(body []byte) string {
 			}
 			return true
 		})
-	} else if inp := gjson.GetBytes(body, "input"); inp.Exists() {
+	} else if inp := fields[inputField]; inp.Exists() {
 		if inp.Type == gjson.String {
 			_, _ = b.WriteString("|input=")
 			_, _ = b.WriteString(inp.String())
