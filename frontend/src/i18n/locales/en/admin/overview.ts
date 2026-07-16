@@ -792,6 +792,7 @@ affiliates: {
       public: 'Public',
       columns: {
         name: 'Name',
+        id: 'ID',
         sortOrder: 'Sort',
         platform: 'API Format',
         displayBrand: 'Brand Type',

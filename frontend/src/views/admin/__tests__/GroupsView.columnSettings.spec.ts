@@ -31,6 +31,7 @@ const {
 const messages: Record<string, string> = {
   'admin.groups.columnSettings': 'Column Settings',
   'admin.groups.columns.name': 'Name',
+  'admin.groups.columns.id': 'ID',
   'admin.groups.columns.sortOrder': 'Sort',
   'admin.groups.columns.platform': 'Platform',
   'admin.groups.columns.displayBrand': 'Brand Type',
@@ -263,7 +264,7 @@ describe('admin GroupsView column settings', () => {
     localStorage.clear()
   })
 
-  it('renders all group columns by default in the current order', async () => {
+  it('hides the id column by default while keeping other group columns visible', async () => {
     const wrapper = await mountView()
 
     expect(columnKeys(wrapper)).toEqual([
@@ -281,6 +282,8 @@ describe('admin GroupsView column settings', () => {
       'status',
       'actions',
     ])
+    expect(localStorage.getItem('group-hidden-columns')).toBe(JSON.stringify(['id']))
+    expect(localStorage.getItem('group-column-settings-version')).toBe('2')
   })
 
   it('applies saved hidden columns on mount and ignores unknown keys', async () => {
@@ -288,6 +291,29 @@ describe('admin GroupsView column settings', () => {
       'group-hidden-columns',
       JSON.stringify(['usage', 'capacity', 'removed_column', 'name', 'actions']),
     )
+    localStorage.setItem('group-column-settings-version', '2')
+
+    const wrapper = await mountView()
+
+    expect(columnKeys(wrapper)).toEqual([
+      'name',
+      'id',
+      'sort_order',
+      'platform',
+      'display_brand',
+      'rate_multiplier',
+      'is_exclusive',
+      'data_sharing_enabled',
+      'session_isolation_enabled',
+      'account_count',
+      'status',
+      'actions',
+    ])
+  })
+
+  it('auto-hides id for existing saved column prefs after version bump', async () => {
+    localStorage.setItem('group-hidden-columns', JSON.stringify(['usage']))
+    // 没有版本键时按版本 1 处理，并迁移到版本 2。
 
     const wrapper = await mountView()
 
@@ -301,9 +327,25 @@ describe('admin GroupsView column settings', () => {
       'data_sharing_enabled',
       'session_isolation_enabled',
       'account_count',
+      'capacity',
       'status',
       'actions',
     ])
+    expect(JSON.parse(localStorage.getItem('group-hidden-columns')!)).toEqual(
+      expect.arrayContaining(['usage', 'id']),
+    )
+    expect(localStorage.getItem('group-column-settings-version')).toBe('2')
+  })
+
+  it('treats an invalid column settings version as version 1', async () => {
+    localStorage.setItem('group-hidden-columns', JSON.stringify([]))
+    localStorage.setItem('group-column-settings-version', 'invalid')
+
+    const wrapper = await mountView()
+
+    expect(columnKeys(wrapper)).not.toContain('id')
+    expect(localStorage.getItem('group-hidden-columns')).toBe(JSON.stringify(['id']))
+    expect(localStorage.getItem('group-column-settings-version')).toBe('2')
   })
 
   it('toggles a column and persists hidden column keys', async () => {
@@ -326,7 +368,39 @@ describe('admin GroupsView column settings', () => {
       'status',
       'actions',
     ])
-    expect(localStorage.getItem('group-hidden-columns')).toBe(JSON.stringify(['usage']))
+    expect(JSON.parse(localStorage.getItem('group-hidden-columns')!)).toEqual(
+      expect.arrayContaining(['id', 'usage']),
+    )
+  })
+
+  it('can show the id column from column settings', async () => {
+    const wrapper = await mountView()
+
+    await openColumnSettings(wrapper)
+    await clickColumnToggle(wrapper, 'ID')
+
+    expect(columnKeys(wrapper)).toEqual([
+      'name',
+      'id',
+      'sort_order',
+      'platform',
+      'display_brand',
+      'rate_multiplier',
+      'is_exclusive',
+      'data_sharing_enabled',
+      'session_isolation_enabled',
+      'account_count',
+      'capacity',
+      'usage',
+      'status',
+      'actions',
+    ])
+    const columns = wrapper.findComponent(DataTableStub).props('columns')
+    expect(columns.find((column: { key: string }) => column.key === 'id')).toMatchObject({
+      key: 'id',
+      sortable: true,
+    })
+    expect(localStorage.getItem('group-hidden-columns')).toBe(JSON.stringify([]))
   })
 
   it('skips hidden usage and capacity fetches until those columns are shown', async () => {
