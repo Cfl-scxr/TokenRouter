@@ -15,7 +15,8 @@ vi.mock('@/composables/useBalanceDisplay', () => ({
 
 import SubscriptionPlanCard from '../SubscriptionPlanCard.vue'
 
-const mountPlanCard = (groupPlatform: string) =>
+// 统一构造套餐卡片，便于覆盖平台和币种的组合展示。
+const mountPlanCard = (groupPlatform: string, currency = '', originalPrice?: number) =>
   mount(SubscriptionPlanCard, {
     props: {
       plan: {
@@ -25,6 +26,8 @@ const mountPlanCard = (groupPlatform: string) =>
         name: 'Pro',
         description: '',
         price: 10,
+        original_price: originalPrice,
+        currency,
         validity_days: 30,
         validity_unit: 'day',
         features: [],
@@ -50,5 +53,12 @@ describe('SubscriptionPlanCard', () => {
     expect(text).toContain('Claude')
     expect(text).toContain('Gemini')
     expect(text).toContain('Imagen')
+  })
+
+  it('shows the currency on both current and original prices', () => {
+    const text = mountPlanCard('openai', 'NZD', 20).text()
+
+    expect(text).toContain('$10NZD')
+    expect(text).toContain('$20NZD')
   })
 })

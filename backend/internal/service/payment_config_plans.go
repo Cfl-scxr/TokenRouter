@@ -8,8 +8,21 @@ import (
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
 	"github.com/TokenFlux/TokenRouter/ent/subscriptionplan"
+	"github.com/TokenFlux/TokenRouter/internal/payment"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 )
+
+// normalizePlanCurrency 校验并规范化仅用于展示的币种；空值保持为空以兼容存量套餐。
+func normalizePlanCurrency(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	currency, err := payment.NormalizePaymentCurrency(raw)
+	if err != nil {
+		return "", infraerrors.BadRequest("PLAN_CURRENCY_INVALID", "currency must be a 3-letter ISO currency code")
+	}
+	return currency, nil
+}
 
 func normalizePlanGroupIDs(groupID int64, groupIDs []int64) []int64 {
 	seen := make(map[int64]struct{}, len(groupIDs)+1)
@@ -156,6 +169,10 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err := validatePlanRequired(req.Name, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
 	}
+	currency, err := normalizePlanCurrency(req.Currency)
+	if err != nil {
+		return nil, err
+	}
 	if err := validatePlanQuotas(req.DailyLimitUSD, req.WeeklyLimitUSD, req.MonthlyLimitUSD); err != nil {
 		return nil, err
 	}
@@ -171,6 +188,7 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		SetName(strings.TrimSpace(req.Name)).
 		SetDescription(req.Description).
 		SetPrice(req.Price).
+		SetCurrency(currency).
 		SetValidityDays(req.ValidityDays).
 		SetValidityUnit(strings.TrimSpace(req.ValidityUnit)).
 		SetGroupIds(groupIDs).
@@ -270,6 +288,13 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 		} else {
 			update.SetOriginalPrice(*req.OriginalPrice.value)
 		}
+	}
+	if req.Currency != nil {
+		currency, err := normalizePlanCurrency(*req.Currency)
+		if err != nil {
+			return nil, err
+		}
+		update.SetCurrency(currency)
 	}
 	if req.ValidityDays != nil {
 		update.SetValidityDays(*req.ValidityDays)

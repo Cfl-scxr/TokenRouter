@@ -49,7 +49,6 @@
           <Select v-model="planForm.validity_unit" :options="validityUnitOptions" />
         </div>
       </div>
-
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div>
           <label class="input-label">{{ t('payment.admin.dailyLimit') }}</label>
@@ -63,6 +62,12 @@
           <label class="input-label">{{ t('payment.admin.monthlyLimit') }}</label>
           <input v-model.number="planForm.monthly_limit_usd" type="number" step="0.01" min="0" class="input" />
         </div>
+      </div>
+
+      <div>
+        <label class="input-label">{{ t('payment.admin.currency') }}</label>
+        <input v-model="planForm.currency" type="text" maxlength="3" class="input uppercase" :placeholder="t('payment.admin.currencyPlaceholder')" />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.currencyHint') }}</p>
       </div>
 
       <div>
@@ -192,6 +197,7 @@ const planForm = reactive({
   description: '',
   price: 0,
   original_price: null as number | null,
+  currency: '',
   validity_days: 30,
   validity_unit: 'day',
   daily_limit_usd: null as number | null,
@@ -246,6 +252,7 @@ watch(
         description: props.plan.description,
         price: props.plan.price,
         original_price: props.plan.original_price ?? null,
+        currency: props.plan.currency || '',
         validity_days: props.plan.validity_days,
         validity_unit: props.plan.validity_unit || 'day',
         daily_limit_usd: normalizeQuotaFormValue(props.plan.daily_limit_usd),
@@ -265,6 +272,7 @@ watch(
       description: '',
       price: 0,
       original_price: null,
+      currency: '',
       validity_days: 30,
       validity_unit: 'day',
       daily_limit_usd: null,
@@ -358,6 +366,7 @@ function buildPlanPayload() {
     description: planForm.description.trim(),
     price: planForm.price,
     original_price: normalizeNullableNumber(planForm.original_price),
+    currency: planForm.currency.trim().toUpperCase(),
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
     daily_limit_usd: normalizeQuotaLimit(planForm.daily_limit_usd),

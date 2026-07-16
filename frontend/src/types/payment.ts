@@ -147,6 +147,8 @@ export interface SubscriptionPlan {
   description: string
   price: number
   original_price?: number
+  /** 仅用于展示的 ISO 4217 币种标注（如 "NZD"）；空值表示不展示 */
+  currency?: string
   validity_days: number
   validity_unit: string
   /** Stored as JSON string in backend; API layer should parse before use */

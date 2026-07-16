@@ -48,6 +48,9 @@ function createTestI18n() {
             dailyLimit: 'Daily Limit',
             weeklyLimit: 'Weekly Limit',
             monthlyLimit: 'Monthly Limit',
+            currency: 'Currency',
+            currencyPlaceholder: 'NZD',
+            currencyHint: 'ISO 4217 code',
             features: 'Features',
             featuresPlaceholder: 'Features',
             featuresHint: 'Hint',
@@ -131,6 +134,7 @@ describe('PlanEditDialog', () => {
     await wrapper.find('textarea').setValue('Starter plan')
     await inputs[2].setValue('9.99')
     await inputs[4].setValue('30')
+    await wrapper.find('input[maxlength="3"]').setValue('nzd')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -140,6 +144,7 @@ describe('PlanEditDialog', () => {
         name: 'Starter',
         description: 'Starter plan',
         price: 9.99,
+        currency: 'NZD',
         validity_days: 30,
         daily_limit_usd: null,
         weekly_limit_usd: null,

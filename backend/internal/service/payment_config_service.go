@@ -201,6 +201,7 @@ type CreatePlanRequest struct {
 	Description          string            `json:"description"`
 	Price                float64           `json:"price"`
 	OriginalPrice        *float64          `json:"original_price"`
+	Currency             string            `json:"currency"`
 	ValidityDays         int               `json:"validity_days"`
 	ValidityUnit         string            `json:"validity_unit"`
 	DailyLimitUSD        *float64          `json:"daily_limit_usd"`
@@ -220,6 +221,7 @@ type UpdatePlanRequest struct {
 	Description          *string              `json:"description"`
 	Price                *float64             `json:"price"`
 	OriginalPrice        nullableFloat64Patch `json:"original_price"`
+	Currency             *string              `json:"currency"`
 	ValidityDays         *int                 `json:"validity_days"`
 	ValidityUnit         *string              `json:"validity_unit"`
 	DailyLimitUSD        nullableFloat64Patch `json:"daily_limit_usd"`
@@ -255,6 +257,7 @@ func (s *PaymentConfigService) GetByID(ctx context.Context, id int64) (*Subscrip
 		Description:          plan.Description,
 		Price:                plan.Price,
 		OriginalPrice:        plan.OriginalPrice,
+		Currency:             plan.Currency,
 		ValidityDays:         plan.ValidityDays,
 		ValidityUnit:         plan.ValidityUnit,
 		DailyLimitUSD:        plan.DailyLimitUsd,

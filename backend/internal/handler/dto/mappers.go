@@ -170,6 +170,7 @@ func SubscriptionPlanFromServiceShallow(plan *service.SubscriptionPlan) *Subscri
 		Description:          plan.Description,
 		Price:                plan.Price,
 		OriginalPrice:        plan.OriginalPrice,
+		Currency:             plan.Currency,
 		ValidityDays:         plan.ValidityDays,
 		ValidityUnit:         plan.ValidityUnit,
 		GroupIDs:             append([]int64(nil), plan.GroupIDs...),

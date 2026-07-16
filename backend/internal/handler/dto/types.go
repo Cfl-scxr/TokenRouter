@@ -171,6 +171,7 @@ type SubscriptionPlan struct {
 	Description          string            `json:"description"`
 	Price                float64           `json:"price"`
 	OriginalPrice        *float64          `json:"original_price,omitempty"`
+	Currency             string            `json:"currency,omitempty"`
 	ValidityDays         int               `json:"validity_days"`
 	ValidityUnit         string            `json:"validity_unit"`
 	GroupIDs             []int64           `json:"group_ids"`
