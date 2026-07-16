@@ -1114,8 +1114,17 @@ func openAIImagesToolUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if !inputOK || !outputOK || !imageOutputOK {
 		return OpenAIUsage{}, false
 	}
+	imageInputTokens := 0
+	if imageInputValue := value.Get("input_tokens_details.image_tokens"); imageInputValue.Exists() {
+		var imageInputOK bool
+		imageInputTokens, imageInputOK = boundedJSONNonNegativeInt(imageInputValue)
+		if !imageInputOK {
+			return OpenAIUsage{}, false
+		}
+	}
 	return OpenAIUsage{
 		InputTokens:       inputTokens,
+		ImageInputTokens:  imageInputTokens,
 		OutputTokens:      outputTokens,
 		ImageOutputTokens: imageOutputTokens,
 	}, true

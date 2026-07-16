@@ -16,11 +16,13 @@ type ModelMarketplacePricing struct {
 	PricingMode                  string                            `json:"pricing_mode"`
 	PriceStatus                  string                            `json:"price_status"`
 	InputPricePerToken           float64                           `json:"input_price_per_token,omitempty"`
+	ImageInputPricePerToken      float64                           `json:"image_input_price_per_token,omitempty"`
 	OutputPricePerToken          float64                           `json:"output_price_per_token,omitempty"`
 	CacheWritePricePerToken      float64                           `json:"cache_write_price_per_token,omitempty"`
 	CacheReadPricePerToken       float64                           `json:"cache_read_price_per_token,omitempty"`
 	ImageOutputPricePerToken     float64                           `json:"image_output_price_per_token,omitempty"`
 	FastInputPricePerToken       float64                           `json:"fast_input_price_per_token,omitempty"`
+	FastImageInputPricePerToken  float64                           `json:"fast_image_input_price_per_token,omitempty"`
 	FastOutputPricePerToken      float64                           `json:"fast_output_price_per_token,omitempty"`
 	FastCacheWritePricePerToken  float64                           `json:"fast_cache_write_price_per_token,omitempty"`
 	FastCacheReadPricePerToken   float64                           `json:"fast_cache_read_price_per_token,omitempty"`
@@ -36,11 +38,13 @@ type ModelMarketplacePricingInterval struct {
 	MinTokens                    int     `json:"min_tokens"`
 	MaxTokens                    *int    `json:"max_tokens,omitempty"`
 	InputPricePerToken           float64 `json:"input_price_per_token,omitempty"`
+	ImageInputPricePerToken      float64 `json:"image_input_price_per_token,omitempty"`
 	OutputPricePerToken          float64 `json:"output_price_per_token,omitempty"`
 	CacheWritePricePerToken      float64 `json:"cache_write_price_per_token,omitempty"`
 	CacheReadPricePerToken       float64 `json:"cache_read_price_per_token,omitempty"`
 	ImageOutputPricePerToken     float64 `json:"image_output_price_per_token,omitempty"`
 	FastInputPricePerToken       float64 `json:"fast_input_price_per_token,omitempty"`
+	FastImageInputPricePerToken  float64 `json:"fast_image_input_price_per_token,omitempty"`
 	FastOutputPricePerToken      float64 `json:"fast_output_price_per_token,omitempty"`
 	FastCacheWritePricePerToken  float64 `json:"fast_cache_write_price_per_token,omitempty"`
 	FastCacheReadPricePerToken   float64 `json:"fast_cache_read_price_per_token,omitempty"`
@@ -183,11 +187,13 @@ func modelMarketplacePricingFromService(pricing service.ModelDisplayPricing) Mod
 			MinTokens:                    interval.MinTokens,
 			MaxTokens:                    interval.MaxTokens,
 			InputPricePerToken:           interval.InputPricePerToken,
+			ImageInputPricePerToken:      interval.ImageInputPricePerToken,
 			OutputPricePerToken:          interval.OutputPricePerToken,
 			CacheWritePricePerToken:      interval.CacheWritePricePerToken,
 			CacheReadPricePerToken:       interval.CacheReadPricePerToken,
 			ImageOutputPricePerToken:     interval.ImageOutputPricePerToken,
 			FastInputPricePerToken:       interval.FastInputPricePerToken,
+			FastImageInputPricePerToken:  interval.FastImageInputPricePerToken,
 			FastOutputPricePerToken:      interval.FastOutputPricePerToken,
 			FastCacheWritePricePerToken:  interval.FastCacheWritePricePerToken,
 			FastCacheReadPricePerToken:   interval.FastCacheReadPricePerToken,
@@ -199,11 +205,13 @@ func modelMarketplacePricingFromService(pricing service.ModelDisplayPricing) Mod
 		PricingMode:                  pricing.PricingMode,
 		PriceStatus:                  pricing.PriceStatus,
 		InputPricePerToken:           pricing.InputPricePerToken,
+		ImageInputPricePerToken:      pricing.ImageInputPricePerToken,
 		OutputPricePerToken:          pricing.OutputPricePerToken,
 		CacheWritePricePerToken:      pricing.CacheWritePricePerToken,
 		CacheReadPricePerToken:       pricing.CacheReadPricePerToken,
 		ImageOutputPricePerToken:     pricing.ImageOutputPricePerToken,
 		FastInputPricePerToken:       pricing.FastInputPricePerToken,
+		FastImageInputPricePerToken:  pricing.FastImageInputPricePerToken,
 		FastOutputPricePerToken:      pricing.FastOutputPricePerToken,
 		FastCacheWritePricePerToken:  pricing.FastCacheWritePricePerToken,
 		FastCacheReadPricePerToken:   pricing.FastCacheReadPricePerToken,

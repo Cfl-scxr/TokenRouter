@@ -687,11 +687,13 @@ function hasPositiveValue(value?: number | null): value is number {
 function hasContextIntervalPricing(pricing: MarketplaceModelPricing): boolean {
   return pricing.context_intervals?.some((interval) => [
     interval.input_price_per_token,
+    interval.image_input_price_per_token,
     interval.output_price_per_token,
     interval.cache_write_price_per_token,
     interval.cache_read_price_per_token,
     interval.image_output_price_per_token,
     interval.fast_input_price_per_token,
+    interval.fast_image_input_price_per_token,
     interval.fast_output_price_per_token,
     interval.fast_cache_write_price_per_token,
     interval.fast_cache_read_price_per_token,
@@ -907,6 +909,9 @@ function tokenPricingRowsFromValues(pricing: MarketplaceModelPricing | Marketpla
   if (hasPositiveValue(pricing.input_price_per_token)) {
     rows.push({ key: 'input', label: t('marketplace.input'), value: formatPerMillion(pricing.input_price_per_token) })
   }
+  if (hasPositiveValue(pricing.image_input_price_per_token)) {
+    rows.push({ key: 'image_input', label: t('marketplace.imageInput'), value: formatPerMillion(pricing.image_input_price_per_token) })
+  }
   if (hasPositiveValue(pricing.output_price_per_token)) {
     rows.push({ key: 'output', label: t('marketplace.output'), value: formatPerMillion(pricing.output_price_per_token) })
   }
@@ -921,6 +926,9 @@ function tokenPricingRowsFromValues(pricing: MarketplaceModelPricing | Marketpla
   }
   if (hasPositiveValue(pricing.fast_input_price_per_token)) {
     rows.push({ key: 'fast_input', label: t('marketplace.fastInput'), value: formatPerMillion(pricing.fast_input_price_per_token) })
+  }
+  if (hasPositiveValue(pricing.fast_image_input_price_per_token)) {
+    rows.push({ key: 'fast_image_input', label: t('marketplace.fastImageInput'), value: formatPerMillion(pricing.fast_image_input_price_per_token) })
   }
   if (hasPositiveValue(pricing.fast_output_price_per_token)) {
     rows.push({ key: 'fast_output', label: t('marketplace.fastOutput'), value: formatPerMillion(pricing.fast_output_price_per_token) })

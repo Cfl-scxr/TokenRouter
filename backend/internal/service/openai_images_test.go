@@ -690,16 +690,21 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 
 func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testing.T) {
 	svc := &OpenAIGatewayService{}
-	fallback := OpenAIUsage{InputTokens: 3, OutputTokens: 4, ImageOutputTokens: 2}
+	fallback := OpenAIUsage{InputTokens: 3, ImageInputTokens: 2, OutputTokens: 4, ImageOutputTokens: 2}
 	tests := []struct {
 		name      string
 		toolUsage string
 		want      OpenAIUsage
 	}{
 		{
-			name:      "valid tool usage takes atomic precedence",
+			name:      "valid tool usage takes atomic precedence without mixing top-level image input",
 			toolUsage: `{"input_tokens":4.6e1,"output_tokens":2459e0,"output_tokens_details":{"image_tokens":24590e-1}}`,
 			want:      OpenAIUsage{InputTokens: 46, OutputTokens: 2459, ImageOutputTokens: 2459},
+		},
+		{
+			name:      "valid tool image input takes precedence",
+			toolUsage: `{"input_tokens":46,"input_tokens_details":{"image_tokens":35},"output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`,
+			want:      OpenAIUsage{InputTokens: 46, ImageInputTokens: 35, OutputTokens: 2459, ImageOutputTokens: 2459},
 		},
 		{name: "absent", want: fallback},
 		{name: "malformed field", toolUsage: `{"input_tokens":"46","output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
@@ -707,6 +712,7 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 		{name: "negative field", toolUsage: `{"input_tokens":46,"output_tokens":2459,"output_tokens_details":{"image_tokens":-1}}`, want: fallback},
 		{name: "overflow field", toolUsage: `{"input_tokens":46,"output_tokens":9223372036854775808,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 		{name: "incomplete object", toolUsage: `{"input_tokens":46,"output_tokens":2459}`, want: fallback},
+		{name: "malformed image input detail", toolUsage: `{"input_tokens":46,"input_tokens_details":{"image_tokens":1.5},"output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 		{name: "hostile huge exponent", toolUsage: `{"input_tokens":1e1000000000,"output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
 	}
 
@@ -716,7 +722,7 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 			if tt.toolUsage != "" {
 				toolUsageField = `,"tool_usage":{"image_gen":` + tt.toolUsage + `}`
 			}
-			payload := []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":4,"output_tokens_details":{"image_tokens":2}}` + toolUsageField + `}}`)
+			payload := []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"input_tokens_details":{"image_tokens":2},"output_tokens":4,"output_tokens_details":{"image_tokens":2}}` + toolUsageField + `}}`)
 			var got OpenAIUsage
 			svc.parseOpenAIImagesSSEUsageBytes(payload, &got)
 			require.Equal(t, tt.want, got)

@@ -185,6 +185,82 @@ func TestModelMarketplaceQoderManualChannelPricingOverridesDefaultAliasDisplayPr
 	}
 }
 
+func TestModelMarketplaceChannelImageInputPricingIsDisplayed(t *testing.T) {
+	groupID := int64(904)
+	inputPrice := 0.01
+	imageInputPrice := 0.03
+	outputPrice := 0.02
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: PlatformOpenAI, model: "gpt-image-edit"}] = &ChannelModelPricing{
+		BillingMode:     BillingModeToken,
+		InputPrice:      &inputPrice,
+		ImageInputPrice: &imageInputPrice,
+		OutputPrice:     &outputPrice,
+	}
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
+	cache.groupPlatform[groupID] = PlatformOpenAI
+	cache.loadedAt = time.Now()
+	channelService := &ChannelService{}
+	channelService.cache.Store(cache)
+
+	billingService := NewBillingService(nil, nil)
+	svc := NewModelMarketplaceService(nil, nil, &GatewayService{
+		resolver: NewModelPricingResolver(channelService, billingService),
+	}, billingService, nil, nil, nil)
+	group := &Group{ID: groupID, Platform: PlatformOpenAI, RateMultiplier: 1.5}
+
+	pricing := svc.getPublicModelDisplayPricing(context.Background(), group, "gpt-image-edit", nil)
+
+	if pricing.PricingMode != "token" || pricing.PriceStatus != "priced" {
+		t.Fatalf("image edit pricing = (%q, %q), want token/priced", pricing.PricingMode, pricing.PriceStatus)
+	}
+	if pricing.ImageInputPricePerToken != imageInputPrice*group.RateMultiplier {
+		t.Fatalf("image input price = %g, want %g", pricing.ImageInputPricePerToken, imageInputPrice*group.RateMultiplier)
+	}
+}
+
+func TestModelDisplayPricingImageInputFastRates(t *testing.T) {
+	tests := []struct {
+		name          string
+		pricing       ModelPricing
+		wantImage     float64
+		wantFastImage float64
+	}{
+		{
+			name: "priority 倍率同步应用到图片输入价",
+			pricing: ModelPricing{
+				InputPricePerToken:      0.01,
+				ImageInputPricePerToken: 0.03,
+				SupportsServiceTier:     true,
+			},
+			wantImage:     0.06,
+			wantFastImage: 0.12,
+		},
+		{
+			name: "独立 priority 文本价不改变显式图片输入价",
+			pricing: ModelPricing{
+				InputPricePerToken:         0.01,
+				InputPricePerTokenPriority: 0.04,
+				ImageInputPricePerToken:    0.03,
+			},
+			wantImage:     0.06,
+			wantFastImage: 0.06,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pricing := buildTokenDisplayPricing(&tt.pricing, 2)
+			if pricing.ImageInputPricePerToken != tt.wantImage {
+				t.Fatalf("image input price = %g, want %g", pricing.ImageInputPricePerToken, tt.wantImage)
+			}
+			if pricing.FastImageInputPricePerToken != tt.wantFastImage {
+				t.Fatalf("fast image input price = %g, want %g", pricing.FastImageInputPricePerToken, tt.wantFastImage)
+			}
+		})
+	}
+}
+
 func TestModelMarketplaceQoderBlankChannelPricingRemainsUnknown(t *testing.T) {
 	groupID := int64(902)
 	cache := newEmptyChannelCache()

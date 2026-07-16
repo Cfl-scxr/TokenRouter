@@ -46,6 +46,30 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+func TestParsePricingData_ParsesImageInputTokenPrice(t *testing.T) {
+	pricingSvc := &PricingService{}
+	data, err := pricingSvc.parsePricingData([]byte(`{
+		"gpt-image-2": {
+			"input_cost_per_token": 0.000005,
+			"input_cost_per_image_token": 0.000008,
+			"output_cost_per_token": 0.00001,
+			"output_cost_per_image_token": 0.00003,
+			"litellm_provider": "openai",
+			"mode": "image_generation"
+		}
+	}`))
+	require.NoError(t, err)
+	parsed := data["gpt-image-2"]
+	require.NotNil(t, parsed)
+	require.InDelta(t, 8e-6, parsed.InputCostPerImageToken, 1e-12)
+
+	pricingSvc.pricingData = data
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+	pricing, err := billingSvc.GetModelPricing("gpt-image-2")
+	require.NoError(t, err)
+	require.InDelta(t, 8e-6, pricing.ImageInputPricePerToken, 1e-12)
+}
+
 func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.T) {
 	tests := []struct {
 		model             string

@@ -17,6 +17,23 @@ export const textOutputTokens = (row: ImageOutputTokenRow | null | undefined): n
 export const hasImageOutputCost = (row: ImageOutputCostRow | null | undefined): boolean =>
   (row?.image_output_cost ?? 0) > 0
 
+// 图片输入 token 与费用辅助函数。
+
+type ImageInputTokenRow = Pick<UsageLog, 'input_tokens' | 'image_input_tokens'>
+type ImageInputCostRow = Pick<UsageLog, 'image_input_cost'>
+
+/** 判断记录是否包含图片输入 token，例如 gpt-image-2 图片编辑。 */
+export const hasImageInputTokens = (row: ImageInputTokenRow | null | undefined): boolean =>
+  (row?.image_input_tokens ?? 0) > 0
+
+/** 计算纯文本输入 token，并保证结果不小于 0。 */
+export const textInputTokens = (row: ImageInputTokenRow | null | undefined): number =>
+  Math.max(0, (row?.input_tokens ?? 0) - (row?.image_input_tokens ?? 0))
+
+/** 判断记录是否包含非零图片输入费用。 */
+export const hasImageInputCost = (row: ImageInputCostRow | null | undefined): boolean =>
+  (row?.image_input_cost ?? 0) > 0
+
 type ImageUsageRow = Pick<
   UsageLog,
   'image_size' | 'image_input_size' | 'image_output_size' | 'image_size_source' | 'image_size_breakdown'

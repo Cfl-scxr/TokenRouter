@@ -127,7 +127,9 @@ const tokenPricing: MarketplaceModelPricing = {
   pricing_mode: 'token',
   price_status: 'priced',
   input_price_per_token: 0.000001,
+  image_input_price_per_token: 0.000003,
   output_price_per_token: 0.000002,
+  fast_image_input_price_per_token: 0.000006,
 }
 
 const imagePricing: MarketplaceModelPricing = {
@@ -345,6 +347,8 @@ describe('ModelMarketplaceView', () => {
     expect(dialog.text()).toContain('GPT 5.5')
     expect(dialog.text()).toContain('gpt-5.5')
     expect(dialog.text().match(/Plus/g)).toHaveLength(1)
+    expect(dialog.text()).toContain('marketplace.imageInput')
+    expect(dialog.text()).toContain('marketplace.fastImageInput')
   })
 
   it('分组-模型模式下定价弹窗不重复显示分组名称', async () => {

@@ -522,11 +522,13 @@ export interface MarketplacePricingInterval {
   min_tokens: number
   max_tokens?: number | null
   input_price_per_token?: number
+  image_input_price_per_token?: number
   output_price_per_token?: number
   cache_write_price_per_token?: number
   cache_read_price_per_token?: number
   image_output_price_per_token?: number
   fast_input_price_per_token?: number
+  fast_image_input_price_per_token?: number
   fast_output_price_per_token?: number
   fast_cache_write_price_per_token?: number
   fast_cache_read_price_per_token?: number
@@ -537,11 +539,13 @@ export interface MarketplaceModelPricing {
   pricing_mode: MarketplacePricingMode
   price_status: MarketplacePriceStatus
   input_price_per_token?: number
+  image_input_price_per_token?: number
   output_price_per_token?: number
   cache_write_price_per_token?: number
   cache_read_price_per_token?: number
   image_output_price_per_token?: number
   fast_input_price_per_token?: number
+  fast_image_input_price_per_token?: number
   fast_output_price_per_token?: number
   fast_cache_write_price_per_token?: number
   fast_cache_read_price_per_token?: number
@@ -1601,6 +1605,8 @@ export interface UsageLog {
   image_size: string | null
   image_input_size: string | null
   image_output_size: string | null
+  image_input_tokens: number
+  image_input_cost: number
   image_output_tokens: number
   image_output_cost: number
   image_size_source: ImageSizeSource | null

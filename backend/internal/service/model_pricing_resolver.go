@@ -223,6 +223,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 			resolved.BasePricing.ImageOutputPricePerToken = 0
 		}
 		resolved.BasePricing.ImageOutputPriceExplicit = true
+		applyChannelImageInputPrice(chPricing, resolved.BasePricing)
 		return
 	}
 
@@ -263,6 +264,20 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		resolved.BasePricing.ImageOutputPricePerToken = 0
 	}
 	resolved.BasePricing.ImageOutputPriceExplicit = true
+	applyChannelImageInputPrice(chPricing, resolved.BasePricing)
+}
+
+// applyChannelImageInputPrice 应用渠道图片输入价：显式配置则用配置值；
+// 未配置时归零，使 computeTokenBreakdown 回退到文本输入价（向后兼容，
+// 避免 LiteLLM 图片输入价泄漏进渠道自定义定价）。
+// 与 image_output 不同，此处不设 Explicit 标志——图片输入未配置应回退文本价，
+// 而非硬置 0。
+func applyChannelImageInputPrice(chPricing *ChannelModelPricing, pricing *ModelPricing) {
+	if chPricing != nil && chPricing.ImageInputPrice != nil {
+		pricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
+	} else {
+		pricing.ImageInputPricePerToken = 0
+	}
 }
 
 // applyRequestTierOverrides 应用按次/图片模式的渠道覆盖
@@ -356,7 +371,7 @@ func intervalToModelPricingWithBase(iv *PricingInterval, supportsCacheBreakdown 
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
 		pricing.CacheReadPricePerTokenPriority = *iv.CacheReadPrice
 	}
-	// 渠道定价存在时，图片输出价格显式覆盖
+	// 渠道定价存在时显式覆盖图片输出价格；图片输入价格沿用渠道级配置，区间本身不携带该字段。
 	if chPricing != nil {
 		pricing.ImageOutputPriceExplicit = true
 		if chPricing.ImageOutputPrice != nil {
@@ -364,6 +379,7 @@ func intervalToModelPricingWithBase(iv *PricingInterval, supportsCacheBreakdown 
 		} else {
 			pricing.ImageOutputPricePerToken = 0
 		}
+		applyChannelImageInputPrice(chPricing, pricing)
 	}
 	return pricing
 }

@@ -148,7 +148,8 @@ type UsageTokens struct {
 
 // CostBreakdown 费用明细
 type CostBreakdown struct {
-	InputCost                 float64
+	InputCost                 float64 // 文本输入费用（不含图片输入，图片输入单独记入 ImageInputCost）
+	ImageInputCost            float64 // 图片输入 token 费用（如 gpt-image-2 图片编辑）
 	OutputCost                float64
 	ImageOutputCost           float64
 	CacheCreationCost         float64
@@ -816,6 +817,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 				LongContextInputThreshold:          litellmPricing.LongContextInputTokenThreshold,
 				LongContextInputMultiplier:         litellmPricing.LongContextInputCostMultiplier,
 				LongContextOutputMultiplier:        litellmPricing.LongContextOutputCostMultiplier,
+				ImageInputPricePerToken:            litellmPricing.InputCostPerImageToken,
 				ImageOutputPricePerToken:           litellmPricing.OutputCostPerImageToken,
 			}), nil
 		}
@@ -872,6 +874,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 		pricing.ImageOutputPricePerToken = 0
 	}
 	pricing.ImageOutputPriceExplicit = true
+	applyChannelImageInputPrice(channelPricing, pricing)
 	return pricing, nil
 }
 
@@ -1014,6 +1017,9 @@ func (s *BillingService) computeTokenBreakdown(
 	}
 
 	bd := &CostBreakdown{}
+	// 分离图片输入 token 与文本输入 token（多模态 embedding、图片编辑等图文不同价场景）。
+	// InputCost 仅计文本输入，图片输入费用单独记入 ImageInputCost，便于对账；总额不变。
+	// ImageInputTokens 为 0 时（绝大多数 chat/vision 流量）走原始单价路径，行为不变。
 	if tokens.ImageInputTokens > 0 {
 		imageInputTokens := tokens.ImageInputTokens
 		textInputTokens := tokens.InputTokens - imageInputTokens
@@ -1025,7 +1031,8 @@ func (s *BillingService) computeTokenBreakdown(
 		if imageInputPrice == 0 {
 			imageInputPrice = inputPrice
 		}
-		bd.InputCost = float64(textInputTokens)*inputPrice + float64(imageInputTokens)*imageInputPrice
+		bd.InputCost = float64(textInputTokens) * inputPrice
+		bd.ImageInputCost = float64(imageInputTokens) * imageInputPrice
 	} else {
 		bd.InputCost = float64(tokens.InputTokens) * inputPrice
 	}
@@ -1053,13 +1060,14 @@ func (s *BillingService) computeTokenBreakdown(
 
 	if tierMultiplier != 1.0 {
 		bd.InputCost *= tierMultiplier
+		bd.ImageInputCost *= tierMultiplier
 		bd.OutputCost *= tierMultiplier
 		bd.ImageOutputCost *= tierMultiplier
 		bd.CacheCreationCost *= tierMultiplier
 		bd.CacheReadCost *= tierMultiplier
 	}
 
-	bd.TotalCost = bd.InputCost + bd.OutputCost + bd.ImageOutputCost +
+	bd.TotalCost = bd.InputCost + bd.ImageInputCost + bd.OutputCost + bd.ImageOutputCost +
 		bd.CacheCreationCost + bd.CacheReadCost
 	bd.ActualCost = bd.TotalCost * rateMultiplier
 	bd.LongContextBillingApplied = baselineCost != nil && bd.ActualCost > baselineCost.ActualCost
@@ -1293,6 +1301,7 @@ func (s *BillingService) CalculateCostWithLongContextAndServiceTier(model string
 	// 合并成本
 	return &CostBreakdown{
 		InputCost:                 inRangeCost.InputCost + outRangeCost.InputCost,
+		ImageInputCost:            inRangeCost.ImageInputCost + outRangeCost.ImageInputCost,
 		OutputCost:                inRangeCost.OutputCost,
 		ImageOutputCost:           inRangeCost.ImageOutputCost,
 		CacheCreationCost:         inRangeCost.CacheCreationCost,
@@ -1371,11 +1380,13 @@ type ModelDisplayPricing struct {
 	PricingMode                  string
 	PriceStatus                  string
 	InputPricePerToken           float64
+	ImageInputPricePerToken      float64
 	OutputPricePerToken          float64
 	CacheWritePricePerToken      float64
 	CacheReadPricePerToken       float64
 	ImageOutputPricePerToken     float64
 	FastInputPricePerToken       float64
+	FastImageInputPricePerToken  float64
 	FastOutputPricePerToken      float64
 	FastCacheWritePricePerToken  float64
 	FastCacheReadPricePerToken   float64
@@ -1391,11 +1402,13 @@ type ModelDisplayPricingInterval struct {
 	MinTokens                    int
 	MaxTokens                    *int
 	InputPricePerToken           float64
+	ImageInputPricePerToken      float64
 	OutputPricePerToken          float64
 	CacheWritePricePerToken      float64
 	CacheReadPricePerToken       float64
 	ImageOutputPricePerToken     float64
 	FastInputPricePerToken       float64
+	FastImageInputPricePerToken  float64
 	FastOutputPricePerToken      float64
 	FastCacheWritePricePerToken  float64
 	FastCacheReadPricePerToken   float64
@@ -1537,6 +1550,7 @@ func sameDisplayTokenPricing(a *ModelPricing, b *ModelPricing) bool {
 		return a == b
 	}
 	return a.InputPricePerToken == b.InputPricePerToken &&
+		a.ImageInputPricePerToken == b.ImageInputPricePerToken &&
 		a.OutputPricePerToken == b.OutputPricePerToken &&
 		a.CacheCreationPricePerToken == b.CacheCreationPricePerToken &&
 		a.CacheReadPricePerToken == b.CacheReadPricePerToken &&
@@ -1573,6 +1587,7 @@ func buildTokenDisplayPricing(pricing *ModelPricing, rateMultiplier float64) Mod
 		PricingMode:              "token",
 		PriceStatus:              "priced",
 		InputPricePerToken:       pricing.InputPricePerToken * rateMultiplier,
+		ImageInputPricePerToken:  pricing.ImageInputPricePerToken * rateMultiplier,
 		OutputPricePerToken:      pricing.OutputPricePerToken * rateMultiplier,
 		CacheWritePricePerToken:  pricing.CacheCreationPricePerToken * rateMultiplier,
 		CacheReadPricePerToken:   pricing.CacheReadPricePerToken * rateMultiplier,
@@ -1580,6 +1595,7 @@ func buildTokenDisplayPricing(pricing *ModelPricing, rateMultiplier float64) Mod
 	}
 	if fastPricing, ok := fastModeDisplayPricing(pricing); ok {
 		displayPricing.FastInputPricePerToken = fastPricing.InputPricePerToken * rateMultiplier
+		displayPricing.FastImageInputPricePerToken = fastPricing.ImageInputPricePerToken * rateMultiplier
 		displayPricing.FastOutputPricePerToken = fastPricing.OutputPricePerToken * rateMultiplier
 		displayPricing.FastCacheWritePricePerToken = fastPricing.CacheCreationPricePerToken * rateMultiplier
 		displayPricing.FastCacheReadPricePerToken = fastPricing.CacheReadPricePerToken * rateMultiplier
@@ -1622,6 +1638,7 @@ func modelPricingDisplayInterval(minTokens int, maxTokens *int, pricing *ModelPr
 		MinTokens:                minTokens,
 		MaxTokens:                maxTokens,
 		InputPricePerToken:       pricing.InputPricePerToken * rateMultiplier,
+		ImageInputPricePerToken:  pricing.ImageInputPricePerToken * rateMultiplier,
 		OutputPricePerToken:      pricing.OutputPricePerToken * rateMultiplier,
 		CacheWritePricePerToken:  pricing.CacheCreationPricePerToken * rateMultiplier,
 		CacheReadPricePerToken:   pricing.CacheReadPricePerToken * rateMultiplier,
@@ -1629,6 +1646,7 @@ func modelPricingDisplayInterval(minTokens int, maxTokens *int, pricing *ModelPr
 	}
 	if fastPricing, ok := fastModeDisplayPricing(pricing); ok {
 		interval.FastInputPricePerToken = fastPricing.InputPricePerToken * rateMultiplier
+		interval.FastImageInputPricePerToken = fastPricing.ImageInputPricePerToken * rateMultiplier
 		interval.FastOutputPricePerToken = fastPricing.OutputPricePerToken * rateMultiplier
 		interval.FastCacheWritePricePerToken = fastPricing.CacheCreationPricePerToken * rateMultiplier
 		interval.FastCacheReadPricePerToken = fastPricing.CacheReadPricePerToken * rateMultiplier
@@ -1658,6 +1676,7 @@ func fastModeDisplayPricing(pricing *ModelPricing) (*ModelPricing, bool) {
 
 	multiplier := serviceTierCostMultiplier(OpenAIFastTierPriority)
 	fastPricing.InputPricePerToken *= multiplier
+	fastPricing.ImageInputPricePerToken *= multiplier
 	fastPricing.OutputPricePerToken *= multiplier
 	fastPricing.CacheCreationPricePerToken *= multiplier
 	fastPricing.CacheReadPricePerToken *= multiplier
@@ -1903,6 +1922,7 @@ func hasAnyDisplayTokenPricing(pricing *ModelPricing) bool {
 		return false
 	}
 	return pricing.InputPricePerToken > 0 ||
+		pricing.ImageInputPricePerToken > 0 ||
 		pricing.OutputPricePerToken > 0 ||
 		pricing.CacheCreationPricePerToken > 0 ||
 		pricing.CacheReadPricePerToken > 0 ||

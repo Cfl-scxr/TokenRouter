@@ -1164,6 +1164,35 @@ func TestApplyTokenOverrides_FlatWithImageOutputPriceSetsExplicit(t *testing.T) 
 	require.InDelta(t, 50e-6, resolved.BasePricing.ImageOutputPricePerToken, 1e-12)
 }
 
+func TestApplyTokenOverrides_FlatUsesChannelImageInputPrice(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModeToken,
+		InputPrice:      testPtrFloat64(3e-6),
+		ImageInputPrice: testPtrFloat64(8e-6),
+	}})
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.InDelta(t, 8e-6, resolved.BasePricing.ImageInputPricePerToken, 1e-12)
+}
+
+func TestIntervalToModelPricingWithBaseClearsUnsetChannelImageInputPrice(t *testing.T) {
+	base := &ModelPricing{ImageInputPricePerToken: 99e-6}
+	pricing := intervalToModelPricingWithBase(
+		&PricingInterval{MinTokens: 0, InputPrice: testPtrFloat64(3e-6)},
+		false,
+		&ChannelModelPricing{BillingMode: BillingModeToken},
+		base,
+	)
+
+	require.Zero(t, pricing.ImageInputPricePerToken)
+}
+
 func TestApplyTokenOverrides_IntervalSetsImageOutputPriceExplicit(t *testing.T) {
 	r := newResolverWithChannel(t, []ChannelModelPricing{{
 		Platform:    "anthropic",
