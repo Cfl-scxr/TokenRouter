@@ -100,6 +100,7 @@ func (u *openAIResponsesFailoverCancelUpstream) calls() []int64 {
 
 func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream) *OpenAIGatewayHandler {
 	t.Helper()
+	proxyID := int64(11)
 	accounts := []service.Account{
 		{
 			ID:          1,
@@ -111,6 +112,16 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 			Concurrency: 0,
 			Priority:    0,
 			Credentials: map[string]any{"access_token": "token-1"},
+			ProxyID:     &proxyID,
+			Proxy: &service.Proxy{
+				ID:       proxyID,
+				Name:     "responses-proxy",
+				Protocol: "http",
+				Host:     "proxy.example.com",
+				Port:     8080,
+				Username: "proxy-user-secret",
+				Password: "proxy-password-secret",
+			},
 		},
 		{
 			ID:          2,
@@ -232,6 +243,8 @@ func TestOpenAIGatewayHandlerResponses_FailoverAbortsWhenClientDisconnected(t *t
 // 耗尽返回 502。
 func TestOpenAIGatewayHandlerResponses_FailoverContinuesForConnectedClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	logSink, restore := captureHandlerStructuredLog(t)
+	defer restore()
 
 	upstream := &openAIResponsesFailoverCancelUpstream{}
 	handler := newOpenAIResponsesFailoverTestHandler(t, upstream)
@@ -242,4 +255,11 @@ func TestOpenAIGatewayHandlerResponses_FailoverContinuesForConnectedClient(t *te
 	require.Equal(t, []int64{1, 2}, upstream.calls(), "在线客户端应正常切换账号")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.True(t, logSink.ContainsMessageAtLevel("openai.upstream_failover_switching", "warn"))
+	require.True(t, logSink.ContainsFieldValue("proxy_id", "11"))
+	require.True(t, logSink.ContainsFieldValue("proxy_name", "responses-proxy"))
+	require.True(t, logSink.ContainsFieldValue("proxy_host", "proxy.example.com"))
+	require.True(t, logSink.ContainsFieldValue("proxy_port", "8080"))
+	require.False(t, logSink.ContainsFieldValue("proxy_username", "proxy-user-secret"))
+	require.False(t, logSink.ContainsFieldValue("proxy_password", "proxy-password-secret"))
 }
