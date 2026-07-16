@@ -32,6 +32,7 @@ func newCodexModelsRemovalGatewayHandler(repo service.AccountRepository) *handle
 	)
 	return handler.NewGatewayHandler(
 		gatewayService,
+		nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		&config.Config{},
 		nil,
