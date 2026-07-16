@@ -70,6 +70,10 @@ type AdminService interface {
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
+	// DuplicateAccount 根据已有配置创建独立账号；一级运行态列按普通创建路径重置。
+	DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
+	// RecoverDuplicateAccount 在重试结果不明时返回先前已提交的复制件，绝不创建账号。
+	RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
 	// UpdateAccountExtra 仅对 Extra 做 JSONB key 级增量合并，不覆盖已有持久化配置。
 	UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error
@@ -599,6 +603,7 @@ type adminServiceImpl struct {
 	userRepo             UserRepository
 	groupRepo            GroupRepository
 	accountRepo          AccountRepository
+	accountDuplicateRepo AccountDuplicateRepository
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
@@ -626,7 +631,7 @@ type userGroupRateBatchReader interface {
 func NewAdminService(
 	userRepo UserRepository,
 	groupRepo GroupRepository,
-	accountRepo AccountRepository,
+	accountRepo AdminAccountRepository,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
@@ -649,6 +654,7 @@ func NewAdminService(
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		accountRepo:          accountRepo,
+		accountDuplicateRepo: accountRepo,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,

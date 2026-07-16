@@ -75,6 +75,11 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 }
 
+// NewAdminAccountRepository 将账号仓储的原子复制能力显式提供给管理服务。
+func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+}
+
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
 func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
@@ -82,11 +87,21 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if err := createAccountRecord(ctx, r.client, account); err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
+	}
+	return nil
+}
+
+func createAccountRecord(ctx context.Context, client *dbent.Client, account *service.Account) error {
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
 
-	builder := r.client.Account.Create().
+	builder := client.Account.Create().
 		SetName(account.Name).
 		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
@@ -148,8 +163,58 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
+	return nil
+}
+
+// CreateWithAccountGroups 在同一事务中持久化账号、分组精确优先级，
+// 以及用于发布新路由快照的调度 outbox 事件。
+func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+	if account == nil {
+		return service.ErrAccountNilInput
+	}
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		// 仓储已处于事务中时，复用调用方持有的事务。
+		txClient = r.client
+	}
+
+	if err := createAccountRecord(ctx, txClient, account); err != nil {
+		return err
+	}
+	groupIDs := make([]int64, 0, len(groups))
+	if len(groups) > 0 {
+		builders := make([]*dbent.AccountGroupCreate, 0, len(groups))
+		for i := range groups {
+			groups[i].AccountID = account.ID
+			groupIDs = append(groupIDs, groups[i].GroupID)
+			builders = append(builders, txClient.AccountGroup.Create().
+				SetAccountID(account.ID).
+				SetGroupID(groups[i].GroupID).
+				SetPriority(groups[i].Priority),
+			)
+		}
+		if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
+			return err
+		}
+	}
+	account.GroupIDs = groupIDs
+	account.AccountGroups = append([]service.AccountGroup(nil), groups...)
+	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
+		return err
+	}
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -90,6 +90,18 @@ type AccountRepository interface {
 	ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error)
 }
 
+type AccountDuplicateRepository interface {
+	// CreateWithAccountGroups 原子持久化账号、精确分组优先级与新路由快照的调度 outbox 事件。
+	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
+}
+
+// AdminAccountRepository 将账号复制写入能力声明为显式构造依赖，
+// 避免强制只读网关测试替身实现该能力。
+type AdminAccountRepository interface {
+	AccountRepository
+	AccountDuplicateRepository
+}
+
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {

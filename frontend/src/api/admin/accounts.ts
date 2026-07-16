@@ -227,6 +227,46 @@ export async function create(accountData: CreateAccountRequest): Promise<Account
   return data
 }
 
+/** 在凭据不离开服务端的前提下复制账号。 */
+const duplicateOperationKeys = new Map<number, string>()
+
+function duplicateOperationStorageKey(id: number): string {
+  return `tokenrouter:admin:account-duplicate:${id}`
+}
+
+function getStoredDuplicateOperationKey(id: number): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(duplicateOperationStorageKey(id)) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeDuplicateOperationKey(id: number, key: string | null): void {
+  try {
+    if (key) globalThis.sessionStorage?.setItem(duplicateOperationStorageKey(id), key)
+    else globalThis.sessionStorage?.removeItem(duplicateOperationStorageKey(id))
+  } catch {
+    // 浏览器存储不可用时，仍使用内存中的重试保护。
+  }
+}
+
+export async function duplicate(id: number): Promise<Account> {
+  let idempotencyKey = duplicateOperationKeys.get(id) ?? getStoredDuplicateOperationKey(id)
+  if (!idempotencyKey) {
+    const requestID = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    idempotencyKey = `account-duplicate-${id}-${requestID}`
+  }
+  duplicateOperationKeys.set(id, idempotencyKey)
+  storeDuplicateOperationKey(id, idempotencyKey)
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`, undefined, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+  duplicateOperationKeys.delete(id)
+  storeDuplicateOperationKey(id, null)
+  return data
+}
+
 /**
  * Update account
  * @param id - Account ID
@@ -897,6 +937,7 @@ export const accountsAPI = {
   listWithEtag,
   getById,
   create,
+  duplicate,
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,
