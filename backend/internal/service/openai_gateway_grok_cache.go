@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,6 +15,7 @@ const (
 	grokConversationIDHeader        = "X-Grok-Conv-Id"
 	grokFreeCacheNativeToolsJSON    = `[{"type":"web_search"},{"type":"x_search"}]`
 	grokFreeCacheDisabledToolChoice = "none"
+	grokFreeRolling24hTokenLimit    = int64(2_000_000)
 )
 
 // resolveGrokCacheIdentity 为 xAI 服务端提示缓存派生稳定且租户隔离的路由身份。
@@ -93,7 +95,7 @@ func isGrokRequestContext(c *gin.Context) bool {
 //
 // xAI 会把未携带原生搜索工具的免费 OAuth 请求路由到不可缓存的 build-free 模型。
 // 对原本无工具的请求添加原生工具并设置 tool_choice=none，可选择支持缓存的层级而不
-// 实际执行搜索；客户端明确提供 tools 或 tool_choice 时禁用该增强，以保留函数调用语义。
+// 实际执行搜索；客户端明确提供的工具由下方仅适用于 Messages 的混合工具策略处理。
 func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity string, injectFreeTierTools bool) ([]byte, error) {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
@@ -119,6 +121,164 @@ func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity str
 		return nil, err
 	}
 	return sjson.SetBytes(out, "tool_choice", grokFreeCacheDisabledToolChoice)
+}
+
+// applyGrokFreeMessagesFunctionToolCacheRoute 仅对 Anthropic Messages 桥接且已知
+// 为 Free 的账号启用 xAI 可缓存混合工具路由。auto 选择会允许原生工具被调用，因此不得
+// 将该策略隐式扩展到付费账号或其它入口协议。
+func applyGrokFreeMessagesFunctionToolCacheRoute(body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
+	if strings.TrimSpace(cacheIdentity) == "" || !isKnownGrokFreeAccount(account) {
+		return body, nil
+	}
+	intentTools := gjson.GetBytes(intentSourceBody, "tools")
+	intentToolChoice := gjson.GetBytes(intentSourceBody, "tool_choice")
+	if !isGrokFreeCacheFunctionToolIntent(intentTools, intentToolChoice) {
+		return body, nil
+	}
+	return appendMissingGrokFreeCacheNativeTools(body)
+}
+
+func isKnownGrokFreeAccount(account *Account) bool {
+	if account == nil || !account.IsGrokOAuth() {
+		return false
+	}
+	freeSignal := false
+	paidSignal := false
+	inferredFreeSignal := false
+	if billing, err := grokBillingSnapshotFromExtra(account.Extra); err == nil && billing != nil {
+		if tier := strings.TrimSpace(billing.Plan); tier != "" {
+			if isGrokFreeSubscriptionTier(tier) {
+				freeSignal = true
+			} else if !isGrokUnknownSubscriptionTier(tier) {
+				paidSignal = true
+			}
+		}
+		if billing.UsagePercent != nil || billing.UsedPercent != nil ||
+			(billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0) {
+			paidSignal = true
+		}
+		// xAI 会故意为 Free 账号返回空 plan，只有付费订阅才带 SuperGrok plan/月度限额。
+		// 因此，成功且没有付费信号的月度计费观测是 Free 的正向证据，而不是未知层级；
+		// 部分探测仍按关闭策略处理。
+		if strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
+			(billing.StatusCode >= http.StatusOK && billing.StatusCode < http.StatusMultipleChoices &&
+				!billing.Partial && len(billing.FailedWindows) == 0) {
+			inferredFreeSignal = true
+		}
+	}
+	if snapshot, err := grokQuotaSnapshotFromExtra(account.Extra); err == nil && snapshot != nil {
+		if tier := strings.TrimSpace(snapshot.SubscriptionTier); tier != "" {
+			if isGrokFreeSubscriptionTier(tier) {
+				freeSignal = true
+			} else if !isGrokUnknownSubscriptionTier(tier) {
+				paidSignal = true
+			}
+		}
+		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil &&
+			*snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+			inferredFreeSignal = true
+		}
+	}
+	if tier := strings.TrimSpace(account.GetCredential("subscription_tier")); tier != "" {
+		if isGrokFreeSubscriptionTier(tier) {
+			freeSignal = true
+		} else if !isGrokUnknownSubscriptionTier(tier) {
+			paidSignal = true
+		}
+	}
+	// 明确的付费证据始终覆盖推断的 Free 信号，避免已升级但快照陈旧的账号仍携带历史
+	// 200 万 Free token 限额而被误判。
+	return !paidSignal && (freeSignal || inferredFreeSignal)
+}
+
+func isGrokFreeSubscriptionTier(tier string) bool {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "free", "grok-free", "grok_free", "free-tier", "free_tier", "basic", "grok-basic", "grok_basic":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGrokUnknownSubscriptionTier(tier string) bool {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "", "unknown", "n/a", "none":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGrokFreeCacheFunctionToolIntent(tools, toolChoice gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+	}
+	items := tools.Array()
+	if len(items) == 0 {
+		return false
+	}
+	for _, tool := range items {
+		if !tool.IsObject() || strings.TrimSpace(tool.Get("type").String()) != "function" {
+			return false
+		}
+		// Responses 函数声明的 name 位于顶层；拒绝 Chat Completions 嵌套结构和不完整声明。
+		if strings.TrimSpace(tool.Get("name").String()) == "" || tool.Get("function").Exists() {
+			return false
+		}
+	}
+	if !toolChoice.Exists() {
+		return true
+	}
+	return toolChoice.Type == gjson.String && strings.TrimSpace(toolChoice.String()) == "auto"
+}
+
+func appendMissingGrokFreeCacheNativeTools(body []byte) ([]byte, error) {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		return body, nil
+	}
+
+	items := tools.Array()
+	if len(items) == 0 {
+		return body, nil
+	}
+	merged := make([]json.RawMessage, 0, len(items)+2)
+	present := make(map[string]bool, 2)
+	hasFunction := false
+	for _, tool := range items {
+		toolType := strings.TrimSpace(tool.Get("type").String())
+		switch toolType {
+		case "function":
+			if !tool.IsObject() || strings.TrimSpace(tool.Get("name").String()) == "" || tool.Get("function").Exists() {
+				return body, nil
+			}
+			hasFunction = true
+		case "web_search", "x_search":
+			// 重试该辅助函数时，原生工具可能已经存在。
+		default:
+			return body, nil
+		}
+		merged = append(merged, json.RawMessage(tool.Raw))
+		present[toolType] = true
+	}
+	if !hasFunction {
+		return body, nil
+	}
+	for _, toolType := range []string{"web_search", "x_search"} {
+		if present[toolType] {
+			continue
+		}
+		raw, err := json.Marshal(map[string]string{"type": toolType})
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, raw)
+	}
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "tools", encoded)
 }
 
 // applyGrokCacheHeaders 写入 Chat Completions 约定的会话路由头。请求使用全新 header
