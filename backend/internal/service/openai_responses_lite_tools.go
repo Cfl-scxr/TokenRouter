@@ -7,16 +7,21 @@ import (
 	"strings"
 )
 
-// normalizeOpenAIResponsesLiteTools 将私有 namespace 声明移入 Responses Lite 要求的
-// input.additional_tools 容器。其它顶层工具必须属于 Lite 接口支持的有限集合；拒绝不支持的
-// hosted 工具是有意为之，静默丢弃会改变客户端请求语义。
+// normalizeOpenAIResponsesLiteTools 应用 Responses Lite 请求契约：reasoning 必须覆盖所有轮次，
+// 私有 namespace 声明则移入 input.additional_tools 容器。其它顶层工具必须属于 Lite 接口支持的
+// 有限集合；拒绝不支持的 hosted 工具是有意为之，静默丢弃会改变客户端请求语义。
 func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
 	}
+	if rawReasoning, exists := reqBody["reasoning"]; exists && rawReasoning != nil {
+		if _, ok := rawReasoning.(map[string]any); !ok {
+			return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+		}
+	}
 	rawTools, exists := reqBody["tools"]
 	if !exists || rawTools == nil {
-		return false, nil
+		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
@@ -50,11 +55,14 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 		}
 	}
 	if len(namespaceTools) == 0 {
-		return false, nil
+		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
 	}
 
 	input, err := appendOpenAIResponsesLiteAdditionalTools(reqBody["input"], namespaceTools)
 	if err != nil {
+		return false, err
+	}
+	if _, err := ensureOpenAIResponsesLiteReasoningContext(reqBody); err != nil {
 		return false, err
 	}
 	reqBody["input"] = input
@@ -63,6 +71,24 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	} else {
 		reqBody["tools"] = topLevelTools
 	}
+	return true, nil
+}
+
+// ensureOpenAIResponsesLiteReasoningContext 强制 Lite 请求携带全轮次推理上下文，同时保留其它推理参数。
+func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, error) {
+	rawReasoning, exists := reqBody["reasoning"]
+	if !exists || rawReasoning == nil {
+		reqBody["reasoning"] = map[string]any{"context": "all_turns"}
+		return true, nil
+	}
+	reasoning, ok := rawReasoning.(map[string]any)
+	if !ok {
+		return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+	}
+	if context, ok := reasoning["context"].(string); ok && context == "all_turns" {
+		return false, nil
+	}
+	reasoning["context"] = "all_turns"
 	return true, nil
 }
 
