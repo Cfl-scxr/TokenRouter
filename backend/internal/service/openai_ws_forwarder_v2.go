@@ -444,9 +444,30 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	}
 
 	readTimeout := s.openAIWSReadTimeout()
+	var pendingJSONDocuments [][]byte
 
 	for {
-		message, readErr := lease.ReadMessageWithContextTimeout(ctx, readTimeout)
+		var message []byte
+		var readErr error
+		if len(pendingJSONDocuments) > 0 {
+			message = pendingJSONDocuments[0]
+			pendingJSONDocuments = pendingJSONDocuments[1:]
+		} else {
+			message, readErr = lease.ReadMessageWithContextTimeout(ctx, readTimeout)
+			if readErr == nil {
+				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
+					logOpenAIWSModeInfo(
+						"concatenated_json_repaired account_id=%d conn_id=%s documents=%d bytes=%d",
+						account.ID,
+						truncateOpenAIWSLogValue(connID, openAIWSIDValueMaxLen),
+						len(documents),
+						len(message),
+					)
+					message = documents[0]
+					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
+				}
+			}
+		}
 		if readErr != nil {
 			lease.MarkBroken()
 			closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
@@ -678,7 +699,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if isTerminalEvent {
-			cleanExit = true
+			// 终止事件必须是当前 WS 消息中的最后一个 JSON 文档；尾随文档不再写给已完成的
+			// 客户端请求，同时禁止复用语义不明确的上游连接。
+			cleanExit = len(pendingJSONDocuments) == 0
 			break
 		}
 	}
