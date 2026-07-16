@@ -324,6 +324,28 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 			expected: xai.DefaultCLIBaseURL,
 		},
 		{
+			name: "oauth stored CLI proxy stays on CLI subscription proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": xai.DefaultCLIBaseURL,
+				},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "oauth stored CLI proxy variant is canonicalized to CLI proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": "HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
+				},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
 			name: "oauth legacy official API is pinned to CLI proxy",
 			account: Account{
 				Type:     AccountTypeOAuth,
@@ -335,7 +357,18 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 			expected: xai.DefaultCLIBaseURL,
 		},
 		{
-			name: "API key retains configured media API",
+			name: "oauth untrusted custom base_url is pinned to CLI proxy",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"base_url": "https://custom.example.com/v1",
+				},
+			},
+			expected: xai.DefaultCLIBaseURL,
+		},
+		{
+			name: "API key retains its configured media API",
 			account: Account{
 				Type:     AccountTypeAPIKey,
 				Platform: PlatformGrok,

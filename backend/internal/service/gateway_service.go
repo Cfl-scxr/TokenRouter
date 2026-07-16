@@ -568,17 +568,74 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 }
 
-// UpstreamFailoverError indicates an upstream error that should trigger account failover.
+// GatewayFailureStage 标识请求失败的阶段。零值有意按推理阶段处理，
+// 从而保持现有 UpstreamFailoverError 调用方的行为。
+type GatewayFailureStage string
+
+const (
+	GatewayFailureStageInference   GatewayFailureStage = "inference"
+	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
+)
+
+// GatewayFailureScope 标识切换账号是否可能解决当前失败。
+type GatewayFailureScope string
+
+const (
+	GatewayFailureScopeAccount  GatewayFailureScope = "account"
+	GatewayFailureScopeProvider GatewayFailureScope = "provider"
+	GatewayFailureScopeRequest  GatewayFailureScope = "request"
+)
+
+// NextAccountAction 为保持向后兼容采用三态值。零值表示旧版重试行为，
+// 只有 NextAccountStop 会显式终止账号切换。
+type NextAccountAction uint8
+
+const (
+	NextAccountLegacyRetry NextAccountAction = iota
+	NextAccountRetry
+	NextAccountStop
+)
+
+type GatewayFailureReason string
+
+// UpstreamFailoverError 表示可能触发账号切换的上游或凭据错误。
+// 新增元数据保持现有复合字面量源码兼容，并保留旧版切换账号行为。
 type UpstreamFailoverError struct {
 	StatusCode             int
 	ResponseBody           []byte      // 上游响应体，用于错误透传规则匹配
 	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	Stage                  GatewayFailureStage
+	Scope                  GatewayFailureScope
+	Reason                 GatewayFailureReason
+	NextAccountAction      NextAccountAction
+	ClientStatusCode       int
+	ClientMessage          string
 }
 
 func (e *UpstreamFailoverError) Error() string {
+	if e != nil && e.Stage == GatewayFailureStageAccountAuth {
+		return fmt.Sprintf("credential failure: %s (failover)", e.Reason)
+	}
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
+}
+
+func (e *UpstreamFailoverError) ShouldRetryNextAccount() bool {
+	return e != nil && e.NextAccountAction != NextAccountStop
+}
+
+func (e *UpstreamFailoverError) IsCredentialFailure() bool {
+	return e != nil && e.Stage == GatewayFailureStageAccountAuth
+}
+
+// ShouldReportAccountScheduleFailure 防止把提供方级或请求级凭据失败误归因到当前账号。
+// 旧版错误和推理错误继续保持原有的调度健康上报行为。
+func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
+	if e == nil {
+		return false
+	}
+	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
 }
 
 // sseStreamErrorEventError 表示上游 SSE 流体内出现 event:error 帧。

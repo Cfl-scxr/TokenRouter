@@ -235,6 +235,32 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		entry.ErrorType = "api_error"
 	}
 
+	// 凭据获取属于网关账号认证阶段，而非推理 HTTP 尝试。
+	// 在持久化边界强制该归属，避免较早的推理尝试状态或文本泄漏到顶层认证字段，
+	// 即使调用方传入了过期的单值上下文也不例外。
+	for i := len(entry.UpstreamErrors) - 1; i >= 0; i-- {
+		last := entry.UpstreamErrors[i]
+		if last == nil {
+			continue
+		}
+		if last.Stage == string(GatewayFailureStageAccountAuth) {
+			entry.ErrorPhase = string(GatewayFailureStageAccountAuth)
+			entry.ErrorOwner = "provider"
+			entry.ErrorSource = "gateway"
+			code := 0
+			entry.UpstreamStatusCode = &code
+			entry.UpstreamErrorMessage = nil
+			if message := strings.TrimSpace(last.Message); message != "" {
+				entry.UpstreamErrorMessage = &message
+			}
+			entry.UpstreamErrorDetail = nil
+			if detail := strings.TrimSpace(last.Detail); detail != "" {
+				entry.UpstreamErrorDetail = &detail
+			}
+		}
+		break
+	}
+
 	// Sanitize + truncate error_body to avoid storing sensitive data.
 	if strings.TrimSpace(entry.ErrorBody) != "" {
 		sanitized, _ := sanitizeErrorBodyForStorage(entry.ErrorBody, opsMaxStoredErrorBodyBytes)
@@ -242,7 +268,7 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	}
 
 	// Sanitize upstream error context if provided by gateway services.
-	if entry.UpstreamStatusCode != nil && *entry.UpstreamStatusCode <= 0 {
+	if entry.UpstreamStatusCode != nil && *entry.UpstreamStatusCode <= 0 && entry.ErrorPhase != string(GatewayFailureStageAccountAuth) {
 		entry.UpstreamStatusCode = nil
 	}
 	if entry.UpstreamErrorMessage != nil {

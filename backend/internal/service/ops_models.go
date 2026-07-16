@@ -27,7 +27,7 @@ type OpsErrorLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Standardized classification
-	// - phase: request|auth|routing|upstream|network|internal
+	// - 阶段：request|auth|account_auth|routing|upstream|network|internal
 	// - owner: client|provider|platform
 	// - source: client_request|upstream_http|gateway
 	Phase string `json:"phase"`
@@ -120,7 +120,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
+	Phase            string // Recovered provider rows bypass status>=400 only with the explicit opt-in below.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -149,15 +149,14 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// IncludeRecoveredUpstream 显式豁免 status>=400 守卫（仅在 Phase=="upstream" 时生效）：
-	// ops 专用上游错误列表需要看到 status<400 的 recovered upstream 行。
-	// 请求错误语义的端点不设此开关，phase=upstream 过滤照常生效且守卫保留。
+	// IncludeRecoveredUpstream 允许提供方健康视图绕过 status>=400 守卫，
+	// 从而展示 upstream/account_auth 阶段中 status<400 的恢复记录。
+	// 普通请求错误接口不设置该开关，继续保持客户端错误语义。
 	IncludeRecoveredUpstream bool
 
-	// ErrorPhasesAny 和 ErrorTypesAny 仅增加普通 ANY() 条件，不改变单值 Phase 的特殊语义。
-	// 只有 Phase=="upstream" 且 IncludeRecoveredUpstream 为 true 时才跳过 status>=400 条件。
-	// ANY 条件本身不会跳过该条件，因此已恢复且 status_code<400 的上游记录仍会被排除。
-	// 这两个字段用于把面向用户的粗粒度分类映射为后端查询条件。
+	// ErrorPhasesAny 和 ErrorTypesAny 增加普通 ANY() 条件，不改变单值 Phase 的匹配语义。
+	// 开启 IncludeRecoveredUpstream 且阶段列表仅含 upstream/account_auth 时也会绕过守卫；
+	// 其它 ANY 条件不会自行放宽 status>=400。字段用于映射前端的粗粒度错误分类。
 	ErrorPhasesAny []string
 	ErrorTypesAny  []string
 
