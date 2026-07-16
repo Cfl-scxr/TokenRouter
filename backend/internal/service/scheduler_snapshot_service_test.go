@@ -47,12 +47,9 @@ func TestSchedulerSnapshotPlatformsIncludesQoder(t *testing.T) {
 	require.Contains(t, schedulerSnapshotPlatforms(), PlatformQoder)
 }
 
-func TestSchedulerSnapshotServiceDefaultBucketsIncludesQoder(t *testing.T) {
-	svc := NewSchedulerSnapshotService(nil, nil, nil, nil, nil)
+func TestSchedulerSnapshotServiceCanonicalBucketsIncludesQoder(t *testing.T) {
+	buckets := schedulerCanonicalBuckets(0)
 
-	buckets, err := svc.defaultBuckets(context.Background())
-
-	require.NoError(t, err)
 	require.Contains(t, buckets, SchedulerBucket{GroupID: 0, Platform: PlatformQoder, Mode: SchedulerModeSingle})
 	require.Contains(t, buckets, SchedulerBucket{GroupID: 0, Platform: PlatformQoder, Mode: SchedulerModeForced})
 	require.NotContains(t, buckets, SchedulerBucket{GroupID: 0, Platform: PlatformQoder, Mode: SchedulerModeMixed})
