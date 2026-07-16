@@ -1162,7 +1162,9 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 			wantStatus:   http.StatusBadGateway,
 			wantMessage:  "Upstream authentication failed",
 		},
-		// 瞬时 5xx 对 API-key 账号已改走 failover，这里改用非瞬时状态继续覆盖净化重建。
+		// 瞬时 5xx（500/502/503/504/520-524）对 API-key 账号已改走多账号
+		// failover（见 APIKeyPassthrough_Transient5xxTriggersFailover），此处
+		// 改用非瞬时 5xx 状态码，继续覆盖净化重建路径。
 		{
 			name:         "html 5xx",
 			statusCode:   530,
@@ -1615,9 +1617,7 @@ func TestOpenAIGatewayService_APIKeyPassthrough_ContextWindow502DoesNotFailover(
 	require.False(t, errors.As(err, &failoverErr), "context-window errors are deterministic request failures")
 	require.True(t, c.Writer.Written())
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	// 在后续显式和解前，当前组合仍遵循 #4306 的通用净化文案。
-	require.Equal(t, "Upstream service temporarily unavailable", gjson.Get(rec.Body.String(), "error.message").String())
-	require.NotContains(t, rec.Body.String(), "exceeds the context window")
+	require.Contains(t, gjson.Get(rec.Body.String(), "error.message").String(), "exceeds the context window")
 	require.True(t, body.closed)
 }
 
