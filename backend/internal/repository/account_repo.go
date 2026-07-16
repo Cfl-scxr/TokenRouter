@@ -501,6 +501,9 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue credentials update failed: account=%d err=%v", id, err)
+	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
@@ -790,31 +793,55 @@ func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, 
 	return r.accountsToService(ctx, accounts)
 }
 
-func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]service.Account, error) {
+func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, options service.OAuthRefreshPageOptions) (*service.OAuthRefreshCandidatePage, error) {
 	if r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 	}
+	if len(options.Platforms) == 0 {
+		return nil, errors.New("oauth refresh candidate platforms cannot be empty")
+	}
+	if options.Limit <= 0 || options.Limit > 1000 {
+		return nil, errors.New("oauth refresh candidate page limit must be between 1 and 1000")
+	}
+
 	// (cond) IS NOT TRUE 把 NULL 和 FALSE 都视为"可被刷新"。直接写
 	// NOT (a AND b) 在 PG 三值逻辑下会把 a 或 b 为 NULL 的行（即绝大多数
 	// 健康账号：temp_unschedulable_until=NULL）也排除，导致后台 token
 	// 刷新工作器漏掉所有正常账号，access_token 到期后请求开始 401。
-	rows, err := r.sql.QueryContext(ctx, `
+	query := `
 		SELECT id
 		FROM accounts
 		WHERE deleted_at IS NULL
-			AND status = 'active'
-			AND (
-				(type IN ('oauth', 'setup-token') AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity'))
-				OR (platform = 'qoder' AND type = 'cosy')
-			)
+			AND platform = ANY($1)
+			AND id > $2`
+	if options.ActiveOnly {
+		query += `
+			AND status = 'active'`
+	}
+	if options.IncludeSetupToken {
+		query += `
+			AND (type IN ('oauth', 'setup-token') OR (platform = 'qoder' AND type = 'cosy'))`
+	} else {
+		query += `
+			AND (type = 'oauth' OR (platform = 'qoder' AND type = 'cosy'))`
+	}
+	if options.RequireRefreshToken {
+		query += `
 			AND credentials ? 'refresh_token'
-			AND btrim(credentials->>'refresh_token') <> ''
+			AND btrim(credentials->>'refresh_token') <> ''`
+	}
+	if options.ExcludeRetryCooldown {
+		query += `
 			AND (
 				temp_unschedulable_until > NOW()
 				AND temp_unschedulable_reason LIKE 'token refresh retry exhausted:%'
-			) IS NOT TRUE
-		ORDER BY priority ASC, id ASC
-	`)
+			) IS NOT TRUE`
+	}
+	query += `
+		ORDER BY id ASC
+		LIMIT $3`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(options.Platforms), options.AfterID, options.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -832,20 +859,33 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 		return nil, err
 	}
 	if len(ids) == 0 {
-		return []service.Account{}, nil
+		return &service.OAuthRefreshCandidatePage{Accounts: []service.Account{}}, nil
 	}
 
 	accounts, err := r.GetByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]service.Account, 0, len(accounts))
+	accountsByID := make(map[int64]*service.Account, len(accounts))
 	for _, account := range accounts {
 		if account != nil {
+			accountsByID[account.ID] = account
+		}
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, id := range ids {
+		if account := accountsByID[id]; account != nil {
 			out = append(out, *account)
 		}
 	}
-	return out, nil
+	page := &service.OAuthRefreshCandidatePage{
+		Accounts: out,
+		HasMore:  len(ids) == options.Limit,
+	}
+	if len(ids) > 0 {
+		page.NextAfterID = ids[len(ids)-1]
+	}
+	return page, nil
 }
 
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
@@ -978,6 +1018,240 @@ func (r *accountRepository) SetGrokCredentialErrorIfMatch(
 	affected, err := result.RowsAffected()
 	if err != nil || affected == 0 {
 		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokOAuthErrorIfCredentialsUnchanged 仅在账号仍活动且完整 JSONB 凭据与对账观察值一致时，
+// 原子隔离结构无效的 Grok OAuth 账号。精确比较包含可选的 _token_version，避免并发重新授权被旧检查覆盖。
+func (r *accountRepository) SetGrokOAuthErrorIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND NULLIF(BTRIM(a.credentials->>'refresh_token'), '') IS NULL
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $8, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// UpdateGrokOAuthCredentialsIfUnchanged 仅在完整凭据和代理仍匹配上游刷新所用快照时持久化新凭据。
+// scheduler outbox 写入与凭据更新位于同一 PostgreSQL 语句，持久化失效失败会一并回滚凭据更新。
+func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	credentials map[string]any,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+	}
+	credentialsJSON, err := json.Marshal(normalizeJSONMap(credentials))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = $1::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $2
+			AND a.deleted_at IS NULL
+			AND a.platform = $3
+			AND a.type = $4
+			AND a.credentials = $5::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $6
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
+	`,
+		string(credentialsJSON),
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokOAuthRefreshErrorIfCredentialsUnchanged 是后台刷新对应的 CAS 错误更新。
+// 它精确匹配失败上游尝试使用的完整凭据，但不要求 refresh token 缺失。
+func (r *accountRepository) SetGrokOAuthRefreshErrorIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged 仅在活动账号凭据仍精确匹配上游尝试时，
+// 应用有界的临时刷新隔离。
+func (r *accountRepository) SetGrokOAuthRefreshTempUnschedulableIfCredentialsUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	until time.Time,
+	reason string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	expectedJSON, err := json.Marshal(normalizeJSONMap(expectedCredentials))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET temp_unschedulable_until = $1,
+			temp_unschedulable_reason = $2,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.status = $6
+			AND a.credentials = $7::jsonb
+			AND a.proxy_id IS NOT DISTINCT FROM $8
+			AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until < $1)
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $9, updated.id, NULL, NULL FROM updated
+	`,
+		until,
+		reason,
+		id,
+		service.PlatformGrok,
+		service.AccountTypeOAuth,
+		service.StatusActive,
+		string(expectedJSON),
+		expectedProxyID,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
 	return true, nil

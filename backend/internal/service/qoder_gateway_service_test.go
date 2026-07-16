@@ -3943,6 +3943,7 @@ func TestQoderGatewayRefreshAccountSessionPersistsCredentialsAndInvalidatesCache
 		Name:     "qoder",
 		Platform: PlatformQoder,
 		Type:     AccountTypeCosy,
+		Status:   StatusActive,
 		Credentials: map[string]any{
 			"security_oauth_token": "old-token",
 			"refresh_token":        "old-refresh",
@@ -4025,6 +4026,7 @@ func TestQoderGatewayRefreshAccountSessionIgnoresNonAuthCredentialDrift(t *testi
 		Name:     "qoder",
 		Platform: PlatformQoder,
 		Type:     AccountTypeCosy,
+		Status:   StatusActive,
 		Credentials: map[string]any{
 			"security_oauth_token": "old-token",
 			"refresh_token":        "old-refresh",
@@ -4074,6 +4076,7 @@ func TestQoderGatewayRefreshAccountSessionRecoversRotatedRefreshTokenRace(t *tes
 		Name:     "qoder",
 		Platform: PlatformQoder,
 		Type:     AccountTypeCosy,
+		Status:   StatusActive,
 		Credentials: map[string]any{
 			"security_oauth_token": "old-token",
 			"refresh_token":        "old-refresh",
