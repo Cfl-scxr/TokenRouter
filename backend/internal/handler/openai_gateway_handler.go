@@ -1256,8 +1256,19 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 	h.anthropicErrorResponse(c, status, errType, message)
 }
 
-// handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
+// handleAnthropicFailoverExhausted 将上游切号错误转换为 Anthropic 格式。
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	if failoverErr != nil && failoverErr.IsOpenAIRequestBodyTooLarge() {
+		service.SetOpsUpstreamError(c, http.StatusRequestEntityTooLarge, service.OpenAIRequestBodyTooLargeClientMessage, "")
+		h.anthropicStreamingAwareError(
+			c,
+			http.StatusRequestEntityTooLarge,
+			"invalid_request_error",
+			service.OpenAIRequestBodyTooLargeClientMessage,
+			streamStarted,
+		)
+		return
+	}
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
@@ -2253,6 +2264,17 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
+		return
+	}
+	if failoverErr.IsOpenAIRequestBodyTooLarge() {
+		service.SetOpsUpstreamError(c, http.StatusRequestEntityTooLarge, service.OpenAIRequestBodyTooLargeClientMessage, "")
+		h.handleStreamingAwareError(
+			c,
+			http.StatusRequestEntityTooLarge,
+			"invalid_request_error",
+			service.OpenAIRequestBodyTooLargeClientMessage,
+			streamStarted,
+		)
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)

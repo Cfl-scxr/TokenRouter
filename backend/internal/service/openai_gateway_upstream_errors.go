@@ -223,14 +223,54 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
-
 	if IsOpenAICyberWarningPayload(upstreamBody, upstreamMsg) {
 		return false
+	}
+	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
+		return true
 	}
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 	}
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+}
+
+// OpenAIRequestBodyTooLargeClientMessage 是账号级请求体限制切号耗尽后使用的固定下游文案。
+const OpenAIRequestBodyTooLargeClientMessage = "Request payload is too large"
+
+const openAIRequestBodyTooLargeReason = GatewayFailureReason("openai_request_body_too_large")
+
+func isOpenAIRequestBodyTooLargeError(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	return statusCode == http.StatusRequestEntityTooLarge && !isOpenAIContextWindowError(upstreamMsg, upstreamBody)
+}
+
+func newOpenAIUpstreamFailoverError(
+	statusCode int,
+	responseHeaders http.Header,
+	responseBody []byte,
+	upstreamMsg string,
+	retryableOnSameAccount bool,
+) *UpstreamFailoverError {
+	failoverErr := &UpstreamFailoverError{
+		StatusCode:             statusCode,
+		ResponseBody:           responseBody,
+		ResponseHeaders:        responseHeaders.Clone(),
+		RetryableOnSameAccount: retryableOnSameAccount,
+	}
+	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = openAIRequestBodyTooLargeReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
+		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
+	}
+	return failoverErr
+}
+
+// IsOpenAIRequestBodyTooLarge 表示当前账号因序列化请求大小拒绝请求，但其他账号仍可能接受。
+func (e *UpstreamFailoverError) IsOpenAIRequestBodyTooLarge() bool {
+	return e != nil && e.Reason == openAIRequestBodyTooLargeReason
 }
 
 func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {
@@ -350,6 +390,27 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			},
 		})
 		return nil, wrapOpenAIUpstreamWarningIfCyber(resp.StatusCode, body, errMsg, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, errMsg))
+	}
+
+	if isOpenAIRequestBodyTooLargeError(resp.StatusCode, upstreamMsg, body) {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel...)
+		return nil, newOpenAIUpstreamFailoverError(
+			resp.StatusCode,
+			resp.Header,
+			body,
+			upstreamMsg,
+			false,
+		)
 	}
 
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
