@@ -50,9 +50,29 @@ func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 			reason: "unsupported_message_role_developer",
 		},
 		{
-			name:   "image content falls back",
-			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
-			reason: "non_text_message_content",
+			name: "image content is bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text and image parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}]}`,
+			want: true,
+		},
+		{
+			name: "text only parts are bridgeable",
+			body: `{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			want: true,
+		},
+		{
+			name:   "unknown content part falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA=="}}]}]}`,
+			reason: "unsupported_content_part_input_audio",
+		},
+		{
+			name:   "empty content array falls back",
+			body:   `{"model":"grok","messages":[{"role":"user","content":[]}]}`,
+			reason: "empty_message_content",
 		},
 		{
 			name:   "function tools fall back",
@@ -161,6 +181,39 @@ func TestForwardGrokChatViaResponsesNonStreamingCachesAndReturnsChat(t *testing.
 	require.Equal(t, "cached ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
 	require.Equal(t, int64(9856), gjson.Get(recorder.Body.String(), "usage.prompt_tokens_details.cached_tokens").Int())
 	require.NotNil(t, repo.updates[account.ID][grokQuotaSnapshotExtraKey])
+}
+
+func TestForwardGrokChatImageWithoutCacheIdentityUsesResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"grok","messages":[{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,QQ=="}}]}],"stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, grokChatRawEndpoint, bytes.NewReader(body))
+
+	account := grokChatBridgeTestAccount(711)
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &httpUpstreamRecorder{resp: grokChatBridgeCompletedResponse("resp_grok_chat_image", 0)}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
+	require.Equal(t, grokChatResponsesEndpoint, result.UpstreamEndpoint)
+	require.Equal(t, "input_text", gjson.GetBytes(upstream.lastBody, "input.0.content.0.type").String())
+	require.Equal(t, "what is this", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+	require.Equal(t, "input_image", gjson.GetBytes(upstream.lastBody, "input.0.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,QQ==", gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
+	require.Empty(t, upstream.lastReq.Header.Get(grokConversationIDHeader))
 }
 
 func TestForwardGrokChatViaResponsesStreamingPropagatesCachedUsage(t *testing.T) {

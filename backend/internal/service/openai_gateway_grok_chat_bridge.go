@@ -11,6 +11,7 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -139,16 +140,59 @@ func grokChatResponsesBridgeEligibility(body []byte) (bool, string) {
 		default:
 			return false, "unsupported_message_role_" + role
 		}
-		var content string
-		if raw, exists := message["content"]; !exists || json.Unmarshal(raw, &content) != nil {
-			// 结构化内容可能包含 image_url 等桥接无法保证行为一致的部分。
+		raw, exists := message["content"]
+		if !exists {
 			return false, "non_text_message_content"
 		}
-		if strings.TrimSpace(content) == "" {
-			return false, "empty_message_content"
+		var content string
+		if json.Unmarshal(raw, &content) == nil {
+			if strings.TrimSpace(content) == "" {
+				return false, "empty_message_content"
+			}
+			continue
+		}
+		// 结构化内容只允许由 text、image_url 或 input_image 组成的数组；它们可无损转换为
+		// Responses input_text/input_image，从而保留 Chat Completions 语义。
+		if ok, reason := grokChatStructuredContentBridgeable(raw); !ok {
+			return false, reason
 		}
 	}
 
+	return true, ""
+}
+
+func grokChatStructuredContentBridgeable(raw json.RawMessage) (bool, string) {
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return false, "non_text_message_content"
+	}
+	if len(parts) == 0 {
+		return false, "empty_message_content"
+	}
+	hasContent := false
+	for _, part := range parts {
+		var partType string
+		rawType, ok := part["type"]
+		if !ok || json.Unmarshal(rawType, &partType) != nil {
+			return false, "non_text_message_content"
+		}
+		switch strings.TrimSpace(partType) {
+		case "text":
+			var text string
+			if raw, ok := part["text"]; ok && json.Unmarshal(raw, &text) == nil {
+				if strings.TrimSpace(text) != "" {
+					hasContent = true
+				}
+			}
+		case "image_url", "input_image":
+			hasContent = true
+		default:
+			return false, "unsupported_content_part_" + strings.TrimSpace(partType)
+		}
+	}
+	if !hasContent {
+		return false, "empty_message_content"
+	}
 	return true, ""
 }
 
@@ -206,7 +250,11 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	cacheIdentity := resolveGrokCacheIdentity(c, body, promptCacheKey, upstreamModel)
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) {
+	// 图片输入必须通过 Responses 桥接：原始 Chat Completions 路径无法把 image_url
+	// 转发给非 Composer 模型的 Grok 原生视觉能力，否则图片会被静默丢弃；
+	// 因此即使没有 prompt-cache 身份也要路由到 Responses。
+	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || strings.TrimSpace(upstreamModel) != "grok-4.5") {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
 	}
 
