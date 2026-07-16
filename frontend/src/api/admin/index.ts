@@ -32,6 +32,7 @@ import channelsAPI from './channels'
 import adminPaymentAPI from './payment'
 import riskControlAPI from './riskControl'
 import adminDataSharingAPI from './dataSharing'
+import auditAPI from './audit'
 
 /**
  * Unified admin API object for convenient access
@@ -65,7 +66,8 @@ export const adminAPI = {
   channels: channelsAPI,
   payment: adminPaymentAPI,
   riskControl: riskControlAPI,
-  dataSharing: adminDataSharingAPI
+  dataSharing: adminDataSharingAPI,
+  audit: auditAPI
 }
 
 export {
@@ -97,12 +99,14 @@ export {
   channelsAPI,
   adminPaymentAPI,
   riskControlAPI,
-  adminDataSharingAPI
+  adminDataSharingAPI,
+  auditAPI
 }
 
 export default adminAPI
 
 // Re-export types used by components
+export type { AuditLog, AuditLogQuery, AuditLogListResponse } from './audit'
 export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'

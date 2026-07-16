@@ -42,6 +42,7 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	dataSharingHandler *admin.DataSharingHandler,
 	codexInviteResetHandler *admin.CodexInviteResetHandler,
+	auditLogHandler *admin.AuditLogHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
@@ -79,6 +80,7 @@ func ProvideAdminHandlers(
 		Affiliate:             affiliateHandler,
 		DataSharing:           dataSharingHandler,
 		CodexInviteReset:      codexInviteResetHandler,
+		AuditLog:              auditLogHandler,
 	}
 }
 
@@ -213,6 +215,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAffiliateHandler,
 	admin.NewDataSharingHandler,
 	admin.NewCodexInviteResetHandler,
+	admin.NewAuditLogHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

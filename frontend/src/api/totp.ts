@@ -71,13 +71,29 @@ export async function disable(request: TotpDisableRequest): Promise<{ success: b
   return data
 }
 
+/** 敏感操作二次验证响应。 */
+export interface TotpStepUpResponse {
+  verified: boolean
+  expires_in: number
+}
+
+/**
+ * 校验 TOTP 并为当前会话授予短期敏感操作权限。
+ * @param code 六位 TOTP 验证码
+ */
+export async function stepUp(code: string): Promise<TotpStepUpResponse> {
+  const { data } = await apiClient.post<TotpStepUpResponse>('/user/totp/step-up', { code })
+  return data
+}
+
 export const totpAPI = {
   getStatus,
   getVerificationMethod,
   sendVerifyCode,
   initiateSetup,
   enable,
-  disable
+  disable,
+  stepUp
 }
 
 export default totpAPI

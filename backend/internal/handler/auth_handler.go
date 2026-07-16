@@ -107,7 +107,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 	if err != nil {
 		slog.Error("failed to generate token pair", "error", err, "user_id", user.ID)
 		// 回退到只返回Access Token
-		token, tokenErr := h.authService.GenerateToken(user)
+		token, tokenErr := h.authService.GenerateToken(c.Request.Context(), user)
 		if tokenErr != nil {
 			response.InternalError(c, "Failed to generate token")
 			return
@@ -164,6 +164,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	middleware2.SetAuditActor(c, 0, strings.TrimSpace(req.Email))
 
 	// Turnstile 验证（邮箱验证码注册场景避免重复校验一次性 token）
 	if err := h.authService.VerifyTurnstileForRegister(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c), req.VerifyCode); err != nil {
@@ -176,6 +177,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	middleware2.SetAuditActor(c, user.ID, user.Email)
 
 	h.respondWithTokenPair(c, user)
 }
@@ -215,6 +217,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	middleware2.SetAuditActor(c, 0, strings.TrimSpace(req.Email))
 
 	// Turnstile 验证
 	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
@@ -227,6 +230,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	middleware2.SetAuditActor(c, user.ID, user.Email)
 	_ = token // token 由 authService.Login 返回但此处由 respondWithTokenPair 重新生成
 
 	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
@@ -295,6 +299,7 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		response.BadRequest(c, "Invalid or expired 2FA session")
 		return
 	}
+	middleware2.SetAuditActor(c, session.UserID, session.Email)
 
 	slog.Debug("login_2fa_session_found",
 		"user_id", session.UserID,

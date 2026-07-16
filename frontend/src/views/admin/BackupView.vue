@@ -343,6 +343,7 @@
         </div>
       </transition>
     </teleport>
+    <TotpStepUpDialog :controller="backupStepUp" />
 </template>
 
 <script setup lang="ts">
@@ -351,9 +352,23 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
 import { useAppStore } from '@/stores'
 import type { BackupContentConfig, BackupS3Config, BackupScheduleConfig, BackupRecord, BackupStorageConfig } from '@/api/admin/backup'
+import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
+import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const backupStepUp = useStepUp()
+
+// 敏感操作被 2FA 门控拦截时的统一提示。
+function reportStepUpBlocked(error: unknown): boolean {
+  if (!isStepUpBlocked(error)) return false
+  appStore.showError(
+    stepUpBlockReason(error) === 'STEP_UP_ADMIN_API_KEY_FORBIDDEN'
+      ? t('stepUp.adminApiKeyForbidden')
+      : t('stepUp.notEnabled')
+  )
+  return true
+}
 
 // 存储配置
 const storageForm = ref<BackupStorageConfig>({
@@ -600,10 +615,12 @@ async function loadStorageConfig() {
 async function saveStorageConfig() {
   savingStorage.value = true
   try {
-    await adminAPI.backup.updateStorageConfig(buildStoragePayload())
+    await backupStepUp.run(() => adminAPI.backup.updateStorageConfig(buildStoragePayload()))
     appStore.showSuccess(t('admin.backup.storage.saved'))
     await loadStorageConfig()
   } catch (error) {
+    if (isStepUpCancelled(error)) return
+    if (reportStepUpBlocked(error)) return
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   } finally {
     savingStorage.value = false
@@ -699,11 +716,19 @@ async function loadBackups() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    const record = await adminAPI.backup.createBackup({ expire_days: manualExpireDays.value })
+    const record = await backupStepUp.run(() => adminAPI.backup.createBackup({ expire_days: manualExpireDays.value }))
     // 插入到列表顶部
     backups.value.unshift(record)
     startPolling(record.id)
   } catch (error: any) {
+    if (isStepUpCancelled(error)) {
+      creatingBackup.value = false
+      return
+    }
+    if (reportStepUpBlocked(error)) {
+      creatingBackup.value = false
+      return
+    }
     if (error?.response?.status === 409) {
       appStore.showWarning(t('admin.backup.operations.alreadyInProgress'))
     } else {
@@ -717,7 +742,7 @@ async function downloadBackup(id: string) {
   try {
     const record = backups.value.find(item => item.id === id)
     if (recordStorageType(record) === 'local') {
-      const blob = await adminAPI.backup.downloadBackupFile(id)
+      const blob = await backupStepUp.run(() => adminAPI.backup.downloadBackupFile(id))
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -728,9 +753,16 @@ async function downloadBackup(id: string) {
       URL.revokeObjectURL(url)
       return
     }
-    const result = await adminAPI.backup.getDownloadURL(id)
-    window.open(result.url, '_blank', 'noopener')
+    const result = await backupStepUp.run(() => adminAPI.backup.getDownloadURL(id))
+    // 预签名 URL 带 attachment disposition，同页 anchor 导航直接触发下载；
+    // 不用 window.open：step-up 弹窗 await 会耗尽瞬态用户激活，新标签页会被浏览器拦截。
+    const link = document.createElement('a')
+    link.href = result.url
+    link.rel = 'noopener'
+    link.click()
   } catch (error) {
+    if (isStepUpCancelled(error)) return
+    if (reportStepUpBlocked(error)) return
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   }
 }
