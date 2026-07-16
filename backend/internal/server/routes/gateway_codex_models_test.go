@@ -59,23 +59,31 @@ func TestGatewayRoutesModelsWithClientVersionUsesLocalList(t *testing.T) {
 		newCodexModelsRemovalGatewayHandler(repo),
 		service.PlatformOpenAI,
 	)
-	req := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.144.0", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, req)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.NotContains(t, recorder.Body.String(), "No available OpenAI OAuth accounts")
-	var response struct {
-		Object string `json:"object"`
-		Data   []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+	paths := []string{
+		"/v1/models?client_version=0.144.0",
+		"/models?client_version=0.144.0",
 	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-	require.Equal(t, "list", response.Object)
-	require.Len(t, response.Data, 1)
-	require.Equal(t, "local-api-key-model", response.Data[0].ID)
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.NotContains(t, recorder.Body.String(), "No available OpenAI OAuth accounts")
+			var response struct {
+				Object string `json:"object"`
+				Data   []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Equal(t, "list", response.Object)
+			require.Len(t, response.Data, 1)
+			require.Equal(t, "local-api-key-model", response.Data[0].ID)
+		})
+	}
 }
 
 // Codex manifest 路由应被移除，已有 Responses 兼容路由仍需保留。
@@ -87,10 +95,11 @@ func TestGatewayRoutesCodexModelsManifestPathIsRemoved(t *testing.T) {
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 
-	registered := make(map[string]bool)
+	registered := make(map[string]string)
 	for _, route := range router.Routes() {
-		registered[route.Method+" "+route.Path] = true
+		registered[route.Method+" "+route.Path] = route.Handler
 	}
-	require.True(t, registered[http.MethodPost+" /backend-api/codex/responses"])
-	require.False(t, registered[http.MethodGet+" /backend-api/codex/models"])
+	require.NotEmpty(t, registered[http.MethodPost+" /backend-api/codex/responses"])
+	require.Empty(t, registered[http.MethodGet+" /backend-api/codex/models"])
+	require.Equal(t, registered[http.MethodGet+" /v1/models"], registered[http.MethodGet+" /models"])
 }
