@@ -226,6 +226,8 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI 账号调度
+	OpenAILowUpstreamRatePriorityEnabled                   bool
+	OpenAIOAuthSchedulingRateMultiplier                    float64
 	OpenAIAdvancedSchedulerEnabled                         bool
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
@@ -237,6 +239,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerWeightTTFT                      string
 	OpenAIAdvancedSchedulerWeightReset                     string
 	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
+	OpenAIAdvancedSchedulerWeightUpstreamCost              string
 	OpenAIAdvancedSchedulerWeightPreviousResponse          string
 	OpenAIAdvancedSchedulerWeightSessionSticky             string
 	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
@@ -247,6 +250,7 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
 	OpenAIAdvancedSchedulerEffectiveWeightReset            string
 	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost     string
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
 	// OpenAIQuotaAutoPauseSettings 是 OpenAI 账号配额自动暂停的全局默认阈值，存储在 ops_advanced_settings 中。
