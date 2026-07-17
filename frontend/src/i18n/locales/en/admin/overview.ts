@@ -117,6 +117,10 @@ backup: {
         runtimeData: {
           title: 'Runtime Jobs and Temporary Data',
           description: 'Includes idempotency cache, scheduler outbox, pending auth sessions, cleanup tasks, and scheduled test results.'
+        },
+        dataShareSessions: {
+          title: 'Data Sharing Sessions',
+          description: 'Includes full Agent conversations and compressed payloads captured for data-sharing groups. This can grow quickly with request volume.'
         }
       },
       s3: {

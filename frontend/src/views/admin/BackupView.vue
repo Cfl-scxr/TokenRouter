@@ -403,15 +403,17 @@ const contentForm = ref<BackupContentConfig>({
   include_ops_logs: false,
   include_audit_logs: false,
   include_runtime_data: false,
+  include_data_share_sessions: false,
   excluded_table_data: [],
 })
 const savingContent = ref(false)
-type BackupContentOptionKey = keyof Pick<BackupContentConfig, 'include_usage_records' | 'include_ops_logs' | 'include_audit_logs' | 'include_runtime_data'>
+type BackupContentOptionKey = keyof Pick<BackupContentConfig, 'include_usage_records' | 'include_ops_logs' | 'include_audit_logs' | 'include_runtime_data' | 'include_data_share_sessions'>
 const contentTablePatternCounts: Record<BackupContentOptionKey, number> = {
   include_usage_records: 10,
   include_ops_logs: 9,
   include_audit_logs: 5,
   include_runtime_data: 6,
+  include_data_share_sessions: 1,
 }
 const contentOptions = computed<Array<{ key: BackupContentOptionKey, title: string, description: string }>>(() => [
   {
@@ -433,6 +435,11 @@ const contentOptions = computed<Array<{ key: BackupContentOptionKey, title: stri
     key: 'include_runtime_data',
     title: t('admin.backup.content.runtimeData.title'),
     description: t('admin.backup.content.runtimeData.description'),
+  },
+  {
+    key: 'include_data_share_sessions',
+    title: t('admin.backup.content.dataShareSessions.title'),
+    description: t('admin.backup.content.dataShareSessions.description'),
   },
 ])
 const contentExcludedCount = computed(() => (
@@ -649,6 +656,7 @@ function normalizeContentConfig(cfg?: Partial<BackupContentConfig>): BackupConte
     include_ops_logs: Boolean(cfg?.include_ops_logs),
     include_audit_logs: Boolean(cfg?.include_audit_logs),
     include_runtime_data: Boolean(cfg?.include_runtime_data),
+    include_data_share_sessions: Boolean(cfg?.include_data_share_sessions),
     excluded_table_data: cfg?.excluded_table_data || [],
   }
 }

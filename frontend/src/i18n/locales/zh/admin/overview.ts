@@ -117,6 +117,10 @@ backup: {
         runtimeData: {
           title: '运行时任务与临时数据',
           description: '包含幂等缓存、调度 outbox、待完成登录会话、清理任务和定时测试结果。'
+        },
+        dataShareSessions: {
+          title: '数据共享会话',
+          description: '包含数据共享分组采集的完整 Agent 对话和压缩载荷，可能随请求量快速增长。'
         }
       },
       s3: {
