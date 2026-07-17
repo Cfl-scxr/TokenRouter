@@ -211,6 +211,86 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$0.069568')
   })
 
+  it.each([
+    { triggerIndex: 0, tooltipTestId: 'token-detail-tooltip', tooltipWidth: 260, tooltipHeight: 180 },
+    { triggerIndex: 1, tooltipTestId: 'cost-detail-tooltip', tooltipWidth: 296, tooltipHeight: 340 },
+  ])('keeps $tooltipTestId inside a narrow viewport', async ({ triggerIndex, tooltipTestId, tooltipWidth, tooltipHeight }) => {
+    const viewportWidthSpy = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
+    const viewportHeightSpy = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(640)
+    const rectSpy = vi.mocked(HTMLElement.prototype.getBoundingClientRect)
+    rectSpy.mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.testid === tooltipTestId) {
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: tooltipWidth,
+          bottom: tooltipHeight,
+          width: tooltipWidth,
+          height: tooltipHeight,
+          toJSON: () => ({}),
+        } as DOMRect
+      }
+
+      return {
+        x: 280,
+        y: 300,
+        top: 300,
+        left: 280,
+        right: 304,
+        bottom: 320,
+        width: 24,
+        height: 20,
+        toJSON: () => ({}),
+      } as DOMRect
+    })
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-mobile-tooltip',
+          model: 'gpt-5.4',
+          actual_cost: 0.092883,
+          total_cost: 0.092883,
+          rate_multiplier: 1,
+          input_cost: 0.020285,
+          output_cost: 0.00303,
+          cache_creation_cost: 0,
+          cache_read_cost: 0.069568,
+          input_tokens: 4057,
+          output_tokens: 101,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    try {
+      await wrapper.findAll('.group.relative')[triggerIndex].trigger('mouseenter')
+      await nextTick()
+      await nextTick()
+
+      const tooltip = wrapper.get(`[data-testid="${tooltipTestId}"]`)
+      const left = Number.parseFloat((tooltip.element as HTMLElement).style.left)
+      expect(left).toBeGreaterThanOrEqual(12)
+      expect(left + tooltipWidth).toBeLessThanOrEqual(308)
+      expect(tooltip.classes()).not.toContain('invisible')
+    } finally {
+      wrapper.unmount()
+      viewportWidthSpy.mockRestore()
+      viewportHeightSpy.mockRestore()
+    }
+  })
+
   it('shows requested and upstream models separately for admin rows', () => {
     const row = {
       request_id: 'req-admin-model-1',
