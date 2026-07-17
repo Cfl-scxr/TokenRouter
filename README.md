@@ -21,15 +21,6 @@ TokenRouter 基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 开发，在�
 
 详细部署说明见 [DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md)。Apple 芯片 Mac 也可按 [Apple container 部署指南](deploy/APPLE_CONTAINER.md) 运行本地三服务栈。
 
-## 赞助商
-
-<table>
-<tr>
-<td width="180"><a href="https://cctk.ai/register?aff=SUB2API"><img src="assets/partners/logos/cctk.jpg" alt="CCTK.AI" width="150"></a></td>
-<td>感谢 CCTK.AI 赞助了本项目！<a href="https://cctk.ai/register?aff=SUB2API">CCTK.AI</a> 是一个专注于稳定与性价比的 AI API 网关平台，提供 Claude、OpenAI、Gemini 等主流模型的高速中转服务，无缝兼容 Claude Code、Codex 等主流编程工具，以远低于官方的成本获得同等的模型能力。点击<a href="https://cctk.ai/register?aff=SUB2API">此链接</a>注册，即刻体验更快、更稳、更省的 AI API 接入。</td>
-</tr>
-</table>
-
 ## Grok / xAI 支持
 
 TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API-key 账号，并通过 OpenAI 兼容的
