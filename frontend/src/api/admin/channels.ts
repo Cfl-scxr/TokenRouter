@@ -25,6 +25,8 @@ export interface ChannelModelPricing {
   platform: string
   models: string[]
   billing_mode: BillingMode
+  // 可空表示完全沿用现有定价，不隐式写入 1 倍。
+  price_multiplier?: number | null
   input_price: number | null
   output_price: number | null
   cache_write_price: number | null

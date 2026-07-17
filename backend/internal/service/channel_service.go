@@ -649,7 +649,7 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	return validatePricingBillingMode(pricing)
 }
 
-// validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
+// validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格和倍率不能为负，区间至少有一个价格字段。
 func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 	for _, p := range pricing {
 		if err := checkBillingModeRequirements(p); err != nil {
@@ -674,6 +674,12 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 			)
 		}
 	}
+	if p.PriceMultiplier != nil && !p.HasEffectivePricing() {
+		return infraerrors.BadRequest(
+			"PRICE_MULTIPLIER_MISSING_PRICE",
+			"price_multiplier requires at least one explicit price",
+		)
+	}
 	return nil
 }
 
@@ -682,6 +688,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 		field string
 		val   *float64
 	}{
+		{"price_multiplier", p.PriceMultiplier},
 		{"input_price", p.InputPrice},
 		{"output_price", p.OutputPrice},
 		{"cache_write_price", p.CacheWritePrice},

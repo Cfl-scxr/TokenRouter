@@ -307,6 +307,28 @@ func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
 	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 }
 
+func TestResolve_WithChannelOverride_PriceMultiplierOnlyIsIgnored(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModeToken,
+		PriceMultiplier: testPtrFloat64(2),
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	// 非法的仅倍率存量数据不能改变默认模型价格。
+	require.NotNil(t, resolved)
+	require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+	require.False(t, resolved.HasEffectiveChannelPricing())
+	require.NotNil(t, resolved.BasePricing)
+	require.InDelta(t, 3e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
 func TestResolve_BlankChannelPricingIsIgnoredForNonQoder(t *testing.T) {
 	r := newResolverWithChannel(t, []ChannelModelPricing{{
 		Platform:    "anthropic",
@@ -665,6 +687,29 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	require.InDelta(t, 16e-6, iv2.OutputPricePerToken, 1e-12)
 }
 
+func TestResolve_WithChannelOverride_PriceMultiplierScalesIntervalsAndFallbackFields(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModeToken,
+		PriceMultiplier: testPtrFloat64(2),
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(2e-6)},
+		},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	pricing := r.GetIntervalPricing(resolved, 50000)
+	require.NotNil(t, pricing)
+	require.InDelta(t, 4e-6, pricing.InputPricePerToken, 1e-12)
+	// 区间未配置输出价时继承模型默认价，再统一乘以倍率。
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+}
+
 func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {
 	// Base pricing is nil (unknown model), channel has flat prices → creates new BasePricing.
 	r := newResolverWithChannel(t, []ChannelModelPricing{{
@@ -718,6 +763,27 @@ func TestResolve_WithChannelOverride_PerRequest(t *testing.T) {
 	// Verify tier lookups
 	require.InDelta(t, 0.03, r.GetRequestTierPriceByContext(resolved, 50000), 1e-12)
 	require.InDelta(t, 0.10, r.GetRequestTierPriceByContext(resolved, 200000), 1e-12)
+}
+
+func TestResolve_WithChannelOverride_PriceMultiplierScalesPerRequestPrices(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModePerRequest,
+		PriceMultiplier: testPtrFloat64(2),
+		PerRequestPrice: testPtrFloat64(0.05),
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(128000), PerRequestPrice: testPtrFloat64(0.03)},
+		},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.InDelta(t, 0.10, resolved.DefaultPerRequestPrice, 1e-12)
+	require.InDelta(t, 0.06, r.GetRequestTierPriceByContext(resolved, 50000), 1e-12)
 }
 
 func TestResolve_WithChannelOverride_PerRequestNilPrice(t *testing.T) {

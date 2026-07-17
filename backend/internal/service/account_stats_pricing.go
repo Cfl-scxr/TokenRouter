@@ -279,17 +279,27 @@ func isPlatformMatch(queryPlatform, pricingPlatform string) bool {
 	return queryPlatform == pricingPlatform
 }
 
-// calculateStatsCost 使用给定的定价计算费用（不含任何倍率，原始费用）。
+// calculateStatsCost 使用给定的定价计算费用，并在最后应用可选的定价倍率。
 func calculateStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, requestCount int) *float64 {
 	if pricing == nil {
 		return nil
 	}
+	var cost *float64
 	switch pricing.BillingMode {
 	case BillingModePerRequest, BillingModeImage:
-		return calculatePerRequestStatsCost(pricing, requestCount)
+		cost = calculatePerRequestStatsCost(pricing, requestCount)
 	default:
-		return calculateTokenStatsCost(pricing, tokens)
+		cost = calculateTokenStatsCost(pricing, tokens)
 	}
+	if cost == nil {
+		return nil
+	}
+	// 账号统计规则与实际渠道计费共用同一倍率语义。
+	if multiplier, configured := normalizedPriceMultiplier(pricing); configured {
+		scaled := *cost * multiplier
+		return &scaled
+	}
+	return cost
 }
 
 // calculatePerRequestStatsCost 按次/图片计费。

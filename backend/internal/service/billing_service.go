@@ -875,6 +875,10 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	}
 	pricing.ImageOutputPriceExplicit = true
 	applyChannelImageInputPrice(channelPricing, pricing)
+	multiplier, configured := normalizedPriceMultiplier(channelPricing)
+	if configured {
+		pricing = multiplyModelPricing(pricing, multiplier)
+	}
 	return pricing, nil
 }
 

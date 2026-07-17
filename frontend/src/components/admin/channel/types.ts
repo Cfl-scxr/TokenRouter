@@ -17,6 +17,8 @@ export interface IntervalFormEntry {
 export interface PricingFormEntry {
   models: string[]
   billing_mode: BillingMode
+  // 空值保留“未配置”语义，0 表示显式免费。
+  price_multiplier: number | string | null
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
@@ -47,6 +49,36 @@ export function perTokenToMTok(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null
   // toPrecision(10) 消除 IEEE 754 浮点乘法精度误差，如 5e-8 * 1e6 = 0.04999...96 → 0.05
   return parseFloat((val * MTOK).toPrecision(10))
+}
+
+function hasConfiguredPrice(val: number | string | null | undefined): boolean {
+  return val !== null && val !== undefined && val !== ''
+}
+
+/** 判断当前计费模式是否至少配置了一项实际参与计费的价格。 */
+export function hasExplicitPricing(entry: PricingFormEntry): boolean {
+  if (entry.billing_mode === 'per_request' || entry.billing_mode === 'image') {
+    return hasConfiguredPrice(entry.per_request_price) ||
+      entry.intervals.some(iv => hasConfiguredPrice(iv.per_request_price))
+  }
+
+  if ([
+    entry.input_price,
+    entry.output_price,
+    entry.cache_write_price,
+    entry.cache_read_price,
+    entry.image_input_price,
+    entry.image_output_price,
+  ].some(hasConfiguredPrice)) {
+    return true
+  }
+
+  return entry.intervals.some(iv => [
+    iv.input_price,
+    iv.output_price,
+    iv.cache_write_price,
+    iv.cache_read_price,
+  ].some(hasConfiguredPrice))
 }
 
 export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEntry[] {

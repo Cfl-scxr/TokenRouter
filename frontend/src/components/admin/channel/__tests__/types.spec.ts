@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import { hasExplicitPricing, validateIntervals, type IntervalFormEntry, type PricingFormEntry } from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -12,6 +12,23 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
     cache_read_price: null,
     per_request_price: null,
     sort_order: 0,
+    ...over,
+  }
+}
+
+function makePricingEntry(over: Partial<PricingFormEntry>): PricingFormEntry {
+  return {
+    models: ['test-model'],
+    billing_mode: 'token',
+    price_multiplier: null,
+    input_price: null,
+    output_price: null,
+    cache_write_price: null,
+    cache_read_price: null,
+    image_input_price: null,
+    image_output_price: null,
+    per_request_price: null,
+    intervals: [],
     ...over,
   }
 }
@@ -79,5 +96,31 @@ describe('validateIntervals', () => {
       ]
       expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
     })
+  })
+})
+
+describe('hasExplicitPricing', () => {
+  it('拒绝没有任何价格的 token 定价', () => {
+    expect(hasExplicitPricing(makePricingEntry({ price_multiplier: 1.5 }))).toBe(false)
+  })
+
+  it('把显式零价格和图片区间价格视为有效定价', () => {
+    expect(hasExplicitPricing(makePricingEntry({ input_price: 0 }))).toBe(true)
+    expect(hasExplicitPricing(makePricingEntry({ image_input_price: 0.01 }))).toBe(true)
+    expect(hasExplicitPricing(makePricingEntry({
+      billing_mode: 'image',
+      intervals: [makeInterval({ tier_label: '1K', per_request_price: 0.04 })],
+    }))).toBe(true)
+  })
+
+  it('不把当前计费模式无关的价格字段视为有效定价', () => {
+    expect(hasExplicitPricing(makePricingEntry({
+      billing_mode: 'image',
+      input_price: 1,
+    }))).toBe(false)
+    expect(hasExplicitPricing(makePricingEntry({
+      billing_mode: 'token',
+      per_request_price: 1,
+    }))).toBe(false)
   })
 })

@@ -89,6 +89,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 					channelPricing: chPricing,
 				}
 				r.applyRequestTierOverrides(chPricing, resolved)
+				applyResolvedPriceMultiplier(resolved, chPricing)
 				return resolved
 			}
 		}
@@ -118,6 +119,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 		resolved.Source = PricingSourceChannel
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
+		applyResolvedPriceMultiplier(resolved, chPricing)
 	} else if input.GroupID != nil {
 		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
 	}
@@ -199,6 +201,7 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 	case BillingModePerRequest, BillingModeImage:
 		r.applyRequestTierOverrides(chPricing, resolved)
 	}
+	applyResolvedPriceMultiplier(resolved, chPricing)
 }
 
 // applyTokenOverrides 应用 token 模式的渠道覆盖
@@ -286,6 +289,98 @@ func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModel
 	if chPricing.PerRequestPrice != nil {
 		resolved.DefaultPerRequestPrice = *chPricing.PerRequestPrice
 	}
+}
+
+// applyResolvedPriceMultiplier 在渠道价覆盖完成后缩放最终价格。
+// 配置校验保证倍率只会与至少一个显式价格同时存在。
+func applyResolvedPriceMultiplier(resolved *ResolvedPricing, chPricing *ChannelModelPricing) {
+	multiplier, configured := normalizedPriceMultiplier(chPricing)
+	if resolved == nil || !configured {
+		return
+	}
+
+	resolved.BasePricing = multiplyModelPricing(resolved.BasePricing, multiplier)
+	resolved.Intervals = multiplyPricingIntervals(resolved.Intervals, multiplier)
+	resolved.RequestTiers = multiplyPricingIntervals(resolved.RequestTiers, multiplier)
+	resolved.DefaultPerRequestPrice *= multiplier
+
+	// 区间转模型价格时还会读取渠道级图片价格，因此保存一份同步缩放的副本。
+	scaledChannelPricing := chPricing.Clone()
+	scaledChannelPricing.PriceMultiplier = nil
+	multiplyChannelPricingFields(&scaledChannelPricing, multiplier)
+	resolved.channelPricing = &scaledChannelPricing
+}
+
+// normalizedPriceMultiplier 返回可安全用于计费的倍率；未配置时不触发任何缩放。
+func normalizedPriceMultiplier(pricing *ChannelModelPricing) (float64, bool) {
+	if pricing == nil || pricing.PriceMultiplier == nil {
+		return 1, false
+	}
+	if *pricing.PriceMultiplier < 0 {
+		return 0, true
+	}
+	return *pricing.PriceMultiplier, true
+}
+
+// multiplyModelPricing 复制并缩放所有金额字段，不修改长上下文本身的倍率配置。
+func multiplyModelPricing(pricing *ModelPricing, multiplier float64) *ModelPricing {
+	if pricing == nil {
+		return nil
+	}
+	scaled := *pricing
+	scaled.InputPricePerToken *= multiplier
+	scaled.InputPricePerTokenPriority *= multiplier
+	scaled.ImageInputPricePerToken *= multiplier
+	scaled.OutputPricePerToken *= multiplier
+	scaled.OutputPricePerTokenPriority *= multiplier
+	scaled.CacheCreationPricePerToken *= multiplier
+	scaled.CacheCreationPricePerTokenPriority *= multiplier
+	scaled.CacheReadPricePerToken *= multiplier
+	scaled.CacheReadPricePerTokenPriority *= multiplier
+	scaled.CacheCreation5mPrice *= multiplier
+	scaled.CacheCreation1hPrice *= multiplier
+	scaled.ImageOutputPricePerToken *= multiplier
+	return &scaled
+}
+
+// multiplyPricingIntervals 返回独立的区间切片，并缩放其中所有价格字段。
+func multiplyPricingIntervals(intervals []PricingInterval, multiplier float64) []PricingInterval {
+	if intervals == nil {
+		return nil
+	}
+	scaled := make([]PricingInterval, len(intervals))
+	for i := range intervals {
+		scaled[i] = intervals[i]
+		scaled[i].InputPrice = multiplyPricePointer(intervals[i].InputPrice, multiplier)
+		scaled[i].OutputPrice = multiplyPricePointer(intervals[i].OutputPrice, multiplier)
+		scaled[i].CacheWritePrice = multiplyPricePointer(intervals[i].CacheWritePrice, multiplier)
+		scaled[i].CacheReadPrice = multiplyPricePointer(intervals[i].CacheReadPrice, multiplier)
+		scaled[i].PerRequestPrice = multiplyPricePointer(intervals[i].PerRequestPrice, multiplier)
+	}
+	return scaled
+}
+
+// multiplyChannelPricingFields 缩放渠道配置副本中的显式价格字段。
+func multiplyChannelPricingFields(pricing *ChannelModelPricing, multiplier float64) {
+	if pricing == nil {
+		return
+	}
+	pricing.InputPrice = multiplyPricePointer(pricing.InputPrice, multiplier)
+	pricing.OutputPrice = multiplyPricePointer(pricing.OutputPrice, multiplier)
+	pricing.CacheWritePrice = multiplyPricePointer(pricing.CacheWritePrice, multiplier)
+	pricing.CacheReadPrice = multiplyPricePointer(pricing.CacheReadPrice, multiplier)
+	pricing.ImageInputPrice = multiplyPricePointer(pricing.ImageInputPrice, multiplier)
+	pricing.ImageOutputPrice = multiplyPricePointer(pricing.ImageOutputPrice, multiplier)
+	pricing.PerRequestPrice = multiplyPricePointer(pricing.PerRequestPrice, multiplier)
+	pricing.Intervals = multiplyPricingIntervals(pricing.Intervals, multiplier)
+}
+
+func multiplyPricePointer(price *float64, multiplier float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	scaled := *price * multiplier
+	return &scaled
 }
 
 // filterValidTokenIntervals 过滤掉 token 模式下没有 token 价格字段的无效 interval。

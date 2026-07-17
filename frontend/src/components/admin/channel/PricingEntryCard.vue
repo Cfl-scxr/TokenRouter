@@ -44,6 +44,12 @@
         >
           {{ billingModeLabel }}
         </span>
+        <span
+          v-if="entry.price_multiplier !== null && entry.price_multiplier !== undefined && entry.price_multiplier !== ''"
+          class="flex-shrink-0 rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-600 dark:text-gray-300"
+        >
+          {{ entry.price_multiplier }}x
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -68,8 +74,8 @@
     >
       <div class="collapsible-inner">
         <!-- Header: Models + Billing Mode -->
-        <div class="mt-3 flex items-start gap-2">
-          <div class="flex-1">
+        <div class="mt-3 grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
+          <div>
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.models', '模型列表') }} <span class="text-red-500">*</span>
             </label>
@@ -81,7 +87,7 @@
               class="mt-1"
             />
           </div>
-          <div class="w-40">
+          <div>
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.billingMode', '计费模式') }}
             </label>
@@ -90,6 +96,20 @@
               @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [] })"
               :options="billingModeOptions"
               class="mt-1"
+            />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.priceMultiplier', '定价倍率') }}
+            </label>
+            <input
+              :value="entry.price_multiplier"
+              @input="emitField('price_multiplier', ($event.target as HTMLInputElement).value)"
+              type="number"
+              step="any"
+              min="0"
+              class="input mt-1 text-sm"
+              :placeholder="t('admin.channels.form.priceMultiplierPlaceholder', '不调整')"
             />
           </div>
         </div>

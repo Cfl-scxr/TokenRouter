@@ -60,6 +60,44 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_AppliesChannelPriceMultiplierBeforeRateMultiplier(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 2, model: "claude-sonnet-4"}: {
+				BillingMode:     BillingModeToken,
+				PriceMultiplier: testPtrFloat64(2),
+				InputPrice:      testPtrFloat64(5e-6),
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			2: {ID: 2, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{2: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(2)
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "claude-sonnet-4",
+		GroupID:        &groupID,
+		Tokens:         UsageTokens{InputTokens: 100, OutputTokens: 10},
+		RateMultiplier: 3,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+
+	// 输入价 5e-6、继承输出价 15e-6，先乘渠道 2x，再乘分组 3x。
+	expectedTotal := 100*10e-6 + 10*30e-6
+	require.InDelta(t, expectedTotal, cost.TotalCost, 1e-12)
+	require.InDelta(t, expectedTotal*3, cost.ActualCost, 1e-12)
+}
+
 func TestCalculateCostUnified_TokenModeAppliesRateMultiplierToImageTokens(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)

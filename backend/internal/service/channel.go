@@ -88,6 +88,7 @@ type ChannelModelPricing struct {
 	Platform         string            // 所属平台（anthropic/openai/gemini/...）
 	Models           []string          // 绑定的模型列表
 	BillingMode      BillingMode       // 计费模式
+	PriceMultiplier  *float64          // 最终定价倍率；nil 表示不调整价格
 	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
 	OutputPrice      *float64          // 每 token 输出价格（USD）
 	CacheWritePrice  *float64          // 缓存写入价格
@@ -194,6 +195,7 @@ func (p *ChannelModelPricing) HasEffectivePricing() bool {
 			p.OutputPrice != nil ||
 			p.CacheWritePrice != nil ||
 			p.CacheReadPrice != nil ||
+			p.ImageInputPrice != nil ||
 			p.ImageOutputPrice != nil {
 			return true
 		}

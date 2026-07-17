@@ -2367,6 +2367,44 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			errMsg:  "input_price must be >= 0",
 		},
 		{
+			name: "negative price_multiplier - invalid",
+			pricing: []ChannelModelPricing{{
+				BillingMode:     BillingModeToken,
+				PriceMultiplier: testPtrFloat64(-1),
+				InputPrice:      testPtrFloat64(0.01),
+			}},
+			wantErr: true,
+			errMsg:  "price_multiplier must be >= 0",
+		},
+		{
+			name: "price_multiplier without explicit price - invalid",
+			pricing: []ChannelModelPricing{{
+				BillingMode:     BillingModeToken,
+				PriceMultiplier: testPtrFloat64(1.5),
+			}},
+			wantErr: true,
+			errMsg:  "price_multiplier requires at least one explicit price",
+		},
+		{
+			name: "price_multiplier with interval price - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode:     BillingModeToken,
+				PriceMultiplier: testPtrFloat64(1.5),
+				Intervals: []PricingInterval{{
+					MinTokens:  0,
+					InputPrice: testPtrFloat64(0.01),
+				}},
+			}},
+		},
+		{
+			name: "price_multiplier with image input price - valid",
+			pricing: []ChannelModelPricing{{
+				BillingMode:     BillingModeToken,
+				PriceMultiplier: testPtrFloat64(1.5),
+				ImageInputPrice: testPtrFloat64(0.01),
+			}},
+		},
+		{
 			name: "interval with no price fields - invalid",
 			pricing: []ChannelModelPricing{{
 				BillingMode:     BillingModePerRequest,

@@ -47,6 +47,7 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 				Platform:        "openai",
 				Models:          []string{"gpt-4"},
 				BillingMode:     service.BillingModeToken,
+				PriceMultiplier: float64Ptr(1.5),
 				InputPrice:      float64Ptr(0.01),
 				OutputPrice:     float64Ptr(0.03),
 				CacheWritePrice: float64Ptr(0.005),
@@ -82,6 +83,7 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, "openai", p.Platform)
 	require.Equal(t, []string{"gpt-4"}, p.Models)
 	require.Equal(t, "token", p.BillingMode)
+	require.Equal(t, float64Ptr(1.5), p.PriceMultiplier)
 	require.Equal(t, float64Ptr(0.01), p.InputPrice)
 	require.Equal(t, float64Ptr(0.03), p.OutputPrice)
 	require.Equal(t, float64Ptr(0.005), p.CacheWritePrice)
@@ -307,6 +309,7 @@ func TestPricingRequestToService_WithAllFields(t *testing.T) {
 			Platform:         "openai",
 			Models:           []string{"gpt-4", "gpt-4o"},
 			BillingMode:      "per_request",
+			PriceMultiplier:  float64Ptr(1.5),
 			InputPrice:       float64Ptr(0.01),
 			OutputPrice:      float64Ptr(0.03),
 			CacheWritePrice:  float64Ptr(0.005),
@@ -322,6 +325,7 @@ func TestPricingRequestToService_WithAllFields(t *testing.T) {
 	require.Equal(t, "openai", r.Platform)
 	require.Equal(t, []string{"gpt-4", "gpt-4o"}, r.Models)
 	require.Equal(t, service.BillingModePerRequest, r.BillingMode)
+	require.Equal(t, float64Ptr(1.5), r.PriceMultiplier)
 	require.Equal(t, float64Ptr(0.01), r.InputPrice)
 	require.Equal(t, float64Ptr(0.03), r.OutputPrice)
 	require.Equal(t, float64Ptr(0.005), r.CacheWritePrice)
@@ -398,6 +402,7 @@ func TestPricingRequestToService_NilPriceFields(t *testing.T) {
 	require.Len(t, result, 1)
 	r := result[0]
 	require.Nil(t, r.InputPrice)
+	require.Nil(t, r.PriceMultiplier)
 	require.Nil(t, r.OutputPrice)
 	require.Nil(t, r.CacheWritePrice)
 	require.Nil(t, r.CacheReadPrice)

@@ -632,7 +632,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, toNullableNumber, hasExplicitPricing, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -851,6 +851,7 @@ function addPricingEntry(sectionIdx: number) {
   form.platforms[sectionIdx].model_pricing.push({
     models: [],
     billing_mode: 'token',
+    price_multiplier: null,
     input_price: null,
     output_price: null,
     cache_write_price: null,
@@ -909,6 +910,7 @@ async function syncLatestModels(sectionIdx: number) {
     form.platforms[sectionIdx].model_pricing.push({
       models: newModels,
       billing_mode: 'token',
+      price_multiplier: null,
       input_price: defaultPricing.input_price,
       output_price: defaultPricing.output_price,
       cache_write_price: defaultPricing.cache_write_price,
@@ -974,6 +976,7 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
   form.platforms[sectionIdx].account_stats_pricing_rules[ruleIndex].pricing.push({
     models: [],
     billing_mode: 'token',
+    price_multiplier: null,
     input_price: null,
     output_price: null,
     cache_write_price: null,
@@ -1090,6 +1093,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             platform: section.platform,
             models: p.models,
             billing_mode: p.billing_mode,
+            price_multiplier: toNullableNumber(p.price_multiplier),
             input_price: mTokToPerToken(p.input_price),
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
@@ -1131,6 +1135,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         platform: section.platform,
         models: entry.models,
         billing_mode: entry.billing_mode,
+        price_multiplier: toNullableNumber(entry.price_multiplier),
         input_price: mTokToPerToken(entry.input_price),
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
@@ -1221,6 +1226,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       .map(p => ({
         models: p.models || [],
         billing_mode: p.billing_mode,
+        price_multiplier: p.price_multiplier ?? null,
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
@@ -1410,6 +1416,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
       pricing: (apiRule.pricing || []).map(p => ({
         models: [...(p.models || [])],
         billing_mode: p.billing_mode,
+        price_multiplier: p.price_multiplier ?? null,
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
@@ -1522,6 +1529,27 @@ async function handleSubmit() {
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
         appStore.showError(t('admin.channels.form.perRequestPriceRequired', '按次/图片计费模式必须设置默认价格或至少一个计费层级'))
+        return
+      }
+    }
+  }
+
+  // 倍率只能调整已配置的定价，不能单独继承系统默认价。
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    const entries = [
+      ...section.model_pricing,
+      ...section.account_stats_pricing_rules.flatMap(rule => rule.pricing),
+    ]
+    for (const entry of entries) {
+      if (entry.models.length === 0 || toNullableNumber(entry.price_multiplier) === null) continue
+      if (!hasExplicitPricing(entry)) {
+        const models = entry.models.join(', ')
+        appStore.showError(t(
+          'admin.channels.form.priceMultiplierRequiresPrice',
+          { models },
+          `模型 ${models} 配置定价倍率时，必须至少填写一项价格`,
+        ))
+        activeTab.value = section.platform
         return
       }
     }

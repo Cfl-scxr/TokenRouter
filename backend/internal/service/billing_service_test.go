@@ -1267,6 +1267,21 @@ func TestGetModelPricingWithChannel_OverrideInputPriceOnly(t *testing.T) {
 	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
 }
 
+func TestGetModelPricingWithChannel_PriceMultiplierAppliesAfterOverrides(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		PriceMultiplier: testPtrFloat64(2),
+		InputPrice:      testPtrFloat64(10e-6),
+	}
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+	require.NoError(t, err)
+
+	// 手动输入价和继承的默认输出价都在最终阶段应用倍率。
+	require.InDelta(t, 20e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputPricePerToken, 1e-12)
+}
+
 func TestGetModelPricingWithChannel_DoesNotMutateFallbackPricing(t *testing.T) {
 	svc := newTestBillingService()
 

@@ -345,6 +345,30 @@ func TestCalculateStatsCost_ImageBilling_PriceNil(t *testing.T) {
 	require.Nil(t, result)
 }
 
+func TestCalculateStatsCost_AppliesPriceMultiplier(t *testing.T) {
+	t.Run("token 定价", func(t *testing.T) {
+		pricing := &ChannelModelPricing{
+			BillingMode:     BillingModeToken,
+			PriceMultiplier: testPtrFloat64(1.5),
+			InputPrice:      testPtrFloat64(0.001),
+		}
+		result := calculateStatsCost(pricing, UsageTokens{InputTokens: 100}, 1)
+		require.NotNil(t, result)
+		require.InDelta(t, 0.15, *result, 1e-12)
+	})
+
+	t.Run("按次定价", func(t *testing.T) {
+		pricing := &ChannelModelPricing{
+			BillingMode:     BillingModePerRequest,
+			PriceMultiplier: testPtrFloat64(0),
+			PerRequestPrice: testPtrFloat64(0.25),
+		}
+		result := calculateStatsCost(pricing, UsageTokens{}, 2)
+		require.NotNil(t, result)
+		require.Zero(t, *result)
+	})
+}
+
 func TestCalculateStatsCost_DefaultBillingMode_FallsToToken(t *testing.T) {
 	// BillingMode is empty string (default) → falls into token billing
 	pricing := &ChannelModelPricing{
