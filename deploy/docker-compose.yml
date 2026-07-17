@@ -19,6 +19,8 @@ services:
     image: ghcr.io/tokenflux/tokenrouter:latest
     container_name: sub2api
     restart: unless-stopped
+    # 限制主应用容器最多使用 64 GiB 内存，避免单容器耗尽宿主机内存
+    mem_limit: 64g
     ulimits:
       nofile:
         soft: 100000
