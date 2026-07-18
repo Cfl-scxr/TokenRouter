@@ -590,6 +590,98 @@ func TestPaymentAmountToleranceForThreeDecimalCurrency(t *testing.T) {
 	assert.InDelta(t, 0.0005, paymentAmountToleranceForCurrency("KWD"), 1e-12)
 }
 
+func TestPaymentSuccessRecoversNonPendingOrdersIdempotently(t *testing.T) {
+	statuses := []string{OrderStatusProcessing, OrderStatusExpired, OrderStatusCancelled}
+	for _, status := range statuses {
+		t.Run(status, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+			ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+			order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, status, time.Now())
+			_, err := client.PaymentAuditLog.Create().
+				SetOrderID(strconv.FormatInt(order.ID, 10)).
+				SetAction("SUBSCRIPTION_ASSIGNED").
+				SetDetail(`{"planID":100}`).
+				SetOperator("system").
+				Save(ctx)
+			require.NoError(t, err)
+
+			svc := &PaymentService{entClient: client, subscriptionSvc: &SubscriptionService{}}
+			notification := &payment.PaymentNotification{
+				TradeNo: "trade-recovered-" + status,
+				OrderID: order.OutTradeNo,
+				Amount:  order.PayAmount,
+				Status:  payment.NotificationStatusSuccess,
+			}
+			require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+			require.NoError(t, svc.HandlePaymentNotification(ctx, notification, payment.TypeAlipay))
+
+			reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+			require.NoError(t, err)
+			require.Equal(t, OrderStatusCompleted, reloaded.Status)
+			recoveredCount, err := client.PaymentAuditLog.Query().Where(
+				paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+				paymentauditlog.ActionEQ("ORDER_RECOVERED"),
+			).Count(ctx)
+			require.NoError(t, err)
+			require.Equal(t, 1, recoveredCount)
+		})
+	}
+}
+
+func TestPaymentSuccessWinsOverOutOfOrderFailure(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusPending, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).SetPaymentType(payment.TypeStripe).Save(ctx)
+	require.NoError(t, err)
+	_, err = client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(order.ID, 10)).
+		SetAction("SUBSCRIPTION_ASSIGNED").
+		SetDetail(`{"planID":100}`).
+		SetOperator("system").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client, subscriptionSvc: &SubscriptionService{}}
+	failure := &payment.PaymentNotification{
+		TradeNo: "trade-failed-first",
+		OrderID: order.OutTradeNo,
+		Status:  payment.ProviderStatusFailed,
+		Metadata: map[string]string{
+			"currency": payment.DefaultPaymentCurrency,
+		},
+	}
+	require.NoError(t, svc.HandlePaymentNotification(ctx, failure, payment.TypeStripe))
+
+	success := &payment.PaymentNotification{
+		TradeNo: "trade-paid-late",
+		OrderID: order.OutTradeNo,
+		Amount:  order.PayAmount,
+		Status:  payment.NotificationStatusSuccess,
+		Metadata: map[string]string{
+			"currency": payment.DefaultPaymentCurrency,
+		},
+	}
+	require.NoError(t, svc.HandlePaymentNotification(ctx, success, payment.TypeStripe))
+	require.NoError(t, svc.HandlePaymentNotification(ctx, failure, payment.TypeStripe))
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, "trade-paid-late", reloaded.PaymentTradeNo)
+}
+
+func TestNonStripeFailureNotificationKeepsLegacyIgnoreBehavior(t *testing.T) {
+	svc := &PaymentService{}
+	err := svc.HandlePaymentNotification(context.Background(), &payment.PaymentNotification{
+		OrderID: "unknown-order",
+		Status:  payment.ProviderStatusFailed,
+	}, payment.TypeAlipay)
+	require.NoError(t, err)
+}
+
 func TestRetryFulfillmentRejectsFreshRechargingLease(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

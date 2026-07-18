@@ -5,11 +5,14 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
 	"github.com/TokenFlux/TokenRouter/ent/enttest"
+	"github.com/TokenFlux/TokenRouter/ent/paymentauditlog"
 	"github.com/TokenFlux/TokenRouter/internal/payment"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -27,6 +30,8 @@ type paymentOrderLifecycleQueryProvider struct {
 	cancelCalls       int
 	responses         []*payment.QueryOrderResponse
 	resp              *payment.QueryOrderResponse
+	queryErr          error
+	cancelErr         error
 }
 
 type paymentOrderLifecycleRedeemRepo struct {
@@ -61,6 +66,9 @@ func (p *paymentOrderLifecycleQueryProvider) CreatePayment(context.Context, paym
 func (p *paymentOrderLifecycleQueryProvider) QueryOrder(_ context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	p.lastQueryTradeNo = tradeNo
 	p.queryCalls++
+	if p.queryErr != nil {
+		return nil, p.queryErr
+	}
 	if len(p.responses) > 0 {
 		resp := p.responses[0]
 		if len(p.responses) > 1 {
@@ -82,7 +90,7 @@ func (p *paymentOrderLifecycleQueryProvider) Refund(context.Context, payment.Ref
 func (p *paymentOrderLifecycleQueryProvider) CancelPayment(_ context.Context, tradeNo string) error {
 	p.lastCancelTradeNo = tradeNo
 	p.cancelCalls++
-	return nil
+	return p.cancelErr
 }
 
 func (r *paymentOrderLifecycleRedeemRepo) Create(context.Context, *RedeemCode) error {
@@ -709,6 +717,143 @@ func TestCancelOrderStillClosesPendingUpstreamOrder(t *testing.T) {
 	require.Equal(t, OrderStatusCancelled, reloaded.Status)
 }
 
+func TestCancelOrderMovesToProcessingWhenCloseRacesWithCheckoutCompletion(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, time.Now().Add(time.Hour))
+
+	provider := &paymentOrderLifecycleQueryProvider{
+		responses: []*payment.QueryOrderResponse{
+			{TradeNo: order.OutTradeNo, Status: payment.ProviderStatusPending},
+			{TradeNo: "pi_processing", Status: payment.ProviderStatusProcessing, Amount: order.PayAmount},
+		},
+		cancelErr: errors.New("checkout session can no longer be expired"),
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	outcome, err := svc.CancelOrder(ctx, order.ID, order.UserID)
+	require.Error(t, err)
+	require.Equal(t, checkPaidResultProcessing, outcome)
+	require.Equal(t, 2, provider.queryCalls)
+	require.Equal(t, 1, provider.cancelCalls)
+
+	reloaded, getErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, OrderStatusProcessing, reloaded.Status)
+}
+
+func TestExpireTimedOutOrdersKeepsPendingWhenCloseAndRequeryRemainUncertain(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, time.Now().Add(-time.Minute))
+
+	provider := &paymentOrderLifecycleQueryProvider{
+		responses: []*payment.QueryOrderResponse{
+			{TradeNo: order.OutTradeNo, Status: payment.ProviderStatusPending},
+			{TradeNo: order.OutTradeNo, Status: payment.ProviderStatusPending},
+		},
+		cancelErr: errors.New("temporary stripe error"),
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	expired, err := svc.ExpireTimedOutOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, expired)
+	require.Equal(t, 2, provider.queryCalls)
+	require.Equal(t, 1, provider.cancelCalls)
+
+	reloaded, getErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+	require.True(t, svc.hasAuditLog(ctx, order.ID, "PAYMENT_CANCEL_FAILED"))
+}
+
+func TestReconcileProcessingOrdersFinalizesFailureAndAuditsStaleOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	staleOrder := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusProcessing, time.Now().Add(time.Hour))
+	staleOrder, err := client.PaymentOrder.UpdateOneID(staleOrder.ID).
+		SetUpdatedAt(time.Now().Add(-processingStaleAfter - time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	provider := &paymentOrderLifecycleQueryProvider{
+		resp: &payment.QueryOrderResponse{TradeNo: "pi_stale", Status: payment.ProviderStatusProcessing, Amount: staleOrder.PayAmount},
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	for range 2 {
+		recovered, err := svc.ReconcileProcessingOrders(ctx)
+		require.NoError(t, err)
+		require.Zero(t, recovered)
+	}
+	staleAuditCount, err := client.PaymentAuditLog.Query().Where(
+		paymentauditlog.OrderIDEQ(strconv.FormatInt(staleOrder.ID, 10)),
+		paymentauditlog.ActionEQ("PAYMENT_PROCESSING_STALE"),
+	).Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, staleAuditCount)
+
+	provider.resp = &payment.QueryOrderResponse{TradeNo: "pi_failed", Status: payment.ProviderStatusFailed}
+	recovered, err := svc.ReconcileProcessingOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	reloaded, err := client.PaymentOrder.Get(ctx, staleOrder.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusExpired, reloaded.Status)
+	require.True(t, svc.hasAuditLog(ctx, staleOrder.ID, "PAYMENT_FAILED"))
+}
+
+func TestReconcileProcessingOrdersRecoversPaidOrderAfterServiceRestart(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusProcessing, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetPaymentType(payment.TypeStripe).
+		SetPaymentTradeNo("cs_restart_recovery").
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(order.ID, 10)).
+		SetAction("SUBSCRIPTION_ASSIGNED").
+		SetDetail(`{"planID":100}`).
+		SetOperator("system").
+		Save(ctx)
+	require.NoError(t, err)
+
+	provider := &paymentOrderLifecycleQueryProvider{
+		key: payment.TypeStripe,
+		resp: &payment.QueryOrderResponse{
+			TradeNo: "pi_restart_recovery",
+			Status:  payment.ProviderStatusPaid,
+			Amount:  order.PayAmount,
+			Metadata: map[string]string{
+				"currency": payment.DefaultPaymentCurrency,
+			},
+		},
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true, subscriptionSvc: &SubscriptionService{}}
+
+	recovered, err := svc.ReconcileProcessingOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	require.Equal(t, "cs_restart_recovery", provider.lastQueryTradeNo)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, "pi_restart_recovery", reloaded.PaymentTradeNo)
+}
+
 func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
@@ -867,6 +1012,24 @@ func TestPaymentOrderQueryReferenceUsesInvoiceIDForStripeOrders(t *testing.T) {
 	require.Equal(t, "in_123", paymentOrderQueryReference(order, nil))
 }
 
+func TestPaymentOrderQueryReferenceKeepsCheckoutSessionForProcessingStripeOrders(t *testing.T) {
+	t.Parallel()
+
+	invoiceID := "in_123"
+	providerKey := payment.TypeStripe
+	order := &dbent.PaymentOrder{
+		PaymentType:      payment.TypeStripe,
+		OutTradeNo:       "sub2_out_trade_no",
+		PaymentTradeNo:   "cs_123",
+		PaymentInvoiceID: &invoiceID,
+		ProviderKey:      &providerKey,
+	}
+
+	require.Equal(t, "cs_123", paymentOrderQueryReference(order, paymentFulfillmentTestProvider{
+		key: payment.TypeStripe,
+	}))
+}
+
 func TestPaymentOrderQueryReferenceFallsBackToTradeNoForLegacyStripeOrders(t *testing.T) {
 	t.Parallel()
 
@@ -895,4 +1058,35 @@ func newPaymentOrderLifecycleTestClient(t *testing.T) *dbent.Client {
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func createPaymentOrderLifecycleOrder(t *testing.T, ctx context.Context, client *dbent.Client, status string, expiresAt time.Time) *dbent.PaymentOrder {
+	t.Helper()
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
+	user, err := client.User.Create().
+		SetEmail("payment-lifecycle-" + suffix + "@example.com").
+		SetPasswordHash("hash").
+		SetUsername("payment-lifecycle-" + suffix).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("LIFECYCLE-" + suffix).
+		SetOutTradeNo("sub2_lifecycle_" + suffix).
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(status).
+		SetExpiresAt(expiresAt).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+	return order
 }
