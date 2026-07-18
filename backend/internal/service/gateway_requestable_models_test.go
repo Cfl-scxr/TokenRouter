@@ -202,6 +202,91 @@ func TestResolveRequestableModels_UpstreamPricingAmbiguousAcrossAccounts(t *test
 	require.True(t, model.PricingAmbiguous)
 }
 
+func TestResolveRequestableModels_UpstreamUsesBedrockRegionalModel(t *testing.T) {
+	groupID := int64(4114)
+	price := 0.08
+	upstreamModel := "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+	channel := Channel{
+		ID:                 62,
+		Status:             StatusActive,
+		BillingModelSource: BillingModelSourceUpstream,
+		RestrictModels:     true,
+		ModelMapping: map[string]map[string]string{
+			PlatformAnthropic: {"claude-sonnet-4-5": "claude-sonnet-4-5"},
+		},
+		ModelPricing: []ChannelModelPricing{{
+			Platform:   PlatformAnthropic,
+			Models:     []string{upstreamModel},
+			InputPrice: &price,
+		}},
+	}
+	account := Account{
+		ID:       74,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeBedrock,
+		Credentials: map[string]any{
+			"aws_region": "us-east-1",
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {account}}},
+		channelService: newRequestableModelsChannelService(groupID, PlatformAnthropic, channel),
+	}
+
+	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformAnthropic)
+	model, ok := requestableModelByID(result.Models, "claude-sonnet-4-5")
+	require.True(t, ok)
+	require.Equal(t, upstreamModel, model.PricingModel)
+	require.False(t, model.PricingAmbiguous)
+}
+
+func TestResolveRequestableModels_UpstreamMarksAntigravityThinkingVariantAmbiguous(t *testing.T) {
+	groupID := int64(4115)
+	channel := Channel{
+		ID:                 63,
+		Status:             StatusActive,
+		BillingModelSource: BillingModelSourceUpstream,
+	}
+	account := Account{ID: 75, Platform: PlatformAntigravity}
+	svc := &GatewayService{
+		accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {account}}},
+		channelService: newRequestableModelsChannelService(groupID, PlatformAntigravity, channel),
+	}
+
+	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformAntigravity)
+	model, ok := requestableModelByID(result.Models, "claude-sonnet-4-5")
+	require.True(t, ok)
+	require.Empty(t, model.PricingModel)
+	require.True(t, model.PricingAmbiguous)
+}
+
+func TestResolveRequestableModels_UpstreamNormalizesAnthropicOAuthMapping(t *testing.T) {
+	groupID := int64(4116)
+	channel := Channel{
+		ID:                 64,
+		Status:             StatusActive,
+		BillingModelSource: BillingModelSourceUpstream,
+	}
+	account := Account{
+		ID:       76,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"client-alias": "claude-sonnet-4-5"},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {account}}},
+		channelService: newRequestableModelsChannelService(groupID, PlatformAnthropic, channel),
+	}
+
+	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformAnthropic)
+	model, ok := requestableModelByID(result.Models, "client-alias")
+	require.True(t, ok)
+	require.Equal(t, "claude-sonnet-4-5-20250929", model.PricingModel)
+	require.False(t, model.PricingAmbiguous)
+}
+
 func TestResolveRequestableModels_RestrictionEmptyDoesNotFallBack(t *testing.T) {
 	groupID := int64(4106)
 	channel := Channel{

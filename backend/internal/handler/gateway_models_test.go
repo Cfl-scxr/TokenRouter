@@ -245,6 +245,10 @@ func TestGatewayModels_CustomModelsListDisabledKeepsOriginalModels(t *testing.T)
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"gpt-5.4", "gpt-5.5"}, modelIDsForTest(got.Data))
+	require.Empty(t, got.Data[0].Object)
+	require.Zero(t, got.Data[0].Created)
+	require.Empty(t, got.Data[0].OwnedBy)
+	require.Equal(t, "2024-01-01T00:00:00Z", got.Data[0].CreatedAt)
 }
 
 func TestGatewayModels_CustomModelsListFiltersAndOrdersMappedModels(t *testing.T) {

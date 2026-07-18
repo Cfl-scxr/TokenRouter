@@ -1031,12 +1031,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		// 自定义列表只能与已通过渠道和账号校验的模型取交集，不能重新加入被拒绝的模型。
 		availableModels = filterModelsByCustomList(availableModels, nil, apiKey.Group.ModelsListConfig.Models)
-		writePlatformModelsList(c, platform, availableModels)
+		writeCustomModelsList(c, platform, availableModels)
 		return
 	}
 
 	if len(availableModels) > 0 {
-		writePlatformModelsList(c, platform, availableModels)
+		if resolution.HadExplicitAccountModels {
+			// 账号显式列表历史上统一使用 Claude 兼容字段结构，必须保持响应兼容。
+			writeModelsList(c, availableModels)
+		} else {
+			writeDefaultModelsList(c, platform, availableModels)
+		}
 		return
 	}
 	if resolution.Restricted || groupID != nil {
@@ -1091,13 +1096,21 @@ func writeModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
-func writePlatformModelsList(c *gin.Context, platform string, modelIDs []string) {
+// writeCustomModelsList 保持分组自定义列表原有的响应结构。
+func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
+	if platform == service.PlatformOpenAI {
+		writeOpenAIModelsList(c, modelIDs)
+		return
+	}
+	writeModelsList(c, modelIDs)
+}
+
+// writeDefaultModelsList 保持各平台默认回退列表原有的响应结构和展示元数据。
+func writeDefaultModelsList(c *gin.Context, platform string, modelIDs []string) {
 	switch platform {
 	case service.PlatformOpenAI:
 		writeOpenAIModelsList(c, modelIDs)
-	case service.PlatformGrok:
-		writeGrokModelsList(c, modelIDs)
-	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity, service.PlatformQoder:
+	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformQoder:
 		writeClaudeCompatiblePlatformModelsList(c, platform, modelIDs)
 	default:
 		writeModelsList(c, modelIDs)
@@ -1122,31 +1135,6 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 			Created:     1704067200,
 			OwnedBy:     "openai",
 			Type:        "model",
-			DisplayName: modelID,
-		})
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
-}
-
-func writeGrokModelsList(c *gin.Context, modelIDs []string) {
-	defaultsByID := make(map[string]xai.Model, len(xai.DefaultModels()))
-	for _, model := range xai.DefaultModels() {
-		defaultsByID[model.ID] = model
-	}
-
-	models := make([]xai.Model, 0, len(modelIDs))
-	for _, modelID := range modelIDs {
-		if model, ok := defaultsByID[modelID]; ok {
-			models = append(models, model)
-			continue
-		}
-		models = append(models, xai.Model{
-			ID:          modelID,
-			Object:      "model",
-			OwnedBy:     "xai",
 			DisplayName: modelID,
 		})
 	}

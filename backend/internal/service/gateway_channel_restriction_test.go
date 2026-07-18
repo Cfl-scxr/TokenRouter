@@ -43,7 +43,7 @@ func TestResolveAccountUpstreamModel_Antigravity(t *testing.T) {
 		Platform: PlatformAntigravity,
 	}
 	// Antigravity 平台使用 DefaultAntigravityModelMapping
-	got := resolveAccountUpstreamModel(account, "claude-sonnet-4-6")
+	got := resolveAccountUpstreamModel(context.Background(), account, "claude-sonnet-4-6")
 	require.Equal(t, "claude-sonnet-4-6", got)
 }
 
@@ -52,7 +52,7 @@ func TestResolveAccountUpstreamModel_Antigravity_Unsupported(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,
 	}
-	got := resolveAccountUpstreamModel(account, "totally-unknown-model")
+	got := resolveAccountUpstreamModel(context.Background(), account, "totally-unknown-model")
 	require.Equal(t, "", got, "unsupported model should return empty")
 }
 
@@ -61,8 +61,45 @@ func TestResolveAccountUpstreamModel_NonAntigravity(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAnthropic,
 	}
-	got := resolveAccountUpstreamModel(account, "claude-sonnet-4-6")
+	got := resolveAccountUpstreamModel(context.Background(), account, "claude-sonnet-4-6")
 	require.Equal(t, "claude-sonnet-4-6", got, "no mapping = passthrough")
+}
+
+func TestResolveAccountUpstreamModel_AnthropicOAuthAppliesMappingBeforeNormalization(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"client-alias": "claude-sonnet-4-5"},
+		},
+	}
+
+	got := resolveAccountUpstreamModel(context.Background(), account, "client-alias")
+	require.Equal(t, "claude-sonnet-4-5-20250929", got)
+}
+
+func TestResolveAccountUpstreamModel_BedrockUsesRegionalFinalModel(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeBedrock,
+		Credentials: map[string]any{
+			"aws_region": "us-east-1",
+		},
+	}
+
+	got := resolveAccountUpstreamModel(context.Background(), account, "claude-sonnet-4-5")
+	require.Equal(t, "us.anthropic.claude-sonnet-4-5-20250929-v1:0", got)
+}
+
+func TestResolveAccountUpstreamModel_AntigravityUsesThinkingContext(t *testing.T) {
+	t.Parallel()
+	account := &Account{Platform: PlatformAntigravity}
+	ctx := WithThinkingEnabled(context.Background(), true, false)
+
+	got := resolveAccountUpstreamModel(ctx, account, "claude-sonnet-4-5")
+	require.Equal(t, "claude-sonnet-4-5-thinking", got)
 }
 
 func TestIsModelSupportedByAccountWithContext_QoderUsesChannelMappedAccountLayerModel(t *testing.T) {

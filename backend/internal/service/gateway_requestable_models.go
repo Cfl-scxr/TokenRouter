@@ -17,8 +17,9 @@ type RequestableModel struct {
 // RequestableModelsResult 是分组模型解析结果。
 // Restricted 用于区分渠道限制后的空结果与旧版“没有显式模型”语义。
 type RequestableModelsResult struct {
-	Models     []RequestableModel
-	Restricted bool
+	Models                   []RequestableModel
+	Restricted               bool
+	HadExplicitAccountModels bool // 用于保持 /v1/models 的历史响应字段结构。
 }
 
 // ResolveRequestableModels 统一解析模型列表中的 R -> C -> U 链路。
@@ -35,7 +36,9 @@ func (s *GatewayService) ResolveRequestableModels(ctx context.Context, groupID *
 			"group_id", derefGroupID(groupID),
 			"platform", platform,
 			"error", err)
-		return requestableModelsFallback(baseModels, platform)
+		fallback := requestableModelsFallback(baseModels, platform)
+		fallback.HadExplicitAccountModels = len(baseModels) > 0
+		return fallback
 	}
 	return s.resolveRequestableModelsWithAccounts(ctx, groupID, platform, baseModels, accounts)
 }
@@ -60,7 +63,9 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 				"group_id", *groupID,
 				"platform", platform,
 				"error", err)
-			return requestableModelsFallback(mergeRequestableModelCandidates(baseModels, accounts, nil, channelPlatform), platform)
+			fallback := requestableModelsFallback(mergeRequestableModelCandidates(baseModels, accounts, nil, channelPlatform), platform)
+			fallback.HadExplicitAccountModels = len(baseModels) > 0
+			return fallback
 		}
 		if cachedPlatform := strings.TrimSpace(s.channelService.GetGroupPlatform(ctx, *groupID)); cachedPlatform != "" {
 			channelPlatform = cachedPlatform
@@ -68,7 +73,10 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 	}
 
 	candidates := mergeRequestableModelCandidates(baseModels, accounts, channel, channelPlatform)
-	result := RequestableModelsResult{Restricted: channel != nil && channel.RestrictModels}
+	result := RequestableModelsResult{
+		Restricted:               channel != nil && channel.RestrictModels,
+		HadExplicitAccountModels: len(baseModels) > 0,
+	}
 	if len(candidates) == 0 || len(accounts) == 0 {
 		return result
 	}
@@ -269,15 +277,13 @@ func (s *GatewayService) resolveRequestableModel(
 		if !s.isRoutingModelSupportedByAccountWithContext(ctx, account, channelMappedModel) {
 			continue
 		}
-		upstreamModel := strings.TrimSpace(resolveAccountUpstreamModel(account, channelMappedModel))
-		if upstreamModel == "" {
-			continue
+		for _, upstreamModel := range s.resolveAccountUpstreamModelsForListing(ctx, account, channelMappedModel) {
+			if channel != nil && channel.RestrictModels && billingSource == BillingModelSourceUpstream &&
+				s.requestableModelRestricted(ctx, groupID, upstreamModel) {
+				continue
+			}
+			upstreamModels = append(upstreamModels, upstreamModel)
 		}
-		if channel != nil && channel.RestrictModels && billingSource == BillingModelSourceUpstream &&
-			s.requestableModelRestricted(ctx, groupID, upstreamModel) {
-			continue
-		}
-		upstreamModels = append(upstreamModels, upstreamModel)
 	}
 	if len(upstreamModels) == 0 {
 		return RequestableModel{}, false
@@ -293,6 +299,39 @@ func (s *GatewayService) resolveRequestableModel(
 		resolved.PricingModel = channelMappedModel
 	}
 	return resolved, true
+}
+
+// resolveAccountUpstreamModelsForListing 返回静态模型列表可能产生的最终上游模型。
+// Antigravity thinking 由请求体决定，因此需要同时纳入普通版和 thinking 版。
+func (s *GatewayService) resolveAccountUpstreamModelsForListing(ctx context.Context, account *Account, requestedModel string) []string {
+	models := make([]string, 0, 2)
+	seen := make(map[string]struct{}, 2)
+	appendModel := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			return
+		}
+		key := strings.ToLower(model)
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		models = append(models, model)
+	}
+
+	if account != nil && account.Platform == PlatformAntigravity {
+		plainCtx := WithThinkingEnabled(ctx, false, false)
+		if s.isRoutingModelSupportedByAccountWithContext(plainCtx, account, requestedModel) {
+			appendModel(resolveAccountUpstreamModel(plainCtx, account, requestedModel))
+		}
+		thinkingCtx := WithThinkingEnabled(ctx, true, false)
+		if s.isRoutingModelSupportedByAccountWithContext(thinkingCtx, account, requestedModel) {
+			appendModel(resolveAccountUpstreamModel(thinkingCtx, account, requestedModel))
+		}
+		return models
+	}
+	appendModel(resolveAccountUpstreamModel(ctx, account, requestedModel))
+	return models
 }
 
 func (s *GatewayService) requestableModelRestricted(ctx context.Context, groupID *int64, pricingModel string) bool {
