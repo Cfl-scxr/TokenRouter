@@ -52,6 +52,10 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 	accounts []Account,
 ) RequestableModelsResult {
 	accounts = filterRequestableModelAccounts(accounts, platform)
+	// 账号查询成功但没有平台匹配账号时必须保持空结果；渠道读取失败不能凭空补入默认模型。
+	if len(accounts) == 0 {
+		return RequestableModelsResult{}
+	}
 
 	var channel *Channel
 	channelPlatform := strings.TrimSpace(platform)

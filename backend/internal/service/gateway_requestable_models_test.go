@@ -440,6 +440,22 @@ func TestResolveRequestableModels_ChannelQueryFailureKeepsAccountCandidates(t *t
 	require.Contains(t, RequestableModelIDs(result.Models), "client-alias")
 }
 
+// TestResolveRequestableModels_ChannelQueryFailureKeepsEmptyAccountPoolEmpty 验证渠道故障不会为无账号分组伪造默认模型。
+func TestResolveRequestableModels_ChannelQueryFailureKeepsEmptyAccountPoolEmpty(t *testing.T) {
+	groupID := int64(4117)
+	svc := &GatewayService{
+		accountRepo: &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {}}},
+		channelService: NewChannelService(&requestableModelsChannelRepoStub{
+			err: errors.New("temporary channel failure"),
+		}, nil),
+	}
+
+	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformOpenAI)
+
+	require.False(t, result.Restricted)
+	require.Empty(t, result.Models)
+}
+
 func TestModelMarketplaceUsesResolvedChannelMappedPricingModel(t *testing.T) {
 	groupID := int64(4110)
 	inputPrice := 0.05
