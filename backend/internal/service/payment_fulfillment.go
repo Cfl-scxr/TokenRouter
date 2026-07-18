@@ -324,21 +324,6 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 	return fmt.Errorf("payment order %d status kept changing while recording success", o.ID)
 }
 
-func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder) error {
-	cur, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
-	if err != nil {
-		return fmt.Errorf("reload processed order: %w", err)
-	}
-	switch cur.Status {
-	case OrderStatusCompleted, OrderStatusRefunded:
-		return nil
-	case OrderStatusFailed, OrderStatusPaid, OrderStatusRecharging:
-		return s.executeFulfillment(ctx, o.ID)
-	default:
-		return nil
-	}
-}
-
 func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
