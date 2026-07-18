@@ -849,6 +849,16 @@ func isModelInFinalWhitelist(platform, model string, whitelist map[string]struct
 	return ok
 }
 
+// isFinalModelWhitelisted 直接检查已经完成账号映射和平台规范化的最终模型，避免再次执行账号映射。
+func (a *Account) isFinalModelWhitelisted(finalModel string) bool {
+	if a == nil {
+		return false
+	}
+	mapping := a.GetModelMapping()
+	whitelist, _ := resolveFinalModelWhitelist(a.Platform, a.Credentials, mapping)
+	return isModelInFinalWhitelist(a.Platform, finalModel, whitelist)
+}
+
 func normalizeQoderModelForWhitelist(model string) string {
 	trimmed := strings.TrimSpace(model)
 	if trimmed == "" {

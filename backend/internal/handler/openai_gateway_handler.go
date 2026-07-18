@@ -1863,12 +1863,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
+		// 首帧保持客户端模型 R，由 service 层与后续 turn 一样逐轮执行 R -> C -> U。
 		wsFirstMessageForUsageFallback := append([]byte(nil), firstMessage...)
-		if channelMappingWS.Mapped {
-			wsFirstMessageForUsageFallback = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
-		}
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
+			ResolveRoutingModel: func(_ int, requestedModel string) (string, error) {
+				requestedModel = strings.TrimSpace(requestedModel)
+				if requestedModel == "" {
+					requestedModel = reqModel
+				}
+				routingModel, resolveErr := h.gatewayService.ResolveOpenAIWSRoutingModelForAccount(
+					ctx,
+					apiKey.GroupID,
+					account,
+					requestedModel,
+					requiredCapability,
+				)
+				if resolveErr != nil {
+					reason := fmt.Sprintf("model %s is not available for this websocket channel or account", requestedModel)
+					return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, reason, resolveErr)
+				}
+				return routingModel, nil
+			},
 			BeforeRequest: func(turn int, payload []byte, originalModel, _ string) ([]byte, error) {
 				if turn == 1 {
 					return payload, nil
@@ -1954,6 +1970,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if turnModel == "" {
 					turnModel = reqModel
 				}
+				turnChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, turnModel)
 				releaseTurnSlots()
 				defer clearCyberPolicyTurnState(c)
 				turnRequestBodyForCyber := capture.RequestBody
@@ -1968,7 +1985,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnModel,
 					turnErr != nil,
 					cyberBlockKeyWS,
-					channelMappingWS.ToUsageFields(turnModel, ""),
+					turnChannelMapping.ToUsageFields(turnModel, ""),
 					service.HashUsageRequestPayload(turnRequestBodyForCyber),
 				)
 				if cyberPolicyHandled {
@@ -1995,7 +2012,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, result.ResponseHeaders)
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMappingWS.MappedModel), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+				scheduleModel := strings.TrimSpace(result.UpstreamModel)
+				if scheduleModel == "" {
+					scheduleModel = account.GetMappedModel(turnChannelMapping.MappedModel)
+				}
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, scheduleModel, openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 				turnRequestBody := capture.RequestBody
@@ -2023,7 +2044,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						CaptureIncomplete:  result.ResponseBody == nil,
 						APIKeyService:      h.apiKeyService,
 						QuotaPlatform:      quotaPlatform,
-						ChannelUsageFields: channelMappingWS.ToUsageFields(turnModel, result.UpstreamModel),
+						ChannelUsageFields: turnChannelMapping.ToUsageFields(turnModel, result.UpstreamModel),
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",
@@ -2036,7 +2057,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			},
 		}
 
-		// 应用渠道模型映射到 WebSocket 首条消息
+		// service 层会在解析首帧时执行渠道及账号映射，此处只处理会话链字段。
 		wsFirstMessage := append([]byte(nil), wsFirstMessageForUsageFallback...)
 		// 切组/会话失配防护：previous_response_id 未在当前分组命中粘连账号时，
 		// 说明该会话链不属于本次调度到的账号；原样转发会触发上游会话链鉴权失败。

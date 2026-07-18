@@ -301,6 +301,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
+		// Gemini 分组仍以客户端模型参与错误语义和调度入口，但真正转发时必须使用
+		// 渠道映射后的模型，确保账号选择与发往上游的请求处于同一条 R -> C -> U 链路。
+		geminiAttempt, _, err := h.prepareGatewayAttemptRequest(
+			c.Request.Context(), parsedReq, body, apiKey, reqModel,
+		)
+		if err != nil {
+			reqLog.Warn("gateway.prepare_gemini_channel_mapping_failed", zap.Error(err))
+			h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", "Failed to apply channel model mapping", streamStarted)
+			return
+		}
+		geminiForwardModel := geminiAttempt.Model
+		geminiForwardBody := geminiAttempt.Body.Bytes()
+
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
@@ -445,15 +458,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					requestCtx,
 					c,
 					account,
-					reqModel,
+					geminiForwardModel,
 					"generateContent",
 					reqStream,
-					body,
+					geminiForwardBody,
 					hasBoundSession,
 					service.WithForwardGeminiSession(derefGroupID(apiKey.GroupID), sessionKey),
 				)
 			} else {
-				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
+				result, err = h.geminiCompatService.Forward(requestCtx, c, account, geminiForwardBody)
 			}
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -589,7 +602,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		retryWithFallback := false
 
 		for {
-			attemptParsedReq, err := parsedReq.CloneForBody(body)
+			attemptParsedReq, attemptChannelMapping, err := h.prepareGatewayAttemptRequest(
+				c.Request.Context(), parsedReq, body, currentAPIKey, reqModel,
+			)
 			if err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
@@ -790,16 +805,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			attemptParsedReq.OnUpstreamAccepted = queueRelease
 			// ===== 用户消息串行队列 END =====
 
-			// 渠道模型映射只作用于本次账号尝试，避免 failover 后污染原始 ParsedRequest。
-			if channelMapping.Mapped {
-				attemptParsedReq.Model = channelMapping.MappedModel
-				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(attemptParsedReq.Body.Bytes(), channelMapping.MappedModel)); err != nil {
-					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-					return
-				}
-			}
 			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
-			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
+			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, currentAPIKey.GroupID)); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
@@ -873,6 +880,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						}
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+						// 后续转发和用量计算必须读取兜底分组，而不是中间件写入的原分组。
+						ctx = context.WithValue(ctx, ctxkey.Group, fallbackGroup)
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
 						currentSubscription = nil
@@ -989,7 +998,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionKey,
 					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					ChannelUsageFields: attemptChannelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -1322,6 +1331,38 @@ func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service
 	cloned.GroupID = &groupID
 	cloned.Group = group
 	return &cloned
+}
+
+// prepareGatewayAttemptRequest 按当前 API Key 分组克隆请求并执行渠道模型映射。
+// 每次账号尝试都重新解析当前分组，确保兜底分组不会沿用原分组的映射和用量字段。
+func (h *GatewayHandler) prepareGatewayAttemptRequest(
+	ctx context.Context,
+	parsed *service.ParsedRequest,
+	body []byte,
+	apiKey *service.APIKey,
+	requestedModel string,
+) (*service.ParsedRequest, service.ChannelMappingResult, error) {
+	attempt, err := parsed.CloneForBody(body)
+	if err != nil {
+		return nil, service.ChannelMappingResult{}, err
+	}
+
+	var groupID *int64
+	if apiKey != nil && apiKey.GroupID != nil {
+		value := *apiKey.GroupID
+		groupID = &value
+	}
+	attempt.GroupID = groupID
+	mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, groupID, requestedModel)
+	if !mapping.Mapped {
+		return attempt, mapping, nil
+	}
+
+	attempt.Model = mapping.MappedModel
+	if err := attempt.ReplaceBody(h.gatewayService.ReplaceModelInBody(attempt.Body.Bytes(), mapping.MappedModel)); err != nil {
+		return nil, service.ChannelMappingResult{}, err
+	}
+	return attempt, mapping, nil
 }
 
 // Usage handles getting account balance and usage statistics for CC Switch integration
@@ -1932,8 +1973,17 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
 
+	// 渠道映射只写入本次转发副本，原始模型继续用于错误、日志和会话语义。
+	attemptParsedReq, _, err := h.prepareGatewayAttemptRequest(
+		c.Request.Context(), parsedReq, parsedReq.Body.Bytes(), apiKey, parsedReq.Model,
+	)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
 	// 转发请求（不记录使用量）
-	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
+	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, attemptParsedReq); err != nil {
 		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		// 错误响应已在 ForwardCountTokens 中处理
 		return

@@ -136,6 +136,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 			payload,
 			len(payload),
 			"gpt-5",
+			"gpt-5",
 			"",
 			"",
 			"",
@@ -222,7 +223,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) 
 
 	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
 		context.Background(), c, account, "access-token", payload, len(payload),
-		"", "", "", "", "", 1,
+		"", "", "", "", "", "", 1,
 		func(message []byte) error {
 			events = append(events, append([]byte(nil), message...))
 			return nil

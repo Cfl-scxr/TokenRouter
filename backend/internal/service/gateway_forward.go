@@ -156,8 +156,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	// 账号模型映射必须先于平台模型规范化执行，确保调度、限制检查和实际转发使用同一条链路。
-	accountMappedModel, accountMappingMatched := account.ResolveMappedModel(reqModel)
-	if accountMappingMatched && strings.TrimSpace(accountMappedModel) != "" && accountMappedModel != reqModel {
+	accountMappedModel := resolveAccountMappedModelForForward(account, reqModel)
+	if accountMappedModel != reqModel {
 		if err := replaceBody(s.replaceModelInBody(body, accountMappedModel)); err != nil {
 			return nil, err
 		}
@@ -874,6 +874,19 @@ func (s *GatewayService) channelMappedModelForGroup(ctx context.Context, groupID
 	return requestedModel
 }
 
+// resolveAccountMappedModelForForward 执行账号模型映射，并对空映射结果保持原模型透传。
+// 所有实际转发和调度检查都应从渠道映射后的模型调用本函数。
+func resolveAccountMappedModelForForward(account *Account, requestedModel string) string {
+	if account == nil {
+		return ""
+	}
+	mappedModel, matched := account.ResolveMappedModel(requestedModel)
+	if !matched || strings.TrimSpace(mappedModel) == "" {
+		return requestedModel
+	}
+	return strings.TrimSpace(mappedModel)
+}
+
 // resolveAnthropicAccountUpstreamModel 执行账号映射后的 Anthropic 平台最终模型规范化。
 func resolveAnthropicAccountUpstreamModel(account *Account, accountMappedModel string) string {
 	if account == nil {
@@ -905,7 +918,7 @@ func resolveAccountUpstreamModel(ctx context.Context, account *Account, requeste
 	if account.Platform == PlatformAntigravity {
 		return strings.TrimSpace(resolveFinalAntigravityModelKey(ctx, account, requestedModel))
 	}
-	mappedModel := account.GetMappedModel(requestedModel)
+	mappedModel := resolveAccountMappedModelForForward(account, requestedModel)
 	if account.Platform == PlatformQoder {
 		return strings.TrimSpace(resolveQoderModel(mappedModel).Key)
 	}

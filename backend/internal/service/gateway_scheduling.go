@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
-	"github.com/TokenFlux/TokenRouter/internal/pkg/claude"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/usagestats"
@@ -2519,13 +2518,11 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
 		return true
 	}
-	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
+	// Anthropic 非 APIKey 账号必须先执行账号映射，再按真正上游模型检查最终白名单。
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		if account.Type == AccountTypeServiceAccount {
-			requestedModel = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
-		} else {
-			requestedModel = claude.NormalizeModelID(requestedModel)
-		}
+		accountMappedModel := resolveAccountMappedModelForForward(account, requestedModel)
+		upstreamModel := resolveAnthropicAccountUpstreamModel(account, accountMappedModel)
+		return account.isFinalModelWhitelisted(upstreamModel)
 	}
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)

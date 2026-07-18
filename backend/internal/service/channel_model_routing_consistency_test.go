@@ -45,6 +45,45 @@ func TestGatewayAccountLayerUsesChannelMappedModelForSupportAndRateLimit(t *test
 	require.True(t, svc.shouldClearStickySessionForAccountLayer(ctx, account, "client-alias"))
 }
 
+func TestGatewayAnthropicAccountSupportMapsBeforePlatformNormalization(t *testing.T) {
+	tests := []struct {
+		name           string
+		accountType    string
+		finalModel     string
+		whitelistModel string
+	}{
+		{
+			name:           "OAuth",
+			accountType:    AccountTypeOAuth,
+			finalModel:     "claude-sonnet-4-5-20250929",
+			whitelistModel: "claude-sonnet-4-5-20250929",
+		},
+		{
+			name:           "ServiceAccount",
+			accountType:    AccountTypeServiceAccount,
+			finalModel:     "claude-sonnet-4-5@20250929",
+			whitelistModel: "claude-sonnet-4-5@20250929",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Platform: PlatformAnthropic,
+				Type:     tt.accountType,
+				Credentials: map[string]any{
+					"model_mapping":   map[string]any{"channel-model": "claude-sonnet-4-5"},
+					"model_whitelist": []any{tt.whitelistModel},
+				},
+			}
+			svc := &GatewayService{}
+
+			require.True(t, svc.isModelSupportedByAccount(account, "channel-model"))
+			require.Equal(t, tt.finalModel, resolveAccountUpstreamModel(context.Background(), account, "channel-model"))
+		})
+	}
+}
+
 func TestOpenAIAdvancedSchedulerUsesRoutingModelAndKeepsRequestedModel(t *testing.T) {
 	account := &Account{
 		ID:       72,
@@ -120,4 +159,85 @@ func TestModelAvailabilityDiagnosisAcceptsChannelAlias(t *testing.T) {
 	diagnosis := svc.DiagnoseModelAvailabilityForPlatform(context.Background(), &groupID, "client-alias", PlatformOpenAI)
 	require.True(t, diagnosis.HasAccountsInPool)
 	require.True(t, diagnosis.HasModelSupport)
+}
+
+// TestResolveOpenAIWSRoutingModelForAccountStrictlyFollowsBillingBasis 验证长连接每轮都严格按所选依据检查 R、C 或 U。
+func TestResolveOpenAIWSRoutingModelForAccountStrictlyFollowsBillingBasis(t *testing.T) {
+	price := 0.01
+	tests := []struct {
+		name           string
+		billingSource  string
+		pricingModel   string
+		expectRejected bool
+	}{
+		{name: "requested", billingSource: BillingModelSourceRequested, pricingModel: "client-alias"},
+		{name: "channel_mapped", billingSource: BillingModelSourceChannelMapped, pricingModel: "channel-model"},
+		{name: "upstream", billingSource: BillingModelSourceUpstream, pricingModel: "upstream-model"},
+		{name: "upstream_rejected", billingSource: BillingModelSourceUpstream, pricingModel: "other-model", expectRejected: true},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(4300 + index)
+			channel := Channel{
+				ID:                 int64(80 + index),
+				Status:             StatusActive,
+				RestrictModels:     true,
+				BillingModelSource: tt.billingSource,
+				ModelMapping: map[string]map[string]string{
+					PlatformOpenAI: {"client-alias": "channel-model"},
+				},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:   PlatformOpenAI,
+					Models:     []string{tt.pricingModel},
+					InputPrice: &price,
+				}},
+			}
+			svc := &OpenAIGatewayService{channelService: newRequestableModelsChannelService(groupID, PlatformOpenAI, channel)}
+			account := &Account{
+				ID:          90,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_mapping":   map[string]any{"channel-model": "upstream-model"},
+					"model_whitelist": []any{"upstream-model"},
+				},
+			}
+
+			routingModel, err := svc.ResolveOpenAIWSRoutingModelForAccount(
+				context.Background(), &groupID, account, "client-alias", OpenAIEndpointCapabilityChatCompletions,
+			)
+			if tt.expectRejected {
+				require.Error(t, err)
+				require.Empty(t, routingModel)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "channel-model", routingModel)
+		})
+	}
+}
+
+// TestResolveOpenAIWSRoutingModelForAccountRejectsUnsupportedMappedModel 验证后续 turn 不能绕过固定账号的最终白名单。
+func TestResolveOpenAIWSRoutingModelForAccountRejectsUnsupportedMappedModel(t *testing.T) {
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_mapping":   map[string]any{"channel-model": "upstream-model"},
+			"model_whitelist": []any{"different-upstream-model"},
+		},
+	}
+	svc := &OpenAIGatewayService{}
+
+	routingModel, err := svc.ResolveOpenAIWSRoutingModelForAccount(
+		context.Background(), nil, account, "channel-model", OpenAIEndpointCapabilityChatCompletions,
+	)
+	require.Error(t, err)
+	require.Empty(t, routingModel)
 }
