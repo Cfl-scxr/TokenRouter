@@ -315,6 +315,7 @@ riskControl: {
       action: {
         block: '拦截',
         keywordBlock: '关键词拦截',
+        hashBlock: '哈希拦截',
         error: '异常',
       },
     },

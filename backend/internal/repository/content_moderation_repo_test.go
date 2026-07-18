@@ -21,6 +21,16 @@ func TestBuildContentModerationLogWhere_BlockedIncludesAllBlockActions(t *testin
 	require.NotContains(t, sql, "l.action = 'block'")
 }
 
+func TestBuildContentModerationLogWhere_HitExcludesAllBlockActions(t *testing.T) {
+	where, args := buildContentModerationLogWhere(service.ContentModerationLogFilter{Result: "hit"})
+
+	require.Empty(t, args)
+	sql := strings.Join(where, " AND ")
+	// 命中条件必须同时排除 blocked 使用的三种动作，才能保证两个筛选集合互斥。
+	require.Contains(t, sql, "l.flagged = TRUE")
+	require.Contains(t, sql, "l.action NOT IN ('block', 'keyword_block', 'hash_block')")
+}
+
 func TestContentModerationRepositoryCreateLog_PersistsMatchedKeyword(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewContentModerationRepository(db)

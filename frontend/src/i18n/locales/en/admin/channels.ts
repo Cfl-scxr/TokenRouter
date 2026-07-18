@@ -315,6 +315,7 @@ riskControl: {
       action: {
         block: 'Blocked',
         keywordBlock: 'Keyword Blocked',
+        hashBlock: 'Hash Blocked',
         error: 'Error',
       },
     },

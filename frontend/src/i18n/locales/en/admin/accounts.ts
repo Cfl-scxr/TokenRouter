@@ -374,6 +374,7 @@ export default {
         title: 'Bulk Edit Accounts',
         selectionInfo:
           '{count} account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
+        applyField: 'Apply this field',
         baseUrlPlaceholder: 'https://api.anthropic.com or https://api.openai.com',
         baseUrlNotice: 'Applies to API Key accounts and the forwarding endpoint of Grok OAuth accounts; leave empty to keep existing value',
         submit: 'Update Accounts',
