@@ -25,6 +25,7 @@ import (
 type paymentOrderLifecycleQueryProvider struct {
 	key               string
 	lastQueryTradeNo  string
+	queryTradeNos     []string
 	lastCancelTradeNo string
 	queryCalls        int
 	cancelCalls       int
@@ -65,6 +66,7 @@ func (p *paymentOrderLifecycleQueryProvider) CreatePayment(context.Context, paym
 
 func (p *paymentOrderLifecycleQueryProvider) QueryOrder(_ context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	p.lastQueryTradeNo = tradeNo
+	p.queryTradeNos = append(p.queryTradeNos, tradeNo)
 	p.queryCalls++
 	if p.queryErr != nil {
 		return nil, p.queryErr
@@ -852,6 +854,140 @@ func TestReconcileProcessingOrdersRecoversPaidOrderAfterServiceRestart(t *testin
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 	require.Equal(t, "pi_restart_recovery", reloaded.PaymentTradeNo)
+}
+
+func TestReconcilePageIDsCyclesAcrossEntireBacklog(t *testing.T) {
+	t.Parallel()
+
+	ids := make([]int64, 45)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	seen := make(map[int64]bool, len(ids))
+	for cursor := range uint64(3) {
+		page := reconcilePageIDs(ids, cursor, processingReconcileLimit)
+		require.LessOrEqual(t, len(page), processingReconcileLimit)
+		for _, id := range page {
+			seen[id] = true
+		}
+	}
+	require.Len(t, seen, len(ids))
+}
+
+func TestReconcileProcessingOrdersCyclesPastFirstBatch(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	provider := &paymentOrderLifecycleQueryProvider{
+		resp: &payment.QueryOrderResponse{Status: payment.ProviderStatusProcessing},
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	for range processingReconcileLimit + 1 {
+		order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusProcessing, time.Now().Add(time.Hour))
+		_, err := client.PaymentOrder.UpdateOneID(order.ID).
+			SetPaymentTradeNo(order.OutTradeNo).
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	for range 2 {
+		recovered, err := svc.reconcileProcessingOrdersAt(ctx, time.Now())
+		require.NoError(t, err)
+		require.Zero(t, recovered)
+	}
+	uniqueTradeNos := make(map[string]bool, len(provider.queryTradeNos))
+	for _, tradeNo := range provider.queryTradeNos {
+		uniqueTradeNos[tradeNo] = true
+	}
+	require.Len(t, uniqueTradeNos, processingReconcileLimit+1)
+}
+
+func TestReconcilePaidFulfillmentOrdersRetriesAfterQueryRecoveryFailure(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusProcessing, time.Now())
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetPaymentType(payment.TypeStripe).
+		SetPaymentTradeNo("cs_fulfillment_retry").
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(order.ID, 10)).
+		SetAction("SUBSCRIPTION_ASSIGNED").
+		SetDetail(`{"planID":100}`).
+		SetOperator("system").
+		Save(ctx)
+	require.NoError(t, err)
+
+	provider := &paymentOrderLifecycleQueryProvider{
+		key: payment.TypeStripe,
+		resp: &payment.QueryOrderResponse{
+			TradeNo: "pi_fulfillment_retry",
+			Status:  payment.ProviderStatusPaid,
+			Amount:  order.PayAmount,
+			Metadata: map[string]string{
+				"currency": payment.DefaultPaymentCurrency,
+			},
+		},
+	}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	recovered, err := svc.reconcileProcessingOrdersAt(ctx, time.Now())
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	failed, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusFailed, failed.Status)
+	require.NotNil(t, failed.PaidAt)
+
+	svc.subscriptionSvc = &SubscriptionService{}
+	recovered, err = svc.reconcilePaidFulfillmentOrdersAt(ctx, time.Now().Add(fulfillmentRetryDelay+time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+}
+
+func TestReconcilePaidFulfillmentOrdersRecoversOnlyExpiredLease(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	now := time.Now()
+	staleOrder := createPaymentFulfillmentSubscriptionOrder(
+		t,
+		ctx,
+		client,
+		OrderStatusRecharging,
+		now.Add(-paymentFulfillmentLeaseDuration-time.Minute),
+	)
+	freshOrder := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRecharging, now)
+	for _, order := range []*dbent.PaymentOrder{staleOrder, freshOrder} {
+		_, err := client.PaymentAuditLog.Create().
+			SetOrderID(strconv.FormatInt(order.ID, 10)).
+			SetAction("SUBSCRIPTION_ASSIGNED").
+			SetDetail(`{"planID":100}`).
+			SetOperator("system").
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	svc := &PaymentService{entClient: client, subscriptionSvc: &SubscriptionService{}}
+	recovered, err := svc.reconcilePaidFulfillmentOrdersAt(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+
+	reloadedStale, err := client.PaymentOrder.Get(ctx, staleOrder.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloadedStale.Status)
+	reloadedFresh, err := client.PaymentOrder.Get(ctx, freshOrder.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRecharging, reloadedFresh.Status)
 }
 
 func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {

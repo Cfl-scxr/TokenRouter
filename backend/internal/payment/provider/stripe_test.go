@@ -137,6 +137,71 @@ func TestStripeCheckoutProviderStatus(t *testing.T) {
 	}
 }
 
+func TestStripeCheckoutProviderStatusUsesExpandedTerminalState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		session *stripe.CheckoutSession
+		want    string
+	}{
+		{
+			name: "completed payment intent requires new method",
+			session: &stripe.CheckoutSession{
+				Status:        stripe.CheckoutSessionStatusComplete,
+				PaymentStatus: stripe.CheckoutSessionPaymentStatusUnpaid,
+				PaymentIntent: &stripe.PaymentIntent{Status: stripe.PaymentIntentStatusRequiresPaymentMethod},
+			},
+			want: payment.ProviderStatusFailed,
+		},
+		{
+			name: "open checkout still allows another payment attempt",
+			session: &stripe.CheckoutSession{
+				Status:        stripe.CheckoutSessionStatusOpen,
+				PaymentStatus: stripe.CheckoutSessionPaymentStatusUnpaid,
+				PaymentIntent: &stripe.PaymentIntent{Status: stripe.PaymentIntentStatusRequiresPaymentMethod},
+			},
+			want: payment.ProviderStatusPending,
+		},
+		{
+			name: "completed canceled payment intent",
+			session: &stripe.CheckoutSession{
+				Status:        stripe.CheckoutSessionStatusComplete,
+				PaymentStatus: stripe.CheckoutSessionPaymentStatusUnpaid,
+				PaymentIntent: &stripe.PaymentIntent{Status: stripe.PaymentIntentStatusCanceled},
+			},
+			want: payment.ProviderStatusFailed,
+		},
+		{
+			name: "completed uncollectible invoice",
+			session: &stripe.CheckoutSession{
+				Status:        stripe.CheckoutSessionStatusComplete,
+				PaymentStatus: stripe.CheckoutSessionPaymentStatusUnpaid,
+				Invoice:       &stripe.Invoice{Status: stripe.InvoiceStatusUncollectible},
+			},
+			want: payment.ProviderStatusFailed,
+		},
+		{
+			name: "expanded successful payment intent wins",
+			session: &stripe.CheckoutSession{
+				Status:        stripe.CheckoutSessionStatusComplete,
+				PaymentStatus: stripe.CheckoutSessionPaymentStatusUnpaid,
+				PaymentIntent: &stripe.PaymentIntent{Status: stripe.PaymentIntentStatusSucceeded},
+			},
+			want: payment.ProviderStatusPaid,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := stripeCheckoutProviderStatus(tt.session); got != tt.want {
+				t.Fatalf("provider status = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStripeCheckoutSessionExpiresAtUsesProviderValue(t *testing.T) {
 	t.Parallel()
 
@@ -474,6 +539,44 @@ func TestParseStripeCheckoutSessionKeepsAsyncFailureNotification(t *testing.T) {
 	}
 	if notification.TradeNo != "cs_async_failed" {
 		t.Fatalf("trade no = %q, want checkout session id fallback", notification.TradeNo)
+	}
+}
+
+func TestParseStripeEventOnlyTreatsTerminalCheckoutFailuresAsFailed(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []stripe.EventType{
+		stripe.EventType(stripeEventPaymentFailed),
+		stripe.EventType(stripeEventInvoiceFailed),
+	} {
+		notification, err := parseStripeEvent(&stripe.Event{Type: eventType}, "{}")
+		if err != nil {
+			t.Fatalf("parse retryable event %q: %v", eventType, err)
+		}
+		if notification != nil {
+			t.Fatalf("retryable event %q notification = %#v, want nil", eventType, notification)
+		}
+	}
+
+	checkoutRaw := stripeCheckoutSessionEventRaw(t, map[string]any{
+		"id":             "cs_terminal_async_failure",
+		"object":         "checkout.session",
+		"amount_total":   1292,
+		"currency":       "cny",
+		"payment_status": "unpaid",
+		"metadata": map[string]string{
+			"orderId": "sub2_terminal_async_failure",
+		},
+	})
+	notification, err := parseStripeEvent(&stripe.Event{
+		Type: stripe.EventType(stripeEventCheckoutAsyncFailed),
+		Data: &stripe.EventData{Raw: checkoutRaw},
+	}, "{}")
+	if err != nil {
+		t.Fatalf("parse terminal checkout failure: %v", err)
+	}
+	if notification == nil || notification.Status != payment.ProviderStatusFailed {
+		t.Fatalf("terminal checkout failure notification = %#v, want failed", notification)
 	}
 }
 

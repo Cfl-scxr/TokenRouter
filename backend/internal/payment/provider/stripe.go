@@ -318,15 +318,41 @@ func stripeCheckoutProviderStatus(session *stripe.CheckoutSession) string {
 	if session.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
 		return payment.ProviderStatusPaid
 	}
+	if session.PaymentIntent != nil && session.PaymentIntent.Status == stripe.PaymentIntentStatusSucceeded {
+		return payment.ProviderStatusPaid
+	}
+	if session.Invoice != nil && session.Invoice.Status == stripe.InvoiceStatusPaid {
+		return payment.ProviderStatusPaid
+	}
+	if session.Status == stripe.CheckoutSessionStatusExpired {
+		return payment.ProviderStatusFailed
+	}
 	if session.Status == stripe.CheckoutSessionStatusComplete && session.PaymentStatus == stripe.CheckoutSessionPaymentStatusUnpaid {
+		if stripeCheckoutCompletedPaymentFailed(session) {
+			return payment.ProviderStatusFailed
+		}
 		return payment.ProviderStatusProcessing
 	}
-	switch session.Status {
-	case stripe.CheckoutSessionStatusExpired:
-		return payment.ProviderStatusFailed
-	default:
-		return payment.ProviderStatusPending
+	return payment.ProviderStatusPending
+}
+
+func stripeCheckoutCompletedPaymentFailed(session *stripe.CheckoutSession) bool {
+	if session == nil || session.Status != stripe.CheckoutSessionStatusComplete {
+		return false
 	}
+	if session.PaymentIntent != nil {
+		switch session.PaymentIntent.Status {
+		case stripe.PaymentIntentStatusCanceled, stripe.PaymentIntentStatusRequiresPaymentMethod:
+			return true
+		}
+	}
+	if session.Invoice != nil {
+		switch session.Invoice.Status {
+		case stripe.InvoiceStatusVoid, stripe.InvoiceStatusUncollectible:
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Stripe) queryInvoice(ctx context.Context, invoiceID string) (*payment.QueryOrderResponse, error) {
@@ -389,24 +415,29 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 	if err != nil {
 		return nil, fmt.Errorf("stripe verify notification: %w", err)
 	}
+	return parseStripeEvent(&event, rawBody)
+}
 
+func parseStripeEvent(event *stripe.Event, rawBody string) (*payment.PaymentNotification, error) {
+	if event == nil {
+		return nil, nil
+	}
 	switch event.Type {
 	case stripeEventCheckoutDone:
-		return parseStripeCheckoutSession(&event, payment.ProviderStatusProcessing, rawBody)
+		return parseStripeCheckoutSession(event, payment.ProviderStatusProcessing, rawBody)
 	case stripeEventCheckoutExpired:
-		return parseStripeCheckoutSession(&event, payment.ProviderStatusFailed, rawBody)
+		return parseStripeCheckoutSession(event, payment.ProviderStatusFailed, rawBody)
 	case stripeEventCheckoutAsyncSucceeded:
-		return parseStripeCheckoutSession(&event, payment.ProviderStatusSuccess, rawBody)
+		return parseStripeCheckoutSession(event, payment.ProviderStatusSuccess, rawBody)
 	case stripeEventCheckoutAsyncFailed:
-		return parseStripeCheckoutSession(&event, payment.ProviderStatusFailed, rawBody)
+		return parseStripeCheckoutSession(event, payment.ProviderStatusFailed, rawBody)
 	case stripeEventInvoicePaid:
-		return parseStripeInvoice(&event, payment.ProviderStatusSuccess, rawBody)
-	case stripeEventInvoiceFailed:
-		return parseStripeInvoice(&event, payment.ProviderStatusFailed, rawBody)
+		return parseStripeInvoice(event, payment.ProviderStatusSuccess, rawBody)
 	case stripeEventPaymentSuccess:
-		return parseStripePaymentIntent(&event, payment.ProviderStatusSuccess, rawBody)
-	case stripeEventPaymentFailed:
-		return parseStripePaymentIntent(&event, payment.ProviderStatusFailed, rawBody)
+		return parseStripePaymentIntent(event, payment.ProviderStatusSuccess, rawBody)
+	case stripeEventInvoiceFailed, stripeEventPaymentFailed:
+		// 这两个事件只代表一次付款尝试失败，Checkout 仍可能允许用户重试。
+		return nil, nil
 	}
 
 	return nil, nil

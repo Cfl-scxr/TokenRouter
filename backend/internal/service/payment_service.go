@@ -197,19 +197,23 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu               sync.Mutex
-	providersLoaded          bool
-	entClient                *dbent.Client
-	registry                 *payment.Registry
-	loadBalancer             payment.LoadBalancer
-	redeemService            *RedeemService
-	subscriptionSvc          *SubscriptionService
-	configService            *PaymentConfigService
-	userRepo                 UserRepository
-	groupRepo                GroupRepository
-	affiliateService         *AffiliateService
-	resumeService            *PaymentResumeService
-	notificationEmailService *NotificationEmailService
+	providerMu sync.Mutex
+	// 对账游标由同一把锁保护，确保并发触发时每轮仍推进到下一批。
+	reconcileCursorMu          sync.Mutex
+	processingReconcileCursor  uint64
+	fulfillmentReconcileCursor uint64
+	providersLoaded            bool
+	entClient                  *dbent.Client
+	registry                   *payment.Registry
+	loadBalancer               payment.LoadBalancer
+	redeemService              *RedeemService
+	subscriptionSvc            *SubscriptionService
+	configService              *PaymentConfigService
+	userRepo                   UserRepository
+	groupRepo                  GroupRepository
+	affiliateService           *AffiliateService
+	resumeService              *PaymentResumeService
+	notificationEmailService   *NotificationEmailService
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {

@@ -32,6 +32,8 @@ const (
 	checkPaidResultUncertain   = "uncertain"
 	pendingWxpayReconcileLimit = 20
 	processingReconcileLimit   = 20
+	fulfillmentReconcileLimit  = 20
+	fulfillmentRetryDelay      = time.Minute
 	processingStaleAfter       = 24 * time.Hour
 )
 
@@ -539,16 +541,32 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 
 // ReconcileProcessingOrders 低频补偿可能漏掉 Webhook 的渠道处理中订单。
 func (s *PaymentService) ReconcileProcessingOrders(ctx context.Context) (int, error) {
-	orders, err := s.entClient.PaymentOrder.Query().
+	return s.reconcileProcessingOrdersAt(ctx, time.Now())
+}
+
+func (s *PaymentService) reconcileProcessingOrdersAt(ctx context.Context, now time.Time) (int, error) {
+	ids, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.StatusEQ(OrderStatusProcessing)).
-		Order(dbent.Asc(paymentorder.FieldUpdatedAt)).
-		Limit(processingReconcileLimit).
+		Order(paymentorder.ByID()).
+		IDs(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query processing payment order ids: %w", err)
+	}
+	pageIDs := s.nextReconcilePageIDs(ids, &s.processingReconcileCursor, processingReconcileLimit)
+	if len(pageIDs) == 0 {
+		return 0, nil
+	}
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.IDIn(pageIDs...),
+			paymentorder.StatusEQ(OrderStatusProcessing),
+		).
+		Order(paymentorder.ByID()).
 		All(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("query processing payment orders: %w", err)
 	}
 
-	now := time.Now()
 	recovered := 0
 	for _, order := range orders {
 		prov, queryRef, resp, queryErr := s.queryPaymentOrderProvider(ctx, order)
@@ -574,6 +592,84 @@ func (s *PaymentService) ReconcileProcessingOrders(ctx context.Context) (int, er
 		}
 	}
 	return recovered, nil
+}
+
+// ReconcilePaidFulfillmentOrders 重试已收款但尚未完成的幂等履约。
+func (s *PaymentService) ReconcilePaidFulfillmentOrders(ctx context.Context) (int, error) {
+	return s.reconcilePaidFulfillmentOrdersAt(ctx, time.Now())
+}
+
+func (s *PaymentService) reconcilePaidFulfillmentOrdersAt(ctx context.Context, now time.Time) (int, error) {
+	ids, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.PaidAtNotNil(),
+			paymentorder.Or(
+				paymentorder.And(
+					paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed),
+					paymentorder.UpdatedAtLTE(now.Add(-fulfillmentRetryDelay)),
+				),
+				paymentorder.And(
+					paymentorder.StatusEQ(OrderStatusRecharging),
+					paymentorder.UpdatedAtLTE(now.Add(-paymentFulfillmentLeaseDuration)),
+				),
+			),
+		).
+		Order(paymentorder.ByID()).
+		IDs(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query paid fulfillment order ids: %w", err)
+	}
+	pageIDs := s.nextReconcilePageIDs(ids, &s.fulfillmentReconcileCursor, fulfillmentReconcileLimit)
+	if len(pageIDs) == 0 {
+		return 0, nil
+	}
+
+	recovered := 0
+	for _, orderID := range pageIDs {
+		if err := s.executeFulfillment(ctx, orderID); err != nil {
+			slog.Warn("retry paid order fulfillment failed", "orderID", orderID, "error", err)
+			continue
+		}
+		order, err := s.entClient.PaymentOrder.Get(ctx, orderID)
+		if err != nil {
+			slog.Warn("reload reconciled fulfillment order failed", "orderID", orderID, "error", err)
+			continue
+		}
+		if order.Status == OrderStatusCompleted {
+			recovered++
+		}
+	}
+	return recovered, nil
+}
+
+func (s *PaymentService) nextReconcilePageIDs(ids []int64, cursor *uint64, limit int) []int64 {
+	s.reconcileCursorMu.Lock()
+	defer s.reconcileCursorMu.Unlock()
+
+	pageIDs := reconcilePageIDs(ids, *cursor, limit)
+	if len(ids) > limit {
+		*cursor = *cursor + 1
+	}
+	return pageIDs
+}
+
+func reconcilePageIDs(ids []int64, cursor uint64, limit int) []int64 {
+	if len(ids) == 0 || limit <= 0 {
+		return nil
+	}
+	if len(ids) <= limit {
+		return append([]int64(nil), ids...)
+	}
+
+	// 每轮推进一页，使长期不变的处理中订单也能覆盖整个待处理集合。
+	pageCount := (len(ids) + limit - 1) / limit
+	page := int(cursor % uint64(pageCount))
+	start := page * limit
+	end := start + limit
+	if end > len(ids) {
+		end = len(ids)
+	}
+	return append([]int64(nil), ids[start:end]...)
 }
 
 func (s *PaymentService) maybeAuditStaleProcessingOrder(ctx context.Context, order *dbent.PaymentOrder, now time.Time, providerStatus string) {
