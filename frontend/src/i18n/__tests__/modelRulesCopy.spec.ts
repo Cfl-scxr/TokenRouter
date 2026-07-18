@@ -12,11 +12,15 @@ describe('model routing copy', () => {
     expect(zhAccounts.accounts.modelMapping).toBe('账号模型映射')
     expect(zhAccounts.accounts.supportsAllModels).toBe('账号级不限制')
     expect(zhAccounts.accounts.modelRestrictionCombinedHint).toContain('渠道规则、平台能力和上游实际支持范围仍然生效')
+    expect(zhAccounts.accounts.openai.modelRestrictionDisabledByPassthrough).toContain('最终模型白名单和账号模型映射')
+    expect(zhAccounts.accounts.syncUpstreamModelsNoChanges).toContain('最终模型白名单')
 
     expect(enAccounts.accounts.modelRestriction).toBe('Account Model Rules (Optional)')
     expect(enAccounts.accounts.modelWhitelist).toBe('Final Model Whitelist')
     expect(enAccounts.accounts.modelMapping).toBe('Account Model Mapping')
     expect(enAccounts.accounts.supportsAllModels).toBe('No account-level restriction')
+    expect(enAccounts.accounts.openai.modelRestrictionDisabledByPassthrough).toContain('final model whitelist and account model mapping')
+    expect(enAccounts.accounts.syncUpstreamModelsNoChanges).toContain('final model whitelist')
   })
 
   it('keeps the channel stages and three bases aligned', () => {
