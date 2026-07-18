@@ -356,6 +356,24 @@ describe('EditAccountModal', () => {
     listTLSProfilesMock.mockResolvedValue([])
   })
 
+  it('renders the shared account model rule copy', async () => {
+    const account = buildAccount()
+    account.credentials.model_whitelist = []
+    const wrapper = mountModal(account)
+
+    expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+    expect(wrapper.text()).toContain('admin.accounts.modelWhitelist')
+    expect(wrapper.text()).toContain('admin.accounts.modelRestrictionCombinedHint')
+    expect(wrapper.text()).toContain('admin.accounts.supportsAllModels')
+
+    const mappingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.modelMapping'))
+    expect(mappingButton).toBeTruthy()
+    await mappingButton!.trigger('click')
+    expect(wrapper.text()).toContain('admin.accounts.mapRequestModels')
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockResolvedValue(account)

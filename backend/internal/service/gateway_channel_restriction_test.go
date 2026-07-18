@@ -165,7 +165,7 @@ func TestCheckChannelPricingRestriction_ChannelMapped_Allowed(t *testing.T) {
 		"mapped model claude-sonnet-4-6 IS in pricing → allowed")
 }
 
-func TestCheckChannelPricingRestriction_QoderBlankRouteKeyAllowsPricedRequestedAlias(t *testing.T) {
+func TestCheckChannelPricingRestriction_QoderChannelMappedBasisRejectsBlankRouteKey(t *testing.T) {
 	t.Parallel()
 	price := 1e-6
 	ch := Channel{
@@ -186,8 +186,8 @@ func TestCheckChannelPricingRestriction_QoderBlankRouteKeyAllowsPricedRequestedA
 	svc := &GatewayService{channelService: channelSvc}
 
 	gid := int64(10)
-	require.False(t, svc.checkChannelPricingRestriction(context.Background(), &gid, "qwen3.7-plus"),
-		"Qoder restriction should follow pricing precedence: priced requested alias is allowed even if mapped route key row is blank")
+	require.True(t, svc.checkChannelPricingRestriction(context.Background(), &gid, "qwen3.7-plus"),
+		"Qoder 渠道映射依据只能检查 C，不能用 R 的有效价格放行空价格 route key")
 }
 
 func TestCheckChannelPricingRestriction_Requested_Restricted(t *testing.T) {
@@ -356,7 +356,7 @@ func TestIsUpstreamModelRestrictedByChannel_AppliesChannelMappingBeforeAccountMa
 		"upstream restriction should check the final model after channel mapping and account mapping")
 }
 
-func TestIsUpstreamModelRestrictedByChannel_QoderPricedRequestedAliasAllowsBlankUpstream(t *testing.T) {
+func TestIsUpstreamModelRestrictedByChannel_QoderUpstreamBasisRejectsBlankUpstream(t *testing.T) {
 	t.Parallel()
 	price := 1e-6
 	ch := Channel{
@@ -377,8 +377,8 @@ func TestIsUpstreamModelRestrictedByChannel_QoderPricedRequestedAliasAllowsBlank
 	svc := &GatewayService{channelService: channelSvc}
 	account := &Account{Platform: PlatformQoder}
 
-	require.False(t, svc.isUpstreamModelRestrictedByChannel(context.Background(), 10, account, "qwen3.7-plus"),
-		"Qoder upstream restriction should allow a request when the requested alias has effective manual pricing")
+	require.True(t, svc.isUpstreamModelRestrictedByChannel(context.Background(), 10, account, "qwen3.7-plus"),
+		"Qoder upstream 依据只能检查 U，不能用 R 的有效价格放行空价格上游模型")
 }
 
 func TestIsUpstreamModelRestrictedByChannel_UnsupportedModel(t *testing.T) {

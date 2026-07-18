@@ -48,11 +48,11 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			expectedModel:  "gpt6",
 		},
 		{
-			name: "account exact mapping overrides messages dispatch model",
+			name: "account exact mapping runs after messages dispatch model",
 			account: &Account{
 				Credentials: map[string]any{
 					"model_mapping": map[string]any{
-						"claude-fable-5": "gpt-5.5",
+						"gpt-5.6-sol": "gpt-5.5",
 					},
 				},
 			},
@@ -61,11 +61,11 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			expectedModel:               "gpt-5.5",
 		},
 		{
-			name: "account wildcard mapping overrides messages dispatch model",
+			name: "account wildcard mapping runs after messages dispatch model",
 			account: &Account{
 				Credentials: map[string]any{
 					"model_mapping": map[string]any{
-						"claude-*": "gpt-5.4",
+						"gpt-*": "gpt-5.4",
 					},
 				},
 			},
@@ -74,17 +74,17 @@ func TestResolveOpenAIForwardModel(t *testing.T) {
 			expectedModel:               "gpt-5.4",
 		},
 		{
-			name: "account passthrough mapping overrides messages dispatch model",
+			name: "account passthrough mapping runs after messages dispatch model",
 			account: &Account{
 				Credentials: map[string]any{
 					"model_mapping": map[string]any{
-						"claude-fable-5": "claude-fable-5",
+						"gpt-5.6-sol": "gpt-5.6-sol",
 					},
 				},
 			},
 			requestedModel:              "claude-fable-5",
 			messagesDispatchMappedModel: "gpt-5.6-sol",
-			expectedModel:               "claude-fable-5",
+			expectedModel:               "gpt-5.6-sol",
 		},
 		{
 			name: "ordinary codex spark request keeps requested model",

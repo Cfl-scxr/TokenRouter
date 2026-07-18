@@ -219,10 +219,16 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		_, excluded := excludedIDs[accountID]
 		return excluded
 	}
+	// upstream 依据必须逐账号计算最终模型，所有负载感知选择入口共用同一过滤规则。
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	isUpstreamAllowed := func(account *Account) bool {
+		return !needsUpstreamCheck || !s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
+	}
 
 	var routingAccountIDs []int64
 	if group != nil && requestedModel != "" && group.Platform == PlatformAnthropic {
-		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
+		routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+		routingAccountIDs = group.GetRoutingAccountIDs(routingModel)
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
 				group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), routingAccountIDs, shortSessionHash(sessionHash), stickyAccountID)
@@ -266,6 +272,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, account, requestedModel) {
 				filteredModelMapping++
+				continue
+			}
+			if !isUpstreamAllowed(account) {
 				continue
 			}
 			if !s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
@@ -317,6 +326,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
+							isUpstreamAllowed(stickyAccount) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
@@ -478,7 +488,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			account, ok := accountByID[accountID]
 			if ok {
 
-				clearSticky := shouldClearStickySession(account, requestedModel)
+				clearSticky := s.shouldClearStickySessionForAccountLayer(ctx, account, requestedModel)
 				if clearSticky {
 					slog.Debug("sticky.layer1_5_no_routing_clear",
 						"account_id", accountID,
@@ -490,6 +500,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 				platformOK := s.isAccountAllowedForPlatform(account, platform, useMixed)
 				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
+				upstreamAllowed := isUpstreamAllowed(account)
 				modelSchedulable := s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
 				quotaOK := s.isAccountSchedulableForQuota(account)
 				windowCostOK := s.isAccountSchedulableForWindowCost(ctx, account, true)
@@ -503,13 +514,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"schedulable", schedulable,
 					"platform_ok", platformOK,
 					"model_supported", modelSupported,
+					"upstream_allowed", upstreamAllowed,
 					"model_schedulable", modelSchedulable,
 					"quota_ok", quotaOK,
 					"window_cost_ok", windowCostOK,
 					"rpm_ok", rpmOK,
 				)
 
-				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && platformOK && modelSupported && upstreamAllowed && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 
@@ -606,6 +618,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if !isUpstreamAllowed(acc) {
 			continue
 		}
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -808,7 +823,8 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 		}
 		return nil
 	}
-	ids := group.GetRoutingAccountIDs(requestedModel)
+	routingModel := s.channelMappedModelForGroup(ctx, groupID, requestedModel)
+	ids := group.GetRoutingAccountIDs(routingModel)
 	if s.debugModelRoutingEnabled() {
 		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
 			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
@@ -1023,7 +1039,14 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 	if account == nil {
 		return false
 	}
-	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+	routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+	return account.IsSchedulableForModelWithContext(ctx, routingModel)
+}
+
+// shouldClearStickySessionForAccountLayer 使用渠道映射后的模型检查粘性账号模型限流。
+func (s *GatewayService) shouldClearStickySessionForAccountLayer(ctx context.Context, account *Account, requestedModel string) bool {
+	routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+	return shouldClearStickySession(account, routingModel)
 }
 
 // isAccountEligibleExceptModelSupport 判断账号除模型白名单/映射外是否具备本次请求资格。
@@ -1774,7 +1797,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					account, err := s.getSchedulableAccount(ctx, accountID)
 
 					if err == nil {
-						clearSticky := shouldClearStickySession(account, requestedModel)
+						clearSticky := s.shouldClearStickySessionForAccountLayer(ctx, account, requestedModel)
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
@@ -1889,7 +1912,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				account, err := s.getSchedulableAccount(ctx, accountID)
 
 				if err == nil {
-					clearSticky := shouldClearStickySession(account, requestedModel)
+					clearSticky := s.shouldClearStickySessionForAccountLayer(ctx, account, requestedModel)
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
@@ -2022,7 +2045,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					account, err := s.getSchedulableAccount(ctx, accountID)
 
 					if err == nil {
-						clearSticky := shouldClearStickySession(account, requestedModel)
+						clearSticky := s.shouldClearStickySessionForAccountLayer(ctx, account, requestedModel)
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
@@ -2139,7 +2162,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				account, err := s.getSchedulableAccount(ctx, accountID)
 
 				if err == nil {
-					clearSticky := shouldClearStickySession(account, requestedModel)
+					clearSticky := s.shouldClearStickySessionForAccountLayer(ctx, account, requestedModel)
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
@@ -2325,7 +2348,8 @@ func (s *GatewayService) collectSelectionFailureStats(
 			stats.SampleMappingIDs = appendSelectionFailureSampleID(stats.SampleMappingIDs, acc.ID)
 		case "model_rate_limited":
 			stats.ModelRateLimited++
-			remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+			routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+			remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, routingModel).Truncate(time.Second)
 			stats.SampleRateLimitIDs = appendSelectionFailureRateSample(stats.SampleRateLimitIDs, acc.ID, remaining)
 		default:
 			stats.Eligible++
@@ -2365,7 +2389,8 @@ func (s *GatewayService) diagnoseSelectionFailure(
 		}
 	}
 	if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
-		remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+		routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+		remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, routingModel).Truncate(time.Second)
 		return selectionFailureDiagnosis{
 			Category: "model_rate_limited",
 			Detail:   fmt.Sprintf("remaining=%s", remaining),
@@ -2419,18 +2444,23 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 	)
 }
 
-// isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
-// 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
+// isModelSupportedByAccountWithContext 根据渠道映射后的模型检查账号支持能力。
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
-	if account.Platform == PlatformQoder {
-		requestedModel = s.channelMappedModelForAccountLayer(ctx, requestedModel)
+	routingModel := s.channelMappedModelForAccountLayer(ctx, requestedModel)
+	return s.isRoutingModelSupportedByAccountWithContext(ctx, account, routingModel)
+}
+
+// isRoutingModelSupportedByAccountWithContext 检查已经过渠道映射的模型，避免重复执行渠道映射。
+func (s *GatewayService) isRoutingModelSupportedByAccountWithContext(ctx context.Context, account *Account, routingModel string) bool {
+	if account == nil {
+		return false
 	}
 	if account.Platform == PlatformAntigravity {
-		if strings.TrimSpace(requestedModel) == "" {
+		if strings.TrimSpace(routingModel) == "" {
 			return true
 		}
 
-		mapped := mapAntigravityModel(account, requestedModel)
+		mapped := mapAntigravityModel(account, routingModel)
 		if mapped == "" {
 			return false
 		}
@@ -2444,7 +2474,7 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		}
 		return true
 	}
-	return s.isModelSupportedByAccount(account, requestedModel)
+	return s.isModelSupportedByAccount(account, routingModel)
 }
 
 func (s *GatewayService) channelMappedModelForAccountLayer(ctx context.Context, requestedModel string) string {
@@ -2455,11 +2485,8 @@ func (s *GatewayService) channelMappedModelForAccountLayer(ctx context.Context, 
 	if !ok || !IsGroupContextValid(group) {
 		return requestedModel
 	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, group.ID, requestedModel)
-	if !mapping.Mapped || strings.TrimSpace(mapping.MappedModel) == "" {
-		return requestedModel
-	}
-	return mapping.MappedModel
+	groupID := group.ID
+	return s.channelMappedModelForGroup(ctx, &groupID, requestedModel)
 }
 
 // isModelSupportedByAccount 根据账户平台检查模型支持（无 context，用于非 Antigravity 平台）

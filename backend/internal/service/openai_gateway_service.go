@@ -575,11 +575,32 @@ func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Contex
 	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
 }
 
+// resolveChannelRoutingModel 返回 OpenAI 账号调度层使用的渠道映射后模型。
+func (s *OpenAIGatewayService) resolveChannelRoutingModel(ctx context.Context, groupID *int64, requestedModel string) string {
+	if groupID == nil || s == nil || s.channelService == nil || strings.TrimSpace(requestedModel) == "" {
+		return requestedModel
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	if mappedModel := strings.TrimSpace(mapping.MappedModel); mappedModel != "" {
+		return mappedModel
+	}
+	return requestedModel
+}
+
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string, requireCompact bool) bool {
 	if s.channelService == nil {
 		return false
 	}
-	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
+	routingModel := s.resolveChannelRoutingModel(ctx, &groupID, requestedModel)
+	return s.isUpstreamRoutingModelRestrictedByChannel(ctx, groupID, account, routingModel, requireCompact)
+}
+
+// isUpstreamRoutingModelRestrictedByChannel 使用已经完成渠道及分组映射的账号层模型检查最终上游模型。
+func (s *OpenAIGatewayService) isUpstreamRoutingModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, routingModel string, requireCompact bool) bool {
+	if s.channelService == nil {
+		return false
+	}
+	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, routingModel, requireCompact)
 	if upstreamModel == "" {
 		return false
 	}

@@ -843,9 +843,6 @@ func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, gro
 	if billingModel == "" {
 		return false
 	}
-	if s.qoderRestrictionHasEffectivePricing(ctx, *groupID, requestedModel, mapping.MappedModel, billingModel) {
-		return false
-	}
 	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
 }
 
@@ -878,18 +875,34 @@ func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context,
 	if upstreamModel == "" {
 		return false
 	}
-	if s.qoderRestrictionHasEffectivePricing(ctx, groupID, requestedModel, routingModel, upstreamModel) {
-		return false
-	}
 	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+}
+
+// channelMappedModelForGroup 返回账号调度层使用的渠道映射后模型。
+func (s *GatewayService) channelMappedModelForGroup(ctx context.Context, groupID *int64, requestedModel string) string {
+	if s == nil || s.channelService == nil || groupID == nil || strings.TrimSpace(requestedModel) == "" {
+		return requestedModel
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	if mappedModel := strings.TrimSpace(mapping.MappedModel); mappedModel != "" {
+		return mappedModel
+	}
+	return requestedModel
 }
 
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
 func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
+	if account == nil {
+		return ""
+	}
 	if account.Platform == PlatformAntigravity {
 		return mapAntigravityModel(account, requestedModel)
 	}
-	return account.GetMappedModel(requestedModel)
+	mappedModel := account.GetMappedModel(requestedModel)
+	if account.Platform == PlatformQoder {
+		return strings.TrimSpace(resolveQoderModel(mappedModel).Key)
+	}
+	return mappedModel
 }
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。

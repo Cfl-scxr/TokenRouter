@@ -691,6 +691,22 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 	})
 }
 
+func TestResolveOpenAIMessagesAccountLayerModel_ChannelMappingPrecedesGroupDispatch(t *testing.T) {
+	apiKey := &service.APIKey{
+		Group: &service.Group{
+			MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+				ExactModelMappings: map[string]string{
+					"channel-model": "dispatch-model",
+				},
+			},
+		},
+	}
+
+	require.Equal(t, "dispatch-model", resolveOpenAIMessagesAccountLayerModel(apiKey, "channel-model"))
+	require.Equal(t, "client-alias", resolveOpenAIMessagesAccountLayerModel(apiKey, "client-alias"))
+	require.Equal(t, "gpt-5.4", resolveOpenAIMessagesAccountLayerModel(apiKey, "gpt-5.4-high"))
+}
+
 func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

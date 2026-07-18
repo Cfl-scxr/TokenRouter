@@ -2202,6 +2202,81 @@ func (m *mockConcurrencyCache) GetUsersLoadBatch(ctx context.Context, users []Us
 	return result, nil
 }
 
+func TestSelectAccountWithLoadAwareness_FiltersUpstreamRestrictedAccounts(t *testing.T) {
+	for _, modelRoutingEnabled := range []bool{false, true} {
+		name := "普通粘性账号"
+		if modelRoutingEnabled {
+			name = "模型路由粘性账号"
+		}
+		t.Run(name, func(t *testing.T) {
+			groupID := int64(4210)
+			channel := Channel{
+				ID:                 76,
+				Status:             StatusActive,
+				RestrictModels:     true,
+				BillingModelSource: BillingModelSourceUpstream,
+				ModelMapping: map[string]map[string]string{
+					PlatformAnthropic: {"client-alias": "channel-model"},
+				},
+				ModelPricing: []ChannelModelPricing{{
+					Platform: PlatformAnthropic,
+					Models:   []string{"allowed-upstream"},
+				}},
+			}
+			accounts := []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Credentials: map[string]any{"model_mapping": map[string]any{"channel-model": "blocked-upstream"}},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Credentials: map[string]any{"model_mapping": map[string]any{"channel-model": "allowed-upstream"}},
+				},
+			}
+			accountRepo := &mockAccountRepoForPlatform{accounts: accounts, accountsByID: map[int64]*Account{}}
+			for i := range accountRepo.accounts {
+				accountRepo.accountsByID[accountRepo.accounts[i].ID] = &accountRepo.accounts[i]
+			}
+			group := &Group{
+				ID:                  groupID,
+				Platform:            PlatformAnthropic,
+				Status:              StatusActive,
+				Hydrated:            true,
+				ModelRoutingEnabled: modelRoutingEnabled,
+			}
+			if modelRoutingEnabled {
+				group.ModelRouting = map[string][]int64{"channel-model": {1, 2}}
+			}
+
+			cfg := testConfig()
+			cfg.Gateway.Scheduling.LoadBatchEnabled = true
+			svc := &GatewayService{
+				accountRepo:        accountRepo,
+				groupRepo:          &mockGroupRepoForGateway{groups: map[int64]*Group{groupID: group}},
+				channelService:     newRequestableModelsChannelService(groupID, PlatformAnthropic, channel),
+				cache:              &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"sticky": 1}},
+				cfg:                cfg,
+				concurrencyService: NewConcurrencyService(&mockConcurrencyCache{}),
+			}
+
+			result, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "sticky", "client-alias", nil, "", 0)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, int64(2), result.Account.ID)
+		})
+	}
+}
+
 // TestGatewayService_SelectAccountWithLoadAwareness tests load-aware account selection
 func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 	ctx := context.Background()

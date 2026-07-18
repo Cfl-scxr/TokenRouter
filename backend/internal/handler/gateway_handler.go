@@ -1009,10 +1009,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 }
 
-// Models handles listing available models
-// GET /v1/models
-// Returns models based on account configurations (request-side mappings / explicit whitelist)
-// Falls back to default models if no explicit model scope is configured
+// Models 处理 GET /v1/models，并返回通过账号能力与渠道规则校验的客户端模型。
+// 仅未绑定分组的兼容调用会在没有显式结果时回退平台默认模型。
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
@@ -1027,21 +1025,26 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
-	// 按当前分组平台读取账号配置中的可用模型，避免混合分组泄漏其他平台模型。
-	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	// 统一按渠道映射、账号映射和渠道限制解析真实可请求模型。
+	resolution := h.gatewayService.ResolveRequestableModels(c.Request.Context(), groupID, platform)
+	availableModels := service.RequestableModelIDs(resolution.Models)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		fallbackModels := defaultModelIDsForPlatform(platform)
-		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
+		// 自定义列表只能与已通过渠道和账号校验的模型取交集，不能重新加入被拒绝的模型。
+		availableModels = filterModelsByCustomList(availableModels, nil, apiKey.Group.ModelsListConfig.Models)
+		writePlatformModelsList(c, platform, availableModels)
 		return
 	}
 
 	if len(availableModels) > 0 {
-		writeModelsList(c, availableModels)
+		writePlatformModelsList(c, platform, availableModels)
+		return
+	}
+	if resolution.Restricted || groupID != nil {
+		writeModelsList(c, nil)
 		return
 	}
 
-	// Fallback to default models
+	// 未绑定分组时保留旧版默认模型回退行为。
 	if platform == service.PlatformOpenAI {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
@@ -1088,12 +1091,17 @@ func writeModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
-func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
-	if platform == service.PlatformOpenAI {
+func writePlatformModelsList(c *gin.Context, platform string, modelIDs []string) {
+	switch platform {
+	case service.PlatformOpenAI:
 		writeOpenAIModelsList(c, modelIDs)
-		return
+	case service.PlatformGrok:
+		writeGrokModelsList(c, modelIDs)
+	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity, service.PlatformQoder:
+		writeClaudeCompatiblePlatformModelsList(c, platform, modelIDs)
+	default:
+		writeModelsList(c, modelIDs)
 	}
-	writeModelsList(c, modelIDs)
 }
 
 func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
@@ -1123,12 +1131,79 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
-// customModelsListSource 为 Anthropic 自定义列表补齐 OAuth 与混合调度的默认模型候选。
-func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
-	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
-		return mergeModelIDs(availableModels, fallbackModels)
+func writeGrokModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]xai.Model, len(xai.DefaultModels()))
+	for _, model := range xai.DefaultModels() {
+		defaultsByID[model.ID] = model
 	}
-	return availableModels
+
+	models := make([]xai.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, xai.Model{
+			ID:          modelID,
+			Object:      "model",
+			OwnedBy:     "xai",
+			DisplayName: modelID,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+// writeClaudeCompatiblePlatformModelsList 保留各平台默认模型的展示元数据。
+func writeClaudeCompatiblePlatformModelsList(c *gin.Context, platform string, modelIDs []string) {
+	defaultsByID := make(map[string]claude.Model)
+	appendDefault := func(id, modelType, displayName, createdAt string) {
+		defaultsByID[id] = claude.Model{
+			ID:          id,
+			Type:        modelType,
+			DisplayName: displayName,
+			CreatedAt:   createdAt,
+		}
+	}
+
+	switch platform {
+	case service.PlatformGemini:
+		for _, model := range geminicli.DefaultModels {
+			appendDefault(model.ID, model.Type, model.DisplayName, model.CreatedAt)
+		}
+	case service.PlatformAntigravity:
+		for _, model := range antigravity.DefaultModels() {
+			appendDefault(model.ID, model.Type, model.DisplayName, model.CreatedAt)
+		}
+	case service.PlatformQoder:
+		for _, model := range qoder.DefaultModels {
+			appendDefault(model.ID, model.Type, model.DisplayName, model.CreatedAt)
+		}
+	default:
+		for _, model := range claude.DefaultModels {
+			appendDefault(model.ID, model.Type, model.DisplayName, model.CreatedAt)
+		}
+	}
+
+	models := make([]claude.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, claude.Model{
+			ID:          modelID,
+			Type:        "model",
+			DisplayName: modelID,
+			CreatedAt:   "2024-01-01T00:00:00Z",
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
 }
 
 func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {

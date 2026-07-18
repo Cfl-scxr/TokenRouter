@@ -19,6 +19,29 @@ type gatewayModelsAccountRepoStub struct {
 	byGroup map[int64][]service.Account
 }
 
+type gatewayModelsChannelRepoStub struct {
+	service.ChannelRepository
+
+	channels       []service.Channel
+	groupPlatforms map[int64]string
+}
+
+func (s *gatewayModelsChannelRepoStub) ListAll(ctx context.Context) ([]service.Channel, error) {
+	channels := make([]service.Channel, len(s.channels))
+	copy(channels, s.channels)
+	return channels, nil
+}
+
+func (s *gatewayModelsChannelRepoStub) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+	platforms := make(map[int64]string, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if platform, ok := s.groupPlatforms[groupID]; ok {
+			platforms[groupID] = platform
+		}
+	}
+	return platforms, nil
+}
+
 type gatewayModelsResponseForTest struct {
 	Object string                    `json:"object"`
 	Data   []gatewayModelItemForTest `json:"data"`
@@ -43,13 +66,28 @@ func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Cont
 }
 
 func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHandler {
+	return newGatewayModelsHandlerWithChannelForTest(repo, nil)
+}
+
+// newGatewayModelsHandlerWithChannelForTest 构造可选渠道配置的模型接口处理器。
+func newGatewayModelsHandlerWithChannelForTest(repo service.AccountRepository, channelService *service.ChannelService) *GatewayHandler {
 	return &GatewayHandler{
 		gatewayService: service.NewGatewayService(
 			repo,
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, channelService, nil, nil, nil, nil,
 		),
 	}
+}
+
+// newGatewayModelsChannelServiceForTest 构造模型接口测试使用的渠道服务。
+func newGatewayModelsChannelServiceForTest(groupID int64, platform string, channel service.Channel) *service.ChannelService {
+	channel.GroupIDs = []int64{groupID}
+	repo := &gatewayModelsChannelRepoStub{
+		channels:       []service.Channel{channel},
+		groupPlatforms: map[int64]string{groupID: platform},
+	}
+	return service.NewChannelService(repo, nil)
 }
 
 func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
@@ -352,7 +390,7 @@ func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeAndMappedDeep
 	require.Equal(t, []string{"claude-fable-5", "claude-opus-4-8", "deepseek-v4-pro"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_AnthropicCustomModelsListDisabledKeepsMappedModelList(t *testing.T) {
+func TestGatewayModels_AnthropicCustomModelsListDisabledIncludesUnrestrictedDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(29)
@@ -400,10 +438,12 @@ func TestGatewayModels_AnthropicCustomModelsListDisabledKeepsMappedModelList(t *
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"deepseek-v4-pro"}, modelIDsForTest(got.Data))
+	modelIDs := modelIDsForTest(got.Data)
+	require.Contains(t, modelIDs, "deepseek-v4-pro")
+	require.Contains(t, modelIDs, "claude-opus-4-6")
 }
 
-func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappings(t *testing.T) {
+func TestGatewayModels_AnthropicCustomModelsListDoesNotAddModelsOutsideResolvedCandidates(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(30)
@@ -441,7 +481,7 @@ func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappin
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"claude-opus-4-6-thinking", "claude-sonnet-4-5"}, modelIDsForTest(got.Data))
+	require.Empty(t, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t *testing.T) {
@@ -567,6 +607,37 @@ func TestGatewayModels_OpenAICustomModelsListKeepsOpenAIResponseShapeForDefaultF
 	require.Empty(t, got.Data[0].CreatedAt)
 }
 
+func TestGatewayModels_OpenAIUnrestrictedListKeepsOpenAIResponseShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(31)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {{ID: 1, Platform: service.PlatformOpenAI}},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NotEmpty(t, got.Data)
+	require.Equal(t, "model", got.Data[0].Object)
+	require.NotZero(t, got.Data[0].Created)
+	require.Equal(t, "openai", got.Data[0].OwnedBy)
+	require.Empty(t, got.Data[0].CreatedAt)
+}
+
 func TestGatewayModels_QoderCustomModelsListFiltersDefaultFallbackModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -602,6 +673,86 @@ func TestGatewayModels_QoderCustomModelsListFiltersDefaultFallbackModels(t *test
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, []string{"deepseek-v4-pro", "lite"}, modelIDsForTest(got.Data))
+}
+
+func TestGatewayModels_ChannelRestrictionEmptyDoesNotFallBackToDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(31)
+	accountRepo := &gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {{ID: 1, Platform: service.PlatformOpenAI}},
+	}}
+	channelService := newGatewayModelsChannelServiceForTest(groupID, service.PlatformOpenAI, service.Channel{
+		ID:                 81,
+		Status:             service.StatusActive,
+		RestrictModels:     true,
+		BillingModelSource: service.BillingModelSourceRequested,
+	})
+	h := newGatewayModelsHandlerWithChannelForTest(accountRepo, channelService)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+	})
+
+	h.Models(c)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Empty(t, got.Data)
+}
+
+func TestGatewayModels_CustomListIntersectsChannelFilteredModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(32)
+	price := 0.01
+	accountRepo := &gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {{
+			ID:       1,
+			Platform: service.PlatformOpenAI,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"allowed-model": "allowed-model",
+					"blocked-model": "blocked-model",
+				},
+			},
+		}},
+	}}
+	channelService := newGatewayModelsChannelServiceForTest(groupID, service.PlatformOpenAI, service.Channel{
+		ID:                 82,
+		Status:             service.StatusActive,
+		RestrictModels:     true,
+		BillingModelSource: service.BillingModelSourceRequested,
+		ModelPricing: []service.ChannelModelPricing{{
+			Platform:   service.PlatformOpenAI,
+			Models:     []string{"allowed-model"},
+			InputPrice: &price,
+		}},
+	})
+	h := newGatewayModelsHandlerWithChannelForTest(accountRepo, channelService)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformOpenAI,
+			ModelsListConfig: service.GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"blocked-model", "allowed-model"},
+			},
+		},
+	})
+
+	h.Models(c)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"allowed-model"}, modelIDsForTest(got.Data))
 }
 
 func modelIDsForTest(models []gatewayModelItemForTest) []string {
