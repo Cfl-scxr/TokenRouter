@@ -48,11 +48,13 @@ type gatewayModelsResponseForTest struct {
 }
 
 type gatewayModelItemForTest struct {
-	ID        string `json:"id"`
-	Object    string `json:"object"`
-	Created   int64  `json:"created"`
-	OwnedBy   string `json:"owned_by"`
-	CreatedAt string `json:"created_at"`
+	ID          string `json:"id"`
+	Object      string `json:"object"`
+	Created     int64  `json:"created"`
+	OwnedBy     string `json:"owned_by"`
+	Type        string `json:"type"`
+	DisplayName string `json:"display_name"`
+	CreatedAt   string `json:"created_at"`
 }
 
 func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -120,6 +122,47 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	require.Equal(t, "list", got.Object)
 	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
 	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
+}
+
+// TestGatewayModels_AntigravityGroupKeepsDefaultModelMetadata 验证默认候选仍使用 Antigravity 的展示元数据。
+func TestGatewayModels_AntigravityGroupKeepsDefaultModelMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(32)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:       1,
+						Platform: service.PlatformAntigravity,
+						Credentials: map[string]any{
+							"model_whitelist": []string{},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformAntigravity},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NotEmpty(t, got.Data)
+	require.Equal(t, "claude-fable-5", got.Data[0].ID)
+	require.Equal(t, "model", got.Data[0].Type)
+	require.Equal(t, "Claude Fable 5", got.Data[0].DisplayName)
+	require.Equal(t, "2026-06-09T00:00:00Z", got.Data[0].CreatedAt)
 }
 
 func TestGatewayModels_QoderGroupFallsBackToQoderModels(t *testing.T) {

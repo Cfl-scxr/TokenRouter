@@ -1119,7 +1119,7 @@ func writeDefaultModelsList(c *gin.Context, platform string, modelIDs []string) 
 	switch platform {
 	case service.PlatformOpenAI:
 		writeOpenAIModelsList(c, modelIDs)
-	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformQoder:
+	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity, service.PlatformQoder:
 		writeClaudeCompatiblePlatformModelsList(c, platform, modelIDs)
 	default:
 		writeModelsList(c, modelIDs)
