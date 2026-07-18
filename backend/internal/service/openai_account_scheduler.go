@@ -393,7 +393,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			ctx,
 			req.GroupID,
 			previousResponseID,
-			req.RequestedModel,
+			req.routingModel(),
 			req.ExcludedIDs,
 			req.RequiredCapability,
 			req.RequireCompact,
@@ -2106,7 +2106,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerForRouting(
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
 	stickyPreviousAccountID := int64(0)
 	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
-		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
+		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, routingModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
