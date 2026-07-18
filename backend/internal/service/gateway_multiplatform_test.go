@@ -2291,6 +2291,58 @@ func TestSelectAccountWithLoadAwareness_FiltersUpstreamRestrictedAccounts(t *tes
 	}
 }
 
+// TestSelectAccountWithLoadAwareness_AppliesChannelMappingOnce 验证调度入口只把客户端模型 R 映射为一次 C。
+func TestSelectAccountWithLoadAwareness_AppliesChannelMappingOnce(t *testing.T) {
+	groupID := int64(4212)
+	channel := Channel{
+		ID:     78,
+		Status: StatusActive,
+		ModelMapping: map[string]map[string]string{
+			PlatformGemini: {
+				"client-alias":  "channel-model",
+				"channel-model": "double-mapped-model",
+			},
+		},
+	}
+	account := Account{
+		ID:          1,
+		Platform:    PlatformGemini,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 5,
+		AccountGroups: []AccountGroup{{
+			AccountID: 1,
+			GroupID:   groupID,
+		}},
+		Credentials: map[string]any{
+			"model_mapping":   map[string]any{"channel-model": "upstream-model"},
+			"model_whitelist": []any{"upstream-model"},
+		},
+	}
+	accountRepo := &mockAccountRepoForPlatform{
+		accounts:     []Account{account},
+		accountsByID: map[int64]*Account{account.ID: &account},
+	}
+	group := &Group{
+		ID:       groupID,
+		Platform: PlatformGemini,
+		Status:   StatusActive,
+		Hydrated: true,
+	}
+	svc := &GatewayService{
+		accountRepo:    accountRepo,
+		groupRepo:      &mockGroupRepoForGateway{groups: map[int64]*Group{groupID: group}},
+		channelService: newRequestableModelsChannelService(groupID, PlatformGemini, channel),
+		cfg:            testConfig(),
+	}
+
+	result, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "client-alias", nil, "", 0)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, account.ID, result.Account.ID)
+}
+
 func TestLegacySchedulers_FilterUpstreamRestrictedAccountsInEveryShortcut(t *testing.T) {
 	testCases := []struct {
 		name                string
