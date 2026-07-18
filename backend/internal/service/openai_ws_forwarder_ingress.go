@@ -18,6 +18,15 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+// openAIWSImageIntentForRoutingModel 用渠道模型 C 还原判定请求体，避免账号模型 U 改写生图语义。
+func openAIWSImageIntentForRoutingModel(routingModel, upstreamModel string, body []byte, platform string) ([]byte, bool) {
+	imageIntentBody := body
+	if routingModel != upstreamModel {
+		imageIntentBody = ReplaceModelInBody(body, routingModel)
+	}
+	return imageIntentBody, IsImageGenerationIntentForPlatform(openAIResponsesEndpoint, routingModel, imageIntentBody, platform)
+}
+
 // openAIWSIngressInterTurnIdleTimeout 返回已完成轮次之间允许的客户端空闲时间。
 func (s *OpenAIGatewayService) openAIWSIngressInterTurnIdleTimeout() time.Duration {
 	if s == nil || s.cfg == nil || s.cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds <= 0 {
@@ -320,7 +329,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = stripped
 			logOpenAIWSModeInfo("ingress_ws_codex_spark_image_tool_stripped account_id=%d", account.ID)
 		}
-		imageIntent := IsImageGenerationIntentForPlatform(openAIResponsesEndpoint, originalModel, normalized, account.Platform)
+		// 生图能力必须按渠道模型 C 判断；账号最终模型 U 只用于真正的上游请求。
+		imageIntentBody, imageIntent := openAIWSImageIntentForRoutingModel(routingModel, upstreamModel, normalized, account.Platform)
 		if imageIntent && !imageGenerationAllowed {
 			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
@@ -330,7 +340,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		imageInputSize := ""
 		if imageIntent {
 			var imageCfgErr error
-			imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(normalized, originalModel)
+			imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(imageIntentBody, routingModel)
 			if imageCfgErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, imageCfgErr.Error(), imageCfgErr)
 			}

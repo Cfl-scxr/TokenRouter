@@ -334,6 +334,26 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 	require.ErrorContains(t, err, `images endpoint requires an image model, got "gpt-5.4"`)
 }
 
+// TestOpenAIGatewayServiceParseOpenAIImagesRequestForRouting 延后模型校验，确保渠道别名能先完成 R -> C。
+func TestOpenAIGatewayServiceParseOpenAIImagesRequestForRouting(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"draw-alias","prompt":"draw a cat"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequestForRouting(c, body)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	require.Equal(t, "draw-alias", parsed.Model)
+	require.NoError(t, parsed.ValidateRoutingModel("gpt-image-1"))
+	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
+	require.ErrorContains(t, parsed.ValidateRoutingModel("gpt-5.4"), `images endpoint requires an image model, got "gpt-5.4"`)
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AllowsGrokImageModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

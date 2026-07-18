@@ -66,6 +66,15 @@ func resolveOpenAIMessagesAccountLayerModel(apiKey *service.APIKey, channelMappe
 
 type openAIModelBodyReplaceFunc func([]byte, string) []byte
 
+// openAIChannelMappedModel 返回渠道模型 C；渠道没有有效结果时保留客户端模型 R。
+func openAIChannelMappedModel(requestedModel string, mapping service.ChannelMappingResult) string {
+	routingModel := strings.TrimSpace(mapping.MappedModel)
+	if routingModel == "" {
+		return strings.TrimSpace(requestedModel)
+	}
+	return routingModel
+}
+
 // openAIModelMappedBody 在存在渠道映射时返回替换模型后的请求体。
 func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
 	if !mapped || replace == nil {
@@ -84,10 +93,7 @@ func resolveOpenAIChannelMappedImageIntent(
 	platform string,
 	replace openAIModelBodyReplaceFunc,
 ) ([]byte, string, bool) {
-	routingModel := strings.TrimSpace(mapping.MappedModel)
-	if routingModel == "" {
-		routingModel = requestedModel
-	}
+	routingModel := openAIChannelMappedModel(requestedModel, mapping)
 	mappedBody := openAIModelMappedBody(body, mapping.Mapped, routingModel, replace)
 	imageIntent := service.IsImageGenerationIntentForPlatform(endpoint, routingModel, mappedBody, platform)
 	return mappedBody, routingModel, imageIntent

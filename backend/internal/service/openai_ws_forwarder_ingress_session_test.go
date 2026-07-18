@@ -20,6 +20,29 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// TestOpenAIWSImageIntentForRoutingModel 验证 WebSocket 生图判断只使用渠道模型 C。
+func TestOpenAIWSImageIntentForRoutingModel(t *testing.T) {
+	tests := []struct {
+		name          string
+		routingModel  string
+		upstreamModel string
+		wantIntent    bool
+	}{
+		{name: "渠道普通模型映射为上游生图模型", routingModel: "gpt-5.4", upstreamModel: "gpt-image-1"},
+		{name: "渠道生图模型映射为上游普通模型", routingModel: "gpt-image-1", upstreamModel: "gpt-5.4", wantIntent: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"model":"` + tt.upstreamModel + `","input":"draw"}`)
+			intentBody, imageIntent := openAIWSImageIntentForRoutingModel(tt.routingModel, tt.upstreamModel, body, PlatformOpenAI)
+
+			require.Equal(t, tt.routingModel, gjson.GetBytes(intentBody, "model").String())
+			require.Equal(t, tt.wantIntent, imageIntent)
+		})
+	}
+}
+
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossTurns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
