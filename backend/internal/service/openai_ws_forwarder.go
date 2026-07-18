@@ -214,8 +214,8 @@ type OpenAIWSIngressHooks struct {
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
 	// ResolveRoutingModel 在账号映射前逐轮把客户端模型 R 解析为渠道模型 C。
-	// 返回错误时当前帧不得发送上游，避免长连接后续 turn 绕过渠道限制和账号资格检查。
-	ResolveRoutingModel func(turn int, requestedModel string) (string, error)
+	// payload 用于按渠道映射后的完整请求判断该轮能力；返回错误时当前帧不得发送上游。
+	ResolveRoutingModel func(turn int, requestedModel string, payload []byte) (string, error)
 	BeforeTurn          func(turn int) error
 	BeforeRequest       func(turn int, payload []byte, originalModel, previousResponseID string) ([]byte, error)
 	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
@@ -225,10 +225,10 @@ type OpenAIWSIngressHooks struct {
 
 // resolveOpenAIWSTurnModels 按 R -> C -> U 顺序解析单个 WebSocket turn 的模型。
 // originalModel 始终由调用方另行保留，返回值只用于账号能力判断后的上游请求。
-func resolveOpenAIWSTurnModels(account *Account, hooks *OpenAIWSIngressHooks, turn int, requestedModel string) (string, string, error) {
+func resolveOpenAIWSTurnModels(account *Account, hooks *OpenAIWSIngressHooks, turn int, requestedModel string, payload []byte) (string, string, error) {
 	routingModel := strings.TrimSpace(requestedModel)
 	if hooks != nil && hooks.ResolveRoutingModel != nil {
-		resolved, err := hooks.ResolveRoutingModel(turn, routingModel)
+		resolved, err := hooks.ResolveRoutingModel(turn, routingModel, payload)
 		if err != nil {
 			return "", "", err
 		}

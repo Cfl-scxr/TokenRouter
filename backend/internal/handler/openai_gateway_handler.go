@@ -74,6 +74,25 @@ func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace
 	return replace(body, mappedModel)
 }
 
+// resolveOpenAIChannelMappedImageIntent 先把客户端模型 R 映射为渠道模型 C，
+// 再使用 C 和映射后的请求体判断生图意图，供并发限制与账号能力选择共用。
+func resolveOpenAIChannelMappedImageIntent(
+	endpoint string,
+	requestedModel string,
+	body []byte,
+	mapping service.ChannelMappingResult,
+	platform string,
+	replace openAIModelBodyReplaceFunc,
+) ([]byte, string, bool) {
+	routingModel := strings.TrimSpace(mapping.MappedModel)
+	if routingModel == "" {
+		routingModel = requestedModel
+	}
+	mappedBody := openAIModelMappedBody(body, mapping.Mapped, routingModel, replace)
+	imageIntent := service.IsImageGenerationIntentForPlatform(endpoint, routingModel, mappedBody, platform)
+	return mappedBody, routingModel, imageIntent
+}
+
 func seedOpenAIForwardImageIntentHint(c *gin.Context, channelMapped bool, imageIntent bool) {
 	if channelMapped {
 		// 渠道映射改变了规范请求，保持 unknown，由 Forward 按映射后的 model/body 初始化。
@@ -317,7 +336,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	imageIntent := service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(apiKey))
+	// 渠道模型 C 决定生图并发和账号端点能力，客户端模型 R 继续用于日志与会话语义。
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	forwardBody, _, imageIntent := resolveOpenAIChannelMappedImageIntent(
+		"/v1/responses", reqModel, body, channelMapping, openAICompatibleRequestPlatform(apiKey), h.gatewayService.ReplaceModelInBody,
+	)
+	selectionCtx := c.Request.Context()
+	if imageIntent {
+		// 生图家族限流依赖上下文标记，必须使用渠道映射后的意图结果。
+		selectionCtx = service.WithOpenAIImageGenerationIntent(selectionCtx)
+	}
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
@@ -335,9 +363,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 	}
 
-	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
@@ -415,7 +440,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
+			selectionCtx,
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
@@ -1616,15 +1641,21 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
-	imageIntent := service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, firstMessage, openAICompatibleRequestPlatform(apiKey))
+	// 首轮账号选择必须按渠道模型 C 判断生图能力，避免别名映射绕过 Responses 能力检查。
+	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+	_, _, imageIntent := resolveOpenAIChannelMappedImageIntent(
+		"/v1/responses", reqModel, firstMessage, channelMappingWS, openAICompatibleRequestPlatform(apiKey), h.gatewayService.ReplaceModelInBody,
+	)
+	initialSchedulingCtx := ctx
+	if imageIntent {
+		// 首轮账号选择也要遵守生图家族的模型级限流。
+		initialSchedulingCtx = service.WithOpenAIImageGenerationIntent(initialSchedulingCtx)
+	}
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
-
-	// 解析渠道级模型映射
-	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -1767,7 +1798,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			ctx,
+			initialSchedulingCtx,
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
@@ -1867,17 +1898,38 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		wsFirstMessageForUsageFallback := append([]byte(nil), firstMessage...)
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
-			ResolveRoutingModel: func(_ int, requestedModel string) (string, error) {
+			ResolveRoutingModel: func(_ int, requestedModel string, payload []byte) (string, error) {
 				requestedModel = strings.TrimSpace(requestedModel)
 				if requestedModel == "" {
 					requestedModel = reqModel
 				}
+				turnMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, requestedModel)
+				_, _, turnImageIntent := resolveOpenAIChannelMappedImageIntent(
+					"/v1/responses", requestedModel, payload, turnMapping, requestPlatform, h.gatewayService.ReplaceModelInBody,
+				)
+				if turnImageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+					return "", service.NewOpenAIWSClientCloseError(
+						coderws.StatusPolicyViolation,
+						service.ImageGenerationPermissionMessage(),
+						nil,
+					)
+				}
+				turnCtx := ctx
+				if turnImageIntent {
+					// 后续 turn 的账号资格检查必须包含该轮生图限流范围。
+					turnCtx = service.WithOpenAIImageGenerationIntent(turnCtx)
+				}
+				turnCapability := service.OpenAIEndpointCapabilityChatCompletions
+				if turnImageIntent && requestPlatform == service.PlatformOpenAI {
+					turnCapability = service.OpenAIEndpointCapabilityResponses
+				}
 				routingModel, resolveErr := h.gatewayService.ResolveOpenAIWSRoutingModelForAccount(
-					ctx,
+					turnCtx,
 					apiKey.GroupID,
 					account,
 					requestedModel,
-					requiredCapability,
+					turnCapability,
 				)
 				if resolveErr != nil {
 					reason := fmt.Sprintf("model %s is not available for this websocket channel or account", requestedModel)

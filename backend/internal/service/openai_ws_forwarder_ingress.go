@@ -227,7 +227,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		// 渠道模型必须在账号映射之前逐轮解析；originalModel 继续保留客户端请求语义。
-		routingModel, upstreamModel, resolveModelErr := resolveOpenAIWSTurnModels(account, hooks, turn, originalModel)
+		routingModel, upstreamModel, resolveModelErr := resolveOpenAIWSTurnModels(account, hooks, turn, originalModel, normalized)
 		if resolveModelErr != nil {
 			return openAIWSClientPayload{}, resolveModelErr
 		}

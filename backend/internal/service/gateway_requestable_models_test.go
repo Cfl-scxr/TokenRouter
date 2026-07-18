@@ -4,9 +4,58 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// TestResolveRequestableModels_RequiresModelLevelSchedulability 验证可见模型至少存在一个未被模型级限流的账号。
+func TestResolveRequestableModels_RequiresModelLevelSchedulability(t *testing.T) {
+	groupID := int64(4120)
+	channel := Channel{
+		ID:     70,
+		Status: StatusActive,
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {"client-alias": "channel-model"},
+		},
+	}
+	future := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	limitedAccount := Account{
+		ID:       80,
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping":   map[string]any{"channel-model": "upstream-model"},
+			"model_whitelist": []any{"upstream-model"},
+		},
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				"upstream-model": map[string]any{"rate_limit_reset_at": future},
+			},
+		},
+	}
+	healthyAccount := limitedAccount
+	healthyAccount.ID = 81
+	healthyAccount.Extra = nil
+	channelService := newRequestableModelsChannelService(groupID, PlatformOpenAI, channel)
+
+	t.Run("全部账号均被模型限流时隐藏", func(t *testing.T) {
+		svc := &GatewayService{
+			accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {limitedAccount}}},
+			channelService: channelService,
+		}
+		result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformOpenAI)
+		require.NotContains(t, RequestableModelIDs(result.Models), "client-alias")
+	})
+
+	t.Run("至少一个健康账号时保留", func(t *testing.T) {
+		svc := &GatewayService{
+			accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {limitedAccount, healthyAccount}}},
+			channelService: channelService,
+		}
+		result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformOpenAI)
+		require.Contains(t, RequestableModelIDs(result.Models), "client-alias")
+	})
+}
 
 type requestableModelsChannelRepoStub struct {
 	ChannelRepository

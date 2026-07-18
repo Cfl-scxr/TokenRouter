@@ -321,13 +321,18 @@ func (s *GatewayService) resolveAccountUpstreamModelsForListing(ctx context.Cont
 
 	if account != nil && account.Platform == PlatformAntigravity {
 		plainCtx := WithThinkingEnabled(ctx, false, false)
-		if s.isRoutingModelSupportedByAccountWithContext(plainCtx, account, requestedModel) {
+		if account.modelRateLimitAllowsScheduling(plainCtx, requestedModel) &&
+			s.isRoutingModelSupportedByAccountWithContext(plainCtx, account, requestedModel) {
 			appendModel(resolveAccountUpstreamModel(plainCtx, account, requestedModel))
 		}
 		thinkingCtx := WithThinkingEnabled(ctx, true, false)
-		if s.isRoutingModelSupportedByAccountWithContext(thinkingCtx, account, requestedModel) {
+		if account.modelRateLimitAllowsScheduling(thinkingCtx, requestedModel) &&
+			s.isRoutingModelSupportedByAccountWithContext(thinkingCtx, account, requestedModel) {
 			appendModel(resolveAccountUpstreamModel(thinkingCtx, account, requestedModel))
 		}
+		return models
+	}
+	if account == nil || !account.modelRateLimitAllowsScheduling(ctx, requestedModel) {
 		return models
 	}
 	appendModel(resolveAccountUpstreamModel(ctx, account, requestedModel))
