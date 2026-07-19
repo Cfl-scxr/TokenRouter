@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -204,6 +205,45 @@ func TestOpenAIUpstreamRestrictionUsesActuallyForwardedOAuthModel(t *testing.T) 
 			require.Equal(t, tt.restricted, restricted)
 		})
 	}
+}
+
+// TestOpenAIHTTPPassthroughIgnoresStoredAccountModelRules 验证自动透传账号不会被保留的旧白名单误拒绝。
+func TestOpenAIHTTPPassthroughIgnoresStoredAccountModelRules(t *testing.T) {
+	account := Account{
+		ID:          76,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{"openai_passthrough": true},
+		Credentials: map[string]any{
+			"model_mapping":   map[string]any{"client-model": "mapped-model"},
+			"model_whitelist": []any{"other-model"},
+		},
+	}
+	plainCtx := context.Background()
+	passthroughCtx := WithOpenAIHTTPPassthroughRouting(plainCtx)
+
+	require.False(t, openAIAccountSupportsRoutingModel(plainCtx, &account, "client-model"))
+	require.True(t, openAIAccountSupportsRoutingModel(passthroughCtx, &account, "client-model"))
+	require.False(t, isOpenAICompatibleAccountEligibleForRequest(plainCtx, &account, PlatformOpenAI, "client-model", false, ""))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(passthroughCtx, &account, PlatformOpenAI, "client-model", false, ""))
+
+	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{}, stats: newOpenAIAccountRuntimeStats()}
+	req := OpenAIAccountScheduleRequest{Platform: PlatformOpenAI, RequestedModel: "client-model", RoutingModel: "client-model"}
+	require.False(t, scheduler.isAccountRequestCompatible(plainCtx, &account, req))
+	require.True(t, scheduler.isAccountRequestCompatible(passthroughCtx, &account, req))
+
+	plainErr := noAvailableOpenAISelectionErrorForRouting(plainCtx, "client-model", "client-model", false, []Account{account})
+	var modelErr *GroupModelUnsupportedError
+	require.True(t, errors.As(plainErr, &modelErr))
+	passthroughErr := noAvailableOpenAISelectionErrorForRouting(passthroughCtx, "client-model", "client-model", false, []Account{account})
+	modelErr = nil
+	require.False(t, errors.As(passthroughErr, &modelErr))
+
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{account}}}
+	require.False(t, svc.DiagnoseRoutingModelAvailabilityForPlatform(plainCtx, nil, "client-model", PlatformOpenAI).HasModelSupport)
+	require.True(t, svc.DiagnoseRoutingModelAvailabilityForPlatform(passthroughCtx, nil, "client-model", PlatformOpenAI).HasModelSupport)
 }
 
 func TestModelAvailabilityDiagnosisAcceptsChannelAlias(t *testing.T) {

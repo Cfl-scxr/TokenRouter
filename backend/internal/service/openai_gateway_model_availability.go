@@ -54,7 +54,7 @@ func (s *OpenAIGatewayService) DiagnoseRoutingModelAvailabilityForPlatform(
 		diag.HasAccountsInPool = true
 		// 与账号选择时的候选过滤保持一致：空 model_mapping 表示允许全部模型；
 		// 否则必须命中显式映射或通配符映射。
-		if accounts[i].IsModelSupported(routingModel) {
+		if openAIAccountSupportsRoutingModel(ctx, &accounts[i], routingModel) {
 			diag.HasModelSupport = true
 			return diag
 		}

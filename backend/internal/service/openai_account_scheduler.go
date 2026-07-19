@@ -1291,7 +1291,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		return nil, 0, 0, 0, err
 	}
 	if len(accounts) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionErrorForRouting(req.RequestedModel, req.routingModel(), false, accounts)
+		return nil, 0, 0, 0, noAvailableOpenAISelectionErrorForRouting(ctx, req.RequestedModel, req.routingModel(), false, accounts)
 	}
 
 	// require_privacy_set: 获取分组信息
@@ -1335,7 +1335,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionErrorForRouting(req.RequestedModel, req.routingModel(), false, accounts)
+		return nil, 0, 0, 0, noAvailableOpenAISelectionErrorForRouting(ctx, req.RequestedModel, req.routingModel(), false, accounts)
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -1528,7 +1528,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 	loadSkew := attempt.loadSkew
 
 	if len(attempt.selectionOrder) == 0 {
-		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(req.RequestedModel, req.routingModel(), attempt.compactBlocked)
+		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(ctx, req.RequestedModel, req.routingModel(), attempt.compactBlocked)
 	}
 
 	if stickyFallback, stickyErr := s.tryFallbackToWeightedSticky(ctx, req); stickyErr != nil {
@@ -1563,7 +1563,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
-				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(req.RequestedModel, req.routingModel(), compactBlocked)
+				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(ctx, req.RequestedModel, req.routingModel(), compactBlocked)
 			}
 			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.routingModel(), false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
@@ -1585,7 +1585,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 		}
 	}
 
-	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(req.RequestedModel, req.routingModel(), compactBlocked)
+	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRouting(ctx, req.RequestedModel, req.routingModel(), compactBlocked)
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
@@ -1635,7 +1635,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	}) {
 		return false
 	}
-	if req.routingModel() != "" && !account.IsModelSupported(req.routingModel()) {
+	if !openAIAccountSupportsRoutingModel(ctx, account, req.routingModel()) {
 		return false
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&

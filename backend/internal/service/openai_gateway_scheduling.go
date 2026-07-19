@@ -165,7 +165,7 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
 }
 
-func shouldUseGroupModelUnsupportedError(accounts []Account, requestedModel string) bool {
+func shouldUseGroupModelUnsupportedError(ctx context.Context, accounts []Account, requestedModel string) bool {
 	requestedModel = strings.TrimSpace(requestedModel)
 	if requestedModel == "" || len(accounts) == 0 {
 		return false
@@ -177,7 +177,7 @@ func shouldUseGroupModelUnsupportedError(accounts []Account, requestedModel stri
 			continue
 		}
 		hasRelevantAccount = true
-		if acc.IsModelSupported(requestedModel) {
+		if openAIAccountSupportsRoutingModel(ctx, acc, requestedModel) {
 			return false
 		}
 	}
@@ -194,15 +194,15 @@ func normalizeOpenAICompatiblePlatform(platform string) string {
 // noAvailableOpenAISelectionError 生成统一的账号选择失败错误。
 // compact 与分组模型不支持这两类本地业务限制需要保留更具体的错误语义。
 func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool, accounts ...[]Account) error {
-	return noAvailableOpenAISelectionErrorForRouting(requestedModel, requestedModel, compactBlocked, accounts...)
+	return noAvailableOpenAISelectionErrorForRouting(context.Background(), requestedModel, requestedModel, compactBlocked, accounts...)
 }
 
 // noAvailableOpenAISelectionErrorForRouting 使用账号层模型 C/D 判断能力，同时保留 R 的对外错误语义。
-func noAvailableOpenAISelectionErrorForRouting(requestedModel string, routingModel string, compactBlocked bool, accounts ...[]Account) error {
+func noAvailableOpenAISelectionErrorForRouting(ctx context.Context, requestedModel string, routingModel string, compactBlocked bool, accounts ...[]Account) error {
 	if compactBlocked {
 		return ErrNoAvailableCompactAccounts
 	}
-	if len(accounts) > 0 && shouldUseGroupModelUnsupportedError(accounts[0], routingModel) {
+	if len(accounts) > 0 && shouldUseGroupModelUnsupportedError(ctx, accounts[0], routingModel) {
 		if err := newGroupModelUnsupportedError(PlatformOpenAI, requestedModel, accounts[0]); err != nil {
 			return err
 		}
@@ -211,6 +211,19 @@ func noAvailableOpenAISelectionErrorForRouting(requestedModel string, routingMod
 		return fmt.Errorf("no available OpenAI accounts supporting model: %s", requestedModel)
 	}
 	return errors.New("no available OpenAI accounts")
+}
+
+// openAIAccountSupportsRoutingModel 按当前入口的真实转发模式检查账号模型规则。
+// HTTP Responses 自动透传只替换认证，因此不会执行账号普通映射和最终白名单。
+func openAIAccountSupportsRoutingModel(ctx context.Context, account *Account, routingModel string) bool {
+	routingModel = strings.TrimSpace(routingModel)
+	if routingModel == "" {
+		return true
+	}
+	if openAIHTTPPassthroughRoutingFromContext(ctx) && account != nil && account.IsOpenAIPassthroughEnabled() {
+		return true
+	}
+	return account != nil && account.IsModelSupported(routingModel)
 }
 
 // openAICompactSupportTier classifies an OpenAI account by compact capability.
@@ -263,7 +276,7 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 			return false
 		}
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if !openAIAccountSupportsRoutingModel(ctx, account, requestedModel) {
 		return false
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -673,7 +686,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsForRouting(ctx
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, routingModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
 
 	if selected == nil {
-		return nil, noAvailableOpenAISelectionErrorForRouting(requestedModel, routingModel, compactBlocked, accounts)
+		return nil, noAvailableOpenAISelectionErrorForRouting(ctx, requestedModel, routingModel, compactBlocked, accounts)
 	}
 
 	hydrated, err := s.hydrateSelectedAccount(ctx, selected)
@@ -916,7 +929,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, noAvailableOpenAISelectionErrorForRouting(requestedModel, routingModel, false, accounts)
+		return nil, noAvailableOpenAISelectionErrorForRouting(ctx, requestedModel, routingModel, false, accounts)
 	}
 
 	isExcluded := func(accountID int64) bool {
@@ -1011,7 +1024,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 	}
 
 	if len(candidates) == 0 {
-		return nil, noAvailableOpenAISelectionErrorForRouting(requestedModel, routingModel, false, accounts)
+		return nil, noAvailableOpenAISelectionErrorForRouting(ctx, requestedModel, routingModel, false, accounts)
 	}
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {
@@ -1200,7 +1213,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 	if requireCompact && baseCandidateCount > 0 {
 		return nil, ErrNoAvailableCompactAccounts
 	}
-	return nil, noAvailableOpenAISelectionErrorForRouting(requestedModel, routingModel, false, accounts)
+	return nil, noAvailableOpenAISelectionErrorForRouting(ctx, requestedModel, routingModel, false, accounts)
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {

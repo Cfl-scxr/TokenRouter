@@ -349,6 +349,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	)
 	// 只有 HTTP Responses 入口会按账号开关进入自动透传，供 upstream 限制计算真实模型。
 	selectionCtx := service.WithOpenAIHTTPPassthroughRouting(c.Request.Context())
+	// 错误诊断也必须看到相同入口语义，避免把可透传模型误报为 model_not_found。
+	c.Request = c.Request.WithContext(selectionCtx)
 	if imageIntent {
 		// 生图家族限流依赖上下文标记，必须使用渠道映射后的意图结果。
 		selectionCtx = service.WithOpenAIImageGenerationIntent(selectionCtx)
