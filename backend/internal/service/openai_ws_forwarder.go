@@ -216,11 +216,21 @@ type OpenAIWSIngressHooks struct {
 	// ResolveRoutingModel 在账号映射前逐轮把客户端模型 R 解析为渠道模型 C。
 	// payload 用于按渠道映射后的完整请求判断该轮能力；返回错误时当前帧不得发送上游。
 	ResolveRoutingModel func(turn int, requestedModel string, payload []byte) (string, error)
-	BeforeTurn          func(turn int) error
-	BeforeRequest       func(turn int, payload []byte, originalModel, previousResponseID string) ([]byte, error)
+	// ResolveFastModePolicy 逐轮刷新 API Key Fast 策略，避免长连接永久沿用握手快照。
+	ResolveFastModePolicy func(turn int) string
+	BeforeTurn            func(turn int) error
+	BeforeRequest         func(turn int, payload []byte, originalModel, previousResponseID string) ([]byte, error)
 	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
 	OnUpstreamError func(turn int, originalModel string, statusCode int, responseBody []byte, message string)
 	AfterTurn       func(capture OpenAIWSTurnCapture)
+}
+
+// openAIWSFastModePolicyContext 为当前 turn 生成带最新单 Key Fast 策略的上下文。
+func openAIWSFastModePolicyContext(ctx context.Context, hooks *OpenAIWSIngressHooks, turn int) context.Context {
+	if hooks == nil || hooks.ResolveFastModePolicy == nil {
+		return ctx
+	}
+	return withAPIKeyFastModePolicy(ctx, hooks.ResolveFastModePolicy(turn))
 }
 
 // resolveOpenAIWSTurnModels 按 R -> C -> U 顺序解析单个 WebSocket turn 的模型。

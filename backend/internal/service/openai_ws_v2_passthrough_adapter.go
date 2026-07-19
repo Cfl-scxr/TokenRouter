@@ -407,7 +407,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if resolveModelErr != nil {
 		return resolveModelErr
 	}
-	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, firstUpstreamModel, firstClientMessage)
+	firstPolicyCtx := openAIWSFastModePolicyContext(ctx, hooks, 1)
+	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(firstPolicyCtx, account, firstUpstreamModel, firstClientMessage)
 	if policyErr != nil {
 		return fmt.Errorf("apply openai fast policy on first ws frame: %w", policyErr)
 	}
@@ -640,7 +641,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					storeCapturedSessionModels(sessionRequestedModel, resolvedRoutingModel, upstreamModel)
 				}
 			}
-			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
+			policyCtx := ctx
+			if eventType == "response.create" {
+				policyCtx = openAIWSFastModePolicyContext(ctx, hooks, turnNo)
+			}
+			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(policyCtx, account, model, payload)
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
 			// 的 response.create 帧上更新 usageMeta，使用
 			// filter 处理后的 payload，与首帧 policy-after-extract 语义

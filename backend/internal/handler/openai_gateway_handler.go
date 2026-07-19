@@ -1905,8 +1905,27 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		// 首帧保持客户端模型 R，由 service 层与后续 turn 一样逐轮执行 R -> C -> U。
 		wsFirstMessageForUsageFallback := append([]byte(nil), firstMessage...)
+		// 每轮通过现有鉴权缓存刷新策略；刷新失败时沿用最近一次有效值，避免瞬时故障中断长连接。
+		var currentFastModePolicy atomic.Value
+		currentFastModePolicy.Store(apiKey.FastModePolicy)
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
+			ResolveFastModePolicy: func(_ int) string {
+				fallback, _ := currentFastModePolicy.Load().(string)
+				if h.apiKeyService == nil || strings.TrimSpace(apiKey.Key) == "" {
+					return fallback
+				}
+				refreshed, refreshErr := h.apiKeyService.GetByKey(ctx, apiKey.Key)
+				if refreshErr != nil || refreshed == nil {
+					return fallback
+				}
+				policy, ok := service.NormalizeAPIKeyFastModePolicy(refreshed.FastModePolicy)
+				if !ok {
+					return fallback
+				}
+				currentFastModePolicy.Store(policy)
+				return policy
+			},
 			ResolveRoutingModel: func(_ int, requestedModel string, payload []byte) (string, error) {
 				requestedModel = strings.TrimSpace(requestedModel)
 				if requestedModel == "" {

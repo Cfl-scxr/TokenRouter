@@ -357,7 +357,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		// 模型兜底：首轮在 handler 层仍要求 model；后续 response.create 帧
 		// 可以省略并复用 ingressSessionOriginalModel。进入策略评估前总会写入
 		// 具体上游模型，保证白名单和 filter 行为稳定。
-		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, upstreamModel, normalized)
+		policyCtx := openAIWSFastModePolicyContext(ctx, hooks, turn)
+		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(policyCtx, account, upstreamModel, normalized)
 		if policyErr != nil {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
 		}
