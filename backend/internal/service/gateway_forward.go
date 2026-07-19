@@ -918,6 +918,10 @@ func resolveAccountUpstreamModel(ctx context.Context, account *Account, requeste
 	if account.Platform == PlatformAntigravity {
 		return strings.TrimSpace(resolveFinalAntigravityModelKey(ctx, account, requestedModel))
 	}
+	if account.Platform == PlatformOpenAI {
+		// 模型列表按账号的 HTTP 自动透传规则展示真实可请求模型。
+		return resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, false, true)
+	}
 	mappedModel := resolveAccountMappedModelForForward(account, requestedModel)
 	if account.Platform == PlatformQoder {
 		return strings.TrimSpace(resolveQoderModel(mappedModel).Key)

@@ -56,6 +56,12 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 	if len(accounts) == 0 {
 		return RequestableModelsResult{}
 	}
+	currentAccountModels := configuredRequestModelsFromAccounts(accounts, platform)
+	hadExplicitAccountModels := len(baseModels) > 0 || len(currentAccountModels) > 0
+	// 缓存层可能暂时为空或滞后，当前查询成功时仍要纳入账号白名单模型。
+	accountCandidateModels := make([]string, 0, len(baseModels)+len(currentAccountModels))
+	accountCandidateModels = append(accountCandidateModels, baseModels...)
+	accountCandidateModels = append(accountCandidateModels, currentAccountModels...)
 
 	var channel *Channel
 	channelPlatform := strings.TrimSpace(platform)
@@ -67,8 +73,8 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 				"group_id", *groupID,
 				"platform", platform,
 				"error", err)
-			fallback := requestableModelsFallback(mergeRequestableModelCandidates(baseModels, accounts, nil, channelPlatform), platform)
-			fallback.HadExplicitAccountModels = len(baseModels) > 0
+			fallback := requestableModelsFallback(mergeRequestableModelCandidates(accountCandidateModels, accounts, nil, channelPlatform), platform)
+			fallback.HadExplicitAccountModels = hadExplicitAccountModels
 			return fallback
 		}
 		if cachedPlatform := strings.TrimSpace(s.channelService.GetGroupPlatform(ctx, *groupID)); cachedPlatform != "" {
@@ -76,10 +82,10 @@ func (s *GatewayService) resolveRequestableModelsWithAccounts(
 		}
 	}
 
-	candidates := mergeRequestableModelCandidates(baseModels, accounts, channel, channelPlatform)
+	candidates := mergeRequestableModelCandidates(accountCandidateModels, accounts, channel, channelPlatform)
 	result := RequestableModelsResult{
 		Restricted:               channel != nil && channel.RestrictModels,
-		HadExplicitAccountModels: len(baseModels) > 0,
+		HadExplicitAccountModels: hadExplicitAccountModels,
 	}
 	if len(candidates) == 0 || len(accounts) == 0 {
 		return result

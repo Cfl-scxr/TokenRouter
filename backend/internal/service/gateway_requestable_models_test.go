@@ -66,6 +66,22 @@ func (s *requestableModelsChannelRepoStub) ListAll(context.Context) ([]Channel, 
 	return nil, s.err
 }
 
+// sequencedRequestableModelsAccountRepoStub 模拟第一次账号查询失败、第二次查询恢复。
+type sequencedRequestableModelsAccountRepoStub struct {
+	AccountRepository
+	accounts []Account
+	calls    int
+}
+
+// ListSchedulableByGroupID 在首次调用返回临时错误，后续调用返回当前账号快照。
+func (s *sequencedRequestableModelsAccountRepoStub) ListSchedulableByGroupID(context.Context, int64) ([]Account, error) {
+	s.calls++
+	if s.calls == 1 {
+		return nil, errors.New("temporary account query failure")
+	}
+	return append([]Account(nil), s.accounts...), nil
+}
+
 // newRequestableModelsChannelService 构造只读渠道缓存，避免测试依赖数据库仓储。
 func newRequestableModelsChannelService(groupID int64, platform string, channel Channel) *ChannelService {
 	channel.GroupIDs = []int64{groupID}
@@ -336,6 +352,74 @@ func TestResolveRequestableModels_UpstreamNormalizesAnthropicOAuthMapping(t *tes
 	require.False(t, model.PricingAmbiguous)
 }
 
+// TestResolveRequestableModels_OpenAIUsesActualForwardedModel 验证 OpenAI OAuth 与自动透传账号使用真实上游模型定价。
+func TestResolveRequestableModels_OpenAIUsesActualForwardedModel(t *testing.T) {
+	price := 0.09
+	tests := []struct {
+		name         string
+		groupID      int64
+		channelModel string
+		pricingModel string
+		account      Account
+	}{
+		{
+			name:         "OAuth 别名归一化",
+			groupID:      4118,
+			channelModel: "gpt-5.6",
+			pricingModel: "gpt-5.6-sol",
+			account: Account{
+				ID:       78,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+			},
+		},
+		{
+			name:         "自动透传忽略普通账号映射",
+			groupID:      4119,
+			channelModel: "passthrough-model",
+			pricingModel: "passthrough-model",
+			account: Account{
+				ID:       79,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"openai_passthrough": true},
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"passthrough-model": "mapped-model"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := Channel{
+				ID:                 tt.groupID,
+				Status:             StatusActive,
+				BillingModelSource: BillingModelSourceUpstream,
+				RestrictModels:     true,
+				ModelMapping: map[string]map[string]string{
+					PlatformOpenAI: {"client-alias": tt.channelModel},
+				},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:   PlatformOpenAI,
+					Models:     []string{tt.pricingModel},
+					InputPrice: &price,
+				}},
+			}
+			svc := &GatewayService{
+				accountRepo:    &modelsListAccountRepoStub{byGroup: map[int64][]Account{tt.groupID: {tt.account}}},
+				channelService: newRequestableModelsChannelService(tt.groupID, PlatformOpenAI, channel),
+			}
+
+			result := svc.ResolveRequestableModels(context.Background(), &tt.groupID, PlatformOpenAI)
+			model, ok := requestableModelByID(result.Models, "client-alias")
+			require.True(t, ok)
+			require.Equal(t, tt.pricingModel, model.PricingModel)
+			require.False(t, model.PricingAmbiguous)
+		})
+	}
+}
+
 func TestResolveRequestableModels_RestrictionEmptyDoesNotFallBack(t *testing.T) {
 	groupID := int64(4106)
 	channel := Channel{
@@ -416,6 +500,25 @@ func TestResolveRequestableModels_AccountQueryFailureKeepsFallback(t *testing.T)
 	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformOpenAI)
 	require.False(t, result.Restricted)
 	require.Contains(t, RequestableModelIDs(result.Models), "gpt-5.5")
+}
+
+// TestResolveRequestableModels_SecondAccountQueryRestoresWhitelistCandidates 验证缓存层查询失败后仍使用当前账号白名单。
+func TestResolveRequestableModels_SecondAccountQueryRestoresWhitelistCandidates(t *testing.T) {
+	groupID := int64(4121)
+	repo := &sequencedRequestableModelsAccountRepoStub{accounts: []Account{{
+		ID:       82,
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_whitelist": []any{"private-model"},
+		},
+	}}}
+	svc := &GatewayService{accountRepo: repo}
+
+	result := svc.ResolveRequestableModels(context.Background(), &groupID, PlatformOpenAI)
+
+	require.Equal(t, 2, repo.calls)
+	require.True(t, result.HadExplicitAccountModels)
+	require.Equal(t, []string{"private-model"}, RequestableModelIDs(result.Models))
 }
 
 func TestResolveRequestableModels_ChannelQueryFailureKeepsAccountCandidates(t *testing.T) {

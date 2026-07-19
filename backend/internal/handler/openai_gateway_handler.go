@@ -347,7 +347,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	forwardBody, _, imageIntent := resolveOpenAIChannelMappedImageIntent(
 		"/v1/responses", reqModel, body, channelMapping, openAICompatibleRequestPlatform(apiKey), h.gatewayService.ReplaceModelInBody,
 	)
-	selectionCtx := c.Request.Context()
+	// 只有 HTTP Responses 入口会按账号开关进入自动透传，供 upstream 限制计算真实模型。
+	selectionCtx := service.WithOpenAIHTTPPassthroughRouting(c.Request.Context())
 	if imageIntent {
 		// 生图家族限流依赖上下文标记，必须使用渠道映射后的意图结果。
 		selectionCtx = service.WithOpenAIImageGenerationIntent(selectionCtx)

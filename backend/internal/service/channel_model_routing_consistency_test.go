@@ -134,6 +134,78 @@ func TestOpenAIUpstreamRestrictionAppliesChannelThenAccountMapping(t *testing.T)
 	require.False(t, svc.isUpstreamModelRestrictedByChannel(context.Background(), groupID, account, "client-alias", false))
 }
 
+// TestOpenAIUpstreamRestrictionUsesActuallyForwardedOAuthModel 验证 OAuth 归一化和自动透传都按真实上游模型限制。
+func TestOpenAIUpstreamRestrictionUsesActuallyForwardedOAuthModel(t *testing.T) {
+	price := 0.01
+	tests := []struct {
+		name            string
+		groupID         int64
+		channelModel    string
+		pricingModel    string
+		account         *Account
+		restricted      bool
+		httpPassthrough bool
+	}{
+		{
+			name:         "OAuth 归一化后的模型命中定价",
+			groupID:      4204,
+			channelModel: "gpt-5.6",
+			pricingModel: "gpt-5.6-sol",
+			account:      &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		},
+		{
+			name:         "OAuth 归一化前的模型不能冒充最终模型",
+			groupID:      4205,
+			channelModel: "gpt-5.6",
+			pricingModel: "gpt-5.6",
+			account:      &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			restricted:   true,
+		},
+		{
+			name:         "自动透传不执行普通账号映射",
+			groupID:      4206,
+			channelModel: "passthrough-model",
+			pricingModel: "passthrough-model",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"openai_passthrough": true},
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"passthrough-model": "mapped-model"},
+				},
+			},
+			httpPassthrough: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			channel := Channel{
+				ID:                 tt.groupID,
+				Status:             StatusActive,
+				RestrictModels:     true,
+				BillingModelSource: BillingModelSourceUpstream,
+				ModelMapping: map[string]map[string]string{
+					PlatformOpenAI: {"client-alias": tt.channelModel},
+				},
+				ModelPricing: []ChannelModelPricing{{
+					Platform:   PlatformOpenAI,
+					Models:     []string{tt.pricingModel},
+					InputPrice: &price,
+				}},
+			}
+			svc := &OpenAIGatewayService{channelService: newRequestableModelsChannelService(tt.groupID, PlatformOpenAI, channel)}
+
+			ctx := context.Background()
+			if tt.httpPassthrough {
+				ctx = WithOpenAIHTTPPassthroughRouting(ctx)
+			}
+			restricted := svc.isUpstreamModelRestrictedByChannel(ctx, tt.groupID, tt.account, "client-alias", false)
+			require.Equal(t, tt.restricted, restricted)
+		})
+	}
+}
+
 func TestModelAvailabilityDiagnosisAcceptsChannelAlias(t *testing.T) {
 	groupID := int64(4203)
 	channel := Channel{

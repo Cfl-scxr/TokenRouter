@@ -426,7 +426,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRouti
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
 	require.Equal(t, account.ID, selection.Account.ID)
-	require.Equal(t, "allowed-upstream", resolveOpenAIAccountUpstreamModelForRequest(selection.Account, "dispatch-model", false))
+	require.Equal(t, "allowed-upstream", resolveOpenAIAccountUpstreamModelForRequest(selection.Account, "dispatch-model", false, false))
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}

@@ -601,18 +601,49 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 	return out
 }
 
-// resolveOpenAIAccountUpstreamModelForRequest resolves the upstream model that
-// would be sent for a given request, honouring compact-only mappings when the
-// caller is on the /responses/compact path.
-func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
-	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
+type openAIHTTPPassthroughRoutingContextKey struct{}
+
+// WithOpenAIHTTPPassthroughRouting 标记当前请求会按账号配置进入 HTTP Responses 自动透传分支。
+func WithOpenAIHTTPPassthroughRouting(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIHTTPPassthroughRoutingContextKey{}, true)
+}
+
+func openAIHTTPPassthroughRoutingFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	enabled, _ := ctx.Value(openAIHTTPPassthroughRoutingContextKey{}).(bool)
+	return enabled
+}
+
+// resolveOpenAIAccountUpstreamModelForRequest 按真实转发顺序解析 OpenAI 最终上游模型。
+// HTTP 自动透传只执行 compact 专属映射；其它入口依次执行账号映射、compact 映射和 OAuth 模型归一化。
+func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool, allowHTTPPassthrough bool) string {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return ""
+	}
+	if allowHTTPPassthrough && account != nil && account.IsOpenAIPassthroughEnabled() {
+		if requireCompact {
+			return strings.TrimSpace(resolveOpenAICompactForwardModel(account, requestedModel))
+		}
+		return requestedModel
+	}
+
+	upstreamModel := strings.TrimSpace(resolveOpenAIForwardModel(account, requestedModel, ""))
 	if upstreamModel == "" {
 		return ""
 	}
 	if requireCompact {
-		return resolveOpenAICompactForwardModel(account, upstreamModel)
+		compactModel := strings.TrimSpace(resolveOpenAICompactForwardModel(account, upstreamModel))
+		if compactModel != "" && compactModel != upstreamModel {
+			return compactModel
+		}
 	}
-	return upstreamModel
+	return strings.TrimSpace(normalizeOpenAIModelForUpstream(account, upstreamModel))
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, error) {

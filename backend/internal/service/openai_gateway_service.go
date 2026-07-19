@@ -641,7 +641,12 @@ func (s *OpenAIGatewayService) isUpstreamRoutingModelRestrictedByChannel(ctx con
 	if s.channelService == nil {
 		return false
 	}
-	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, routingModel, requireCompact)
+	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(
+		account,
+		routingModel,
+		requireCompact,
+		openAIHTTPPassthroughRoutingFromContext(ctx),
+	)
 	if upstreamModel == "" {
 		return false
 	}

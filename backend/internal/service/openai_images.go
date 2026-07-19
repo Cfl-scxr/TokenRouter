@@ -614,7 +614,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
-	upstreamModel := account.GetMappedModel(requestModel)
+	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, requestModel, false, false)
 	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
 		return nil, err
 	}
