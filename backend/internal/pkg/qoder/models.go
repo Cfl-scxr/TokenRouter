@@ -21,6 +21,8 @@ var DefaultModels = []Model{
 	{ID: "deepseek-v4-pro", Type: "model", DisplayName: "DeepSeek-V4-Pro", CreatedAt: ""},
 	{ID: "deepseek-v4-flash", Type: "model", DisplayName: "DeepSeek-V4-Flash", CreatedAt: ""},
 	{ID: "glm-5.2", Type: "model", DisplayName: "GLM-5.2", CreatedAt: ""},
+	// Kimi-K3 与 Kimi-K2.7-Code 是 Qoder 当前同时提供的两个独立模型。
+	{ID: "kimi-k3", Type: "model", DisplayName: "Kimi-K3", CreatedAt: ""},
 	{ID: "kimi-k2.7-code", Type: "model", DisplayName: "Kimi-K2.7-Code", CreatedAt: ""},
 	{ID: "minimax-m3", Type: "model", DisplayName: "MiniMax-M3", CreatedAt: ""},
 }

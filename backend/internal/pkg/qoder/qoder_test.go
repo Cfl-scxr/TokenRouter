@@ -306,6 +306,8 @@ func TestDefaultModels(t *testing.T) {
 		"deepseek-v4-pro",
 		"deepseek-v4-flash",
 		"glm-5.2",
+		// 验证新增路由会通过默认模型接口对外展示。
+		"kimi-k3",
 		"kimi-k2.7-code",
 		"minimax-m3",
 	}

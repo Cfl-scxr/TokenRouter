@@ -608,6 +608,32 @@ func TestResolveQoderModelUsesOpus46AliasForUltimate(t *testing.T) {
 	require.Equal(t, "gpt-5-codex", codex.Key)
 }
 
+func TestResolveQoderModelUsesKimiK3Alias(t *testing.T) {
+	// Qoder 1.15.0 新增的 Kimi-K3 必须解析到独立的 latest 路由。
+	info := resolveQoderModel("kimi-k3")
+	require.Equal(t, "kmodel_latest", info.Key)
+	require.Equal(t, "system", info.Source)
+	require.Equal(t, "Kimi-K3", info.DisplayName)
+}
+
+func TestResolveQoderModelUsesGLM52RouteKey(t *testing.T) {
+	// Qoder 1.15 当前将 GLM-5.2 展示名绑定到保留的 gm51model 路由 key。
+	info := resolveQoderModel("glm-5.2")
+	require.Equal(t, "gm51model", info.Key)
+	require.Equal(t, "system", info.Source)
+	require.Equal(t, "GLM-5.2", info.DisplayName)
+}
+
+func TestResolveQoderModelDoesNotTranslateRemovedCompatibilityAliases(t *testing.T) {
+	// 原兼容表中的名称应进入透传路径，不再附加兼容映射元数据。
+	for _, model := range []string{"ultimate", "qwen3.5-plus", "glm-5", "glm-5.1", "kimi-k2.6"} {
+		info := resolveQoderModel(model)
+		require.Equal(t, model, info.Key)
+		require.Equal(t, "system", info.Source)
+		require.Empty(t, info.DisplayName)
+	}
+}
+
 func TestQoderGatewayAppliesAccountModelMapping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

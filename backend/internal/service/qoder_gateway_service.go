@@ -58,7 +58,7 @@ var qoderClaudeBillingCCHRe = regexp.MustCompile(`(x-anthropic-billing-header:[^
 var ErrQoderRefreshInProgress = errors.New("qoder refresh in progress")
 
 // defaultQoderModelAliases 将兜底的 TokenRouter 请求侧 alias 映射到 Qoder API key。
-// 已配置 model_mapping 的 Qoder 账号以账号配置为准，此表仅作为兼容和默认展示面。
+// 已配置 model_mapping 的 Qoder 账号以账号配置为准，此表仅作为兜底路由和默认展示面。
 var defaultQoderModelAliases = map[string]qoderModelInfo{
 	// 通过加密 reasoning metadata 确认该路由为 Claude Opus 4.6。
 	"claude-opus-4-6": {Key: "ultimate", Source: "system", Provider: "Claude", Notes: "Confirmed Claude Opus 4.6 via encrypted reasoning metadata.", DisplayName: "Claude Opus 4.6"},
@@ -75,20 +75,10 @@ var defaultQoderModelAliases = map[string]qoderModelInfo{
 	"deepseek-v4-pro":   {Key: "dmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Pro.", DisplayName: "DeepSeek-V4-Pro"},
 	"deepseek-v4-flash": {Key: "dfmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Flash.", DisplayName: "DeepSeek-V4-Flash"},
 	"glm-5.2":           {Key: "gm51model", Source: "system", Provider: "GLM", Notes: "Qoder UI model name GLM-5.2.", DisplayName: "GLM-5.2"},
-	"kimi-k2.7-code":    {Key: "kmodel", Source: "system", Provider: "Kimi", Notes: "Qoder UI model name Kimi-K2.7-Code.", DisplayName: "Kimi-K2.7-Code"},
-	"minimax-m3":        {Key: "mmodel", Source: "system", Provider: "MiniMax", Notes: "Qoder UI model name MiniMax-M3.", DisplayName: "MiniMax-M3"},
-}
-
-var qoderCompatModelAliases = map[string]qoderModelInfo{
-	// 仅用于兼容：已有配置可能仍保存 Qoder 原始 key。
-	"ultimate": {Key: "ultimate", Source: "system", Provider: "Claude", Notes: "Compatibility alias for Qoder ultimate; expose claude-opus-4-6 instead.", DisplayName: "Claude Opus 4.6"},
-	// 仅用于兼容：Qoder CLI 默认不再列出这些路由，但旧配置可能仍引用它们。
-	"qwen3.5-plus": {Key: "q35model", Source: "system", Provider: "Qwen", Notes: "Compatibility alias for old Qoder Qwen3.5-Plus display name.", DisplayName: "Qwen3.5-Plus"},
-	"glm-5":        {Key: "gmodel", Source: "system", Provider: "GLM", Notes: "Compatibility alias for old Qoder GLM-5 display name.", DisplayName: "GLM-5"},
-	// 仅用于兼容：Qoder 将 GLM 展示名从 GLM-5.1 改为 GLM-5.2，但保留 gm51model。
-	"glm-5.1": {Key: "gm51model", Source: "system", Provider: "GLM", Notes: "Compatibility alias for old Qoder GLM-5.1 display name; expose glm-5.2 instead.", DisplayName: "GLM-5.2"},
-	// 仅用于兼容：继续解析旧推断的 Kimi 标签，但默认展示 kimi-k2.7-code。
-	"kimi-k2.6": {Key: "kmodel", Source: "system", Provider: "Kimi", Notes: "Compatibility alias for old Qoder Kimi display name; expose kimi-k2.7-code instead.", DisplayName: "Kimi-K2.7-Code"},
+	// Qoder 1.15.0 起同时展示 Kimi-K3 与 Kimi-K2.7-Code，两者使用不同路由 key。
+	"kimi-k3":        {Key: "kmodel_latest", Source: "system", Provider: "Kimi", Notes: "Qoder UI model name Kimi-K3.", DisplayName: "Kimi-K3"},
+	"kimi-k2.7-code": {Key: "kmodel", Source: "system", Provider: "Kimi", Notes: "Qoder UI model name Kimi-K2.7-Code.", DisplayName: "Kimi-K2.7-Code"},
+	"minimax-m3":     {Key: "mmodel", Source: "system", Provider: "MiniMax", Notes: "Qoder UI model name MiniMax-M3.", DisplayName: "MiniMax-M3"},
 }
 
 type qoderModelInfo struct {

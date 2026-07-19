@@ -332,6 +332,8 @@ func TestAccountHandlerGetAvailableModels_QoderFallsBackToDefaults(t *testing.T)
 		"deepseek-v4-pro",
 		"deepseek-v4-flash",
 		"glm-5.2",
+		// Kimi-K3 与 Kimi-K2.7-Code 当前均应通过默认目录返回。
+		"kimi-k3",
 		"kimi-k2.7-code",
 		"minimax-m3",
 	}, ids)

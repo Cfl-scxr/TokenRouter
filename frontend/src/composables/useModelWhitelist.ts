@@ -95,6 +95,8 @@ const qoderModels = [
   'deepseek-v4-pro',
   'deepseek-v4-flash',
   'glm-5.2',
+  // Kimi-K3 与 Kimi-K2.7-Code 当前使用不同的 Qoder 路由。
+  'kimi-k3',
   'kimi-k2.7-code',
   'minimax-m3'
 ]
@@ -326,6 +328,8 @@ const qoderPresetMappings = [
   { label: 'DeepSeek V4 Pro', from: 'deepseek-v4-pro', to: 'dmodel', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'DeepSeek V4 Flash', from: 'deepseek-v4-flash', to: 'dfmodel', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
   { label: 'GLM 5.2', from: 'glm-5.2', to: 'gm51model', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  // Kimi-K3 必须映射到 latest 路由，不能复用 Kimi-K2.7-Code 的 kmodel。
+  { label: 'Kimi K3', from: 'kimi-k3', to: 'kmodel_latest', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },
   { label: 'Kimi K2.7 Code', from: 'kimi-k2.7-code', to: 'kmodel', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: 'MiniMax M3', from: 'minimax-m3', to: 'mmodel', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' }
 ]
