@@ -191,12 +191,6 @@ func normalizeOpenAICompatiblePlatform(platform string) string {
 	return PlatformOpenAI
 }
 
-// noAvailableOpenAISelectionError 生成统一的账号选择失败错误。
-// compact 与分组模型不支持这两类本地业务限制需要保留更具体的错误语义。
-func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool, accounts ...[]Account) error {
-	return noAvailableOpenAISelectionErrorForRouting(context.Background(), requestedModel, requestedModel, compactBlocked, accounts...)
-}
-
 // noAvailableOpenAISelectionErrorForRouting 使用账号层模型 C/D 判断能力，同时保留 R 的对外错误语义。
 func noAvailableOpenAISelectionErrorForRouting(ctx context.Context, requestedModel string, routingModel string, compactBlocked bool, accounts ...[]Account) error {
 	if compactBlocked {

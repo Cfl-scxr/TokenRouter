@@ -1144,7 +1144,10 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 3, "passthrough 模式应转发两轮 response.create 和一次 session.update")
 	require.Equal(t, "upstream-turn-1", fmt.Sprint(upstreamConn.writes[0]["model"]))
-	require.Equal(t, "upstream-turn-2", fmt.Sprint(upstreamConn.writes[1]["session"].(map[string]any)["model"]))
+	// session.update 必须保留对象结构，并把第二轮请求模型替换为上游模型。
+	secondTurnSession, ok := upstreamConn.writes[1]["session"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream-turn-2", fmt.Sprint(secondTurnSession["model"]))
 	require.Equal(t, "upstream-turn-2", fmt.Sprint(upstreamConn.writes[2]["model"]))
 	require.Equal(t, "1:client-turn-1", <-routingCalls)
 	require.Equal(t, "2:client-turn-2", <-routingCalls)
