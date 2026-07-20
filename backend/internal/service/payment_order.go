@@ -223,6 +223,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 			SetPlanSnapshot(domain.SubscriptionPlanSnapshot{
 				Name:            plan.Name,
 				Price:           plan.Price,
+				Currency:        plan.Currency,
 				ValidityDays:    psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit),
 				DailyLimitUSD:   plan.DailyLimitUsd,
 				WeeklyLimitUSD:  plan.WeeklyLimitUsd,

@@ -50,6 +50,7 @@ vi.mock('@/composables/useClipboard', () => ({
 
 vi.mock('@/composables/useBalanceDisplay', () => ({
   useBalanceDisplay: () => ({
+    balanceUnitName: { value: '推理积分' },
     formatBalanceAmount,
   }),
 }))

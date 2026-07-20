@@ -53,6 +53,7 @@ type paymentFulfillmentAffiliateAccrueCall struct {
 type paymentFulfillmentAffiliateRepoStub struct {
 	inviteeSummary *AffiliateSummary
 	inviterSummary *AffiliateSummary
+	accruedRebate  float64
 	accrueCalls    []paymentFulfillmentAffiliateAccrueCall
 }
 
@@ -94,7 +95,7 @@ func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, inv
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
-	return 0, nil
+	return r.accruedRebate, nil
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
@@ -767,6 +768,8 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRecharging, staleAt)
 	order, err := client.PaymentOrder.UpdateOneID(order.ID).
 		SetOrderType(payment.OrderTypeBalance).
+		SetAmount(1000).
+		SetPayAmount(100).
 		ClearPlanID().
 		SetUpdatedAt(staleAt).
 		Save(ctx)
@@ -783,9 +786,26 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 			UsedCount: 1,
 		},
 	}}
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID:    order.UserID,
+			InviterID: &inviterID,
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID:    inviterID,
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:    "true",
+		SettingKeyAffiliateRebateRate: "20",
+	}}, nil)
 	svc := &PaymentService{
-		entClient:     client,
-		redeemService: &RedeemService{redeemRepo: redeemRepo},
+		entClient:        client,
+		redeemService:    &RedeemService{redeemRepo: redeemRepo},
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
 	}
 
 	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
@@ -793,6 +813,14 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Len(t, affiliateRepo.accrueCalls, 1)
+	require.Equal(t, 200.0, affiliateRepo.accrueCalls[0].amount)
+	applied, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("AFFILIATE_REBATE_APPLIED")).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Contains(t, applied.Detail, `"baseAmount":1000`)
+	require.Contains(t, applied.Detail, `"rebateAmount":200`)
 }
 
 func TestExecuteSubscriptionFulfillmentRecoversCommittedAssignmentWithoutExtendingAgain(t *testing.T) {
@@ -900,7 +928,99 @@ func assertPaymentSubscriptionExpiry(t *testing.T, repo *subscriptionUserSubRepo
 	require.True(t, sub.ExpiresAt.Equal(expected), "subscription expiry changed from %s to %s", expected, sub.ExpiresAt)
 }
 
-func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
+// TestAffiliateRebateBasePointsUsesConfiguredReasoningPointBase 锁定余额和订阅订单的返利基数口径。
+func TestAffiliateRebateBasePointsUsesConfiguredReasoningPointBase(t *testing.T) {
+	t.Parallel()
+	monthlyPoints := 1000.0
+	weeklyPoints := 300.0
+	dailyPoints := 100.0
+	zeroPoints := 0.0
+
+	tests := []struct {
+		name  string
+		order *dbent.PaymentOrder
+		want  float64
+	}{
+		{
+			name: "余额订单使用实际到账积分",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeBalance,
+				Amount:    1000,
+				PayAmount: 100,
+			},
+			want: 1000,
+		},
+		{
+			name: "订阅订单优先使用月度积分额度",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeSubscription,
+				Amount:    100,
+				PayAmount: 100,
+				PlanSnapshot: domain.SubscriptionPlanSnapshot{
+					MonthlyLimitUSD: &monthlyPoints,
+					WeeklyLimitUSD:  &weeklyPoints,
+					DailyLimitUSD:   &dailyPoints,
+				},
+			},
+			want: 1000,
+		},
+		{
+			name: "没有月额度时使用周额度",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeSubscription,
+				Amount:    100,
+				PayAmount: 100,
+				PlanSnapshot: domain.SubscriptionPlanSnapshot{
+					WeeklyLimitUSD: &weeklyPoints,
+					DailyLimitUSD:  &dailyPoints,
+				},
+			},
+			want: 300,
+		},
+		{
+			name: "没有月周额度时使用日额度",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeSubscription,
+				Amount:    100,
+				PayAmount: 100,
+				PlanSnapshot: domain.SubscriptionPlanSnapshot{
+					DailyLimitUSD: &dailyPoints,
+				},
+			},
+			want: 100,
+		},
+		{
+			name: "跳过无效月额度后使用周额度",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeSubscription,
+				Amount:    100,
+				PayAmount: 100,
+				PlanSnapshot: domain.SubscriptionPlanSnapshot{
+					MonthlyLimitUSD: &zeroPoints,
+					WeeklyLimitUSD:  &weeklyPoints,
+				},
+			},
+			want: 300,
+		},
+		{
+			name: "没有额度时不使用套餐价格兜底",
+			order: &dbent.PaymentOrder{
+				OrderType: payment.OrderTypeSubscription,
+				Amount:    100,
+				PayAmount: 100,
+			},
+		},
+		{name: "空订单不产生返利基数"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, affiliateRebateBasePoints(tt.order))
+		})
+	}
+}
+
+func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebateFromPurchasedPoints(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
@@ -912,13 +1032,13 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 		Save(ctx)
 	require.NoError(t, err)
 
-	limit := 18.0
+	monthlyPoints := 1000.0
 	order, err := client.PaymentOrder.Create().
 		SetUserID(user.ID).
 		SetUserEmail(user.Email).
 		SetUserName(user.Username).
-		SetAmount(9.99).
-		SetPayAmount(71.36).
+		SetAmount(100).
+		SetPayAmount(100).
 		SetFeeRate(0).
 		SetRechargeCode("PAY-SUB-AFFILIATE").
 		SetOutTradeNo("sub2_subscription_affiliate").
@@ -927,10 +1047,10 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 		SetOrderType(payment.OrderTypeSubscription).
 		SetPlanID(99).
 		SetPlanSnapshot(domain.SubscriptionPlanSnapshot{
-			Name:          "Pro",
-			Price:         120,
-			ValidityDays:  30,
-			DailyLimitUSD: &limit,
+			Name:            "Pro",
+			Price:           100,
+			ValidityDays:    30,
+			MonthlyLimitUSD: &monthlyPoints,
 		}).
 		SetStatus(OrderStatusPaid).
 		SetExpiresAt(time.Now().Add(time.Hour)).
@@ -955,7 +1075,7 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	}
 	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
 		SettingKeyAffiliateEnabled:           "true",
-		SettingKeyAffiliateRebateRate:        "15",
+		SettingKeyAffiliateRebateRate:        "20",
 		SettingKeyAffiliateRebateFreezeHours: "0",
 	}}, nil)
 	subRepo := newSubscriptionUserSubRepoStub()
@@ -975,7 +1095,7 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	require.Len(t, affiliateRepo.accrueCalls, 1)
 	require.Equal(t, inviterID, affiliateRepo.accrueCalls[0].inviterID)
 	require.Equal(t, user.ID, affiliateRepo.accrueCalls[0].inviteeUserID)
-	require.InDelta(t, 1.4985, affiliateRepo.accrueCalls[0].amount, 0.00000001)
+	require.Equal(t, 200.0, affiliateRepo.accrueCalls[0].amount)
 	require.NotNil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, order.ID, *affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, 1, subRepo.createCalls)
@@ -994,8 +1114,39 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("AFFILIATE_REBATE_APPLIED")).
 		Only(ctx)
 	require.NoError(t, err)
-	require.Contains(t, applied.Detail, `"baseAmount":9.99`)
-	require.Contains(t, applied.Detail, `"rebateAmount":1.4985`)
+	require.Contains(t, applied.Detail, `"baseAmount":1000`)
+	require.Contains(t, applied.Detail, `"rebateAmount":200`)
+}
+
+// TestAccrueInviteRebateCapsPurchasedPoints 验证单人上限与返利都使用推理积分单位。
+func TestAccrueInviteRebateCapsPurchasedPoints(t *testing.T) {
+	ctx := context.Background()
+	inviterID := int64(9001)
+	inviteeID := int64(9002)
+	repo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID:    inviteeID,
+			InviterID: &inviterID,
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID:    inviterID,
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+		accruedRebate: 175,
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:             "true",
+		SettingKeyAffiliateRebateRate:          "20",
+		SettingKeyAffiliateRebatePerInviteeCap: "250",
+	}}, nil)
+	svc := NewAffiliateService(repo, settingSvc, nil, nil)
+
+	rebate, err := svc.AccrueInviteRebate(ctx, inviteeID, 1000)
+	require.NoError(t, err)
+	require.Equal(t, 75.0, rebate)
+	require.Len(t, repo.accrueCalls, 1)
+	require.Equal(t, 75.0, repo.accrueCalls[0].amount)
 }
 
 func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAudit(t *testing.T) {

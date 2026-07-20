@@ -11,7 +11,7 @@
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div class="card p-5">
             <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
-              <Icon name="dollar" size="sm" class="text-primary-500" />
+              <Icon name="gift" size="sm" class="text-primary-500" />
               {{ t('affiliate.stats.rebateRate') }}
             </p>
             <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
@@ -96,7 +96,7 @@
               @click="transferQuota"
             >
               <Icon v-if="transferring" name="refresh" size="sm" class="animate-spin" />
-              <Icon v-else name="dollar" size="sm" />
+              <Icon v-else name="swap" size="sm" />
               <span>{{ transferring ? t('affiliate.transfer.transferring') : t('affiliate.transfer.button') }}</span>
             </button>
           </div>
@@ -116,7 +116,7 @@
                 <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
-                  <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>
+                  <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate', { unitName: balanceUnitName }) }}</th>
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') }}</th>
                 </tr>
               </thead>
@@ -158,7 +158,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const { copyToClipboard } = useClipboard()
-const { formatBalanceAmount } = useBalanceDisplay()
+const { balanceUnitName, formatBalanceAmount } = useBalanceDisplay()
 
 const loading = ref(true)
 const transferring = ref(false)
