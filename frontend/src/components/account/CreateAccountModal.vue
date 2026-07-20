@@ -4032,7 +4032,13 @@ const antigravityOAuth = useAntigravityOAuth() // Antigravity OAuth
 const qoderOAuth = useQoderOAuth() // Qoder 设备授权
 const grokOAuth = useGrokOAuth() // Grok OAuth
 let qoderPollTimer: number | null = null
-let qoderAuthPopup: Window | null = null
+interface QoderAuthPopupLease {
+  generation: number
+  popup: Window | null
+}
+
+let qoderAuthPopupLease: QoderAuthPopupLease | null = null
+let qoderAuthPopupGeneration = 0
 let qoderPollInFlight = false
 let qoderPollGeneration = 0
 const qoderFlowGeneration = ref(0)
@@ -4066,7 +4072,9 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
-  if (form.platform === 'qoder') return qoderOAuth.loading.value
+  if (form.platform === 'qoder') {
+    return qoderOAuth.loading.value || submitting.value || isQoderOAuthAccountCreating.value
+  }
   if (form.platform === 'grok') return grokOAuth.loading.value
   return oauth.loading.value
 })
@@ -4780,7 +4788,10 @@ const canExchangeCode = computed(() => {
     return authCode.trim() && antigravityOAuth.sessionId.value && !antigravityOAuth.loading.value
   }
   if (form.platform === 'qoder') {
-    return qoderOAuth.sessionId.value && !qoderOAuth.loading.value
+    return qoderOAuth.sessionId.value &&
+      !qoderOAuth.loading.value &&
+      !submitting.value &&
+      !isQoderOAuthAccountCreating.value
   }
   if (form.platform === 'grok') {
     return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
@@ -4975,8 +4986,7 @@ watch(qoderSite, (newSite, oldSite) => {
   if (newSite === oldSite || form.platform !== 'qoder') return
   // OAuth 会话冻结站点和代理；切站后必须销毁旧会话，手动输入保持不变。
   stopQoderPolling()
-  qoderAuthPopup?.close()
-  qoderAuthPopup = null
+  closeQoderAuthPopup()
   resetQoderOAuthCompletionState()
   qoderOAuth.resetState()
 })
@@ -5335,16 +5345,17 @@ type AccountCreateGuard = () => boolean
 const submitCreateAccount = async (
   payload: CreateAccountRequest,
   isCurrent: AccountCreateGuard = () => true
-) => {
+): Promise<boolean> => {
   submitting.value = true
   try {
     await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
-    if (!isCurrent()) return
+    if (!isCurrent()) return false
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
-    handleClose()
+    finishClose()
+    return true
   } catch (error: any) {
-    if (!isCurrent()) return
+    if (!isCurrent()) return false
     if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
@@ -5354,9 +5365,10 @@ const submitCreateAccount = async (
           await submitCreateAccount(payload, isCurrent)
         }
       })
-      return
+      return false
     }
     appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    return false
   } finally {
     // 旧流程结束时不能解除新流程的提交锁。
     if (isCurrent()) {
@@ -5368,6 +5380,7 @@ const submitCreateAccount = async (
 // Methods
 const resetForm = () => {
   stopQoderPolling()
+  closeQoderAuthPopup()
   resetQoderOAuthCompletionState()
   step.value = 1
   form.name = ''
@@ -5494,13 +5507,19 @@ const resetForm = () => {
   clearMixedChannelDialog()
 }
 
-const handleClose = () => {
+const finishClose = () => {
   stopQoderPolling()
   resetQoderOAuthCompletionState()
-  qoderAuthPopup = null
+  closeQoderAuthPopup()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
+}
+
+const handleClose = () => {
+  // Qoder 创建请求不可取消；等待服务端响应，避免账号已创建但页面丢弃成功事件。
+  if (form.platform === 'qoder' && submitting.value) return
+  finishClose()
 }
 
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
@@ -5665,15 +5684,16 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 const doCreateAccount = async (
   payload: CreateAccountRequest,
   isCurrent: AccountCreateGuard = () => true
-) => {
+): Promise<boolean> => {
+  let confirmedResult = false
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     if (!isCurrent()) return
-    await submitCreateAccount(payload, isCurrent)
+    confirmedResult = await submitCreateAccount(payload, isCurrent)
   })
   if (!canContinue || !isCurrent()) {
-    return
+    return confirmedResult
   }
-  await submitCreateAccount(payload, isCurrent)
+  return submitCreateAccount(payload, isCurrent)
 }
 
 // Handle mixed channel warning confirmation
@@ -6015,6 +6035,7 @@ const handleSubmit = async () => {
 
 const goBackToBasicInfo = () => {
   stopQoderPolling()
+  closeQoderAuthPopup()
   resetQoderOAuthCompletionState()
   step.value = 1
   oauth.resetState()
@@ -6044,6 +6065,15 @@ const stopQoderPolling = () => {
   qoderPollInFlight = false
 }
 
+const closeQoderAuthPopup = (lease?: QoderAuthPopupLease) => {
+  const currentLease = qoderAuthPopupLease
+  if (!currentLease || (lease && currentLease.generation !== lease.generation)) return
+
+  // 先解绑再关闭，旧请求恢复执行时只能处理自己仍持有的弹窗。
+  qoderAuthPopupLease = null
+  currentLease.popup?.close()
+}
+
 const resetQoderOAuthCompletionState = () => {
   // 流程代数与轮询代数分离，停止一次轮询不会误伤同一授权流程的兑换或创建。
   qoderFlowGeneration.value += 1
@@ -6069,30 +6099,31 @@ const isCurrentQoderFlow = (context: QoderFlowContext) =>
 const createQoderOAuthAccount = async (
   tokenInfo: QoderTokenInfo | undefined,
   context: QoderFlowContext
-) => {
+): Promise<boolean> => {
   if (
     !tokenInfo ||
     !isCurrentQoderFlow(context) ||
     qoderAccountCreateGeneration.value !== null ||
     qoderOAuthCompleted
-  ) return
+  ) return false
 
   qoderAccountCreateGeneration.value = context.generation
   try {
-    if (!isCurrentQoderFlow(context)) return
+    if (!isCurrentQoderFlow(context)) return false
     const credentials = qoderOAuth.buildCredentials(tokenInfo)
     applyQoderModelRestriction(credentials)
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-    await createAccountAndFinish(
+    const created = await createAccountAndFinish(
       'qoder',
       'cosy',
       credentials,
       buildQoderExtra(),
       () => isCurrentQoderFlow(context)
     )
-    if (isCurrentQoderFlow(context)) {
+    if (created && isCurrentQoderFlow(context)) {
       qoderOAuthCompleted = true
     }
+    return created
   } finally {
     // 只释放自己持有的锁，旧流程的 finally 不能解除新流程的创建锁。
     if (qoderAccountCreateGeneration.value === context.generation) {
@@ -6125,8 +6156,7 @@ const pollQoderAuthorizationOnce = async () => {
     if (result?.status !== 'completed' || !result.token_info) return
 
     stopQoderPolling()
-    qoderAuthPopup?.close()
-    qoderAuthPopup = null
+    closeQoderAuthPopup()
     await createQoderOAuthAccount(result.token_info, flowContext)
   } finally {
     if (generation === qoderPollGeneration) {
@@ -6159,23 +6189,25 @@ const handleGenerateUrl = async () => {
   } else if (form.platform === 'antigravity') {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'qoder') {
+    // 创建请求不可取消；完成前禁止重置授权世代，否则成功响应会被当作旧流程丢弃。
+    if (submitting.value || isQoderOAuthAccountCreating.value) return
+    stopQoderPolling()
+    closeQoderAuthPopup()
     resetQoderOAuthCompletionState()
     const flowContext = captureQoderFlowContext()
     const authPopup = window.open('about:blank', 'qoderAuthPopup', getQoderPopupFeatures())
-    qoderAuthPopup = authPopup
+    const popupLease: QoderAuthPopupLease = {
+      generation: ++qoderAuthPopupGeneration,
+      popup: authPopup
+    }
+    qoderAuthPopupLease = popupLease
     const ok = await qoderOAuth.generateAuthUrl(form.proxy_id, flowContext.site)
     if (!isCurrentQoderFlow(flowContext)) {
-      authPopup?.close()
-      if (qoderAuthPopup === authPopup) {
-        qoderAuthPopup = null
-      }
+      closeQoderAuthPopup(popupLease)
       return
     }
     if (!ok) {
-      authPopup?.close()
-      if (qoderAuthPopup === authPopup) {
-        qoderAuthPopup = null
-      }
+      closeQoderAuthPopup(popupLease)
       return
     }
     if (authPopup) {
@@ -6220,9 +6252,9 @@ const createAccountAndFinish = async (
   credentials: Record<string, unknown>,
   extra?: Record<string, unknown>,
   isCurrent: AccountCreateGuard = () => true
-) => {
+): Promise<boolean> => {
   if (!applyTempUnschedConfig(credentials)) {
-    return
+    return false
   }
   // Inject quota limits for apikey/bedrock accounts
   let finalExtra = extra
@@ -6278,8 +6310,8 @@ const createAccountAndFinish = async (
       delete credentials.model_mapping
     }
   }
-  if (!isCurrent()) return
-  await doCreateAccount({
+  if (!isCurrent()) return false
+  return doCreateAccount({
     name: form.name,
     notes: form.notes,
     platform,
@@ -7555,6 +7587,6 @@ const handleCookieAuth = async (sessionKey: string) => {
 
 onBeforeUnmount(() => {
   stopQoderPolling()
-  qoderAuthPopup = null
+  closeQoderAuthPopup()
 })
 </script>

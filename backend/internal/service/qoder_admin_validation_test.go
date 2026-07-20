@@ -51,6 +51,28 @@ func TestCreateQoderDirectTokenAccountPersistsStableMachineIdentity(t *testing.T
 	require.NotEmpty(t, created.GetCredential("machine_type"))
 }
 
+func TestCreateQoderDirectTokenAccountRejectsMissingMachineID(t *testing.T) {
+	repo := &upstreamBillingProbeAccountRepo{}
+	svc := &adminServiceImpl{accountRepo: repo}
+	credentials := map[string]any{
+		"security_oauth_token": "dt-token",
+		"uid":                  "uid-1",
+	}
+
+	_, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "qoder-direct",
+		Platform:             PlatformQoder,
+		Type:                 AccountTypeCosy,
+		SkipDefaultGroupBind: true,
+		Credentials:          credentials,
+	})
+
+	require.ErrorContains(t, err, "machine_id")
+	require.Empty(t, credentials["machine_id"])
+	require.Empty(t, credentials["machine_token"])
+	require.Empty(t, credentials["machine_type"])
+}
+
 func TestCreateQoderPATAccountPersistsStableMachineIdentity(t *testing.T) {
 	old := qoderValidatePAT
 	defer func() { qoderValidatePAT = old }()

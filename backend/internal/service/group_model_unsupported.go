@@ -104,7 +104,7 @@ func availableRequestModelsFromAccounts(accounts []Account, platform string) []s
 		}
 		hasConfiguredModels = true
 		for _, model := range requestModels {
-			if model = strings.TrimSpace(model); model != "" {
+			if model = strings.TrimSpace(model); model != "" && (platform != PlatformQoder || acc.IsModelSupported(model)) {
 				modelSet[model] = struct{}{}
 			}
 		}

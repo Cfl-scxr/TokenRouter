@@ -33,6 +33,7 @@ func qoderRefreshModeForAccount(account *Account) (string, error) {
 }
 
 // ensureQoderMachineCredentials 为新建 Qoder 账号补齐并持久化稳定机器身份。
+// PAT 账号可生成完整机器身份；direct token 账号必须由调用方提供 machine_id，这里只补其余字段。
 func ensureQoderMachineCredentials(account *Account) {
 	if account == nil {
 		return
@@ -40,13 +41,18 @@ func ensureQoderMachineCredentials(account *Account) {
 	if account.Credentials == nil {
 		account.Credentials = make(map[string]any)
 	}
-	if strings.TrimSpace(account.GetCredential("machine_id")) != "" &&
-		strings.TrimSpace(account.GetCredential("machine_token")) != "" &&
+	pat := strings.TrimSpace(account.GetCredential("pat"))
+	directToken := strings.TrimSpace(account.GetCredential("security_oauth_token"))
+	machineID := strings.TrimSpace(account.GetCredential("machine_id"))
+	if pat == "" && (directToken == "" || machineID == "") {
+		return
+	}
+	if machineID != "" && strings.TrimSpace(account.GetCredential("machine_token")) != "" &&
 		strings.TrimSpace(account.GetCredential("machine_type")) != "" {
 		return
 	}
 	machine := qoder.NewMachine()
-	if strings.TrimSpace(account.GetCredential("machine_id")) == "" {
+	if pat != "" && machineID == "" {
 		account.Credentials["machine_id"] = machine.MachineID
 	}
 	if strings.TrimSpace(account.GetCredential("machine_token")) == "" {

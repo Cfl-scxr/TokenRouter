@@ -82,6 +82,7 @@ const BaseDialogStub = defineComponent({
       default: false
     }
   },
+  emits: ['close'],
   template: '<div v-if="show"><slot /><slot name="footer" /></div>'
 })
 
@@ -465,12 +466,215 @@ describe('CreateAccountModal Qoder model restriction', () => {
     await backButton.trigger('click')
     expect(wrapper.find('[data-testid="create-qoder-site-cn"]').exists()).toBe(false)
 
-    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    const exchangeButton = findButtonByText(wrapper, 'admin.accounts.oauth.verifying')
+    expect(exchangeButton.attributes('disabled')).toBeDefined()
+    await exchangeButton.trigger('click')
     expect(exchangeQoderCodeMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock).toHaveBeenCalledTimes(1)
 
     createDeferredRequest.resolve({})
     await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('ignores dialog close events until a pending Qoder account creation succeeds', async () => {
+    generateQoderAuthUrlMock.mockResolvedValueOnce({
+      auth_url: 'https://qoder.com/device',
+      session_id: 'global-session',
+      state: 'state-value',
+      expires_in: 600,
+      interval: 2
+    })
+    exchangeQoderCodeMock.mockResolvedValueOnce({
+      security_oauth_token: 'global-token',
+      machine_id: 'global-machine',
+      site: 'global'
+    })
+    const createDeferredRequest = createDeferred<Record<string, never>>()
+    createAccountMock.mockReturnValueOnce(createDeferredRequest.promise)
+
+    const wrapper = mountModal()
+    await openQoderOAuthStep(wrapper)
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.getComponent(OAuthAuthorizationFlowStub).props('loading')).toBe(true)
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    await flushPromises()
+    expect(generateQoderAuthUrlMock).toHaveBeenCalledTimes(1)
+    wrapper.findAllComponents(BaseDialogStub)[0]!.vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.emitted('created')).toBeUndefined()
+
+    createDeferredRequest.resolve({})
+    await flushPromises()
+    expect(wrapper.emitted('created')).toHaveLength(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('keeps the current OAuth session retryable after account creation fails', async () => {
+    generateQoderAuthUrlMock.mockResolvedValueOnce({
+      auth_url: 'https://qoder.com/device',
+      session_id: 'global-session',
+      state: 'state-value',
+      expires_in: 600,
+      interval: 2
+    })
+    exchangeQoderCodeMock.mockResolvedValue({
+      security_oauth_token: 'global-token',
+      machine_id: 'global-machine',
+      site: 'global'
+    })
+    createAccountMock
+      .mockRejectedValueOnce(new Error('create failed'))
+      .mockResolvedValueOnce({})
+
+    const wrapper = mountModal()
+    await openQoderOAuthStep(wrapper)
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(wrapper.get('[data-testid="qoder-oauth-session"]').text()).toBe('global-session')
+
+    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    await flushPromises()
+    expect(exchangeQoderCodeMock).toHaveBeenCalledTimes(2)
+    expect(createAccountMock).toHaveBeenCalledTimes(2)
+    expect(wrapper.emitted('created')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('keeps the current OAuth session retryable after local creation validation fails', async () => {
+    generateQoderAuthUrlMock.mockResolvedValueOnce({
+      auth_url: 'https://qoder.com/device',
+      session_id: 'global-session',
+      state: 'state-value',
+      expires_in: 600,
+      interval: 2
+    })
+    exchangeQoderCodeMock.mockResolvedValue({
+      security_oauth_token: 'global-token',
+      machine_id: 'global-machine',
+      site: 'global'
+    })
+
+    const wrapper = mountModal()
+    await openQoderOAuthStep(wrapper)
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.tempUnschedEnabled = true
+    setupState.tempUnschedRules = []
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    await flushPromises()
+    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    await flushPromises()
+
+    expect(exchangeQoderCodeMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('created')).toBeUndefined()
+
+    setupState.tempUnschedEnabled = false
+    await findButtonByText(wrapper, 'admin.accounts.oauth.completeAuth').trigger('click')
+    await flushPromises()
+    expect(exchangeQoderCodeMock).toHaveBeenCalledTimes(2)
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('created')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('does not let an old generate request close a reused popup owned by a new flow', async () => {
+    const firstGenerate = createDeferred<{
+      auth_url: string
+      session_id: string
+      state: string
+      expires_in: number
+      interval: number
+    }>()
+    const secondGenerate = createDeferred<{
+      auth_url: string
+      session_id: string
+      state: string
+      expires_in: number
+      interval: number
+    }>()
+    const thirdGenerate = createDeferred<{
+      auth_url: string
+      session_id: string
+      state: string
+      expires_in: number
+      interval: number
+    }>()
+    generateQoderAuthUrlMock
+      .mockReturnValueOnce(firstGenerate.promise)
+      .mockReturnValueOnce(secondGenerate.promise)
+      .mockReturnValueOnce(thirdGenerate.promise)
+
+    const reusedPopup = {
+      close: vi.fn(),
+      focus: vi.fn(),
+      location: { href: 'about:blank' }
+    }
+    const replacementPopup = {
+      close: vi.fn(),
+      focus: vi.fn(),
+      location: { href: 'about:blank' }
+    }
+    vi.mocked(window.open)
+      .mockReturnValueOnce(reusedPopup as unknown as Window)
+      .mockReturnValueOnce(reusedPopup as unknown as Window)
+      .mockReturnValueOnce(replacementPopup as unknown as Window)
+
+    const wrapper = mountModal()
+    await openQoderOAuthStep(wrapper)
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    await findButtonByText(wrapper, 'common.back').trigger('click')
+    expect(reusedPopup.close).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    firstGenerate.resolve({
+      auth_url: 'https://qoder.com/old-device',
+      session_id: 'old-session',
+      state: 'old-state',
+      expires_in: 600,
+      interval: 2
+    })
+    await flushPromises()
+    expect(reusedPopup.close).toHaveBeenCalledTimes(1)
+
+    secondGenerate.resolve({
+      auth_url: 'https://qoder.com/current-device',
+      session_id: 'current-session',
+      state: 'current-state',
+      expires_in: 600,
+      interval: 2
+    })
+    await flushPromises()
+    expect(reusedPopup.location.href).toBe('https://qoder.com/current-device')
+
+    await wrapper.get('[data-testid="generate-qoder-auth-url"]').trigger('click')
+    expect(reusedPopup.close).toHaveBeenCalledTimes(2)
+    thirdGenerate.resolve({
+      auth_url: 'https://qoder.com/replacement-device',
+      session_id: 'replacement-session',
+      state: 'replacement-state',
+      expires_in: 600,
+      interval: 2
+    })
+    await flushPromises()
+    expect(replacementPopup.location.href).toBe('https://qoder.com/replacement-device')
+
+    wrapper.findAllComponents(BaseDialogStub)[0]!.vm.$emit('close')
+    await flushPromises()
+    expect(replacementPopup.close).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 })

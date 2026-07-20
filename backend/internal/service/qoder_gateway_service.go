@@ -548,16 +548,22 @@ func (s *QoderGatewayService) RefreshAccountSession(ctx context.Context, account
 		return s.waitForQoderLockedRefresh(ctx, account, failedCredentialsHash)
 	}
 
-	if s.tokenProvider != nil && (result == nil || result.Refreshed || result.Account != nil) {
-		s.tokenProvider.Invalidate(account.ID)
-	}
 	if result != nil && result.Account != nil {
+		if s.tokenProvider != nil {
+			s.tokenProvider.InvalidateAccount(result.Account)
+		}
 		return result.Account, nil
 	}
 	if s.accountRepo != nil {
 		if fresh, err := s.accountRepo.GetByID(ctx, account.ID); err == nil && fresh != nil {
+			if s.tokenProvider != nil {
+				s.tokenProvider.InvalidateAccount(fresh)
+			}
 			return fresh, nil
 		}
+	}
+	if s.tokenProvider != nil && (result == nil || result.Refreshed) {
+		s.tokenProvider.Invalidate(account.ID)
 	}
 	return account, nil
 }
@@ -579,7 +585,7 @@ func (s *QoderGatewayService) waitForQoderLockedRefresh(ctx context.Context, acc
 		}
 		if qoderRefreshCredentialsHash(fresh.Credentials) != failedCredentialsHash {
 			if s.tokenProvider != nil {
-				s.tokenProvider.Invalidate(account.ID)
+				s.tokenProvider.InvalidateAccount(fresh)
 			}
 			return fresh, true, nil
 		}
