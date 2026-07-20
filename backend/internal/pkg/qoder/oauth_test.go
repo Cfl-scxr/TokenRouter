@@ -3,10 +3,13 @@ package qoder
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +33,136 @@ func TestQoderDeviceAuthRequestAuthorizationURL(t *testing.T) {
 	require.Equal(t, "S256", values.Get("challenge_method"))
 	require.Equal(t, OAuthClientID, values.Get("client_id"))
 	require.Equal(t, "machine-1", values.Get("machine_id"))
+}
+
+func TestQoderCNDeviceAuthRequestUsesCNProfileAndNonce(t *testing.T) {
+	req, err := NewDeviceAuthRequestForSite(SiteCN)
+	require.NoError(t, err)
+	require.Len(t, req.Nonce, 32)
+	require.NotContains(t, req.Nonce, "-")
+
+	parsed, err := url.Parse(req.AuthorizationURL())
+	require.NoError(t, err)
+	require.Equal(t, CNDeviceAuthorizationURL, parsed.Scheme+"://"+parsed.Host+parsed.Path)
+	require.Equal(t, CNOAuthClientID, parsed.Query().Get("client_id"))
+	require.Empty(t, parsed.Query().Get("redirect_uri"))
+	require.Equal(t, req.MachineID, parsed.Query().Get("machine_id"))
+}
+
+func TestExchangeQoderCN20PATCompletesUserInfoAndStatus(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case JobTokenExchangePath:
+			require.Equal(t, "qoder/"+CNClientVersion, r.Header.Get("User-Agent"))
+			require.Equal(t, CNClientVersion, r.Header.Get("Cosy-Version"))
+			var body map[string]string
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			require.Equal(t, "pat-cn", body["personal_token"])
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token":         "openapi-access",
+				"refresh_token": "openapi-refresh",
+				"user_id":       "user-token",
+				"expires_in":    "3600",
+			})
+		case UserInfoPath:
+			require.Equal(t, "Bearer openapi-access", r.Header.Get("Authorization"))
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"user_id":   "user-info",
+				"user_name": "CN User",
+			})
+		case "/algo" + AuthStatusPath:
+			require.Equal(t, CNClientVersion, r.Header.Get("Cosy-Version"))
+			require.Equal(t, "machine-token", r.Header.Get("Cosy-Machinetoken"))
+			decoded, err := DecodeString(readAllString(t, r))
+			require.NoError(t, err)
+			var params AuthStatusParams
+			require.NoError(t, json.Unmarshal([]byte(decoded), &params))
+			require.Equal(t, "user-info", params.UserID)
+			require.Equal(t, "openapi-access", params.SecurityOauthToken)
+			require.Equal(t, "openapi-refresh", params.RefreshToken)
+			_ = json.NewEncoder(w).Encode(AuthStatusResult{
+				Name:               "Status User",
+				ID:                 "cosy-uid",
+				AccountID:          "cosy-aid",
+				OrganizationID:     "org-cn",
+				OrganizationName:   "CN Org",
+				UserType:           "enterprise_standard",
+				SecurityOauthToken: "cosy-token",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	profile := MustProfileForSite(SiteCN)
+	profile.OpenAPIBaseURL = server.URL
+	profile.GatewayBaseURL = server.URL
+	identity, expiresAt, err := ExchangeQoderCN20PATContext(context.Background(), "pat-cn", &MachineIdentity{
+		MachineID:    "machine-id",
+		MachineToken: "machine-token",
+		MachineType:  "machine-type",
+	}, profile, server.Client().Do)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{JobTokenExchangePath, UserInfoPath, "/algo" + AuthStatusPath}, paths)
+	require.Equal(t, "cosy-token", identity.SecurityOauthToken)
+	require.Equal(t, "openapi-refresh", identity.RefreshToken)
+	require.Equal(t, "cosy-uid", identity.UID)
+	require.Equal(t, "cosy-aid", identity.AID)
+	require.Equal(t, "org-cn", identity.OrganizationID)
+	require.Equal(t, "enterprise_standard", identity.UserType)
+	require.True(t, expiresAt.After(time.Now().Add(59*time.Minute)))
+}
+
+func TestQoderCN20PATErrorRedactsResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"personal_token":"pat-secret","refresh_token":"refresh-secret","message":"invalid"}`)
+	}))
+	defer server.Close()
+	profile := MustProfileForSite(SiteCN)
+	profile.OpenAPIBaseURL = server.URL
+	client := NewOAuthClientForProfile(profile, server.Client())
+
+	_, err := client.ExchangeQoderCN20PAT(context.Background(), "pat-secret")
+	require.Error(t, err)
+	var apiErr *OpenAPIError
+	require.ErrorAs(t, err, &apiErr)
+	require.True(t, apiErr.InvalidCredentials())
+	require.False(t, apiErr.UpstreamFailure())
+	upstreamErr := &OpenAPIError{Operation: "PAT exchange", StatusCode: http.StatusServiceUnavailable}
+	require.False(t, upstreamErr.InvalidCredentials())
+	require.True(t, upstreamErr.UpstreamFailure())
+	require.NotContains(t, err.Error(), "pat-secret")
+	require.NotContains(t, err.Error(), "refresh-secret")
+	require.True(t, strings.Contains(err.Error(), "status 401"))
+}
+
+func TestQoderCN20RefreshPostsRefreshTokenAndValidatesExpiry(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, DeviceTokenRefreshPath, r.URL.Path)
+		require.Equal(t, "qoder/"+CNClientVersion, r.Header.Get("User-Agent"))
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(t, "old-refresh", body["refresh_token"])
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "new-access",
+			"refresh_token": "new-refresh",
+			"expires_in":    7200,
+		})
+	}))
+	defer server.Close()
+	profile := MustProfileForSite(SiteCN)
+	profile.OpenAPIBaseURL = server.URL
+	client := NewOAuthClientForProfile(profile, server.Client())
+
+	token, err := client.RefreshQoderCN20Token(context.Background(), "old-refresh")
+	require.NoError(t, err)
+	require.Equal(t, "new-access", token.AccessTokenValue())
+	require.Equal(t, "new-refresh", token.RefreshToken)
 }
 
 func TestQoderGenerateCodeChallenge(t *testing.T) {

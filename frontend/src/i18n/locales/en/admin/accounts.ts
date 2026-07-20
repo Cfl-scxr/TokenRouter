@@ -1246,6 +1246,12 @@ export default {
       qoderAccount: 'Qoder Account',
       grokAccount: 'Grok Account',
       qoder: {
+        site: {
+          label: 'Qoder Site',
+          global: 'International',
+          cn: 'China',
+          changeWarning: 'Credentials may not work across sites. Save the account, then run a connection test.'
+        },
         accountType: {
           oauthTitle: 'Authorization Link',
           oauthDesc: 'Recommended: complete Qoder login in the browser.',

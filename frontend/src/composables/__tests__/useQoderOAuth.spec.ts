@@ -45,10 +45,10 @@ describe('useQoderOAuth', () => {
     })
 
     const oauth = useQoderOAuth()
-    const ok = await oauth.generateAuthUrl(7)
+    const ok = await oauth.generateAuthUrl(7, 'cn')
 
     expect(ok).toBe(true)
-    expect(adminAPI.qoder.generateAuthUrl).toHaveBeenCalledWith({ proxy_id: 7 })
+    expect(adminAPI.qoder.generateAuthUrl).toHaveBeenCalledWith({ proxy_id: 7, site: 'cn' })
     expect(oauth.authUrl.value).toBe('https://qoder.com/device/selectAccounts?nonce=n')
     expect(oauth.sessionId.value).toBe('session-id')
     expect(oauth.state.value).toBe('state-value')
@@ -66,8 +66,7 @@ describe('useQoderOAuth', () => {
       code: ' code ',
       callbackUrl: ' http://localhost:1455/callback?code=code&state=state-value ',
       sessionId: 'session-id',
-      state: 'state-value',
-      proxyId: 7
+      state: 'state-value'
     })
 
     expect(tokenInfo?.security_oauth_token).toBe('access-token')
@@ -75,8 +74,7 @@ describe('useQoderOAuth', () => {
       session_id: 'session-id',
       state: 'state-value',
       code: 'code',
-      callback_url: 'http://localhost:1455/callback?code=code&state=state-value',
-      proxy_id: 7
+      callback_url: 'http://localhost:1455/callback?code=code&state=state-value'
     })
   })
 
@@ -111,16 +109,14 @@ describe('useQoderOAuth', () => {
     const oauth = useQoderOAuth()
     const result = await oauth.pollAuthorization({
       sessionId: 'session-id',
-      state: 'state-value',
-      proxyId: 7
+      state: 'state-value'
     })
 
     expect(result?.status).toBe('completed')
     expect(result?.token_info?.machine_id).toBe('machine-id')
     expect(adminAPI.qoder.poll).toHaveBeenCalledWith({
       session_id: 'session-id',
-      state: 'state-value',
-      proxy_id: 7
+      state: 'state-value'
     })
     expect(oauth.loading.value).toBe(false)
     expect(oauth.polling.value).toBe(false)
@@ -140,6 +136,9 @@ describe('useQoderOAuth', () => {
       organization_name: 'Qoder Org',
       name: 'Qoder User',
       user_type: 'personal_standard',
+      site: 'cn',
+      refresh_mode: 'qodercn20',
+      expires_at: '2026-07-20T12:00:00Z',
       extra: { email: 'user@example.com' }
     })
 
@@ -155,6 +154,9 @@ describe('useQoderOAuth', () => {
       organization_name: 'Qoder Org',
       name: 'Qoder User',
       user_type: 'personal_standard',
+      site: 'cn',
+      refresh_mode: 'qodercn20',
+      expires_at: '2026-07-20T12:00:00Z',
       extra: { email: 'user@example.com' }
     })
   })

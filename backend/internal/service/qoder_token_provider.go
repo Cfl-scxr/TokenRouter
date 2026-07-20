@@ -16,6 +16,7 @@ import (
 )
 
 type qoderPATExchanger func(ctx context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error)
+type qoderCNPATExchanger func(ctx context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error)
 type qoderOrganizationTagsGetter func(ctx context.Context, token, uid string) (*qoder.OrganizationTags, error)
 
 type qoderSessionCacheEntry struct {
@@ -28,6 +29,7 @@ type QoderTokenProvider struct {
 	mu                  sync.Mutex
 	sessions            map[int64]qoderSessionCacheEntry
 	exchangePAT         qoderPATExchanger
+	exchangeCNPAT       qoderCNPATExchanger
 	getOrgTags          qoderOrganizationTagsGetter
 	httpUpstream        HTTPUpstream
 	tlsFPProfileService *TLSFingerprintProfileService
@@ -92,22 +94,46 @@ func (p *QoderTokenProvider) Invalidate(accountID int64) {
 }
 
 func (p *QoderTokenProvider) buildSession(ctx context.Context, account *Account) (*qoder.SessionContext, error) {
+	site, err := qoderSiteForAccount(account)
+	if err != nil {
+		return nil, err
+	}
 	pat := strings.TrimSpace(account.GetCredential("pat"))
-	if pat != "" {
-		machine := qoder.NewMachine()
-		exchangePAT := p.exchangePAT
-		if exchangePAT == nil {
-			exchangePAT = p.defaultExchangePAT(account)
+	if pat == "" {
+		refreshMode, modeErr := qoderRefreshModeForAccount(account)
+		if modeErr != nil {
+			return nil, modeErr
 		}
-		identity, err := exchangePAT(ctx, pat, machine)
+		if refreshMode == qoder.RefreshModeQoderCN20 && site != qoder.SiteCN {
+			return nil, errors.New("qoder qodercn20 credentials require cn site")
+		}
+	}
+	if pat != "" {
+		machine := qoderMachineForAccount(account)
+		var identity *qoder.AuthIdentity
+		if site == qoder.SiteCN {
+			exchangePAT := p.exchangeCNPAT
+			if exchangePAT == nil {
+				exchangePAT = p.defaultExchangeCNPAT(account)
+			}
+			identity, err = exchangePAT(ctx, pat, machine)
+		} else {
+			exchangePAT := p.exchangePAT
+			if exchangePAT == nil {
+				exchangePAT = p.defaultExchangePAT(account)
+			}
+			identity, err = exchangePAT(ctx, pat, machine)
+		}
 		if err != nil {
 			// PAT exchange 失败通常是永久错误（无效凭据），不跳过缓存
 			return nil, fmt.Errorf("qoder pat exchange: %w", err)
 		}
 		applyQoderAccountIdentityMetadata(identity, account)
 		// populateOrganizationFromAPI 在 session 创建前调用，避免缓存后并发修改 identity
-		p.populateOrganizationFromAPI(ctx, account, identity)
-		return qoder.NewSession(identity, machine)
+		if site == qoder.SiteGlobal {
+			p.populateOrganizationFromAPI(ctx, account, identity)
+		}
+		return qoder.NewSessionForSite(identity, machine, site)
 	}
 
 	token := strings.TrimSpace(account.GetCredential("security_oauth_token"))
@@ -129,12 +155,8 @@ func (p *QoderTokenProvider) buildSession(ctx context.Context, account *Account)
 		}
 		applyQoderAccountIdentityMetadata(identity, account)
 		p.populateOrganizationFromAPI(ctx, account, identity)
-		machine := &qoder.MachineIdentity{
-			MachineID:    machineID,
-			MachineToken: firstNonEmptyQoder(account.GetCredential("machine_token"), qoder.RandomToken(50)),
-			MachineType:  firstNonEmptyQoder(account.GetCredential("machine_type"), qoder.RandomHex(18)),
-		}
-		return qoder.NewSession(identity, machine)
+		machine := qoderMachineForAccount(account)
+		return qoder.NewSessionForSite(identity, machine, site)
 	}
 
 	return nil, errors.New("qoder credentials require pat or security_oauth_token+machine_id")
@@ -143,6 +165,17 @@ func (p *QoderTokenProvider) buildSession(ctx context.Context, account *Account)
 func (p *QoderTokenProvider) defaultExchangePAT(account *Account) qoderPATExchanger {
 	return func(ctx context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
 		return qoder.ExchangePATContext(ctx, pat, machine, "", newQoderRequestDoer(account, p.httpUpstream, p.tlsFPProfileService))
+	}
+}
+
+func (p *QoderTokenProvider) defaultExchangeCNPAT(account *Account) qoderCNPATExchanger {
+	return func(ctx context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+		profile, err := qoder.ProfileForSite(qoder.SiteCN)
+		if err != nil {
+			return nil, err
+		}
+		identity, _, err := qoder.ExchangeQoderCN20PATContext(ctx, pat, machine, profile, newQoderRequestDoer(account, p.httpUpstream, p.tlsFPProfileService))
+		return identity, err
 	}
 }
 
@@ -180,14 +213,18 @@ func (p *QoderTokenProvider) getOrganizationTagsForAccount(ctx context.Context, 
 	if uid == "" {
 		return nil, fmt.Errorf("qoder: organization tags require uid")
 	}
+	profile, err := qoderProfileForAccount(account)
+	if err != nil {
+		return nil, err
+	}
 	if doer := newQoderRequestDoer(account, p.httpUpstream, p.tlsFPProfileService); doer != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, qoder.OpenAPIBaseURL+qoder.OrganizationTagsPathPrefix+url.PathEscape(uid)+"/tags", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, profile.OpenAPIBaseURL+qoder.OrganizationTagsPathPrefix+url.PathEscape(uid)+"/tags", nil)
 		if err != nil {
 			return nil, fmt.Errorf("qoder: create organization tags request: %w", err)
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
-		req.Header.Set("User-Agent", "Go-http-client/2.0")
+		req.Header.Set("User-Agent", "qoder/"+profile.ClientVersion)
 
 		resp, err := doer(req)
 		if err != nil {
@@ -206,7 +243,7 @@ func (p *QoderTokenProvider) getOrganizationTagsForAccount(ctx context.Context, 
 		}
 		return &tags, nil
 	}
-	return qoder.NewOAuthClient(qoder.OpenAPIBaseURL, nil).GetOrganizationTags(ctx, token, uid)
+	return qoder.NewOAuthClientForProfile(profile, nil).GetOrganizationTags(ctx, token, uid)
 }
 
 func applyQoderAccountIdentityMetadata(identity *qoder.AuthIdentity, account *Account) {
@@ -235,6 +272,7 @@ func qoderRefreshCredentialsHash(credentials map[string]any) string {
 		return qoderCredentialsHash(nil)
 	}
 	keys := []string{
+		"pat",
 		"security_oauth_token",
 		"refresh_token",
 		"machine_id",
@@ -242,6 +280,12 @@ func qoderRefreshCredentialsHash(credentials map[string]any) string {
 		"machine_type",
 		"uid",
 		"aid",
+		"organization_id",
+		"organization_name",
+		"name",
+		"user_type",
+		"site",
+		"refresh_mode",
 	}
 	auth := make(map[string]any, len(keys))
 	for _, key := range keys {

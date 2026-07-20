@@ -16,6 +16,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 )
 
@@ -890,6 +891,18 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 		return matched
 	}
 	whitelist, _ := resolveFinalModelWhitelist(a.Platform, a.Credentials, mapping)
+	if a.Platform == PlatformQoder {
+		mappedModel, matched := a.ResolveMappedModel(requestedModel)
+		if matched {
+			// 显式账号 mapping 优先于站点默认模型限制。
+			return isModelInFinalWhitelist(a.Platform, mappedModel, whitelist)
+		}
+		site, err := qoderSiteForAccount(a)
+		if err != nil || !qoder.ModelCompatibleWithSite(site, requestedModel) {
+			return false
+		}
+		return isModelInFinalWhitelist(a.Platform, requestedModel, whitelist)
+	}
 	if len(mapping) == 0 {
 		if !isModelInFinalWhitelist(a.Platform, requestedModel, whitelist) {
 			return false

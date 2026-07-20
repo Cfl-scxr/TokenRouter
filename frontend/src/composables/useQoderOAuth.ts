@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { QoderPollResponse, QoderTokenInfo } from '@/api/admin/qoder'
+import type { QoderPollResponse, QoderSite, QoderTokenInfo } from '@/api/admin/qoder'
 
 export function useQoderOAuth() {
   const appStore = useAppStore()
@@ -26,7 +26,10 @@ export function useQoderOAuth() {
     error.value = ''
   }
 
-  const generateAuthUrl = async (proxyId: number | null | undefined): Promise<boolean> => {
+  const generateAuthUrl = async (
+    proxyId: number | null | undefined,
+    site: QoderSite = 'global'
+  ): Promise<boolean> => {
     loading.value = true
     authUrl.value = ''
     sessionId.value = ''
@@ -34,7 +37,7 @@ export function useQoderOAuth() {
     error.value = ''
 
     try {
-      const payload: Record<string, unknown> = {}
+      const payload: Record<string, unknown> = { site }
       if (proxyId) payload.proxy_id = proxyId
 
       const response = await adminAPI.qoder.generateAuthUrl(payload as any)
@@ -60,7 +63,6 @@ export function useQoderOAuth() {
     callbackUrl?: string
     sessionId: string
     state: string
-    proxyId?: number | null
   }): Promise<QoderTokenInfo | null> => {
     if (!params.sessionId || !params.state) {
       error.value = t('admin.accounts.oauth.qoder.missingExchangeParams')
@@ -79,7 +81,6 @@ export function useQoderOAuth() {
       const callbackUrl = params.callbackUrl?.trim()
       if (code) payload.code = code
       if (callbackUrl) payload.callback_url = callbackUrl
-      if (params.proxyId) payload.proxy_id = params.proxyId
 
       const tokenInfo = await adminAPI.qoder.exchangeCode(payload as any)
       return tokenInfo as QoderTokenInfo
@@ -98,7 +99,6 @@ export function useQoderOAuth() {
   const pollAuthorization = async (params: {
     sessionId: string
     state: string
-    proxyId?: number | null
   }): Promise<QoderPollResponse | null> => {
     if (!params.sessionId || !params.state) {
       error.value = t('admin.accounts.oauth.qoder.missingExchangeParams')
@@ -114,7 +114,6 @@ export function useQoderOAuth() {
         session_id: params.sessionId,
         state: params.state
       }
-      if (params.proxyId) payload.proxy_id = params.proxyId
 
       return await adminAPI.qoder.poll(payload as any)
     } catch (err: any) {
@@ -142,6 +141,9 @@ export function useQoderOAuth() {
     organization_name: tokenInfo.organization_name,
     name: tokenInfo.name,
     user_type: tokenInfo.user_type,
+    site: tokenInfo.site,
+    refresh_mode: tokenInfo.refresh_mode,
+    expires_at: tokenInfo.expires_at,
     extra: tokenInfo.extra
   })
 

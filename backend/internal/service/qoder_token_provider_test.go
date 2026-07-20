@@ -40,6 +40,12 @@ func TestQoderTokenProviderBuildsAndCachesDirectSession(t *testing.T) {
 	session2, err := provider.GetSession(context.Background(), account)
 	require.NoError(t, err)
 	require.Same(t, session1, session2, "session should be cached per account credentials")
+
+	account.Credentials["organization_id"] = "org-2"
+	session3, err := provider.GetSession(context.Background(), account)
+	require.NoError(t, err)
+	require.NotSame(t, session1, session3)
+	require.Equal(t, "org-2", session3.Identity.OrganizationID)
 }
 
 func TestQoderTokenProviderRejectsUnsupportedCredentialShape(t *testing.T) {
@@ -69,6 +75,25 @@ func TestQoderTokenProviderRejectsDirectTokenWithoutIdentity(t *testing.T) {
 
 	_, err := provider.GetSession(context.Background(), account)
 	require.ErrorContains(t, err, "uid or aid")
+}
+
+func TestQoderTokenProviderRejectsCN20RefreshModeOnGlobalSite(t *testing.T) {
+	provider := NewQoderTokenProvider()
+	account := &Account{
+		ID:       32,
+		Platform: PlatformQoder,
+		Type:     AccountTypeCosy,
+		Credentials: map[string]any{
+			"site":                 "global",
+			"refresh_mode":         qoder.RefreshModeQoderCN20,
+			"security_oauth_token": "token",
+			"machine_id":           "machine",
+			"uid":                  "uid",
+		},
+	}
+
+	_, err := provider.GetSession(context.Background(), account)
+	require.ErrorContains(t, err, "require cn site")
 }
 
 func TestQoderTokenProviderRejectsMachineIDOnlyWithoutReadingLocalAuth(t *testing.T) {
@@ -105,10 +130,11 @@ func TestQoderTokenProviderRejectsExplicitAuthDirWithoutReadingLocalAuth(t *test
 func TestQoderTokenProviderSupportsInjectedPATExchange(t *testing.T) {
 	calls := 0
 	orgCalls := 0
+	var exchangedPATs []string
 	provider := NewQoderTokenProvider()
 	provider.exchangePAT = func(_ context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
 		calls++
-		require.Equal(t, "pat-123", pat)
+		exchangedPATs = append(exchangedPATs, pat)
 		require.NotEmpty(t, machine.MachineID)
 		return &qoder.AuthIdentity{
 			Name:               "PAT User",
@@ -146,6 +172,36 @@ func TestQoderTokenProviderSupportsInjectedPATExchange(t *testing.T) {
 	require.Same(t, session1, session2)
 	require.Equal(t, 1, calls, "PAT exchange should not run after cache hit")
 	require.Equal(t, 0, orgCalls, "account-provided organization metadata should skip org lookup")
+
+	account.Credentials["pat"] = "pat-456"
+	session3, err := provider.GetSession(context.Background(), account)
+	require.NoError(t, err)
+	require.NotSame(t, session1, session3)
+	require.Equal(t, []string{"pat-123", "pat-456"}, exchangedPATs)
+}
+
+func TestQoderRefreshCredentialsHashTracksAuthenticationContext(t *testing.T) {
+	base := map[string]any{
+		"pat":             "pat-123",
+		"site":            "global",
+		"refresh_mode":    "cosy",
+		"organization_id": "org-1",
+		"model_mapping":   map[string]any{"auto": "auto"},
+	}
+	baseHash := qoderRefreshCredentialsHash(base)
+	for _, change := range []map[string]any{
+		{"pat": "pat-456"},
+		{"site": "cn"},
+		{"refresh_mode": qoder.RefreshModeQoderCN20},
+		{"organization_id": "org-2"},
+	} {
+		credentials := MergeCredentials(base, change)
+		require.NotEqual(t, baseHash, qoderRefreshCredentialsHash(credentials))
+	}
+	unrelated := MergeCredentials(base, map[string]any{
+		"model_mapping": map[string]any{"custom": "auto"},
+	})
+	require.Equal(t, baseHash, qoderRefreshCredentialsHash(unrelated))
 }
 
 func TestQoderTokenProviderPATExchangePopulatesOrganizationFromAPI(t *testing.T) {
@@ -181,6 +237,40 @@ func TestQoderTokenProviderPATExchangePopulatesOrganizationFromAPI(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, "org-from-api", session.Identity.OrganizationID)
 	require.Equal(t, "Org From API", session.Identity.OrganizationName)
+}
+
+func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
+	provider := NewQoderTokenProvider()
+	provider.exchangeCNPAT = func(_ context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+		require.Equal(t, "cn-pat", pat)
+		require.Equal(t, "machine-cn", machine.MachineID)
+		return &qoder.AuthIdentity{
+			UID:                "uid-cn",
+			AID:                "aid-cn",
+			OrganizationID:     "org-cn",
+			SecurityOauthToken: "cosy-cn",
+			RefreshToken:       "refresh-cn",
+		}, nil
+	}
+	account := &Account{
+		ID:       31,
+		Platform: PlatformQoder,
+		Type:     AccountTypeCosy,
+		Credentials: map[string]any{
+			"site":          "cn",
+			"pat":           "cn-pat",
+			"machine_id":    "machine-cn",
+			"machine_token": "machine-token-cn",
+			"machine_type":  "machine-type-cn",
+		},
+	}
+
+	session, err := provider.GetSession(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, qoder.SiteCN, session.Site)
+	require.Equal(t, qoder.CNClientVersion, session.ClientVersion)
+	require.Equal(t, "cosy-cn", session.Identity.SecurityOauthToken)
+	require.Equal(t, "machine-token-cn", session.Machine.MachineToken)
 }
 
 func TestQoderTokenProviderDirectTokenPopulatesOrganizationFromAPI(t *testing.T) {

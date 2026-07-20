@@ -70,15 +70,18 @@ var defaultQoderModelAliases = map[string]qoderModelInfo{
 	// Qoder lite tier 尚未验证，观测结果不完全一致。
 	"lite": {Key: "lite", Source: "system", Provider: "Qoder", Notes: "Unverified Qoder lite tier; observations are mixed.", DisplayName: "Qoder Lite"},
 	// Qoder UI 暴露的是这些供应商模型名，这里把可读公开 alias 映射到内部 route key。
-	"qwen3.7-max":       {Key: "qmodel_latest", Source: "system", Provider: "Qwen", Notes: "Qoder UI model name Qwen3.7-Max.", DisplayName: "Qwen3.7-Max"},
-	"qwen3.7-plus":      {Key: "qmodel", Source: "system", Provider: "Qwen", Notes: "Qoder UI model name Qwen3.7-Plus.", DisplayName: "Qwen3.7-Plus"},
-	"deepseek-v4-pro":   {Key: "dmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Pro.", DisplayName: "DeepSeek-V4-Pro"},
-	"deepseek-v4-flash": {Key: "dfmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Flash.", DisplayName: "DeepSeek-V4-Flash"},
-	"glm-5.2":           {Key: "gm51model", Source: "system", Provider: "GLM", Notes: "Qoder UI model name GLM-5.2.", DisplayName: "GLM-5.2"},
+	"qwen3.8-max-preview": {Key: "qmodel_preview", Source: "system", Provider: "Qwen", Notes: "Qoder UI model name Qwen3.8-Max-Preview.", DisplayName: "Qwen3.8-Max-Preview"},
+	"qwen3.7-max":         {Key: "qmodel_latest", Source: "system", Provider: "Qwen", Notes: "Qoder UI model name Qwen3.7-Max.", DisplayName: "Qwen3.7-Max"},
+	"qwen3.7-plus":        {Key: "qmodel", Source: "system", Provider: "Qwen", Notes: "Qoder UI model name Qwen3.7-Plus.", DisplayName: "Qwen3.7-Plus"},
+	"qwen3.6-flash":       {Key: "q36fmodel", Source: "system", Provider: "Qwen", Notes: "Qoder CN UI model name Qwen3.6-Flash.", DisplayName: "Qwen3.6-Flash"},
+	"deepseek-v4-pro":     {Key: "dmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Pro.", DisplayName: "DeepSeek-V4-Pro"},
+	"deepseek-v4-flash":   {Key: "dfmodel", Source: "system", Provider: "DeepSeek", Notes: "Qoder UI model name DeepSeek-V4-Flash.", DisplayName: "DeepSeek-V4-Flash"},
+	"glm-5.2":             {Key: "gm51model", Source: "system", Provider: "GLM", Notes: "Qoder UI model name GLM-5.2.", DisplayName: "GLM-5.2"},
 	// Qoder 1.15.0 起同时展示 Kimi-K3 与 Kimi-K2.7-Code，两者使用不同路由 key。
 	"kimi-k3":        {Key: "kmodel_latest", Source: "system", Provider: "Kimi", Notes: "Qoder UI model name Kimi-K3.", DisplayName: "Kimi-K3"},
 	"kimi-k2.7-code": {Key: "kmodel", Source: "system", Provider: "Kimi", Notes: "Qoder UI model name Kimi-K2.7-Code.", DisplayName: "Kimi-K2.7-Code"},
 	"minimax-m3":     {Key: "mmodel", Source: "system", Provider: "MiniMax", Notes: "Qoder UI model name MiniMax-M3.", DisplayName: "MiniMax-M3"},
+	"minimax-m2.7":   {Key: "mmodel", Source: "system", Provider: "MiniMax", Notes: "Qoder CN UI model name MiniMax-M2.7.", DisplayName: "MiniMax-M2.7"},
 }
 
 type qoderModelInfo struct {
@@ -385,6 +388,7 @@ type qoderPayloadBuildResult struct {
 
 type qoderPayloadRequest struct {
 	model           string
+	site            qoder.Site
 	system          string
 	messages        []qoderMessage
 	tools           []any
@@ -424,6 +428,10 @@ func (s *QoderGatewayService) buildQoderPayloadFromAnthropicMessages(c *gin.Cont
 
 func (s *QoderGatewayService) buildQoderPayloadWithConversation(c *gin.Context, account *Account, protocol string, request qoderPayloadRequest) qoderPayloadBuildResult {
 	request.userType = qoderUserType(account)
+	request.site = qoder.SiteGlobal
+	if site, err := qoderSiteForAccount(account); err == nil {
+		request.site = site
+	}
 	store := s.qoderConversationStore()
 	key, keySource := qoderConversationKey(c, account, protocol, request)
 	plan := store.planWithOptions(key, request.system, request.tools, request.messages, qoderConversationPlanOptions{
@@ -475,9 +483,9 @@ func (s *QoderGatewayService) openQoderStream(ctx context.Context, account *Acco
 	if err != nil {
 		return nil, fmt.Errorf("get qoder session: %w", err)
 	}
-	client := s.client
-	if client == nil {
-		client = qoder.NewClient(qoder.APIBaseURL)
+	client, err := qoderStreamClientForAccount(s.client, account)
+	if err != nil {
+		return nil, err
 	}
 
 	headers := map[string]string{
@@ -688,11 +696,17 @@ func applyQoderAccountModelMapping(account *Account, body []byte) []byte {
 }
 
 func BuildQoderPayloadFromChatCompletions(body []byte, userType string) (map[string]any, string, error) {
+	return BuildQoderPayloadFromChatCompletionsForSite(body, userType, qoder.SiteGlobal)
+}
+
+// BuildQoderPayloadFromChatCompletionsForSite 按账号站点解析默认模型 alias。
+func BuildQoderPayloadFromChatCompletionsForSite(body []byte, userType string, site qoder.Site) (map[string]any, string, error) {
 	request, err := parseQoderChatCompletionsPayload(body)
 	if err != nil {
 		return nil, "", err
 	}
 	request.userType = userType
+	request.site = site
 	payload, modelKey := buildQoderPayloadWithOptions(request, "", request.messages, true, true)
 	return payload, modelKey, nil
 }
@@ -1629,7 +1643,7 @@ func qoderSessionIDForConversation(key, systemFingerprint, toolsFingerprint stri
 }
 
 func buildQoderPayloadWithOptions(request qoderPayloadRequest, sessionID string, messages []qoderMessage, includeSystem bool, includeTools bool) (map[string]any, string) {
-	modelInfo := resolveQoderModel(request.model)
+	modelInfo := resolveQoderModelForSite(request.site, request.model)
 	userType := request.userType
 	if strings.TrimSpace(userType) == "" {
 		userType = "personal_standard"
@@ -1665,7 +1679,7 @@ func buildQoderPayloadWithOptions(request qoderPayloadRequest, sessionID string,
 	extraOriginalContent["text"] = prompt
 	payload["business"] = map[string]any{
 		"product":  "cli",
-		"version":  "1.0.20",
+		"version":  qoder.MustProfileForSite(request.site).ClientVersion,
 		"type":     "agent",
 		"stage":    "init",
 		"id":       uuid.NewString(),
@@ -5222,7 +5236,11 @@ func openAIUsageChunk(id, model string, usage ClaudeUsage, totalTokens int, usag
 }
 
 func resolveQoderModel(model string) qoderModelInfo {
-	if info, ok := lookupQoderModelAlias(strings.TrimSpace(model)); ok {
+	return resolveQoderModelForSite(qoder.SiteGlobal, model)
+}
+
+func resolveQoderModelForSite(site qoder.Site, model string) qoderModelInfo {
+	if info, ok := lookupQoderModelAliasForSite(site, strings.TrimSpace(model)); ok {
 		return info
 	}
 	return qoderModelInfo{Key: strings.TrimSpace(model), Source: "system"}

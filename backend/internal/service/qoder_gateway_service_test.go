@@ -220,6 +220,9 @@ func TestBuildQoderPayloadFromChatCompletions(t *testing.T) {
 	require.Equal(t, 123, parameters["max_tokens"])
 	require.Equal(t, "auto", modelConfig["key"])
 	require.Equal(t, "hello", chatText["text"])
+	business, ok := payload["business"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, qoder.GlobalClientVersion, business["version"])
 
 	messagesRaw, ok := payload["messages"].([]any)
 	require.True(t, ok)
@@ -245,6 +248,21 @@ func TestBuildQoderPayloadFromChatCompletions(t *testing.T) {
 	tools, ok := payload["tools"].([]any)
 	require.True(t, ok)
 	require.Len(t, tools, 1)
+}
+
+func TestBuildQoderPayloadUsesCNModelAndClientVersion(t *testing.T) {
+	body := []byte(`{
+		"model":"qwen3.6-flash",
+		"messages":[{"role":"user","content":"hello"}]
+	}`)
+
+	payload, modelKey, err := BuildQoderPayloadFromChatCompletionsForSite(body, "personal_standard", qoder.SiteCN)
+
+	require.NoError(t, err)
+	require.Equal(t, "q36fmodel", modelKey)
+	business, ok := payload["business"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, qoder.CNClientVersion, business["version"])
 }
 
 func TestBuildQoderPayloadUserSystemReplacesBuiltInSystem(t *testing.T) {

@@ -14,14 +14,14 @@ import (
 	"time"
 )
 
-// CenterBaseURL 是 Qoder center 服务的默认地址。
-const CenterBaseURL = "https://center.qoder.sh"
+// CenterBaseURL 是国际站 Center 服务地址，保留名称以兼容旧调用。
+const CenterBaseURL = GlobalCenterBaseURL
 
-// APIBaseURL 是 Qoder API 的默认地址，已按 qodercli endpoint-cache.json 校验。
-const APIBaseURL = "https://api1.qoder.sh"
+// APIBaseURL 是国际站推理地址，保留名称以兼容旧调用。
+const APIBaseURL = GlobalGatewayBaseURL
 
-// ClientVersion 是 COSY 协议版本，与 qodercli v1.0.20 保持一致。
-const ClientVersion = "1.0.20"
+// ClientVersion 是国际站 COSY 客户端版本，保留名称以兼容旧调用。
+const ClientVersion = GlobalClientVersion
 
 // GenerateRequestID 生成随机请求 ID。
 func GenerateRequestID() string {

@@ -924,7 +924,11 @@ func resolveAccountUpstreamModel(ctx context.Context, account *Account, requeste
 	}
 	mappedModel := resolveAccountMappedModelForForward(account, requestedModel)
 	if account.Platform == PlatformQoder {
-		return strings.TrimSpace(resolveQoderModel(mappedModel).Key)
+		site, err := qoderSiteForAccount(account)
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(resolveQoderModelForSite(site, mappedModel).Key)
 	}
 	return resolveAnthropicAccountUpstreamModel(account, mappedModel)
 }

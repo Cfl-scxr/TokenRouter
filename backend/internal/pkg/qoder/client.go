@@ -23,6 +23,8 @@ const GenerationPath = "/algo/api/v2/service/pro/sse/agent_chat_generation?Fetch
 type Client struct {
 	APIBaseURL    string
 	ClientVersion string
+	Site          Site
+	MachineOS     string
 	HTTPClient    *http.Client
 }
 
@@ -31,12 +33,33 @@ type RequestDoer func(req *http.Request) (*http.Response, error)
 
 // NewClient 创建新的 Qoder API 客户端。
 func NewClient(apiBaseURL string) *Client {
-	if apiBaseURL == "" {
-		apiBaseURL = APIBaseURL
+	profile := MustProfileForSite(SiteGlobal)
+	if strings.TrimSpace(apiBaseURL) != "" {
+		profile.GatewayBaseURL = strings.TrimRight(strings.TrimSpace(apiBaseURL), "/")
+	}
+	return NewClientForProfile(profile)
+}
+
+// NewClientForSite 使用指定站点的默认 profile 创建 COSY 客户端。
+func NewClientForSite(site Site) (*Client, error) {
+	profile, err := ProfileForSite(site)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientForProfile(profile), nil
+}
+
+// NewClientForProfile 使用可注入端点的站点 profile 创建 COSY 客户端。
+func NewClientForProfile(profile Profile) *Client {
+	normalized, err := NormalizeProfile(profile)
+	if err != nil {
+		normalized = MustProfileForSite(SiteGlobal)
 	}
 	return &Client{
-		APIBaseURL:    strings.TrimRight(apiBaseURL, "/"),
-		ClientVersion: ClientVersion,
+		APIBaseURL:    strings.TrimRight(normalized.GatewayBaseURL, "/"),
+		ClientVersion: normalized.ClientVersion,
+		Site:          normalized.Site,
+		MachineOS:     MachineOS(),
 		HTTPClient:    &http.Client{},
 	}
 }
@@ -105,6 +128,135 @@ func (c *Client) StreamRequestContextWithDoer(ctx context.Context, session *Sess
 	}
 
 	return resp, nil
+}
+
+// JSONRequestContextWithDoer 向 Gateway 发送签名的 COSY JSON 请求并解析响应。
+// logicalPath 不包含 /algo 前缀，构造实际 URL 时会自动补齐该前缀。
+func (c *Client) JSONRequestContextWithDoer(
+	ctx context.Context,
+	method string,
+	session *SessionContext,
+	logicalPath string,
+	bodyJSON []byte,
+	extraHeaders map[string]string,
+	doer RequestDoer,
+	out any,
+) error {
+	if c == nil {
+		return fmt.Errorf("qoder: client is nil")
+	}
+	if session == nil || session.Identity == nil || session.Machine == nil {
+		return fmt.Errorf("qoder: COSY session is incomplete")
+	}
+	logicalPath = strings.TrimSpace(logicalPath)
+	if logicalPath == "" {
+		return fmt.Errorf("qoder: gateway path is required")
+	}
+	actualPath := logicalPath
+	if !strings.HasPrefix(actualPath, "/algo/") && actualPath != "/algo" {
+		actualPath = "/algo" + ensureLeadingSlash(actualPath)
+	}
+	encodedBody := ""
+	if len(bodyJSON) > 0 {
+		encodedBody = Encode(bodyJSON)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var body io.Reader
+	if encodedBody != "" {
+		body = strings.NewReader(encodedBody)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.APIBaseURL+actualPath, body)
+	if err != nil {
+		return fmt.Errorf("qoder: create gateway request: %w", err)
+	}
+	c.setHeaders(req, session, logicalPath, encodedBody)
+	req.Header.Set("Accept", "application/json")
+	for key, value := range extraHeaders {
+		req.Header.Set(key, value)
+	}
+	if doer == nil {
+		httpClient := c.HTTPClient
+		if httpClient == nil {
+			httpClient = http.DefaultClient
+		}
+		doer = httpClient.Do
+	}
+	resp, err := doer(req)
+	if err != nil {
+		return fmt.Errorf("qoder: gateway request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return fmt.Errorf("qoder: read gateway response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ParseAPIErrorBody(resp.StatusCode, string(responseBody))
+	}
+	decodedBody, statusCode, err := unwrapQoderJSONResponse(responseBody)
+	if err != nil {
+		return err
+	}
+	if statusCode >= http.StatusBadRequest {
+		return ParseAPIErrorBody(statusCode, string(decodedBody))
+	}
+	if out == nil || len(strings.TrimSpace(string(decodedBody))) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(decodedBody, out); err != nil {
+		return fmt.Errorf("qoder: parse gateway response: %w", err)
+	}
+	return nil
+}
+
+func ensureLeadingSlash(path string) string {
+	if strings.HasPrefix(path, "/") {
+		return path
+	}
+	return "/" + path
+}
+
+// unwrapQoderJSONResponse 同时兼容 Gateway wrapper、明文 JSON 和编码后的 body。
+func unwrapQoderJSONResponse(body []byte) ([]byte, int, error) {
+	trimmed := []byte(strings.TrimSpace(string(body)))
+	if len(trimmed) == 0 {
+		return nil, http.StatusOK, nil
+	}
+	var wrapper struct {
+		Body            json.RawMessage `json:"body"`
+		StatusCodeValue int             `json:"statusCodeValue"`
+		StatusCode      string          `json:"statusCode"`
+	}
+	if json.Unmarshal(trimmed, &wrapper) == nil && len(wrapper.Body) > 0 {
+		statusCode := wrapper.StatusCodeValue
+		if statusCode == 0 {
+			statusCode = qoderWrapperHTTPStatus(QoderSSEWrapper{StatusCode: wrapper.StatusCode})
+		}
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		var bodyString string
+		if json.Unmarshal(wrapper.Body, &bodyString) == nil {
+			inner := []byte(strings.TrimSpace(bodyString))
+			if len(inner) > 0 && !json.Valid(inner) {
+				if decoded, err := Decode(bodyString); err == nil {
+					inner = decoded
+				}
+			}
+			return inner, statusCode, nil
+		}
+		return wrapper.Body, statusCode, nil
+	}
+	if json.Valid(trimmed) {
+		return trimmed, http.StatusOK, nil
+	}
+	decoded, err := Decode(string(trimmed))
+	if err != nil || !json.Valid(decoded) {
+		return nil, 0, fmt.Errorf("qoder: gateway response is not valid JSON")
+	}
+	return decoded, http.StatusOK, nil
 }
 
 // APIError 表示 Qoder API 返回的错误。
@@ -265,26 +417,50 @@ func applyQoderErrorPayload(apiErr *APIError, payload []byte) {
 
 func (c *Client) setHeaders(req *http.Request, session *SessionContext, path, encodedBody string) {
 	now := strconv.FormatInt(time.Now().Unix(), 10)
+	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	pathNoAlgo := pathWithoutAlgo(path)
-	payloadB64, _ := BuildPayloadB64(session.Info, GenerateRequestID())
+	clientVersion := strings.TrimSpace(c.ClientVersion)
+	if clientVersion == "" && session != nil {
+		clientVersion = strings.TrimSpace(session.ClientVersion)
+	}
+	if clientVersion == "" {
+		clientVersion = GlobalClientVersion
+	}
+	payloadB64, _ := BuildPayloadB64WithVersion(session.Info, GenerateRequestID(), clientVersion)
 	signature := SignQoderRequest(payloadB64, session.CosyKey, now, encodedBody, pathNoAlgo)
 
 	mid := session.Machine.MachineID
+	machineToken := strings.TrimSpace(session.Machine.MachineToken)
+	if machineToken == "" {
+		machineToken = mid
+	}
+	machineType := strings.TrimSpace(session.Machine.MachineType)
+	if machineType == "" {
+		machineType = "5"
+	}
+	machineOS := strings.TrimSpace(c.MachineOS)
+	if machineOS == "" {
+		machineOS = MachineOS()
+	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "identity")
 	req.Header.Set("User-Agent", "Go-http-client/2.0")
+	req.Header.Set("Date", httpDate)
+	req.Header.Set("Signature", SignCenterRequest(httpDate))
+	req.Header.Set("Appcode", AppCode)
 	req.Header.Set("Login-Version", "v2")
 	req.Header.Set("cosy-data-policy", "disagree")
-	req.Header.Set("cosy-version", c.ClientVersion)
+	req.Header.Set("cosy-version", clientVersion)
 	req.Header.Set("cosy-clienttype", "5")
 	req.Header.Set("cosy-clientip", mid)
+	req.Header.Set("cosy-machineos", machineOS)
 	req.Header.Set("cosy-date", now)
 	req.Header.Set("cosy-key", session.CosyKey)
 	req.Header.Set("cosy-user", session.Identity.UID)
 	req.Header.Set("cosy-machineid", mid)
-	req.Header.Set("cosy-machinetype", "5")
-	req.Header.Set("cosy-machinetoken", mid)
+	req.Header.Set("cosy-machinetype", machineType)
+	req.Header.Set("cosy-machinetoken", machineToken)
 	req.Header.Set("cosy-scene", "assistant")
 	req.Header.Set("cosy-organization-id", session.Identity.OrganizationID)
 	req.Header.Set("cosy-organization-tags", "Normal")

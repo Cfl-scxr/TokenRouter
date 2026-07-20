@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 )
 
@@ -91,6 +92,17 @@ type qoderUsageHTTPUpstreamStub struct {
 	calls       int32
 }
 
+func qoderUsageCredentials(token string) map[string]any {
+	return map[string]any{
+		"security_oauth_token": token,
+		"machine_id":           "machine-usage",
+		"machine_token":        "machine-token-usage",
+		"machine_type":         "machine-type-usage",
+		"uid":                  "uid-usage",
+		"organization_id":      "org-usage",
+	}
+}
+
 func (s *qoderUsageHTTPUpstreamStub) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	return s.DoWithTLS(req, proxyURL, accountID, accountConcurrency, nil)
 }
@@ -131,7 +143,7 @@ func TestAccountUsageService_QoderUsageFetchesQuotaAndPersistsSnapshot(t *testin
 			ID:          1,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 		}}},
 		updateExtraCh: make(chan map[string]any, 1),
 	}
@@ -160,8 +172,8 @@ func TestAccountUsageService_QoderUsageFetchesQuotaAndPersistsSnapshot(t *testin
 	if usage.QoderQuota.UserQuota.Percentage != 1 {
 		t.Fatalf("user quota percentage = %v, want 1", usage.QoderQuota.UserQuota.Percentage)
 	}
-	if got := upstream.req.Header.Get("Authorization"); got != "Bearer sec-token" {
-		t.Fatalf("Authorization = %q", got)
+	if got := upstream.req.Header.Get("Authorization"); !strings.HasPrefix(got, "Bearer COSY.") {
+		t.Fatalf("Authorization = %q, want signed COSY bearer", got)
 	}
 	select {
 	case updates := <-repo.updateExtraCh:
@@ -170,6 +182,57 @@ func TestAccountUsageService_QoderUsageFetchesQuotaAndPersistsSnapshot(t *testin
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected UpdateExtra call")
+	}
+}
+
+func TestAccountUsageService_QoderCNQuotaUsesSignedGatewayQueryAndParsesExtensions(t *testing.T) {
+	upstream := &qoderUsageHTTPUpstreamStub{body: `{
+		"userId":"user-cn",
+		"userType":"enterprise_standard",
+		"usageType":"credits",
+		"isPlanQuotaProrated":true,
+		"expiresAt":"1783875207000",
+		"addCreditsUrl":"https://qoder.com.cn/credits",
+		"orgResourcePackage":{"organizationId":"org-cn","cap":100,"used":20,"remaining":80,"available":true}
+	}`}
+	credentials := qoderUsageCredentials("cosy-cn")
+	credentials["site"] = "cn"
+	credentials["quota_key"] = "monthly"
+	credentials["organization_id"] = "org-cn"
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{{
+			ID:          2,
+			Platform:    PlatformQoder,
+			Type:        AccountTypeCosy,
+			Credentials: credentials,
+		}}},
+	}
+	svc := &AccountUsageService{accountRepo: repo, cache: NewUsageCache(), httpUpstream: upstream}
+
+	usage, err := svc.GetUsage(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if upstream.req == nil {
+		t.Fatal("expected signed quota request")
+	}
+	if upstream.req.URL.Path != "/algo"+qoder.QuotaUsagePath {
+		t.Fatalf("quota path = %q", upstream.req.URL.Path)
+	}
+	if upstream.req.URL.Query().Get("orgId") != "org-cn" || upstream.req.URL.Query().Get("quotaKey") != "monthly" {
+		t.Fatalf("quota query = %q", upstream.req.URL.RawQuery)
+	}
+	if upstream.req.Header.Get("Cosy-Version") != qoder.CNClientVersion {
+		t.Fatalf("Cosy-Version = %q", upstream.req.Header.Get("Cosy-Version"))
+	}
+	if usage.QoderQuota == nil || usage.QoderQuota.OrgResourcePackage == nil {
+		t.Fatalf("expected CN quota extensions: %#v", usage.QoderQuota)
+	}
+	if usage.QoderQuota.UserID != "user-cn" || !usage.QoderQuota.IsPlanQuotaProrated {
+		t.Fatalf("unexpected CN quota metadata: %#v", usage.QoderQuota)
+	}
+	if usage.QoderQuota.AddCreditsURL != "https://qoder.com.cn/credits" || usage.QoderQuota.OrgResourcePackage.OrganizationID != "org-cn" {
+		t.Fatalf("unexpected CN quota extension fields: %#v", usage.QoderQuota)
 	}
 }
 
@@ -198,6 +261,7 @@ func TestAccountUsageService_QoderUsagePrefersPATBootstrapOverStoredSecurityToke
 				"machine_id":           "machine-1",
 				"machine_token":        "machine-token",
 				"machine_type":         "5",
+				"organization_id":      "org-test",
 			},
 		}}},
 	}
@@ -214,12 +278,12 @@ func TestAccountUsageService_QoderUsagePrefersPATBootstrapOverStoredSecurityToke
 	if got := atomic.LoadInt32(&upstream.calls); got != 2 {
 		t.Fatalf("upstream calls = %d, want PAT exchange + quota usage", got)
 	}
-	if got := upstream.req.Header.Get("Authorization"); got != "Bearer fresh-token" {
-		t.Fatalf("quota Authorization = %q, want fresh PAT-exchanged token", got)
+	if got := upstream.req.Header.Get("Authorization"); !strings.HasPrefix(got, "Bearer COSY.") {
+		t.Fatalf("quota Authorization = %q, want signed COSY bearer", got)
 	}
 }
 
-func TestAccountUsageService_QoderUsageFallsBackToStoredSecurityTokenWhenPATBootstrapFails(t *testing.T) {
+func TestAccountUsageService_QoderUsageDoesNotReuseStoredTokenWhenPATBootstrapFails(t *testing.T) {
 	t.Parallel()
 
 	upstream := &qoderUsageHTTPUpstreamStub{
@@ -247,6 +311,7 @@ func TestAccountUsageService_QoderUsageFallsBackToStoredSecurityTokenWhenPATBoot
 				"machine_id":           "machine-1",
 				"machine_token":        "machine-token",
 				"machine_type":         "5",
+				"organization_id":      "org-test",
 			},
 		}}},
 	}
@@ -257,14 +322,14 @@ func TestAccountUsageService_QoderUsageFallsBackToStoredSecurityTokenWhenPATBoot
 	if err != nil {
 		t.Fatalf("GetUsage() error = %v", err)
 	}
-	if usage.QoderQuota == nil || usage.QoderQuota.UserQuota == nil || usage.QoderQuota.UserQuota.Remaining != 97 {
-		t.Fatalf("unexpected qoder quota after fallback: %#v", usage.QoderQuota)
+	if usage.QoderQuota != nil || usage.Error == "" {
+		t.Fatalf("expected degraded usage after PAT exchange failure: %#v", usage)
 	}
-	if got := atomic.LoadInt32(&upstream.calls); got != 2 {
-		t.Fatalf("upstream calls = %d, want failed PAT exchange + quota usage", got)
+	if strings.Contains(usage.Error, "leaked") {
+		t.Fatalf("degraded usage leaked upstream credential: %q", usage.Error)
 	}
-	if got := upstream.req.Header.Get("Authorization"); got != "Bearer stored-token" {
-		t.Fatalf("quota Authorization = %q, want stored token fallback", got)
+	if got := atomic.LoadInt32(&upstream.calls); got != 1 {
+		t.Fatalf("upstream calls = %d, want only failed PAT exchange", got)
 	}
 }
 
@@ -294,7 +359,7 @@ func TestAccountUsageService_QoderUsageForceBypassesCache(t *testing.T) {
 			ID:          4,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 		}}},
 	}
 	svc := &AccountUsageService{accountRepo: repo, cache: NewUsageCache(), httpUpstream: upstream}
@@ -347,7 +412,7 @@ func TestAccountUsageService_QoderQuotaExceededSetsRateLimited(t *testing.T) {
 			ID:          2,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 		}}},
 		updateExtraCh: make(chan map[string]any, 1),
 		rateLimitCh:   make(chan time.Time, 1),
@@ -390,7 +455,7 @@ func TestAccountUsageService_QoderAddOnQuotaRemainingPreventsUserQuotaRateLimit(
 			ID:               12,
 			Platform:         PlatformQoder,
 			Type:             AccountTypeCosy,
-			Credentials:      map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:      qoderUsageCredentials("sec-token"),
 			RateLimitResetAt: &expiresAt,
 		}}},
 		rateLimitCh:  make(chan time.Time, 1),
@@ -428,7 +493,7 @@ func TestQoderQuotaInfoFromResponseInfersAddOnQuotaRemainingFromCap(t *testing.T
 		UserType:        "teams",
 		UsageType:       "credits",
 		IsQuotaExceeded: true,
-		ExpiresAt:       time.Now().Add(time.Hour).UnixMilli(),
+		ExpiresAt:       qoder.FlexibleInt64(time.Now().Add(time.Hour).UnixMilli()),
 		UserQuota:       &qoderQuotaProgressRaw{Total: 100, Used: 100, Remaining: 0, Unit: "credits"},
 		AddOnQuota: &qoderQuotaProgressRaw{
 			Cap:  50,
@@ -458,7 +523,7 @@ func TestQoderQuotaInfoFromResponseInfersOrgResourcePackageTotalFromUsedRemainin
 		UserType:        "teams",
 		UsageType:       "credits",
 		IsQuotaExceeded: true,
-		ExpiresAt:       time.Now().Add(time.Hour).UnixMilli(),
+		ExpiresAt:       qoder.FlexibleInt64(time.Now().Add(time.Hour).UnixMilli()),
 		UserQuota:       &qoderQuotaProgressRaw{Total: 100, Used: 100, Remaining: 0, Unit: "credits"},
 		OrgResourcePackage: &qoderQuotaProgressRaw{
 			Used:      25,
@@ -558,7 +623,7 @@ func TestAccountUsageService_QoderQuotaLockedAccountBypassesCachedUsage(t *testi
 			ID:          9,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 		}}},
 		rateLimitCh:  make(chan time.Time, 1),
 		clearLimitCh: make(chan int64, 1),
@@ -616,7 +681,7 @@ func TestAccountUsageService_QoderQuotaAvailableClearsMatchingQuotaRateLimit(t *
 			ID:               7,
 			Platform:         PlatformQoder,
 			Type:             AccountTypeCosy,
-			Credentials:      map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:      qoderUsageCredentials("sec-token"),
 			RateLimitResetAt: &expiresAt,
 		}}},
 		rateLimitCh:  make(chan time.Time, 1),
@@ -664,7 +729,7 @@ func TestAccountUsageService_QoderQuotaLockedAccountKeepsDegradedCache(t *testin
 			ID:               11,
 			Platform:         PlatformQoder,
 			Type:             AccountTypeCosy,
-			Credentials:      map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:      qoderUsageCredentials("sec-token"),
 			RateLimitResetAt: &expiresAt,
 		}}},
 		clearLimitCh: make(chan int64, 1),
@@ -721,7 +786,7 @@ func TestAccountUsageService_QoderQuotaAvailableDoesNotClearActiveOverload(t *te
 			ID:               10,
 			Platform:         PlatformQoder,
 			Type:             AccountTypeCosy,
-			Credentials:      map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:      qoderUsageCredentials("sec-token"),
 			RateLimitResetAt: &expiresAt,
 			OverloadUntil:    &overloadUntil,
 		}}},
@@ -762,7 +827,7 @@ func TestAccountUsageService_QoderQuotaAvailableDoesNotClearUnrelatedRateLimit(t
 			ID:               8,
 			Platform:         PlatformQoder,
 			Type:             AccountTypeCosy,
-			Credentials:      map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:      qoderUsageCredentials("sec-token"),
 			RateLimitResetAt: &resetAt,
 		}}},
 		clearLimitCh: make(chan int64, 1),
@@ -800,7 +865,7 @@ func TestAccountUsageService_QoderPersonalZeroQuotaDoesNotSetRateLimited(t *test
 			ID:          3,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 		}}},
 		rateLimitCh: make(chan time.Time, 1),
 	}
@@ -831,7 +896,7 @@ func TestAccountUsageService_QoderUsageDegradedUsesLastKnownSnapshot(t *testing.
 			ID:          1,
 			Platform:    PlatformQoder,
 			Type:        AccountTypeCosy,
-			Credentials: map[string]any{"security_oauth_token": "sec-token"},
+			Credentials: qoderUsageCredentials("sec-token"),
 			Extra: map[string]any{
 				qoderQuotaUpdatedAtExtraKey: updatedAt,
 				qoderQuotaSnapshotExtraKey: map[string]any{
@@ -881,7 +946,7 @@ func TestAccountUsageService_QoderUsageDegradedDoesNotClearAccountError(t *testi
 			Type:         AccountTypeCosy,
 			Status:       StatusError,
 			ErrorMessage: "unauthenticated",
-			Credentials:  map[string]any{"security_oauth_token": "sec-token"},
+			Credentials:  qoderUsageCredentials("sec-token"),
 		}}},
 		clearErrorCh: make(chan int64, 1),
 	}

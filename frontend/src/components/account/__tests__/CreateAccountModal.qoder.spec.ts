@@ -74,6 +74,10 @@ const ModelWhitelistSelectorStub = defineComponent({
     modelValue: {
       type: Array,
       default: () => []
+    },
+    models: {
+      type: Array,
+      default: () => []
     }
   },
   emits: ['update:modelValue'],
@@ -167,6 +171,8 @@ describe('CreateAccountModal Qoder model restriction', () => {
     expect(payload.type).toBe('cosy')
     expect(payload.credentials.model_mapping).toBeUndefined()
     expect(payload.credentials.model_whitelist).toBeUndefined()
+    expect(payload.credentials.site).toBe('global')
+    expect(payload.credentials.refresh_mode).toBe('cosy')
   })
 
   it('creates Qoder manual account with PAT bootstrap without token fields', async () => {
@@ -198,8 +204,26 @@ describe('CreateAccountModal Qoder model restriction', () => {
     expect(payload.platform).toBe('qoder')
     expect(payload.type).toBe('cosy')
     expect(payload.credentials).toMatchObject({ pat: 'pat-123' })
+    expect(payload.credentials.site).toBe('global')
+    expect(payload.credentials.refresh_mode).toBe('cosy')
     expect(payload.credentials.security_oauth_token).toBeUndefined()
     expect(payload.credentials.machine_id).toBeUndefined()
+  })
+
+  it('switches to the China site while preserving manual credentials', async () => {
+    const wrapper = mountModal()
+    await fillQoderManualForm(wrapper)
+    await wrapper.get('[data-testid="create-qoder-site-cn"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload.credentials).toMatchObject({
+      site: 'cn',
+      refresh_mode: 'cosy',
+      security_oauth_token: 'token',
+      machine_id: 'machine'
+    })
   })
 
   it('persists Qoder TLS fingerprint settings on manual create without OpenAI router', async () => {

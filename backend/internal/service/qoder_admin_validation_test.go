@@ -54,6 +54,21 @@ func TestValidateQoderCosyCredentialsRejectsDirectTokenWithoutIdentity(t *testin
 	require.ErrorContains(t, ValidateQoderCosyCredentials(context.Background(), account), "uid or aid")
 }
 
+func TestValidateQoderCosyCredentialsRejectsUnknownSiteAndRefreshMode(t *testing.T) {
+	baseCredentials := map[string]any{
+		"security_oauth_token": "dt-token",
+		"machine_id":           "machine-1",
+		"uid":                  "uid-1",
+	}
+	account := &Account{Platform: PlatformQoder, Type: AccountTypeCosy, Credentials: baseCredentials}
+	account.Credentials["site"] = "unknown"
+	require.ErrorContains(t, ValidateQoderCosyCredentials(context.Background(), account), "unsupported site")
+
+	account.Credentials["site"] = "cn"
+	account.Credentials["refresh_mode"] = "unknown"
+	require.ErrorContains(t, ValidateQoderCosyCredentials(context.Background(), account), "unsupported refresh_mode")
+}
+
 func TestValidateQoderCosyCredentialsRejectsMachineIDOnly(t *testing.T) {
 	account := &Account{
 		Platform:    PlatformQoder,
@@ -115,6 +130,62 @@ func TestValidateQoderCosyCredentialsExchangesPAT(t *testing.T) {
 
 	require.NoError(t, ValidateQoderCosyCredentials(context.Background(), account))
 	require.Equal(t, 1, calls)
+	require.NotEmpty(t, account.GetCredential("machine_id"))
+	require.NotEmpty(t, account.GetCredential("machine_token"))
+	require.NotEmpty(t, account.GetCredential("machine_type"))
+}
+
+func TestValidateQoderCosyCredentialsDefersUnchangedPATExchangeForSiteEdit(t *testing.T) {
+	old := qoderValidatePAT
+	defer func() { qoderValidatePAT = old }()
+	qoderValidatePAT = func(context.Context, *Account, string, *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+		t.Fatal("站点编辑不应在保存阶段重新交换未变化的 PAT")
+		return nil, nil
+	}
+	account := &Account{
+		Platform:    PlatformQoder,
+		Type:        AccountTypeCosy,
+		Credentials: map[string]any{"site": "cn", "pat": "pat-123"},
+	}
+
+	err := validateQoderCosyCredentialsWithOptions(context.Background(), account, nil, nil, true)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, account.GetCredential("machine_id"))
+	require.NotEmpty(t, account.GetCredential("machine_token"))
+	require.NotEmpty(t, account.GetCredential("machine_type"))
+}
+
+func TestUpdateQoderPATAccountDefersCompatibilityCheckWhenSiteChanges(t *testing.T) {
+	old := qoderValidatePAT
+	defer func() { qoderValidatePAT = old }()
+	qoderValidatePAT = func(context.Context, *Account, string, *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+		t.Fatal("切换站点应保存原 PAT，并由后续连接测试判断兼容性")
+		return nil, nil
+	}
+	const accountID int64 = 1201
+	baseRepo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:       accountID,
+			Platform: PlatformQoder,
+			Type:     AccountTypeCosy,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"site": "global",
+				"pat":  "pat-123",
+			},
+		},
+	}}
+	svc := &adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}}
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		Credentials: map[string]any{"site": "cn"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "cn", updated.GetCredential("site"))
+	require.Equal(t, "pat-123", updated.GetCredential("pat"))
+	require.NotEmpty(t, updated.GetCredential("machine_id"))
 }
 
 func TestValidateQoderCosyCredentialsRejectsBadPAT(t *testing.T) {

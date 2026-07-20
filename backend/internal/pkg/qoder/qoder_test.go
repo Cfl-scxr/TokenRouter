@@ -301,15 +301,18 @@ func TestDefaultModels(t *testing.T) {
 		"performance",
 		"efficient",
 		"lite",
+		"qwen3.8-max-preview",
 		"qwen3.7-max",
 		"qwen3.7-plus",
-		"deepseek-v4-pro",
-		"deepseek-v4-flash",
-		"glm-5.2",
 		// 验证新增路由会通过默认模型接口对外展示。
 		"kimi-k3",
 		"kimi-k2.7-code",
+		"glm-5.2",
+		"deepseek-v4-pro",
+		"deepseek-v4-flash",
 		"minimax-m3",
+		"qwen3.6-flash",
+		"minimax-m2.7",
 	}
 	if len(ids) != len(want) {
 		t.Fatalf("default model count = %d, want %d", len(ids), len(want))

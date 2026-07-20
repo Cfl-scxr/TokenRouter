@@ -1319,6 +1319,12 @@ export default {
       qoderAccount: 'Qoder 账号',
       grokAccount: 'Grok 账号',
       qoder: {
+        site: {
+          label: 'Qoder 站点',
+          global: '国际站',
+          cn: '国内站',
+          changeWarning: '凭据可能不跨站通用，请保存后执行连接测试。'
+        },
         accountType: {
           oauthTitle: '授权链接',
           oauthDesc: '推荐：浏览器完成 Qoder 登录授权。',

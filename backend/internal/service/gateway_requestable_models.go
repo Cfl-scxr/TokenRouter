@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+
+	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 )
 
 // RequestableModel 描述客户端可请求的模型，以及模型广场应使用的定价模型。
@@ -188,15 +190,33 @@ func mergeRequestableModelCandidates(baseModels []string, accounts []Account, ch
 	}
 
 	hasUnrestrictedAccount := false
+	hasUnrestrictedQoderGlobal := false
+	hasUnrestrictedQoderCN := false
 	for i := range accounts {
 		account := &accounts[i]
 		appendModels(sortedModelMappingSources(account.GetModelMapping())...)
 		if accountHasUnrestrictedModelScope(account) {
 			hasUnrestrictedAccount = true
+			if platform == PlatformQoder && account.Platform == PlatformQoder {
+				if site, err := qoderSiteForAccount(account); err == nil && site == qoder.SiteCN {
+					hasUnrestrictedQoderCN = true
+				} else {
+					hasUnrestrictedQoderGlobal = true
+				}
+			}
 		}
 	}
 	if hasUnrestrictedAccount {
-		appendModels(defaultRequestModelIDsForPlatform(platform)...)
+		if platform == PlatformQoder {
+			if hasUnrestrictedQoderGlobal {
+				appendModels(qoder.DefaultRequestModelIDsForSite(qoder.SiteGlobal)...)
+			}
+			if hasUnrestrictedQoderCN {
+				appendModels(qoder.DefaultRequestModelIDsForSite(qoder.SiteCN)...)
+			}
+		} else {
+			appendModels(defaultRequestModelIDsForPlatform(platform)...)
+		}
 	}
 	return candidates
 }
