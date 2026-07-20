@@ -342,6 +342,7 @@ var qoderSensitiveErrorKeys = []string{
 	"refresh_token",
 	"personalToken",
 	"personal_token",
+	"token",
 	"cosy-key",
 	"cosyKey",
 	"cosy_user",

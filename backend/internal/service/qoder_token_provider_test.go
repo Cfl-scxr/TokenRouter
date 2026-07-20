@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
@@ -241,7 +243,7 @@ func TestQoderTokenProviderPATExchangePopulatesOrganizationFromAPI(t *testing.T)
 
 func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
 	provider := NewQoderTokenProvider()
-	provider.exchangeCNPAT = func(_ context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+	provider.exchangeCNPAT = func(_ context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, time.Time, error) {
 		require.Equal(t, "cn-pat", pat)
 		require.Equal(t, "machine-cn", machine.MachineID)
 		return &qoder.AuthIdentity{
@@ -250,7 +252,7 @@ func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
 			OrganizationID:     "org-cn",
 			SecurityOauthToken: "cosy-cn",
 			RefreshToken:       "refresh-cn",
-		}, nil
+		}, time.Now().Add(time.Hour), nil
 	}
 	account := &Account{
 		ID:       31,
@@ -271,6 +273,46 @@ func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
 	require.Equal(t, qoder.CNClientVersion, session.ClientVersion)
 	require.Equal(t, "cosy-cn", session.Identity.SecurityOauthToken)
 	require.Equal(t, "machine-token-cn", session.Machine.MachineToken)
+}
+
+func TestQoderTokenProviderRebuildsExpiredCNPATSession(t *testing.T) {
+	provider := NewQoderTokenProvider()
+	expiresAt := time.Now().Add(time.Hour)
+	exchangeCalls := 0
+	provider.exchangeCNPAT = func(_ context.Context, _ string, _ *qoder.MachineIdentity) (*qoder.AuthIdentity, time.Time, error) {
+		exchangeCalls++
+		return &qoder.AuthIdentity{
+			UID:                "uid-cn",
+			AID:                "uid-cn",
+			SecurityOauthToken: fmt.Sprintf("cosy-cn-%d", exchangeCalls),
+			RefreshToken:       "refresh-cn",
+		}, expiresAt, nil
+	}
+	account := &Account{
+		ID:       32,
+		Platform: PlatformQoder,
+		Type:     AccountTypeCosy,
+		Credentials: map[string]any{
+			"site":       "cn",
+			"pat":        "cn-pat",
+			"machine_id": "machine-cn",
+		},
+	}
+
+	first, err := provider.GetSession(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, expiresAt, provider.sessions[account.ID].expiresAt)
+
+	// 模拟已缓存的 OpenAPI token 到期，下一次读取必须重新执行 PAT exchange。
+	entry := provider.sessions[account.ID]
+	entry.expiresAt = time.Now().Add(-time.Second)
+	provider.sessions[account.ID] = entry
+	second, err := provider.GetSession(context.Background(), account)
+
+	require.NoError(t, err)
+	require.NotSame(t, first, second)
+	require.Equal(t, "cosy-cn-2", second.Identity.SecurityOauthToken)
+	require.Equal(t, 2, exchangeCalls)
 }
 
 func TestQoderTokenProviderDirectTokenPopulatesOrganizationFromAPI(t *testing.T) {

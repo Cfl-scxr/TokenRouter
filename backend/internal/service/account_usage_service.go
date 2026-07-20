@@ -1266,6 +1266,17 @@ func (s *AccountUsageService) fetchQoderQuotaUsage(ctx context.Context, account 
 		provider = NewQoderTokenProvider()
 		provider.SetHTTPUpstream(s.httpUpstream, s.tlsFPProfileService)
 	}
+	usage, err := s.fetchQoderQuotaUsageWithProvider(ctx, account, provider)
+	if err == nil || strings.TrimSpace(account.GetCredential("pat")) == "" || !isQoderAuthenticationError(err) {
+		return usage, err
+	}
+
+	// PAT 可随时重新交换；认证失败时丢弃旧 session 并仅重试一次，避免额度页永久停留在需重新授权状态。
+	provider.Invalidate(account.ID)
+	return s.fetchQoderQuotaUsageWithProvider(ctx, account, provider)
+}
+
+func (s *AccountUsageService) fetchQoderQuotaUsageWithProvider(ctx context.Context, account *Account, provider *QoderTokenProvider) (*qoderQuotaUsageResponse, error) {
 	session, err := provider.GetSession(ctx, account)
 	if err != nil {
 		return nil, err
@@ -1294,6 +1305,12 @@ func (s *AccountUsageService) fetchQoderQuotaUsage(ctx context.Context, account 
 		return nil, fmt.Errorf("qoder: quota usage request: %w", err)
 	}
 	return &usage, nil
+}
+
+// isQoderAuthenticationError 只把明确的 401/403 视为可通过 PAT 重建 session 的认证失败。
+func isQoderAuthenticationError(err error) bool {
+	var apiErr *qoder.APIError
+	return errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)
 }
 
 func buildQoderUsageInfo(resp *qoderQuotaUsageResponse) *UsageInfo {

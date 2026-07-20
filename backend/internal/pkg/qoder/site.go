@@ -158,7 +158,10 @@ func MachineOS() string {
 func MachineOSFor(arch, goos string) string {
 	arch = strings.ToLower(strings.TrimSpace(arch))
 	goos = strings.ToLower(strings.TrimSpace(goos))
-	if arch == "arm64" {
+	switch arch {
+	case "amd64", "x86_64":
+		arch = "x86_64"
+	case "arm64", "aarch64":
 		arch = "aarch64"
 	}
 	return arch + "_" + goos

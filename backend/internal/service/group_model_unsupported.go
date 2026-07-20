@@ -87,7 +87,15 @@ func availableRequestModelsFromAccounts(accounts []Account, platform string) []s
 		}
 		requestModels := acc.GetConfiguredRequestModels()
 		if len(requestModels) == 0 {
-			for _, model := range defaultRequestModelIDsForPlatform(platform) {
+			defaultModels := defaultRequestModelIDsForPlatform(platform)
+			if platform == PlatformQoder {
+				site, err := qoderSiteForAccount(acc)
+				if err != nil {
+					continue
+				}
+				defaultModels = qoder.DefaultRequestModelIDsForSite(site)
+			}
+			for _, model := range defaultModels {
 				if model = strings.TrimSpace(model); model != "" {
 					modelSet[model] = struct{}{}
 				}

@@ -895,10 +895,11 @@
           <button
             type="button"
             data-testid="create-qoder-site-global"
+            :disabled="submitting || isQoderOAuthAccountCreating"
             :aria-pressed="qoderSite === 'global'"
             @click="qoderSite = 'global'"
             :class="[
-              'rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+              'rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
               qoderSite === 'global'
                 ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
                 : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300'
@@ -909,10 +910,11 @@
           <button
             type="button"
             data-testid="create-qoder-site-cn"
+            :disabled="submitting || isQoderOAuthAccountCreating"
             :aria-pressed="qoderSite === 'cn'"
             @click="qoderSite = 'cn'"
             :class="[
-              'rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+              'rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
               qoderSite === 'cn'
                 ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300'
                 : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300'
@@ -3585,7 +3587,12 @@
         </button>
       </div>
       <div v-else class="flex justify-between gap-3">
-        <button type="button" class="btn btn-secondary" @click="goBackToBasicInfo">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          :disabled="submitting || isQoderOAuthAccountCreating"
+          @click="goBackToBasicInfo"
+        >
           {{ t('common.back') }}
         </button>
         <button
@@ -4028,8 +4035,13 @@ let qoderPollTimer: number | null = null
 let qoderAuthPopup: Window | null = null
 let qoderPollInFlight = false
 let qoderPollGeneration = 0
-let qoderAccountCreateInFlight = false
+const qoderFlowGeneration = ref(0)
+const qoderAccountCreateGeneration = ref<number | null>(null)
 let qoderOAuthCompleted = false
+
+const isQoderOAuthAccountCreating = computed(
+  () => qoderAccountCreateGeneration.value !== null
+)
 
 // 当前 OAuth 状态用于模板绑定。
 const currentAuthUrl = computed(() => {
@@ -5318,27 +5330,38 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
-const submitCreateAccount = async (payload: CreateAccountRequest) => {
+type AccountCreateGuard = () => boolean
+
+const submitCreateAccount = async (
+  payload: CreateAccountRequest,
+  isCurrent: AccountCreateGuard = () => true
+) => {
   submitting.value = true
   try {
     await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    if (!isCurrent()) return
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
   } catch (error: any) {
+    if (!isCurrent()) return
     if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
         onConfirm: async () => {
+          if (!isCurrent()) return
           antigravityMixedChannelConfirmed.value = true
-          await submitCreateAccount(payload)
+          await submitCreateAccount(payload, isCurrent)
         }
       })
       return
     }
     appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
   } finally {
-    submitting.value = false
+    // 旧流程结束时不能解除新流程的提交锁。
+    if (isCurrent()) {
+      submitting.value = false
+    }
   }
 }
 
@@ -5639,14 +5662,18 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 }
 
 // Helper function to create account with mixed channel warning handling
-const doCreateAccount = async (payload: CreateAccountRequest) => {
+const doCreateAccount = async (
+  payload: CreateAccountRequest,
+  isCurrent: AccountCreateGuard = () => true
+) => {
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
-    await submitCreateAccount(payload)
+    if (!isCurrent()) return
+    await submitCreateAccount(payload, isCurrent)
   })
-  if (!canContinue) {
+  if (!canContinue || !isCurrent()) {
     return
   }
-  await submitCreateAccount(payload)
+  await submitCreateAccount(payload, isCurrent)
 }
 
 // Handle mixed channel warning confirmation
@@ -6009,6 +6036,7 @@ const getQoderPopupFeatures = () => {
 
 const stopQoderPolling = () => {
   qoderPollGeneration += 1
+  qoderOAuth.invalidatePendingRequests()
   if (qoderPollTimer) {
     window.clearInterval(qoderPollTimer)
     qoderPollTimer = null
@@ -6017,22 +6045,60 @@ const stopQoderPolling = () => {
 }
 
 const resetQoderOAuthCompletionState = () => {
-  qoderAccountCreateInFlight = false
+  // 流程代数与轮询代数分离，停止一次轮询不会误伤同一授权流程的兑换或创建。
+  qoderFlowGeneration.value += 1
   qoderOAuthCompleted = false
 }
 
-const createQoderOAuthAccount = async (tokenInfo?: QoderTokenInfo) => {
-  if (!tokenInfo || qoderAccountCreateInFlight || qoderOAuthCompleted) return
+interface QoderFlowContext {
+  generation: number
+  site: QoderSite
+}
 
-  qoderAccountCreateInFlight = true
+const captureQoderFlowContext = (): QoderFlowContext => ({
+  generation: qoderFlowGeneration.value,
+  site: qoderSite.value
+})
+
+const isCurrentQoderFlow = (context: QoderFlowContext) =>
+  context.generation === qoderFlowGeneration.value &&
+  context.site === qoderSite.value &&
+  form.platform === 'qoder' &&
+  props.show
+
+const createQoderOAuthAccount = async (
+  tokenInfo: QoderTokenInfo | undefined,
+  context: QoderFlowContext
+) => {
+  if (
+    !tokenInfo ||
+    !isCurrentQoderFlow(context) ||
+    qoderAccountCreateGeneration.value !== null ||
+    qoderOAuthCompleted
+  ) return
+
+  qoderAccountCreateGeneration.value = context.generation
   try {
+    if (!isCurrentQoderFlow(context)) return
     const credentials = qoderOAuth.buildCredentials(tokenInfo)
     applyQoderModelRestriction(credentials)
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-    await createAccountAndFinish('qoder', 'cosy', credentials, buildQoderExtra())
-    qoderOAuthCompleted = true
+    await createAccountAndFinish(
+      'qoder',
+      'cosy',
+      credentials,
+      buildQoderExtra(),
+      () => isCurrentQoderFlow(context)
+    )
+    if (isCurrentQoderFlow(context)) {
+      qoderOAuthCompleted = true
+    }
   } finally {
-    qoderAccountCreateInFlight = false
+    // 只释放自己持有的锁，旧流程的 finally 不能解除新流程的创建锁。
+    if (qoderAccountCreateGeneration.value === context.generation) {
+      qoderAccountCreateGeneration.value = null
+      submitting.value = false
+    }
   }
 }
 
@@ -6040,14 +6106,18 @@ const pollQoderAuthorizationOnce = async () => {
   if (qoderPollInFlight || qoderOAuthCompleted || !qoderOAuth.sessionId.value || !qoderOAuth.state.value)
     return
   const generation = qoderPollGeneration
+  const flowContext = captureQoderFlowContext()
+  const sessionId = qoderOAuth.sessionId.value
+  const state = qoderOAuth.state.value
+  if (!isCurrentQoderFlow(flowContext)) return
   qoderPollInFlight = true
 
   try {
     const result = await qoderOAuth.pollAuthorization({
-      sessionId: qoderOAuth.sessionId.value,
-      state: qoderOAuth.state.value
+      sessionId,
+      state
     })
-    if (generation !== qoderPollGeneration) return
+    if (generation !== qoderPollGeneration || !isCurrentQoderFlow(flowContext)) return
     if (!result && qoderOAuth.error.value) {
       stopQoderPolling()
       return
@@ -6057,7 +6127,7 @@ const pollQoderAuthorizationOnce = async () => {
     stopQoderPolling()
     qoderAuthPopup?.close()
     qoderAuthPopup = null
-    await createQoderOAuthAccount(result.token_info)
+    await createQoderOAuthAccount(result.token_info, flowContext)
   } finally {
     if (generation === qoderPollGeneration) {
       qoderPollInFlight = false
@@ -6090,16 +6160,27 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'qoder') {
     resetQoderOAuthCompletionState()
-    qoderAuthPopup = window.open('about:blank', 'qoderAuthPopup', getQoderPopupFeatures())
-    const ok = await qoderOAuth.generateAuthUrl(form.proxy_id, qoderSite.value)
-    if (!ok) {
-      qoderAuthPopup?.close()
-      qoderAuthPopup = null
+    const flowContext = captureQoderFlowContext()
+    const authPopup = window.open('about:blank', 'qoderAuthPopup', getQoderPopupFeatures())
+    qoderAuthPopup = authPopup
+    const ok = await qoderOAuth.generateAuthUrl(form.proxy_id, flowContext.site)
+    if (!isCurrentQoderFlow(flowContext)) {
+      authPopup?.close()
+      if (qoderAuthPopup === authPopup) {
+        qoderAuthPopup = null
+      }
       return
     }
-    if (qoderAuthPopup) {
-      qoderAuthPopup.location.href = qoderOAuth.authUrl.value
-      qoderAuthPopup.focus()
+    if (!ok) {
+      authPopup?.close()
+      if (qoderAuthPopup === authPopup) {
+        qoderAuthPopup = null
+      }
+      return
+    }
+    if (authPopup) {
+      authPopup.location.href = qoderOAuth.authUrl.value
+      authPopup.focus()
     } else {
       appStore.showWarning(t('admin.accounts.oauth.qoder.popupBlocked'))
     }
@@ -6137,7 +6218,8 @@ const createAccountAndFinish = async (
   platform: AccountPlatform,
   type: AccountType,
   credentials: Record<string, unknown>,
-  extra?: Record<string, unknown>
+  extra?: Record<string, unknown>,
+  isCurrent: AccountCreateGuard = () => true
 ) => {
   if (!applyTempUnschedConfig(credentials)) {
     return
@@ -6196,6 +6278,7 @@ const createAccountAndFinish = async (
       delete credentials.model_mapping
     }
   }
+  if (!isCurrent()) return
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -6211,7 +6294,7 @@ const createAccountAndFinish = async (
     group_ids: form.group_ids,
     expires_at: form.expires_at,
     auto_pause_on_expired: autoPauseOnExpired.value
-  })
+  }, isCurrent)
 }
 
 interface OpenAIAuthCodeEntry {
@@ -7099,14 +7182,27 @@ const handleAntigravityExchange = async (authCode: string) => {
 }
 
 const handleQoderExchange = async (authCode: string) => {
-  if (!qoderOAuth.sessionId.value || qoderOAuthCompleted || qoderAccountCreateInFlight) return
+  const flowContext = captureQoderFlowContext()
+  if (
+    !qoderOAuth.sessionId.value ||
+    !isCurrentQoderFlow(flowContext) ||
+    qoderOAuthCompleted ||
+    qoderAccountCreateGeneration.value !== null
+  ) return
 
   const shouldResumePolling = qoderPollTimer !== null
+  const sessionId = qoderOAuth.sessionId.value
   stopQoderPolling()
   qoderOAuth.loading.value = true
   qoderOAuth.error.value = ''
   const resumePollingIfNeeded = () => {
-    if (shouldResumePolling && !qoderPollTimer && qoderOAuth.sessionId.value && qoderOAuth.state.value) {
+    if (
+      isCurrentQoderFlow(flowContext) &&
+      shouldResumePolling &&
+      !qoderPollTimer &&
+      qoderOAuth.sessionId.value &&
+      qoderOAuth.state.value
+    ) {
       startQoderPolling(qoderOAuth.pollInterval.value)
     }
   }
@@ -7126,24 +7222,28 @@ const handleQoderExchange = async (authCode: string) => {
     const tokenInfo = await qoderOAuth.exchangeAuthCode({
       code: rawInput,
       callbackUrl: rawInput,
-      sessionId: qoderOAuth.sessionId.value,
+      sessionId,
       state: stateToUse
     })
+    if (!isCurrentQoderFlow(flowContext)) return
     if (!tokenInfo) {
       resumePollingIfNeeded()
       return
     }
 
     exchanged = true
-    await createQoderOAuthAccount(tokenInfo)
+    await createQoderOAuthAccount(tokenInfo, flowContext)
   } catch (error: any) {
+    if (!isCurrentQoderFlow(flowContext)) return
     qoderOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(qoderOAuth.error.value)
     if (!exchanged) {
       resumePollingIfNeeded()
     }
   } finally {
-    qoderOAuth.loading.value = false
+    if (isCurrentQoderFlow(flowContext)) {
+      qoderOAuth.loading.value = false
+    }
   }
 }
 

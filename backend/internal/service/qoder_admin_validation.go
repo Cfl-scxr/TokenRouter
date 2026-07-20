@@ -62,7 +62,6 @@ func validateQoderCosyCredentialsWithOptions(
 
 	pat := strings.TrimSpace(account.GetCredential("pat"))
 	if pat != "" {
-		ensureQoderMachineCredentials(account)
 		// 编辑仅切换站点时先保存原凭据，兼容性由连接测试使用新站点协议验证。
 		if deferPATExchange {
 			return nil

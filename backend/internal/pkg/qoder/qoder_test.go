@@ -841,6 +841,38 @@ func TestRedactSensitiveTextPreservesQoderNumericErrorCodes(t *testing.T) {
 	}
 }
 
+func TestRedactSensitiveTextRedactsCNAccessToken(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "JSON 字段",
+			input: `{"token":"cn-json-secret","message":"invalid"}`,
+		},
+		{
+			name:  "非结构化等号字段",
+			input: `token=cn-plain-secret message=invalid`,
+		},
+		{
+			name:  "非结构化冒号字段",
+			input: `token: cn-colon-secret`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			redacted := RedactSensitiveText(tt.input)
+			if strings.Contains(redacted, "secret") {
+				t.Fatalf("secret leaked: %q", redacted)
+			}
+			if !strings.Contains(redacted, "***") {
+				t.Fatalf("redacted = %q, want redaction marker", redacted)
+			}
+		})
+	}
+}
+
 func TestParseSSELineAgentLimitError(t *testing.T) {
 	line := `data: {"headers":{"Content-Type":["application/json"]},"body":"{\"code\":\"115\",\"message\":\"{\\\"agentLimitResetTime\\\":1783841289162}\"}","statusCodeValue":429,"statusCode":"TOO_MANY_REQUESTS"}`
 	_, err := ParseSSELine(line)

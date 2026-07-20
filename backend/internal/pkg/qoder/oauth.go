@@ -56,15 +56,24 @@ type FlexibleInt64 int64
 
 // UnmarshalJSON 容错解析 JSON 数字、整数样式浮点数和数字字符串。
 func (v *FlexibleInt64) UnmarshalJSON(data []byte) error {
+	parsed, err := parseFlexibleInt64(data)
+	if err != nil {
+		return err
+	}
+	*v = parsed
+	return nil
+}
+
+// parseFlexibleInt64 解析 Qoder API 常见的宽松整数表示。
+func parseFlexibleInt64(data []byte) (FlexibleInt64, error) {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" || trimmed == "null" || trimmed == `""` {
-		*v = 0
-		return nil
+		return 0, nil
 	}
 	if strings.HasPrefix(trimmed, `"`) {
 		var text string
 		if err := json.Unmarshal(data, &text); err != nil {
-			return err
+			return 0, err
 		}
 		trimmed = strings.TrimSpace(text)
 	}
@@ -72,12 +81,11 @@ func (v *FlexibleInt64) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		floatValue, floatErr := strconv.ParseFloat(trimmed, 64)
 		if floatErr != nil {
-			return fmt.Errorf("qoder: invalid integer %q", trimmed)
+			return 0, fmt.Errorf("qoder: invalid integer %q", trimmed)
 		}
 		parsed = int64(floatValue)
 	}
-	*v = FlexibleInt64(parsed)
-	return nil
+	return FlexibleInt64(parsed), nil
 }
 
 // DeviceTokenResponse 兼容国际设备授权和国内 QoderCN20 token 响应。
@@ -95,6 +103,73 @@ type DeviceTokenResponse struct {
 	Scope        string        `json:"scope"`
 	TokenType    string        `json:"token_type"`
 	Nonce        string        `json:"nonce"`
+}
+
+// UnmarshalJSON 单独兼容 expires_at 的日期格式，并允许由有效 expires_in 回退。
+func (r *DeviceTokenResponse) UnmarshalJSON(data []byte) error {
+	type responseAlias DeviceTokenResponse
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	rawExpiresAt, hasExpiresAt := fields["expires_at"]
+	delete(fields, "expires_at")
+
+	remaining, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var decoded responseAlias
+	if err := json.Unmarshal(remaining, &decoded); err != nil {
+		return err
+	}
+	*r = DeviceTokenResponse(decoded)
+	if !hasExpiresAt {
+		return nil
+	}
+
+	expiresAt, err := parseFlexibleExpiresAt(rawExpiresAt)
+	if err != nil {
+		if int64(r.ExpiresIn) > 0 {
+			return nil
+		}
+		return fmt.Errorf("qoder: invalid expires_at: %w", err)
+	}
+	r.ExpiresAt = expiresAt
+	return nil
+}
+
+// parseFlexibleExpiresAt 将数字或常见 ISO 日期统一转换为 Unix 秒。
+func parseFlexibleExpiresAt(data []byte) (FlexibleInt64, error) {
+	parsed, err := parseFlexibleInt64(data)
+	if err == nil {
+		return parsed, nil
+	}
+
+	var text string
+	if unmarshalErr := json.Unmarshal(data, &text); unmarshalErr != nil {
+		return 0, err
+	}
+	text = strings.TrimSpace(text)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		time.DateOnly,
+	} {
+		var parsedTime time.Time
+		if strings.Contains(layout, "Z07:00") {
+			parsedTime, err = time.Parse(layout, text)
+		} else {
+			parsedTime, err = time.ParseInLocation(layout, text, time.UTC)
+		}
+		if err == nil {
+			return FlexibleInt64(parsedTime.Unix()), nil
+		}
+	}
+	return 0, fmt.Errorf("qoder: invalid expiry %q", text)
 }
 
 // UserInfo 兼容两站 userinfo 的 snake_case 与 camelCase 字段。

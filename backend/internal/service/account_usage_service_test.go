@@ -333,6 +333,83 @@ func TestAccountUsageService_QoderUsageDoesNotReuseStoredTokenWhenPATBootstrapFa
 	}
 }
 
+func TestAccountUsageService_QoderCNPATRebuildsSessionAfterAuthenticationFailure(t *testing.T) {
+	upstream := &qoderUsageHTTPUpstreamStub{
+		statusCodes: []int{http.StatusUnauthorized, http.StatusOK},
+		bodies: []string{
+			`{"code":"401","message":"expired"}`,
+			`{
+				"userType":"teams",
+				"usageType":"credits",
+				"totalUsagePercentage":2,
+				"isQuotaExceeded":false,
+				"expiresAt":1783875207000,
+				"userQuota":{"total":100,"used":2,"remaining":98,"percentage":2,"unit":"credits"}
+			}`,
+		},
+	}
+	provider := NewQoderTokenProvider()
+	exchangeCalls := 0
+	provider.exchangeCNPAT = func(_ context.Context, _ string, _ *qoder.MachineIdentity) (*qoder.AuthIdentity, time.Time, error) {
+		exchangeCalls++
+		return &qoder.AuthIdentity{
+			UID:                "uid-cn",
+			AID:                "uid-cn",
+			OrganizationID:     "org-cn",
+			SecurityOauthToken: fmt.Sprintf("cosy-cn-%d", exchangeCalls),
+			RefreshToken:       "refresh-cn",
+		}, time.Now().Add(time.Hour), nil
+	}
+	account := Account{
+		ID:       7,
+		Platform: PlatformQoder,
+		Type:     AccountTypeCosy,
+		Credentials: map[string]any{
+			"site":          "cn",
+			"pat":           "cn-pat",
+			"machine_id":    "machine-cn",
+			"machine_token": "machine-token-cn",
+			"machine_type":  "5",
+		},
+	}
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+	}
+	svc := &AccountUsageService{
+		accountRepo:          repo,
+		cache:                NewUsageCache(),
+		httpUpstream:         upstream,
+		qoderSessionProvider: provider,
+	}
+
+	usage, err := svc.GetUsage(context.Background(), account.ID)
+
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if usage.QoderQuota == nil || usage.QoderQuota.UserQuota == nil || usage.QoderQuota.UserQuota.Used != 2 {
+		t.Fatalf("unexpected qoder quota after PAT session rebuild: %#v", usage)
+	}
+	if exchangeCalls != 2 {
+		t.Fatalf("PAT exchange calls = %d, want 2", exchangeCalls)
+	}
+	if got := atomic.LoadInt32(&upstream.calls); got != 2 {
+		t.Fatalf("quota calls = %d, want 2", got)
+	}
+}
+
+func TestIsQoderAuthenticationError(t *testing.T) {
+	for _, statusCode := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		err := fmt.Errorf("wrapped: %w", &qoder.APIError{StatusCode: statusCode})
+		if !isQoderAuthenticationError(err) {
+			t.Fatalf("status %d should be treated as authentication failure", statusCode)
+		}
+	}
+	if isQoderAuthenticationError(&qoder.APIError{StatusCode: http.StatusInternalServerError}) {
+		t.Fatal("status 500 should not trigger PAT session rebuild")
+	}
+}
+
 func TestAccountUsageService_QoderUsageForceBypassesCache(t *testing.T) {
 	t.Parallel()
 

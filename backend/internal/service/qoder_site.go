@@ -32,13 +32,18 @@ func qoderRefreshModeForAccount(account *Account) (string, error) {
 	return qoder.ParseRefreshMode(account.GetCredential("refresh_mode"))
 }
 
-// ensureQoderMachineCredentials 为新建 PAT 账号生成一次并持久化稳定机器身份。
+// ensureQoderMachineCredentials 为新建 Qoder 账号补齐并持久化稳定机器身份。
 func ensureQoderMachineCredentials(account *Account) {
-	if account == nil || strings.TrimSpace(account.GetCredential("pat")) == "" {
+	if account == nil {
 		return
 	}
 	if account.Credentials == nil {
 		account.Credentials = make(map[string]any)
+	}
+	if strings.TrimSpace(account.GetCredential("machine_id")) != "" &&
+		strings.TrimSpace(account.GetCredential("machine_token")) != "" &&
+		strings.TrimSpace(account.GetCredential("machine_type")) != "" {
+		return
 	}
 	machine := qoder.NewMachine()
 	if strings.TrimSpace(account.GetCredential("machine_id")) == "" {

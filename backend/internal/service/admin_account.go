@@ -477,6 +477,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	// 只有新建账号需要生成并持久化机器身份；编辑旧账号时必须保留兼容回退语义。
+	if account.IsQoderCosy() {
+		ensureQoderMachineCredentials(account)
+	}
 	s.attachAccountProxyForValidation(ctx, account)
 	if err := validateQoderCosyCredentials(ctx, account, s.httpUpstream, s.tlsFPProfileService); err != nil {
 		return nil, err

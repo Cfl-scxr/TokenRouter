@@ -59,9 +59,11 @@ func TestNormalizeProfileAllowsTestEndpointInjection(t *testing.T) {
 	require.Equal(t, CNClientVersion, profile.ClientVersion)
 }
 
-func TestMachineOSForNormalizesArm64(t *testing.T) {
+func TestMachineOSForNormalizesArchitectureAliases(t *testing.T) {
 	require.Equal(t, "aarch64_darwin", MachineOSFor("arm64", "darwin"))
-	require.Equal(t, "amd64_linux", MachineOSFor("amd64", "linux"))
+	require.Equal(t, "aarch64_linux", MachineOSFor("aarch64", "linux"))
+	require.Equal(t, "x86_64_linux", MachineOSFor("amd64", "linux"))
+	require.Equal(t, "x86_64_darwin", MachineOSFor("x86_64", "darwin"))
 }
 
 func TestModelsAndAliasesAreSiteAware(t *testing.T) {

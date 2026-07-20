@@ -165,6 +165,103 @@ func TestQoderCN20RefreshPostsRefreshTokenAndValidatesExpiry(t *testing.T) {
 	require.Equal(t, "new-refresh", token.RefreshToken)
 }
 
+func TestDeviceTokenResponseNormalizesExpiryFormats(t *testing.T) {
+	now := time.Date(2026, time.July, 20, 10, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		payload  string
+		expected time.Time
+	}{
+		{
+			name:     "RFC3339 日期",
+			payload:  `{"expires_at":"2026-07-20T12:34:56+09:00"}`,
+			expected: time.Date(2026, time.July, 20, 3, 34, 56, 0, time.UTC),
+		},
+		{
+			name:     "无时区 ISO 日期按 UTC 解析",
+			payload:  `{"expires_at":"2026-07-20T12:34:56.123"}`,
+			expected: time.Date(2026, time.July, 20, 12, 34, 56, 0, time.UTC),
+		},
+		{
+			name:     "Unix 秒字符串",
+			payload:  `{"expires_at":"1784522096"}`,
+			expected: time.Unix(1784522096, 0).UTC(),
+		},
+		{
+			name:     "Unix 毫秒数字",
+			payload:  `{"expires_at":1784522096000}`,
+			expected: time.UnixMilli(1784522096000).UTC(),
+		},
+		{
+			name:     "相对秒数",
+			payload:  `{"expires_at":3600}`,
+			expected: now.Add(time.Hour),
+		},
+		{
+			name:     "无效 expires_at 回退数字字符串 expires_in",
+			payload:  `{"expires_at":"not-a-date","expires_in":"7200"}`,
+			expected: now.Add(2 * time.Hour),
+		},
+		{
+			name:     "无效 expires_at 回退整数浮点 expires_in",
+			payload:  `{"expires_at":"not-a-date","expires_in":3600.0}`,
+			expected: now.Add(time.Hour),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var token DeviceTokenResponse
+			require.NoError(t, json.Unmarshal([]byte(tt.payload), &token))
+			require.Equal(t, tt.expected, token.ExpiryTime(now))
+		})
+	}
+
+	var token DeviceTokenResponse
+	err := json.Unmarshal([]byte(`{"expires_at":"not-a-date"}`), &token)
+	require.ErrorContains(t, err, "invalid expires_at")
+}
+
+func TestQoderOAuthClientUsesSiteUserAgent(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		site Site
+		want string
+	}{
+		{name: "国际站", site: SiteGlobal, want: "qoder/" + GlobalClientVersion},
+		{name: "国内站", site: SiteCN, want: "qoder/" + CNClientVersion},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, tt.want, r.Header.Get("User-Agent"))
+				switch r.URL.Path {
+				case DevicePollPath:
+					_ = json.NewEncoder(w).Encode(DeviceTokenResponse{Token: "access-token"})
+				case UserInfoPath:
+					_ = json.NewEncoder(w).Encode(UserInfo{ID: "user-1"})
+				case OrganizationTagsPathPrefix + "user-1/tags":
+					_ = json.NewEncoder(w).Encode(OrganizationTags{OrganizationID: "org-1"})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			profile := MustProfileForSite(tt.site)
+			profile.OpenAPIBaseURL = server.URL
+			client := NewOAuthClientForProfile(profile, server.Client())
+
+			_, ready, err := client.PollDeviceToken(context.Background(), "nonce", "verifier")
+			require.NoError(t, err)
+			require.True(t, ready)
+			_, err = client.GetUserInfo(context.Background(), "access-token")
+			require.NoError(t, err)
+			_, err = client.GetOrganizationTags(context.Background(), "access-token", "user-1")
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestQoderGenerateCodeChallenge(t *testing.T) {
 	require.Equal(t, "iMnq5o6zALKXGivsnlom_0F5_WYda32GHkxlV7mq7hQ", GenerateCodeChallenge("verifier"))
 }
@@ -236,7 +333,7 @@ func TestQoderOAuthClientPollDeviceTokenCompletedAndUserInfo(t *testing.T) {
 }
 
 func TestQoderOAuthClientRedactsSensitiveErrorBodies(t *testing.T) {
-	sensitiveBody := `{"message":"failed","securityOauthToken":"sec-secret","refresh_token":"rt-secret","uid":"uid-secret","cookie":"sid=secret"}`
+	sensitiveBody := `{"message":"failed","token":"cn-access-secret","securityOauthToken":"sec-secret","refresh_token":"rt-secret","uid":"uid-secret","cookie":"sid=secret"}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, sensitiveBody, http.StatusInternalServerError)
 	}))
@@ -280,6 +377,7 @@ func assertQoderOAuthErrorRedacted(t *testing.T, errText string) {
 	t.Helper()
 	require.Contains(t, errText, "status 500")
 	require.NotContains(t, errText, "sec-secret")
+	require.NotContains(t, errText, "cn-access-secret")
 	require.NotContains(t, errText, "rt-secret")
 	require.NotContains(t, errText, "uid-secret")
 	require.NotContains(t, errText, "sid=secret")

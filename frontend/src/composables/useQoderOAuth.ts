@@ -15,8 +15,24 @@ export function useQoderOAuth() {
   const loading = ref(false)
   const polling = ref(false)
   const error = ref('')
+  let requestGeneration = 0
+
+  // 每次只允许最新请求修改共享状态，切换站点时可使所有旧请求立即失效。
+  const beginRequest = () => {
+    requestGeneration += 1
+    return requestGeneration
+  }
+
+  const isCurrentRequest = (generation: number) => generation === requestGeneration
+
+  const invalidatePendingRequests = () => {
+    requestGeneration += 1
+    loading.value = false
+    polling.value = false
+  }
 
   const resetState = () => {
+    invalidatePendingRequests()
     authUrl.value = ''
     sessionId.value = ''
     state.value = ''
@@ -30,6 +46,7 @@ export function useQoderOAuth() {
     proxyId: number | null | undefined,
     site: QoderSite = 'global'
   ): Promise<boolean> => {
+    const generation = beginRequest()
     loading.value = true
     authUrl.value = ''
     sessionId.value = ''
@@ -41,12 +58,14 @@ export function useQoderOAuth() {
       if (proxyId) payload.proxy_id = proxyId
 
       const response = await adminAPI.qoder.generateAuthUrl(payload as any)
+      if (!isCurrentRequest(generation)) return false
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       state.value = response.state
       pollInterval.value = response.interval || 2
       return true
     } catch (err: any) {
+      if (!isCurrentRequest(generation)) return false
       error.value =
         err.response?.data?.detail ||
         err.message ||
@@ -54,7 +73,9 @@ export function useQoderOAuth() {
       appStore.showError(error.value)
       return false
     } finally {
-      loading.value = false
+      if (isCurrentRequest(generation)) {
+        loading.value = false
+      }
     }
   }
 
@@ -69,6 +90,7 @@ export function useQoderOAuth() {
       return null
     }
 
+    const generation = beginRequest()
     loading.value = true
     error.value = ''
 
@@ -83,8 +105,10 @@ export function useQoderOAuth() {
       if (callbackUrl) payload.callback_url = callbackUrl
 
       const tokenInfo = await adminAPI.qoder.exchangeCode(payload as any)
+      if (!isCurrentRequest(generation)) return null
       return tokenInfo as QoderTokenInfo
     } catch (err: any) {
+      if (!isCurrentRequest(generation)) return null
       error.value =
         err.response?.data?.detail ||
         err.message ||
@@ -92,7 +116,9 @@ export function useQoderOAuth() {
       appStore.showError(error.value)
       return null
     } finally {
-      loading.value = false
+      if (isCurrentRequest(generation)) {
+        loading.value = false
+      }
     }
   }
 
@@ -105,6 +131,7 @@ export function useQoderOAuth() {
       return null
     }
 
+    const generation = beginRequest()
     polling.value = true
     loading.value = true
     error.value = ''
@@ -115,8 +142,10 @@ export function useQoderOAuth() {
         state: params.state
       }
 
-      return await adminAPI.qoder.poll(payload as any)
+      const result = await adminAPI.qoder.poll(payload as any)
+      return isCurrentRequest(generation) ? result : null
     } catch (err: any) {
+      if (!isCurrentRequest(generation)) return null
       error.value =
         err.response?.data?.detail ||
         err.message ||
@@ -124,8 +153,10 @@ export function useQoderOAuth() {
       appStore.showError(error.value)
       return null
     } finally {
-      loading.value = false
-      polling.value = false
+      if (isCurrentRequest(generation)) {
+        loading.value = false
+        polling.value = false
+      }
     }
   }
 
@@ -155,6 +186,7 @@ export function useQoderOAuth() {
     loading,
     polling,
     error,
+    invalidatePendingRequests,
     resetState,
     generateAuthUrl,
     exchangeAuthCode,

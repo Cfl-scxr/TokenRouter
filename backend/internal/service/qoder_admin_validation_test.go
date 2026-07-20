@@ -25,6 +25,84 @@ func TestValidateQoderCosyCredentialsAcceptsDirectToken(t *testing.T) {
 	}
 
 	require.NoError(t, ValidateQoderCosyCredentials(context.Background(), account))
+	require.Empty(t, account.GetCredential("machine_token"))
+	require.Empty(t, account.GetCredential("machine_type"))
+}
+
+func TestCreateQoderDirectTokenAccountPersistsStableMachineIdentity(t *testing.T) {
+	repo := &upstreamBillingProbeAccountRepo{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "qoder-direct",
+		Platform:             PlatformQoder,
+		Type:                 AccountTypeCosy,
+		SkipDefaultGroupBind: true,
+		Credentials: map[string]any{
+			"security_oauth_token": "dt-token",
+			"machine_id":           "machine-1",
+			"uid":                  "uid-1",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "machine-1", created.GetCredential("machine_id"))
+	require.NotEmpty(t, created.GetCredential("machine_token"))
+	require.NotEmpty(t, created.GetCredential("machine_type"))
+}
+
+func TestCreateQoderPATAccountPersistsStableMachineIdentity(t *testing.T) {
+	old := qoderValidatePAT
+	defer func() { qoderValidatePAT = old }()
+	qoderValidatePAT = func(_ context.Context, _ *Account, _ string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, error) {
+		require.NotEmpty(t, machine.MachineID)
+		require.NotEmpty(t, machine.MachineToken)
+		require.NotEmpty(t, machine.MachineType)
+		return &qoder.AuthIdentity{UID: "uid-1", SecurityOauthToken: "dt-token"}, nil
+	}
+	repo := &upstreamBillingProbeAccountRepo{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "qoder-pat",
+		Platform:             PlatformQoder,
+		Type:                 AccountTypeCosy,
+		SkipDefaultGroupBind: true,
+		Credentials:          map[string]any{"pat": "pat-123"},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, created.GetCredential("machine_id"))
+	require.NotEmpty(t, created.GetCredential("machine_token"))
+	require.NotEmpty(t, created.GetCredential("machine_type"))
+}
+
+func TestUpdateQoderDirectTokenAccountPreservesLegacyMachineFallback(t *testing.T) {
+	const accountID int64 = 1202
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {
+			ID:       accountID,
+			Name:     "legacy-qoder",
+			Platform: PlatformQoder,
+			Type:     AccountTypeCosy,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"security_oauth_token": "dt-token",
+				"machine_id":           "legacy-machine",
+				"uid":                  "uid-1",
+			},
+		},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+	updatedName := "renamed-qoder"
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{Name: updatedName})
+
+	require.NoError(t, err)
+	require.Equal(t, updatedName, updated.Name)
+	require.Equal(t, "legacy-machine", updated.GetCredential("machine_id"))
+	require.Empty(t, updated.GetCredential("machine_token"))
+	require.Empty(t, updated.GetCredential("machine_type"))
 }
 
 func TestValidateQoderCosyCredentialsAcceptsDirectTokenWithAID(t *testing.T) {
@@ -130,9 +208,9 @@ func TestValidateQoderCosyCredentialsExchangesPAT(t *testing.T) {
 
 	require.NoError(t, ValidateQoderCosyCredentials(context.Background(), account))
 	require.Equal(t, 1, calls)
-	require.NotEmpty(t, account.GetCredential("machine_id"))
-	require.NotEmpty(t, account.GetCredential("machine_token"))
-	require.NotEmpty(t, account.GetCredential("machine_type"))
+	require.Empty(t, account.GetCredential("machine_id"))
+	require.Empty(t, account.GetCredential("machine_token"))
+	require.Empty(t, account.GetCredential("machine_type"))
 }
 
 func TestValidateQoderCosyCredentialsDefersUnchangedPATExchangeForSiteEdit(t *testing.T) {
@@ -151,9 +229,9 @@ func TestValidateQoderCosyCredentialsDefersUnchangedPATExchangeForSiteEdit(t *te
 	err := validateQoderCosyCredentialsWithOptions(context.Background(), account, nil, nil, true)
 
 	require.NoError(t, err)
-	require.NotEmpty(t, account.GetCredential("machine_id"))
-	require.NotEmpty(t, account.GetCredential("machine_token"))
-	require.NotEmpty(t, account.GetCredential("machine_type"))
+	require.Empty(t, account.GetCredential("machine_id"))
+	require.Empty(t, account.GetCredential("machine_token"))
+	require.Empty(t, account.GetCredential("machine_type"))
 }
 
 func TestUpdateQoderPATAccountDefersCompatibilityCheckWhenSiteChanges(t *testing.T) {
@@ -185,7 +263,7 @@ func TestUpdateQoderPATAccountDefersCompatibilityCheckWhenSiteChanges(t *testing
 	require.NoError(t, err)
 	require.Equal(t, "cn", updated.GetCredential("site"))
 	require.Equal(t, "pat-123", updated.GetCredential("pat"))
-	require.NotEmpty(t, updated.GetCredential("machine_id"))
+	require.Empty(t, updated.GetCredential("machine_id"))
 }
 
 func TestValidateQoderCosyCredentialsRejectsBadPAT(t *testing.T) {
