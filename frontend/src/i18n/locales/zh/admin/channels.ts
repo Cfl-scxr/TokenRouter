@@ -308,7 +308,10 @@ riskControl: {
       result: {
         all: '全部结果',
         hit: '命中',
-        blocked: '已拦截',
+        hitNotBlocked: '命中（未拦截）',
+        blocked: '拦截',
+        keywordBlocked: '关键词拦截',
+        hashBlocked: '哈希拦截',
         pass: '未命中',
         error: '异常',
       },

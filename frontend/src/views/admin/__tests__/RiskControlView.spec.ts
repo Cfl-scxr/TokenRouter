@@ -248,6 +248,43 @@ describe('admin RiskControlView', () => {
     }))
   })
 
+  it('separates standard, keyword, and hash block filters', async () => {
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+    await flushPromises()
+
+    const resultSelect = wrapper.findAllComponents({ name: 'Select' })[0]
+    const options = resultSelect.props('options') as Array<{ value: string; label: string }>
+    // UI 选项和后端 action 一一对应，防止未来再次把不同处置合并到同一筛选。
+    expect(options.map((option) => option.value)).toEqual([
+      '',
+      'hit',
+      'block',
+      'keyword_block',
+      'hash_block',
+      'pass',
+      'error',
+    ])
+
+    listLogs.mockClear()
+    await resultSelect.vm.$emit('update:modelValue', 'hash_block')
+    await resultSelect.vm.$emit('change')
+    await flushPromises()
+
+    expect(listLogs).toHaveBeenLastCalledWith(expect.objectContaining({ result: 'hash_block' }))
+  })
+
   it('renders matched keyword for keyword-block audit logs', async () => {
     const log: ContentModerationLog = {
       id: 1,

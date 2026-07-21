@@ -308,7 +308,10 @@ riskControl: {
       result: {
         all: 'All Results',
         hit: 'Hit',
+        hitNotBlocked: 'Hit (Not Blocked)',
         blocked: 'Blocked',
+        keywordBlocked: 'Keyword Blocked',
+        hashBlocked: 'Hash Blocked',
         pass: 'Pass',
         error: 'Error',
       },
