@@ -898,7 +898,11 @@ model_context_window = 1000000
 name = "TokenRouter Grok"
 base_url = "${baseUrl}"
 env_key = "TOKENROUTER_API_KEY"
-wire_api = "responses"`
+wire_api = "responses"
+supports_websockets = true
+
+[features]
+responses_websockets_v2 = true`
   const environmentContent = isWindows
     ? `$env:TOKENROUTER_API_KEY="${apiKey}"`
     : `export TOKENROUTER_API_KEY="${apiKey}"`
