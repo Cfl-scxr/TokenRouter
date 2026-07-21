@@ -1490,9 +1490,9 @@ func (a *Account) GetGrokBaseURL() string {
 	}
 	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// 订阅流量默认使用受支持的 CLI 网关。创建或刷新凭据时写入的官方地址及其历史变体
-		// 均表示“未自定义”，只有显式配置的自定义主机才会改写转发地址。
-		if baseURL == "" || xai.IsOfficialBaseURL(baseURL) {
+		// 运营方需要在官方 CLI 网关、官方或区域 API 端点和第三方转发地址之间切换，
+		// 因此只要已存地址可解析就原样使用；空值或无法解析的脏数据才回落默认 CLI 网关。
+		if baseURL == "" || !xai.IsParseableBaseURL(baseURL) {
 			return xai.DefaultCLIBaseURL
 		}
 		return baseURL
