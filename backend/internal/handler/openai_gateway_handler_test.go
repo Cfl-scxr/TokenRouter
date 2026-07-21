@@ -98,6 +98,32 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	}
 }
 
+// TestHandleGroupSelectionBusinessError 验证客户端策略拒绝不会被误报为服务不可用。
+func TestHandleGroupSelectionBusinessError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	var status int
+	var errType string
+	var message string
+	handled := handleGroupSelectionBusinessError(
+		c,
+		fmt.Errorf("select account: %w", service.ErrClaudeCodeOnly),
+		false,
+		func(gotStatus int, gotErrType string, gotMessage string, _ bool) {
+			status = gotStatus
+			errType = gotErrType
+			message = gotMessage
+		},
+	)
+
+	require.True(t, handled)
+	require.Equal(t, http.StatusForbidden, status)
+	require.Equal(t, "permission_error", errType)
+	require.Equal(t, service.ErrClaudeCodeOnly.Error(), message)
+}
+
 func TestOpenAIForwardSucceededForScheduling(t *testing.T) {
 	require.True(t, openAIForwardSucceededForScheduling(nil))
 	require.True(t, openAIForwardSucceededForScheduling(&service.OpenAIForwardResult{}))

@@ -142,8 +142,14 @@ func appendOpenAIAccountProxyLogFields(fields []zap.Field, account *service.Acco
 	return fields
 }
 
-// handleGroupModelUnsupportedError 将本地分组模型限制转换为明确的客户端侧错误。
-func handleGroupModelUnsupportedError(c *gin.Context, err error, streamStarted bool, writeError func(int, string, string, bool)) bool {
+// handleGroupSelectionBusinessError 将账号选择阶段的本地分组限制转换为明确的客户端侧错误。
+func handleGroupSelectionBusinessError(c *gin.Context, err error, streamStarted bool, writeError func(int, string, string, bool)) bool {
+	if errors.Is(err, service.ErrClaudeCodeOnly) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		writeError(http.StatusForbidden, "permission_error", service.ErrClaudeCodeOnly.Error(), streamStarted)
+		return true
+	}
+
 	var modelErr *service.GroupModelUnsupportedError
 	if errors.As(err, &modelErr) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -167,7 +173,7 @@ func handleGroupModelUnsupportedError(c *gin.Context, err error, streamStarted b
 
 // handleOpenAISelectionBusinessError 保持 OpenAI handler 调用侧语义清晰。
 func (h *OpenAIGatewayHandler) handleOpenAISelectionBusinessError(c *gin.Context, err error, streamStarted bool) bool {
-	return handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+	return handleGroupSelectionBusinessError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
 		h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 	})
 }

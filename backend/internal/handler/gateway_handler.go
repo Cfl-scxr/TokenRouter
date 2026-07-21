@@ -327,7 +327,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
-					if handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+					if handleGroupSelectionBusinessError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
 						h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					}) {
 						return
@@ -620,7 +620,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
-					if handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+					if handleGroupSelectionBusinessError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
 						h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 					}) {
 						return
@@ -1959,7 +1959,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
 		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		if handleGroupModelUnsupportedError(c, err, false, func(status int, errType string, message string, streamStarted bool) {
+		if handleGroupSelectionBusinessError(c, err, false, func(status int, errType string, message string, streamStarted bool) {
 			h.errorResponse(c, status, errType, message)
 		}) {
 			return

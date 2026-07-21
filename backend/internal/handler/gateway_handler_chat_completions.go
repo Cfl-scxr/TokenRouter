@@ -182,7 +182,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
-				if handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+				if handleGroupSelectionBusinessError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
 					h.chatCompletionsErrorResponse(c, status, errType, message)
 				}) {
 					return

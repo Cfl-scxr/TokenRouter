@@ -178,7 +178,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
-				if handleGroupModelUnsupportedError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
+				if handleGroupSelectionBusinessError(c, err, streamStarted, func(status int, errType string, message string, streamStarted bool) {
 					h.responsesErrorResponse(c, status, errType, message)
 				}) {
 					return
