@@ -1399,9 +1399,8 @@ type OpsCleanupConfig struct {
 	BatchSize    int    `mapstructure:"batch_size"`
 	BatchPauseMS int    `mapstructure:"batch_pause_ms"`
 
-	// Retention days (0 disables that cleanup target).
-	//
-	// vNext requirement: default 30 days across ops datasets.
+	// 保留天数：0 表示清空目标表，正数表示保留最近对应天数的数据。
+	// vNext 默认所有运维数据集保留 30 天。
 	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
 	SystemLogRetentionDays     int `mapstructure:"system_log_retention_days"`
 	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`

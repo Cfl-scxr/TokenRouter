@@ -90,6 +90,31 @@ func TestDeleteOldRowsByCTIDBatchesAndThrottles(t *testing.T) {
 	}
 }
 
+func TestTruncateOpsTableUsesStatisticsInsteadOfFullCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("create sql mock: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`(?s)SELECT COALESCE.*FROM pg_class.*to_regclass`).
+		WithArgs("ops_error_logs").
+		WillReturnRows(sqlmock.NewRows([]string{"estimated_rows"}).AddRow(int64(4200)))
+	mock.ExpectExec(`TRUNCATE TABLE ops_error_logs`).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	estimatedRows, err := truncateOpsTable(context.Background(), db, "ops_error_logs")
+	if err != nil {
+		t.Fatalf("truncate table: %v", err)
+	}
+	if estimatedRows != 4200 {
+		t.Fatalf("estimated rows = %d, want 4200", estimatedRows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestSleepOpsCleanupWithContextHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

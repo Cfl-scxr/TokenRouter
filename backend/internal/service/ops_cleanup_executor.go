@@ -176,28 +176,33 @@ func sleepOpsCleanupWithContext(ctx context.Context, delay time.Duration) error 
 	}
 }
 
-// truncateOpsTable 用 TRUNCATE TABLE 清空指定表，先 SELECT COUNT(*) 取得清空前行数用于 heartbeat。
+// truncateOpsTable 用 TRUNCATE TABLE 清空指定表，并从统计信息读取近似行数用于 heartbeat。
+// 这里不能执行 COUNT(*)，否则大表会在清空前再次触发全表扫描和文件页缓存压力。
 func truncateOpsTable(ctx context.Context, db *sql.DB, table string) (int64, error) {
 	if db == nil {
 		return 0, nil
 	}
-	var count int64
-	if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count); err != nil {
-		if isMissingRelationError(err) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("count %s: %w", table, err)
+
+	truncateCtx, cancel := context.WithTimeout(ctx, opsCleanupBatchTimeout)
+	defer cancel()
+
+	var estimatedRows int64
+	const estimateQuery = `
+		SELECT COALESCE((
+			SELECT GREATEST(reltuples, 0)::bigint
+			FROM pg_class
+			WHERE oid = to_regclass($1)
+		), 0)`
+	if err := db.QueryRowContext(truncateCtx, estimateQuery, table).Scan(&estimatedRows); err != nil {
+		return 0, fmt.Errorf("estimate %s rows: %w", table, err)
 	}
-	if count == 0 {
-		return 0, nil
-	}
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
+	if _, err := db.ExecContext(truncateCtx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
 		if isMissingRelationError(err) {
 			return 0, nil
 		}
 		return 0, fmt.Errorf("truncate %s: %w", table, err)
 	}
-	return count, nil
+	return estimatedRows, nil
 }
 
 func isMissingRelationError(err error) bool {

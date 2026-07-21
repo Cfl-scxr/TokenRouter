@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
@@ -594,6 +595,44 @@ func TestBackupService_RestoreBackup_NotCompleted(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestBackupService_RestoreMaintenanceBusy(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*BackupService) error
+	}{
+		{
+			name: "synchronous restore",
+			run: func(svc *BackupService) error {
+				return svc.RestoreBackup(context.Background(), "backup-id")
+			},
+		},
+		{
+			name: "asynchronous restore",
+			run: func(svc *BackupService) error {
+				_, err := svc.StartRestore(context.Background(), "backup-id")
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+
+			mock.ExpectQuery("SELECT pg_try_advisory_lock").
+				WithArgs(databaseHeavyMaintenanceLockID).
+				WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(false))
+
+			svc := newTestBackupService(t, newMockSettingRepo(), &mockDumper{}, newMockObjectStore())
+			svc.SetMaintenanceDB(db)
+			require.ErrorIs(t, tt.run(svc), ErrDatabaseMaintenanceBusy)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestBackupService_DeleteBackup(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedStorageS3Config(t, repo)
@@ -897,6 +936,17 @@ func TestStartRestore_Async(t *testing.T) {
 	record, err := svc.CreateBackup(context.Background(), "manual", 14)
 	require.NoError(t, err)
 
+	db, sqlMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	sqlMock.ExpectQuery("SELECT pg_try_advisory_lock").
+		WithArgs(databaseHeavyMaintenanceLockID).
+		WillReturnRows(sqlmock.NewRows([]string{"pg_try_advisory_lock"}).AddRow(true))
+	sqlMock.ExpectExec("SELECT pg_advisory_unlock").
+		WithArgs(databaseHeavyMaintenanceLockID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	svc.SetMaintenanceDB(db)
+
 	// 异步恢复
 	restored, err := svc.StartRestore(context.Background(), record.ID)
 	require.NoError(t, err)
@@ -908,4 +958,5 @@ func TestStartRestore_Async(t *testing.T) {
 	final, err := svc.GetBackupRecord(context.Background(), record.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", final.RestoreStatus)
+	require.NoError(t, sqlMock.ExpectationsWereMet())
 }

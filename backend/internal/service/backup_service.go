@@ -936,6 +936,15 @@ func (s *BackupService) executeBackup(record *BackupRecord, objectStore BackupOb
 
 // RestoreBackup 从记录对应存储后端下载备份并流式恢复到数据库
 func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) error {
+	releaseMaintenance, acquired, err := tryAcquireDatabaseHeavyMaintenanceLock(ctx, s.db)
+	if err != nil {
+		return fmt.Errorf("acquire database maintenance lock: %w", err)
+	}
+	if !acquired {
+		return ErrDatabaseMaintenanceBusy
+	}
+	defer releaseMaintenance()
+
 	s.opMu.Lock()
 	if s.restoring {
 		s.opMu.Unlock()
@@ -990,9 +999,18 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 		return nil, infraerrors.ServiceUnavailable("SERVER_SHUTTING_DOWN", "server is shutting down")
 	}
 
+	releaseMaintenance, acquired, err := tryAcquireDatabaseHeavyMaintenanceLock(ctx, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("acquire database maintenance lock: %w", err)
+	}
+	if !acquired {
+		return nil, ErrDatabaseMaintenanceBusy
+	}
+
 	s.opMu.Lock()
 	if s.restoring {
 		s.opMu.Unlock()
+		releaseMaintenance()
 		return nil, ErrRestoreInProgress
 	}
 	s.restoring = true
@@ -1002,6 +1020,7 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 	launched := false
 	defer func() {
 		if !launched {
+			releaseMaintenance()
 			s.opMu.Lock()
 			s.restoring = false
 			s.opMu.Unlock()
@@ -1030,6 +1049,7 @@ func (s *BackupService) StartRestore(ctx context.Context, backupID string) (*Bac
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer releaseMaintenance()
 		defer func() {
 			s.opMu.Lock()
 			s.restoring = false

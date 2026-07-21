@@ -275,6 +275,8 @@ services:
         --save 60 1
         --appendonly yes
         --appendfsync everysec
+        --maxmemory ${REDIS_MAXMEMORY:-1536mb}
+        --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-noeviction}
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
       - TZ=${TZ:-Asia/Shanghai}
