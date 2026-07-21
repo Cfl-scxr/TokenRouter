@@ -25,6 +25,7 @@ type Client struct {
 	ClientVersion string
 	Site          Site
 	MachineOS     string
+	ClientIP      string
 	HTTPClient    *http.Client
 }
 
@@ -60,6 +61,7 @@ func NewClientForProfile(profile Profile) *Client {
 		ClientVersion: normalized.ClientVersion,
 		Site:          normalized.Site,
 		MachineOS:     MachineOS(),
+		ClientIP:      MachineIP(),
 		HTTPClient:    &http.Client{},
 	}
 }
@@ -142,10 +144,38 @@ func (c *Client) JSONRequestContextWithDoer(
 	doer RequestDoer,
 	out any,
 ) error {
+	return c.jsonRequestContextWithDoer(ctx, method, session, logicalPath, bodyJSON, extraHeaders, doer, out, false)
+}
+
+// SignatureJSONRequestContextWithDoer 使用登录前的 Appcode 签名模式发送 Gateway JSON 请求。
+func (c *Client) SignatureJSONRequestContextWithDoer(
+	ctx context.Context,
+	method string,
+	session *SessionContext,
+	logicalPath string,
+	bodyJSON []byte,
+	extraHeaders map[string]string,
+	doer RequestDoer,
+	out any,
+) error {
+	return c.jsonRequestContextWithDoer(ctx, method, session, logicalPath, bodyJSON, extraHeaders, doer, out, true)
+}
+
+func (c *Client) jsonRequestContextWithDoer(
+	ctx context.Context,
+	method string,
+	session *SessionContext,
+	logicalPath string,
+	bodyJSON []byte,
+	extraHeaders map[string]string,
+	doer RequestDoer,
+	out any,
+	signatureOnly bool,
+) error {
 	if c == nil {
 		return fmt.Errorf("qoder: client is nil")
 	}
-	if session == nil || session.Identity == nil || session.Machine == nil {
+	if session == nil || session.Machine == nil || (!signatureOnly && session.Identity == nil) {
 		return fmt.Errorf("qoder: COSY session is incomplete")
 	}
 	logicalPath = strings.TrimSpace(logicalPath)
@@ -167,11 +197,27 @@ func (c *Client) JSONRequestContextWithDoer(
 	if encodedBody != "" {
 		body = strings.NewReader(encodedBody)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.APIBaseURL+actualPath, body)
+	requestURL := c.APIBaseURL + actualPath
+	if encodedBody != "" {
+		// 官方 Gateway builder 会用 Encode=1 标记经过 COSY 编码的请求体，签名仍只使用不含 query 的逻辑路径。
+		parsedURL, parseErr := url.Parse(requestURL)
+		if parseErr != nil {
+			return fmt.Errorf("qoder: parse gateway request URL: %w", parseErr)
+		}
+		query := parsedURL.Query()
+		query.Set("Encode", "1")
+		parsedURL.RawQuery = query.Encode()
+		requestURL = parsedURL.String()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, body)
 	if err != nil {
 		return fmt.Errorf("qoder: create gateway request: %w", err)
 	}
-	c.setHeaders(req, session, logicalPath, encodedBody)
+	if signatureOnly {
+		c.setSignatureHeaders(req, session)
+	} else {
+		c.setHeaders(req, session, logicalPath, encodedBody)
+	}
 	req.Header.Set("Accept", "application/json")
 	for key, value := range extraHeaders {
 		req.Header.Set(key, value)
@@ -418,8 +464,101 @@ func applyQoderErrorPayload(apiErr *APIError, payload []byte) {
 
 func (c *Client) setHeaders(req *http.Request, session *SessionContext, path, encodedBody string) {
 	now := strconv.FormatInt(time.Now().Unix(), 10)
-	httpDate := time.Now().UTC().Format(http.TimeFormat)
 	pathNoAlgo := pathWithoutAlgo(path)
+	clientVersion := c.requestClientVersion(session)
+	payloadB64, _ := BuildPayloadB64WithVersion(session.Info, GenerateRequestID(), clientVersion)
+	signature := SignQoderRequest(payloadB64, session.CosyKey, now, encodedBody, pathNoAlgo)
+	site := c.setBasicHeaders(req, session)
+	httpDate := time.Now().UTC().Format(http.TimeFormat)
+	req.Header.Set("Date", httpDate)
+	req.Header.Set("Signature", SignCenterRequest(httpDate))
+	req.Header.Set("Appcode", AppCode)
+
+	dataPolicy := "disagree"
+	organizationTags := "Normal"
+	if site == SiteCN {
+		dataPolicy = "DISAGREE"
+		organizationTags = ""
+	}
+	req.Header.Set("cosy-data-policy", dataPolicy)
+	req.Header.Set("cosy-date", now)
+	req.Header.Set("cosy-key", session.CosyKey)
+	req.Header.Set("cosy-user", session.Identity.UID)
+	req.Header.Set("cosy-organization-id", session.Identity.OrganizationID)
+	req.Header.Set("cosy-organization-tags", organizationTags)
+	if site != SiteCN {
+		// 国际站继续保留当前推理路由使用的业务头。
+		req.Header.Set("cosy-scene", "assistant")
+		req.Header.Set("cosy-business-product", "cli")
+		req.Header.Set("cosy-business-type", "agent")
+	}
+	req.Header.Set("Authorization", ComposeBearer(payloadB64, signature))
+}
+
+func (c *Client) setSignatureHeaders(req *http.Request, session *SessionContext) {
+	c.setBasicHeaders(req, session)
+	httpDate := time.Now().UTC().Format(http.TimeFormat)
+	req.Header.Set("Date", httpDate)
+	req.Header.Set("Signature", SignCenterRequest(httpDate))
+	req.Header.Set("Appcode", AppCode)
+}
+
+func (c *Client) setBasicHeaders(req *http.Request, session *SessionContext) Site {
+	mid := session.Machine.MachineID
+	machineToken := strings.TrimSpace(session.Machine.MachineToken)
+	machineType := strings.TrimSpace(session.Machine.MachineType)
+	site := c.Site
+	if session.Site != "" {
+		site = session.Site
+	}
+	if site == SiteCN {
+		// 国内客户端的 Gateway builder 固定发送空机器 token/type/code。
+		machineToken = ""
+		machineType = ""
+	} else {
+		if machineToken == "" {
+			machineToken = mid
+		}
+		if machineType == "" {
+			machineType = "5"
+		}
+	}
+	machineOS := strings.TrimSpace(c.MachineOS)
+	if machineOS == "" {
+		machineOS = MachineOS()
+	}
+	clientIP := mid
+	if site == SiteCN {
+		clientIP = strings.TrimSpace(c.ClientIP)
+		if clientIP == "" {
+			clientIP = MachineIP()
+		}
+	}
+	clientVersion := c.requestClientVersion(session)
+	clientType := "5"
+	if site == SiteCN {
+		// Qoder CN 桌面构建的运行模式为 ide，官方协议将其映射为客户端类型 0。
+		clientType = "0"
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("User-Agent", "Go-http-client/2.0")
+	req.Header.Set("Login-Version", "v2")
+	req.Header.Set("cosy-version", clientVersion)
+	req.Header.Set("cosy-clienttype", clientType)
+	req.Header.Set("cosy-clientip", clientIP)
+	req.Header.Set("cosy-machineos", machineOS)
+	req.Header.Set("cosy-machineid", mid)
+	req.Header.Set("cosy-machinetype", machineType)
+	req.Header.Set("cosy-machinetoken", machineToken)
+	if site == SiteCN {
+		req.Header.Set("cosy-machinecode", "")
+	}
+	return site
+}
+
+func (c *Client) requestClientVersion(session *SessionContext) string {
 	clientVersion := strings.TrimSpace(c.ClientVersion)
 	if clientVersion == "" && session != nil {
 		clientVersion = strings.TrimSpace(session.ClientVersion)
@@ -427,47 +566,7 @@ func (c *Client) setHeaders(req *http.Request, session *SessionContext, path, en
 	if clientVersion == "" {
 		clientVersion = GlobalClientVersion
 	}
-	payloadB64, _ := BuildPayloadB64WithVersion(session.Info, GenerateRequestID(), clientVersion)
-	signature := SignQoderRequest(payloadB64, session.CosyKey, now, encodedBody, pathNoAlgo)
-
-	mid := session.Machine.MachineID
-	machineToken := strings.TrimSpace(session.Machine.MachineToken)
-	if machineToken == "" {
-		machineToken = mid
-	}
-	machineType := strings.TrimSpace(session.Machine.MachineType)
-	if machineType == "" {
-		machineType = "5"
-	}
-	machineOS := strings.TrimSpace(c.MachineOS)
-	if machineOS == "" {
-		machineOS = MachineOS()
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("User-Agent", "Go-http-client/2.0")
-	req.Header.Set("Date", httpDate)
-	req.Header.Set("Signature", SignCenterRequest(httpDate))
-	req.Header.Set("Appcode", AppCode)
-	req.Header.Set("Login-Version", "v2")
-	req.Header.Set("cosy-data-policy", "disagree")
-	req.Header.Set("cosy-version", clientVersion)
-	req.Header.Set("cosy-clienttype", "5")
-	req.Header.Set("cosy-clientip", mid)
-	req.Header.Set("cosy-machineos", machineOS)
-	req.Header.Set("cosy-date", now)
-	req.Header.Set("cosy-key", session.CosyKey)
-	req.Header.Set("cosy-user", session.Identity.UID)
-	req.Header.Set("cosy-machineid", mid)
-	req.Header.Set("cosy-machinetype", machineType)
-	req.Header.Set("cosy-machinetoken", machineToken)
-	req.Header.Set("cosy-scene", "assistant")
-	req.Header.Set("cosy-organization-id", session.Identity.OrganizationID)
-	req.Header.Set("cosy-organization-tags", "Normal")
-	req.Header.Set("cosy-business-product", "cli")
-	req.Header.Set("cosy-business-type", "agent")
-	req.Header.Set("Authorization", ComposeBearer(payloadB64, signature))
+	return clientVersion
 }
 
 // SSEEvent 表示从 Qoder 流中解析出的 SSE 事件。

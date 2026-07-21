@@ -133,6 +133,11 @@ func (r *QoderTokenRefresher) Refresh(ctx context.Context, account *Account) (ma
 	newCredentials = MergeCredentials(account.Credentials, newCredentials)
 	newCredentials["site"] = string(site)
 	newCredentials["refresh_mode"] = refreshMode
+	if site == qoder.SiteCN {
+		// 合并旧凭据后再次清理，避免刷新把历史随机机器字段带回国内账号。
+		delete(newCredentials, "machine_token")
+		delete(newCredentials, "machine_type")
+	}
 	if !expiresAt.IsZero() {
 		newCredentials["expires_at"] = expiresAt.UTC().Format(time.RFC3339)
 	}

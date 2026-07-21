@@ -32,8 +32,8 @@ func qoderRefreshModeForAccount(account *Account) (string, error) {
 	return qoder.ParseRefreshMode(account.GetCredential("refresh_mode"))
 }
 
-// ensureQoderMachineCredentials 为新建 Qoder 账号补齐并持久化稳定机器身份。
-// PAT 账号可生成完整机器身份；direct token 账号必须由调用方提供 machine_id，这里只补其余字段。
+// ensureQoderMachineCredentials 为新建 Qoder 账号补齐并持久化站点对应的稳定机器身份。
+// direct token 账号必须由调用方提供 machine_id；国内站不生成额外机器字段。
 func ensureQoderMachineCredentials(account *Account) {
 	if account == nil {
 		return
@@ -47,11 +47,24 @@ func ensureQoderMachineCredentials(account *Account) {
 	if pat == "" && (directToken == "" || machineID == "") {
 		return
 	}
+	site, err := qoderSiteForAccount(account)
+	if err != nil {
+		site = qoder.SiteGlobal
+	}
+	if site == qoder.SiteCN {
+		// 国内客户端只持久化 machine_id，并清理旧版本曾写入的随机机器字段。
+		delete(account.Credentials, "machine_token")
+		delete(account.Credentials, "machine_type")
+		if pat != "" && machineID == "" {
+			account.Credentials["machine_id"] = qoder.NewMachineForSite(site).MachineID
+		}
+		return
+	}
+	machine := qoder.NewMachineForSite(site)
 	if machineID != "" && strings.TrimSpace(account.GetCredential("machine_token")) != "" &&
 		strings.TrimSpace(account.GetCredential("machine_type")) != "" {
 		return
 	}
-	machine := qoder.NewMachine()
 	if pat != "" && machineID == "" {
 		account.Credentials["machine_id"] = machine.MachineID
 	}
@@ -68,9 +81,17 @@ func qoderMachineForAccount(account *Account) *qoder.MachineIdentity {
 	if account == nil {
 		return qoder.NewMachine()
 	}
+	site, err := qoderSiteForAccount(account)
+	if err != nil {
+		site = qoder.SiteGlobal
+	}
 	machineID := strings.TrimSpace(account.GetCredential("machine_id"))
 	if machineID == "" {
-		machineID = qoder.RandomHex(36)
+		machineID = qoder.NewMachineForSite(site).MachineID
+	}
+	if site == qoder.SiteCN {
+		// 忽略旧版本曾保存的随机 token/type，保持官方国内客户端的空值语义。
+		return &qoder.MachineIdentity{MachineID: machineID}
 	}
 	return &qoder.MachineIdentity{
 		MachineID:    machineID,

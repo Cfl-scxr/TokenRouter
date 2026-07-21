@@ -248,6 +248,8 @@ func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
 	provider.exchangeCNPAT = func(_ context.Context, pat string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, time.Time, error) {
 		require.Equal(t, "cn-pat", pat)
 		require.Equal(t, "machine-cn", machine.MachineID)
+		require.Empty(t, machine.MachineToken)
+		require.Empty(t, machine.MachineType)
 		return &qoder.AuthIdentity{
 			UID:                "uid-cn",
 			AID:                "aid-cn",
@@ -274,7 +276,8 @@ func TestQoderTokenProviderRoutesCNPATAndBuildsCNSession(t *testing.T) {
 	require.Equal(t, qoder.SiteCN, session.Site)
 	require.Equal(t, qoder.CNClientVersion, session.ClientVersion)
 	require.Equal(t, "cosy-cn", session.Identity.SecurityOauthToken)
-	require.Equal(t, "machine-token-cn", session.Machine.MachineToken)
+	require.Empty(t, session.Machine.MachineToken)
+	require.Empty(t, session.Machine.MachineType)
 }
 
 func TestQoderTokenProviderRebuildsExpiredCNPATSession(t *testing.T) {

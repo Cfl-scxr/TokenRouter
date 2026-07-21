@@ -2,6 +2,7 @@ package qoder
 
 import (
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 )
@@ -46,6 +47,10 @@ const (
 	GlobalOAuthClientID = "e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb"
 	// CNOAuthClientID 是国内站公开 OAuth client ID。
 	CNOAuthClientID = "f5a7f67c-11a8-491e-8b8e-a07f2d0df4b7"
+	// GlobalOpenAPIProductName 是国际站客户端在 OpenAPI UA 中使用的产品名。
+	GlobalOpenAPIProductName = "Qoder"
+	// CNOpenAPIProductName 是国内站客户端在 OpenAPI UA 中使用的产品名。
+	CNOpenAPIProductName = "Qoder CN"
 )
 
 // Profile 集中保存一个 Qoder 站点使用的协议端点和客户端标识。
@@ -149,6 +154,19 @@ func NormalizeProfile(profile Profile) (Profile, error) {
 	return base, nil
 }
 
+// OpenAPIUserAgent 返回官方站点客户端用于 OpenAPI 请求的 User-Agent。
+func (p Profile) OpenAPIUserAgent() string {
+	normalized, err := NormalizeProfile(p)
+	if err != nil {
+		normalized = MustProfileForSite(SiteGlobal)
+	}
+	productName := GlobalOpenAPIProductName
+	if normalized.Site == SiteCN {
+		productName = CNOpenAPIProductName
+	}
+	return productName + "/" + normalized.ClientVersion
+}
+
 // MachineOS 返回 COSY 协议使用的“架构_系统”标识。
 func MachineOS() string {
 	return MachineOSFor(runtime.GOARCH, runtime.GOOS)
@@ -165,4 +183,26 @@ func MachineOSFor(arch, goos string) string {
 		arch = "aarch64"
 	}
 	return arch + "_" + goos
+}
+
+// MachineIP 返回官方客户端用于 Cosy-ClientIp 的首个非回环 IPv4 地址。
+func MachineIP() string {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	return machineIPFromAddresses(addresses)
+}
+
+func machineIPFromAddresses(addresses []net.Addr) string {
+	for _, address := range addresses {
+		ipNet, ok := address.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ipv4 := ipNet.IP.To4(); ipv4 != nil {
+			return ipv4.String()
+		}
+	}
+	return ""
 }

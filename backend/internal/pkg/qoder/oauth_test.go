@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +48,10 @@ func TestQoderCNDeviceAuthRequestUsesCNProfileAndNonce(t *testing.T) {
 	require.Equal(t, CNOAuthClientID, parsed.Query().Get("client_id"))
 	require.Empty(t, parsed.Query().Get("redirect_uri"))
 	require.Equal(t, req.MachineID, parsed.Query().Get("machine_id"))
+	require.Len(t, req.MachineID, 36)
+	parsedMachineID, err := uuid.Parse(req.MachineID)
+	require.NoError(t, err)
+	require.Equal(t, uuid.Version(4), parsedMachineID.Version())
 }
 
 func TestExchangeQoderCN20PATCompletesUserInfoAndStatus(t *testing.T) {
@@ -55,13 +60,14 @@ func TestExchangeQoderCN20PATCompletesUserInfoAndStatus(t *testing.T) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
 		case JobTokenExchangePath:
-			require.Equal(t, "qoder/"+CNClientVersion, r.Header.Get("User-Agent"))
+			require.Equal(t, "Qoder CN/"+CNClientVersion, r.Header.Get("User-Agent"))
 			require.Equal(t, CNClientVersion, r.Header.Get("Cosy-Version"))
 			var body map[string]string
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			require.Equal(t, "pat-cn", body["personal_token"])
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"token":         "openapi-access",
+				"token":         "legacy-token",
+				"access_token":  "openapi-access",
 				"refresh_token": "openapi-refresh",
 				"user_id":       "user-token",
 				"expires_in":    "3600",
@@ -73,23 +79,43 @@ func TestExchangeQoderCN20PATCompletesUserInfoAndStatus(t *testing.T) {
 				"user_name": "CN User",
 			})
 		case "/algo" + AuthStatusPath:
+			require.Equal(t, "1", r.URL.Query().Get("Encode"))
 			require.Equal(t, CNClientVersion, r.Header.Get("Cosy-Version"))
-			require.Equal(t, "machine-token", r.Header.Get("Cosy-Machinetoken"))
-			decoded, err := DecodeString(readAllString(t, r))
-			require.NoError(t, err)
-			var params AuthStatusParams
-			require.NoError(t, json.Unmarshal([]byte(decoded), &params))
-			require.Equal(t, "user-info", params.UserID)
+			require.Equal(t, "0", r.Header.Get("Cosy-Clienttype"))
+			require.Equal(t, "Go-http-client/2.0", r.Header.Get("User-Agent"))
+			require.NotEmpty(t, r.Header.Get("Date"))
+			require.Equal(t, AppCode, r.Header.Get("Appcode"))
+			require.NotEmpty(t, r.Header.Get("Signature"))
+			require.NotContains(t, r.Header, "Authorization")
+			require.NotContains(t, r.Header, "Cosy-Key")
+			require.NotContains(t, r.Header, "Cosy-User")
+			require.NotContains(t, r.Header, "Cosy-Date")
+			require.NotContains(t, r.Header, "Cosy-Data-Policy")
+			require.NotContains(t, r.Header, "Cosy-Organization-Id")
+			require.NotContains(t, r.Header, "Cosy-Organization-Tags")
+			require.Equal(t, "machine-id", r.Header.Get("Cosy-Machineid"))
+			require.Equal(t, []string{""}, r.Header.Values("Cosy-Machinetoken"))
+			require.Equal(t, []string{""}, r.Header.Values("Cosy-Machinetype"))
+			require.Equal(t, []string{""}, r.Header.Values("Cosy-Machinecode"))
+			envelope, params := decodeAuthStatusRequest(t, r)
+			require.JSONEq(t, `{
+				"userId": "user-token",
+				"personalToken": "",
+				"securityOauthToken": "openapi-access",
+				"refreshToken": "openapi-refresh",
+				"needRefresh": false,
+				"authInfo": {}
+			}`, envelope.Payload)
+			require.Equal(t, "user-token", params.UserID)
 			require.Equal(t, "openapi-access", params.SecurityOauthToken)
 			require.Equal(t, "openapi-refresh", params.RefreshToken)
 			_ = json.NewEncoder(w).Encode(AuthStatusResult{
-				Name:               "Status User",
-				ID:                 "cosy-uid",
-				AccountID:          "cosy-aid",
-				OrganizationID:     "org-cn",
-				OrganizationName:   "CN Org",
-				UserType:           "enterprise_standard",
-				SecurityOauthToken: "cosy-token",
+				Name:             "Status User",
+				ID:               "cosy-uid",
+				AccountID:        "cosy-aid",
+				OrganizationID:   "org-cn",
+				OrganizationName: "CN Org",
+				UserType:         "enterprise_standard",
 			})
 		default:
 			http.NotFound(w, r)
@@ -108,7 +134,7 @@ func TestExchangeQoderCN20PATCompletesUserInfoAndStatus(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []string{JobTokenExchangePath, UserInfoPath, "/algo" + AuthStatusPath}, paths)
-	require.Equal(t, "cosy-token", identity.SecurityOauthToken)
+	require.Equal(t, "openapi-access", identity.SecurityOauthToken)
 	require.Equal(t, "openapi-refresh", identity.RefreshToken)
 	require.Equal(t, "cosy-uid", identity.UID)
 	require.Equal(t, "cosy-aid", identity.AID)
@@ -144,7 +170,7 @@ func TestQoderCN20PATErrorRedactsResponse(t *testing.T) {
 func TestQoderCN20RefreshPostsRefreshTokenAndValidatesExpiry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, DeviceTokenRefreshPath, r.URL.Path)
-		require.Equal(t, "qoder/"+CNClientVersion, r.Header.Get("User-Agent"))
+		require.Equal(t, "Qoder CN/"+CNClientVersion, r.Header.Get("User-Agent"))
 		var body map[string]string
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		require.Equal(t, "old-refresh", body["refresh_token"])
@@ -228,8 +254,8 @@ func TestQoderOAuthClientUsesSiteUserAgent(t *testing.T) {
 		site Site
 		want string
 	}{
-		{name: "国际站", site: SiteGlobal, want: "qoder/" + GlobalClientVersion},
-		{name: "国内站", site: SiteCN, want: "qoder/" + CNClientVersion},
+		{name: "国际站", site: SiteGlobal, want: "Qoder/" + GlobalClientVersion},
+		{name: "国内站", site: SiteCN, want: "Qoder CN/" + CNClientVersion},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -290,7 +316,8 @@ func TestQoderOAuthClientPollDeviceTokenCompletedAndUserInfo(t *testing.T) {
 			require.Equal(t, "nonce-2", r.URL.Query().Get("nonce"))
 			require.Equal(t, "verifier-2", r.URL.Query().Get("verifier"))
 			_ = json.NewEncoder(w).Encode(DeviceTokenResponse{
-				Token:        "access-token",
+				Token:        "legacy-token",
+				AccessToken:  "access-token",
 				RefreshToken: "refresh-token",
 				UserID:       "user-from-token",
 			})
@@ -330,6 +357,17 @@ func TestQoderOAuthClientPollDeviceTokenCompletedAndUserInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "org-1", tags.OrganizationID)
 	require.Equal(t, "Org 1", tags.OrganizationName)
+}
+
+func TestDeviceTokenResponsePrefersAccessToken(t *testing.T) {
+	token := &DeviceTokenResponse{
+		Token:       "legacy-token",
+		AccessToken: "access-token",
+	}
+
+	require.Equal(t, "access-token", token.AccessTokenValue())
+	token.AccessToken = ""
+	require.Equal(t, "legacy-token", token.AccessTokenValue())
 }
 
 func TestQoderOAuthClientRedactsSensitiveErrorBodies(t *testing.T) {

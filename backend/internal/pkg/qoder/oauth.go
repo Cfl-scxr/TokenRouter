@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -300,14 +302,16 @@ func NewDeviceAuthRequestForProfile(profile Profile) (*DeviceAuthRequest, error)
 		return nil, err
 	}
 	nonce := RandomUUIDLike()
+	machineID := RandomToken(50)
 	if normalized.Site == SiteCN {
 		nonce = RandomHex(32)
+		machineID = RandomUUIDLike()
 	}
 	return &DeviceAuthRequest{
 		Nonce:         nonce,
 		CodeVerifier:  verifier,
 		CodeChallenge: GenerateCodeChallenge(verifier),
-		MachineID:     RandomToken(50),
+		MachineID:     machineID,
 		ClientID:      normalized.OAuthClientID,
 		Profile:       normalized,
 	}, nil
@@ -344,9 +348,9 @@ func GenerateCodeChallenge(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+// RandomUUIDLike 生成官方客户端使用的 UUID v4 字符串。
 func RandomUUIDLike() string {
-	hex := RandomHex(32)
-	return fmt.Sprintf("%s-%s-%s-%s-%s", hex[:8], hex[8:12], hex[12:16], hex[16:20], hex[20:])
+	return uuid.NewString()
 }
 
 func (c *OAuthClient) PollDeviceToken(ctx context.Context, nonce, verifier string) (*DeviceTokenResponse, bool, error) {
@@ -582,7 +586,7 @@ func (c *OAuthClient) profile() Profile {
 }
 
 func (c *OAuthClient) userAgent() string {
-	return "qoder/" + c.profile().ClientVersion
+	return c.profile().OpenAPIUserAgent()
 }
 
 func (c *OAuthClient) do(req *http.Request) (*http.Response, error) {
@@ -599,10 +603,11 @@ func (r *DeviceTokenResponse) AccessTokenValue() string {
 	if r == nil {
 		return ""
 	}
-	if strings.TrimSpace(r.Token) != "" {
-		return strings.TrimSpace(r.Token)
+	// 官方 Qoder CN 客户端优先使用 access_token，token 仅用于旧响应兼容回退。
+	if strings.TrimSpace(r.AccessToken) != "" {
+		return strings.TrimSpace(r.AccessToken)
 	}
-	return strings.TrimSpace(r.AccessToken)
+	return strings.TrimSpace(r.Token)
 }
 
 // ExpiryTime 将 token 响应中的绝对或相对有效期规范化为 UTC 时间。

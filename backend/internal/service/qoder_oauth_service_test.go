@@ -31,6 +31,7 @@ type fakeQoderOAuthClient struct {
 	completedExpiry   time.Time
 	completionErr     error
 	completionCalls   int
+	completedMachine  *qoder.MachineIdentity
 }
 
 type blockingQoderOAuthClient struct {
@@ -67,9 +68,16 @@ func (f *fakeQoderOAuthClient) CompleteQoderCN20Identity(
 	_ context.Context,
 	_ *qoder.DeviceTokenResponse,
 	_ *qoder.UserInfo,
-	_ *qoder.MachineIdentity,
+	machine *qoder.MachineIdentity,
 ) (*qoder.AuthIdentity, time.Time, error) {
 	f.completionCalls++
+	if machine != nil {
+		f.completedMachine = &qoder.MachineIdentity{
+			MachineID:    machine.MachineID,
+			MachineToken: machine.MachineToken,
+			MachineType:  machine.MachineType,
+		}
+	}
 	return f.completedIdentity, f.completedExpiry, f.completionErr
 }
 
@@ -164,6 +172,11 @@ func TestQoderOAuthServiceCNFreezesSiteAndIgnoresPollProxyOverride(t *testing.T)
 	require.Equal(t, "qoder.com.cn", parsed.Host)
 	require.Equal(t, qoder.CNOAuthClientID, parsed.Query().Get("client_id"))
 	require.NotContains(t, parsed.Query().Get("nonce"), "-")
+	require.Len(t, parsed.Query().Get("machine_id"), 36)
+	session, ok := svc.sessionStore.Get(result.SessionID)
+	require.True(t, ok)
+	require.Empty(t, session.Machine.MachineToken)
+	require.Empty(t, session.Machine.MachineType)
 
 	ignoredProxyID := int64(9999)
 	completed, err := svc.Poll(context.Background(), result.SessionID, result.State, &ignoredProxyID)
@@ -179,11 +192,19 @@ func TestQoderOAuthServiceCNFreezesSiteAndIgnoresPollProxyOverride(t *testing.T)
 	require.Equal(t, "status-org", completed.TokenInfo.OrganizationID)
 	require.Equal(t, "Status Org", completed.TokenInfo.OrganizationName)
 	require.Zero(t, client.orgCalls)
+	require.NotNil(t, client.completedMachine)
+	require.Equal(t, parsed.Query().Get("machine_id"), client.completedMachine.MachineID)
+	require.Empty(t, client.completedMachine.MachineToken)
+	require.Empty(t, client.completedMachine.MachineType)
+	require.Empty(t, completed.TokenInfo.MachineToken)
+	require.Empty(t, completed.TokenInfo.MachineType)
 
 	credentials := svc.BuildAccountCredentials(completed.TokenInfo)
 	require.Equal(t, "cn", credentials["site"])
 	require.Equal(t, qoder.RefreshModeQoderCN20, credentials["refresh_mode"])
 	require.Equal(t, expiresAt.Format(time.RFC3339), credentials["expires_at"])
+	require.NotContains(t, credentials, "machine_token")
+	require.NotContains(t, credentials, "machine_type")
 }
 
 func TestQoderOAuthServiceCNUsesOrganizationTagsAsStatusFallback(t *testing.T) {

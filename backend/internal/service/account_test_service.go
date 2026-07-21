@@ -1443,7 +1443,7 @@ func (s *AccountTestService) getQoderUserInfoForAccount(ctx context.Context, acc
 		}
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
-		req.Header.Set("User-Agent", "qoder/"+profile.ClientVersion)
+		req.Header.Set("User-Agent", profile.OpenAPIUserAgent())
 
 		resp, err := doer(req)
 		if err != nil {

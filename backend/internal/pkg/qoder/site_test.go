@@ -1,10 +1,22 @@
 package qoder
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMachineIPFromAddressesUsesFirstNonLoopbackIPv4(t *testing.T) {
+	addresses := []net.Addr{
+		&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+		&net.IPNet{IP: net.ParseIP("2001:db8::1"), Mask: net.CIDRMask(64, 128)},
+		&net.IPNet{IP: net.ParseIP("172.18.0.1"), Mask: net.CIDRMask(24, 32)},
+		&net.IPNet{IP: net.ParseIP("192.168.5.36"), Mask: net.CIDRMask(24, 32)},
+	}
+
+	require.Equal(t, "172.18.0.1", machineIPFromAddresses(addresses))
+}
 
 func TestParseSiteAndRefreshModeCompatibility(t *testing.T) {
 	site, err := ParseSite("")
@@ -36,6 +48,7 @@ func TestProfileForSiteUsesFrozenProductionValues(t *testing.T) {
 	require.Equal(t, GlobalGatewayBaseURL, global.GatewayBaseURL)
 	require.Equal(t, GlobalClientVersion, global.ClientVersion)
 	require.Equal(t, GlobalOAuthClientID, global.OAuthClientID)
+	require.Equal(t, "Qoder/"+GlobalClientVersion, global.OpenAPIUserAgent())
 
 	cn, err := ProfileForSite(SiteCN)
 	require.NoError(t, err)
@@ -45,6 +58,7 @@ func TestProfileForSiteUsesFrozenProductionValues(t *testing.T) {
 	require.Equal(t, CNGatewayBaseURL, cn.GatewayBaseURL)
 	require.Equal(t, CNClientVersion, cn.ClientVersion)
 	require.Equal(t, CNOAuthClientID, cn.OAuthClientID)
+	require.Equal(t, "Qoder CN/"+CNClientVersion, cn.OpenAPIUserAgent())
 }
 
 func TestNormalizeProfileAllowsTestEndpointInjection(t *testing.T) {

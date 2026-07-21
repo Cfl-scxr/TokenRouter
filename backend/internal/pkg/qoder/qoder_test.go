@@ -52,8 +52,9 @@ func TestEncodeNotStandardBase64(t *testing.T) {
 
 func TestSignCenterRequest(t *testing.T) {
 	sig := SignCenterRequest("test_date")
-	if len(sig) != 32 {
-		t.Errorf("signature length = %d, want 32", len(sig))
+	const expected = "d97838794e12bb6a4402dd55f14d2f8e"
+	if sig != expected {
+		t.Errorf("signature = %q, want %q", sig, expected)
 	}
 }
 

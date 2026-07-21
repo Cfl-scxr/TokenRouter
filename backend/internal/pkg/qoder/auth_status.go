@@ -34,7 +34,7 @@ func ExchangeQoderCN20PATContext(
 		return nil, time.Time{}, fmt.Errorf("qoder: QoderCN20 PAT requires cn site")
 	}
 	if machine == nil {
-		machine = NewMachine()
+		machine = NewMachineForSite(normalized.Site)
 	}
 	openAPI := NewOAuthClientForProfile(normalized, nil)
 	openAPI.Doer = doer
@@ -65,7 +65,7 @@ func RefreshQoderCN20SessionContext(
 		return nil, time.Time{}, fmt.Errorf("qoder: QoderCN20 refresh requires cn site")
 	}
 	if machine == nil {
-		machine = NewMachine()
+		machine = NewMachineForSite(normalized.Site)
 	}
 	openAPI := NewOAuthClientForProfile(normalized, nil)
 	openAPI.Doer = doer
@@ -80,12 +80,32 @@ func RefreshQoderCN20SessionContext(
 	return CompleteQoderCN20IdentityContext(ctx, normalized, token, user, machine, doer)
 }
 
-// AuthStatusParams 是 status 与旧式 COSY refresh 请求共用的认证字段。
+// AuthStatusAuthInfo 是 Gateway 身份请求内嵌的可选账号信息。
+type AuthStatusAuthInfo struct {
+	UserName       string `json:"userName,omitempty"`
+	OrganizationID string `json:"orgId,omitempty"`
+}
+
+// AuthStatusParams 完整对应官方 Gateway 身份请求结构；末尾三个零值字段也必须发送。
 type AuthStatusParams struct {
-	UserID             string `json:"userId"`
-	OrganizationID     string `json:"orgId,omitempty"`
-	SecurityOauthToken string `json:"securityOauthToken"`
-	RefreshToken       string `json:"refreshToken"`
+	AccessKey          string             `json:"accessKey,omitempty"`
+	SecretKey          string             `json:"secretKey,omitempty"`
+	SecurityToken      string             `json:"securityToken,omitempty"`
+	UserID             string             `json:"userId,omitempty"`
+	OrganizationID     string             `json:"orgId,omitempty"`
+	Token              string             `json:"token,omitempty"`
+	PersonalToken      string             `json:"personalToken"`
+	SecurityOauthToken string             `json:"securityOauthToken"`
+	RefreshToken       string             `json:"refreshToken"`
+	NeedRefresh        bool               `json:"needRefresh"`
+	AuthInfo           AuthStatusAuthInfo `json:"authInfo"`
+}
+
+// gatewayHTTPPayload 对应官方 remoting.HttpPayload，是 Gateway 身份接口的外层载荷。
+type gatewayHTTPPayload struct {
+	Payload       string `json:"payload"`
+	EncodeVersion string `json:"encodeVersion"`
+	RequestID     string `json:"requestId,omitempty"`
 }
 
 // AuthStatusResult 兼容国内 Gateway status/refresh 返回的完整身份字段。
@@ -130,13 +150,14 @@ func CompleteQoderCN20IdentityContext(
 		return nil, time.Time{}, fmt.Errorf("qoder: QoderCN20 completion requires cn site")
 	}
 	if machine == nil {
-		machine = NewMachine()
+		machine = NewMachineForSite(normalized.Site)
 	}
 	expiresAt, err := token.ValidateQoderCN20(time.Now())
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	userID := firstNonEmpty(userIDFromInfo(user), token.UserID, token.ID)
+	// status 会校验用户与 token 的关联关系，必须优先使用设备 token 响应中的 user_id。
+	userID := firstNonEmpty(token.UserID, userIDFromInfo(user))
 	if userID == "" {
 		return nil, time.Time{}, fmt.Errorf("qoder: QoderCN20 completion requires user id")
 	}
@@ -148,29 +169,32 @@ func CompleteQoderCN20IdentityContext(
 		SecurityOauthToken: token.AccessTokenValue(),
 		RefreshToken:       strings.TrimSpace(token.RefreshToken),
 	}
-	session, err := NewSessionForProfileWithKey(provisional, machine, normalized, nil)
-	if err != nil {
-		return nil, time.Time{}, err
+	// status 使用登录前 Appcode 签名模式，不构造或发送 COSY Authorization。
+	session := &SessionContext{
+		Machine:       machine,
+		Site:          normalized.Site,
+		ClientVersion: normalized.ClientVersion,
 	}
 	params := AuthStatusParams{
 		UserID:             userID,
 		SecurityOauthToken: provisional.SecurityOauthToken,
 		RefreshToken:       provisional.RefreshToken,
 	}
-	body, err := json.Marshal(params)
+	body, err := marshalAuthStatusRequest(params)
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("qoder: encode auth status request: %w", err)
 	}
 	client := NewClientForProfile(normalized)
 	var status AuthStatusResult
-	if err := client.JSONRequestContextWithDoer(ctx, http.MethodPost, session, AuthStatusPath, body, nil, doer, &status); err != nil {
+	if err := client.SignatureJSONRequestContextWithDoer(ctx, http.MethodPost, session, AuthStatusPath, body, nil, doer, &status); err != nil {
 		return nil, time.Time{}, fmt.Errorf("qoder: complete QoderCN20 identity: %w", err)
 	}
 	identity, err := identityFromAuthStatus(&status, provisional)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	// 国内标准登录后续刷新必须继续保存 OpenAPI refresh token，不能被 COSY status 字段替换。
+	// 国内标准登录保留本次 OpenAPI 的 effective access/refresh token，status 只补充账号状态。
+	identity.SecurityOauthToken = provisional.SecurityOauthToken
 	identity.RefreshToken = strings.TrimSpace(token.RefreshToken)
 	return identity, expiresAt, nil
 }
@@ -194,7 +218,7 @@ func RefreshCosySessionForProfileContext(
 		return nil, fmt.Errorf("qoder: Gateway COSY refresh requires cn site")
 	}
 	if machine == nil {
-		machine = NewMachine()
+		machine = NewMachineForSite(normalized.Site)
 	}
 	provisional := &AuthIdentity{
 		AID:                strings.TrimSpace(userID),
@@ -211,7 +235,7 @@ func RefreshCosySessionForProfileContext(
 	if err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(AuthStatusParams{
+	body, err := marshalAuthStatusRequest(AuthStatusParams{
 		UserID:             provisional.UID,
 		OrganizationID:     provisional.OrganizationID,
 		SecurityOauthToken: provisional.SecurityOauthToken,
@@ -235,19 +259,36 @@ func RefreshCosySessionForProfileContext(
 	return identity, nil
 }
 
+// marshalAuthStatusRequest 先把身份参数序列化成字符串，再按官方协议包入 EncodeVersion=1 的外层对象。
+func marshalAuthStatusRequest(params AuthStatusParams) ([]byte, error) {
+	inner, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("encode inner payload: %w", err)
+	}
+	body, err := json.Marshal(gatewayHTTPPayload{
+		Payload:       string(inner),
+		EncodeVersion: "1",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode request envelope: %w", err)
+	}
+	return body, nil
+}
+
 func identityFromAuthStatus(status *AuthStatusResult, fallback *AuthIdentity) (*AuthIdentity, error) {
 	if status == nil {
 		return nil, fmt.Errorf("qoder: auth status response is empty")
 	}
 	identity := &AuthIdentity{
-		Name:               firstNonEmpty(status.Name, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.Name })),
-		AID:                firstNonEmpty(status.AccountID, status.ID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.AID })),
-		UID:                firstNonEmpty(status.ID, status.AccountID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.UID })),
-		YxUID:              status.YxUID,
-		OrganizationID:     firstNonEmpty(status.OrganizationID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.OrganizationID })),
-		OrganizationName:   firstNonEmpty(status.OrganizationName, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.OrganizationName })),
-		UserType:           firstNonEmpty(status.UserType, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.UserType }), "personal_standard"),
-		SecurityOauthToken: firstNonEmpty(status.SecurityOauthToken, status.Token),
+		Name:             firstNonEmpty(status.Name, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.Name })),
+		AID:              firstNonEmpty(status.AccountID, status.ID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.AID })),
+		UID:              firstNonEmpty(status.ID, status.AccountID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.UID })),
+		YxUID:            status.YxUID,
+		OrganizationID:   firstNonEmpty(status.OrganizationID, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.OrganizationID })),
+		OrganizationName: firstNonEmpty(status.OrganizationName, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.OrganizationName })),
+		UserType:         firstNonEmpty(status.UserType, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.UserType }), "personal_standard"),
+		// QoderCN20 status 只负责校验并返回账号状态，成功响应可能不重复回传请求中的 token。
+		SecurityOauthToken: firstNonEmpty(status.SecurityOauthToken, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.SecurityOauthToken })),
 		RefreshToken:       firstNonEmpty(status.RefreshToken, fallbackIdentityValue(fallback, func(v *AuthIdentity) string { return v.RefreshToken })),
 	}
 	if identity.SecurityOauthToken == "" {

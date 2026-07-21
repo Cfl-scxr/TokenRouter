@@ -10,6 +10,7 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/qoder"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,6 +98,53 @@ func TestCreateQoderPATAccountPersistsStableMachineIdentity(t *testing.T) {
 	require.NotEmpty(t, created.GetCredential("machine_id"))
 	require.NotEmpty(t, created.GetCredential("machine_token"))
 	require.NotEmpty(t, created.GetCredential("machine_type"))
+}
+
+func TestCreateQoderCNPATAccountUsesOfficialMachineIdentity(t *testing.T) {
+	old := qoderValidateCNPAT
+	defer func() { qoderValidateCNPAT = old }()
+	qoderValidateCNPAT = func(_ context.Context, _ *Account, _ string, machine *qoder.MachineIdentity, _ qoder.RequestDoer) (*qoder.AuthIdentity, error) {
+		parsedMachineID, err := uuid.Parse(machine.MachineID)
+		require.NoError(t, err)
+		require.Equal(t, uuid.Version(4), parsedMachineID.Version())
+		require.Empty(t, machine.MachineToken)
+		require.Empty(t, machine.MachineType)
+		return &qoder.AuthIdentity{UID: "uid-cn", SecurityOauthToken: "dt-cn"}, nil
+	}
+	repo := &upstreamBillingProbeAccountRepo{}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "qoder-cn-pat",
+		Platform:             PlatformQoder,
+		Type:                 AccountTypeCosy,
+		SkipDefaultGroupBind: true,
+		Credentials: map[string]any{
+			"site": "cn",
+			"pat":  "pat-cn",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, created.GetCredential("machine_id"), 36)
+	require.Empty(t, created.GetCredential("machine_token"))
+	require.Empty(t, created.GetCredential("machine_type"))
+}
+
+func TestEnsureQoderCNMachineCredentialsRemovesLegacyFields(t *testing.T) {
+	account := &Account{Credentials: map[string]any{
+		"site":                 "cn",
+		"security_oauth_token": "cosy-token",
+		"machine_id":           "machine-cn",
+		"machine_token":        "legacy-machine-token",
+		"machine_type":         "legacy-machine-type",
+	}}
+
+	ensureQoderMachineCredentials(account)
+
+	require.Equal(t, "machine-cn", account.GetCredential("machine_id"))
+	require.NotContains(t, account.Credentials, "machine_token")
+	require.NotContains(t, account.Credentials, "machine_type")
 }
 
 func TestUpdateQoderDirectTokenAccountPreservesLegacyMachineFallback(t *testing.T) {

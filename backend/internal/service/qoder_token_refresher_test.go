@@ -204,6 +204,8 @@ func TestQoderTokenRefresherRoutesCN20RefreshAndPersistsExpiry(t *testing.T) {
 	refresher.refreshCN20 = func(_ context.Context, refreshToken string, machine *qoder.MachineIdentity) (*qoder.AuthIdentity, time.Time, error) {
 		require.Equal(t, "cn-refresh", refreshToken)
 		require.Equal(t, "machine-1", machine.MachineID)
+		require.Empty(t, machine.MachineToken)
+		require.Empty(t, machine.MachineType)
 		return &qoder.AuthIdentity{
 			UID:                "uid-1",
 			AID:                "aid-1",
@@ -222,6 +224,8 @@ func TestQoderTokenRefresherRoutesCN20RefreshAndPersistsExpiry(t *testing.T) {
 			"security_oauth_token": "old-cosy-token",
 			"refresh_token":        "cn-refresh",
 			"machine_id":           "machine-1",
+			"machine_token":        "legacy-machine-token",
+			"machine_type":         "legacy-machine-type",
 			"uid":                  "uid-1",
 		},
 	}
@@ -233,6 +237,8 @@ func TestQoderTokenRefresherRoutesCN20RefreshAndPersistsExpiry(t *testing.T) {
 	require.Equal(t, "cn", credentials["site"])
 	require.Equal(t, qoder.RefreshModeQoderCN20, credentials["refresh_mode"])
 	require.Equal(t, expiresAt.Format(time.RFC3339), credentials["expires_at"])
+	require.NotContains(t, credentials, "machine_token")
+	require.NotContains(t, credentials, "machine_type")
 }
 
 func TestQoderTokenRefresherRoutesCNManualCosyRefresh(t *testing.T) {

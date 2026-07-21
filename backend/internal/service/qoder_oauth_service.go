@@ -236,20 +236,19 @@ func (s *QoderOAuthService) GenerateAuthURLForSite(ctx context.Context, site qod
 		return nil, err
 	}
 
+	// 国内站必须复用授权 URL 中的 UUID machine_id，并保持其余机器字段为空。
+	machine := qoder.NewMachineForSite(profile.Site)
+	machine.MachineID = req.MachineID
 	session := &qoderOAuthSession{
 		State:        state,
 		Nonce:        req.Nonce,
 		CodeVerifier: req.CodeVerifier,
-		Machine: &qoder.MachineIdentity{
-			MachineID:    req.MachineID,
-			MachineToken: qoder.RandomToken(50),
-			MachineType:  qoder.RandomHex(18),
-		},
-		AuthURL:   req.AuthorizationURL(),
-		Site:      profile.Site,
-		Profile:   profile,
-		ProxyURL:  proxyURL,
-		CreatedAt: time.Now(),
+		Machine:      machine,
+		AuthURL:      req.AuthorizationURL(),
+		Site:         profile.Site,
+		Profile:      profile,
+		ProxyURL:     proxyURL,
+		CreatedAt:    time.Now(),
 	}
 	s.sessionStore.Set(sessionID, session)
 
@@ -508,7 +507,7 @@ func buildQoderTokenInfoForSite(
 		identity = &qoder.AuthIdentity{UserType: "personal_standard"}
 	}
 	if machine == nil {
-		machine = qoder.NewMachine()
+		machine = qoder.NewMachineForSite(site)
 	}
 	extra := map[string]any{}
 	if userErr != nil {
