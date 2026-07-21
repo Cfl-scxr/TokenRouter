@@ -1501,7 +1501,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Codex 图片工具统一策略（自动注入 + 客户端显式携带） -->
+      <!-- OpenAI Codex hosted image_generation 桥接策略 -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
