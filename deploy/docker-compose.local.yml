@@ -25,10 +25,18 @@ services:
   # ===========================================================================
   sub2api:
     image: ghcr.io/tokenflux/tokenrouter:latest
+    # 重建前始终刷新 latest，避免容器内在线更新后从旧本地镜像回退。
+    pull_policy: always
     container_name: sub2api
     restart: unless-stopped
-    # 限制主应用容器最多使用 64 GiB 内存，避免单容器耗尽宿主机内存
-    mem_limit: 64g
+    # 为主应用保留足够峰值余量，同时避免异常分配耗尽整台虚机。
+    mem_limit: 12g
+    memswap_limit: 12g
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
     ulimits:
       nofile:
         soft: 100000
@@ -56,6 +64,7 @@ services:
       - SERVER_MODE=${SERVER_MODE:-release}
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
+      - GOMEMLIMIT=${GOMEMLIMIT:-8GiB}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -195,6 +204,14 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
+    # 限制 PostgreSQL 进程及其所属文件页缓存，避免数据库工作集占满虚机。
+    mem_limit: 24g
+    memswap_limit: 24g
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
     ulimits:
       nofile:
         soft: 100000
@@ -226,6 +243,14 @@ services:
     image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    # Redis 当前工作集较小，2 GiB 上限为异常增长保留余量。
+    mem_limit: 2g
+    memswap_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     ulimits:
       nofile:
         soft: 100000

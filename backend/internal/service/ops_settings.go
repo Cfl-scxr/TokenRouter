@@ -363,6 +363,8 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		DataRetention: OpsDataRetentionSettings{
 			CleanupEnabled:             false,
 			CleanupSchedule:            opsCleanupDefaultSchedule,
+			CleanupBatchSize:           opsCleanupDefaultBatchSize,
+			CleanupPauseMS:             int(opsCleanupDefaultBatchPause / time.Millisecond),
 			ErrorLogRetentionDays:      30,
 			MinuteMetricsRetentionDays: 30,
 			HourlyMetricsRetentionDays: 30,
@@ -392,6 +394,12 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
 	if cfg.DataRetention.CleanupSchedule == "" {
 		cfg.DataRetention.CleanupSchedule = opsCleanupDefaultSchedule
+	}
+	if cfg.DataRetention.CleanupBatchSize <= 0 {
+		cfg.DataRetention.CleanupBatchSize = opsCleanupDefaultBatchSize
+	}
+	if cfg.DataRetention.CleanupPauseMS <= 0 {
+		cfg.DataRetention.CleanupPauseMS = int(opsCleanupDefaultBatchPause / time.Millisecond)
 	}
 	// 保留天数：0 表示每次定时清理全部（清空所有），> 0 表示按天数保留；
 	// 仅在拿到非法的负数时回填默认值，避免覆盖用户主动设的 0。
@@ -434,6 +442,12 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 	}
 	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
 		return errors.New("hourly_metrics_retention_days must be between 0 and 365")
+	}
+	if cfg.DataRetention.CleanupBatchSize != 0 && (cfg.DataRetention.CleanupBatchSize < 100 || cfg.DataRetention.CleanupBatchSize > 5000) {
+		return errors.New("cleanup_batch_size must be between 100 and 5000")
+	}
+	if cfg.DataRetention.CleanupPauseMS != 0 && (cfg.DataRetention.CleanupPauseMS < 1 || cfg.DataRetention.CleanupPauseMS > 2000) {
+		return errors.New("cleanup_pause_ms must be between 1 and 2000")
 	}
 	if cfg.AutoRefreshIntervalSec < 15 || cfg.AutoRefreshIntervalSec > 300 {
 		return errors.New("auto_refresh_interval_seconds must be between 15 and 300")

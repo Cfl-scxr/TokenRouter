@@ -74,6 +74,28 @@
             <input v-model="s3Form.force_path_style" type="checkbox" />
             <span>{{ t('admin.backup.s3.forcePathStyle') }}</span>
           </label>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.s3.uploadMode') }}</label>
+            <div class="inline-flex border border-gray-200 bg-gray-50 p-1 text-sm dark:border-dark-700 dark:bg-dark-900">
+              <button
+                type="button"
+                class="px-3 py-1.5 font-medium transition"
+                :class="s3Form.upload_mode === 'multipart' ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'"
+                @click="s3Form.upload_mode = 'multipart'"
+              >
+                {{ t('admin.backup.s3.uploadModeMultipart') }}
+              </button>
+              <button
+                type="button"
+                class="px-3 py-1.5 font-medium transition"
+                :class="s3Form.upload_mode === 'spooled_put' ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'"
+                @click="s3Form.upload_mode = 'spooled_put'"
+              >
+                {{ t('admin.backup.s3.uploadModeSpooled') }}
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.s3.uploadModeHint') }}</p>
+          </div>
           </div>
         </div>
         <div class="mt-4 flex flex-wrap gap-2">
@@ -382,6 +404,7 @@ const storageForm = ref<BackupStorageConfig>({
     secret_access_key: '',
     prefix: 'backups/',
     force_path_style: false,
+    upload_mode: 'spooled_put',
   },
 })
 const s3Form = ref<BackupS3Config>({
@@ -392,6 +415,7 @@ const s3Form = ref<BackupS3Config>({
   secret_access_key: '',
   prefix: 'backups/',
   force_path_style: false,
+  upload_mode: 'spooled_put',
 })
 const s3SecretConfigured = ref(false)
 const savingStorage = ref(false)
@@ -590,6 +614,7 @@ function normalizeS3Form(cfg?: Partial<BackupS3Config>): BackupS3Config {
     secret_access_key: '',
     prefix: cfg?.prefix || 'backups/',
     force_path_style: Boolean(cfg?.force_path_style),
+    upload_mode: cfg?.upload_mode === 'multipart' ? 'multipart' : 'spooled_put',
   }
 }
 

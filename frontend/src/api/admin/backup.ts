@@ -8,6 +8,7 @@ export interface BackupS3Config {
   secret_access_key?: string
   prefix: string
   force_path_style: boolean
+  upload_mode: 'multipart' | 'spooled_put'
 }
 
 export type BackupStorageType = 'local' | 's3'

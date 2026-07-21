@@ -115,6 +115,8 @@ type OpsOpenAIAccountQuotaAutoPauseSettings struct {
 type OpsDataRetentionSettings struct {
 	CleanupEnabled             bool   `json:"cleanup_enabled"`
 	CleanupSchedule            string `json:"cleanup_schedule"`
+	CleanupBatchSize           int    `json:"cleanup_batch_size"`
+	CleanupPauseMS             int    `json:"cleanup_pause_ms"`
 	ErrorLogRetentionDays      int    `json:"error_log_retention_days"`
 	MinuteMetricsRetentionDays int    `json:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int    `json:"hourly_metrics_retention_days"`

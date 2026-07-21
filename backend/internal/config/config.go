@@ -1394,13 +1394,16 @@ type OpsConfig struct {
 }
 
 type OpsCleanupConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Schedule string `mapstructure:"schedule"`
+	Enabled      bool   `mapstructure:"enabled"`
+	Schedule     string `mapstructure:"schedule"`
+	BatchSize    int    `mapstructure:"batch_size"`
+	BatchPauseMS int    `mapstructure:"batch_pause_ms"`
 
 	// Retention days (0 disables that cleanup target).
 	//
 	// vNext requirement: default 30 days across ops datasets.
 	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
+	SystemLogRetentionDays     int `mapstructure:"system_log_retention_days"`
 	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
 }
@@ -1983,9 +1986,12 @@ func setDefaults() {
 	viper.SetDefault("ops.enabled", true)
 	viper.SetDefault("ops.use_preaggregated_tables", true)
 	viper.SetDefault("ops.cleanup.enabled", true)
-	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
+	viper.SetDefault("ops.cleanup.schedule", "0 3 * * *")
+	viper.SetDefault("ops.cleanup.batch_size", 1000)
+	viper.SetDefault("ops.cleanup.batch_pause_ms", 200)
 	// Retention days: vNext defaults to 30 days across ops datasets.
 	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
+	viper.SetDefault("ops.cleanup.system_log_retention_days", 30)
 	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
 	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
 	viper.SetDefault("ops.aggregation.enabled", true)
@@ -3197,6 +3203,9 @@ func (c *Config) Validate() error {
 	if c.Ops.Cleanup.ErrorLogRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.error_log_retention_days must be non-negative")
 	}
+	if c.Ops.Cleanup.SystemLogRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.system_log_retention_days must be non-negative")
+	}
 	if c.Ops.Cleanup.MinuteMetricsRetentionDays < 0 {
 		return fmt.Errorf("ops.cleanup.minute_metrics_retention_days must be non-negative")
 	}
@@ -3205,6 +3214,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
 		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
+	}
+	if c.Ops.Cleanup.BatchSize < 100 || c.Ops.Cleanup.BatchSize > 5000 {
+		return fmt.Errorf("ops.cleanup.batch_size must be between 100 and 5000")
+	}
+	if c.Ops.Cleanup.BatchPauseMS < 1 || c.Ops.Cleanup.BatchPauseMS > 2000 {
+		return fmt.Errorf("ops.cleanup.batch_pause_ms must be between 1 and 2000")
 	}
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")

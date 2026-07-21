@@ -177,7 +177,8 @@ func TestResetRuntimeLogConfig_ShouldFallbackToBaseline(t *testing.T) {
 			},
 			Ops: config.OpsConfig{
 				Cleanup: config.OpsCleanupConfig{
-					ErrorLogRetentionDays: 45,
+					ErrorLogRetentionDays:  7,
+					SystemLogRetentionDays: 45,
 				},
 			},
 		},
@@ -378,11 +379,12 @@ func TestDefaultNormalizeAndValidateRuntimeLogConfig(t *testing.T) {
 		},
 		Ops: config.OpsConfig{
 			Cleanup: config.OpsCleanupConfig{
-				ErrorLogRetentionDays: 7,
+				ErrorLogRetentionDays:  7,
+				SystemLogRetentionDays: 11,
 			},
 		},
 	})
-	if defaults.Level != "debug" || defaults.StacktraceLevel != "fatal" || defaults.RetentionDays != 7 {
+	if defaults.Level != "debug" || defaults.StacktraceLevel != "fatal" || defaults.RetentionDays != 11 {
 		t.Fatalf("unexpected defaults: %+v", defaults)
 	}
 
@@ -399,7 +401,7 @@ func TestDefaultNormalizeAndValidateRuntimeLogConfig(t *testing.T) {
 	if cfg.Level != "debug" || cfg.StacktraceLevel != "fatal" {
 		t.Fatalf("normalize level/stacktrace failed: %+v", cfg)
 	}
-	if cfg.SamplingInitial != 50 || cfg.SamplingNext != 20 || cfg.RetentionDays != 7 {
+	if cfg.SamplingInitial != 50 || cfg.SamplingNext != 20 || cfg.RetentionDays != 11 {
 		t.Fatalf("normalize numeric defaults failed: %+v", cfg)
 	}
 	if err := validateOpsRuntimeLogConfig(cfg); err != nil {

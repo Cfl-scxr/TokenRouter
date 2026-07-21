@@ -808,6 +808,8 @@ export interface OpsAdvancedSettings {
 export interface OpsDataRetentionSettings {
   cleanup_enabled: boolean
   cleanup_schedule: string
+  cleanup_batch_size: number
+  cleanup_pause_ms: number
   error_log_retention_days: number
   minute_metrics_retention_days: number
   hourly_metrics_retention_days: number

@@ -26,6 +26,12 @@ func TestGetOpsAdvancedSettings_DefaultHidesOpenAITokenStats(t *testing.T) {
 	if got := cfg.IgnoredStatusCodes; len(got) != 2 || got[0] != 401 || got[1] != 403 {
 		t.Fatalf("IgnoredStatusCodes = %#v, want [401 403]", got)
 	}
+	if cfg.DataRetention.CleanupSchedule != "0 3 * * *" {
+		t.Fatalf("CleanupSchedule = %q, want 0 3 * * *", cfg.DataRetention.CleanupSchedule)
+	}
+	if cfg.DataRetention.CleanupBatchSize != 1000 || cfg.DataRetention.CleanupPauseMS != 200 {
+		t.Fatalf("cleanup tuning = %d/%d, want 1000/200", cfg.DataRetention.CleanupBatchSize, cfg.DataRetention.CleanupPauseMS)
+	}
 	if repo.setCalls != 1 {
 		t.Fatalf("expected defaults to be persisted once, got %d", repo.setCalls)
 	}
@@ -102,6 +108,9 @@ func TestGetOpsAdvancedSettings_BackfillsNewDisplayFlagsFromDefaults(t *testing.
 	}
 	if got := cfg.IgnoredStatusCodes; len(got) != 2 || got[0] != 401 || got[1] != 403 {
 		t.Fatalf("IgnoredStatusCodes = %#v, want default backfill [401 403]", got)
+	}
+	if cfg.DataRetention.CleanupBatchSize != 1000 || cfg.DataRetention.CleanupPauseMS != 200 {
+		t.Fatalf("legacy cleanup tuning = %d/%d, want default backfill 1000/200", cfg.DataRetention.CleanupBatchSize, cfg.DataRetention.CleanupPauseMS)
 	}
 }
 
