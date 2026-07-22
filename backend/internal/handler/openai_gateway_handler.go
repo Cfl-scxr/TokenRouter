@@ -84,7 +84,7 @@ func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace
 }
 
 // resolveOpenAIChannelMappedImageIntent 先把客户端模型 R 映射为渠道模型 C，
-// 再使用 C 和映射后的请求体判断生图意图，供并发限制与账号能力选择共用。
+// 再返回映射后的请求体、渠道模型和宽泛意图，供显式门禁与转发提示分别使用。
 func resolveOpenAIChannelMappedImageIntent(
 	endpoint string,
 	requestedModel string,
@@ -350,15 +350,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 渠道模型 C 决定生图并发和账号端点能力，客户端模型 R 继续用于日志与会话语义。
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	forwardBody, _, imageIntent := resolveOpenAIChannelMappedImageIntent(
+	forwardBody, routingModel, forwardImageIntent := resolveOpenAIChannelMappedImageIntent(
 		"/v1/responses", reqModel, body, channelMapping, openAICompatibleRequestPlatform(apiKey), h.gatewayService.ReplaceModelInBody,
 	)
+	// 权限、并发和账号能力只看显式意图；宽泛意图继续供转发层处理工具与计费。
+	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", routingModel, forwardBody)
 	// 只有 HTTP Responses 入口会按账号开关进入自动透传，供 upstream 限制计算真实模型。
 	selectionCtx := service.WithOpenAIHTTPPassthroughRouting(c.Request.Context())
 	// 错误诊断也必须看到相同入口语义，避免把可透传模型误报为 model_not_found。
 	c.Request = c.Request.WithContext(selectionCtx)
 	if imageIntent {
-		// 生图家族限流依赖上下文标记，必须使用渠道映射后的意图结果。
+		// 生图家族限流依赖上下文标记，必须使用渠道映射后的显式意图结果。
 		selectionCtx = service.WithOpenAIImageGenerationIntent(selectionCtx)
 	}
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
@@ -378,7 +380,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 	}
 
-	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
+	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, forwardImageIntent)
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
@@ -441,6 +443,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
+	// 显式意图已按渠道模型 C 判断，被动 image_gen namespace 不会误过滤 CC-only 账号（#4476）。
 	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
 	if imageIntent && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
@@ -1658,12 +1661,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 首轮账号选择必须按渠道模型 C 判断生图能力，避免别名映射绕过 Responses 能力检查。
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
-	_, _, imageIntent := resolveOpenAIChannelMappedImageIntent(
+	mappedFirstMessage, routingModelWS, _ := resolveOpenAIChannelMappedImageIntent(
 		"/v1/responses", reqModel, firstMessage, channelMappingWS, openAICompatibleRequestPlatform(apiKey), h.gatewayService.ReplaceModelInBody,
 	)
+	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", routingModelWS, mappedFirstMessage)
 	initialSchedulingCtx := ctx
 	if imageIntent {
-		// 首轮账号选择也要遵守生图家族的模型级限流。
+		// 首轮账号选择也要遵守显式生图请求的模型级限流。
 		initialSchedulingCtx = service.WithOpenAIImageGenerationIntent(initialSchedulingCtx)
 	}
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
@@ -1802,6 +1806,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
 	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
+	// 首轮显式意图已按渠道模型 C 判断，被动 namespace 不会误过滤账号（#4476）。
 	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
 	if imageIntent && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
@@ -1938,9 +1943,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					requestedModel = reqModel
 				}
 				turnMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, requestedModel)
-				_, _, turnImageIntent := resolveOpenAIChannelMappedImageIntent(
+				mappedPayload, turnRoutingModel, _ := resolveOpenAIChannelMappedImageIntent(
 					"/v1/responses", requestedModel, payload, turnMapping, requestPlatform, h.gatewayService.ReplaceModelInBody,
 				)
+				turnImageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", turnRoutingModel, mappedPayload)
 				if turnImageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 					return "", service.NewOpenAIWSClientCloseError(
