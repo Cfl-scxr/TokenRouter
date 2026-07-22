@@ -120,7 +120,7 @@ func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
 }
 
-// DuplicateOperationID applies equality check predicate on the "duplicate_operation_id" field. It's identical to DuplicateOperationIDEQ.
+// DuplicateOperationID 对 duplicate_operation_id 字段应用等值检查谓词，等同于 DuplicateOperationIDEQ。
 func DuplicateOperationID(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
@@ -855,77 +855,77 @@ func StatusContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldStatus, v))
 }
 
-// DuplicateOperationIDEQ applies the EQ predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDEQ 对 duplicate_operation_id 字段应用 EQ 谓词。
 func DuplicateOperationIDEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDNEQ applies the NEQ predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDNEQ 对 duplicate_operation_id 字段应用 NEQ 谓词。
 func DuplicateOperationIDNEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDIn applies the In predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDIn 对 duplicate_operation_id 字段应用 In 谓词。
 func DuplicateOperationIDIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldIn(FieldDuplicateOperationID, vs...))
 }
 
-// DuplicateOperationIDNotIn applies the NotIn predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDNotIn 对 duplicate_operation_id 字段应用 NotIn 谓词。
 func DuplicateOperationIDNotIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldNotIn(FieldDuplicateOperationID, vs...))
 }
 
-// DuplicateOperationIDGT applies the GT predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDGT 对 duplicate_operation_id 字段应用 GT 谓词。
 func DuplicateOperationIDGT(v string) predicate.Group {
 	return predicate.Group(sql.FieldGT(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDGTE applies the GTE predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDGTE 对 duplicate_operation_id 字段应用 GTE 谓词。
 func DuplicateOperationIDGTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldGTE(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDLT applies the LT predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDLT 对 duplicate_operation_id 字段应用 LT 谓词。
 func DuplicateOperationIDLT(v string) predicate.Group {
 	return predicate.Group(sql.FieldLT(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDLTE applies the LTE predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDLTE 对 duplicate_operation_id 字段应用 LTE 谓词。
 func DuplicateOperationIDLTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDContains applies the Contains predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDContains 对 duplicate_operation_id 字段应用 Contains 谓词。
 func DuplicateOperationIDContains(v string) predicate.Group {
 	return predicate.Group(sql.FieldContains(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDHasPrefix applies the HasPrefix predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDHasPrefix 对 duplicate_operation_id 字段应用 HasPrefix 谓词。
 func DuplicateOperationIDHasPrefix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasPrefix(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDHasSuffix applies the HasSuffix predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDHasSuffix 对 duplicate_operation_id 字段应用 HasSuffix 谓词。
 func DuplicateOperationIDHasSuffix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasSuffix(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDIsNil applies the IsNil predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDIsNil 对 duplicate_operation_id 字段应用 IsNil 谓词。
 func DuplicateOperationIDIsNil() predicate.Group {
 	return predicate.Group(sql.FieldIsNull(FieldDuplicateOperationID))
 }
 
-// DuplicateOperationIDNotNil applies the NotNil predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDNotNil 对 duplicate_operation_id 字段应用 NotNil 谓词。
 func DuplicateOperationIDNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldDuplicateOperationID))
 }
 
-// DuplicateOperationIDEqualFold applies the EqualFold predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDEqualFold 对 duplicate_operation_id 字段应用 EqualFold 谓词。
 func DuplicateOperationIDEqualFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldEqualFold(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
+// DuplicateOperationIDContainsFold 对 duplicate_operation_id 字段应用 ContainsFold 谓词。
 func DuplicateOperationIDContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
 }

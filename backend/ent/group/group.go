@@ -42,7 +42,7 @@ const (
 	FieldIsDefault = "is_default"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
+	// FieldDuplicateOperationID 保存数据库中 duplicate_operation_id 字段的名称。
 	FieldDuplicateOperationID = "duplicate_operation_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
@@ -301,7 +301,7 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
+	// DuplicateOperationIDValidator 是 duplicate_operation_id 字段的校验器，由构建器在保存前调用。
 	DuplicateOperationIDValidator func(string) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
@@ -434,7 +434,7 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
-// ByDuplicateOperationID orders the results by the duplicate_operation_id field.
+// ByDuplicateOperationID 按 duplicate_operation_id 字段对结果排序。
 func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDuplicateOperationID, opts...).ToFunc()
 }

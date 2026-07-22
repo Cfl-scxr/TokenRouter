@@ -327,7 +327,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 }
 
 // Duplicate 创建停用状态的分组副本，并保留源分组的账号绑定。
-// POST /api/v1/admin/groups/:id/duplicate
+// 接口：POST /api/v1/admin/groups/:id/duplicate。
 func (h *GroupHandler) Duplicate(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || groupID <= 0 {

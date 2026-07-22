@@ -201,13 +201,13 @@ func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	return _c
 }
 
-// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+// SetDuplicateOperationID 设置 duplicate_operation_id 字段。
 func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
 	_c.mutation.SetDuplicateOperationID(v)
 	return _c
 }
 
-// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
+// SetNillableDuplicateOperationID 在给定值非 nil 时设置 duplicate_operation_id 字段。
 func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetDuplicateOperationID(*v)

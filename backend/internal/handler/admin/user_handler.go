@@ -617,7 +617,7 @@ type BatchUpdateLimitsRequest struct {
 }
 
 // BatchUpdateLimits 批量覆盖多个用户的并发数和/或 RPM 上限。
-// POST /api/v1/admin/users/batch-limits
+// 接口：POST /api/v1/admin/users/batch-limits。
 func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 	var req BatchUpdateLimitsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

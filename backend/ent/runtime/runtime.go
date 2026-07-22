@@ -913,9 +913,9 @@ func init() {
 	group.DefaultStatus = groupDescStatus.Default.(string)
 	// group.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	group.StatusValidator = groupDescStatus.Validators[0].(func(string) error)
-	// groupDescDuplicateOperationID is the schema descriptor for duplicate_operation_id field.
+	// groupDescDuplicateOperationID 是 duplicate_operation_id 字段的模式描述符。
 	groupDescDuplicateOperationID := groupFields[10].Descriptor()
-	// group.DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
+	// group.DuplicateOperationIDValidator 是 duplicate_operation_id 字段的校验器，由构建器在保存前调用。
 	group.DuplicateOperationIDValidator = groupDescDuplicateOperationID.Validators[0].(func(string) error)
 	// groupDescPlatform is the schema descriptor for platform field.
 	groupDescPlatform := groupFields[11].Descriptor()

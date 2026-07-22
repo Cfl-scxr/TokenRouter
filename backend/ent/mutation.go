@@ -19652,12 +19652,12 @@ func (m *GroupMutation) ResetStatus() {
 	m.status = nil
 }
 
-// SetDuplicateOperationID sets the "duplicate_operation_id" field.
+// SetDuplicateOperationID 设置 duplicate_operation_id 字段。
 func (m *GroupMutation) SetDuplicateOperationID(s string) {
 	m.duplicate_operation_id = &s
 }
 
-// DuplicateOperationID returns the value of the "duplicate_operation_id" field in the mutation.
+// DuplicateOperationID 返回变更中 duplicate_operation_id 字段的值。
 func (m *GroupMutation) DuplicateOperationID() (r string, exists bool) {
 	v := m.duplicate_operation_id
 	if v == nil {
@@ -19666,9 +19666,9 @@ func (m *GroupMutation) DuplicateOperationID() (r string, exists bool) {
 	return *v, true
 }
 
-// OldDuplicateOperationID returns the old "duplicate_operation_id" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+// OldDuplicateOperationID 返回 Group 实体中 duplicate_operation_id 字段的旧值。
+// 如果构建器未提供 Group 对象，则从数据库获取该对象。
+// 当变更操作不是 UpdateOne 或数据库查询失败时返回错误。
 func (m *GroupMutation) OldDuplicateOperationID(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldDuplicateOperationID is only allowed on UpdateOne operations")
@@ -19683,19 +19683,19 @@ func (m *GroupMutation) OldDuplicateOperationID(ctx context.Context) (v *string,
 	return oldValue.DuplicateOperationID, nil
 }
 
-// ClearDuplicateOperationID clears the value of the "duplicate_operation_id" field.
+// ClearDuplicateOperationID 清除 duplicate_operation_id 字段的值。
 func (m *GroupMutation) ClearDuplicateOperationID() {
 	m.duplicate_operation_id = nil
 	m.clearedFields[group.FieldDuplicateOperationID] = struct{}{}
 }
 
-// DuplicateOperationIDCleared returns if the "duplicate_operation_id" field was cleared in this mutation.
+// DuplicateOperationIDCleared 返回本次变更是否已清除 duplicate_operation_id 字段。
 func (m *GroupMutation) DuplicateOperationIDCleared() bool {
 	_, ok := m.clearedFields[group.FieldDuplicateOperationID]
 	return ok
 }
 
-// ResetDuplicateOperationID resets all changes to the "duplicate_operation_id" field.
+// ResetDuplicateOperationID 重置 duplicate_operation_id 字段的全部变更。
 func (m *GroupMutation) ResetDuplicateOperationID() {
 	m.duplicate_operation_id = nil
 	delete(m.clearedFields, group.FieldDuplicateOperationID)
