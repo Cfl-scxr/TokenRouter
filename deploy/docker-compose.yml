@@ -269,14 +269,16 @@ services:
         hard: 100000
     volumes:
       - redis_data:/data
+    # command 是传给内层 `sh -c` 的一段带引号脚本；Compose 会保留其中的换行。
+    # 每个参数行都必须以 `\` 续行，否则首行会单独启动不带任何参数的 redis-server。
     command: >
       sh -c '
-        redis-server
-        --save 60 1
-        --appendonly yes
-        --appendfsync everysec
-        --maxmemory ${REDIS_MAXMEMORY:-1536mb}
-        --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-noeviction}
+        redis-server \
+        --save 60 1 \
+        --appendonly yes \
+        --appendfsync everysec \
+        --maxmemory ${REDIS_MAXMEMORY:-1536mb} \
+        --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-noeviction} \
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
       - TZ=${TZ:-Asia/Shanghai}
