@@ -1504,12 +1504,17 @@ func (a *Account) GetGrokBaseURL() string {
 }
 
 // GetGrokMediaBaseURL 返回 Grok Imagine 媒体接口使用的上游地址。
-// 当前解析规则与文本流量一致，独立访问器用于在调用点保留媒体与文本的语义边界。
+// CLI 订阅网关会拒绝较大的 Base64 请求体，因此 OAuth 文本流量解析到 CLI 网关时，
+// 媒体改走 api.x.ai；手工选择的官方、区域或自定义端点仍原样用于媒体。
 func (a *Account) GetGrokMediaBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	return a.GetGrokBaseURL()
+	baseURL := a.GetGrokBaseURL()
+	if a.IsGrokOAuth() && isGrokCLIProxyTarget(baseURL) {
+		return xai.DefaultBaseURL
+	}
+	return baseURL
 }
 
 func (a *Account) GetGrokAccessToken() string {
