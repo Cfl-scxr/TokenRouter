@@ -961,6 +961,9 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"auto_pause_7d_disabled",
 		"model_rate_limits",
 		service.UpstreamBillingProbeExtraKey,
+		// 媒体资格判定依赖显式覆盖和精简计费观测，调度缓存不得丢失。
+		service.GrokMediaEligibleExtraKey,
+		"grok_billing_snapshot",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
