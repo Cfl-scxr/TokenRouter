@@ -284,6 +284,11 @@ func appendMissingGrokFreeCacheNativeTools(body []byte) ([]byte, error) {
 	if !hasFunction {
 		return body, nil
 	}
+	// 仅当请求已有原生或函数形式的搜索工具时补齐缺失项；纯客户端函数工具
+	// （例如 view_image）不能触发注入，否则会干扰模型的工具选择。
+	if !present["web_search"] && !present["x_search"] {
+		return body, nil
+	}
 	for _, toolType := range []string{"web_search", "x_search"} {
 		if present[toolType] {
 			continue
