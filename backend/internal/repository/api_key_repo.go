@@ -1076,6 +1076,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		IsDefault:                       g.IsDefault,
 		Status:                          g.Status,
 		Hydrated:                        true,
+		DuplicateOperationID:            derefString(g.DuplicateOperationID),
 		DataSharingEnabled:              g.DataSharingEnabled,
 		SessionIsolationEnabled:         g.SessionIsolationEnabled,
 		AllowImageGeneration:            g.AllowImageGeneration,

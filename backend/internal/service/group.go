@@ -31,6 +31,9 @@ type Group struct {
 	IsDefault          bool
 	Status             string
 	Hydrated           bool // indicates the group was loaded from a trusted repository source
+	// DuplicateOperationID 仅用于恢复已提交的一键复制结果，不得映射到 API DTO。
+	DuplicateOperationID string
+
 	// DataSharingEnabled 表示该分组产生的 Agent session 是否进入数据共享采集流程。
 	DataSharingEnabled bool
 	// SessionIsolationEnabled 表示目标分组是否拒绝其它分组已归属的显式会话切入。
