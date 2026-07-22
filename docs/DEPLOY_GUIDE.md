@@ -328,6 +328,17 @@ default:
 
 ### OpenAI Responses WebSocket 首消息超时
 
+账号级 WS mode（包括 `http_bridge`）仅在新版 mode router 开启时生效。关闭该开关时，
+账号级 mode 会被忽略，网关继续使用 legacy `ctx_pool` 行为。可通过 YAML 开启：
+
+```yaml
+gateway:
+  openai_ws:
+    mode_router_v2_enabled: true
+```
+
+也可设置环境变量 `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true`。
+
 `gateway.openai_ws.client_first_message_timeout_seconds` 限制 WebSocket 升级后完整读取并
 解压首条客户端 `response.create` 消息的总时间，默认 30 秒。大上下文、图片较多或慢链路
 场景可调高到 120-300 秒。该截止时间在 HTTP bridge 路由判断前生效，bridge 模式不会绕过它。
