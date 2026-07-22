@@ -1777,6 +1777,10 @@ func (r *stubUserRepo) BatchAddConcurrency(ctx context.Context, userIDs []int64,
 	return 0, nil
 }
 
+func (r *stubUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
+
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return false, errors.New("not implemented")
 }

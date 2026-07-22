@@ -29,6 +29,7 @@ export default {
     yes: 'Yes',
     no: 'No',
     all: 'All',
+    selectAll: 'Select all',
     none: 'None',
     or: 'or',
     noData: 'No data',

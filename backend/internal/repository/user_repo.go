@@ -924,6 +924,44 @@ func (r *userRepository) BatchAddConcurrency(ctx context.Context, userIDs []int6
 	return int(affected), nil
 }
 
+// BatchUpdateLimits 在单条 SQL 中覆盖指定用户已提供的并发数与 RPM 上限。
+func (r *userRepository) BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error) {
+	if len(userIDs) == 0 || (concurrency == nil && rpmLimit == nil) {
+		return 0, nil
+	}
+	sqlq := r.sqlExecutorFromContext(ctx)
+	if sqlq == nil {
+		return 0, fmt.Errorf("sql executor is not configured")
+	}
+
+	setClauses := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if concurrency != nil {
+		value := max(*concurrency, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("concurrency = $%d", len(args)))
+	}
+	if rpmLimit != nil {
+		value := max(*rpmLimit, 0)
+		args = append(args, value)
+		setClauses = append(setClauses, fmt.Sprintf("rpm_limit = $%d", len(args)))
+	}
+	setClauses = append(setClauses, "updated_at = NOW()")
+	args = append(args, pq.Array(userIDs))
+
+	query := fmt.Sprintf(
+		"UPDATE users SET %s WHERE id = ANY($%d) AND deleted_at IS NULL",
+		strings.Join(setClauses, ", "),
+		len(args),
+	)
+	res, err := sqlq.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("batch update user limits: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	client := clientFromContext(ctx, r.client)
 	return client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)

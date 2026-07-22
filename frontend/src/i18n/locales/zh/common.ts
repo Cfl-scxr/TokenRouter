@@ -29,6 +29,7 @@ export default {
     yes: '是',
     no: '否',
     all: '全部',
+    selectAll: '全选',
     none: '无',
     or: '或',
     noData: '暂无数据',

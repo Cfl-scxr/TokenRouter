@@ -112,6 +112,8 @@ type UserRepository interface {
 	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
 	// BatchAddConcurrency 批量增减用户并发数，结果不会低于 0。
 	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
+	// BatchUpdateLimits 在一次写入中只覆盖非 nil 的用户限制字段。
+	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	ExistsByNormalizedEmail(ctx context.Context, normalizedEmail string) (bool, error)
 	LockRegistrationEmail(ctx context.Context, normalizedEmail string) error
