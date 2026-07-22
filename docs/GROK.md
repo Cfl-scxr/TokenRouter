@@ -13,6 +13,16 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 
 管理员可在控制台选择 OAuth 或 API Key 创建账号。OAuth 账号可通过控制台创建或重新授权；创建 Grok 分组并绑定账号后，用户即可生成分组 API Key。
 
+## 媒体请求格式
+
+JSON 图片编辑和视频生成请求可在 `image`、`images`、`reference_images` 与 `mask` 对象中提供参考图片。与 xAI 直接兼容的请求应使用 `url` 字段；历史 `image_url` 字段仍可使用，TokenRouter 会在转发前把它规范化为 `url`。如果两者同时存在，则保留非空的 `url`；空白 `url` 会回退使用 `image_url`。multipart 图片编辑中的上传文件也会转换为 `url` 形式的 data URL。
+
+## 媒体账号资格
+
+新的 Grok 图片或视频生成请求会执行媒体专用的账号资格检查。如果 OAuth 账号最近记录的每周或每月计费探测返回 `403`，该账号将不会承接新的媒体生成请求；聊天请求和已有视频任务的状态查询不受这项隔离影响。当分组中没有合格账号时，媒体端点返回 HTTP `503`，错误类型为 `grok_media_no_eligible_account`，不会继续请求已知不合格的账号。
+
+管理员可通过账号创建或更新 API 的 `extra.grok_media_eligible` 覆盖自动判定：`false` 表示排除，`true` 表示强制允许；更新时传 `null` 可删除覆盖并恢复基于探测结果的自动判定，省略该字段则保留现有覆盖。为保持兼容，缺少计费观测时仍允许调度；仅出现每周用量周期并不代表账号不具备媒体资格。
+
 ## 客户端配置
 
 用户可在 API Key 页面通过“使用密钥”生成 Grok Build CLI 或 OpenCode 配置。现有 `config.toml` 应先备份，再合并新模型配置。
