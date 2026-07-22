@@ -219,6 +219,21 @@ func (s *GrokQuotaService) ProbeBilling(ctx context.Context, accountID int64) (*
 	})
 }
 
+// ProbeMediaEligibility 刷新计费状态，并按媒体调度使用的持久化账号快照重新判断资格。
+// 探测失败时保持拒绝；禁止访问或 Free 等确定状态作为普通的不合格结果返回。
+func (s *GrokQuotaService) ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error) {
+	_, probeErr := s.ProbeBilling(ctx, accountID)
+	account, err := s.loadGrokOAuthAccount(ctx, accountID)
+	if err != nil {
+		return false, "billing_probe_failed", err
+	}
+	eligible, reason := account.GrokMediaGenerationEligibility()
+	if reason == "billing_unobserved" && probeErr != nil {
+		return false, reason, probeErr
+	}
+	return eligible, reason, nil
+}
+
 func (s *GrokQuotaService) probeBilling(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
 	account, token, proxyURL, err := s.prepareProbe(ctx, accountID)
 	if err != nil {

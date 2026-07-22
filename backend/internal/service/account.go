@@ -1624,8 +1624,10 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		case OpenAIEndpointCapabilityChatCompletions:
 			return true
 		case OpenAIEndpointCapabilityGrokMediaGeneration:
-			eligible, _ := a.GrokMediaGenerationEligibility()
-			return eligible
+			eligible, reason := a.GrokMediaGenerationEligibility()
+			// 尚无观测的 OAuth 账号仍作为调度候选，供请求路径在转发前执行计费探测。
+			// 如果探测不可用或无法提供明确的付费资格证据，转发门控会拒绝该账号。
+			return eligible || reason == "billing_unobserved"
 		default:
 			return false
 		}
@@ -1670,7 +1672,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 }
 
 // GrokMediaGenerationEligibility 判断 Grok 账号能否承接新的图片或视频生成请求。
-// 缺失观测时保留历史放行行为；显式覆盖优先于可能过期的探测数据。
+// OAuth 媒体必须有明确的付费资格观测，否则按拒绝处理；管理员显式覆盖优先于探测数据。
 func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
 	if a == nil || !a.IsGrok() {
 		return false, "not_grok"
@@ -1687,10 +1689,16 @@ func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
 
 	billing, err := grokBillingSnapshotFromExtra(a.Extra)
 	if err != nil || billing == nil {
-		return true, "billing_unobserved"
+		return false, "billing_unobserved"
 	}
 	if billing.StatusCode == 403 || billing.WeeklyStatusCode == 403 || billing.MonthlyStatusCode == 403 {
 		return false, "billing_forbidden"
+	}
+	if isKnownGrokFreeAccount(a) {
+		return false, "billing_free_tier"
+	}
+	if !grokBillingHasAuthoritativeQuota(billing) {
+		return false, "billing_inconclusive"
 	}
 	return true, "eligible"
 }

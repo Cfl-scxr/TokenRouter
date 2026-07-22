@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/handler/admin"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 
@@ -82,6 +83,25 @@ func ProvideAdminHandlers(
 		CodexInviteReset:      codexInviteResetHandler,
 		AuditLog:              auditLogHandler,
 	}
+}
+
+// ProvideOpenAIGatewayHandler 创建并注入 Grok 媒体资格探测器。
+func ProvideOpenAIGatewayHandler(
+	gatewayService *service.OpenAIGatewayService,
+	concurrencyService *service.ConcurrencyService,
+	billingCacheService *service.BillingCacheService,
+	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	errorPassthroughService *service.ErrorPassthroughService,
+	contentModerationService *service.ContentModerationService,
+	opsService *service.OpsService,
+	grokQuotaService *service.GrokQuotaService,
+	cfg *config.Config,
+) *OpenAIGatewayHandler {
+	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
+		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
+	h.grokMediaEligibilityProber = grokQuotaService
+	return h
 }
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
@@ -175,7 +195,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementHandler,
 	NewModelMarketplaceHandler,
 	NewGatewayHandler,
-	NewOpenAIGatewayHandler,
+	ProvideOpenAIGatewayHandler,
 	NewQoderGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
