@@ -236,6 +236,60 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) 
 	require.Len(t, events, 2)
 }
 
+// Grok WS 的 HTTP bridge 必须与原生 Responses 使用相同的 Free 函数工具缓存路由。
+func TestProxyOpenAIWSHTTPBridgeTurnForGrokFreeFunctionToolsUsesMixedRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_grok_tools","model":"grok-4.5"}}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"resp_grok_tools","model":"grok-4.5","usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          73,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"base_url":          xai.DefaultCLIBaseURL,
+			"subscription_tier": "free",
+		},
+	}
+	payload := []byte(`{
+		"type":"response.create","generate":true,"stream":true,"input":"look up alpha",
+		"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+		"tool_choice":"auto"
+	}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", payload, len(payload),
+		"", "", "", "", "", "cache-id", 1,
+		func([]byte) error { return nil },
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	tools := gjson.GetBytes(upstream.lastBody, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "function", tools[0].Get("type").String())
+	require.Equal(t, "lookup", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+}
+
 func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

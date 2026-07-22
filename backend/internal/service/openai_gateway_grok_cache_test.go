@@ -241,6 +241,37 @@ func TestApplyGrokCacheIdentityAppendsNativeToolsToResponseFunctions(t *testing.
 	}
 }
 
+// Grok Build 可能把原生搜索工具声明成同名函数，缓存路由必须转换并去重。
+func TestGrokFreeFunctionToolCacheRouteConvertsNamedSearchFunctions(t *testing.T) {
+	account := healthyGrokOAuthGatewayTestAccount(916, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	intentBody := []byte(`{
+		"model":"grok",
+		"tools":[
+			{"type":"function","name":"lookup","parameters":{"type":"object"}},
+			{"type":"function","name":"web_search","parameters":{"type":"object"}},
+			{"type":"function","name":"web_search","parameters":{"type":"object"}},
+			{"type":"function","name":"x_search","parameters":{"type":"object"}}
+		],
+		"tool_choice":"auto"
+	}`)
+
+	patched, err := applyGrokFreeMessagesFunctionToolCacheRoute(intentBody, intentBody, account, "isolated-id")
+	require.NoError(t, err)
+	tools := gjson.GetBytes(patched, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "function", tools[0].Get("type").String())
+	require.Equal(t, "lookup", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.False(t, tools[1].Get("name").Exists())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.False(t, tools[2].Get("name").Exists())
+
+	second, err := applyGrokFreeMessagesFunctionToolCacheRoute(patched, intentBody, account, "isolated-id")
+	require.NoError(t, err)
+	require.JSONEq(t, string(patched), string(second))
+}
+
 func TestApplyGrokCacheIdentityRequiresPatchedFunctionTools(t *testing.T) {
 	account := healthyGrokOAuthGatewayTestAccount(902, "access-token")
 	account.Credentials["subscription_tier"] = "free"

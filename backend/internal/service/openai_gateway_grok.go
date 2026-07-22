@@ -74,6 +74,12 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if err != nil {
 		return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
 	}
+	// Free OAuth 携带客户端函数工具时复用 Messages 混合工具缓存路由，补齐
+	// web_search/x_search，避免 xAI 强制落到不可缓存的 build-free 层级。
+	patchedBody, err = applyGrokFreeMessagesFunctionToolCacheRoute(patchedBody, body, account, cacheIdentity)
+	if err != nil {
+		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
+	}
 
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {

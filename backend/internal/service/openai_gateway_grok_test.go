@@ -1280,6 +1280,57 @@ func TestForwardGrokResponsesNonStreamingUsesCacheIdentityAndCachedUsage(t *test
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 }
 
+// 原生 Responses 的 Free OAuth 函数工具请求必须在实际转发前补齐可缓存原生工具。
+func TestForwardGrokResponsesFreeFunctionToolsUseCacheCapableMixedRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{
+		"model":"grok","input":"look up alpha","stream":false,
+		"tools":[
+			{"type":"function","name":"lookup","parameters":{"type":"object"}},
+			{"type":"function","name":"web_search","parameters":{"type":"object"}}
+		],
+		"tool_choice":"auto"
+	}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 5204})
+
+	account := healthyGrokOAuthGatewayTestAccount(60, "access-token")
+	account.Credentials["subscription_tier"] = "free"
+	repo := &grokQuotaAccountRepo{
+		mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+			accountsByID: map[int64]*Account{60: account},
+		},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_grok_tools","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":5,"output_tokens":1}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		httpUpstream:      upstream,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		accountRepo:       repo,
+	}
+
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", false, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	tools := gjson.GetBytes(upstream.lastBody, "tools").Array()
+	require.Len(t, tools, 3)
+	require.Equal(t, "function", tools[0].Get("type").String())
+	require.Equal(t, "lookup", tools[0].Get("name").String())
+	require.Equal(t, "web_search", tools[1].Get("type").String())
+	require.Equal(t, "x_search", tools[2].Get("type").String())
+	require.Equal(t, "auto", gjson.GetBytes(upstream.lastBody, "tool_choice").String())
+}
+
 func TestForwardGrokResponsesFailoverKeepsCacheIdentityAcrossAccounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

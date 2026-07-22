@@ -95,7 +95,8 @@ func isGrokRequestContext(c *gin.Context) bool {
 //
 // xAI 会把未携带原生搜索工具的免费 OAuth 请求路由到不可缓存的 build-free 模型。
 // 对原本无工具的请求添加原生工具并设置 tool_choice=none，可选择支持缓存的层级而不
-// 实际执行搜索；客户端明确提供的工具由下方仅适用于 Messages 的混合工具策略处理。
+// 实际执行搜索；客户端明确提供的函数工具由下方混合工具策略处理，该策略覆盖
+// Messages 桥接、原生 Responses 和 WS HTTP bridge。
 func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity string, injectFreeTierTools bool) ([]byte, error) {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
@@ -123,9 +124,9 @@ func applyGrokResponsesCacheIdentity(body, intentSourceBody []byte, identity str
 	return sjson.SetBytes(out, "tool_choice", grokFreeCacheDisabledToolChoice)
 }
 
-// applyGrokFreeMessagesFunctionToolCacheRoute 仅对 Anthropic Messages 桥接且已知
+// applyGrokFreeMessagesFunctionToolCacheRoute 对支持 Responses 函数工具的入口且已知
 // 为 Free 的账号启用 xAI 可缓存混合工具路由。auto 选择会允许原生工具被调用，因此不得
-// 将该策略隐式扩展到付费账号或其它入口协议。
+// 将该策略隐式扩展到付费账号、未知层级账号或其它工具结构。
 func applyGrokFreeMessagesFunctionToolCacheRoute(body, intentSourceBody []byte, account *Account, cacheIdentity string) ([]byte, error) {
 	if strings.TrimSpace(cacheIdentity) == "" || !isKnownGrokFreeAccount(account) {
 		return body, nil
@@ -249,17 +250,36 @@ func appendMissingGrokFreeCacheNativeTools(body []byte) ([]byte, error) {
 		toolType := strings.TrimSpace(tool.Get("type").String())
 		switch toolType {
 		case "function":
-			if !tool.IsObject() || strings.TrimSpace(tool.Get("name").String()) == "" || tool.Get("function").Exists() {
+			name := strings.TrimSpace(tool.Get("name").String())
+			if !tool.IsObject() || name == "" || tool.Get("function").Exists() {
 				return body, nil
 			}
+			// Grok Build 可能把搜索声明成函数工具；转换为原生工具后既能让 Free OAuth
+			// 保持可缓存路由，也能避免同名工具重复。
+			if name == "web_search" || name == "x_search" {
+				if present[name] {
+					continue
+				}
+				raw, err := json.Marshal(map[string]string{"type": name})
+				if err != nil {
+					return nil, err
+				}
+				merged = append(merged, raw)
+				present[name] = true
+				continue
+			}
 			hasFunction = true
+			merged = append(merged, json.RawMessage(tool.Raw))
 		case "web_search", "x_search":
-			// 重试该辅助函数时，原生工具可能已经存在。
+			// 重试该辅助函数时跳过已经存在的原生工具，保证转换操作幂等。
+			if present[toolType] {
+				continue
+			}
+			merged = append(merged, json.RawMessage(tool.Raw))
+			present[toolType] = true
 		default:
 			return body, nil
 		}
-		merged = append(merged, json.RawMessage(tool.Raw))
-		present[toolType] = true
 	}
 	if !hasFunction {
 		return body, nil
