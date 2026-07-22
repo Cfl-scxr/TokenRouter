@@ -266,7 +266,10 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokFreeFunctionToolsUsesMixedRoute(t *te
 	}
 	payload := []byte(`{
 		"type":"response.create","generate":true,"stream":true,"input":"look up alpha",
-		"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+		"tools":[
+			{"type":"function","name":"lookup","parameters":{"type":"object"}},
+			{"type":"function","name":"web_search","parameters":{"type":"object"}}
+		],
 		"tool_choice":"auto"
 	}`)
 	recorder := httptest.NewRecorder()
