@@ -376,6 +376,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		IgnoreCountTokensErrors:         true,  // count_tokens 404 是预期行为，默认忽略
 		IgnoreContextCanceled:           true,  // Default to true - client disconnects are not errors
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
+		IgnoreInvalidApiKeyErrors:       true,  // Legacy compatibility field; admission rejects are always excluded.
 		IgnoreInsufficientBalanceErrors: false, // 默认不忽略，余额不足可能需要关注
 		IgnoredStatusCodes:              DefaultOpsIgnoredStatusCodes(),
 		DisplayOpenAITokenStats:         false,
@@ -389,6 +390,9 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg == nil {
 		return
 	}
+	// 准入拒绝属于安全和流量问题，不属于运维请求错误类别。
+	// 为旧客户端保留值为 true 的历史字段，但不允许该字段重新启用这些记录。
+	cfg.IgnoreInvalidApiKeyErrors = true
 	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h)
 	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d)
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
@@ -517,32 +521,19 @@ func resolveOpsIgnoredStatusCodesFromRepo(ctx context.Context, repo SettingRepos
 }
 
 func (s *OpsService) GetOpsAdvancedSettings(ctx context.Context) (*OpsAdvancedSettings, error) {
-	defaultCfg := defaultOpsAdvancedSettings()
-	if s == nil || s.settingRepo == nil {
-		return defaultCfg, nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	_ = ctx
+	cfg := s.OpsAdvancedSettingsSnapshot()
+	return &cfg, nil
+}
 
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsAdvancedSettings)
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			if b, mErr := json.Marshal(defaultCfg); mErr == nil {
-				_ = s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(b))
-			}
-			return defaultCfg, nil
+// OpsAdvancedSettingsSnapshot 为请求热路径返回值副本，避免仓储 I/O 和指针逃逸分配。
+func (s *OpsService) OpsAdvancedSettingsSnapshot() OpsAdvancedSettings {
+	if s != nil {
+		if snapshot := s.runtimeSettings.Load(); snapshot != nil {
+			return snapshot.advanced
 		}
-		return nil, err
 	}
-
-	cfg := defaultOpsAdvancedSettings()
-	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
-		return defaultCfg, nil
-	}
-
-	normalizeOpsAdvancedSettings(cfg)
-	return cfg, nil
+	return *defaultOpsAdvancedSettings()
 }
 
 func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdvancedSettings) (*OpsAdvancedSettings, error) {
@@ -568,6 +559,7 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 	}
+	s.storeAdvancedSettingsSnapshot(cfg)
 	// 将新的配额自动暂停设置直接写入 OpenAI 调度热路径读取的内存缓存，
 	// 让下一次请求立刻看到新值，不必等待后台刷新器的 TTL。
 	if s.quotaAutoPauseSink != nil {
