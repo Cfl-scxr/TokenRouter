@@ -58,6 +58,28 @@ func (r schedulerTestOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx c
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+// ListModelAvailabilityCandidates 模拟只按持久配置筛选模型诊断候选账号。
+func (r schedulerTestOpenAIAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	platformSet := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		platformSet[platform] = struct{}{}
+	}
+	result := make([]Account, 0, len(r.accounts))
+	for _, account := range r.accounts {
+		if _, ok := platformSet[account.Platform]; !ok || account.Status != StatusActive || !account.Schedulable {
+			continue
+		}
+		if groupID != nil && !openAIStickyAccountMatchesGroup(&account, groupID) {
+			continue
+		}
+		if groupID == nil && !includeGrouped && !openAIStickyAccountMatchesGroup(&account, nil) {
+			continue
+		}
+		result = append(result, account)
+	}
+	return result, nil
+}
+
 type schedulerGroupAwareOpenAIAccountRepo struct {
 	schedulerTestOpenAIAccountRepo
 }
