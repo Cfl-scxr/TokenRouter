@@ -155,3 +155,53 @@ func TestUpdateSettingsOmittedSecuritySwitchesKeepDisabled(t *testing.T) {
 	require.Equal(t, "false", repo.values[service.SettingKeyStepUpEnabled])
 	require.Equal(t, "false", repo.values[service.SettingKeySessionBindingEnabled])
 }
+
+// 旧客户端省略新字段时必须保留已有默认上限，不能把它静默改成 0。
+func TestUpdateSettingsOmittedDefaultUserAPIKeyLimitKeepsStoredValue(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyDefaultUserAPIKeyLimit: "33",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "33", repo.values[service.SettingKeyDefaultUserAPIKeyLimit])
+}
+
+// 显式 0 表示不限制，必须与省略字段区分。
+func TestUpdateSettingsExplicitZeroDefaultUserAPIKeyLimit(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyDefaultUserAPIKeyLimit: "33",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"default_user_api_key_limit": 0}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "0", repo.values[service.SettingKeyDefaultUserAPIKeyLimit])
+}
+
+// 负数设置在进入持久化前被拒绝，原值保持不变。
+func TestUpdateSettingsRejectsNegativeDefaultUserAPIKeyLimit(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyDefaultUserAPIKeyLimit: "33",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"default_user_api_key_limit": -1}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "INVALID_API_KEY_LIMIT")
+	require.Equal(t, "33", repo.values[service.SettingKeyDefaultUserAPIKeyLimit])
+}
+
+// 超过数据库 INTEGER 范围的默认值会导致后续注册失败，必须在保存前拒绝。
+func TestUpdateSettingsRejectsDefaultUserAPIKeyLimitAboveDatabaseRange(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyDefaultUserAPIKeyLimit: "33",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"default_user_api_key_limit": service.MaxUserAPIKeyLimit + 1}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "INVALID_API_KEY_LIMIT")
+	require.Equal(t, "33", repo.values[service.SettingKeyDefaultUserAPIKeyLimit])
+}

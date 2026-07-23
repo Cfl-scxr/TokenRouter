@@ -123,6 +123,16 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	} else if s.settingService != nil {
 		balance = s.settingService.GetDefaultBalance(ctx)
 	}
+	apiKeyLimit := DefaultUserAPIKeyLimit
+	if s.settingService != nil {
+		apiKeyLimit = s.settingService.GetDefaultUserAPIKeyLimit(ctx)
+	}
+	if input.APIKeyLimit != nil {
+		if !IsValidUserAPIKeyLimit(*input.APIKeyLimit) {
+			return nil, ErrUserAPIKeyLimitInvalid
+		}
+		apiKeyLimit = *input.APIKeyLimit
+	}
 
 	// 角色可由管理员在创建时指定(admin/user);未提供时默认 user。
 	role, err := normalizeUserRole(input.Role, RoleUser)
@@ -138,6 +148,7 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		Balance:              balance,
 		Concurrency:          input.Concurrency,
 		RPMLimit:             input.RPMLimit,
+		APIKeyLimit:          apiKeyLimit,
 		Status:               StatusActive,
 		AllowedGroups:        input.AllowedGroups,
 		DisabledPublicGroups: input.DisabledPublicGroups,
@@ -286,6 +297,12 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.RPMLimit != nil {
 		user.RPMLimit = *input.RPMLimit
+	}
+	if input.APIKeyLimit != nil {
+		if !IsValidUserAPIKeyLimit(*input.APIKeyLimit) {
+			return nil, ErrUserAPIKeyLimitInvalid
+		}
+		user.APIKeyLimit = *input.APIKeyLimit
 	}
 
 	if input.AllowedGroups != nil {

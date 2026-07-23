@@ -34,6 +34,8 @@ type User struct {
 
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制），仅在所用分组未设置 rpm_limit 时作为兜底生效。
 	RPMLimit int `json:"rpm_limit"`
+	// APIKeyLimit 用户可创建的 API Key 数量上限，0 表示不限制。
+	APIKeyLimit int `json:"api_key_limit"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`

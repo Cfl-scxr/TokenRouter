@@ -63,6 +63,8 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldAPIKeyLimit 保存数据库中 api_key_limit 字段的名称。
+	FieldAPIKeyLimit = "api_key_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -243,6 +245,7 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldAPIKeyLimit,
 }
 
 var (
@@ -318,6 +321,10 @@ var (
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultAPIKeyLimit 保存创建时 api_key_limit 字段的默认值。
+	DefaultAPIKeyLimit int
+	// APIKeyLimitValidator 是 api_key_limit 字段的校验器，由构建器在保存前调用。
+	APIKeyLimitValidator func(int) error
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -446,6 +453,11 @@ func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByAPIKeyLimit 按 api_key_limit 字段对结果排序。
+func ByAPIKeyLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIKeyLimit, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

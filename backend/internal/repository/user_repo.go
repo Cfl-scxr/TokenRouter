@@ -1381,6 +1381,7 @@ func (r *userRepository) updateWithClient(ctx context.Context, client *dbent.Cli
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
 		SetRpmLimit(userIn.RPMLimit).
+		SetAPIKeyLimit(userIn.APIKeyLimit).
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
@@ -1405,7 +1406,8 @@ func (r *userRepository) createWithClient(ctx context.Context, client *dbent.Cli
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
-		SetRpmLimit(userIn.RPMLimit)
+		SetRpmLimit(userIn.RPMLimit).
+		SetAPIKeyLimit(userIn.APIKeyLimit)
 	return createOp.Save(ctx)
 }
 

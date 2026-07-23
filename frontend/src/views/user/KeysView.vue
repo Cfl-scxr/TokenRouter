@@ -1967,7 +1967,12 @@ const submitKeyForm = async (
     closeModals()
     loadApiKeys()
   } catch (error: any) {
-    const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
+    const errorMsg = error?.reason === 'API_KEY_LIMIT_REACHED'
+      ? t('keys.apiKeyLimitReached', {
+          current: error?.metadata?.current ?? '?',
+          limit: error?.metadata?.limit ?? '?'
+        })
+      : error?.message || t('keys.failedToSave')
     appStore.showError(errorMsg)
     // 创建失败时不推进引导。
   } finally {

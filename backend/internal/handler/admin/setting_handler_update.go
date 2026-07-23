@@ -167,6 +167,7 @@ type UpdateSettingsRequest struct {
 	AffiliateRebatePerInviteeCap              float64                           `json:"affiliate_rebate_per_invitee_cap"`
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
+	DefaultUserAPIKeyLimit                    *int                              `json:"default_user_api_key_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	BalanceUnitName                           string                            `json:"balance_unit_name"`
 	BalanceUnitSymbol                         string                            `json:"balance_unit_symbol"`
@@ -430,6 +431,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	if req.DefaultUserAPIKeyLimit != nil && !service.IsValidUserAPIKeyLimit(*req.DefaultUserAPIKeyLimit) {
+		response.ErrorFrom(c, service.ErrUserAPIKeyLimitInvalid)
+		return
 	}
 	if req.AffiliateRebateRate < 0 {
 		req.AffiliateRebateRate = 0
@@ -1519,6 +1524,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return previousSettings.CyberSessionBlockTTLSeconds
 		}(),
 		DefaultUserRPMLimit:                  req.DefaultUserRPMLimit,
+		DefaultUserAPIKeyLimit:               intValueOrDefault(req.DefaultUserAPIKeyLimit, previousSettings.DefaultUserAPIKeyLimit),
 		DefaultSubscriptions:                 defaultSubscriptions,
 		BalanceUnitName:                      req.BalanceUnitName,
 		BalanceUnitSymbol:                    req.BalanceUnitSymbol,
@@ -2033,6 +2039,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                                    updatedSettings.DefaultUserRPMLimit,
+		DefaultUserAPIKeyLimit:                                 updatedSettings.DefaultUserAPIKeyLimit,
 		DefaultSubscriptions:                                   updatedDefaultSubscriptions,
 		BalanceUnitName:                                        updatedSettings.BalanceUnitName,
 		BalanceUnitSymbol:                                      updatedSettings.BalanceUnitSymbol,

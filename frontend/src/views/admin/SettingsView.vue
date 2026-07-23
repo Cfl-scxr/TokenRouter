@@ -3323,12 +3323,32 @@
                     v-model.number="form.default_user_rpm_limit"
                     type="number"
                     min="0"
+                    :max="MAX_USER_API_KEY_LIMIT"
                     step="1"
                     class="input"
                     placeholder="0"
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.defaultUserApiKeyLimit") }}
+                  </label>
+                  <input
+                    v-model.number="form.default_user_api_key_limit"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    data-test="default-user-api-key-limit"
+                    placeholder="100"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultUserApiKeyLimitHint") }}
                   </p>
                 </div>
               </div>
@@ -7547,6 +7567,7 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiErro
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
+import { MAX_USER_API_KEY_LIMIT } from "@/constants/user";
 import {
   isRegistrationEmailSuffixDomainValid,
   normalizeRegistrationEmailSuffixDomain,
@@ -8023,6 +8044,7 @@ const form = reactive<SettingsForm>({
     marketplaceAvailabilityBucketMinutesDefault,
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
+  default_user_api_key_limit: 100,
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -9345,6 +9367,23 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const rawDefaultUserAPIKeyLimit = String(
+      form.default_user_api_key_limit,
+    ).trim();
+    const normalizedDefaultUserAPIKeyLimit = Number(rawDefaultUserAPIKeyLimit);
+    if (
+      rawDefaultUserAPIKeyLimit === "" ||
+      !Number.isSafeInteger(normalizedDefaultUserAPIKeyLimit) ||
+      normalizedDefaultUserAPIKeyLimit < 0 ||
+      normalizedDefaultUserAPIKeyLimit > MAX_USER_API_KEY_LIMIT
+    ) {
+      appStore.showError(
+        t("admin.settings.defaults.defaultUserApiKeyLimitInvalid"),
+      );
+      return;
+    }
+    form.default_user_api_key_limit = normalizedDefaultUserAPIKeyLimit;
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -9593,6 +9632,7 @@ async function saveSettings() {
         form.marketplace_availability_bucket_minutes,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      default_user_api_key_limit: form.default_user_api_key_limit,
       site_name: form.site_name_zh || form.site_name_en || form.site_name,
       site_logo: form.site_logo,
       site_subtitle:

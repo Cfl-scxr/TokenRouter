@@ -28,6 +28,7 @@ var (
 	ErrGroupNotAllowed             = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
 	ErrGroupDisabledForUser        = infraerrors.Forbidden("GROUP_DISABLED_FOR_USER", "user is not allowed to use this public group")
 	ErrAPIKeyExists                = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyLimitReached          = infraerrors.Conflict("API_KEY_LIMIT_REACHED", "api key limit reached")
 	ErrAPIKeyTooShort              = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars          = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited           = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
@@ -45,6 +46,14 @@ var (
 	ErrAPIKeyRateLimit1dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
 	ErrAPIKeyRateLimit7dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
 )
+
+// NewAPIKeyLimitReachedError 返回包含当前数量和上限的结构化冲突错误。
+func NewAPIKeyLimitReachedError(current int64, limit int) error {
+	return ErrAPIKeyLimitReached.WithMetadata(map[string]string{
+		"current": strconv.FormatInt(current, 10),
+		"limit":   strconv.Itoa(limit),
+	})
+}
 
 const (
 	MaxAPIKeyCredentialBytes     = 128

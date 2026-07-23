@@ -268,6 +268,21 @@ func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
 	return 0
 }
 
+// GetDefaultUserAPIKeyLimit 获取新用户默认 API Key 数量上限，0 表示不限制。
+func (s *SettingService) GetDefaultUserAPIKeyLimit(ctx context.Context) int {
+	if s == nil || s.settingRepo == nil {
+		return DefaultUserAPIKeyLimit
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultUserAPIKeyLimit)
+	if err != nil || value == "" {
+		return DefaultUserAPIKeyLimit
+	}
+	if limit, err := strconv.Atoi(value); err == nil && IsValidUserAPIKeyLimit(limit) {
+		return limit
+	}
+	return DefaultUserAPIKeyLimit
+}
+
 // GetDefaultSubscriptions 获取新用户默认订阅配置列表。
 func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultSubscriptionSetting {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultSubscriptions)

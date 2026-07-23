@@ -168,6 +168,7 @@ type SystemSettings struct {
 	AffiliateRebatePerInviteeCap         float64
 	AdminRechargeRebateEnabled           bool
 	DefaultUserRPMLimit                  int
+	DefaultUserAPIKeyLimit               int
 	DefaultSubscriptions                 []DefaultSubscriptionSetting
 	BalanceUnitName                      string
 	BalanceUnitSymbol                    string

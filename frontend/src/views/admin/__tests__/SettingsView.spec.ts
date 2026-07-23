@@ -428,6 +428,7 @@ const baseSettingsResponse = {
   totp_encryption_key_configured: false,
   default_balance: 0,
   default_concurrency: 1,
+  default_user_api_key_limit: 100,
   default_subscriptions: [],
   site_name: "Sub2API",
   site_logo: "",
@@ -1951,6 +1952,72 @@ describe("admin SettingsView platform quota matrix", () => {
     // 不应存在旧扁平字段
     expect(payload).not.toHaveProperty("default_platform_quota_anthropic_daily");
     expect(payload).not.toHaveProperty("default_platform_quota_openai_weekly");
+  });
+
+  it("加载并保存默认 API Key 数量上限的显式零值", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      default_user_api_key_limit: 17,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    const input = wrapper.get('[data-test="default-user-api-key-limit"]');
+    expect((input.element as HTMLInputElement).value).toBe("17");
+    await input.setValue("0");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(payload["default_user_api_key_limit"]).toBe(0);
+  });
+
+  it("拒绝负数默认 API Key 数量上限", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+    await wrapper.get('[data-test="default-user-api-key-limit"]').setValue("-1");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.defaults.defaultUserApiKeyLimitInvalid",
+    );
+  });
+
+  it("拒绝空的默认 API Key 数量上限", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+    await wrapper.get('[data-test="default-user-api-key-limit"]').setValue("");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.defaults.defaultUserApiKeyLimitInvalid",
+    );
+  });
+
+  it("拒绝超过数据库范围的默认 API Key 数量上限", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+    await wrapper
+      .get('[data-test="default-user-api-key-limit"]')
+      .setValue("2147483648");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      "admin.settings.defaults.defaultUserApiKeyLimitInvalid",
+    );
   });
 
   it("加载后 form.default_platform_quotas 含全 6 平台，从嵌套 JSON 正确读取数值", async () => {

@@ -46959,6 +46959,8 @@ type UserMutation struct {
 	addtotal_recharged            *float64
 	rpm_limit                     *int
 	addrpm_limit                  *int
+	api_key_limit                 *int
+	addapi_key_limit              *int
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -48171,6 +48173,62 @@ func (m *UserMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetAPIKeyLimit 设置 api_key_limit 字段。
+func (m *UserMutation) SetAPIKeyLimit(i int) {
+	m.api_key_limit = &i
+	m.addapi_key_limit = nil
+}
+
+// APIKeyLimit 返回变更中 api_key_limit 字段的值。
+func (m *UserMutation) APIKeyLimit() (r int, exists bool) {
+	v := m.api_key_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyLimit 返回 User 实体中 api_key_limit 字段的旧值。
+// 如果构建器未提供 User 对象，则从数据库获取该对象。
+// 当变更操作不是 UpdateOne 或数据库查询失败时返回错误。
+func (m *UserMutation) OldAPIKeyLimit(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyLimit: %w", err)
+	}
+	return oldValue.APIKeyLimit, nil
+}
+
+// AddAPIKeyLimit 为 api_key_limit 字段增加 i。
+func (m *UserMutation) AddAPIKeyLimit(i int) {
+	if m.addapi_key_limit != nil {
+		*m.addapi_key_limit += i
+	} else {
+		m.addapi_key_limit = &i
+	}
+}
+
+// AddedAPIKeyLimit 返回本次变更中 api_key_limit 字段的增量。
+func (m *UserMutation) AddedAPIKeyLimit() (r int, exists bool) {
+	v := m.addapi_key_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAPIKeyLimit 重置 api_key_limit 字段的全部变更。
+func (m *UserMutation) ResetAPIKeyLimit() {
+	m.api_key_limit = nil
+	m.addapi_key_limit = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -49015,7 +49073,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -49088,6 +49146,9 @@ func (m *UserMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.api_key_limit != nil {
+		fields = append(fields, user.FieldAPIKeyLimit)
+	}
 	return fields
 }
 
@@ -49144,6 +49205,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalRecharged()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
+	case user.FieldAPIKeyLimit:
+		return m.APIKeyLimit()
 	}
 	return nil, false
 }
@@ -49201,6 +49264,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotalRecharged(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case user.FieldAPIKeyLimit:
+		return m.OldAPIKeyLimit(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -49378,6 +49443,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case user.FieldAPIKeyLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyLimit(v)
+		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -49404,6 +49476,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.addapi_key_limit != nil {
+		fields = append(fields, user.FieldAPIKeyLimit)
+	}
 	return fields
 }
 
@@ -49424,6 +49499,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalRecharged()
 	case user.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case user.FieldAPIKeyLimit:
+		return m.AddedAPIKeyLimit()
 	}
 	return nil, false
 }
@@ -49474,6 +49551,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRpmLimit(v)
+		return nil
+	case user.FieldAPIKeyLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIKeyLimit(v)
 		return nil
 	}
 	return fmt.Errorf("unknown User numeric field %s", name)
@@ -49612,6 +49696,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case user.FieldAPIKeyLimit:
+		m.ResetAPIKeyLimit()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

@@ -121,6 +121,7 @@ export default {
     keyDisabledSuccess: 'API 密钥已禁用',
     failedToLoad: '加载 API 密钥失败',
     failedToSave: '保存 API 密钥失败',
+    apiKeyLimitReached: '无法创建 API 密钥：当前已有 {current} 个，上限为 {limit} 个。删除不再使用的密钥后可继续创建。',
     failedToDelete: '删除 API 密钥失败',
     failedToUpdateStatus: '更新 API 密钥状态失败',
     clickToChangeGroup: '点击更换分组',

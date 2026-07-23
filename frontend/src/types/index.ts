@@ -91,6 +91,7 @@ export interface User {
   frozen_balance?: number // 异步批量任务当前冻结的余额
   concurrency: number // 允许的并发请求数
   rpm_limit?: number // 用户级 RPM 上限（0 表示无限制）；分组未配置时作为兜底
+  api_key_limit: number // 用户可创建的 API Key 数量上限，0 表示不限制
   status: 'active' | 'disabled' // 账号状态
   allowed_groups: number[] | null // 允许的专属分组 ID
   disabled_public_groups?: number[] | null // 被禁用的公开分组 ID
@@ -1953,6 +1954,7 @@ export interface UpdateUserRequest {
   balance?: number
   concurrency?: number
   rpm_limit?: number
+  api_key_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
   disabled_public_groups?: number[] | null

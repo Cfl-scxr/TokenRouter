@@ -129,6 +129,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultUserRPMLimit:                       "0",
+		SettingKeyDefaultUserAPIKeyLimit:                    strconv.Itoa(DefaultUserAPIKeyLimit),
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyBalanceUnitName:                           "USD",
 		SettingKeyBalanceUnitSymbol:                         "$",
@@ -309,6 +310,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		RiskControlEnabled:               settings[SettingKeyRiskControlEnabled] == "true",
 		CyberSessionBlockEnabled:         settings[SettingKeyCyberSessionBlockEnabled] == "true",
+		DefaultUserAPIKeyLimit:           DefaultUserAPIKeyLimit,
 	}
 	if seconds, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds])); err == nil && seconds > 0 {
 		result.CyberSessionBlockTTLSeconds = seconds
@@ -336,6 +338,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {
 		result.DefaultUserRPMLimit = rpm
+	}
+	if limit, err := strconv.Atoi(settings[SettingKeyDefaultUserAPIKeyLimit]); err == nil && IsValidUserAPIKeyLimit(limit) {
+		result.DefaultUserAPIKeyLimit = limit
 	}
 
 	// 解析浮点数类型

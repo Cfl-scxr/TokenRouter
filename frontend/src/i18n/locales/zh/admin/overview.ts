@@ -604,7 +604,13 @@ affiliates: {
         selectStatus: '选择状态',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
-        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
+        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效',
+        apiKeyLimit: 'API Key 数量上限',
+        apiKeyLimitPlaceholder: '留空继承系统默认值',
+        apiKeyLimitEditPlaceholder: '0 表示不限制',
+        apiKeyLimitCreateHint: '留空继承系统默认值；0 = 不限制',
+        apiKeyLimitEditHint: '该用户的实际上限；0 = 不限制',
+        apiKeyLimitInvalid: 'API Key 数量上限必须是 0 到 2,147,483,647 之间的整数'
       },
       adjustBalance: '调整余额',
       adjustConcurrency: '调整并发数',

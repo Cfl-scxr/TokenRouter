@@ -67,6 +67,7 @@ type CreateUserRequest struct {
 	Balance       *float64 `json:"balance"`
 	Concurrency   int      `json:"concurrency"`
 	RPMLimit      int      `json:"rpm_limit"`
+	APIKeyLimit   *int     `json:"api_key_limit" binding:"omitempty,gte=0,lte=2147483647"`
 	AllowedGroups []int64  `json:"allowed_groups"`
 	// DisabledPublicGroups 记录该用户被禁止使用的公开分组。
 	DisabledPublicGroups []int64 `json:"disabled_public_groups"`
@@ -83,6 +84,7 @@ type UpdateUserRequest struct {
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
 	RPMLimit      *int     `json:"rpm_limit"`
+	APIKeyLimit   *int     `json:"api_key_limit" binding:"omitempty,gte=0,lte=2147483647"`
 	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// DisabledPublicGroups 使用指针区分未提供和清空禁用列表。
@@ -304,6 +306,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Balance:              req.Balance,
 		Concurrency:          req.Concurrency,
 		RPMLimit:             req.RPMLimit,
+		APIKeyLimit:          req.APIKeyLimit,
 		AllowedGroups:        req.AllowedGroups,
 		DisabledPublicGroups: req.DisabledPublicGroups,
 		ActorAdminID:         getAdminIDFromContext(c),
@@ -356,6 +359,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Balance:              req.Balance,
 		Concurrency:          req.Concurrency,
 		RPMLimit:             req.RPMLimit,
+		APIKeyLimit:          req.APIKeyLimit,
 		Status:               req.Status,
 		AllowedGroups:        req.AllowedGroups,
 		DisabledPublicGroups: req.DisabledPublicGroups,

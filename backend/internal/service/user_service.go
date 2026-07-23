@@ -39,11 +39,17 @@ var (
 	ErrProfileEmailChangeForbidden = infraerrors.BadRequest("EMAIL_PROFILE_UPDATE_FORBIDDEN", "email must be changed through verified email binding")
 	ErrIdentityProviderInvalid     = infraerrors.BadRequest("IDENTITY_PROVIDER_INVALID", "identity provider is invalid")
 	ErrIdentityRedirectInvalid     = infraerrors.BadRequest("IDENTITY_REDIRECT_INVALID", "identity redirect path is invalid")
+	ErrUserAPIKeyLimitInvalid      = infraerrors.BadRequest("INVALID_API_KEY_LIMIT", fmt.Sprintf("api key limit must be between 0 and %d", MaxUserAPIKeyLimit))
 	ErrIdentityUnbindLastMethod    = infraerrors.Conflict(
 		"IDENTITY_UNBIND_LAST_METHOD",
 		"bind another sign-in method before unbinding this provider",
 	)
 )
+
+// IsValidUserAPIKeyLimit 判断用户 API Key 数量上限能否安全写入数据库。
+func IsValidUserAPIKeyLimit(limit int) bool {
+	return limit >= 0 && limit <= MaxUserAPIKeyLimit
+}
 
 const (
 	maxNotifyEmails      = 3 // Maximum number of notification emails per user

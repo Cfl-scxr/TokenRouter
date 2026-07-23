@@ -142,6 +142,7 @@ type CreateUserInput struct {
 	Balance       *float64
 	Concurrency   int
 	RPMLimit      int
+	APIKeyLimit   *int // nil 表示继承系统默认值，0 表示不限制。
 	AllowedGroups []int64
 	// DisabledPublicGroups 记录管理员禁止该用户使用的公开分组 ID。
 	DisabledPublicGroups []int64
@@ -158,6 +159,7 @@ type UpdateUserInput struct {
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
+	APIKeyLimit   *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	// DisabledPublicGroups 使用指针区分"未提供"和"清空公开分组禁用列表"

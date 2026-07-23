@@ -55,7 +55,8 @@ func TestAPIContracts(t *testing.T) {
 						"role": "user",
 						"balance": 12.5,
 						"frozen_balance": 0,
-						"concurrency": 5,
+					"concurrency": 5,
+					"api_key_limit": 100,
 					"rpm_limit": 0,
 					"status": "active",
 					"allowed_groups": null,
@@ -256,6 +257,29 @@ func TestAPIContracts(t *testing.T) {
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z"
+				}
+			}`,
+		},
+		{
+			name: "POST /api/v1/keys returns API key limit conflict",
+			setup: func(t *testing.T, deps *contractDeps) {
+				t.Helper()
+				deps.apiKeyRepo.createErr = service.NewAPIKeyLimitReachedError(100, 100)
+			},
+			method: http.MethodPost,
+			path:   "/api/v1/keys",
+			body:   `{"name":"Blocked Key","custom_key":"sk_blocked_1234567890"}`,
+			headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+			wantStatus: http.StatusConflict,
+			wantJSON: `{
+				"code": 409,
+				"message": "api key limit reached",
+				"reason": "API_KEY_LIMIT_REACHED",
+				"metadata": {
+					"current": "100",
+					"limit": "100"
 				}
 			}`,
 		},
@@ -515,11 +539,12 @@ func TestAPIContracts(t *testing.T) {
 					UpdatedAt:  deps.now.Add(-time.Hour),
 					DeletedAt:  &deletedAt,
 					User: &service.User{
-						ID:       1,
-						Email:    "alice@example.com",
-						Username: "alice",
-						Role:     service.RoleUser,
-						Status:   service.StatusActive,
+						ID:          1,
+						Email:       "alice@example.com",
+						Username:    "alice",
+						Role:        service.RoleUser,
+						APIKeyLimit: service.DefaultUserAPIKeyLimit,
+						Status:      service.StatusActive,
 					},
 					Plan: &service.SubscriptionPlan{
 						ID:   10,
@@ -559,6 +584,7 @@ func TestAPIContracts(t *testing.T) {
 						"balance": 0,
 						"frozen_balance": 0,
 						"concurrency": 0,
+						"api_key_limit": 100,
 						"rpm_limit": 0,
 						"status": "active",
 						"allowed_groups": null,
@@ -966,6 +992,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_oidc_platform_quotas": null,
 					"auth_source_default_wechat_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
+					"default_user_api_key_limit": 100,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -1302,6 +1329,7 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"default_user_api_key_limit": 100,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -1554,6 +1582,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 				Role:          service.RoleUser,
 				Balance:       12.5,
 				Concurrency:   5,
+				APIKeyLimit:   service.DefaultUserAPIKeyLimit,
 				Status:        service.StatusActive,
 				AllowedGroups: nil,
 				CreatedAt:     now,
@@ -2484,9 +2513,10 @@ func (stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (i
 type stubApiKeyRepo struct {
 	now time.Time
 
-	nextID int64
-	byID   map[int64]*service.APIKey
-	byKey  map[string]*service.APIKey
+	nextID    int64
+	byID      map[int64]*service.APIKey
+	byKey     map[string]*service.APIKey
+	createErr error
 }
 
 func newStubApiKeyRepo(now time.Time) *stubApiKeyRepo {
@@ -2512,6 +2542,9 @@ func (r *stubApiKeyRepo) MustSeed(key *service.APIKey) {
 }
 
 func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.APIKey) error {
+	if r.createErr != nil {
+		return r.createErr
+	}
 	if key == nil {
 		return errors.New("nil key")
 	}

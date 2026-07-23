@@ -383,6 +383,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.DefaultUserAPIKeyLimit != after.DefaultUserAPIKeyLimit {
+		changed = append(changed, service.SettingKeyDefaultUserAPIKeyLimit)
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}

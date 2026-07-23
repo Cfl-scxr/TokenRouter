@@ -22,6 +22,13 @@ const (
 	RoleUser  = domain.RoleUser
 )
 
+const (
+	// DefaultUserAPIKeyLimit 是新用户 API Key 数量上限的内置默认值。
+	DefaultUserAPIKeyLimit = domain.DefaultUserAPIKeyLimit
+	// MaxUserAPIKeyLimit 是数据库能够保存的用户 API Key 数量上限最大值。
+	MaxUserAPIKeyLimit = domain.MaxUserAPIKeyLimit
+)
+
 // Affiliate rebate settings
 const (
 	AffiliateRebateRateDefault          = 20.0
@@ -301,6 +308,7 @@ const (
 	SettingKeyDefaultBalance                       = "default_balance"                         // 新用户默认余额
 	SettingKeyDefaultSubscriptions                 = "default_subscriptions"                   // 新用户默认订阅列表（JSON）
 	SettingKeyDefaultUserRPMLimit                  = "default_user_rpm_limit"                  // 新用户默认 RPM 限制（0 = 不限制）
+	SettingKeyDefaultUserAPIKeyLimit               = "default_user_api_key_limit"              // 新用户默认 API Key 数量上限（0 = 不限制）
 	SettingKeyBalanceUnitName                      = "balance_unit_name"                       // 内部余额展示名称
 	SettingKeyBalanceUnitSymbol                    = "balance_unit_symbol"                     // 内部余额展示符号
 	SettingKeyBalanceIconSVG                       = "balance_icon_svg"                        // 内部余额展示 SVG 图标

@@ -423,6 +423,7 @@ export interface SystemSettings {
   affiliate_admin_recharge_enabled: boolean;
   default_concurrency: number;
   default_user_rpm_limit: number;
+  default_user_api_key_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
   balance_unit_name: string;
   balance_unit_symbol: string;
@@ -729,6 +730,7 @@ export interface UpdateSettingsRequest {
   affiliate_admin_recharge_enabled?: boolean;
   default_concurrency?: number;
   default_user_rpm_limit?: number;
+  default_user_api_key_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
   balance_unit_name?: string;
   balance_unit_symbol?: string;

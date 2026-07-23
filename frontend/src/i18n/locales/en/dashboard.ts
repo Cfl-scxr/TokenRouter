@@ -121,6 +121,7 @@ export default {
     keyDisabledSuccess: 'API key disabled successfully',
     failedToLoad: 'Failed to load API keys',
     failedToSave: 'Failed to save API key',
+    apiKeyLimitReached: 'Cannot create API key: you have {current} keys and your limit is {limit}. Delete an unused key before creating another.',
     failedToDelete: 'Failed to delete API key',
     failedToUpdateStatus: 'Failed to update API key status',
     clickToChangeGroup: 'Click to change group',

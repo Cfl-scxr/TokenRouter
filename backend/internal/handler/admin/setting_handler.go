@@ -252,6 +252,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateRebatePerInviteeCap:                           settings.AffiliateRebatePerInviteeCap,
 		AdminRechargeRebateEnabled:                             settings.AdminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                                    settings.DefaultUserRPMLimit,
+		DefaultUserAPIKeyLimit:                                 settings.DefaultUserAPIKeyLimit,
 		DefaultSubscriptions:                                   defaultSubscriptions,
 		BalanceUnitName:                                        settings.BalanceUnitName,
 		BalanceUnitSymbol:                                      settings.BalanceUnitSymbol,

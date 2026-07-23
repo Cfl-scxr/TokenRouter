@@ -175,6 +175,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// APIKeyLimit 对 api_key_limit 字段应用等值检查谓词，等同于 APIKeyLimitEQ。
+func APIKeyLimit(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAPIKeyLimit, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1383,6 +1388,46 @@ func RpmLimitLT(v int) predicate.User {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// APIKeyLimitEQ 对 api_key_limit 字段应用 EQ 谓词。
+func APIKeyLimitEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAPIKeyLimit, v))
+}
+
+// APIKeyLimitNEQ 对 api_key_limit 字段应用 NEQ 谓词。
+func APIKeyLimitNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldAPIKeyLimit, v))
+}
+
+// APIKeyLimitIn 对 api_key_limit 字段应用 In 谓词。
+func APIKeyLimitIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldAPIKeyLimit, vs...))
+}
+
+// APIKeyLimitNotIn 对 api_key_limit 字段应用 NotIn 谓词。
+func APIKeyLimitNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldAPIKeyLimit, vs...))
+}
+
+// APIKeyLimitGT 对 api_key_limit 字段应用 GT 谓词。
+func APIKeyLimitGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldAPIKeyLimit, v))
+}
+
+// APIKeyLimitGTE 对 api_key_limit 字段应用 GTE 谓词。
+func APIKeyLimitGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldAPIKeyLimit, v))
+}
+
+// APIKeyLimitLT 对 api_key_limit 字段应用 LT 谓词。
+func APIKeyLimitLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldAPIKeyLimit, v))
+}
+
+// APIKeyLimitLTE 对 api_key_limit 字段应用 LTE 谓词。
+func APIKeyLimitLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldAPIKeyLimit, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

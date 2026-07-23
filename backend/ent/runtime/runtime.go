@@ -2150,6 +2150,12 @@ func init() {
 	userDescRpmLimit := userFields[20].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
+	// userDescAPIKeyLimit 是 api_key_limit 字段的模式描述符。
+	userDescAPIKeyLimit := userFields[21].Descriptor()
+	// user.DefaultAPIKeyLimit 保存创建时 api_key_limit 字段的默认值。
+	user.DefaultAPIKeyLimit = userDescAPIKeyLimit.Default.(int)
+	// user.APIKeyLimitValidator 是 api_key_limit 字段的校验器，由构建器在保存前调用。
+	user.APIKeyLimitValidator = userDescAPIKeyLimit.Validators[0].(func(int) error)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

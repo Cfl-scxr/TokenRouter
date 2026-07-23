@@ -538,7 +538,13 @@ affiliates: {
         selectStatus: 'Select status',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
+        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.',
+        apiKeyLimit: 'API Key Limit',
+        apiKeyLimitPlaceholder: 'Leave blank to inherit the system default',
+        apiKeyLimitEditPlaceholder: '0 = unlimited',
+        apiKeyLimitCreateHint: 'Leave blank to inherit the system default; 0 = unlimited',
+        apiKeyLimitEditHint: 'Actual limit for this user; 0 = unlimited',
+        apiKeyLimitInvalid: 'API Key limit must be an integer from 0 to 2,147,483,647'
       },
       columns: {
         user: 'User',
