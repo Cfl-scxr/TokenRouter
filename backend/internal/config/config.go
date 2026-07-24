@@ -2417,6 +2417,15 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_error_rate", 0.0)
 	viper.SetDefault("gateway.openai_scheduler.sticky_escape_ttft_ms", 0)
 
+	// server.trusted_proxies 与 security.forwarded_client_ip_headers 是另一组例外：
+	// load() 需要区分“显式配置”和“配置缺席”（#4600），而 viper.IsSet 也会把
+	// SetDefault 注册的值视为已配置，因此注册默认值会让可信代理永久表现为显式配置。
+	// 这两个环境变量已由 load() 通过 os.LookupEnv 手工解析，并不会被静默丢弃；
+	// 此处仅通过 BindEnv 将其加入 AllKeys，让环境变量可达性守卫能够识别，且不会
+	// 在环境变量缺席时影响 IsSet。参数完整时 BindEnv 不会返回错误。
+	_ = viper.BindEnv("server.trusted_proxies", "SERVER_TRUSTED_PROXIES")
+	_ = viper.BindEnv("security.forwarded_client_ip_headers", "SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+
 	// 第三方登录配置包含客户端密钥，运维通常会通过环境变量注入，
 	// 但这些键此前都无法通过该路径到达配置结构。
 	for _, provider := range []string{"github_oauth", "google_oauth"} {
