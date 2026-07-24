@@ -53,6 +53,11 @@ sudo systemctl enable sub2api
 - 一键下载并应用更新
 - 支持回滚
 
+匿名访问 GitHub Release API 触发限流时，可在安装脚本进程环境或 Docker `.env`
+中设置 `UPDATE_GITHUB_TOKEN`。该令牌只会发送给 `https://api.github.com` 的版本
+检查请求，跨目标重定向会移除认证头；Release 资源与校验和下载始终保持匿名。
+系统不会回退使用 `GITHUB_TOKEN` 或 `GH_TOKEN`。
+
 #### 常用命令
 
 ```bash
