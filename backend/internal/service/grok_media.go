@@ -513,7 +513,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		return nil, err
 	}
 
-	contentURL, err := grokMediaSignedVideoContentURL(statusBody)
+	contentURL, err := grokMediaSignedVideoContentURL(statusBody, requestID)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
@@ -576,9 +576,15 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	}, nil
 }
 
-func grokMediaSignedVideoContentURL(body []byte) (string, error) {
+func grokMediaSignedVideoContentURL(body []byte, requestID string) (string, error) {
 	rawURL := strings.TrimSpace(gjson.GetBytes(body, "video.url").String())
 	if rawURL == "" {
+		return "", nil
+	}
+	// 上游 TokenRouter 可能把受保护内容 URL 改写为自身代理端点。此类 URL 应视为
+	// 需要认证的 relay 路径，而不是签名 URL；调用方会基于账号 base URL 重建地址，
+	// 并附加上游 API Key。
+	if isGrokMediaVideoContentURL(rawURL, requestID) {
 		return "", nil
 	}
 	parsed, err := url.Parse(rawURL)
