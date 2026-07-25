@@ -10,10 +10,12 @@ import (
 	htmlpkg "html"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,9 +89,10 @@ func (s *FrontendServer) InvalidateCache() {
 func (s *FrontendServer) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+		addEmbeddedFrontendNegotiationHeaders(c)
 
 		// Skip API routes
-		if shouldBypassEmbeddedFrontend(path) {
+		if shouldBypassEmbeddedFrontend(c.Request) {
 			c.Next()
 			return
 		}
@@ -310,8 +313,9 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+		addEmbeddedFrontendNegotiationHeaders(c)
 
-		if shouldBypassEmbeddedFrontend(path) {
+		if shouldBypassEmbeddedFrontend(c.Request) {
 			c.Next()
 			return
 		}
@@ -337,6 +341,13 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 	}
 }
 
+// addEmbeddedFrontendNegotiationHeaders 防止缓存混用 `/models` 的 HTML 与 JSON 响应。
+func addEmbeddedFrontendNegotiationHeaders(c *gin.Context) {
+	if strings.TrimSpace(c.Request.URL.Path) == "/models" {
+		c.Writer.Header().Add("Vary", "Accept")
+	}
+}
+
 // tryServeOverrideFile is a standalone version of tryServeOverride for legacy usage.
 func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 	if overrideDir == "" {
@@ -352,8 +363,18 @@ func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 	return true
 }
 
-func shouldBypassEmbeddedFrontend(path string) bool {
-	trimmed := strings.TrimSpace(path)
+// shouldBypassEmbeddedFrontend 判断请求应交给 API 路由还是嵌入式前端。
+func shouldBypassEmbeddedFrontend(request *http.Request) bool {
+	if request == nil || request.URL == nil {
+		return false
+	}
+
+	trimmed := strings.TrimSpace(request.URL.Path)
+	// `/models` 同时是模型广场页面和 Codex 模型 API，需要按请求意图分流。
+	if trimmed == "/models" && shouldServeModelMarketplace(request) {
+		return false
+	}
+
 	return strings.HasPrefix(trimmed, "/api/") ||
 		strings.HasPrefix(trimmed, "/v1/") ||
 		strings.HasPrefix(trimmed, "/v1beta/") ||
@@ -367,6 +388,73 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
 		strings.HasPrefix(trimmed, "/videos/")
+}
+
+// shouldServeModelMarketplace 仅将没有 API 信号的 HTML 导航交给模型广场页面。
+func shouldServeModelMarketplace(request *http.Request) bool {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		return false
+	}
+
+	query := request.URL.Query()
+	if strings.TrimSpace(query.Get("client_version")) != "" ||
+		strings.TrimSpace(query.Get("key")) != "" ||
+		strings.TrimSpace(query.Get("api_key")) != "" {
+		return false
+	}
+	for _, header := range []string{"Authorization", "x-api-key", "x-goog-api-key"} {
+		if strings.TrimSpace(request.Header.Get(header)) != "" {
+			return false
+		}
+	}
+
+	return requestPrefersHTML(request.Header.Get("Accept"))
+}
+
+// requestPrefersHTML 按 Accept 的质量权重和声明顺序区分页面导航与 JSON API 请求。
+func requestPrefersHTML(acceptHeader string) bool {
+	parts := strings.Split(acceptHeader, ",")
+	htmlQuality, jsonQuality := -1.0, -1.0
+	htmlOrder, jsonOrder := len(parts), len(parts)
+
+	for order, part := range parts {
+		mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+		if err != nil {
+			continue
+		}
+
+		quality := 1.0
+		if rawQuality := strings.TrimSpace(params["q"]); rawQuality != "" {
+			quality, err = strconv.ParseFloat(rawQuality, 64)
+			if err != nil || quality < 0 || quality > 1 {
+				continue
+			}
+		}
+
+		switch {
+		case mediaType == "text/html" || mediaType == "application/xhtml+xml":
+			if quality > htmlQuality {
+				htmlQuality = quality
+				htmlOrder = order
+			}
+		case mediaType == "application/json" || strings.HasSuffix(mediaType, "+json"):
+			if quality > jsonQuality {
+				jsonQuality = quality
+				jsonOrder = order
+			}
+		}
+	}
+
+	if htmlQuality <= 0 {
+		return false
+	}
+	if jsonQuality < 0 || htmlQuality > jsonQuality {
+		return true
+	}
+	if htmlQuality < jsonQuality {
+		return false
+	}
+	return htmlOrder < jsonOrder
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {

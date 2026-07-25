@@ -551,6 +551,35 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		}
 	})
 
+	t.Run("serves_model_marketplace_for_browser_navigation", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		nextCalled := false
+		router.GET("/models", func(c *gin.Context) {
+			nextCalled = true
+			c.String(http.StatusOK, "api")
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/models", nil)
+		// 模拟浏览器地址栏导航，请求应由 SPA 接管。
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		router.ServeHTTP(w, req)
+
+		assert.False(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Values("Vary"), "Accept")
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, w.Body.String(), "<!doctype html>")
+	})
+
 	t.Run("skips_responses_compact_post_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -685,7 +714,64 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 		"/videos/extensions",
 		"/videos/request-123",
 	} {
-		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		require.True(t, shouldBypassEmbeddedFrontend(request), "path=%s", path)
+	}
+}
+
+func TestEmbeddedFrontendModelsRouteNegotiation(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		accept     string
+		headers    map[string]string
+		wantBypass bool
+	}{
+		{
+			name:       "浏览器页面导航",
+			path:       "/models",
+			accept:     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			wantBypass: false,
+		},
+		{
+			name:       "Codex 模型请求",
+			path:       "/models?client_version=0.144.0",
+			accept:     "text/html,application/json;q=0.9",
+			wantBypass: true,
+		},
+		{
+			name:       "JSON API 请求",
+			path:       "/models",
+			accept:     "application/json",
+			wantBypass: true,
+		},
+		{
+			name:   "带 API Key 的请求",
+			path:   "/models",
+			accept: "text/html",
+			headers: map[string]string{
+				"Authorization": "Bearer sk-test",
+			},
+			wantBypass: true,
+		},
+		{
+			name:       "JSON 优先的混合请求",
+			path:       "/models",
+			accept:     "application/json,text/html,*/*",
+			wantBypass: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			request.Header.Set("Accept", tt.accept)
+			for name, value := range tt.headers {
+				request.Header.Set(name, value)
+			}
+
+			require.Equal(t, tt.wantBypass, shouldBypassEmbeddedFrontend(request))
+		})
 	}
 }
 
@@ -775,6 +861,30 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("serves_model_marketplace_for_browser_navigation", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+		nextCalled := false
+		router.GET("/models", func(c *gin.Context) {
+			nextCalled = true
+			c.String(http.StatusOK, "api")
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/models", nil)
+		// 兼容入口也必须让浏览器页面导航进入 SPA。
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		router.ServeHTTP(w, req)
+
+		assert.False(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Values("Vary"), "Accept")
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("skips_api_routes", func(t *testing.T) {
