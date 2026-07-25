@@ -88,7 +88,7 @@ dataSharing: {
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         emailNormalization: '邮箱地址归一化',
         emailNormalizationHint:
-          "启用后，注册或修改邮箱时会将 y.o.u.r.n.a.m.e{'@'}example.com 和 yourname+abc{'@'}example.com 视为 yourname{'@'}example.com，并基于归一化结果与所有已注册账号比较，防止使用邮箱别名重复注册。不会修改已存在账号的邮箱。",
+          '启用后，注册或修改邮箱时会移除所有域名的 +标签，将 Gmail/Googlemail 点号变体和域名根点视为同一收件箱，并与全部已注册账号比较。不会修改已保存的邮箱。',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',
