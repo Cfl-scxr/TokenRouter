@@ -30,7 +30,10 @@ export default {
       loadingText: 'loading',
       ready: 'ready',
       systemLogs: {
-        host: 'Host'
+        host: 'Host',
+        empty: 'No system logs',
+        cleanupFilterRequired: 'Cleanup requires at least one filter condition (start/end time or another field)',
+        cleanupFailed: 'Failed to clean up system logs'
       },
       requestsTotal: 'Requests (total)',
       slaScope: 'SLA scope:',
