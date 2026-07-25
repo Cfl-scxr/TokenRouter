@@ -129,16 +129,32 @@ type AnthropicCacheControl struct {
 	TTL  string `json:"ttl,omitempty"` // "5m" / "1h" / 省略=默认 5m（由 Anthropic 判定）
 }
 
-// AnthropicResponse is the non-streaming response from POST /v1/messages.
+// AnthropicResponse 表示 POST /v1/messages 的非流式响应。
+//
+// StopReason 使用指针，以便流式 message_start 按 Anthropic 官方格式输出 JSON null。
+// 普通字符串的零值会序列化为空字符串，严格客户端会将其视为无效的流中状态。
 type AnthropicResponse struct {
 	ID           string                  `json:"id"`
 	Type         string                  `json:"type"` // "message"
 	Role         string                  `json:"role"` // "assistant"
 	Content      []AnthropicContentBlock `json:"content"`
 	Model        string                  `json:"model"`
-	StopReason   string                  `json:"stop_reason"`
+	StopReason   *string                 `json:"stop_reason"`
 	StopSequence *string                 `json:"stop_sequence,omitempty"`
 	Usage        AnthropicUsage          `json:"usage"`
+}
+
+// AnthropicStopReasonPtr 为最终停止原因返回非空字符串指针。
+func AnthropicStopReasonPtr(s string) *string {
+	return &s
+}
+
+// AnthropicStopReasonString 返回停止原因；未设置或为 null 时返回空字符串。
+func AnthropicStopReasonString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // AnthropicUsage holds token counts in Anthropic format.
