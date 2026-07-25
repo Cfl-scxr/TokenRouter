@@ -318,6 +318,7 @@ database:
 redis:
   host: "localhost"
   port: 6379
+  username: "" # Redis ACL 用户名；使用默认用户时留空
   password: ""
 
 jwt:
