@@ -44,6 +44,8 @@ export default {
     inactive: 'Inactive',
     more: 'More',
     close: 'Close',
+    toggleMenu: 'Toggle menu',
+    userMenu: 'User menu',
     enabled: 'Enabled',
     disabled: 'Disabled',
 	    total: 'Total',
