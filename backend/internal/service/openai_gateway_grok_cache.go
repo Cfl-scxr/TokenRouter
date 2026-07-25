@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
@@ -14,11 +15,46 @@ import (
 
 const (
 	grokConversationIDHeader         = "X-Grok-Conv-Id"
+	claudeCodeSessionHeader          = "X-Claude-Code-Session-Id"
 	grokClientToolCacheOptInHeader   = "X-Sub2API-Grok-Client-Tool-Cache"
 	grokFreeCacheNativeToolsJSON     = `[{"type":"web_search"},{"type":"x_search"}]`
 	grokFreeCacheDisabledToolChoice  = "none"
 	grokClientToolCacheOptInExtraKey = "grok_client_tool_cache_enabled"
 )
+
+// Claude Code 的 metadata.user_id 通常以 _session_<uuid> 结尾。
+var claudeCodeSessionSuffixPattern = regexp.MustCompile(`_session_([a-f0-9-]+)$`)
+
+// extractClaudeCodeSessionID 从请求头或 Anthropic/OpenAI 兼容载荷元数据中提取
+// Claude Code 会话标识。
+func extractClaudeCodeSessionID(c *gin.Context, body []byte) string {
+	if c != nil {
+		if seed := strings.TrimSpace(c.GetHeader(claudeCodeSessionHeader)); seed != "" {
+			return seed
+		}
+	}
+	return extractClaudeCodeSessionIDFromPayload(body)
+}
+
+func extractClaudeCodeSessionIDFromPayload(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	userID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	if userID == "" {
+		return ""
+	}
+	if matches := claudeCodeSessionSuffixPattern.FindStringSubmatch(userID); len(matches) >= 2 {
+		return matches[1]
+	}
+	// Claude Code 也可能嵌入 JSON：{"session_id":"..."}。
+	if len(userID) > 0 && userID[0] == '{' {
+		if sid := strings.TrimSpace(gjson.Get(userID, "session_id").String()); sid != "" {
+			return sid
+		}
+	}
+	return ""
+}
 
 // resolveGrokCacheIdentity 为 xAI 服务端提示缓存派生稳定且租户隔离的路由身份。
 // 返回值不包含客户端原始会话标识，可安全发送到上游。
@@ -63,13 +99,21 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) string {
 	seed := ""
 	if c != nil {
-		seed = strings.TrimSpace(c.GetHeader("session_id"))
+		// Claude Code 会话是 /v1/messages 到 Grok 桥接中最稳定的多轮身份。
+		// 它比通用会话头优先，以便提示缓存路由与 CPA 行为一致。
+		seed = extractClaudeCodeSessionID(c, body)
+		if seed == "" {
+			seed = strings.TrimSpace(c.GetHeader("session_id"))
+		}
 		if seed == "" {
 			seed = strings.TrimSpace(c.GetHeader("conversation_id"))
 		}
 		if seed == "" {
 			seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 		}
+	}
+	if seed == "" && len(body) > 0 {
+		seed = extractClaudeCodeSessionIDFromPayload(body)
 	}
 	if seed == "" && len(body) > 0 {
 		seed = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())

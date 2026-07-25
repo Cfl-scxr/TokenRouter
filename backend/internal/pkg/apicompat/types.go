@@ -65,6 +65,9 @@ type AnthropicContentBlock struct {
 
 	// type=thinking
 	Thinking string `json:"thinking,omitempty"`
+	// Signature 携带提供方的加密推理（例如 xAI encrypted_content），使 Claude 多轮
+	// 客户端可以在后续轮次中原样回传。
+	Signature string `json:"signature,omitempty"`
 
 	// type=image
 	Source *AnthropicImageSource `json:"source,omitempty"`
@@ -256,6 +259,9 @@ type ResponsesInputItem struct {
 	// Role-based messages (developer/system/user/assistant)
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
+
+	// type=reasoning，用于多轮回放加密推理。
+	EncryptedContent string `json:"encrypted_content,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
