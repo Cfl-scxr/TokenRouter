@@ -683,6 +683,8 @@ export interface Group {
   unavailable_fallback_group_id: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
+  // OpenAI Live 接口开关
+  allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   availability_probe_config?: GroupAvailabilityProbeConfig
@@ -837,6 +839,7 @@ export interface CreateGroupRequest {
   models_list_config?: ModelsListConfig
   availability_probe_config?: GroupAvailabilityProbeConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
@@ -890,6 +893,7 @@ export interface UpdateGroupRequest {
   models_list_config?: ModelsListConfig
   availability_probe_config?: GroupAvailabilityProbeConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
@@ -1664,7 +1668,7 @@ export type RedeemCodeType =
   | 'subscription'
   | 'invitation'
   | 'affiliate_balance'
-export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
+export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber' | 'live'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 
