@@ -230,18 +230,18 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		// SSE 规范允许冒号后不带空格，必须兼容紧凑格式的 Anthropic 上游。
+		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 		}
 
 		if !scanner.Scan() {
 			break
 		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -443,18 +443,18 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if !strings.HasPrefix(line, "event: ") {
+		// 与缓冲路径一致，接受冒号后无空格的紧凑 SSE 格式。
+		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 		}
 
 		if !scanner.Scan() {
 			break
 		}
-		dataLine := scanner.Text()
-		if !strings.HasPrefix(dataLine, "data: ") {
+		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		if !ok {
 			continue
 		}
-		payload := dataLine[6:]
 
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
