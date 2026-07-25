@@ -65,10 +65,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		return nil, err
 	}
-	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)
+	patchedBody, clientToolMapping, err := patchGrokResponsesBodyWithClientTools(body, upstreamModel)
 	if err != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"type": "invalid_request_error", "message": err.Error(), "param": "tools",
+		}})
 		return nil, err
 	}
+	setGrokResponsesClientToolMapping(c, clientToolMapping)
 	// xAI 没有原生 /responses/compact；改成普通 Responses 摘要轮次，响应阶段再封装为 compaction 条目。
 	if isOpenAIResponsesCompactPath(c) {
 		patchedBody, err = buildGrokCompactRequestBody(patchedBody)
@@ -180,6 +185,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	var firstTokenMs *int
 	responseID := ""
 	if reqStream {
+		if hasGrokResponsesClientToolMapping(clientToolMapping) {
+			maxLineSize := defaultMaxLineSize
+			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+				maxLineSize = s.cfg.Gateway.MaxLineSize
+			}
+			resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, clientToolMapping, maxLineSize)
+		}
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 		if err != nil {
 			return nil, err
@@ -376,6 +388,29 @@ func trimGrokInvalidEncryptedContentRetryBody(body []byte) ([]byte, bool, error)
 }
 
 func patchGrokResponsesBody(body []byte, upstreamModel string) ([]byte, error) {
+	return patchGrokResponsesBodyBase(body, upstreamModel)
+}
+
+func patchGrokResponsesBodyWithClientTools(body []byte, upstreamModel string) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	if !json.Valid(body) {
+		return nil, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("invalid json request body")
+	}
+	promoted, err := sanitizeGrokResponsesInput(body)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{}, err
+	}
+	adapted, mapping, err := adaptGrokResponsesClientTools(promoted)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{}, err
+	}
+	patched, err := patchGrokResponsesBodyBase(adapted, upstreamModel)
+	if err != nil {
+		return nil, apicompat.ResponsesClientToolMapping{}, err
+	}
+	return patched, mapping, nil
+}
+
+func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, error) {
 	if !json.Valid(body) {
 		return nil, fmt.Errorf("invalid json request body")
 	}
