@@ -97,23 +97,14 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 }
 
 func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) string {
-	seed := ""
-	if c != nil {
-		// Claude Code 会话是 /v1/messages 到 Grok 桥接中最稳定的多轮身份。
-		// 它比通用会话头优先，以便提示缓存路由与 CPA 行为一致。
-		seed = extractClaudeCodeSessionID(c, body)
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader("session_id"))
-		}
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader("conversation_id"))
-		}
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
-		}
+	// Claude Code 会话是 /v1/messages 到 Grok 桥接中最稳定的多轮身份，
+	// 优先于通用会话头，以便提示缓存路由与 CPA 行为一致。
+	seed := extractClaudeCodeSessionID(c, body)
+	if seed == "" {
+		seed = explicitOpenAIHeaderSessionID(c)
 	}
-	if seed == "" && len(body) > 0 {
-		seed = extractClaudeCodeSessionIDFromPayload(body)
+	if seed == "" && c != nil {
+		seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
 	if seed == "" && len(body) > 0 {
 		seed = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
