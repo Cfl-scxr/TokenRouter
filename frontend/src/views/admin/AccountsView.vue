@@ -62,17 +62,20 @@
                   @click="toggleAccountToolsDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.accounts.moreActions')"
+                  :aria-expanded="showAccountToolsDropdown"
                 >
                   <Icon name="more" size="sm" class="md:mr-1.5" />
                   <span class="hidden md:inline">{{ t('admin.accounts.moreActions') }}</span>
                   <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
                 </button>
-                <div
-                  v-if="showAccountToolsDropdown"
-                  class="fixed z-50 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
-                  :style="accountToolsDropdownStyle"
-                >
-                  <div class="max-h-[70vh] overflow-y-auto p-2">
+                <Teleport to="body">
+                  <div
+                    v-if="showAccountToolsDropdown"
+                    class="fixed z-[9999] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                    :style="accountToolsDropdownStyle"
+                    @click.stop
+                  >
+                    <div class="overflow-y-auto p-2" :style="{ maxHeight: `${accountToolsDropdownPosition.maxHeight}px` }">
                     <div class="px-2 py-2">
                       <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                         {{ t('admin.accounts.dataActions') }}
@@ -150,8 +153,9 @@
                         <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
                       </button>
                     </div>
+                    </div>
                   </div>
-                </div>
+                </Teleport>
               </div>
             </template>
           </AccountTableActions>
@@ -519,6 +523,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
+import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -619,6 +624,19 @@ const openCreateAccount = (platform?: AccountPlatform) => {
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
 const accountToolsButtonRef = ref<HTMLElement | null>(null)
+const accountToolsDropdownPosition = reactive({
+  top: null as number | null,
+  bottom: null as number | null,
+  left: 16,
+  width: 320,
+  maxHeight: 0
+})
+const accountToolsDropdownStyle = computed(() => ({
+  top: accountToolsDropdownPosition.top == null ? 'auto' : `${accountToolsDropdownPosition.top}px`,
+  bottom: accountToolsDropdownPosition.bottom == null ? 'auto' : `${accountToolsDropdownPosition.bottom}px`,
+  left: `${accountToolsDropdownPosition.left}px`,
+  width: `${accountToolsDropdownPosition.width}px`
+}))
 const hiddenColumns = reactive<Set<string>>(new Set())
 const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
@@ -667,7 +685,6 @@ const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
 const showAutoRefreshDropdown = ref(false)
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
 const autoRefreshButtonRef = ref<HTMLElement | null>(null)
-const accountToolsDropdownStyle = ref<Record<string, string>>({})
 const autoRefreshDropdownStyle = ref<Record<string, string>>({})
 const AUTO_REFRESH_STORAGE_KEY = 'account-auto-refresh'
 const autoRefreshIntervals = [5, 10, 15, 30] as const
@@ -869,8 +886,14 @@ const buildTopDropdownStyle = (trigger: HTMLElement | null, width: number, align
 
 const updateTopDropdownPositions = () => {
   if (showAccountToolsDropdown.value) {
-    const width = Math.min(320, Math.max(0, window.innerWidth - 32))
-    accountToolsDropdownStyle.value = buildTopDropdownStyle(accountToolsButtonRef.value, width)
+    const trigger = accountToolsButtonRef.value
+    if (trigger) {
+      Object.assign(accountToolsDropdownPosition, getFloatingPanelPosition(
+        trigger.getBoundingClientRect(),
+        document.documentElement.clientWidth || window.innerWidth,
+        window.innerHeight
+      ))
+    }
   }
   if (showAutoRefreshDropdown.value) {
     autoRefreshDropdownStyle.value = buildTopDropdownStyle(autoRefreshButtonRef.value, 224, 'left')
@@ -1251,7 +1274,6 @@ const loadUpstreamBillingProbeGlobalState = async () => {
 
 const closeAccountToolsDropdown = () => {
   showAccountToolsDropdown.value = false
-  accountToolsDropdownStyle.value = {}
 }
 
 const openSyncFromCrs = () => {
