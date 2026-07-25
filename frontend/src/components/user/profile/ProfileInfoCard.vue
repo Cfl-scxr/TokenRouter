@@ -67,7 +67,7 @@
                   {{ t('profile.accountBalance') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
+                  {{ formatBalanceAmount(user?.balance ?? 0) }}
                 </p>
               </div>
               <div
@@ -184,6 +184,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
+import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -206,6 +207,8 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+// 个人资料页与全站共用管理员配置的余额单位。
+const { formatBalanceAmount } = useBalanceDisplay()
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {
@@ -269,10 +272,6 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   github: 'GitHub',
   google: 'Google'
 }))
-
-function formatCurrency(value: number): string {
-  return `$${value.toFixed(2)}`
-}
 
 function normalizeProvider(value: string): UserAuthProvider | null {
   const normalized = value.trim().toLowerCase()
