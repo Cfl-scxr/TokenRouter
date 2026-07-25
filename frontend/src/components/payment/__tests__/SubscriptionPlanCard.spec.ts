@@ -55,10 +55,12 @@ describe('SubscriptionPlanCard', () => {
     expect(text).toContain('Imagen')
   })
 
-  it('shows the currency on both current and original prices', () => {
+  it('uses the configured currency symbol on current and original prices', () => {
     const text = mountPlanCard('openai', 'NZD', 20).text()
 
-    expect(text).toContain('$10NZD')
-    expect(text).toContain('$20NZD')
+    expect(text).toContain('NZ$10NZD')
+    expect(text).toContain('NZ$20NZD')
+    expect(mountPlanCard('openai', 'CNY', 20).text()).toContain('¥10CNY')
+    expect(mountPlanCard('openai').text()).toContain('$10')
   })
 })
