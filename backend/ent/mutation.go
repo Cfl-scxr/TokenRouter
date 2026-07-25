@@ -18997,6 +18997,9 @@ type GroupMutation struct {
 	availability_probe_config               *domain.GroupAvailabilityProbeConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	max_reasoning_effort                    *string
+	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
+	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
 	data_sharing_enabled                    *bool
 	session_isolation_enabled               *bool
 	clearedFields                           map[string]struct{}
@@ -21413,6 +21416,93 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+func (m *GroupMutation) SetMaxReasoningEffort(s string) {
+	m.max_reasoning_effort = &s
+}
+
+// MaxReasoningEffort 返回变更中 max_reasoning_effort 字段的值。
+func (m *GroupMutation) MaxReasoningEffort() (r string, exists bool) {
+	v := m.max_reasoning_effort
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxReasoningEffort 返回 Group 实体中 max_reasoning_effort 字段的旧值。
+// 如果构建器未提供 Group 对象，则从数据库获取该对象。
+// 当变更操作不是 UpdateOne 或数据库查询失败时返回错误。
+func (m *GroupMutation) OldMaxReasoningEffort(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxReasoningEffort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxReasoningEffort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxReasoningEffort: %w", err)
+	}
+	return oldValue.MaxReasoningEffort, nil
+}
+
+// ResetMaxReasoningEffort 重置 max_reasoning_effort 字段的全部变更。
+func (m *GroupMutation) ResetMaxReasoningEffort() {
+	m.max_reasoning_effort = nil
+}
+
+// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+func (m *GroupMutation) SetReasoningEffortMappings(dem []domain.ReasoningEffortMapping) {
+	m.reasoning_effort_mappings = &dem
+	m.appendreasoning_effort_mappings = nil
+}
+
+// ReasoningEffortMappings 返回变更中 reasoning_effort_mappings 字段的值。
+func (m *GroupMutation) ReasoningEffortMappings() (r []domain.ReasoningEffortMapping, exists bool) {
+	v := m.reasoning_effort_mappings
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReasoningEffortMappings 返回 Group 实体中 reasoning_effort_mappings 字段的旧值。
+// 如果构建器未提供 Group 对象，则从数据库获取该对象。
+// 当变更操作不是 UpdateOne 或数据库查询失败时返回错误。
+func (m *GroupMutation) OldReasoningEffortMappings(ctx context.Context) (v []domain.ReasoningEffortMapping, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReasoningEffortMappings is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReasoningEffortMappings requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReasoningEffortMappings: %w", err)
+	}
+	return oldValue.ReasoningEffortMappings, nil
+}
+
+// AppendReasoningEffortMappings 向 reasoning_effort_mappings 字段追加 dem。
+func (m *GroupMutation) AppendReasoningEffortMappings(dem []domain.ReasoningEffortMapping) {
+	m.appendreasoning_effort_mappings = append(m.appendreasoning_effort_mappings, dem...)
+}
+
+// AppendedReasoningEffortMappings 返回本次变更追加到 reasoning_effort_mappings 字段的值列表。
+func (m *GroupMutation) AppendedReasoningEffortMappings() ([]domain.ReasoningEffortMapping, bool) {
+	if len(m.appendreasoning_effort_mappings) == 0 {
+		return nil, false
+	}
+	return m.appendreasoning_effort_mappings, true
+}
+
+// ResetReasoningEffortMappings 重置 reasoning_effort_mappings 字段的全部变更。
+func (m *GroupMutation) ResetReasoningEffortMappings() {
+	m.reasoning_effort_mappings = nil
+	m.appendreasoning_effort_mappings = nil
+}
+
 // SetDataSharingEnabled sets the "data_sharing_enabled" field.
 func (m *GroupMutation) SetDataSharingEnabled(b bool) {
 	m.data_sharing_enabled = &b
@@ -21789,7 +21879,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 50)
+	fields := make([]string, 0, 52)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -21934,6 +22024,12 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.max_reasoning_effort != nil {
+		fields = append(fields, group.FieldMaxReasoningEffort)
+	}
+	if m.reasoning_effort_mappings != nil {
+		fields = append(fields, group.FieldReasoningEffortMappings)
+	}
 	if m.data_sharing_enabled != nil {
 		fields = append(fields, group.FieldDataSharingEnabled)
 	}
@@ -22044,6 +22140,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AvailabilityProbeConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldMaxReasoningEffort:
+		return m.MaxReasoningEffort()
+	case group.FieldReasoningEffortMappings:
+		return m.ReasoningEffortMappings()
 	case group.FieldDataSharingEnabled:
 		return m.DataSharingEnabled()
 	case group.FieldSessionIsolationEnabled:
@@ -22153,6 +22253,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAvailabilityProbeConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldMaxReasoningEffort:
+		return m.OldMaxReasoningEffort(ctx)
+	case group.FieldReasoningEffortMappings:
+		return m.OldReasoningEffortMappings(ctx)
 	case group.FieldDataSharingEnabled:
 		return m.OldDataSharingEnabled(ctx)
 	case group.FieldSessionIsolationEnabled:
@@ -22501,6 +22605,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRpmLimit(v)
+		return nil
+	case group.FieldMaxReasoningEffort:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxReasoningEffort(v)
+		return nil
+	case group.FieldReasoningEffortMappings:
+		v, ok := value.([]domain.ReasoningEffortMapping)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReasoningEffortMappings(v)
 		return nil
 	case group.FieldDataSharingEnabled:
 		v, ok := value.(bool)
@@ -23014,6 +23132,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldMaxReasoningEffort:
+		m.ResetMaxReasoningEffort()
+		return nil
+	case group.FieldReasoningEffortMappings:
+		m.ResetReasoningEffortMappings()
 		return nil
 	case group.FieldDataSharingEnabled:
 		m.ResetDataSharingEnabled()

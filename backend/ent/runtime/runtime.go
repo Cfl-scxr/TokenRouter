@@ -1015,12 +1015,22 @@ func init() {
 	groupDescRpmLimit := groupFields[44].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	// groupDescMaxReasoningEffort 是 max_reasoning_effort 字段的模式描述符。
+	groupDescMaxReasoningEffort := groupFields[45].Descriptor()
+	// group.DefaultMaxReasoningEffort 保存创建时 max_reasoning_effort 字段的默认值。
+	group.DefaultMaxReasoningEffort = groupDescMaxReasoningEffort.Default.(string)
+	// group.MaxReasoningEffortValidator 是 max_reasoning_effort 字段的校验器，由构建器在保存前调用。
+	group.MaxReasoningEffortValidator = groupDescMaxReasoningEffort.Validators[0].(func(string) error)
+	// groupDescReasoningEffortMappings 是 reasoning_effort_mappings 字段的模式描述符。
+	groupDescReasoningEffortMappings := groupFields[46].Descriptor()
+	// group.DefaultReasoningEffortMappings 保存创建时 reasoning_effort_mappings 字段的默认值。
+	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
 	// groupDescDataSharingEnabled is the schema descriptor for data_sharing_enabled field.
-	groupDescDataSharingEnabled := groupFields[45].Descriptor()
+	groupDescDataSharingEnabled := groupFields[47].Descriptor()
 	// group.DefaultDataSharingEnabled holds the default value on creation for the data_sharing_enabled field.
 	group.DefaultDataSharingEnabled = groupDescDataSharingEnabled.Default.(bool)
 	// groupDescSessionIsolationEnabled is the schema descriptor for session_isolation_enabled field.
-	groupDescSessionIsolationEnabled := groupFields[46].Descriptor()
+	groupDescSessionIsolationEnabled := groupFields[48].Descriptor()
 	// group.DefaultSessionIsolationEnabled holds the default value on creation for the session_isolation_enabled field.
 	group.DefaultSessionIsolationEnabled = groupDescSessionIsolationEnabled.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

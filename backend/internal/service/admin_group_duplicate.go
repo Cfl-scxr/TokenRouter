@@ -129,6 +129,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		},
 		AvailabilityProbeConfig: source.AvailabilityProbeConfig,
 		RPMLimit:                source.RPMLimit,
+		MaxReasoningEffort:      source.MaxReasoningEffort,
+		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 	}
 }
 
@@ -175,6 +177,7 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 	}
 
 	duplicate := cloneGroupForDuplicate(source, duplicateGroupOperationID(id, actorScope, operationKey))
+	sanitizeGroupReasoningEffortPolicy(duplicate)
 	for copyNumber := 1; ; copyNumber++ {
 		duplicate.Name = duplicateGroupName(source.Name, copyNumber)
 		duplicate.ID = 0

@@ -675,6 +675,26 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
+	_c.mutation.SetMaxReasoningEffort(v)
+	return _c
+}
+
+// SetNillableMaxReasoningEffort 在给定值非 nil 时设置 max_reasoning_effort 字段。
+func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetMaxReasoningEffort(*v)
+	}
+	return _c
+}
+
+// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
+	_c.mutation.SetReasoningEffortMappings(v)
+	return _c
+}
+
 // SetDataSharingEnabled sets the "data_sharing_enabled" field.
 func (_c *GroupCreate) SetDataSharingEnabled(v bool) *GroupCreate {
 	_c.mutation.SetDataSharingEnabled(v)
@@ -953,6 +973,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		v := group.DefaultMaxReasoningEffort
+		_c.mutation.SetMaxReasoningEffort(v)
+	}
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		v := group.DefaultReasoningEffortMappings
+		_c.mutation.SetReasoningEffortMappings(v)
+	}
 	if _, ok := _c.mutation.DataSharingEnabled(); !ok {
 		v := group.DefaultDataSharingEnabled
 		_c.mutation.SetDataSharingEnabled(v)
@@ -1107,6 +1135,17 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
+		return &ValidationError{Name: "max_reasoning_effort", err: errors.New(`ent: missing required field "Group.max_reasoning_effort"`)}
+	}
+	if v, ok := _c.mutation.MaxReasoningEffort(); ok {
+		if err := group.MaxReasoningEffortValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
+		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
 	}
 	if _, ok := _c.mutation.DataSharingEnabled(); !ok {
 		return &ValidationError{Name: "data_sharing_enabled", err: errors.New(`ent: missing required field "Group.data_sharing_enabled"`)}
@@ -1332,6 +1371,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
+		_node.MaxReasoningEffort = value
+	}
+	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
+		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
+		_node.ReasoningEffortMappings = value
 	}
 	if value, ok := _c.mutation.DataSharingEnabled(); ok {
 		_spec.SetField(group.FieldDataSharingEnabled, field.TypeBool, value)
@@ -2220,6 +2267,30 @@ func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
 // AddRpmLimit adds v to the "rpm_limit" field.
 func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
+// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
+	u.Set(group.FieldMaxReasoningEffort, v)
+	return u
+}
+
+// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+func (u *GroupUpsert) UpdateMaxReasoningEffort() *GroupUpsert {
+	u.SetExcluded(group.FieldMaxReasoningEffort)
+	return u
+}
+
+// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsert {
+	u.Set(group.FieldReasoningEffortMappings, v)
+	return u
+}
+
+// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
+	u.SetExcluded(group.FieldReasoningEffortMappings)
 	return u
 }
 
@@ -3153,6 +3224,34 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+	})
+}
+
+// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+func (u *GroupUpsertOne) UpdateMaxReasoningEffort() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+	})
+}
+
+// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
 	})
 }
 
@@ -4256,6 +4355,34 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffort(v)
+	})
+}
+
+// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+func (u *GroupUpsertBulk) UpdateMaxReasoningEffort() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortMappings(v)
+	})
+}
+
+// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortMappings()
 	})
 }
 

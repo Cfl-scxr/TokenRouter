@@ -13,6 +13,7 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 type GroupAvailabilityProbeConfig = domain.GroupAvailabilityProbeConfig
+type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
 type Group struct {
 	ID             int64
@@ -95,6 +96,12 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
+
+	// MaxReasoningEffort 限制实际生效的 OpenAI/Codex 推理强度。
+	// 空字符串表示不限制；支持 minimal/low/medium/high/xhigh/max。
+	MaxReasoningEffort string
+	// ReasoningEffortMappings 在应用上限前改写请求中显式指定的值。
+	ReasoningEffortMappings []ReasoningEffortMapping
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

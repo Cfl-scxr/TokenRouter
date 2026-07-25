@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
@@ -126,6 +127,14 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	platform := input.Platform
 	if platform == "" {
 		platform = PlatformAnthropic
+	}
+	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
+	}
+	reasoningEffortMappings, err := NormalizeReasoningEffortMappings(platform, input.ReasoningEffortMappings)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 	}
 
 	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
@@ -297,8 +306,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		AvailabilityProbeConfig:         availabilityProbeConfig,
 		RPMLimit:                        input.RPMLimit,
+		MaxReasoningEffort:              maxReasoningEffort,
+		ReasoningEffortMappings:         reasoningEffortMappings,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupReasoningEffortPolicy(group)
 	normalizeGroupDefaultState(group)
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
@@ -637,7 +649,22 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
+	if input.MaxReasoningEffort != nil {
+		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
+		}
+		group.MaxReasoningEffort = maxReasoningEffort
+	}
+	if input.ReasoningEffortMappings != nil {
+		reasoningEffortMappings, err := NormalizeReasoningEffortMappings(group.Platform, *input.ReasoningEffortMappings)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
+		}
+		group.ReasoningEffortMappings = reasoningEffortMappings
+	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupReasoningEffortPolicy(group)
 	normalizeGroupDefaultState(group)
 
 	if s.authCacheInvalidator != nil {

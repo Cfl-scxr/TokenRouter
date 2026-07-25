@@ -112,6 +112,10 @@ const (
 	FieldAvailabilityProbeConfig = "availability_probe_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldMaxReasoningEffort 保存数据库中 max_reasoning_effort 字段的名称。
+	FieldMaxReasoningEffort = "max_reasoning_effort"
+	// FieldReasoningEffortMappings 保存数据库中 reasoning_effort_mappings 字段的名称。
+	FieldReasoningEffortMappings = "reasoning_effort_mappings"
 	// FieldDataSharingEnabled holds the string denoting the data_sharing_enabled field in the database.
 	FieldDataSharingEnabled = "data_sharing_enabled"
 	// FieldSessionIsolationEnabled holds the string denoting the session_isolation_enabled field in the database.
@@ -237,6 +241,8 @@ var Columns = []string{
 	FieldModelsListConfig,
 	FieldAvailabilityProbeConfig,
 	FieldRpmLimit,
+	FieldMaxReasoningEffort,
+	FieldReasoningEffortMappings,
 	FieldDataSharingEnabled,
 	FieldSessionIsolationEnabled,
 }
@@ -355,6 +361,12 @@ var (
 	DefaultAvailabilityProbeConfig domain.GroupAvailabilityProbeConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultMaxReasoningEffort 保存创建时 max_reasoning_effort 字段的默认值。
+	DefaultMaxReasoningEffort string
+	// MaxReasoningEffortValidator 是 max_reasoning_effort 字段的校验器，由构建器在保存前调用。
+	MaxReasoningEffortValidator func(string) error
+	// DefaultReasoningEffortMappings 保存创建时 reasoning_effort_mappings 字段的默认值。
+	DefaultReasoningEffortMappings []domain.ReasoningEffortMapping
 	// DefaultDataSharingEnabled holds the default value on creation for the "data_sharing_enabled" field.
 	DefaultDataSharingEnabled bool
 	// DefaultSessionIsolationEnabled holds the default value on creation for the "session_isolation_enabled" field.
@@ -582,6 +594,11 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByMaxReasoningEffort 按 max_reasoning_effort 字段对结果排序。
+func ByMaxReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxReasoningEffort, opts...).ToFunc()
 }
 
 // ByDataSharingEnabled orders the results by the data_sharing_enabled field.

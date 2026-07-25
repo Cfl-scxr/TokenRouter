@@ -270,6 +270,11 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// MaxReasoningEffort 对 max_reasoning_effort 字段应用等值检查谓词，等同于 MaxReasoningEffortEQ。
+func MaxReasoningEffort(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
+}
+
 // DataSharingEnabled applies equality check predicate on the "data_sharing_enabled" field. It's identical to DataSharingEnabledEQ.
 func DataSharingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDataSharingEnabled, v))
@@ -1973,6 +1978,71 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// MaxReasoningEffortEQ 对 max_reasoning_effort 字段应用 EQ 谓词。
+func MaxReasoningEffortEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortNEQ 对 max_reasoning_effort 字段应用 NEQ 谓词。
+func MaxReasoningEffortNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortIn 对 max_reasoning_effort 字段应用 In 谓词。
+func MaxReasoningEffortIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldMaxReasoningEffort, vs...))
+}
+
+// MaxReasoningEffortNotIn 对 max_reasoning_effort 字段应用 NotIn 谓词。
+func MaxReasoningEffortNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldMaxReasoningEffort, vs...))
+}
+
+// MaxReasoningEffortGT 对 max_reasoning_effort 字段应用 GT 谓词。
+func MaxReasoningEffortGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortGTE 对 max_reasoning_effort 字段应用 GTE 谓词。
+func MaxReasoningEffortGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortLT 对 max_reasoning_effort 字段应用 LT 谓词。
+func MaxReasoningEffortLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortLTE 对 max_reasoning_effort 字段应用 LTE 谓词。
+func MaxReasoningEffortLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortContains 对 max_reasoning_effort 字段应用 Contains 谓词。
+func MaxReasoningEffortContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortHasPrefix 对 max_reasoning_effort 字段应用 HasPrefix 谓词。
+func MaxReasoningEffortHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortHasSuffix 对 max_reasoning_effort 字段应用 HasSuffix 谓词。
+func MaxReasoningEffortHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortEqualFold 对 max_reasoning_effort 字段应用 EqualFold 谓词。
+func MaxReasoningEffortEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldMaxReasoningEffort, v))
+}
+
+// MaxReasoningEffortContainsFold 对 max_reasoning_effort 字段应用 ContainsFold 谓词。
+func MaxReasoningEffortContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldMaxReasoningEffort, v))
 }
 
 // DataSharingEnabledEQ applies the EQ predicate on the "data_sharing_enabled" field.
