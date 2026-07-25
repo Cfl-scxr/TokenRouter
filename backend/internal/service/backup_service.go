@@ -51,6 +51,11 @@ var (
 	ErrBackupStorageConfigCorrupt = infraerrors.InternalServer("BACKUP_STORAGE_CONFIG_CORRUPT", "backup storage config data is corrupted")
 	ErrBackupContentConfigCorrupt = infraerrors.InternalServer("BACKUP_CONTENT_CONFIG_CORRUPT", "backup content config data is corrupted")
 	ErrDatabaseMaintenanceBusy    = infraerrors.Conflict("MAINTENANCE_BUSY", "another database maintenance task is running")
+	// ErrSecretEncryptionKeyNotConfigured 表示当前使用的是重启后会变化的临时密钥，不能持久化新的 S3 密钥。
+	ErrSecretEncryptionKeyNotConfigured = infraerrors.BadRequest(
+		"SECRET_ENCRYPTION_KEY_NOT_CONFIGURED",
+		"cannot store the S3 secret access key: no fixed secret encryption key is configured, so the auto-generated key would change on every restart and make the stored secret undecryptable after a restart or upgrade. Set a fixed TOTP_ENCRYPTION_KEY (e.g. generate one with `openssl rand -hex 32`) and try again",
+	)
 )
 
 var backupContentTableDataGroups = map[string][]string{
@@ -199,13 +204,15 @@ type BackupRecord struct {
 
 // BackupService 数据库备份恢复服务
 type BackupService struct {
-	settingRepo  SettingRepository
-	dbCfg        *config.DatabaseConfig
-	encryptor    SecretEncryptor
-	storeFactory BackupObjectStoreFactory
-	dumper       DBDumper
-	localStore   BackupObjectStore
-	db           *sql.DB
+	settingRepo SettingRepository
+	dbCfg       *config.DatabaseConfig
+	encryptor   SecretEncryptor
+	// encryptionKeyConfigured 标记加密密钥是否由部署显式配置；临时密钥不能用于持久化新凭证。
+	encryptionKeyConfigured bool
+	storeFactory            BackupObjectStoreFactory
+	dumper                  DBDumper
+	localStore              BackupObjectStore
+	db                      *sql.DB
 
 	opMu      sync.Mutex // 保护 backingUp/restoring 标志
 	backingUp bool
@@ -244,14 +251,15 @@ func NewBackupService(
 ) *BackupService {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &BackupService{
-		settingRepo:  settingRepo,
-		dbCfg:        &cfg.Database,
-		encryptor:    encryptor,
-		storeFactory: storeFactory,
-		dumper:       dumper,
-		localStore:   NewLocalBackupStore(defaultBackupLocalPath()),
-		bgCtx:        bgCtx,
-		bgCancel:     bgCancel,
+		settingRepo:             settingRepo,
+		dbCfg:                   &cfg.Database,
+		encryptor:               encryptor,
+		encryptionKeyConfigured: cfg.Totp.EncryptionKeyConfigured,
+		storeFactory:            storeFactory,
+		dumper:                  dumper,
+		localStore:              NewLocalBackupStore(defaultBackupLocalPath()),
+		bgCtx:                   bgCtx,
+		bgCancel:                bgCancel,
 	}
 }
 
@@ -340,6 +348,11 @@ func (s *BackupService) Stop() {
 }
 
 // ─── 存储配置管理 ───
+
+// EncryptionKeyConfigured 返回当前是否使用部署显式配置、可跨重启保持不变的加密密钥。
+func (s *BackupService) EncryptionKeyConfigured() bool {
+	return s != nil && s.encryptionKeyConfigured
+}
 
 func (s *BackupService) GetStorageConfig(ctx context.Context) (*BackupStorageConfig, error) {
 	cfg, err := s.loadStorageConfig(ctx)
@@ -1319,6 +1332,10 @@ func (s *BackupService) prepareS3ConfigForSave(ctx context.Context, cfg BackupS3
 	if cfg.SecretAccessKey == "" {
 		cfg.SecretAccessKey = s.loadStoredEncryptedS3Secret(ctx)
 	} else {
+		// 自动生成的临时密钥会在重启后变化，使用它落库会让新密文永久无法解密。
+		if !s.encryptionKeyConfigured {
+			return nil, ErrSecretEncryptionKeyNotConfigured
+		}
 		encrypted, err := s.encryptor.Encrypt(cfg.SecretAccessKey)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt secret: %w", err)

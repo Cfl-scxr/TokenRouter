@@ -176,6 +176,10 @@ func (s *ImageStorageSettingService) Update(ctx context.Context, in ImageStorage
 			in.SecretAccessKey = old.SecretAccessKey
 		}
 	} else {
+		// 图片存储与备份共用加密密钥，临时密钥同样不能用于持久化新凭证。
+		if s.backup == nil || !s.backup.EncryptionKeyConfigured() {
+			return nil, ErrSecretEncryptionKeyNotConfigured
+		}
 		encrypted, err := s.encryptor.Encrypt(in.SecretAccessKey)
 		if err != nil {
 			return nil, fmt.Errorf("encrypt secret: %w", err)

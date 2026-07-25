@@ -68,10 +68,16 @@ func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (str
 }
 
 func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
+	return newImageStorageFixtureWithKey(t, fallback, true)
+}
+
+func newImageStorageFixtureWithKey(t *testing.T, fallback config.ImageStorageConfig, encryptionKeyConfigured bool) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
 	t.Helper()
 	repo := newStubSettingRepo()
 	encryptor := reversibleEncryptor{}
-	backup := NewBackupService(repo, &config.Config{}, encryptor, nil, nil)
+	backup := NewBackupService(repo, &config.Config{
+		Totp: config.TotpConfig{EncryptionKeyConfigured: encryptionKeyConfigured},
+	}, encryptor, nil, nil)
 
 	var built []config.ImageStorageConfig
 	factory := func(_ context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error) {
@@ -191,6 +197,31 @@ func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {
 	require.NoError(t, err)
 	svc.resolve()
 	require.Equal(t, "super-secret", (*built)[1].SecretAccessKey)
+}
+
+func TestImageStorageSettingsRejectSecretWithEphemeralKey(t *testing.T) {
+	svc, repo, built := newImageStorageFixtureWithKey(t, config.ImageStorageConfig{}, false)
+	ctx := context.Background()
+
+	// 自有凭证会写入数据库，临时加密密钥下必须拒绝。
+	_, err := svc.Update(ctx, ImageStorageSettings{
+		Enabled: true, Bucket: "my-images",
+		Endpoint:    "https://acct.r2.cloudflarestorage.com",
+		AccessKeyID: "ak", SecretAccessKey: "super-secret",
+	})
+	require.ErrorIs(t, err, ErrSecretEncryptionKeyNotConfigured)
+
+	raw, _ := repo.GetValue(ctx, settingKeyImageStorageConfig)
+	require.Empty(t, raw)
+	require.Empty(t, *built)
+
+	// 复用备份凭证不会额外持久化密钥，因此仍然允许。
+	seedBackupS3(t, repo, BackupS3Config{
+		Endpoint: "https://acct.r2.cloudflarestorage.com", Region: "auto",
+		Bucket: "backup-bucket", AccessKeyID: "ak", SecretAccessKey: "sk", Prefix: "backups/",
+	})
+	_, err = svc.Update(ctx, ImageStorageSettings{Enabled: true, ReuseBackupS3: true})
+	require.NoError(t, err)
 }
 
 func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {

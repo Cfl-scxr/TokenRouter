@@ -64,7 +64,10 @@ func TestAsyncImageEnablesWithoutRestart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	repo := &toggleSettingRepo{values: map[string]string{}}
-	backup := service.NewBackupService(repo, &config.Config{}, passthroughEncryptor{}, nil, nil)
+	// 保存新的图片存储密钥要求部署显式配置固定加密密钥。
+	backup := service.NewBackupService(repo, &config.Config{
+		Totp: config.TotpConfig{EncryptionKeyConfigured: true},
+	}, passthroughEncryptor{}, nil, nil)
 	factory := func(context.Context, *config.ImageStorageConfig) (service.ImageStorage, error) {
 		return noopImageStorage{}, nil
 	}
