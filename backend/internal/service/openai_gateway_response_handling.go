@@ -987,9 +987,31 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	}
 	// 优先解析顶层 usage，兼容非流式响应；再解析 SSE/WS 终端事件里的 response.usage。
 	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "tool_usage.image_gen"), &usage)
 		return usage, true
 	}
-	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
+	if usage, ok := openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage")); ok {
+		mergeHostedImageGenToolUsage(gjson.GetBytes(body, "response.tool_usage.image_gen"), &usage)
+		return usage, true
+	}
+	return OpenAIUsage{}, false
+}
+
+// mergeHostedImageGenToolUsage 补齐 hosted image_generation 工具独立返回的图片 token。
+func mergeHostedImageGenToolUsage(imageGen gjson.Result, usage *OpenAIUsage) {
+	if usage == nil || !imageGen.Exists() || !imageGen.IsObject() {
+		return
+	}
+	if usage.ImageOutputTokens == 0 {
+		if value, ok := boundedJSONNonNegativeInt(imageGen.Get("output_tokens_details.image_tokens")); ok && value > 0 {
+			usage.ImageOutputTokens = value
+		}
+	}
+	if usage.ImageInputTokens == 0 {
+		if value, ok := boundedJSONNonNegativeInt(imageGen.Get("input_tokens_details.image_tokens")); ok && value > 0 {
+			usage.ImageInputTokens = value
+		}
+	}
 }
 
 func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
