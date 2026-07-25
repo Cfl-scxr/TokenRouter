@@ -65,18 +65,21 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		return nil, err
 	}
-	cacheIdentity := resolveGrokCacheIdentity(c, body, "", upstreamModel)
 	patchedBody, err := patchGrokResponsesBody(body, upstreamModel)
 	if err != nil {
 		return nil, err
 	}
+	// 从 xAI 实际接收的请求派生身份，使 Codex Responses Lite 的 additional_tools
+	// 成为稳定工具前缀的一部分。
+	cacheIdentity := resolveGrokCacheIdentity(c, patchedBody, "", upstreamModel)
+	mixedCacheIntentBody := append([]byte(nil), patchedBody...)
 	patchedBody, err = applyGrokResponsesCacheIdentity(patchedBody, body, cacheIdentity, account.IsGrokOAuth())
 	if err != nil {
 		return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
 	}
-	// Free OAuth 携带客户端函数工具时复用 Messages 混合工具缓存路由，补齐
-	// web_search/x_search，避免 xAI 强制落到不可缓存的 build-free 层级。
-	patchedBody, err = applyGrokFreeMessagesFunctionToolCacheRoute(patchedBody, body, account, cacheIdentity)
+	// Free OAuth 携带客户端函数工具时复用混合工具缓存路由，补齐 web_search/x_search，
+	// 避免 xAI 强制落到不可缓存的 build-free 层级。
+	patchedBody, err = applyGrokFreeRequestToolCacheRoute(c, patchedBody, mixedCacheIntentBody, account, cacheIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 	}
@@ -387,9 +390,9 @@ func deleteJSONFields(value any, fields map[string]struct{}) bool {
 	}
 }
 
-// sanitizeGrokResponsesInput 移除 Codex/Responses Lite 私有的 additional_tools 输入项。
-// xAI Responses 接受普通消息和函数调用输入，但会在推理前拒绝该载体；顶层受支持工具
-// 仍由 sanitizeGrokResponsesTools 独立保留。
+// sanitizeGrokResponsesInput 移除 Codex/Responses Lite 私有的 additional_tools 载体，
+// 同时按载体顺序把其中受支持的工具提升到顶层并保留原顶层顺序；最终由
+// sanitizeGrokResponsesTools 过滤 xAI 不支持的类型。
 func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"additional_tools"`)) {
 		return body, nil
@@ -401,8 +404,36 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 
 	rawItems := input.Array()
 	filtered := make([]json.RawMessage, 0, len(rawItems))
+	topLevelTools := gjson.GetBytes(body, "tools")
+	mergedTools := make([]json.RawMessage, 0)
+	seenTools := make(map[string]struct{})
+	appendTool := func(tool gjson.Result) bool {
+		key := grokResponsesToolDedupKey(tool)
+		if _, exists := seenTools[key]; exists {
+			return false
+		}
+		seenTools[key] = struct{}{}
+		mergedTools = append(mergedTools, json.RawMessage(tool.Raw))
+		return true
+	}
+	if topLevelTools.IsArray() {
+		for _, tool := range topLevelTools.Array() {
+			seenTools[grokResponsesToolDedupKey(tool)] = struct{}{}
+			mergedTools = append(mergedTools, json.RawMessage(tool.Raw))
+		}
+	}
+
+	promoted := false
 	for _, item := range rawItems {
 		if strings.TrimSpace(item.Get("type").String()) == "additional_tools" {
+			tools := item.Get("tools")
+			if tools.IsArray() {
+				for _, tool := range tools.Array() {
+					if appendTool(tool) {
+						promoted = true
+					}
+				}
+			}
 			continue
 		}
 		filtered = append(filtered, json.RawMessage(item.Raw))
@@ -414,7 +445,30 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sjson.SetRawBytes(body, "input", encoded)
+	body, err = sjson.SetRawBytes(body, "input", encoded)
+	if err != nil || !promoted {
+		return body, err
+	}
+	encodedTools, err := json.Marshal(mergedTools)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "tools", encodedTools)
+}
+
+func grokResponsesToolDedupKey(tool gjson.Result) string {
+	toolType := strings.TrimSpace(tool.Get("type").String())
+	if toolType != "" {
+		if name := strings.TrimSpace(tool.Get("name").String()); name != "" {
+			return "type:" + toolType + "\x00name:" + name
+		}
+		if toolType == "mcp" {
+			if label := strings.TrimSpace(tool.Get("server_label").String()); label != "" {
+				return "type:mcp\x00server_label:" + label
+			}
+		}
+	}
+	return "json:" + normalizeCompatSeedJSON(json.RawMessage(tool.Raw))
 }
 
 // sanitizeGrokReasoningNullContent 删除 reasoning 项中的 "content": null。
