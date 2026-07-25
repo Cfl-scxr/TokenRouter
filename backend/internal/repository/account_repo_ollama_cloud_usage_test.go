@@ -194,7 +194,7 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 	maxWait := time.Hour
 	var capturedSQL string
 	mock.ExpectQuery("WITH eligible AS").
-		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20).
+		WithArgs(now.UTC(), debounce.Seconds(), maxWait.Seconds(), 20, service.OllamaCloudUsageMinFetchInterval.Seconds()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "group_last_used_at"}))
 	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQL}, nil)
 
@@ -217,6 +217,12 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 		"LIMIT $4",
 		"make_interval(secs => $2::double precision)",
 		"make_interval(secs => $3::double precision)",
+		// 两次成功抓取之间的最小间隔下限。
+		"make_interval(secs => $5::double precision)",
+		// PostgreSQL 17 起 jsonpath .datetime() 才接受 ISO-8601 的 "Z" 标识，
+		// 而本服务写入 UTC 时间戳。若没有该改写，14–16 上所有 parsed_* 列都会
+		// 变成 NULL，使到期筛选退化到开放分支。
+		`regexp_replace( regexp_replace( fetched_at, '(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$', '\1\2' ), 'Z$', '+00:00' )`,
 		"group_last_used_at > parsed_fetched_at::timestamptz",
 		"group_last_used_at > parsed_last_attempt_at::timestamptz",
 		"$1 >= activity_due_at",

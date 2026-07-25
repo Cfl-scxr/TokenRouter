@@ -355,15 +355,29 @@ func canonicalJSON(raw string) string {
 
 // ollamaCloudUsageParseRFC3339SQL 复用经过验证的 RFC3339(/Nano) 解析路径；
 // 时间戳缺失或无效时返回 NULL，以便按首次刷新处理。
+//
+// 值进入 jsonpath 前会经过两次改写：
+//  1. 截断超过 6 位的小数秒，因为 .datetime() 不接受高于微秒的精度，而 Go 会输出 9 位；
+//  2. 把尾随 "Z" 改写为 "+00:00"。PostgreSQL 17 起 jsonpath .datetime() 才接受
+//     ISO-8601 的 "Z" 标识，而本服务写入的所有时间戳都是 UTC（因此以 "Z" 结尾）。
+//     若不改写，PostgreSQL 16 及更早版本会静默返回 NULL，使所有到期列均为 NULL，
+//     最终让 ListDueOllamaCloudUsageAccounts 退化到开放分支。
+//
+// 必须使用 jsonpath 而不是直接转换为 ::timestamptz，确保格式匹配但日期非法的值
+// （例如 2026-02-30）按开放策略返回 NULL，而不是中断整条查询。
 func ollamaCloudUsageParseRFC3339SQL(expression string) string {
 	return `CASE
 		WHEN ` + expression + ` IS NULL THEN NULL
 		WHEN ` + expression + ` ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
 			THEN jsonb_path_query_first_tz(
 				to_jsonb(regexp_replace(
-					` + expression + `,
-					'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
-					'\1\2'
+					regexp_replace(
+						` + expression + `,
+						'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
+						'\1\2'
+					),
+					'Z$',
+					'+00:00'
 				)),
 				'$.datetime()', '{}'::jsonb, true
 			) #>> '{}'
@@ -377,9 +391,10 @@ func ollamaCloudUsageParseRFC3339SQL(expression string) string {
 // Account.LastUsedAt 会写入分组 MAX(last_used_at)，供服务层纯函数再次检查，
 // 防止查询候选与执行刷新之间出现竞态。
 //
-// 规则与 service.ollamaCloudUsageAutoRefreshDueAt 保持一致：
+// 规则与 service.ollamaCloudUsageAutoRefreshDueAt 保持一致，两处修改必须同步：
 //   - 快照或时间缺失/无效时按首次刷新处理；
-//   - 成功后仅处理晚于 fetched_at 的活动，due_at = LEAST(last_used+debounce, fetched+maxWait)；
+//   - 成功后仅处理晚于 fetched_at 的活动，
+//     due_at = GREATEST(LEAST(last_used+debounce, fetched+maxWait), fetched+minFetchInterval)；
 //   - 失败或未授权后仅处理晚于 last_attempt 的活动，活动到期时间仍使用 LEAST 公式，
 //     最终 due_at 不早于有效的 next_refresh_at，无效或缺失值按开放策略处理。
 func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
@@ -402,6 +417,7 @@ func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
 	}
 	debounceSeconds := debounce.Seconds()
 	maxWaitSeconds := maxWait.Seconds()
+	minFetchIntervalSeconds := service.OllamaCloudUsageMinFetchInterval.Seconds()
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH eligible AS (
 			SELECT id,
@@ -443,9 +459,12 @@ func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
 						AND parsed_fetched_at IS NOT NULL
 						AND group_last_used_at IS NOT NULL
 						AND group_last_used_at > parsed_fetched_at::timestamptz
-					THEN LEAST(
-						group_last_used_at + make_interval(secs => $2::double precision),
-						parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+					THEN GREATEST(
+						LEAST(
+							group_last_used_at + make_interval(secs => $2::double precision),
+							parsed_fetched_at::timestamptz + make_interval(secs => $3::double precision)
+						),
+						parsed_fetched_at::timestamptz + make_interval(secs => $5::double precision)
 					)
 					WHEN status IN ('failed', 'unauthorized')
 						AND parsed_last_attempt_at IS NOT NULL
@@ -489,7 +508,7 @@ func (r *accountRepository) ListDueOllamaCloudUsageAccounts(
 		WHERE group_rank = 1
 		ORDER BY due_class, due_at NULLS FIRST, id
 		LIMIT $4
-	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit)
+	`, now.UTC(), debounceSeconds, maxWaitSeconds, limit, minFetchIntervalSeconds)
 	if err != nil {
 		return nil, err
 	}

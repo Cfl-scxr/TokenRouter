@@ -72,6 +72,77 @@ func TestListDueOllamaCloudUsageAccountsOrderingLimitAndProxyHydration(t *testin
 	require.Equal(t, proxy.URL(), accounts[0].Proxy.URL())
 }
 
+// TestListDueOllamaCloudUsageAccountsParsesAllRFC3339Precisions 固定 SQL 时间戳解析路径，
+// 覆盖实际写入数据库的小数秒精度和时区表示。
+//
+// 每个夹具的 fetched_at 都只早 2 分钟，并在 30 秒后产生活动；正确解析的记录尚未到期，
+// 因为防抖与最小抓取间隔都会把到期时间推到未来。解析失败的时间戳会变为 NULL，
+// 并进入开放分支而被判定到期，因此必须断言这些记录不存在，测试才能捕获解析失败：
+//
+//   - Go 使用 UTC 时间，即以 "Z" 标识。PostgreSQL 17 起 jsonpath .datetime() 才接受 "Z"，
+//     因此若没有 ollamaCloudUsageParseRFC3339SQL 中的 Z -> +00:00 改写，
+//     PostgreSQL 14–16 会把所有夹具误判为到期；
+//   - 7/8/9 位小数秒超过 .datetime() 支持的微秒精度，必须先截断。
+//
+// 可在最低支持版本上运行，覆盖与数据库版本相关的路径：
+//
+//	TOKENROUTER_TEST_POSTGRES_IMAGE=postgres:15-alpine go test -tags integration ./internal/repository/
+func TestListDueOllamaCloudUsageAccountsParsesAllRFC3339Precisions(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 22, 14, 0, 0, 0, time.UTC)
+	activity := now.Add(-30 * time.Second)
+
+	// 三个值表示同一个 now-2m 时刻，但使用不同精度和时区表示。
+	notDue := map[string]string{
+		"nano-z":         "2026-07-22T13:58:00.123456789Z",
+		"eight-positive": "2026-07-22T14:58:00.12345678+01:00",
+		"seven-negative": "2026-07-22T11:58:00.1234567-02:00",
+	}
+	for name, fetchedAt := range notDue {
+		_ = mustCreateAccount(t, tx.Client(), &service.Account{
+			Name: "ollama-precision-" + name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "precision-" + name, "base_url": "https://ollama.com"},
+			Extra: map[string]any{
+				service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+				service.OllamaCloudUsageAutoRefreshExtraKey: true,
+				service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+					"status":          service.OllamaCloudUsageStatusOK,
+					"fetched_at":      fetchedAt,
+					"last_attempt_at": fetchedAt,
+				},
+			},
+			LastUsedAt: &activity,
+		})
+	}
+
+	// 防止测试空通过：真正到期的记录仍必须返回。
+	staleFetched := now.Add(-2 * time.Hour)
+	due := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-precision-due", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "precision-due", "base_url": "https://ollama.com"},
+		Extra: map[string]any{
+			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+			service.OllamaCloudUsageAutoRefreshExtraKey: true,
+			service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+				"status":          service.OllamaCloudUsageStatusOK,
+				"fetched_at":      staleFetched.UTC().Format(time.RFC3339Nano),
+				"last_attempt_at": staleFetched.UTC().Format(time.RFC3339Nano),
+			},
+		},
+		LastUsedAt: &activity,
+	})
+
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, time.Minute, time.Hour, 10)
+
+	require.NoError(t, err)
+	ids := accountIDs(accounts)
+	require.Contains(t, ids, due.ID, "a stale snapshot with fresh activity must be due")
+	require.Len(t, ids, 1,
+		"only the stale group may be due; extra rows mean a timestamp failed to parse and fell into the fail-open branch")
+}
+
 func TestListDueOllamaCloudUsageAccountsUsesGroupMaxLastUsedAndFailsOpen(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

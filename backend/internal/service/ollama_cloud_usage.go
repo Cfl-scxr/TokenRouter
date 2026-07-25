@@ -32,6 +32,11 @@ const (
 	OllamaCloudUsageAutoRefreshExtraKey = "ollama_cloud_usage_auto_refresh"
 	OllamaCloudUsageSnapshotExtraKey    = "ollama_cloud_usage_snapshot"
 
+	// OllamaCloudUsageMinFetchInterval 是同一分组两次成功抓取之间的硬下限，
+	// 与 nextOllamaCloudUsageDelay 应用于 next_refresh_at 的下限一致。
+	// 活动可以把刷新提前到该边界，但不能越过；导出该常量供仓储 SQL 到期筛选复用。
+	OllamaCloudUsageMinFetchInterval = ollamaCloudUsageMinIntervalMinutes * time.Minute
+
 	ollamaCloudUsageSettingsURL            = "https://ollama.com/settings"
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
@@ -210,6 +215,14 @@ func (s *SettingService) SetOllamaCloudUsageSettings(ctx context.Context, settin
 			fmt.Sprintf("debounce_minutes must be between %d and %d", ollamaCloudUsageMinDebounceMinutes, ollamaCloudUsageMaxDebounceMinutes),
 		)
 	}
+	// 到期时间为 min(lastUsed+debounce, fetchedAt+maxWait)。当 debounce 达到 maxWait 时，
+	// 防抖项永远无法生效，配置会被静默忽略，因此拒绝该组合。
+	if settings.DebounceMinutes >= settings.IntervalMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OLLAMA_CLOUD_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes (%d) must be less than interval_minutes (%d)", settings.DebounceMinutes, settings.IntervalMinutes),
+		)
+	}
 	normalizeOllamaCloudUsageSettings(settings)
 	data, err := json.Marshal(settings)
 	if err != nil {
@@ -299,7 +312,14 @@ func ollamaCloudUsageAutoRefreshDueAt(
 			return time.Time{}, false
 		}
 		lastUsed := groupLastUsedAt.UTC()
-		return minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait)), true
+		dueAt := minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait))
+		// 保留两次成功抓取之间原有的硬下限。成功路径已不再读取 next_refresh_at，
+		// 而 nextOllamaCloudUsageDelay 原本通过该字段应用 ollamaCloudUsageMinIntervalMinutes；
+		// 若无此限制，间隔略大于防抖期的请求流量会让分组上游抓取频率远高于既有下限。
+		if floor := fetchedAt.Add(OllamaCloudUsageMinFetchInterval); dueAt.Before(floor) {
+			return floor, true
+		}
+		return dueAt, true
 	case OllamaCloudUsageStatusFailed, OllamaCloudUsageStatusUnauthorized:
 		if snapshot.LastAttemptAt.IsZero() {
 			return time.Time{}, true
@@ -797,7 +817,13 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 			}
 			groupLastUsed := account.LastUsedAt
 			if writer, ok := s.accountRepo.(ollamaCloudUsageRepository); ok {
-				if siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{account}); listErr == nil {
+				siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{account})
+				if listErr != nil {
+					// 回退到当前账号自身的 last_used_at。它比分组最大值的活动信号更窄，
+					// 到期检查可能因此跳过原本应执行的刷新，所以记录错误而不是静默改变语义。
+					logger.LegacyPrintf("service.ollama_cloud_usage",
+						"group_last_used_lookup_failed: account_id=%d err=%v", account.ID, listErr)
+				} else {
 					groupLastUsed = maxOllamaCloudUsageGroupLastUsed(siblings)
 				}
 			}
