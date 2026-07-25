@@ -514,7 +514,6 @@ affiliate: {
     overviewTitle: 'Account Overview',
     overviewDescription: 'Check account status, profile sources, and common actions at a glance.',
     basicsTitle: 'Profile & Avatar',
-    basicsDescription: 'Keep your public profile details and avatar aligned.',
     linkedProfileSources: 'Profile Sources',
     linkedProfileSourcesDescription: 'Some profile details may stay synced from third-party sign-in methods.',
     securityTitle: 'Security Settings',

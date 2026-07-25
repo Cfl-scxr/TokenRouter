@@ -519,7 +519,6 @@ affiliate: {
     overviewTitle: '账户总览',
     overviewDescription: '快速查看账号状态、资料来源与常用设置。',
     basicsTitle: '资料与头像',
-    basicsDescription: '维护公开展示信息，并保持头像与昵称风格一致。',
     linkedProfileSources: '资料来源',
     linkedProfileSourcesDescription: '部分头像和昵称可能同步自第三方登录方式。',
     securityTitle: '安全设置',

@@ -638,7 +638,7 @@ watch(displayMode, (mode) => {
 
 function readPersistedDisplayMode(): MarketplaceDisplayMode {
   if (typeof localStorage === 'undefined') {
-    return 'model-group'
+    return 'group-model'
   }
   return normalizeDisplayMode(localStorage.getItem(MARKETPLACE_DISPLAY_MODE_STORAGE_KEY))
 }
@@ -651,7 +651,8 @@ function persistDisplayMode(mode: MarketplaceDisplayMode) {
 }
 
 function normalizeDisplayMode(value: unknown): MarketplaceDisplayMode {
-  return value === 'group-model' ? 'group-model' : 'model-group'
+  // 仅保留用户明确选择的模型优先视图，其余情况默认按分组展示。
+  return value === 'model-group' ? 'model-group' : 'group-model'
 }
 
 function groupMatchesSelectedFilters(group: MarketplaceGroup): boolean {
