@@ -259,6 +259,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
 		if account.Platform == PlatformGrok {
+			shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 			s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 			if turn == 1 && shouldFailover {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
@@ -405,7 +406,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
 			shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(statusCode, errMessage, upstreamMessage)
 			if account.Platform == PlatformGrok {
-				s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
+				// SSE 错误事件不携带 HTTP 状态码，本地映射会把未知 xAI 错误码
+				//（例如 new_sensitive）默认映射为 502；应用基于状态码的故障转移或
+				// 账号状态变更前，先按请求级 403 内容拒绝检查响应体。
+				if isGrokContentPolicyRejection(http.StatusForbidden, upstreamMessage) {
+					shouldFailover = false
+				} else {
+					shouldFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
+					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
+				}
 			} else if shouldFailover {
 				accountStatus := statusCode
 				if transientStatus := openAIWSPayloadTransientStatus(upstreamMessage); transientStatus != 0 {
