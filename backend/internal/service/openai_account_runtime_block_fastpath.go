@@ -89,7 +89,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 	}
-	if !shouldDisable && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey && shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {
+	// pool 模式可重试的上游错误已受请求级同账号重试预算约束；若在此记录通用的
+	// 账号+模型瞬态冷却，会在预算用完前阻止下一次已获准的重试。
+	poolModeRetryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
+	if !shouldDisable && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) && !poolModeRetryable {
 		model := ""
 		if len(canonicalModel) > 0 {
 			model = canonicalModel[0]
