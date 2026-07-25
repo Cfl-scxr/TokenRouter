@@ -389,6 +389,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		clientSessionID := service.ExtractClientSessionID(c)
 
 		upstreamModel := ""
 		if result != nil {
@@ -410,6 +411,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				SessionID:          parsed.StickySessionSeed(),
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
+				ClientSessionID:    clientSessionID,
 				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(

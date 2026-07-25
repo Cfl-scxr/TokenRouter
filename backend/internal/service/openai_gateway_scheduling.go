@@ -26,6 +26,15 @@ const (
 	codeBuddyConversationHeader   = "X-Conversation-ID"
 )
 
+var explicitOpenAIHeaderSessionNames = []string{
+	"session_id",
+	"conversation_id",
+	openCodeSessionAffinityHeader,
+	openCodeSessionIDHeader,
+	openCodeNativeSessionHeader,
+	codeBuddyConversationHeader,
+}
+
 // explicitOpenAIHeaderSessionID 提取 OpenAI 兼容客户端发送的稳定会话标识。
 // 这里只接收会话级字段；每轮变化的请求或消息 ID 会破坏粘性路由和上游提示缓存。
 func explicitOpenAIHeaderSessionID(c *gin.Context) string {
@@ -33,14 +42,7 @@ func explicitOpenAIHeaderSessionID(c *gin.Context) string {
 		return ""
 	}
 
-	for _, header := range []string{
-		"session_id",
-		"conversation_id",
-		openCodeSessionAffinityHeader,
-		openCodeSessionIDHeader,
-		openCodeNativeSessionHeader,
-		codeBuddyConversationHeader,
-	} {
+	for _, header := range explicitOpenAIHeaderSessionNames {
 		if sessionID := strings.TrimSpace(c.GetHeader(header)); sessionID != "" {
 			return sessionID
 		}

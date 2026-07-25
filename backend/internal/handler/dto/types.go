@@ -563,6 +563,9 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent"`
 	// IPAddress 对用量记录所有者可见。
 	IPAddress *string `json:"ip_address,omitempty"`
+	// SessionID 是客户端显式提供的请求关联标识，例如 session_id 或
+	// X-Session-Id 请求头；缺失时不返回该字段。
+	SessionID *string `json:"session_id,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
