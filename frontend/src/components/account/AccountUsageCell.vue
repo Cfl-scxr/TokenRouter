@@ -392,7 +392,7 @@
         <UsageProgressBar
           v-if="grokFreeTokenBar"
           label="24h"
-          :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint')"
+          :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint', { limit: formatCompactNumber(grokFreeTokenBar.limit) })"
           :utilization="grokFreeTokenBar.utilization"
           :show-now-when-idle="true"
           color="emerald"
@@ -694,8 +694,6 @@ import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 // 模块级缓存供所有 AccountUsageCell 实例共享
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 分钟
-// xAI Free 的 billing 窗口不提供 usage_percent，因此使用本地 token 用量估算。
-const GROK_FREE_TOKEN_LIMIT = 2_000_000
 
 const props = withDefaults(
   defineProps<{
@@ -1239,8 +1237,10 @@ const grokLocalUsage = computed(() => {
 })
 const grokFreeTokenBar = computed(() => {
   if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
+  const limit = usageInfo.value?.grok_free_token_limit
+  if (typeof limit !== 'number' || limit <= 0) return null
   const used = Math.max(0, grokFreeQuotaUsage.value.tokens || 0)
-  return { utilization: Math.min(100, (used / GROK_FREE_TOKEN_LIMIT) * 100) }
+  return { utilization: Math.min(100, (used / limit) * 100), limit }
 })
 const grokQuotaUnknown = computed(() => {
   if (props.account.platform !== 'grok') return false

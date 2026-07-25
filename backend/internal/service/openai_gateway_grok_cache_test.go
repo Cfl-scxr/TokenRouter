@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -707,7 +708,19 @@ func TestGrokFreeMessagesFunctionToolCacheRouteRequiresKnownFreeTier(t *testing.
 				a := healthyGrokOAuthGatewayTestAccount(9112, "access-token")
 				a.Extra = map[string]any{grokQuotaSnapshotExtraKey: map[string]any{
 					"headers_observed": true,
-					"tokens":           map[string]any{"limit": grokFreeRolling24hTokenLimit},
+					"tokens":           map[string]any{"limit": xai.GrokFreeRolling24hTokenLimit},
+				}}
+				return a
+			}(),
+			wantMix: true,
+		},
+		{
+			name: "legacy free rolling token quota",
+			account: func() *Account {
+				a := healthyGrokOAuthGatewayTestAccount(9113, "access-token")
+				a.Extra = map[string]any{grokQuotaSnapshotExtraKey: map[string]any{
+					"headers_observed": true,
+					"tokens":           map[string]any{"limit": int64(2_000_000)},
 				}}
 				return a
 			}(),
@@ -729,7 +742,7 @@ func TestGrokFreeMessagesFunctionToolCacheRouteRequiresKnownFreeTier(t *testing.
 					grokBillingExtraKey: map[string]any{"plan": "SuperGrok", "status_code": http.StatusOK},
 					grokQuotaSnapshotExtraKey: map[string]any{
 						"headers_observed": true,
-						"tokens":           map[string]any{"limit": grokFreeRolling24hTokenLimit},
+						"tokens":           map[string]any{"limit": int64(2_000_000)},
 					},
 				}
 				return a

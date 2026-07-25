@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -17,7 +18,6 @@ const (
 	grokFreeCacheNativeToolsJSON     = `[{"type":"web_search"},{"type":"x_search"}]`
 	grokFreeCacheDisabledToolChoice  = "none"
 	grokClientToolCacheOptInExtraKey = "grok_client_tool_cache_enabled"
-	grokFreeRolling24hTokenLimit     = int64(2_000_000)
 )
 
 // resolveGrokCacheIdentity 为 xAI 服务端提示缓存派生稳定且租户隔离的路由身份。
@@ -276,7 +276,7 @@ func isKnownGrokFreeAccount(account *Account) bool {
 			}
 		}
 		if snapshot.Tokens != nil && snapshot.Tokens.Limit != nil &&
-			*snapshot.Tokens.Limit == grokFreeRolling24hTokenLimit {
+			xai.IsGrokFreeRolling24hTokenLimit(*snapshot.Tokens.Limit) {
 			inferredFreeSignal = true
 		}
 	}
