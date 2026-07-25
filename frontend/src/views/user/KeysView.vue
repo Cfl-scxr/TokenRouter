@@ -442,14 +442,14 @@
       </template>
     </TablePageLayout>
 
-    <!-- Create/Edit Modal -->
+    <!-- 创建/编辑密钥共用弹窗；表单允许在窄屏内收缩，避免撑开页面。 -->
     <BaseDialog
       :show="showCreateModal || showEditModal"
       :title="showEditModal ? t('keys.editKey') : t('keys.createKey')"
       width="normal"
       @close="closeModals"
     >
-      <form id="key-form" @submit.prevent="handleSubmit" class="space-y-5">
+      <form id="key-form" @submit.prevent="handleSubmit" class="min-w-0 max-w-full space-y-5">
         <div>
           <label class="input-label">{{ t('keys.nameLabel') }}</label>
           <input

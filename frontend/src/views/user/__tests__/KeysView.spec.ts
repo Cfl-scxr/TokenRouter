@@ -163,7 +163,8 @@ const AppLayoutStub = {
 }
 
 const BaseDialogStub = {
-  props: ['show'],
+  name: 'BaseDialog',
+  props: ['show', 'title', 'width'],
   template: '<div v-if="show"><slot /><slot name="footer" /></div>',
 }
 
@@ -446,6 +447,19 @@ describe('user KeysView column settings', () => {
       (column) => column.key === 'current_concurrency'
     )
     expect(currentConcurrencyColumn?.sortable).toBe(true)
+  })
+
+  it('keeps the create key form shrinkable on narrow screens', async () => {
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+
+    const dialog = wrapper.findComponent({ name: 'BaseDialog' })
+    const form = wrapper.get('form#key-form')
+
+    expect(dialog.props('width')).toBe('normal')
+    expect(form.classes()).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full']))
   })
 
   it('keeps filters and selected page size when sorting by current concurrency', async () => {
