@@ -192,6 +192,12 @@ func normalizeOpenAICompatiblePlatform(platform string) string {
 
 // noAvailableOpenAISelectionErrorForRouting 使用账号层模型 C/D 判断能力，同时保留 R 的对外错误语义。
 func noAvailableOpenAISelectionErrorForRouting(ctx context.Context, requestedModel string, routingModel string, compactBlocked bool, accounts ...[]Account) error {
+	return noAvailableOpenAISelectionErrorForRoutingWithDetails(ctx, requestedModel, routingModel, compactBlocked, "", accounts...)
+}
+
+// noAvailableOpenAISelectionErrorForRoutingWithDetails 仅在通用无账号错误中追加调度诊断；
+// compact 能力错误和 fork 的模型业务错误继续保留原有类型与消息。
+func noAvailableOpenAISelectionErrorForRoutingWithDetails(ctx context.Context, requestedModel string, routingModel string, compactBlocked bool, details string, accounts ...[]Account) error {
 	if compactBlocked {
 		return ErrNoAvailableCompactAccounts
 	}
@@ -200,10 +206,14 @@ func noAvailableOpenAISelectionErrorForRouting(ctx context.Context, requestedMod
 			return err
 		}
 	}
+	message := "no available OpenAI accounts"
 	if requestedModel != "" {
-		return openAINoAvailableSelectionError{message: fmt.Sprintf("no available OpenAI accounts supporting model: %s", requestedModel)}
+		message = fmt.Sprintf("no available OpenAI accounts supporting model: %s", requestedModel)
 	}
-	return openAINoAvailableSelectionError{message: "no available OpenAI accounts"}
+	if details != "" {
+		message += " (" + details + ")"
+	}
+	return openAINoAvailableSelectionError{message: message}
 }
 
 // openAINoAvailableSelectionError 保留原有可读消息，同时支持 errors.Is 统一分类。
