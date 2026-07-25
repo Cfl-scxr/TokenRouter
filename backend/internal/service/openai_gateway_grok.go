@@ -1360,6 +1360,9 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
+	case http.StatusPaymentRequired:
+		// 402 表示当前账号计费不可用，短期排除以避免后续请求反复命中。
+		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
 	case http.StatusForbidden:
 		if s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
 			return
