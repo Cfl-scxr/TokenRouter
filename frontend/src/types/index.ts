@@ -1121,7 +1121,10 @@ export interface OllamaCloudUsageState {
 
 export interface OllamaCloudUsageSettings {
   enabled: boolean
+  /** 模型请求持续到达时的最大等待时间（分钟）。 */
   interval_minutes: number
+  /** 最近一次模型请求后的尾随静默期（分钟）。 */
+  debounce_minutes: number
 }
 
 export interface Account {

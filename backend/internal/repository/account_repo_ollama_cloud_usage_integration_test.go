@@ -23,81 +23,124 @@ func TestListDueOllamaCloudUsageAccountsOrderingLimitAndProxyHydration(t *testin
 		Username: "user", Password: "pass", Status: service.StatusActive,
 	})
 
-	createAccount := func(name, baseURL string, proxyID *int64, nextRefreshAt *time.Time) *service.Account {
+	createAccount := func(name, baseURL string, proxyID *int64, snapshot map[string]any, lastUsed *time.Time) *service.Account {
 		t.Helper()
 		extra := map[string]any{
 			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
 			service.OllamaCloudUsageAutoRefreshExtraKey: true,
 		}
-		if nextRefreshAt != nil {
-			extra[service.OllamaCloudUsageSnapshotExtraKey] = map[string]any{
-				"status": service.OllamaCloudUsageStatusOK, "next_refresh_at": nextRefreshAt.UTC().Format(time.RFC3339Nano),
-			}
+		if snapshot != nil {
+			extra[service.OllamaCloudUsageSnapshotExtraKey] = snapshot
 		}
 		return mustCreateAccount(t, tx.Client(), &service.Account{
 			Name: name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
 			Credentials: map[string]any{"api_key": name, "base_url": baseURL},
-			Extra:       extra, ProxyID: proxyID,
+			Extra:       extra, ProxyID: proxyID, LastUsedAt: lastUsed,
 		})
 	}
 
-	uppercasePath := createAccount("ollama-uppercase-path", "https://ollama.com/V1", nil, nil)
-	missingSnapshot := createAccount("ollama-due-missing", "HTTPS://WWW.OLLAMA.COM:443/v1", &proxy.ID, nil)
-	oldest := now.Add(-2 * time.Hour)
-	due := createAccount("ollama-due-oldest", "https://ollama.com", nil, &oldest)
-	future := now.Add(time.Minute)
-	_ = createAccount("ollama-not-due", "https://ollama.com", nil, &future)
-	_ = createAccount("ollama-ineligible", "https://ollama.com.evil.test", nil, nil)
+	uppercasePath := createAccount("ollama-uppercase-path", "https://ollama.com/V1", nil, nil, nil)
+	missingSnapshot := createAccount("ollama-due-missing", "HTTPS://WWW.OLLAMA.COM:443/v1", &proxy.ID, nil, nil)
+	fetched := now.Add(-2 * time.Hour)
+	activity := now.Add(-5 * time.Minute)
+	due := createAccount("ollama-due-activity", "https://ollama.com", nil, map[string]any{
+		"status":          service.OllamaCloudUsageStatusOK,
+		"fetched_at":      fetched.UTC().Format(time.RFC3339Nano),
+		"last_attempt_at": fetched.UTC().Format(time.RFC3339Nano),
+		"next_refresh_at": fetched.Add(time.Hour).UTC().Format(time.RFC3339Nano),
+	}, &activity)
+	// 成功快照之后没有新活动时，不应进入候选列表。
+	_ = createAccount("ollama-not-due-idle", "https://ollama.com", nil, map[string]any{
+		"status":          service.OllamaCloudUsageStatusOK,
+		"fetched_at":      now.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		"last_attempt_at": now.Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		"next_refresh_at": now.Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+	}, nil)
+	_ = createAccount("ollama-ineligible", "https://ollama.com.evil.test", nil, nil, nil)
 
-	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, 2)
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, time.Minute, time.Hour, 2)
 
 	require.NoError(t, err)
 	require.Len(t, accounts, 2)
 	require.Equal(t, missingSnapshot.ID, accounts[0].ID)
 	require.Equal(t, due.ID, accounts[1].ID)
+	require.NotNil(t, accounts[1].LastUsedAt)
+	require.WithinDuration(t, activity.UTC(), accounts[1].LastUsedAt.UTC(), time.Second)
 	require.NotContains(t, accountIDs(accounts), uppercasePath.ID)
 	require.NotNil(t, accounts[0].Proxy)
 	require.Equal(t, proxy.ID, accounts[0].Proxy.ID)
 	require.Equal(t, proxy.URL(), accounts[0].Proxy.URL())
 }
 
-func TestListDueOllamaCloudUsageAccountsParsesRFC3339NanoAndFailsOpen(t *testing.T) {
+func TestListDueOllamaCloudUsageAccountsUsesGroupMaxLastUsedAndFailsOpen(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
 	now := time.Date(2026, time.July, 22, 14, 0, 0, 0, time.UTC)
+	fetched := now.Add(-30 * time.Minute)
+	older := now.Add(-10 * time.Minute)
+	newer := now.Add(-2 * time.Minute)
 
-	create := func(name, nextRefreshAt string) *service.Account {
-		t.Helper()
-		return mustCreateAccount(t, tx.Client(), &service.Account{
-			Name: name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
-			Credentials: map[string]any{"api_key": name, "base_url": "https://ollama.com"},
-			Extra: map[string]any{
-				service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
-				service.OllamaCloudUsageAutoRefreshExtraKey: true,
-				service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
-					"status": service.OllamaCloudUsageStatusOK, "next_refresh_at": nextRefreshAt,
-				},
+	leader := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-group-leader", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "shared-key", "base_url": "https://ollama.com"},
+		Extra: map[string]any{
+			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+			service.OllamaCloudUsageAutoRefreshExtraKey: true,
+			service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+				"status":          service.OllamaCloudUsageStatusOK,
+				"fetched_at":      fetched.UTC().Format(time.RFC3339Nano),
+				"last_attempt_at": fetched.UTC().Format(time.RFC3339Nano),
+				"next_refresh_at": fetched.Add(time.Hour).UTC().Format(time.RFC3339Nano),
 			},
-		})
-	}
+		},
+		LastUsedAt: &older,
+	})
+	_ = mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-group-sibling", Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "shared-key", "base_url": "https://www.ollama.com/v1"},
+		LastUsedAt:  &newer,
+	})
+	invalid := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-invalid-snapshot", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "invalid-key", "base_url": "https://ollama.com"},
+		Extra: map[string]any{
+			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+			service.OllamaCloudUsageAutoRefreshExtraKey: true,
+			service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+				"status": service.OllamaCloudUsageStatusOK, "fetched_at": "2026-02-30T09:00:00.123456789Z",
+			},
+		},
+	})
+	idle := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "ollama-idle-ok", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "idle-key", "base_url": "https://ollama.com"},
+		Extra: map[string]any{
+			service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+			service.OllamaCloudUsageAutoRefreshExtraKey: true,
+			service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+				"status":          service.OllamaCloudUsageStatusOK,
+				"fetched_at":      fetched.UTC().Format(time.RFC3339Nano),
+				"last_attempt_at": fetched.UTC().Format(time.RFC3339Nano),
+				"next_refresh_at": fetched.Add(time.Hour).UTC().Format(time.RFC3339Nano),
+			},
+		},
+	})
 
-	sevenDigitsOffset := create("ollama-nano-seven", "2026-07-22T11:00:00.1234567-02:00")
-	eightDigitsOffset := create("ollama-nano-eight", "2026-07-22T11:00:00.12345678+01:00")
-	nineDigitsZ := create("ollama-nano-nine", "2026-07-22T09:00:00.123456789Z")
-	invalidCalendar := create("ollama-nano-invalid", "2026-02-30T09:00:00.123456789Z")
-	future := create("ollama-nano-future", "2026-07-22T15:00:00.123456789Z")
-
-	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, 10)
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, time.Minute, time.Hour, 10)
 
 	require.NoError(t, err, "invalid stored values must not abort the query")
-	require.Equal(t, []int64{
-		invalidCalendar.ID,
-		nineDigitsZ.ID,
-		eightDigitsOffset.ID,
-		sevenDigitsOffset.ID,
-	}, accountIDs(accounts))
-	require.NotContains(t, accountIDs(accounts), future.ID)
+	ids := accountIDs(accounts)
+	require.Contains(t, ids, invalid.ID)
+	require.Contains(t, ids, leader.ID)
+	require.NotContains(t, ids, idle.ID)
+	for _, account := range accounts {
+		if account.ID == leader.ID {
+			require.NotNil(t, account.LastUsedAt)
+			require.WithinDuration(t, newer.UTC(), account.LastUsedAt.UTC(), time.Second,
+				"group MAX(last_used_at) must come from the sibling")
+		}
+	}
 }
 
 func TestLockAndMergeAccountProbeExtraCoalescesNullableOllamaGroupIdentity(t *testing.T) {
@@ -412,4 +455,111 @@ func TestUpdateCredentialsUnchangedCredentialsPreserveManagedExtra(t *testing.T)
 	require.NoError(t, err)
 	require.NotContains(t, probeLoaded.Extra, service.UpstreamBillingProbeExtraKey,
 		"changed credentials must keep clearing the probe snapshot")
+}
+
+// TestListDueOllamaCloudUsageAccountsSQLDueRulesMatchService 验证 SQL 候选层会在 LIMIT 前
+// 应用防抖、最大等待和失败退避规则，并与 service.ollamaCloudUsageIsAutoRefreshDue 保持一致；
+// 同时验证超过 20 个活跃但未到期的分组不会让真正达到最大等待时间的分组饥饿。
+func TestListDueOllamaCloudUsageAccountsSQLDueRulesMatchService(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 25, 12, 0, 0, 0, time.UTC)
+	debounce := time.Minute
+	maxWait := time.Hour
+
+	createOK := func(name string, fetched, lastUsed time.Time) *service.Account {
+		t.Helper()
+		return mustCreateAccount(t, tx.Client(), &service.Account{
+			Name: name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": name, "base_url": "https://ollama.com"},
+			Extra: map[string]any{
+				service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+				service.OllamaCloudUsageAutoRefreshExtraKey: true,
+				service.OllamaCloudUsageSnapshotExtraKey: map[string]any{
+					"status":          service.OllamaCloudUsageStatusOK,
+					"fetched_at":      fetched.UTC().Format(time.RFC3339Nano),
+					"last_attempt_at": fetched.UTC().Format(time.RFC3339Nano),
+					"next_refresh_at": fetched.Add(maxWait).UTC().Format(time.RFC3339Nano),
+				},
+			},
+			LastUsedAt: &lastUsed,
+		})
+	}
+	createFailed := func(name string, lastAttempt, lastUsed, nextRefresh time.Time, nextRefreshRaw string) *service.Account {
+		t.Helper()
+		snapshot := map[string]any{
+			"status":          service.OllamaCloudUsageStatusFailed,
+			"last_attempt_at": lastAttempt.UTC().Format(time.RFC3339Nano),
+			"failure_count":   1,
+		}
+		if nextRefreshRaw != "" {
+			snapshot["next_refresh_at"] = nextRefreshRaw
+		} else {
+			snapshot["next_refresh_at"] = nextRefresh.UTC().Format(time.RFC3339Nano)
+		}
+		return mustCreateAccount(t, tx.Client(), &service.Account{
+			Name: name, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": name, "base_url": "https://ollama.com"},
+			Extra: map[string]any{
+				service.OllamaCloudUsageSessionExtraKey:     "cipher:wos-session=fixture",
+				service.OllamaCloudUsageAutoRefreshExtraKey: true,
+				service.OllamaCloudUsageSnapshotExtraKey:    snapshot,
+			},
+			LastUsedAt: &lastUsed,
+		})
+	}
+
+	// 21 个分组在刷新后有活动但尚未经过防抖期；旧实现中它们会每分钟占满 20 个名额，
+	// 使真正到期的分组无法刷新。
+	notDueIDs := make(map[int64]struct{}, 21)
+	for i := 0; i < 21; i++ {
+		// 10 分钟前刷新、10 秒前使用，due_at = lastUsed+debounce = now+50s，尚未到期。
+		acc := createOK(fmt.Sprintf("ollama-not-due-debounce-%02d", i), now.Add(-10*time.Minute), now.Add(-10*time.Second))
+		notDueIDs[acc.ID] = struct{}{}
+	}
+
+	// 通过最大等待规则真正到期：2 小时前刷新，持续活动到 10 秒前。
+	// due_at = min(now-10s+1m, now-2h+1h) = now-1h，已经到期。
+	maxWaitDue := createOK("ollama-due-maxwait", now.Add(-2*time.Hour), now.Add(-10*time.Second))
+
+	// 成功后防抖期已过：2 分钟前使用且防抖为 1 分钟，应当到期。
+	debounceDue := createOK("ollama-due-debounce", now.Add(-30*time.Minute), now.Add(-2*time.Minute))
+
+	// 成功后仍在防抖期内，不应到期。
+	_ = createOK("ollama-not-due-fresh", now.Add(-30*time.Minute), now.Add(-20*time.Second))
+
+	// 失败后即使有新活动，也会受 next_refresh_at 退避约束。
+	_ = createFailed("ollama-fail-backoff", now.Add(-30*time.Minute), now.Add(-2*time.Minute), now.Add(10*time.Minute), "")
+
+	// 失败退避结束后出现新请求，应当到期。
+	failDue := createFailed("ollama-fail-due", now.Add(-30*time.Minute), now.Add(-2*time.Minute), now.Add(-time.Minute), "")
+
+	// next_refresh_at 无效时按开放策略处理，既不终止查询，也不阻止活动到期。
+	failInvalidNext := createFailed("ollama-fail-invalid-next", now.Add(-30*time.Minute), now.Add(-2*time.Minute), time.Time{}, "not-a-timestamp")
+
+	accounts, err := repo.ListDueOllamaCloudUsageAccounts(ctx, now, debounce, maxWait, 20)
+	require.NoError(t, err)
+
+	ids := accountIDs(accounts)
+	require.Contains(t, ids, maxWaitDue.ID, "max-wait due group must not be starved by not-yet-due activity groups")
+	require.Contains(t, ids, debounceDue.ID, "success debounce elapsed must be due in SQL")
+	require.Contains(t, ids, failDue.ID, "failure after backoff with new activity must be due in SQL")
+	require.Contains(t, ids, failInvalidNext.ID, "invalid next_refresh_at must fail open to activity due")
+	require.LessOrEqual(t, len(accounts), 20)
+
+	// 以下夹具与 service.ollamaCloudUsageIsAutoRefreshDue 的语义一致；
+	// 即使未到期分组数量超过上限，它们也不应出现在结果中。
+	for _, id := range ids {
+		_, isNotDue := notDueIDs[id]
+		require.False(t, isNotDue, "not-yet-due debounce group %d must not be returned by SQL LIMIT layer", id)
+	}
+	require.NotContains(t, ids, int64(0))
+
+	// 明确未到期的名称必须被排除，包括刚成功刷新的分组和仍在退避期的失败分组。
+	for _, account := range accounts {
+		require.NotContains(t, account.Name, "not-due")
+		require.NotEqual(t, "ollama-fail-backoff", account.Name)
+		require.NotEqual(t, "ollama-not-due-fresh", account.Name)
+	}
 }

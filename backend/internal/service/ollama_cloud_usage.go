@@ -36,6 +36,9 @@ const (
 	ollamaCloudUsageDefaultIntervalMinutes = 60
 	ollamaCloudUsageMinIntervalMinutes     = 15
 	ollamaCloudUsageMaxIntervalMinutes     = 24 * 60
+	ollamaCloudUsageDefaultDebounceMinutes = 1
+	ollamaCloudUsageMinDebounceMinutes     = 1
+	ollamaCloudUsageMaxDebounceMinutes     = 60
 	ollamaCloudUsageCycleInterval          = time.Minute
 	ollamaCloudUsageManualRefreshInterval  = 30 * time.Second
 	ollamaCloudUsageRequestTimeout         = 15 * time.Second
@@ -76,10 +79,14 @@ const (
 	OllamaCloudUsageStatusFailed       = "failed"
 )
 
-// OllamaCloudUsageSettings 控制可选的周期刷新任务。
+// OllamaCloudUsageSettings 控制可选的请求驱动刷新任务。
+//
+// IntervalMinutes 是最大等待上限：模型请求持续到达并不断推迟尾随防抖时，
+// 超过该时长会强制刷新。DebounceMinutes 是分组最近一次请求后的静默期。
 type OllamaCloudUsageSettings struct {
 	Enabled         bool `json:"enabled"`
-	IntervalMinutes int  `json:"interval_minutes"`
+	IntervalMinutes int  `json:"interval_minutes"` // 请求持续到达时的最大等待时间
+	DebounceMinutes int  `json:"debounce_minutes"` // 最近一次请求后的尾随静默期
 }
 
 // OllamaCloudUsageWindow 是单个官方用量窗口的最小化脱敏视图。
@@ -114,6 +121,11 @@ type OllamaCloudUsageData struct {
 }
 
 // OllamaCloudUsageSnapshot 是账号 extra 中唯一持久化的用量观测数据。
+//
+// NextRefreshAt 作为兼容字段继续持久化。状态为 ok 时，它只标记最大等待边界；
+// 成功后的自动刷新由模型请求活动（分组 last_used_at + 防抖/最大等待）驱动，
+// 不会仅由该字段触发。状态为 failed/unauthorized 时，它表示失败后的最早重试时间
+// （Retry-After 或指数退避），实际到期时间取 activityDue 与 NextRefreshAt 的较晚者。
 type OllamaCloudUsageSnapshot struct {
 	Status        string                `json:"status"`
 	Data          *OllamaCloudUsageData `json:"data,omitempty"`
@@ -142,7 +154,7 @@ type ollamaCloudUsageRepository interface {
 	SetOllamaCloudUsageAutoRefresh(context.Context, *Account, bool) error
 	UpdateOllamaCloudUsageSnapshot(context.Context, *Account, *OllamaCloudUsageSnapshot) error
 	DisableOllamaCloudUsageAutoRefresh(context.Context, *Account) error
-	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, int) ([]Account, error)
+	ListDueOllamaCloudUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]Account, error)
 }
 
 // GetOllamaCloudUsageSettings 在设置缺失时返回默认关闭的安全配置。
@@ -168,6 +180,9 @@ func (s *SettingService) GetOllamaCloudUsageSettings(ctx context.Context) (*Olla
 	if settings.IntervalMinutes == 0 {
 		settings.IntervalMinutes = defaults.IntervalMinutes
 	}
+	if settings.DebounceMinutes == 0 {
+		settings.DebounceMinutes = defaults.DebounceMinutes
+	}
 	normalizeOllamaCloudUsageSettings(&settings)
 	return &settings, nil
 }
@@ -179,10 +194,20 @@ func (s *SettingService) SetOllamaCloudUsageSettings(ctx context.Context, settin
 	if settings == nil {
 		return infraerrors.BadRequest("INVALID_OLLAMA_CLOUD_USAGE_SETTINGS", "settings cannot be nil")
 	}
+	if settings.DebounceMinutes == 0 {
+		// 旧客户端省略 debounce_minutes 时沿用安全默认值。
+		settings.DebounceMinutes = ollamaCloudUsageDefaultDebounceMinutes
+	}
 	if settings.IntervalMinutes < ollamaCloudUsageMinIntervalMinutes || settings.IntervalMinutes > ollamaCloudUsageMaxIntervalMinutes {
 		return infraerrors.BadRequest(
 			"INVALID_OLLAMA_CLOUD_USAGE_INTERVAL",
 			fmt.Sprintf("interval_minutes must be between %d and %d", ollamaCloudUsageMinIntervalMinutes, ollamaCloudUsageMaxIntervalMinutes),
+		)
+	}
+	if settings.DebounceMinutes < ollamaCloudUsageMinDebounceMinutes || settings.DebounceMinutes > ollamaCloudUsageMaxDebounceMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OLLAMA_CLOUD_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes must be between %d and %d", ollamaCloudUsageMinDebounceMinutes, ollamaCloudUsageMaxDebounceMinutes),
 		)
 	}
 	normalizeOllamaCloudUsageSettings(settings)
@@ -194,7 +219,11 @@ func (s *SettingService) SetOllamaCloudUsageSettings(ctx context.Context, settin
 }
 
 func defaultOllamaCloudUsageSettings() *OllamaCloudUsageSettings {
-	return &OllamaCloudUsageSettings{Enabled: false, IntervalMinutes: ollamaCloudUsageDefaultIntervalMinutes}
+	return &OllamaCloudUsageSettings{
+		Enabled:         false,
+		IntervalMinutes: ollamaCloudUsageDefaultIntervalMinutes,
+		DebounceMinutes: ollamaCloudUsageDefaultDebounceMinutes,
+	}
 }
 
 func normalizeOllamaCloudUsageSettings(settings *OllamaCloudUsageSettings) {
@@ -204,6 +233,115 @@ func normalizeOllamaCloudUsageSettings(settings *OllamaCloudUsageSettings) {
 	if settings.IntervalMinutes > ollamaCloudUsageMaxIntervalMinutes {
 		settings.IntervalMinutes = ollamaCloudUsageMaxIntervalMinutes
 	}
+	if settings.DebounceMinutes <= 0 {
+		settings.DebounceMinutes = ollamaCloudUsageDefaultDebounceMinutes
+	}
+	if settings.DebounceMinutes < ollamaCloudUsageMinDebounceMinutes {
+		settings.DebounceMinutes = ollamaCloudUsageMinDebounceMinutes
+	}
+	if settings.DebounceMinutes > ollamaCloudUsageMaxDebounceMinutes {
+		settings.DebounceMinutes = ollamaCloudUsageMaxDebounceMinutes
+	}
+}
+
+func ollamaCloudUsageDurations(settings *OllamaCloudUsageSettings) (debounce, maxWait time.Duration) {
+	normalized := defaultOllamaCloudUsageSettings()
+	if settings != nil {
+		*normalized = *settings
+	}
+	normalizeOllamaCloudUsageSettings(normalized)
+	return time.Duration(normalized.DebounceMinutes) * time.Minute,
+		time.Duration(normalized.IntervalMinutes) * time.Minute
+}
+
+// ollamaCloudUsageIsAutoRefreshDue 判断已启用自动刷新的分组现在是否应刷新。
+// groupLastUsedAt 必须是精确 api_key 分组的 MAX(last_used_at)，避免共享身份的
+// 多平台账号遗漏活动。
+//
+// 成功时，请求必须晚于 fetched_at，dueAt = min(lastUsed+debounce, fetchedAt+maxWait)。
+// 失败时，请求必须晚于 last_attempt_at，活动到期时间使用相同的 min 公式；
+// 随后 dueAt = max(activityDue, next_refresh_at)，确保 Retry-After 或指数退避优先。
+// 快照缺失或无效时按首次刷新处理。
+func ollamaCloudUsageIsAutoRefreshDue(
+	snapshot *OllamaCloudUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	now time.Time,
+	debounce, maxWait time.Duration,
+) bool {
+	dueAt, ok := ollamaCloudUsageAutoRefreshDueAt(snapshot, groupLastUsedAt, debounce, maxWait)
+	if !ok {
+		return false
+	}
+	return !now.Before(dueAt)
+}
+
+func ollamaCloudUsageAutoRefreshDueAt(
+	snapshot *OllamaCloudUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	debounce, maxWait time.Duration,
+) (time.Time, bool) {
+	if debounce <= 0 {
+		debounce = time.Duration(ollamaCloudUsageDefaultDebounceMinutes) * time.Minute
+	}
+	if maxWait <= 0 {
+		maxWait = time.Duration(ollamaCloudUsageDefaultIntervalMinutes) * time.Minute
+	}
+	if snapshot == nil {
+		return time.Time{}, true
+	}
+	switch snapshot.Status {
+	case OllamaCloudUsageStatusOK:
+		if snapshot.FetchedAt == nil || snapshot.FetchedAt.IsZero() {
+			return time.Time{}, true
+		}
+		fetchedAt := snapshot.FetchedAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(fetchedAt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		return minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait)), true
+	case OllamaCloudUsageStatusFailed, OllamaCloudUsageStatusUnauthorized:
+		if snapshot.LastAttemptAt.IsZero() {
+			return time.Time{}, true
+		}
+		lastAttempt := snapshot.LastAttemptAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(lastAttempt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		activityDue := minTime(lastUsed.Add(debounce), lastAttempt.Add(maxWait))
+		if !snapshot.NextRefreshAt.IsZero() && snapshot.NextRefreshAt.UTC().After(activityDue) {
+			return snapshot.NextRefreshAt.UTC(), true
+		}
+		return activityDue, true
+	default:
+		return time.Time{}, true
+	}
+}
+
+// maxOllamaCloudUsageGroupLastUsed 返回分组成员中最新的 last_used_at。
+func maxOllamaCloudUsageGroupLastUsed(accounts []Account) *time.Time {
+	var latest *time.Time
+	for i := range accounts {
+		candidate := accounts[i].LastUsedAt
+		if candidate == nil || candidate.IsZero() {
+			continue
+		}
+		if latest == nil || candidate.After(*latest) {
+			ts := candidate.UTC()
+			latest = &ts
+		}
+	}
+	return latest
+}
+
+// scheduleOllamaCloudUsageActivity 记录 Ollama Cloud API Key 账号实际尝试了上游模型请求，
+// 包括 429、5xx 和传输错误。本地鉴权或校验失败不得调用；DeferredService 会合并写入。
+func scheduleOllamaCloudUsageActivity(deferred *DeferredService, account *Account) {
+	if deferred == nil || account == nil || !IsOllamaCloudUsageAccount(account) {
+		return
+	}
+	deferred.ScheduleLastUsedUpdate(account.ID)
 }
 
 // OllamaCloudUsageService 刷新官方设置页 HTML，不影响账号调度状态。
@@ -530,7 +668,7 @@ func (s *OllamaCloudUsageService) Refresh(ctx context.Context, accountID int64) 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.refreshAccount(ctx, accountID, settings.IntervalMinutes, false); err != nil {
+	if _, err := s.refreshAccount(ctx, accountID, settings, false); err != nil {
 		return nil, err
 	}
 	return s.GetState(ctx, accountID)
@@ -560,7 +698,8 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 		return ErrOllamaCloudUsageUnavailable
 	}
 	now := s.currentTime()
-	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, ollamaCloudUsageMaxPerCycle)
+	debounce, maxWait := ollamaCloudUsageDurations(settings)
+	accounts, err := writer.ListDueOllamaCloudUsageAccounts(ctx, now, debounce, maxWait, ollamaCloudUsageMaxPerCycle)
 	if err != nil {
 		return fmt.Errorf("list due Ollama Cloud usage accounts: %w", err)
 	}
@@ -576,13 +715,15 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 			continue
 		}
 		seenGroups[fingerprint] = struct{}{}
-		if snapshot := decodeOllamaCloudUsageSnapshot(account.Extra); snapshot != nil && now.Before(snapshot.NextRefreshAt) {
+		snapshot := decodeOllamaCloudUsageSnapshot(account.Extra)
+		// ListDue 已将 api_key 分组的 MAX(last_used_at) 写入 Account.LastUsedAt。
+		if !ollamaCloudUsageIsAutoRefreshDue(snapshot, account.LastUsedAt, now, debounce, maxWait) {
 			continue
 		}
 		accountID := account.ID
 		expected := account
 		group.Go(func() error {
-			if _, refreshErr := s.refreshAccount(ctx, accountID, settings.IntervalMinutes, true); refreshErr != nil {
+			if _, refreshErr := s.refreshAccount(ctx, accountID, settings, true); refreshErr != nil {
 				if errors.Is(refreshErr, ErrOllamaCloudUsageIdentityChanged) {
 					if disableErr := writer.DisableOllamaCloudUsageAutoRefresh(ctx, &expected); disableErr != nil {
 						logger.LegacyPrintf("service.ollama_cloud_usage", "disable_auto_refresh_failed: account_id=%d err=%v", accountID, disableErr)
@@ -597,10 +738,15 @@ func (s *OllamaCloudUsageService) RunDue(ctx context.Context) error {
 	return group.Wait()
 }
 
-func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID int64, intervalMinutes int, requireEnabled bool) (*OllamaCloudUsageSnapshot, error) {
+func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID int64, settings *OllamaCloudUsageSettings, requireEnabled bool) (*OllamaCloudUsageSnapshot, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, ErrOllamaCloudUsageUnavailable
 	}
+	if settings == nil {
+		settings = defaultOllamaCloudUsageSettings()
+	}
+	intervalMinutes := settings.IntervalMinutes
+	debounce, maxWait := ollamaCloudUsageDurations(settings)
 	anchor, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -649,7 +795,13 @@ func (s *OllamaCloudUsageService) refreshAccount(ctx context.Context, accountID 
 			if !account.IsActive() || !ollamaCloudUsageAutoRefreshEnabled(account) {
 				return nil, nil
 			}
-			if snapshot := decodeOllamaCloudUsageSnapshot(account.Extra); snapshot != nil && s.currentTime().Before(snapshot.NextRefreshAt) {
+			groupLastUsed := account.LastUsedAt
+			if writer, ok := s.accountRepo.(ollamaCloudUsageRepository); ok {
+				if siblings, listErr := writer.ListOllamaCloudUsageGroupAccounts(ctx, []*Account{account}); listErr == nil {
+					groupLastUsed = maxOllamaCloudUsageGroupLastUsed(siblings)
+				}
+			}
+			if !ollamaCloudUsageIsAutoRefreshDue(decodeOllamaCloudUsageSnapshot(account.Extra), groupLastUsed, s.currentTime(), debounce, maxWait) {
 				return nil, nil
 			}
 		}

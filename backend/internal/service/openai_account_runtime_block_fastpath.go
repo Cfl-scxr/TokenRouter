@@ -50,6 +50,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// 任意非 2xx 上游响应都表示模型请求已实际发送。
+	if s != nil {
+		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 
