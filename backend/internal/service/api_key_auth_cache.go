@@ -7,6 +7,7 @@ type APIKeyAuthSnapshot struct {
 	Version  int    `json:"version"`
 	APIKeyID int64  `json:"api_key_id"`
 	UserID   int64  `json:"user_id"`
+	TeamID   *int64 `json:"team_id,omitempty"`
 	GroupID  *int64 `json:"group_id,omitempty"`
 	Name     string `json:"name"`
 	Status   string `json:"status"`
@@ -15,6 +16,9 @@ type APIKeyAuthSnapshot struct {
 	IPWhitelist    []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist    []string                 `json:"ip_blacklist,omitempty"`
 	User           APIKeyAuthUserSnapshot   `json:"user"`
+	ActorUser      *APIKeyAuthActorSnapshot `json:"actor_user,omitempty"`
+	Team           *APIKeyAuthTeamSnapshot  `json:"team,omitempty"`
+	TeamMembership *TeamMembership          `json:"team_membership,omitempty"`
 	Group          *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
 	// Quota fields for API Key independent quota feature
@@ -30,6 +34,21 @@ type APIKeyAuthSnapshot struct {
 	RateLimit7d float64 `json:"rate_limit_7d"`
 	// FallbackToDefaultGroupWhenUnavailable 控制停用分组请求级回退。
 	FallbackToDefaultGroupWhenUnavailable bool `json:"fallback_to_default_group_when_unavailable"`
+}
+
+// APIKeyAuthActorSnapshot 只缓存验证成员账号状态所需的字段。
+type APIKeyAuthActorSnapshot struct {
+	ID       int64  `json:"id"`
+	Status   string `json:"status"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+}
+
+// APIKeyAuthTeamSnapshot 缓存团队运行状态，避免每次请求读取团队表。
+type APIKeyAuthTeamSnapshot struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // APIKeyAuthUserSnapshot 用户快照

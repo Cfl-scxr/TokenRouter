@@ -1,5 +1,8 @@
 <template>
   <AppLayout>
+    <div class="mb-6">
+      <ScopeSegmentedControl v-model="scope" @change="onScopeChange" />
+    </div>
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-col gap-4">
@@ -1173,6 +1176,7 @@
 <script setup lang="ts">
 	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
+	import { useRoute } from 'vue-router'
 	import { useAppStore } from '@/stores/app'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useClipboard } from '@/composables/useClipboard'
@@ -1196,6 +1200,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+	import ScopeSegmentedControl, { type DataScope } from '@/components/team/ScopeSegmentedControl.vue'
 	import type { ApiKey, ApiKeyFastModePolicy, Group, PublicSettings, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
@@ -1230,6 +1235,8 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const route = useRoute()
+const scope = ref<DataScope>(route?.query?.scope === 'team' ? 'team' : 'personal')
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 const { balanceUnitName, balanceUnitSymbol, formatBalanceAmount } = useBalanceDisplay()
@@ -1490,6 +1497,7 @@ const statusFilterOptions = computed(() => [
   { value: '', label: t('keys.allStatus') },
   { value: 'active', label: t('keys.status.active') },
   { value: 'inactive', label: t('keys.status.inactive') },
+  { value: 'disabled', label: t('keys.status.disabled') },
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
   { value: 'expired', label: t('keys.status.expired') }
 ])
@@ -1575,12 +1583,14 @@ const loadApiKeys = async () => {
       group_id?: number | string
       sort_by?: string
       sort_order?: 'asc' | 'desc'
+      scope?: DataScope
     } = {}
     if (filterSearch.value) filters.search = filterSearch.value
     if (filterStatus.value) filters.status = filterStatus.value
     if (filterGroupId.value !== '') filters.group_id = filterGroupId.value
     filters.sort_by = sortState.value.sort_by
     filters.sort_order = sortState.value.sort_order
+    filters.scope = scope.value
 
     const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, filters, {
       signal
@@ -1617,7 +1627,7 @@ const loadApiKeys = async () => {
 
 const loadGroups = async () => {
   try {
-    groups.value = await userGroupsAPI.getAvailable()
+    groups.value = await userGroupsAPI.getAvailable(scope.value)
   } catch (error) {
     console.error('Failed to load groups:', error)
   }
@@ -1674,7 +1684,8 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
-    status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
+    // 后端的终态统一映射为不可用，编辑表单只提交 active/inactive。
+    status: key.status === 'active' ? 'active' : 'inactive',
     fast_mode_policy: key.fast_mode_policy ?? 'follow_request',
     use_custom_key: false,
     custom_key: '',
@@ -1947,6 +1958,7 @@ const submitKeyForm = async (
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
       const payload = {
         name: formData.value.name,
+        scope: scope.value,
         group_id: formData.value.group_id,
         fast_mode_policy: formData.value.fast_mode_policy,
         custom_key: customKey,
@@ -1981,6 +1993,13 @@ const submitKeyForm = async (
   } finally {
     submitting.value = false
   }
+}
+
+// 切换作用域后清空分页与筛选缓存，并只重新加载当前内容区域的数据。
+const onScopeChange = () => {
+  pagination.value.page = 1
+  filterGroupId.value = ''
+  void Promise.all([loadApiKeys(), loadGroups()])
 }
 
 const handleSubmit = async () => {

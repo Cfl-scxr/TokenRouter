@@ -44,10 +44,16 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 	if actualAmount < 0 {
 		actualAmount = 0
 	}
+	billingUserID := job.BillingUserID
+	if billingUserID <= 0 {
+		billingUserID = job.UserID
+	}
 	return &BatchImageBalanceHoldCommand{
 		RequestID:          requestID,
 		APIKeyID:           *job.APIKeyID,
-		UserID:             job.UserID,
+		UserID:             billingUserID,
+		ActorUserID:        job.UserID,
+		TeamID:             job.TeamID,
 		BatchID:            job.BatchID,
 		HoldAmount:         holdAmount,
 		ActualAmount:       actualAmount,

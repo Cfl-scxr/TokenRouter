@@ -57,6 +57,8 @@ type AdminUser struct {
 type APIKey struct {
 	ID             int64      `json:"id"`
 	UserID         int64      `json:"user_id"`
+	TeamID         *int64     `json:"team_id"`
+	Scope          string     `json:"scope"`
 	Key            string     `json:"key"`
 	Name           string     `json:"name"`
 	GroupID        *int64     `json:"group_id"`
@@ -94,7 +96,7 @@ type APIKey struct {
 	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
 	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
 
-	User  *User  `json:"user,omitempty"`
+	// API Key 响应不能携带用户对象，避免团队 Key 暴露付款 Owner 的资产信息。
 	Group *Group `json:"group,omitempty"`
 }
 
@@ -503,6 +505,7 @@ type BatchUpdateRedeemCodesRequest struct {
 type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
+	TeamID    *int64 `json:"team_id,omitempty"`
 	APIKeyID  int64  `json:"api_key_id"`
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`

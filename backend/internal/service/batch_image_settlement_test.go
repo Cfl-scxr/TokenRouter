@@ -49,6 +49,21 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	require.NotContains(t, fmt.Sprintf("%+v", billing.captures[0]), "prompt")
 }
 
+func TestBuildBatchImageHoldCommandKeepsTeamBillingSnapshot(t *testing.T) {
+	job := testSettlingBatchImageJob("imgbatch_team_snapshot")
+	teamID := int64(77)
+	job.UserID = 23
+	job.BillingUserID = 11
+	job.TeamID = &teamID
+
+	cmd, err := buildBatchImageHoldCommand(job, BatchImageCaptureRequestID(job.BatchID), 0.5, "payload-hash")
+	require.NoError(t, err)
+	require.Equal(t, int64(11), cmd.UserID)
+	require.Equal(t, int64(23), cmd.ActorUserID)
+	require.NotNil(t, cmd.TeamID)
+	require.Equal(t, teamID, *cmd.TeamID)
+}
+
 func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {
 	repo := newFakeBatchImageRepository()
 	job := testSettlingBatchImageJob("imgbatch_zero")

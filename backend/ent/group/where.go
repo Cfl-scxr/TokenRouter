@@ -120,7 +120,7 @@ func Status(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldStatus, v))
 }
 
-// DuplicateOperationID 对 duplicate_operation_id 字段应用等值检查谓词，等同于 DuplicateOperationIDEQ。
+// DuplicateOperationID applies equality check predicate on the "duplicate_operation_id" field. It's identical to DuplicateOperationIDEQ.
 func DuplicateOperationID(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
@@ -250,7 +250,7 @@ func AllowMessagesDispatch(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowMessagesDispatch, v))
 }
 
-// AllowLive 对 allow_live 字段应用等值检查谓词，等同于 AllowLiveEQ。
+// AllowLive applies equality check predicate on the "allow_live" field. It's identical to AllowLiveEQ.
 func AllowLive(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
 }
@@ -275,7 +275,7 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
-// MaxReasoningEffort 对 max_reasoning_effort 字段应用等值检查谓词，等同于 MaxReasoningEffortEQ。
+// MaxReasoningEffort applies equality check predicate on the "max_reasoning_effort" field. It's identical to MaxReasoningEffortEQ.
 func MaxReasoningEffort(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
 }
@@ -865,77 +865,77 @@ func StatusContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldStatus, v))
 }
 
-// DuplicateOperationIDEQ 对 duplicate_operation_id 字段应用 EQ 谓词。
+// DuplicateOperationIDEQ applies the EQ predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDNEQ 对 duplicate_operation_id 字段应用 NEQ 谓词。
+// DuplicateOperationIDNEQ applies the NEQ predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDNEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDIn 对 duplicate_operation_id 字段应用 In 谓词。
+// DuplicateOperationIDIn applies the In predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldIn(FieldDuplicateOperationID, vs...))
 }
 
-// DuplicateOperationIDNotIn 对 duplicate_operation_id 字段应用 NotIn 谓词。
+// DuplicateOperationIDNotIn applies the NotIn predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDNotIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldNotIn(FieldDuplicateOperationID, vs...))
 }
 
-// DuplicateOperationIDGT 对 duplicate_operation_id 字段应用 GT 谓词。
+// DuplicateOperationIDGT applies the GT predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDGT(v string) predicate.Group {
 	return predicate.Group(sql.FieldGT(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDGTE 对 duplicate_operation_id 字段应用 GTE 谓词。
+// DuplicateOperationIDGTE applies the GTE predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDGTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldGTE(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDLT 对 duplicate_operation_id 字段应用 LT 谓词。
+// DuplicateOperationIDLT applies the LT predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDLT(v string) predicate.Group {
 	return predicate.Group(sql.FieldLT(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDLTE 对 duplicate_operation_id 字段应用 LTE 谓词。
+// DuplicateOperationIDLTE applies the LTE predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDLTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDContains 对 duplicate_operation_id 字段应用 Contains 谓词。
+// DuplicateOperationIDContains applies the Contains predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDContains(v string) predicate.Group {
 	return predicate.Group(sql.FieldContains(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDHasPrefix 对 duplicate_operation_id 字段应用 HasPrefix 谓词。
+// DuplicateOperationIDHasPrefix applies the HasPrefix predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDHasPrefix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasPrefix(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDHasSuffix 对 duplicate_operation_id 字段应用 HasSuffix 谓词。
+// DuplicateOperationIDHasSuffix applies the HasSuffix predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDHasSuffix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasSuffix(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDIsNil 对 duplicate_operation_id 字段应用 IsNil 谓词。
+// DuplicateOperationIDIsNil applies the IsNil predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDIsNil() predicate.Group {
 	return predicate.Group(sql.FieldIsNull(FieldDuplicateOperationID))
 }
 
-// DuplicateOperationIDNotNil 对 duplicate_operation_id 字段应用 NotNil 谓词。
+// DuplicateOperationIDNotNil applies the NotNil predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldDuplicateOperationID))
 }
 
-// DuplicateOperationIDEqualFold 对 duplicate_operation_id 字段应用 EqualFold 谓词。
+// DuplicateOperationIDEqualFold applies the EqualFold predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDEqualFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldEqualFold(FieldDuplicateOperationID, v))
 }
 
-// DuplicateOperationIDContainsFold 对 duplicate_operation_id 字段应用 ContainsFold 谓词。
+// DuplicateOperationIDContainsFold applies the ContainsFold predicate on the "duplicate_operation_id" field.
 func DuplicateOperationIDContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDuplicateOperationID, v))
 }
@@ -1860,12 +1860,12 @@ func AllowMessagesDispatchNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowMessagesDispatch, v))
 }
 
-// AllowLiveEQ 对 allow_live 字段应用 EQ 谓词。
+// AllowLiveEQ applies the EQ predicate on the "allow_live" field.
 func AllowLiveEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowLive, v))
 }
 
-// AllowLiveNEQ 对 allow_live 字段应用 NEQ 谓词。
+// AllowLiveNEQ applies the NEQ predicate on the "allow_live" field.
 func AllowLiveNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowLive, v))
 }
@@ -1995,67 +1995,67 @@ func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
 }
 
-// MaxReasoningEffortEQ 对 max_reasoning_effort 字段应用 EQ 谓词。
+// MaxReasoningEffortEQ applies the EQ predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortNEQ 对 max_reasoning_effort 字段应用 NEQ 谓词。
+// MaxReasoningEffortNEQ applies the NEQ predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortNEQ(v string) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortIn 对 max_reasoning_effort 字段应用 In 谓词。
+// MaxReasoningEffortIn applies the In predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldIn(FieldMaxReasoningEffort, vs...))
 }
 
-// MaxReasoningEffortNotIn 对 max_reasoning_effort 字段应用 NotIn 谓词。
+// MaxReasoningEffortNotIn applies the NotIn predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortNotIn(vs ...string) predicate.Group {
 	return predicate.Group(sql.FieldNotIn(FieldMaxReasoningEffort, vs...))
 }
 
-// MaxReasoningEffortGT 对 max_reasoning_effort 字段应用 GT 谓词。
+// MaxReasoningEffortGT applies the GT predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortGT(v string) predicate.Group {
 	return predicate.Group(sql.FieldGT(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortGTE 对 max_reasoning_effort 字段应用 GTE 谓词。
+// MaxReasoningEffortGTE applies the GTE predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortGTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldGTE(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortLT 对 max_reasoning_effort 字段应用 LT 谓词。
+// MaxReasoningEffortLT applies the LT predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortLT(v string) predicate.Group {
 	return predicate.Group(sql.FieldLT(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortLTE 对 max_reasoning_effort 字段应用 LTE 谓词。
+// MaxReasoningEffortLTE applies the LTE predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortLTE(v string) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortContains 对 max_reasoning_effort 字段应用 Contains 谓词。
+// MaxReasoningEffortContains applies the Contains predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortContains(v string) predicate.Group {
 	return predicate.Group(sql.FieldContains(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortHasPrefix 对 max_reasoning_effort 字段应用 HasPrefix 谓词。
+// MaxReasoningEffortHasPrefix applies the HasPrefix predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortHasPrefix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasPrefix(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortHasSuffix 对 max_reasoning_effort 字段应用 HasSuffix 谓词。
+// MaxReasoningEffortHasSuffix applies the HasSuffix predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortHasSuffix(v string) predicate.Group {
 	return predicate.Group(sql.FieldHasSuffix(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortEqualFold 对 max_reasoning_effort 字段应用 EqualFold 谓词。
+// MaxReasoningEffortEqualFold applies the EqualFold predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortEqualFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldEqualFold(FieldMaxReasoningEffort, v))
 }
 
-// MaxReasoningEffortContainsFold 对 max_reasoning_effort 字段应用 ContainsFold 谓词。
+// MaxReasoningEffortContainsFold applies the ContainsFold predicate on the "max_reasoning_effort" field.
 func MaxReasoningEffortContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldMaxReasoningEffort, v))
 }

@@ -135,6 +135,7 @@ func (r *apiKeyRepository) lockAPIKeyOwnerAndCount(ctx context.Context, sqlq sql
 func createAPIKeyRecord(ctx context.Context, client *dbent.Client, key *service.APIKey) (*dbent.APIKey, error) {
 	builder := client.APIKey.Create().
 		SetUserID(key.UserID).
+		SetNillableTeamID(key.TeamID).
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
@@ -222,6 +223,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		Select(
 			apikey.FieldID,
 			apikey.FieldUserID,
+			apikey.FieldTeamID,
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
@@ -511,6 +513,11 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 		} else {
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 		}
+	}
+	if filters.Scope == "personal" {
+		q = q.Where(apikey.TeamIDIsNil())
+	} else if filters.Scope == "team" {
+		q = q.Where(apikey.TeamIDNotNil())
 	}
 
 	return q
@@ -1031,6 +1038,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	out := &service.APIKey{
 		ID:                                    m.ID,
 		UserID:                                m.UserID,
+		TeamID:                                m.TeamID,
 		Key:                                   m.Key,
 		Name:                                  m.Name,
 		Status:                                m.Status,
@@ -1061,6 +1069,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
+		out.ActorUser = out.User
 		if allowed := m.Edges.User.Edges.AllowedGroups; len(allowed) > 0 {
 			out.User.AllowedGroups = make([]int64, 0, len(allowed))
 			for _, g := range allowed {

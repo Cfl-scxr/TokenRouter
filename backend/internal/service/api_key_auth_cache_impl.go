@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 23 // v23：认证快照包含 OpenAI 分组 Live 权限
+const apiKeyAuthSnapshotVersion = 24 // v24：认证快照包含团队付款人、成员和限额
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -286,6 +286,10 @@ func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey st
 		return nil, fmt.Errorf("get api key: %w", ErrAPIKeyNotFound)
 	}
 	entry := &APIKeyAuthCacheEntry{Snapshot: snapshot}
+	if apiKey.TeamID != nil {
+		// 团队成员限额是高频变化数据，首版不缓存团队认证快照以保证阻断及时生效。
+		return entry, nil
+	}
 	s.setAuthCacheEntry(ctx, cacheKey, entry, s.authCfg.l2TTL)
 	return entry, nil
 }
@@ -295,7 +299,8 @@ func (s *APIKeyService) lookupAPIKeyForAuth(ctx context.Context, key string) (*A
 		return nil, ErrAPIKeyNotFound
 	}
 	if s.authLookupSlots == nil {
-		return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+		apiKey, err := s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+		return s.hydrateTeamAPIKey(ctx, apiKey, err)
 	}
 	s.authLookupTotal.Add(1)
 	select {
@@ -311,7 +316,34 @@ func (s *APIKeyService) lookupAPIKeyForAuth(ctx context.Context, key string) (*A
 		s.authLookupRejected.Add(1)
 		return nil, ErrAPIKeyAuthOverloaded
 	}
-	return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+	apiKey, err := s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+	return s.hydrateTeamAPIKey(ctx, apiKey, err)
+}
+
+func (s *APIKeyService) hydrateTeamAPIKey(ctx context.Context, apiKey *APIKey, err error) (*APIKey, error) {
+	if err != nil || apiKey == nil || apiKey.TeamID == nil {
+		return apiKey, err
+	}
+	if s.teamRepo == nil {
+		return nil, ErrTeamFeatureDisabled
+	}
+	teamCtx, err := s.teamRepo.GetContextByUserID(ctx, apiKey.UserID)
+	if err != nil || teamCtx.Team.ID != *apiKey.TeamID {
+		return nil, ErrTeamMembershipRequired
+	}
+	actor, err := s.userRepo.GetByID(ctx, apiKey.UserID)
+	if err != nil {
+		return nil, err
+	}
+	owner, err := s.userRepo.GetByID(ctx, teamCtx.Owner.UserID)
+	if err != nil {
+		return nil, err
+	}
+	apiKey.ActorUser = actor
+	apiKey.User = owner
+	apiKey.Team = teamCtx.Team
+	apiKey.TeamMembership = teamCtx.Membership
+	return apiKey, nil
 }
 
 func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEntry) (*APIKey, bool, error) {
@@ -338,6 +370,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		Version:                               apiKeyAuthSnapshotVersion,
 		APIKeyID:                              apiKey.ID,
 		UserID:                                apiKey.UserID,
+		TeamID:                                apiKey.TeamID,
 		GroupID:                               apiKey.GroupID,
 		Name:                                  apiKey.Name,
 		Status:                                apiKey.Status,
@@ -369,10 +402,17 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DisabledPublicGroups:       append([]int64(nil), apiKey.User.DisabledPublicGroups...),
 		},
 	}
+	if apiKey.ActorUser != nil {
+		snapshot.ActorUser = &APIKeyAuthActorSnapshot{ID: apiKey.ActorUser.ID, Status: apiKey.ActorUser.Status, Email: apiKey.ActorUser.Email, Username: apiKey.ActorUser.Username}
+	}
+	if apiKey.Team != nil {
+		snapshot.Team = &APIKeyAuthTeamSnapshot{ID: apiKey.Team.ID, Name: apiKey.Team.Name, Status: apiKey.Team.Status}
+		snapshot.TeamMembership = apiKey.TeamMembership
+	}
 
 	// 填充 (user, group) RPM override —— 仅对可用分组预取，避免停用分组的 override 进入认证快照。
 	if apiKey.GroupID != nil && *apiKey.GroupID > 0 && apiKey.Group != nil && apiKey.Group.IsActive() && s.userGroupRateRepo != nil {
-		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.User.ID, *apiKey.GroupID)
 		if err == nil && override != nil {
 			snapshot.User.UserGroupRPMOverride = override
 		}
@@ -433,6 +473,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	apiKey := &APIKey{
 		ID:                                    snapshot.APIKeyID,
 		UserID:                                snapshot.UserID,
+		TeamID:                                snapshot.TeamID,
 		GroupID:                               snapshot.GroupID,
 		Key:                                   key,
 		Name:                                  snapshot.Name,
@@ -466,6 +507,15 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DisabledPublicGroups:       append([]int64(nil), snapshot.User.DisabledPublicGroups...),
 			GroupRestrictionsLoaded:    true,
 		},
+	}
+	if snapshot.ActorUser != nil {
+		apiKey.ActorUser = &User{ID: snapshot.ActorUser.ID, Status: snapshot.ActorUser.Status, Email: snapshot.ActorUser.Email, Username: snapshot.ActorUser.Username}
+	} else {
+		apiKey.ActorUser = apiKey.User
+	}
+	if snapshot.Team != nil {
+		apiKey.Team = &Team{ID: snapshot.Team.ID, Name: snapshot.Team.Name, Status: snapshot.Team.Status}
+		apiKey.TeamMembership = snapshot.TeamMembership
 	}
 	if snapshot.Group != nil {
 		apiKey.Group = &Group{

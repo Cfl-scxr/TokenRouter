@@ -201,13 +201,13 @@ func (_c *GroupCreate) SetNillableStatus(v *string) *GroupCreate {
 	return _c
 }
 
-// SetDuplicateOperationID 设置 duplicate_operation_id 字段。
+// SetDuplicateOperationID sets the "duplicate_operation_id" field.
 func (_c *GroupCreate) SetDuplicateOperationID(v string) *GroupCreate {
 	_c.mutation.SetDuplicateOperationID(v)
 	return _c
 }
 
-// SetNillableDuplicateOperationID 在给定值非 nil 时设置 duplicate_operation_id 字段。
+// SetNillableDuplicateOperationID sets the "duplicate_operation_id" field if the given value is not nil.
 func (_c *GroupCreate) SetNillableDuplicateOperationID(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetDuplicateOperationID(*v)
@@ -577,13 +577,13 @@ func (_c *GroupCreate) SetNillableAllowMessagesDispatch(v *bool) *GroupCreate {
 	return _c
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (_c *GroupCreate) SetAllowLive(v bool) *GroupCreate {
 	_c.mutation.SetAllowLive(v)
 	return _c
 }
 
-// SetNillableAllowLive 在给定值非 nil 时设置 allow_live 字段。
+// SetNillableAllowLive sets the "allow_live" field if the given value is not nil.
 func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetAllowLive(*v)
@@ -689,13 +689,13 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
 	_c.mutation.SetMaxReasoningEffort(v)
 	return _c
 }
 
-// SetNillableMaxReasoningEffort 在给定值非 nil 时设置 max_reasoning_effort 字段。
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
 func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetMaxReasoningEffort(*v)
@@ -703,7 +703,7 @@ func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
 	return _c
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
 	_c.mutation.SetReasoningEffortMappings(v)
 	return _c
@@ -2205,13 +2205,13 @@ func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
 	return u
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (u *GroupUpsert) SetAllowLive(v bool) *GroupUpsert {
 	u.Set(group.FieldAllowLive, v)
 	return u
 }
 
-// UpdateAllowLive 将 allow_live 字段更新为创建时提供的值。
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowLive)
 	return u
@@ -2307,25 +2307,25 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
 	u.Set(group.FieldMaxReasoningEffort, v)
 	return u
 }
 
-// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMaxReasoningEffort() *GroupUpsert {
 	u.SetExcluded(group.FieldMaxReasoningEffort)
 	return u
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsert {
 	u.Set(group.FieldReasoningEffortMappings, v)
 	return u
 }
 
-// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
 	return u
@@ -3159,14 +3159,14 @@ func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
 	})
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetAllowLive(v)
 	})
 }
 
-// UpdateAllowLive 将 allow_live 字段更新为创建时提供的值。
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
 func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
@@ -3278,28 +3278,28 @@ func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	})
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetMaxReasoningEffort(v)
 	})
 }
 
-// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
 func (u *GroupUpsertOne) UpdateMaxReasoningEffort() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMaxReasoningEffort()
 	})
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetReasoningEffortMappings(v)
 	})
 }
 
-// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
@@ -4304,14 +4304,14 @@ func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
 	})
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetAllowLive(v)
 	})
 }
 
-// UpdateAllowLive 将 allow_live 字段更新为创建时提供的值。
+// UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
 func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
@@ -4423,28 +4423,28 @@ func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	})
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetMaxReasoningEffort(v)
 	})
 }
 
-// UpdateMaxReasoningEffort 将 max_reasoning_effort 字段更新为创建时提供的值。
+// UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
 func (u *GroupUpsertBulk) UpdateMaxReasoningEffort() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMaxReasoningEffort()
 	})
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetReasoningEffortMappings(v)
 	})
 }
 
-// UpdateReasoningEffortMappings 将 reasoning_effort_mappings 字段更新为创建时提供的值。
+// UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()

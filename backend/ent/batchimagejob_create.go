@@ -34,6 +34,34 @@ func (_c *BatchImageJobCreate) SetUserID(v int64) *BatchImageJobCreate {
 	return _c
 }
 
+// SetBillingUserID sets the "billing_user_id" field.
+func (_c *BatchImageJobCreate) SetBillingUserID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetBillingUserID(v)
+	return _c
+}
+
+// SetNillableBillingUserID sets the "billing_user_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableBillingUserID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetBillingUserID(*v)
+	}
+	return _c
+}
+
+// SetTeamID sets the "team_id" field.
+func (_c *BatchImageJobCreate) SetTeamID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetTeamID(v)
+	return _c
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableTeamID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetTeamID(*v)
+	}
+	return _c
+}
+
 // SetAPIKeyID sets the "api_key_id" field.
 func (_c *BatchImageJobCreate) SetAPIKeyID(v int64) *BatchImageJobCreate {
 	_c.mutation.SetAPIKeyID(v)
@@ -788,6 +816,14 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 		_spec.SetField(batchimagejob.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
 	}
+	if value, ok := _c.mutation.BillingUserID(); ok {
+		_spec.SetField(batchimagejob.FieldBillingUserID, field.TypeInt64, value)
+		_node.BillingUserID = value
+	}
+	if value, ok := _c.mutation.TeamID(); ok {
+		_spec.SetField(batchimagejob.FieldTeamID, field.TypeInt64, value)
+		_node.TeamID = &value
+	}
 	if value, ok := _c.mutation.APIKeyID(); ok {
 		_spec.SetField(batchimagejob.FieldAPIKeyID, field.TypeInt64, value)
 		_node.APIKeyID = &value
@@ -1007,6 +1043,54 @@ func (u *BatchImageJobUpsert) UpdateUserID() *BatchImageJobUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *BatchImageJobUpsert) AddUserID(v int64) *BatchImageJobUpsert {
 	u.Add(batchimagejob.FieldUserID, v)
+	return u
+}
+
+// SetBillingUserID sets the "billing_user_id" field.
+func (u *BatchImageJobUpsert) SetBillingUserID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldBillingUserID, v)
+	return u
+}
+
+// UpdateBillingUserID sets the "billing_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateBillingUserID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldBillingUserID)
+	return u
+}
+
+// AddBillingUserID adds v to the "billing_user_id" field.
+func (u *BatchImageJobUpsert) AddBillingUserID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldBillingUserID, v)
+	return u
+}
+
+// ClearBillingUserID clears the value of the "billing_user_id" field.
+func (u *BatchImageJobUpsert) ClearBillingUserID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldBillingUserID)
+	return u
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *BatchImageJobUpsert) SetTeamID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldTeamID, v)
+	return u
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateTeamID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldTeamID)
+	return u
+}
+
+// AddTeamID adds v to the "team_id" field.
+func (u *BatchImageJobUpsert) AddTeamID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldTeamID, v)
+	return u
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *BatchImageJobUpsert) ClearTeamID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldTeamID)
 	return u
 }
 
@@ -1730,6 +1814,62 @@ func (u *BatchImageJobUpsertOne) AddUserID(v int64) *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) UpdateUserID() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetBillingUserID sets the "billing_user_id" field.
+func (u *BatchImageJobUpsertOne) SetBillingUserID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBillingUserID(v)
+	})
+}
+
+// AddBillingUserID adds v to the "billing_user_id" field.
+func (u *BatchImageJobUpsertOne) AddBillingUserID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddBillingUserID(v)
+	})
+}
+
+// UpdateBillingUserID sets the "billing_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateBillingUserID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBillingUserID()
+	})
+}
+
+// ClearBillingUserID clears the value of the "billing_user_id" field.
+func (u *BatchImageJobUpsertOne) ClearBillingUserID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearBillingUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *BatchImageJobUpsertOne) SetTeamID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// AddTeamID adds v to the "team_id" field.
+func (u *BatchImageJobUpsertOne) AddTeamID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateTeamID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *BatchImageJobUpsertOne) ClearTeamID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearTeamID()
 	})
 }
 
@@ -2728,6 +2868,62 @@ func (u *BatchImageJobUpsertBulk) AddUserID(v int64) *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) UpdateUserID() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetBillingUserID sets the "billing_user_id" field.
+func (u *BatchImageJobUpsertBulk) SetBillingUserID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBillingUserID(v)
+	})
+}
+
+// AddBillingUserID adds v to the "billing_user_id" field.
+func (u *BatchImageJobUpsertBulk) AddBillingUserID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddBillingUserID(v)
+	})
+}
+
+// UpdateBillingUserID sets the "billing_user_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateBillingUserID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBillingUserID()
+	})
+}
+
+// ClearBillingUserID clears the value of the "billing_user_id" field.
+func (u *BatchImageJobUpsertBulk) ClearBillingUserID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearBillingUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *BatchImageJobUpsertBulk) SetTeamID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// AddTeamID adds v to the "team_id" field.
+func (u *BatchImageJobUpsertBulk) AddTeamID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateTeamID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *BatchImageJobUpsertBulk) ClearTeamID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearTeamID()
 	})
 }
 

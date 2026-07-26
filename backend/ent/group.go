@@ -117,9 +117,9 @@ type Group struct {
 	AvailabilityProbeConfig domain.GroupAvailabilityProbeConfig `json:"availability_probe_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
-	// OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max。
+	// OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
-	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限。
+	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings,omitempty"`
 	// 是否为数据共享分组
 	DataSharingEnabled bool `json:"data_sharing_enabled,omitempty"`

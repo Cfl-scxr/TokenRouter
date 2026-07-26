@@ -175,7 +175,7 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
-// APIKeyLimit 对 api_key_limit 字段应用等值检查谓词，等同于 APIKeyLimitEQ。
+// APIKeyLimit applies equality check predicate on the "api_key_limit" field. It's identical to APIKeyLimitEQ.
 func APIKeyLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldAPIKeyLimit, v))
 }
@@ -1390,42 +1390,42 @@ func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
 }
 
-// APIKeyLimitEQ 对 api_key_limit 字段应用 EQ 谓词。
+// APIKeyLimitEQ applies the EQ predicate on the "api_key_limit" field.
 func APIKeyLimitEQ(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldAPIKeyLimit, v))
 }
 
-// APIKeyLimitNEQ 对 api_key_limit 字段应用 NEQ 谓词。
+// APIKeyLimitNEQ applies the NEQ predicate on the "api_key_limit" field.
 func APIKeyLimitNEQ(v int) predicate.User {
 	return predicate.User(sql.FieldNEQ(FieldAPIKeyLimit, v))
 }
 
-// APIKeyLimitIn 对 api_key_limit 字段应用 In 谓词。
+// APIKeyLimitIn applies the In predicate on the "api_key_limit" field.
 func APIKeyLimitIn(vs ...int) predicate.User {
 	return predicate.User(sql.FieldIn(FieldAPIKeyLimit, vs...))
 }
 
-// APIKeyLimitNotIn 对 api_key_limit 字段应用 NotIn 谓词。
+// APIKeyLimitNotIn applies the NotIn predicate on the "api_key_limit" field.
 func APIKeyLimitNotIn(vs ...int) predicate.User {
 	return predicate.User(sql.FieldNotIn(FieldAPIKeyLimit, vs...))
 }
 
-// APIKeyLimitGT 对 api_key_limit 字段应用 GT 谓词。
+// APIKeyLimitGT applies the GT predicate on the "api_key_limit" field.
 func APIKeyLimitGT(v int) predicate.User {
 	return predicate.User(sql.FieldGT(FieldAPIKeyLimit, v))
 }
 
-// APIKeyLimitGTE 对 api_key_limit 字段应用 GTE 谓词。
+// APIKeyLimitGTE applies the GTE predicate on the "api_key_limit" field.
 func APIKeyLimitGTE(v int) predicate.User {
 	return predicate.User(sql.FieldGTE(FieldAPIKeyLimit, v))
 }
 
-// APIKeyLimitLT 对 api_key_limit 字段应用 LT 谓词。
+// APIKeyLimitLT applies the LT predicate on the "api_key_limit" field.
 func APIKeyLimitLT(v int) predicate.User {
 	return predicate.User(sql.FieldLT(FieldAPIKeyLimit, v))
 }
 
-// APIKeyLimitLTE 对 api_key_limit 字段应用 LTE 谓词。
+// APIKeyLimitLTE applies the LTE predicate on the "api_key_limit" field.
 func APIKeyLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldAPIKeyLimit, v))
 }
@@ -1767,6 +1767,29 @@ func HasPlatformQuotas() predicate.User {
 func HasPlatformQuotasWith(preds ...predicate.UserPlatformQuota) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newPlatformQuotasStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeamMemberships applies the HasEdge predicate on the "team_memberships" edge.
+func HasTeamMemberships() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TeamMembershipsTable, TeamMembershipsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamMembershipsWith applies the HasEdge predicate on the "team_memberships" edge with a given conditions (other predicates).
+func HasTeamMembershipsWith(preds ...predicate.TeamMembership) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newTeamMembershipsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -56,6 +56,7 @@ const messages: Record<string, string> = {
   'keys.rateLimitColumn': 'Rate Limit',
   'keys.searchPlaceholder': 'Search name or key...',
   'keys.status.active': 'Active',
+  'keys.status.disabled': 'Disabled',
   'keys.status.expired': 'Expired',
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
@@ -199,6 +200,9 @@ const DataTableStub = {
         <slot name="cell-name" :value="row.name" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
+        <div data-test="status">
+          <slot name="cell-status" :value="row.status" :row="row" />
         </div>
         <div
           v-if="columns.some((column) => column.key === 'last_used_ip')"
@@ -440,6 +444,21 @@ describe('user KeysView column settings', () => {
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
   })
 
+  it('renders a localized disabled status for team keys', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), status: 'disabled', scope: 'team', team_id: 1 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="status"]').text()).toBe('Disabled')
+    expect(wrapper.text()).not.toContain('keys.status.disabled')
+  })
+
   it('marks current concurrency as sortable', async () => {
     const wrapper = await mountView()
 
@@ -491,6 +510,7 @@ describe('user KeysView column settings', () => {
         search: 'target',
         status: 'active',
         group_id: 42,
+        scope: 'personal',
         sort_by: 'current_concurrency',
         sort_order: 'asc',
       },

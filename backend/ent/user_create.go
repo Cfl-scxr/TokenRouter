@@ -20,6 +20,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/promocodeusage"
 	"github.com/TokenFlux/TokenRouter/ent/redeemcode"
 	"github.com/TokenFlux/TokenRouter/ent/redeemcodeusage"
+	"github.com/TokenFlux/TokenRouter/ent/teammembership"
 	"github.com/TokenFlux/TokenRouter/ent/usagelog"
 	"github.com/TokenFlux/TokenRouter/ent/user"
 	"github.com/TokenFlux/TokenRouter/ent/userattributevalue"
@@ -355,13 +356,13 @@ func (_c *UserCreate) SetNillableRpmLimit(v *int) *UserCreate {
 	return _c
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (_c *UserCreate) SetAPIKeyLimit(v int) *UserCreate {
 	_c.mutation.SetAPIKeyLimit(v)
 	return _c
 }
 
-// SetNillableAPIKeyLimit 在给定值非 nil 时设置 api_key_limit 字段。
+// SetNillableAPIKeyLimit sets the "api_key_limit" field if the given value is not nil.
 func (_c *UserCreate) SetNillableAPIKeyLimit(v *int) *UserCreate {
 	if v != nil {
 		_c.SetAPIKeyLimit(*v)
@@ -592,6 +593,21 @@ func (_c *UserCreate) AddPlatformQuotas(v ...*UserPlatformQuota) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddPlatformQuotaIDs(ids...)
+}
+
+// AddTeamMembershipIDs adds the "team_memberships" edge to the TeamMembership entity by IDs.
+func (_c *UserCreate) AddTeamMembershipIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddTeamMembershipIDs(ids...)
+	return _c
+}
+
+// AddTeamMemberships adds the "team_memberships" edges to the TeamMembership entity.
+func (_c *UserCreate) AddTeamMemberships(v ...*TeamMembership) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamMembershipIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -1177,6 +1193,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.TeamMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -1577,19 +1609,19 @@ func (u *UserUpsert) AddRpmLimit(v int) *UserUpsert {
 	return u
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (u *UserUpsert) SetAPIKeyLimit(v int) *UserUpsert {
 	u.Set(user.FieldAPIKeyLimit, v)
 	return u
 }
 
-// UpdateAPIKeyLimit 将 api_key_limit 字段更新为创建时提供的值。
+// UpdateAPIKeyLimit sets the "api_key_limit" field to the value that was provided on create.
 func (u *UserUpsert) UpdateAPIKeyLimit() *UserUpsert {
 	u.SetExcluded(user.FieldAPIKeyLimit)
 	return u
 }
 
-// AddAPIKeyLimit 为 api_key_limit 字段增加 v。
+// AddAPIKeyLimit adds v to the "api_key_limit" field.
 func (u *UserUpsert) AddAPIKeyLimit(v int) *UserUpsert {
 	u.Add(user.FieldAPIKeyLimit, v)
 	return u
@@ -2046,21 +2078,21 @@ func (u *UserUpsertOne) UpdateRpmLimit() *UserUpsertOne {
 	})
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (u *UserUpsertOne) SetAPIKeyLimit(v int) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.SetAPIKeyLimit(v)
 	})
 }
 
-// AddAPIKeyLimit 为 api_key_limit 字段增加 v。
+// AddAPIKeyLimit adds v to the "api_key_limit" field.
 func (u *UserUpsertOne) AddAPIKeyLimit(v int) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.AddAPIKeyLimit(v)
 	})
 }
 
-// UpdateAPIKeyLimit 将 api_key_limit 字段更新为创建时提供的值。
+// UpdateAPIKeyLimit sets the "api_key_limit" field to the value that was provided on create.
 func (u *UserUpsertOne) UpdateAPIKeyLimit() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateAPIKeyLimit()
@@ -2684,21 +2716,21 @@ func (u *UserUpsertBulk) UpdateRpmLimit() *UserUpsertBulk {
 	})
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (u *UserUpsertBulk) SetAPIKeyLimit(v int) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.SetAPIKeyLimit(v)
 	})
 }
 
-// AddAPIKeyLimit 为 api_key_limit 字段增加 v。
+// AddAPIKeyLimit adds v to the "api_key_limit" field.
 func (u *UserUpsertBulk) AddAPIKeyLimit(v int) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.AddAPIKeyLimit(v)
 	})
 }
 
-// UpdateAPIKeyLimit 将 api_key_limit 字段更新为创建时提供的值。
+// UpdateAPIKeyLimit sets the "api_key_limit" field to the value that was provided on create.
 func (u *UserUpsertBulk) UpdateAPIKeyLimit() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateAPIKeyLimit()

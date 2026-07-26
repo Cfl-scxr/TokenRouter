@@ -260,6 +260,7 @@ export default {
     status: {
       active: '活跃',
       inactive: '已停用',
+      disabled: '已禁用',
       quota_exhausted: '额度耗尽',
       expired: '已过期'
     }
@@ -313,6 +314,8 @@ export default {
     reasoningEffort: '推理强度',
     endpoint: '端点',
     endpointDistribution: '端点分布',
+    teamMemberTrend: '成员消费趋势',
+    teamMemberComparison: '成员消费对比',
     inbound: '入站',
     upstream: '上游',
     mapping: '映射',

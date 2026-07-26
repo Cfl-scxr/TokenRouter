@@ -229,6 +229,8 @@ func TestAPIContracts(t *testing.T) {
 				"data": {
 					"id": 100,
 					"user_id": 1,
+					"team_id": null,
+					"scope": "personal",
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
@@ -309,6 +311,8 @@ func TestAPIContracts(t *testing.T) {
 						{
 							"id": 100,
 							"user_id": 1,
+							"team_id": null,
+							"scope": "personal",
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,

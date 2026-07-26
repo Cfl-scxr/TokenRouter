@@ -255,6 +255,7 @@ export default {
     status: {
       active: 'Active',
       inactive: 'Inactive',
+      disabled: 'Disabled',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
     },
@@ -308,6 +309,8 @@ export default {
     reasoningEffort: 'Reasoning Effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
+    teamMemberTrend: 'Member Spending Trend',
+    teamMemberComparison: 'Member Spending Comparison',
     inbound: 'Inbound',
     upstream: 'Upstream',
     mapping: 'Mapping',

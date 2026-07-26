@@ -50,6 +50,7 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 type APIKey struct {
 	ID      int64
 	UserID  int64
+	TeamID  *int64
 	Key     string
 	Name    string
 	GroupID *int64
@@ -65,7 +66,12 @@ type APIKey struct {
 	LastUsedIP          *string // 来自该 Key 最新一条带 IP 的用量日志。
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	// User 表示实际承担权限和费用的用户；团队 Key 中为当前 Owner。
 	User                *User
+	// ActorUser 表示创建并实际使用该 Key 的成员；个人 Key 与 User 相同。
+	ActorUser           *User
+	Team                *Team
+	TeamMembership      *TeamMembership
 	Group               *Group
 	// DataSharingNoticeVersion 记录当前 Key 最近确认的数据共享须知版本。
 	DataSharingNoticeVersion int
@@ -173,4 +179,5 @@ type APIKeyListFilters struct {
 	Search  string
 	Status  string
 	GroupID *int64 // nil=不筛选, 0=无分组, >0=指定分组
+	Scope   string // personal 或 team；空值兼容历史调用并返回全部
 }

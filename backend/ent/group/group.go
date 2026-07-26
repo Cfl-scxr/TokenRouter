@@ -42,7 +42,7 @@ const (
 	FieldIsDefault = "is_default"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldDuplicateOperationID 保存数据库中 duplicate_operation_id 字段的名称。
+	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
 	FieldDuplicateOperationID = "duplicate_operation_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
@@ -98,7 +98,7 @@ const (
 	FieldSortOrder = "sort_order"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
-	// FieldAllowLive 保存数据库中 allow_live 字段的名称。
+	// FieldAllowLive holds the string denoting the allow_live field in the database.
 	FieldAllowLive = "allow_live"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
@@ -114,9 +114,9 @@ const (
 	FieldAvailabilityProbeConfig = "availability_probe_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
-	// FieldMaxReasoningEffort 保存数据库中 max_reasoning_effort 字段的名称。
+	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
-	// FieldReasoningEffortMappings 保存数据库中 reasoning_effort_mappings 字段的名称。
+	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
 	FieldReasoningEffortMappings = "reasoning_effort_mappings"
 	// FieldDataSharingEnabled holds the string denoting the data_sharing_enabled field in the database.
 	FieldDataSharingEnabled = "data_sharing_enabled"
@@ -310,7 +310,7 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// DuplicateOperationIDValidator 是 duplicate_operation_id 字段的校验器，由构建器在保存前调用。
+	// DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
 	DuplicateOperationIDValidator func(string) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
@@ -348,7 +348,7 @@ var (
 	DefaultSortOrder int
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
-	// DefaultAllowLive 保存创建时 allow_live 字段的默认值。
+	// DefaultAllowLive holds the default value on creation for the "allow_live" field.
 	DefaultAllowLive bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
@@ -366,11 +366,11 @@ var (
 	DefaultAvailabilityProbeConfig domain.GroupAvailabilityProbeConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
-	// DefaultMaxReasoningEffort 保存创建时 max_reasoning_effort 字段的默认值。
+	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
 	DefaultMaxReasoningEffort string
-	// MaxReasoningEffortValidator 是 max_reasoning_effort 字段的校验器，由构建器在保存前调用。
+	// MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
 	MaxReasoningEffortValidator func(string) error
-	// DefaultReasoningEffortMappings 保存创建时 reasoning_effort_mappings 字段的默认值。
+	// DefaultReasoningEffortMappings holds the default value on creation for the "reasoning_effort_mappings" field.
 	DefaultReasoningEffortMappings []domain.ReasoningEffortMapping
 	// DefaultDataSharingEnabled holds the default value on creation for the "data_sharing_enabled" field.
 	DefaultDataSharingEnabled bool
@@ -451,7 +451,7 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
-// ByDuplicateOperationID 按 duplicate_operation_id 字段对结果排序。
+// ByDuplicateOperationID orders the results by the duplicate_operation_id field.
 func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDuplicateOperationID, opts...).ToFunc()
 }
@@ -581,7 +581,7 @@ func ByAllowMessagesDispatch(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowMessagesDispatch, opts...).ToFunc()
 }
 
-// ByAllowLive 按 allow_live 字段对结果排序。
+// ByAllowLive orders the results by the allow_live field.
 func ByAllowLive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowLive, opts...).ToFunc()
 }
@@ -606,7 +606,7 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
-// ByMaxReasoningEffort 按 max_reasoning_effort 字段对结果排序。
+// ByMaxReasoningEffort orders the results by the max_reasoning_effort field.
 func ByMaxReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxReasoningEffort, opts...).ToFunc()
 }

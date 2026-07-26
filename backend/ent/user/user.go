@@ -63,7 +63,7 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
-	// FieldAPIKeyLimit 保存数据库中 api_key_limit 字段的名称。
+	// FieldAPIKeyLimit holds the string denoting the api_key_limit field in the database.
 	FieldAPIKeyLimit = "api_key_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
@@ -95,6 +95,8 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
 	EdgePlatformQuotas = "platform_quotas"
+	// EdgeTeamMemberships holds the string denoting the team_memberships edge name in mutations.
+	EdgeTeamMemberships = "team_memberships"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// EdgeUserDisabledPublicGroups holds the string denoting the user_disabled_public_groups edge name in mutations.
@@ -202,6 +204,13 @@ const (
 	PlatformQuotasInverseTable = "user_platform_quotas"
 	// PlatformQuotasColumn is the table column denoting the platform_quotas relation/edge.
 	PlatformQuotasColumn = "user_id"
+	// TeamMembershipsTable is the table that holds the team_memberships relation/edge.
+	TeamMembershipsTable = "team_memberships"
+	// TeamMembershipsInverseTable is the table name for the TeamMembership entity.
+	// It exists in this package in order to avoid circular dependency with the "teammembership" package.
+	TeamMembershipsInverseTable = "team_memberships"
+	// TeamMembershipsColumn is the table column denoting the team_memberships relation/edge.
+	TeamMembershipsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -321,9 +330,9 @@ var (
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
-	// DefaultAPIKeyLimit 保存创建时 api_key_limit 字段的默认值。
+	// DefaultAPIKeyLimit holds the default value on creation for the "api_key_limit" field.
 	DefaultAPIKeyLimit int
-	// APIKeyLimitValidator 是 api_key_limit 字段的校验器，由构建器在保存前调用。
+	// APIKeyLimitValidator is a validator for the "api_key_limit" field. It is called by the builders before save.
 	APIKeyLimitValidator func(int) error
 )
 
@@ -455,7 +464,7 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
-// ByAPIKeyLimit 按 api_key_limit 字段对结果排序。
+// ByAPIKeyLimit orders the results by the api_key_limit field.
 func ByAPIKeyLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIKeyLimit, opts...).ToFunc()
 }
@@ -670,6 +679,20 @@ func ByPlatformQuotas(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByTeamMembershipsCount orders the results by team_memberships count.
+func ByTeamMembershipsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTeamMembershipsStep(), opts...)
+	}
+}
+
+// ByTeamMemberships orders the results by team_memberships terms.
+func ByTeamMemberships(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTeamMembershipsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -800,6 +823,13 @@ func newPlatformQuotasStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PlatformQuotasInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PlatformQuotasTable, PlatformQuotasColumn),
+	)
+}
+func newTeamMembershipsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TeamMembershipsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, TeamMembershipsTable, TeamMembershipsColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

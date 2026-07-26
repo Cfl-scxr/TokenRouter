@@ -21,6 +21,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/promocodeusage"
 	"github.com/TokenFlux/TokenRouter/ent/redeemcode"
 	"github.com/TokenFlux/TokenRouter/ent/redeemcodeusage"
+	"github.com/TokenFlux/TokenRouter/ent/teammembership"
 	"github.com/TokenFlux/TokenRouter/ent/usagelog"
 	"github.com/TokenFlux/TokenRouter/ent/user"
 	"github.com/TokenFlux/TokenRouter/ent/userattributevalue"
@@ -433,14 +434,14 @@ func (_u *UserUpdate) AddRpmLimit(v int) *UserUpdate {
 	return _u
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (_u *UserUpdate) SetAPIKeyLimit(v int) *UserUpdate {
 	_u.mutation.ResetAPIKeyLimit()
 	_u.mutation.SetAPIKeyLimit(v)
 	return _u
 }
 
-// SetNillableAPIKeyLimit 在给定值非 nil 时设置 api_key_limit 字段。
+// SetNillableAPIKeyLimit sets the "api_key_limit" field if the given value is not nil.
 func (_u *UserUpdate) SetNillableAPIKeyLimit(v *int) *UserUpdate {
 	if v != nil {
 		_u.SetAPIKeyLimit(*v)
@@ -448,7 +449,7 @@ func (_u *UserUpdate) SetNillableAPIKeyLimit(v *int) *UserUpdate {
 	return _u
 }
 
-// AddAPIKeyLimit 为 api_key_limit 字段增加给定值。
+// AddAPIKeyLimit adds value to the "api_key_limit" field.
 func (_u *UserUpdate) AddAPIKeyLimit(v int) *UserUpdate {
 	_u.mutation.AddAPIKeyLimit(v)
 	return _u
@@ -677,6 +678,21 @@ func (_u *UserUpdate) AddPlatformQuotas(v ...*UserPlatformQuota) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddPlatformQuotaIDs(ids...)
+}
+
+// AddTeamMembershipIDs adds the "team_memberships" edge to the TeamMembership entity by IDs.
+func (_u *UserUpdate) AddTeamMembershipIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddTeamMembershipIDs(ids...)
+	return _u
+}
+
+// AddTeamMemberships adds the "team_memberships" edges to the TeamMembership entity.
+func (_u *UserUpdate) AddTeamMemberships(v ...*TeamMembership) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamMembershipIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -997,6 +1013,27 @@ func (_u *UserUpdate) RemovePlatformQuotas(v ...*UserPlatformQuota) *UserUpdate 
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePlatformQuotaIDs(ids...)
+}
+
+// ClearTeamMemberships clears all "team_memberships" edges to the TeamMembership entity.
+func (_u *UserUpdate) ClearTeamMemberships() *UserUpdate {
+	_u.mutation.ClearTeamMemberships()
+	return _u
+}
+
+// RemoveTeamMembershipIDs removes the "team_memberships" edge to TeamMembership entities by IDs.
+func (_u *UserUpdate) RemoveTeamMembershipIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveTeamMembershipIDs(ids...)
+	return _u
+}
+
+// RemoveTeamMemberships removes "team_memberships" edges to TeamMembership entities.
+func (_u *UserUpdate) RemoveTeamMemberships(v ...*TeamMembership) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamMembershipIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1903,6 +1940,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.TeamMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamMembershipsIDs(); len(nodes) > 0 && !_u.mutation.TeamMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -2315,14 +2397,14 @@ func (_u *UserUpdateOne) AddRpmLimit(v int) *UserUpdateOne {
 	return _u
 }
 
-// SetAPIKeyLimit 设置 api_key_limit 字段。
+// SetAPIKeyLimit sets the "api_key_limit" field.
 func (_u *UserUpdateOne) SetAPIKeyLimit(v int) *UserUpdateOne {
 	_u.mutation.ResetAPIKeyLimit()
 	_u.mutation.SetAPIKeyLimit(v)
 	return _u
 }
 
-// SetNillableAPIKeyLimit 在给定值非 nil 时设置 api_key_limit 字段。
+// SetNillableAPIKeyLimit sets the "api_key_limit" field if the given value is not nil.
 func (_u *UserUpdateOne) SetNillableAPIKeyLimit(v *int) *UserUpdateOne {
 	if v != nil {
 		_u.SetAPIKeyLimit(*v)
@@ -2330,7 +2412,7 @@ func (_u *UserUpdateOne) SetNillableAPIKeyLimit(v *int) *UserUpdateOne {
 	return _u
 }
 
-// AddAPIKeyLimit 为 api_key_limit 字段增加给定值。
+// AddAPIKeyLimit adds value to the "api_key_limit" field.
 func (_u *UserUpdateOne) AddAPIKeyLimit(v int) *UserUpdateOne {
 	_u.mutation.AddAPIKeyLimit(v)
 	return _u
@@ -2559,6 +2641,21 @@ func (_u *UserUpdateOne) AddPlatformQuotas(v ...*UserPlatformQuota) *UserUpdateO
 		ids[i] = v[i].ID
 	}
 	return _u.AddPlatformQuotaIDs(ids...)
+}
+
+// AddTeamMembershipIDs adds the "team_memberships" edge to the TeamMembership entity by IDs.
+func (_u *UserUpdateOne) AddTeamMembershipIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddTeamMembershipIDs(ids...)
+	return _u
+}
+
+// AddTeamMemberships adds the "team_memberships" edges to the TeamMembership entity.
+func (_u *UserUpdateOne) AddTeamMemberships(v ...*TeamMembership) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamMembershipIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -2879,6 +2976,27 @@ func (_u *UserUpdateOne) RemovePlatformQuotas(v ...*UserPlatformQuota) *UserUpda
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePlatformQuotaIDs(ids...)
+}
+
+// ClearTeamMemberships clears all "team_memberships" edges to the TeamMembership entity.
+func (_u *UserUpdateOne) ClearTeamMemberships() *UserUpdateOne {
+	_u.mutation.ClearTeamMemberships()
+	return _u
+}
+
+// RemoveTeamMembershipIDs removes the "team_memberships" edge to TeamMembership entities by IDs.
+func (_u *UserUpdateOne) RemoveTeamMembershipIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveTeamMembershipIDs(ids...)
+	return _u
+}
+
+// RemoveTeamMemberships removes "team_memberships" edges to TeamMembership entities.
+func (_u *UserUpdateOne) RemoveTeamMemberships(v ...*TeamMembership) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamMembershipIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -3808,6 +3926,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userplatformquota.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamMembershipsIDs(); len(nodes) > 0 && !_u.mutation.TeamMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TeamMembershipsTable,
+			Columns: []string{user.TeamMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammembership.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

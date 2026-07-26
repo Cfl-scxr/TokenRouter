@@ -730,10 +730,12 @@ export type ApiKeyFastModePolicy = 'follow_request' | 'force_on' | 'force_off'
 export interface ApiKey {
   id: number
   user_id: number
+  team_id?: number | null
+  scope?: 'personal' | 'team'
   key: string
   name: string
   group_id: number | null
-  status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
+  status: 'active' | 'inactive' | 'disabled' | 'quota_exhausted' | 'expired'
   fast_mode_policy: ApiKeyFastModePolicy
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -766,6 +768,7 @@ export interface ApiKey {
 
 export interface CreateApiKeyRequest {
   name: string
+  scope?: 'personal' | 'team'
   group_id?: number | null
   fast_mode_policy?: ApiKeyFastModePolicy
   custom_key?: string // Optional custom API Key
@@ -1678,6 +1681,7 @@ export type ImageSizeBreakdown = Record<string, number>
 export interface UsageLog {
   id: number
   user_id: number
+  team_id?: number | null
   api_key_id: number
   account_id: number | null
   request_id: string

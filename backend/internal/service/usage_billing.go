@@ -22,6 +22,8 @@ type UsageBillingCommand struct {
 	RequestPayloadHash string
 
 	UserID                          int64
+	ActorUserID                     int64
+	TeamID                          *int64
 	AccountID                       int64
 	GroupID                         *int64
 	BillableAmountUSD               float64
@@ -60,9 +62,15 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if c == nil {
 		return ""
 	}
+	teamID := int64(0)
+	if c.TeamID != nil {
+		teamID = *c.TeamID
+	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
+		c.ActorUserID,
+		teamID,
 		c.AccountID,
 		c.APIKeyID,
 		strings.TrimSpace(c.AccountType),
@@ -129,6 +137,8 @@ type BatchImageBalanceHoldCommand struct {
 	RequestFingerprint string
 	RequestPayloadHash string
 	UserID             int64
+	ActorUserID        int64
+	TeamID             *int64
 	BatchID            string
 	HoldAmount         float64
 	ActualAmount       float64
@@ -149,9 +159,15 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 	if c == nil {
 		return ""
 	}
+	teamID := int64(0)
+	if c.TeamID != nil {
+		teamID = *c.TeamID
+	}
 	raw := fmt.Sprintf(
-		"%d|%d|%s|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%s|%0.10f|%0.10f",
 		c.UserID,
+		c.ActorUserID,
+		teamID,
 		c.APIKeyID,
 		strings.TrimSpace(c.BatchID),
 		c.HoldAmount,

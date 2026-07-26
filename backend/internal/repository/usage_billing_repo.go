@@ -13,6 +13,7 @@ import (
 	dbent "github.com/TokenFlux/TokenRouter/ent"
 	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/timezone"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
@@ -206,20 +207,21 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 }
 
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, false, reserveUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, true, captureUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, false, releaseUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
 	cmd *service.BatchImageBalanceHoldCommand,
+	countTeamUsage bool,
 	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
 ) (_ *service.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
@@ -259,6 +261,11 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		result = &service.BatchImageBalanceHoldResult{}
 	}
 	result.Applied = true
+	if countTeamUsage && cmd.TeamID != nil && cmd.ActorUserID > 0 && cmd.ActorUserID != cmd.UserID {
+		if err := incrementUsageBillingTeamMember(ctx, tx, *cmd.TeamID, cmd.ActorUserID, cmd.ActualAmount, time.Now()); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -295,6 +302,11 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	billableAmount := result.SubscriptionAmountUSD + result.BalanceAmountUSD
+	if cmd.TeamID != nil && cmd.ActorUserID > 0 && cmd.ActorUserID != cmd.UserID {
+		if err := incrementUsageBillingTeamMember(ctx, tx, *cmd.TeamID, cmd.ActorUserID, billableAmount, time.Now()); err != nil {
+			return err
+		}
+	}
 	if usageBillingUsesBaseAmount(cmd) && cmd.BaseAmountUSD > 0 {
 		effectiveRate := billableAmount / cmd.BaseAmountUSD
 		result.EffectiveRateMultiplier = &effectiveRate
@@ -329,6 +341,32 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.QuotaState = quotaState
 	}
 
+	return nil
+}
+
+// incrementUsageBillingTeamMember 在同一扣费事务中累计成员自然周期用量。
+func incrementUsageBillingTeamMember(ctx context.Context, tx *sql.Tx, teamID, actorUserID int64, amount float64, now time.Time) error {
+	if amount <= 0 {
+		return nil
+	}
+	dailyStart := timezone.StartOfDay(now)
+	weeklyStart := timezone.StartOfWeek(now)
+	monthlyStart := timezone.StartOfMonth(now)
+	_, err := tx.ExecContext(ctx, `
+		UPDATE team_memberships SET
+			daily_usage_usd = CASE WHEN daily_window_start IS NULL OR daily_window_start < $4 THEN $3 ELSE daily_usage_usd + $3 END,
+			weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $5 THEN $3 ELSE weekly_usage_usd + $3 END,
+			monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $6 THEN $3 ELSE monthly_usage_usd + $3 END,
+			daily_window_start = CASE WHEN daily_window_start IS NULL OR daily_window_start < $4 THEN $4 ELSE daily_window_start END,
+			weekly_window_start = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $5 THEN $5 ELSE weekly_window_start END,
+			monthly_window_start = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $6 THEN $6 ELSE monthly_window_start END,
+			updated_at = $7
+		WHERE team_id = $1 AND user_id = $2 AND left_at IS NULL AND role = 'member'`,
+		teamID, actorUserID, amount, dailyStart, weeklyStart, monthlyStart, now)
+	if err != nil {
+		return err
+	}
+	// 请求在途期间成员可能退出或成为 Owner；付款快照仍需完成，只跳过已失效的成员限额计数。
 	return nil
 }
 

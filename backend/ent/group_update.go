@@ -759,13 +759,13 @@ func (_u *GroupUpdate) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdate {
 	return _u
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (_u *GroupUpdate) SetAllowLive(v bool) *GroupUpdate {
 	_u.mutation.SetAllowLive(v)
 	return _u
 }
 
-// SetNillableAllowLive 在给定值非 nil 时设置 allow_live 字段。
+// SetNillableAllowLive sets the "allow_live" field if the given value is not nil.
 func (_u *GroupUpdate) SetNillableAllowLive(v *bool) *GroupUpdate {
 	if v != nil {
 		_u.SetAllowLive(*v)
@@ -878,13 +878,13 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdate) SetMaxReasoningEffort(v string) *GroupUpdate {
 	_u.mutation.SetMaxReasoningEffort(v)
 	return _u
 }
 
-// SetNillableMaxReasoningEffort 在给定值非 nil 时设置 max_reasoning_effort 字段。
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
 func (_u *GroupUpdate) SetNillableMaxReasoningEffort(v *string) *GroupUpdate {
 	if v != nil {
 		_u.SetMaxReasoningEffort(*v)
@@ -892,13 +892,13 @@ func (_u *GroupUpdate) SetNillableMaxReasoningEffort(v *string) *GroupUpdate {
 	return _u
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_u *GroupUpdate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdate {
 	_u.mutation.SetReasoningEffortMappings(v)
 	return _u
 }
 
-// AppendReasoningEffortMappings 向 reasoning_effort_mappings 字段追加值。
+// AppendReasoningEffortMappings appends value to the "reasoning_effort_mappings" field.
 func (_u *GroupUpdate) AppendReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdate {
 	_u.mutation.AppendReasoningEffortMappings(v)
 	return _u
@@ -2481,13 +2481,13 @@ func (_u *GroupUpdateOne) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdate
 	return _u
 }
 
-// SetAllowLive 设置 allow_live 字段。
+// SetAllowLive sets the "allow_live" field.
 func (_u *GroupUpdateOne) SetAllowLive(v bool) *GroupUpdateOne {
 	_u.mutation.SetAllowLive(v)
 	return _u
 }
 
-// SetNillableAllowLive 在给定值非 nil 时设置 allow_live 字段。
+// SetNillableAllowLive sets the "allow_live" field if the given value is not nil.
 func (_u *GroupUpdateOne) SetNillableAllowLive(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetAllowLive(*v)
@@ -2600,13 +2600,13 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
-// SetMaxReasoningEffort 设置 max_reasoning_effort 字段。
+// SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdateOne) SetMaxReasoningEffort(v string) *GroupUpdateOne {
 	_u.mutation.SetMaxReasoningEffort(v)
 	return _u
 }
 
-// SetNillableMaxReasoningEffort 在给定值非 nil 时设置 max_reasoning_effort 字段。
+// SetNillableMaxReasoningEffort sets the "max_reasoning_effort" field if the given value is not nil.
 func (_u *GroupUpdateOne) SetNillableMaxReasoningEffort(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetMaxReasoningEffort(*v)
@@ -2614,13 +2614,13 @@ func (_u *GroupUpdateOne) SetNillableMaxReasoningEffort(v *string) *GroupUpdateO
 	return _u
 }
 
-// SetReasoningEffortMappings 设置 reasoning_effort_mappings 字段。
+// SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_u *GroupUpdateOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdateOne {
 	_u.mutation.SetReasoningEffortMappings(v)
 	return _u
 }
 
-// AppendReasoningEffortMappings 向 reasoning_effort_mappings 字段追加值。
+// AppendReasoningEffortMappings appends value to the "reasoning_effort_mappings" field.
 func (_u *GroupUpdateOne) AppendReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupUpdateOne {
 	_u.mutation.AppendReasoningEffortMappings(v)
 	return _u
