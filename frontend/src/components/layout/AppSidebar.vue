@@ -117,7 +117,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : item.path === '/usage' ? 'sidebar-usage' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
@@ -137,7 +137,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : item.path === '/usage' ? 'sidebar-usage' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
@@ -875,7 +875,8 @@ function handleMenuItemClick(itemPath: string) {
   const pathToSelector: Record<string, string> = {
     '/admin/groups': '#sidebar-group-manage',
     '/admin/accounts': '#sidebar-channel-manage',
-    '/keys': '[data-tour="sidebar-my-keys"]'
+    '/keys': '[data-tour="sidebar-my-keys"]',
+    '/usage': '[data-tour="sidebar-usage"]'
   }
 
   const selector = pathToSelector[itemPath]

@@ -1,5 +1,5 @@
 <template>
-  <div ref="dropdownRef" class="relative">
+  <div ref="dropdownRef" class="relative" data-tour="keys-scope-switch">
     <button
       type="button"
       class="btn btn-secondary px-2 md:px-3"

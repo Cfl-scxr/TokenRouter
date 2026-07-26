@@ -22,6 +22,7 @@ export default {
     personalKeys: '个人密钥',
     teamKeys: '团队密钥',
     scopeSwitch: '切换密钥作用域',
+    guideButton: '功能引导',
     noTeam: '你目前没有加入团队',
     overview: '概览',
     members: '成员',

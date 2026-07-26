@@ -22,6 +22,7 @@ export default {
     personalKeys: 'Personal keys',
     teamKeys: 'Team keys',
     scopeSwitch: 'Switch key scope',
+    guideButton: 'Feature guide',
     noTeam: 'You are not currently in a team',
     overview: 'Overview',
     members: 'Members',

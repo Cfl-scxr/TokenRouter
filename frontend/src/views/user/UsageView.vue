@@ -65,11 +65,12 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
 
-        <TeamMemberUsageCharts
-          v-if="isTeamOwner"
-          :series="teamMemberSeries"
-          :loading="teamChartsLoading"
-        />
+        <div v-if="isTeamOwner" data-tour="team-member-usage-charts">
+          <TeamMemberUsageCharts
+            :series="teamMemberSeries"
+            :loading="teamChartsLoading"
+          />
+        </div>
       </div>
 
       <div class="card p-6">
@@ -176,7 +177,7 @@
         </button>
       </div>
 
-      <template v-if="activeTab === 'usage'">
+      <div v-if="activeTab === 'usage'" data-tour="team-usage-records">
         <UsageTable
           :data="usageLogs"
           :loading="loading"
@@ -200,7 +201,7 @@
           @update:page="handlePageChange"
           @update:pageSize="handlePageSizeChange"
         />
-      </template>
+      </div>
 
       <UserErrorRequestsTable
         v-else-if="errorViewEnabled"

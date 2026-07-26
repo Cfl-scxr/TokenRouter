@@ -31,8 +31,12 @@
           </div>
           <h1 class="mt-5 text-2xl font-semibold text-gray-900 dark:text-white">{{ t('team.createTitle') }}</h1>
           <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('team.createDescription') }}</p>
+          <button class="btn btn-secondary mt-5" type="button" @click="startTeamGuide">
+            <Icon name="questionCircle" size="sm" />
+            {{ t('team.guideButton') }}
+          </button>
         </div>
-        <form class="space-y-4" @submit.prevent="createTeam">
+        <form class="space-y-4" data-tour="team-create-form" @submit.prevent="createTeam">
           <div>
             <label class="input-label">{{ t('team.name') }}</label>
             <input v-model.trim="createName" class="input" maxlength="100" required />
@@ -57,10 +61,16 @@
               {{ isOwner ? t('team.owner') : t('team.member') }} · {{ t('team.memberCount', { count: teamContext.team.member_count + 1 }) }}
             </p>
           </div>
-          <button class="btn btn-secondary" :disabled="refreshing" @click="refreshAll">
-            <Icon name="refresh" size="sm" />
-            {{ t('common.refresh') }}
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-secondary" type="button" @click="startTeamGuide">
+              <Icon name="questionCircle" size="sm" />
+              {{ t('team.guideButton') }}
+            </button>
+            <button class="btn btn-secondary" :disabled="refreshing" @click="refreshAll">
+              <Icon name="refresh" size="sm" />
+              {{ t('common.refresh') }}
+            </button>
+          </div>
         </header>
 
         <nav class="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-dark-700" aria-label="Team sections">
@@ -72,6 +82,7 @@
             :class="activeTab === tab.value
               ? 'border-primary-500 text-primary-600 dark:text-primary-400'
               : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
+            :data-tour="tab.value === 'settings' ? 'team-settings-tab' : undefined"
             @click="activeTab = tab.value"
           >
             {{ tab.label }}
@@ -79,7 +90,7 @@
         </nav>
 
         <section v-if="activeTab === 'overview'" class="space-y-6">
-          <div v-if="!isOwner" class="card p-5">
+          <div v-if="!isOwner" class="card p-5" data-tour="team-limit-progress">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.limitProgress') }}</h2>
             <div class="mt-5 grid gap-5 md:grid-cols-3">
               <div v-for="limit in memberLimits" :key="limit.label">
@@ -99,7 +110,7 @@
             </div>
           </div>
 
-          <section v-if="isOwner" class="card overflow-hidden">
+          <section v-if="isOwner" class="card overflow-hidden" data-tour="team-members">
             <div class="flex items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-dark-700">
               <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.members') }}</h2>
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('team.memberCount', { count: members.length }) }}</span>
@@ -130,7 +141,7 @@
             </div>
           </section>
 
-          <section v-if="isOwner" class="space-y-5">
+          <section v-if="isOwner" class="space-y-5" data-tour="team-invitations">
             <div class="flex items-center justify-between gap-4">
               <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.invitations') }}</h2>
               <span class="text-sm text-gray-500 dark:text-gray-400">{{ invitations.length }}</span>
@@ -214,6 +225,7 @@ import BalanceAmount from '@/components/common/BalanceAmount.vue'
 import BalanceIcon from '@/components/common/BalanceIcon.vue'
 import { teamAPI, type TeamContext, type TeamInvitation, type TeamMembership } from '@/api/team'
 import { useAppStore } from '@/stores/app'
+import { useOnboardingStore } from '@/stores/onboarding'
 import { useStepUp, isStepUpCancelled } from '@/composables/useStepUp'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { formatDateTime } from '@/utils/format'
@@ -226,6 +238,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const onboardingStore = useOnboardingStore()
 const stepUp = useStepUp()
 const { balanceUnitSymbol, hasCustomBalanceIcon } = useBalanceDisplay()
 const loading = ref(true)
@@ -243,6 +256,12 @@ const defaultLimitForm = reactive<Record<LimitKey, number>>({ daily_limit_usd: 0
 const invitationToken = computed(() => typeof route.query.invitation === 'string' ? route.query.invitation : '')
 const transferToken = computed(() => typeof route.query.transfer === 'string' ? route.query.transfer : '')
 const isOwner = computed(() => teamContext.value?.membership.role === 'owner')
+
+// 团队导览由 AppLayout 中的全局控制器启动，跨页面时仍能保持同一流程。
+const startTeamGuide = () => onboardingStore.startTeamGuide({
+  isOwner: isOwner.value,
+  hasTeam: Boolean(teamContext.value)
+})
 
 const visibleTabs = computed(() => [
   { value: 'overview' as const, label: t('team.overview') },
