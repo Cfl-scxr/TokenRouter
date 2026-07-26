@@ -1,8 +1,5 @@
 <template>
   <AppLayout>
-    <div class="mb-6">
-      <ScopeSegmentedControl v-model="scope" @change="onScopeChange" />
-    </div>
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-col gap-4">
@@ -36,6 +33,7 @@
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
+              <ScopeDropdown v-model="scope" @change="onScopeChange" />
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click.stop="showColumnDropdown = !showColumnDropdown"
@@ -1200,7 +1198,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import ScopeSegmentedControl, { type DataScope } from '@/components/team/ScopeSegmentedControl.vue'
+	import ScopeDropdown, { type DataScope } from '@/components/team/ScopeDropdown.vue'
 	import type { ApiKey, ApiKeyFastModePolicy, Group, PublicSettings, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'

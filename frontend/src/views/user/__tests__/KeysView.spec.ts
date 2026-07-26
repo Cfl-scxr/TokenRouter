@@ -19,6 +19,7 @@ const {
   getDataSharingNotice,
   confirmDataSharingNotice,
   createKey,
+  replaceRoute,
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
   getPublicSettings: vi.fn(),
@@ -33,6 +34,7 @@ const {
   getDataSharingNotice: vi.fn(),
   confirmDataSharingNotice: vi.fn(),
   createKey: vi.fn(),
+  replaceRoute: vi.fn(),
 }))
 
 const messages: Record<string, string> = {
@@ -61,6 +63,9 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'team.personalKeys': 'Personal keys',
+  'team.teamKeys': 'Team keys',
+  'team.scopeSwitch': 'Switch key scope',
 }
 
 vi.mock('@/api', () => ({
@@ -115,6 +120,11 @@ vi.mock('@/composables/useBalanceDisplay', () => ({
     formatBalanceAmount: (value: number | null | undefined, options?: { fractionDigits?: number }) =>
       `$${Number(value ?? 0).toFixed(options?.fractionDigits ?? 2)}`,
   }),
+}))
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: { scope: 'personal' } }),
+  useRouter: () => ({ replace: replaceRoute }),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -305,6 +315,7 @@ describe('user KeysView column settings', () => {
     getDataSharingNotice.mockReset()
     confirmDataSharingNotice.mockReset()
     createKey.mockReset()
+    replaceRoute.mockReset()
 
     listKeys.mockResolvedValue({
       items: [createApiKey()],
@@ -339,6 +350,16 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_ip')
     expect(visibleColumnKeys(wrapper)).not.toContain('id')
+  })
+
+  it('places the key scope dropdown directly after the refresh action', async () => {
+    const wrapper = await mountView()
+
+    const refreshButton = wrapper.get('button[title="Refresh"]').element
+    const scopeTrigger = wrapper.get('[data-test="scope-dropdown-trigger"]').element
+
+    expect(refreshButton.nextElementSibling?.contains(scopeTrigger)).toBe(true)
+    expect(wrapper.find('.mb-6').exists()).toBe(false)
   })
 
   it('shows a hidden column when toggled and persists the preference', async () => {
