@@ -221,13 +221,59 @@
               </div>
             </form>
           </div>
-          <div v-if="isOwner" class="card flex flex-wrap items-center justify-between gap-4 p-5">
-            <div><h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.teamStatus') }}</h2><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('team.teamStatusDescription') }}</p></div>
-            <button class="btn btn-secondary" @click="askSetStatus"><Icon :name="teamContext.team.status === 'active' ? 'ban' : 'play'" size="sm" />{{ teamContext.team.status === 'active' ? t('team.pause') : t('team.resume') }}</button>
-          </div>
-          <div class="border-t border-red-200 pt-6 dark:border-red-900/60">
-            <button v-if="isOwner" class="btn btn-danger" @click="askDissolve"><Icon name="trash" size="sm" />{{ t('team.dissolve') }}</button>
-            <button v-else class="btn btn-danger" @click="askLeave"><Icon name="arrowRight" size="sm" />{{ t('team.leave') }}</button>
+          <!-- 将生命周期操作收拢成一致的设置行，避免危险操作脱离上下文。 -->
+          <div class="card overflow-hidden">
+            <div v-if="isOwner" class="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex min-w-0 items-start gap-3">
+                <div
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md"
+                  :class="teamContext.team.status === 'active'
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400'
+                    : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'"
+                >
+                  <Icon :name="teamContext.team.status === 'active' ? 'checkCircle' : 'ban'" size="md" />
+                </div>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.teamStatus') }}</h2>
+                    <span class="badge" :class="teamContext.team.status === 'active' ? 'badge-success' : 'badge-danger'">
+                      {{ teamContext.team.status === 'active' ? t('team.statusActive') : t('team.statusSuspended') }}
+                    </span>
+                  </div>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('team.teamStatusDescription') }}</p>
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary w-full shrink-0 justify-center sm:w-auto sm:min-w-[9rem]" @click="askSetStatus">
+                <Icon :name="teamContext.team.status === 'active' ? 'ban' : 'play'" size="sm" />
+                {{ teamContext.team.status === 'active' ? t('team.pause') : t('team.resume') }}
+              </button>
+            </div>
+            <div
+              class="flex flex-col gap-4 bg-gray-50/70 px-5 py-5 dark:bg-dark-800/40 sm:flex-row sm:items-center sm:justify-between"
+              :class="isOwner ? 'border-t border-gray-200 dark:border-dark-700' : ''"
+            >
+              <div class="flex min-w-0 items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                  <Icon :name="isOwner ? 'exclamationTriangle' : 'arrowRight'" size="md" />
+                </div>
+                <div class="min-w-0">
+                  <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ isOwner ? t('team.dissolve') : t('team.leave') }}
+                  </h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ isOwner ? t('team.dissolveMessage') : t('team.leaveMessage') }}
+                  </p>
+                </div>
+              </div>
+              <button v-if="isOwner" type="button" class="btn btn-danger w-full shrink-0 justify-center sm:w-auto sm:min-w-[9rem]" @click="askDissolve">
+                <Icon name="trash" size="sm" />
+                {{ t('team.dissolve') }}
+              </button>
+              <button v-else type="button" class="btn btn-danger w-full shrink-0 justify-center sm:w-auto sm:min-w-[9rem]" @click="askLeave">
+                <Icon name="arrowRight" size="sm" />
+                {{ t('team.leave') }}
+              </button>
+            </div>
           </div>
         </section>
       </template>

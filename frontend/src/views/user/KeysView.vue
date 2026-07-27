@@ -338,15 +338,17 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{ t('keys.noExpiration') }}</span>
           </template>
 
-          <template #cell-status="{ value }">
+          <template #cell-status="{ value, row }">
             <span :class="[
-              'badge',
+              'badge gap-1',
+              row.team_owner_disabled ? 'badge-danger' :
               value === 'active' ? 'badge-success' :
               value === 'quota_exhausted' ? 'badge-warning' :
               value === 'expired' ? 'badge-danger' :
               'badge-gray'
             ]">
-              {{ t('keys.status.' + value) }}
+              <Icon v-if="row.team_owner_disabled" name="lock" size="xs" />
+              {{ row.team_owner_disabled ? t('keys.status.team_owner_disabled') : t('keys.status.' + value) }}
             </span>
           </template>
 
@@ -370,25 +372,26 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
-              <!-- Use Key Button -->
+              <!-- 高频操作固定展示，低频和危险操作收进更多菜单。 -->
               <button
-                @click="openUseKeyModal(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                @click="editKey(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
-                <Icon name="terminal" size="sm" />
-                <span class="text-xs">{{ t('keys.useKey') }}</span>
+                <Icon name="edit" size="sm" />
+                <span class="text-xs">{{ t('common.edit') }}</span>
               </button>
-              <!-- Import to CC Switch Button -->
-              <button
-                v-if="!publicSettings?.hide_ccs_import_button"
-                @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+              <!-- Owner 锁定由团队管理员控制，成员侧不再提供无效的恢复入口。 -->
+              <span
+                v-if="row.team_owner_disabled"
+                class="flex cursor-not-allowed flex-col items-center gap-0.5 rounded-lg p-1.5 text-amber-600 dark:text-amber-400"
+                :title="t('keys.teamOwnerDisabledHint')"
               >
-                <Icon name="upload" size="sm" />
-                <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
-              </button>
+                <Icon name="lock" size="sm" />
+                <span class="text-xs">{{ t('keys.teamOwnerLocked') }}</span>
+              </span>
               <!-- Toggle Status Button -->
               <button
+                v-else
                 @click="toggleKeyStatus(row)"
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
@@ -401,21 +404,13 @@
                 <Icon v-else name="checkCircle" size="sm" />
                 <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
               </button>
-              <!-- Edit Button -->
               <button
-                @click="editKey(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                class="key-action-menu-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
+                :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': actionMenuKey?.id === row.id }"
+                @click="openKeyActionMenu(row, $event)"
               >
-                <Icon name="edit" size="sm" />
-                <span class="text-xs">{{ t('common.edit') }}</span>
-              </button>
-              <!-- Delete Button -->
-              <button
-                @click="confirmDelete(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              >
-                <Icon name="trash" size="sm" />
-                <span class="text-xs">{{ t('common.delete') }}</span>
+                <Icon name="more" size="sm" />
+                <span class="text-xs">{{ t('common.more') }}</span>
               </button>
             </div>
           </template>
@@ -563,7 +558,18 @@
             v-model="formData.status"
             :options="statusOptions"
             :placeholder="t('keys.selectStatus')"
+            :disabled="Boolean(selectedKey?.team_owner_disabled)"
+            :aria-describedby="selectedKey?.team_owner_disabled ? 'team-owner-disabled-hint' : undefined"
+            data-test="key-status-select"
           />
+          <p
+            v-if="selectedKey?.team_owner_disabled"
+            id="team-owner-disabled-hint"
+            class="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300"
+          >
+            <Icon name="lock" size="sm" class="mt-0.5 shrink-0" />
+            <span>{{ t('keys.teamOwnerDisabledHint') }}</span>
+          </p>
         </div>
 
         <!-- IP Restriction Section -->
@@ -1015,6 +1021,17 @@
       @close="closeUseKeyModal"
     />
 
+    <KeyActionMenu
+      :show="Boolean(actionMenuKey)"
+      :api-key="actionMenuKey"
+      :position="actionMenuPosition"
+      :allow-import="!publicSettings?.hide_ccs_import_button"
+      @close="closeKeyActionMenu"
+      @use="openUseKeyModal"
+      @import="importToCcswitch"
+      @delete="confirmDelete"
+    />
+
     <!-- CCS Client Selection Dialog for Antigravity -->
     <BaseDialog
       :show="showCcsClientSelect"
@@ -1194,6 +1211,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import Toggle from '@/components/common/Toggle.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
+	import KeyActionMenu from '@/components/keys/KeyActionMenu.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -1383,6 +1401,8 @@ const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
+const actionMenuKey = ref<ApiKey | null>(null)
+const actionMenuPosition = ref<{ top: number; left: number } | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
@@ -1479,6 +1499,8 @@ const fastModePolicyOptions = computed(() => [
 ])
 
 const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
+  // Owner 锁定期间仍允许编辑其它字段，但不能通过普通更新接口触碰状态。
+  if (key.team_owner_disabled) return false
   if (key.status === 'quota_exhausted' || key.status === 'expired') {
     return status === 'active'
   }
@@ -1707,6 +1729,11 @@ const editKey = (key: ApiKey) => {
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
+  // 模板已经隐藏恢复按钮，这里保留防御检查避免其它调用路径误触发请求。
+  if (key.team_owner_disabled) {
+    appStore.showError(t('keys.teamOwnerDisabledHint'))
+    return
+  }
   const newStatus = key.status === 'active' ? 'inactive' : 'active'
   try {
     await keysAPI.toggleStatus(key.id, newStatus)
@@ -1717,6 +1744,30 @@ const toggleKeyStatus = async (key: ApiKey) => {
   } catch (error) {
     appStore.showError(t('keys.failedToUpdateStatus'))
   }
+}
+
+// 更多菜单使用视口坐标并传送到 body，避免被固定操作列的 overflow 裁切。
+const openKeyActionMenu = (key: ApiKey, event: MouseEvent) => {
+  if (actionMenuKey.value?.id === key.id) {
+    closeKeyActionMenu()
+    return
+  }
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  const width = 192
+  const height = publicSettings.value?.hide_ccs_import_button ? 102 : 142
+  const padding = 8
+  const left = Math.max(padding, Math.min(rect.right - width, window.innerWidth - width - padding))
+  let top = rect.bottom + 4
+  if (top + height > window.innerHeight - padding) top = Math.max(padding, rect.top - height - 4)
+  actionMenuKey.value = key
+  actionMenuPosition.value = { top, left }
+}
+
+const closeKeyActionMenu = () => {
+  actionMenuKey.value = null
+  actionMenuPosition.value = null
 }
 
 const openGroupSelector = (key: ApiKey) => {

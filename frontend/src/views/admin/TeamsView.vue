@@ -339,7 +339,7 @@ const columns = computed<Column[]>(() => [
   { key: 'member_count', label: t('team.members'), sortable: true },
   { key: 'status', label: t('common.status'), sortable: true },
   { key: 'created_at', label: t('team.createdAt'), sortable: true },
-  { key: 'actions', label: t('common.actions'), class: 'text-right' },
+  { key: 'actions', label: t('common.actions'), class: 'text-left' },
 ])
 
 const filteredTeams = computed(() => {

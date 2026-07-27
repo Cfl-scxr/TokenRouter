@@ -119,6 +119,8 @@ export default {
     keyDeletedSuccess: 'API 密钥删除成功',
     keyEnabledSuccess: 'API 密钥已启用',
     keyDisabledSuccess: 'API 密钥已禁用',
+    teamOwnerLocked: '管理员锁定',
+    teamOwnerDisabledHint: '该密钥已被团队管理员禁用，只有团队管理员可以重新启用。',
     failedToLoad: '加载 API 密钥失败',
     failedToSave: '保存 API 密钥失败',
     apiKeyLimitReached: '无法创建 API 密钥：当前已有 {current} 个，上限为 {limit} 个。删除不再使用的密钥后可继续创建。',
@@ -261,6 +263,7 @@ export default {
       active: '活跃',
       inactive: '已停用',
       disabled: '已禁用',
+      team_owner_disabled: '团队管理员禁用',
       quota_exhausted: '额度耗尽',
       expired: '已过期'
     }

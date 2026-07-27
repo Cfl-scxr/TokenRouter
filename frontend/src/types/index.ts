@@ -734,6 +734,7 @@ export interface ApiKey {
   user_id: number
   team_id?: number | null
   scope?: 'personal' | 'team'
+  team_owner_disabled?: boolean // 团队管理员锁定后，成员不能自行恢复该 Key。
   key: string
   name: string
   group_id: number | null
