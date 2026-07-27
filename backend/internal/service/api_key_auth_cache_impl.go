@@ -335,7 +335,13 @@ func (s *APIKeyService) hydrateTeamAPIKey(ctx context.Context, apiKey *APIKey, e
 		return nil, ErrTeamFeatureDisabled
 	}
 	teamCtx, err := s.teamRepo.GetContextByUserID(ctx, apiKey.UserID)
-	if err != nil || teamCtx == nil || teamCtx.Team == nil || teamCtx.Membership == nil || teamCtx.Team.ID != *apiKey.TeamID {
+	if err != nil {
+		if errors.Is(err, ErrTeamNotFound) {
+			return nil, ErrTeamMembershipRequired
+		}
+		return nil, err
+	}
+	if teamCtx == nil || teamCtx.Team == nil || teamCtx.Membership == nil || teamCtx.Team.ID != *apiKey.TeamID {
 		return nil, ErrTeamMembershipRequired
 	}
 	if teamCtx.Membership.JoinedAt.After(apiKey.CreatedAt) {

@@ -191,8 +191,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx = context.WithValue(ctx, ctxkey.APIKeyFastModePolicy, apiKey.FastModePolicy)
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
-		// 异步图片任务查询只读取当前密钥已有的数据；即使生成任务耗尽余额，结果仍应可取回。
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		// 异步图片任务管理只读取已有数据或释放冻结；即使任务耗尽额度，结果仍应可取回或取消。
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||
+			isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path) ||
+			isBatchImageManagementRequest(c.Request.Method, c.Request.URL.Path)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -358,6 +360,19 @@ func isAsyncImageTaskRead(method, path string) bool {
 	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
 }
 
+// isBatchImageManagementRequest 标识不会创建新生成任务的批任务管理请求。
+func isBatchImageManagementRequest(method, path string) bool {
+	path = strings.TrimRight(path, "/")
+	const root = "/v1/images/batches"
+	if method == http.MethodGet && (path == root || strings.HasPrefix(path, root+"/")) {
+		return true
+	}
+	if method == http.MethodDelete && strings.HasPrefix(path, root+"/") {
+		return true
+	}
+	return method == http.MethodPost && strings.HasPrefix(path, root+"/") && strings.HasSuffix(path, "/cancel")
+}
+
 // isAPIKeyNonConsumingRequest 标识只读取已有状态或释放资源的网关请求。
 // 未知路径默认视为会产生消费，避免新增路由自动绕过团队限额。
 func isAPIKeyNonConsumingRequest(method, path string) bool {
@@ -366,14 +381,11 @@ func isAPIKeyNonConsumingRequest(method, path string) bool {
 		if path == "/v1/usage" || path == "/antigravity/v1/usage" || path == "/v1/sub2api/billing" {
 			return true
 		}
-		if strings.HasSuffix(path, "/models") || isAsyncImageTaskRead(method, path) || strings.HasPrefix(path, "/v1/images/batches/") {
+		if strings.HasSuffix(path, "/models") || isAsyncImageTaskRead(method, path) || isBatchImageManagementRequest(method, path) {
 			return true
 		}
 	}
-	if method == http.MethodDelete && strings.HasPrefix(path, "/v1/images/batches/") {
-		return true
-	}
-	if method == http.MethodPost && strings.HasPrefix(path, "/v1/images/batches/") && strings.HasSuffix(path, "/cancel") {
+	if isBatchImageManagementRequest(method, path) {
 		return true
 	}
 	if method == http.MethodPost && strings.HasSuffix(path, "/messages/count_tokens") {

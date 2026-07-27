@@ -53,8 +53,10 @@ func TestTeamMemberLimitsSkipNonConsumingRequests(t *testing.T) {
 		{method: http.MethodGet, path: "/v1/usage"},
 		{method: http.MethodGet, path: "/v1/sub2api/billing"},
 		{method: http.MethodGet, path: "/v1/models"},
+		{method: http.MethodGet, path: "/v1/images/batches"},
 		{method: http.MethodGet, path: "/v1/images/batches/test"},
 		{method: http.MethodDelete, path: "/v1/images/batches/test"},
+		{method: http.MethodDelete, path: "/v1/images/batches/test/outputs"},
 		{method: http.MethodPost, path: "/v1/images/batches/test/cancel"},
 		{method: http.MethodPost, path: "/v1/messages/count_tokens"},
 	}
@@ -62,4 +64,5 @@ func TestTeamMemberLimitsSkipNonConsumingRequests(t *testing.T) {
 		require.True(t, isAPIKeyNonConsumingRequest(test.method, test.path), "%s %s", test.method, test.path)
 	}
 	require.False(t, isAPIKeyNonConsumingRequest(http.MethodPost, "/v1/messages"))
+	require.False(t, isAPIKeyNonConsumingRequest(http.MethodPost, "/v1/images/batches"))
 }

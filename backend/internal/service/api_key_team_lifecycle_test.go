@@ -3,12 +3,23 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+type teamContextErrorRepository struct {
+	TeamRepository
+	err error
+}
+
+func (r *teamContextErrorRepository) GetContextByUserID(context.Context, int64) (*TeamContext, error) {
+	return nil, r.err
+}
 
 func validTeamAPIKeyForLifecycleTest() *APIKey {
 	teamID := int64(11)
@@ -66,6 +77,35 @@ func TestValidateTeamKeyLifecycle(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
+			require.ErrorIs(t, err, test.want)
+		})
+	}
+}
+
+func TestHydrateTeamAPIKeyOnlyMapsMissingContextToMembershipError(t *testing.T) {
+	repositoryFailure := errors.New("team repository unavailable")
+	tests := []struct {
+		name    string
+		repoErr error
+		want    error
+	}{
+		{name: "team_missing", repoErr: ErrTeamNotFound, want: ErrTeamMembershipRequired},
+		{name: "repository_failure", repoErr: repositoryFailure, want: repositoryFailure},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			key := validTeamAPIKeyForLifecycleTest()
+			key.Team = nil
+			key.TeamMembership = nil
+			key.ActorUser = nil
+			key.User = nil
+			service := &APIKeyService{
+				teamRepo: &teamContextErrorRepository{err: test.repoErr},
+				cfg:      &config.Config{Team: config.TeamConfig{Enabled: true}},
+			}
+
+			_, err := service.hydrateTeamAPIKey(context.Background(), key, nil)
 			require.ErrorIs(t, err, test.want)
 		})
 	}
