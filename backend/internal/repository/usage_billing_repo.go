@@ -375,13 +375,13 @@ func reserveBatchImageAPIKeyAllowance(ctx context.Context, tx *sql.Tx, apiKeyID 
 	var id int64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE api_keys SET
-			quota_used = CASE WHEN quota > 0 THEN quota_used + $1 ELSE quota_used END,
-			usage_5h = CASE WHEN rate_limit_5h <= 0 THEN usage_5h WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
-			usage_1d = CASE WHEN rate_limit_1d <= 0 THEN usage_1d WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
-			usage_7d = CASE WHEN rate_limit_7d <= 0 THEN usage_7d WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
-			window_5h_start = CASE WHEN rate_limit_5h > 0 AND (window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW()) THEN NOW() ELSE window_5h_start END,
-			window_1d_start = CASE WHEN rate_limit_1d > 0 AND (window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			window_7d_start = CASE WHEN rate_limit_7d > 0 AND (window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			quota_used = quota_used + $1,
+			usage_5h = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
+			usage_1d = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
+			usage_7d = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
 			status = CASE WHEN quota > 0 AND quota_used + $1 >= quota THEN $3 ELSE status END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND status = $4 AND team_owner_disabled = FALSE
@@ -537,20 +537,21 @@ func releaseBatchImageMemberAllowance(ctx context.Context, tx *sql.Tx, cmd *serv
 			weekly_usage_usd = CASE WHEN weekly_window_start <= $4 AND $4 < weekly_window_start + INTERVAL '7 days' THEN GREATEST(0, weekly_usage_usd - $3) ELSE weekly_usage_usd END,
 			monthly_usage_usd = CASE WHEN monthly_window_start <= $4 AND $4 < monthly_window_start + INTERVAL '1 month' THEN GREATEST(0, monthly_usage_usd - $3) ELSE monthly_usage_usd END,
 			updated_at = NOW()
-		WHERE team_id = $1 AND user_id = $2`, *cmd.TeamID, cmd.ActorUserID, amount, cmd.ReservedAt)
+		WHERE team_id = $1 AND user_id = $2
+		  AND joined_at <= $4 AND (left_at IS NULL OR left_at > $4)`, *cmd.TeamID, cmd.ActorUserID, amount, cmd.ReservedAt)
 	return err
 }
 
 func chargeLegacyBatchImageAPIKey(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE api_keys SET
-			quota_used = CASE WHEN quota > 0 THEN quota_used + $1 ELSE quota_used END,
-			usage_5h = CASE WHEN rate_limit_5h <= 0 THEN usage_5h WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
-			usage_1d = CASE WHEN rate_limit_1d <= 0 THEN usage_1d WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
-			usage_7d = CASE WHEN rate_limit_7d <= 0 THEN usage_7d WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
-			window_5h_start = CASE WHEN rate_limit_5h > 0 AND (window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW()) THEN NOW() ELSE window_5h_start END,
-			window_1d_start = CASE WHEN rate_limit_1d > 0 AND (window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			window_7d_start = CASE WHEN rate_limit_7d > 0 AND (window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			quota_used = quota_used + $1,
+			usage_5h = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
+			usage_1d = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
+			usage_7d = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
 			status = CASE WHEN quota > 0 AND quota_used + $1 >= quota AND team_owner_disabled = FALSE THEN $3 ELSE status END,
 			updated_at = NOW()
 		WHERE id = $2`, amount, apiKeyID, service.StatusAPIKeyQuotaExhausted)
