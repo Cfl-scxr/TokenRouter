@@ -1,12 +1,12 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div v-if="invitationToken || transferToken" class="border-b border-gray-200 pb-6 dark:border-dark-700">
+      <div v-if="transferToken" class="border-b border-gray-200 pb-6 dark:border-dark-700">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-          {{ invitationToken ? t('team.inviteActionTitle') : t('team.transferActionTitle') }}
+          {{ t('team.transferActionTitle') }}
         </h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ invitationToken ? t('team.inviteActionDescription') : t('team.transferActionDescription') }}
+          {{ t('team.transferActionDescription') }}
         </p>
         <div class="mt-4 flex gap-3">
           <button class="btn btn-primary" :disabled="resolvingToken" @click="resolvePendingToken('accepted')">
@@ -279,6 +279,16 @@
       </template>
     </div>
 
+    <TeamInvitationDialog
+      :show="Boolean(invitationToken)"
+      :loading="invitationPreviewLoading"
+      :resolving="resolvingToken"
+      :preview="invitationPreview"
+      :error="invitationPreviewError"
+      @close="closeInvitationDialog"
+      @resolve="resolvePendingToken"
+    />
+
     <BaseDialog :show="Boolean(limitTarget)" :title="t('team.editLimits')" width="narrow" @close="limitTarget = null">
       <form id="team-limit-form" class="space-y-4" @submit.prevent="saveLimits">
         <div v-for="field in limitFields" :key="field.key"><label class="input-label">{{ field.label }}</label><input v-model.number="limitForm[field.key]" type="number" min="0" step="0.01" class="input" /></div>
@@ -301,10 +311,11 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
+import TeamInvitationDialog from '@/components/team/TeamInvitationDialog.vue'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import BalanceAmount from '@/components/common/BalanceAmount.vue'
 import BalanceIcon from '@/components/common/BalanceIcon.vue'
-import { teamAPI, type TeamAPIKey, type TeamContext, type TeamInvitation, type TeamMembership } from '@/api/team'
+import { teamAPI, type TeamAPIKey, type TeamContext, type TeamInvitation, type TeamInvitationPreview, type TeamMembership } from '@/api/team'
 import { useAppStore } from '@/stores/app'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useStepUp, isStepUpCancelled } from '@/composables/useStepUp'
@@ -326,6 +337,9 @@ const loading = ref(true)
 const refreshing = ref(false)
 const submitting = ref(false)
 const resolvingToken = ref(false)
+const invitationPreviewLoading = ref(false)
+const invitationPreview = ref<TeamInvitationPreview | null>(null)
+const invitationPreviewError = ref('')
 const teamContext = ref<TeamContext | null>(null)
 const members = ref<TeamMembership[]>([])
 const invitations = ref<TeamInvitation[]>([])
@@ -338,6 +352,29 @@ const defaultLimitForm = reactive<Record<LimitKey, number>>({ daily_limit_usd: 0
 const invitationToken = computed(() => typeof route.query.invitation === 'string' ? route.query.invitation : '')
 const transferToken = computed(() => typeof route.query.transfer === 'string' ? route.query.transfer : '')
 const isOwner = computed(() => teamContext.value?.membership.role === 'owner')
+
+// 邀请详情单独加载，避免依赖当前团队上下文才能展示确认弹窗。
+const loadInvitationPreview = async () => {
+  invitationPreview.value = null
+  invitationPreviewError.value = ''
+  if (!invitationToken.value) return
+  invitationPreviewLoading.value = true
+  try {
+    invitationPreview.value = await teamAPI.previewInvitation(invitationToken.value)
+  } catch (error: any) {
+    invitationPreviewError.value = error?.message || t('team.invitationLoadFailed')
+  } finally {
+    invitationPreviewLoading.value = false
+  }
+}
+
+const closeInvitationDialog = async () => {
+  const query = { ...route.query }
+  delete query.invitation
+  await router.replace({ query })
+  invitationPreview.value = null
+  invitationPreviewError.value = ''
+}
 
 // 团队导览由 AppLayout 中的全局控制器启动，跨页面时仍能保持同一流程。
 const startTeamGuide = () => onboardingStore.startTeamGuide({
@@ -501,6 +538,8 @@ const resolvePendingToken = async (resolution: 'accepted' | 'declined') => {
     if (invitationToken.value) await teamAPI.resolveInvitation(invitationToken.value, resolution)
     else if (transferToken.value) await stepUp.run(() => teamAPI.resolveTransfer(transferToken.value, resolution))
     await router.replace({ query: {} })
+    invitationPreview.value = null
+    invitationPreviewError.value = ''
     await refreshAll()
     appStore.showSuccess(t('team.operationSuccess'))
   } catch (error: any) {
@@ -509,6 +548,8 @@ const resolvePendingToken = async (resolution: 'accepted' | 'declined') => {
 }
 
 onMounted(async () => {
+  const invitationRequest = loadInvitationPreview()
   try { await loadContext(); await loadTeamData() } catch (error: any) { appStore.showError(error?.message || t('team.loadFailed')) } finally { loading.value = false }
+  await invitationRequest
 })
 </script>

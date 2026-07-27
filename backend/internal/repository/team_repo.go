@@ -270,6 +270,46 @@ func (r *teamRepository) RevokeInvitation(ctx context.Context, teamID, invitatio
 	return nil
 }
 
+// PreviewInvitation 仅在令牌、状态和受邀邮箱均匹配时返回邀请摘要。
+func (r *teamRepository) PreviewInvitation(ctx context.Context, tokenHash, normalizedEmail string, now time.Time) (*service.TeamInvitationPreview, error) {
+	var invitationID int64
+	var invitationEmail, status string
+	preview := &service.TeamInvitationPreview{}
+	err := r.db.QueryRowContext(ctx, `
+		SELECT ti.id, ti.email, ti.status, ti.expires_at, t.name,
+		       COALESCE(NULLIF(BTRIM(inviter.username), ''), inviter.email), inviter.email
+		FROM team_invitations ti
+		JOIN teams t ON t.id = ti.team_id AND t.deleted_at IS NULL
+		JOIN users inviter ON inviter.id = ti.inviter_user_id AND inviter.deleted_at IS NULL
+		WHERE ti.token_hash = $1`, tokenHash).
+		Scan(
+			&invitationID,
+			&invitationEmail,
+			&status,
+			&preview.ExpiresAt,
+			&preview.TeamName,
+			&preview.InviterName,
+			&preview.InviterEmail,
+		)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrTeamInvitationInvalid
+	}
+	if err != nil {
+		return nil, err
+	}
+	if status != "pending" {
+		return nil, service.ErrTeamInvitationInvalid
+	}
+	if !preview.ExpiresAt.After(now) {
+		_, _ = r.db.ExecContext(ctx, `UPDATE team_invitations SET status = 'expired', updated_at = $2 WHERE id = $1 AND status = 'pending'`, invitationID, now)
+		return nil, service.ErrTeamInvitationExpired
+	}
+	if !strings.EqualFold(invitationEmail, normalizedEmail) {
+		return nil, service.ErrTeamInvitationEmail
+	}
+	return preview, nil
+}
+
 func (r *teamRepository) ResolveInvitation(ctx context.Context, tokenHash string, userID int64, normalizedEmail, resolution string, now time.Time) (*service.TeamContext, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -171,27 +171,9 @@ export function useOnboardingTour(options: OnboardingOptions) {
         onboardingStore.setDriverInstance(null)
       },
 
-      // 渲染时重组 Footer 布局
-      onPopoverRender: (popover, { config, state }) => {
-        // Class name constants for easier maintenance
-        const CLASS_REORGANIZED = 'reorganized'
-        const CLASS_FOOTER_LEFT = 'footer-left'
-        const CLASS_FOOTER_RIGHT = 'footer-right'
-        const CLASS_DONE_BTN = 'driver-popover-done-btn'
-        const CLASS_PROGRESS_TEXT = 'driver-popover-progress-text'
-        const CLASS_NEXT_BTN = 'driver-popover-next-btn'
-        const CLASS_PREV_BTN = 'driver-popover-prev-btn'
-
+      // 渲染时只补充交互步骤提示，底部保留 Driver.js 原生操作按钮。
+      onPopoverRender: (popover, { state }) => {
         try {
-          const { title: titleEl, footer: footerEl, nextButton, previousButton } = popover
-
-          // Defensive check: ensure popover elements exist
-          if (!titleEl || !footerEl) {
-            console.warn('Onboarding: Missing popover elements')
-            return
-          }
-
-          // 1.5 交互式步骤提示
           const currentStep = steps[state.activeIndex ?? 0]
 
           if (currentStep && isInteractiveStep(currentStep) && popover.description) {
@@ -211,70 +193,6 @@ export function useOnboardingTour(options: OnboardingOptions) {
               hint.appendChild(textNode)
               popover.description.appendChild(hint)
             }
-          }
-
-          // 2. 底部：DOM 重组
-          if (!footerEl.classList.contains(CLASS_REORGANIZED)) {
-            footerEl.classList.add(CLASS_REORGANIZED)
-
-            const progressEl = footerEl.querySelector(`.${CLASS_PROGRESS_TEXT}`)
-            const nextBtnEl = nextButton || footerEl.querySelector(`.${CLASS_NEXT_BTN}`)
-            const prevBtnEl = previousButton || footerEl.querySelector(`.${CLASS_PREV_BTN}`)
-
-            const leftContainer = document.createElement('div')
-            leftContainer.className = CLASS_FOOTER_LEFT
-
-            const rightContainer = document.createElement('div')
-            rightContainer.className = CLASS_FOOTER_RIGHT
-
-            if (progressEl) leftContainer.appendChild(progressEl)
-
-            const shortcutsEl = document.createElement('div')
-            shortcutsEl.className = 'footer-shortcuts'
-
-            const shortcut1 = document.createElement('span')
-            shortcut1.className = 'shortcut-item'
-            const kbd1 = document.createElement('kbd')
-            kbd1.textContent = '←'
-            const kbd2 = document.createElement('kbd')
-            kbd2.textContent = '→'
-            shortcut1.appendChild(kbd1)
-            shortcut1.appendChild(kbd2)
-            shortcut1.appendChild(
-              document.createTextNode(` ${t('onboarding.navigation.flipPage')}`),
-            )
-
-            const shortcut2 = document.createElement('span')
-            shortcut2.className = 'shortcut-item'
-            const kbd3 = document.createElement('kbd')
-            kbd3.textContent = 'ESC'
-            shortcut2.appendChild(kbd3)
-            shortcut2.appendChild(
-              document.createTextNode(` ${t('onboarding.navigation.exit')}`),
-            )
-
-            shortcutsEl.appendChild(shortcut1)
-            shortcutsEl.appendChild(shortcut2)
-            leftContainer.appendChild(shortcutsEl)
-
-            if (prevBtnEl) rightContainer.appendChild(prevBtnEl)
-            if (nextBtnEl) rightContainer.appendChild(nextBtnEl)
-
-            footerEl.innerHTML = ''
-            footerEl.appendChild(leftContainer)
-            footerEl.appendChild(rightContainer)
-          }
-
-          // 3. 状态更新
-          const isLastStep = state.activeIndex === (config.steps?.length ?? 0) - 1
-          const activeNextBtn = nextButton || footerEl.querySelector(`.${CLASS_NEXT_BTN}`)
-
-          if (activeNextBtn) {
-             if (isLastStep) {
-               activeNextBtn.classList.add(CLASS_DONE_BTN)
-             } else {
-               activeNextBtn.classList.remove(CLASS_DONE_BTN)
-             }
           }
         } catch (e) {
           console.error('Onboarding Tour Render Error:', e)

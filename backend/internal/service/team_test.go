@@ -40,6 +40,11 @@ type fakeTeamRepository struct {
 	defaultLimitsSet  bool
 	adminUpdate       TeamAdminUpdate
 	adminUpdateCount  int
+	invitationCreates int
+	invitationPreview *TeamInvitationPreview
+	previewTokenHash  string
+	previewEmail      string
+	previewAt         time.Time
 }
 
 func (r *fakeTeamRepository) GetContextByUserID(context.Context, int64) (*TeamContext, error) {
@@ -89,6 +94,28 @@ func (r *fakeTeamRepository) SetDefaultMemberLimits(_ context.Context, _ int64, 
 	return nil
 }
 
+func (r *fakeTeamRepository) CreateInvitation(_ context.Context, teamID, inviterUserID int64, email, _ string, expiresAt time.Time) (*TeamInvitation, error) {
+	r.invitationCreates++
+	return &TeamInvitation{TeamID: teamID, InviterUserID: inviterUserID, Email: email, ExpiresAt: expiresAt}, nil
+}
+
+func (r *fakeTeamRepository) PreviewInvitation(_ context.Context, tokenHash, normalizedEmail string, now time.Time) (*TeamInvitationPreview, error) {
+	r.previewTokenHash = tokenHash
+	r.previewEmail = normalizedEmail
+	r.previewAt = now
+	return r.invitationPreview, nil
+}
+
+// fakeTeamUserRepository 为邀请预览提供当前登录用户邮箱。
+type fakeTeamUserRepository struct {
+	UserRepository
+	user *User
+}
+
+func (r *fakeTeamUserRepository) GetByID(context.Context, int64) (*User, error) {
+	return r.user, nil
+}
+
 func (r *fakeTeamRepository) UpdateAdmin(_ context.Context, _ int64, update TeamAdminUpdate) error {
 	r.adminUpdate = update
 	r.adminUpdateCount++
@@ -121,7 +148,7 @@ func TestTeamServiceListMembersMemberOnlySeesOwnerAndSelf(t *testing.T) {
 			{UserID: 3, Role: TeamRoleMember},
 		},
 	}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	members, err := svc.ListMembers(context.Background(), 2)
 	require.NoError(t, err)
@@ -134,7 +161,7 @@ func TestTeamServiceUsageScopeCannotBeExpandedByMember(t *testing.T) {
 		teamContext:  teamServiceTestContext(2, TeamRoleMember),
 		usageSummary: &TeamUsageSummary{},
 	}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	_, err := svc.GetUsageSummary(context.Background(), 2, TeamUsageQuery{ActorUserID: &otherUserID})
 	require.NoError(t, err)
@@ -148,7 +175,7 @@ func TestTeamServiceUsageScopeOwnerKeepsMemberFilter(t *testing.T) {
 		teamContext:  teamServiceTestContext(1, TeamRoleOwner),
 		usageSummary: &TeamUsageSummary{},
 	}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	_, err := svc.GetUsageSummary(context.Background(), 1, TeamUsageQuery{ActorUserID: &targetUserID})
 	require.NoError(t, err)
@@ -162,7 +189,7 @@ func TestTeamServiceAdminUsageKeepsMemberFilter(t *testing.T) {
 		teamContext:  teamServiceTestContext(1, TeamRoleOwner),
 		usageSummary: &TeamUsageSummary{},
 	}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	_, err := svc.AdminGetUsageSummary(context.Background(), 11, TeamUsageQuery{ActorUserID: &targetUserID})
 	require.NoError(t, err)
@@ -172,7 +199,7 @@ func TestTeamServiceAdminUsageKeepsMemberFilter(t *testing.T) {
 
 func TestTeamServiceAdminUpdatesName(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	err := svc.AdminUpdateName(context.Background(), 11, "  新团队名称  ")
 	require.NoError(t, err)
@@ -181,7 +208,7 @@ func TestTeamServiceAdminUpdatesName(t *testing.T) {
 
 func TestTeamServiceAdminUpdateValidatesBeforeWriting(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 	validName := "  新团队名称  "
 	invalidLimit := -1
 
@@ -193,7 +220,7 @@ func TestTeamServiceAdminUpdateValidatesBeforeWriting(t *testing.T) {
 
 func TestTeamServiceAdminUpdateWritesAllFieldsOnce(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 	name := "  新团队名称  "
 	status := TeamStatusSuspended
 	memberLimit := 12
@@ -225,7 +252,7 @@ func TestTeamServiceListTeamKeysMasksSecretsAndAppliesRoleFilter(t *testing.T) {
 				teamContext: teamServiceTestContext(tt.userID, tt.role),
 				teamKeys:    []TeamAPIKeyItem{{ID: 31, Key: "sk-team-secret-value", Name: "team"}},
 			}
-			svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+			svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 			keys, err := svc.ListTeamKeys(context.Background(), tt.userID)
 			require.NoError(t, err)
@@ -270,7 +297,7 @@ func TestCheckTeamMemberLimitSnapshot(t *testing.T) {
 func TestTeamServiceSuspendedOwnerCanResume(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
 	repo.teamContext.Team.Status = TeamStatusSuspended
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	teamCtx, err := svc.SetStatus(context.Background(), 1, TeamStatusActive)
 	require.NoError(t, err)
@@ -281,7 +308,7 @@ func TestTeamServiceSuspendedOwnerCanResume(t *testing.T) {
 func TestTeamServiceSuspendedMemberCannotChangeStatus(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(2, TeamRoleMember)}
 	repo.teamContext.Team.Status = TeamStatusSuspended
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	_, err := svc.SetStatus(context.Background(), 2, TeamStatusActive)
 	require.ErrorIs(t, err, ErrTeamOwnerRequired)
@@ -289,7 +316,7 @@ func TestTeamServiceSuspendedMemberCannotChangeStatus(t *testing.T) {
 
 func TestTeamServiceOwnerUpdatesDefaultMemberLimits(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	teamCtx, err := svc.UpdateDefaultMemberLimits(context.Background(), 1, 1.5, 8, 30)
 	require.NoError(t, err)
@@ -300,7 +327,7 @@ func TestTeamServiceOwnerUpdatesDefaultMemberLimits(t *testing.T) {
 
 func TestTeamServiceRejectsNegativeDefaultMemberLimits(t *testing.T) {
 	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
-	svc := NewTeamService(repo, nil, nil, nil, nil, nil)
+	svc := NewTeamService(repo, nil, nil, nil, nil, nil, nil)
 
 	_, err := svc.UpdateDefaultMemberLimits(context.Background(), 1, -1, 8, 30)
 	require.Error(t, err)
@@ -312,6 +339,7 @@ func TestTeamServiceInvitationEmailUsesCustomNotificationTemplate(t *testing.T) 
 	settingRepo := newNotificationEmailMemorySettingRepo()
 	smtpServer := startNotificationEmailTestSMTPServer(t)
 	require.NoError(t, settingRepo.SetMultiple(ctx, smtpServer.settings()))
+	require.NoError(t, settingRepo.Set(ctx, SettingKeyFrontendURL, "https://database.example"))
 
 	emailService := NewEmailService(settingRepo, nil)
 	notificationService := NewNotificationEmailService(settingRepo, emailService)
@@ -324,23 +352,86 @@ func TestTeamServiceInvitationEmailUsesCustomNotificationTemplate(t *testing.T) 
 	)
 	require.NoError(t, err)
 
-	svc := NewTeamService(nil, nil, emailService, nil, nil, &config.Config{
-		Server: config.ServerConfig{FrontendURL: "https://router.example"},
-	})
+	cfg := &config.Config{Server: config.ServerConfig{FrontendURL: "https://config.example"}}
+	settingService := NewSettingService(settingRepo, cfg)
+	svc := NewTeamService(nil, nil, emailService, nil, nil, settingService, cfg)
 	expiresAt := time.Date(2026, 8, 3, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
-	require.NoError(t, svc.sendInvitationEmail(ctx, "member@example.com", "Platform Team", "test-token", expiresAt))
+	link, err := svc.frontendLink(ctx, "/team", "invitation", "test-token")
+	require.NoError(t, err)
+	require.NoError(t, svc.sendInvitationEmail(ctx, "member@example.com", "Platform Team", link, expiresAt))
 
 	require.Equal(t, int64(1), smtpServer.messageCount())
 	message := smtpServer.lastMessage()
 	require.Contains(t, message, "Subject: Custom invitation for Platform Team")
 	require.Contains(t, message, "Custom team invitation")
-	require.Contains(t, message, "https://router.example/team?invitation=test-token")
+	require.Contains(t, message, "https://database.example/team?invitation=test-token")
+	require.NotContains(t, message, "https://config.example")
 	require.Contains(t, message, expiresAt.Format(time.RFC3339))
 	require.False(t, strings.Contains(message, "你被邀请加入团队"))
 }
 
+func TestTeamServiceFrontendLinkFallsBackToConfig(t *testing.T) {
+	ctx := context.Background()
+	cfg := &config.Config{Server: config.ServerConfig{FrontendURL: "https://config.example/"}}
+	settingService := NewSettingService(newNotificationEmailMemorySettingRepo(), cfg)
+	svc := NewTeamService(nil, nil, nil, nil, nil, settingService, cfg)
+
+	link, err := svc.frontendLink(ctx, "/team", "invitation", "test-token")
+
+	require.NoError(t, err)
+	require.Equal(t, "https://config.example/team?invitation=test-token", link)
+}
+
+func TestTeamServiceFrontendLinkRejectsMissingBaseURL(t *testing.T) {
+	ctx := context.Background()
+	cfg := &config.Config{}
+	settingService := NewSettingService(newNotificationEmailMemorySettingRepo(), cfg)
+	svc := NewTeamService(nil, nil, nil, nil, nil, settingService, cfg)
+
+	link, err := svc.frontendLink(ctx, "/team", "invitation", "test-token")
+
+	require.ErrorIs(t, err, ErrTeamFrontendURLUnavailable)
+	require.Empty(t, link)
+}
+
+func TestTeamServiceInviteRejectsMissingBaseURLBeforeCreatingInvitation(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeTeamRepository{teamContext: teamServiceTestContext(1, TeamRoleOwner)}
+	settingRepo := newNotificationEmailMemorySettingRepo()
+	cfg := &config.Config{Team: config.TeamConfig{Enabled: true}}
+	settingService := NewSettingService(settingRepo, cfg)
+	emailService := NewEmailService(settingRepo, nil)
+	svc := NewTeamService(repo, nil, emailService, nil, &fakeTeamInvitationLimiter{allowed: true}, settingService, cfg)
+
+	invitation, err := svc.Invite(ctx, 1, "member@example.com")
+
+	require.ErrorIs(t, err, ErrTeamFrontendURLUnavailable)
+	require.Nil(t, invitation)
+	require.Zero(t, repo.invitationCreates)
+}
+
+func TestTeamServicePreviewInvitationUsesTokenHashAndCurrentUserEmail(t *testing.T) {
+	preview := &TeamInvitationPreview{
+		TeamName:     "平台团队",
+		InviterName:  "owner",
+		InviterEmail: "owner@example.com",
+		ExpiresAt:    time.Now().Add(time.Hour),
+	}
+	repo := &fakeTeamRepository{invitationPreview: preview}
+	userRepo := &fakeTeamUserRepository{user: &User{ID: 7, Email: " Member@Example.COM "}}
+	svc := NewTeamService(repo, userRepo, nil, nil, nil, nil, nil)
+
+	result, err := svc.PreviewInvitation(context.Background(), 7, " raw-token ")
+
+	require.NoError(t, err)
+	require.Same(t, preview, result)
+	require.Equal(t, hashTeamToken("raw-token"), repo.previewTokenHash)
+	require.Equal(t, "member@example.com", repo.previewEmail)
+	require.False(t, repo.previewAt.IsZero())
+}
+
 func TestTeamServiceInvitationLimitReturnsRetryAfter(t *testing.T) {
-	svc := NewTeamService(nil, nil, nil, nil, &fakeTeamInvitationLimiter{retryAfter: 1500 * time.Millisecond}, nil)
+	svc := NewTeamService(nil, nil, nil, nil, &fakeTeamInvitationLimiter{retryAfter: 1500 * time.Millisecond}, nil, nil)
 
 	err := svc.checkInvitationRate(context.Background(), 11, "member@example.com")
 	require.ErrorIs(t, err, ErrTeamInvitationRateLimited)
@@ -350,7 +441,7 @@ func TestTeamServiceInvitationLimitReturnsRetryAfter(t *testing.T) {
 }
 
 func TestTeamServiceInvitationLimitFailsClosedWhenRedisUnavailable(t *testing.T) {
-	svc := NewTeamService(nil, nil, nil, nil, &fakeTeamInvitationLimiter{err: errors.New("redis unavailable")}, nil)
+	svc := NewTeamService(nil, nil, nil, nil, &fakeTeamInvitationLimiter{err: errors.New("redis unavailable")}, nil, nil)
 
 	err := svc.checkInvitationRate(context.Background(), 11, "member@example.com")
 	require.ErrorIs(t, err, ErrTeamInvitationUnavailable)

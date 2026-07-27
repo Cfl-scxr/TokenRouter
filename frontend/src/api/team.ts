@@ -50,6 +50,13 @@ export interface TeamInvitation {
   created_at: string
 }
 
+export interface TeamInvitationPreview {
+  team_name: string
+  inviter_name: string
+  inviter_email: string
+  expires_at: string
+}
+
 export interface TeamAPIKey {
   id: number
   user_id: number
@@ -166,6 +173,10 @@ export const teamAPI = {
   },
   async invite(email: string): Promise<TeamInvitation> {
     const { data } = await apiClient.post<TeamInvitation>('/team/invitations', { email })
+    return data
+  },
+  async previewInvitation(token: string): Promise<TeamInvitationPreview> {
+    const { data } = await apiClient.post<TeamInvitationPreview>('/team/invitations/preview', { token })
     return data
   },
   async resolveInvitation(token: string, resolution: 'accepted' | 'declined'): Promise<TeamContext | null> {

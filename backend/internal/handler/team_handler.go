@@ -372,6 +372,27 @@ func (h *TeamHandler) RevokeInvitation(c *gin.Context) {
 	response.Success(c, gin.H{"revoked": true})
 }
 
+// PreviewInvitation 返回当前登录用户有权确认的邀请摘要。
+func (h *TeamHandler) PreviewInvitation(c *gin.Context) {
+	subject, ok := teamSubject(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	preview, err := h.service.PreviewInvitation(c.Request.Context(), subject.UserID, strings.TrimSpace(req.Token))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
 func (h *TeamHandler) ResolveInvitation(c *gin.Context) {
 	subject, ok := teamSubject(c)
 	if !ok {

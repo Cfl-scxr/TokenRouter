@@ -230,10 +230,6 @@ marketplace: {
     confirmDontShow: "Are you sure you don't want to see the onboarding guide again?\n\nYou can restart it anytime from the user menu in the top right corner.",
     confirmExit: 'Are you sure you want to exit the onboarding guide? You can restart it anytime from the top right menu.',
     interactiveHint: 'Press Enter or Click to continue',
-    navigation: {
-      flipPage: 'Flip Page',
-      exit: 'Exit'
-    },
     // Admin tour steps
     admin: {
       welcome: {

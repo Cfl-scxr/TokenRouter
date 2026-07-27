@@ -85,6 +85,9 @@ describe('useOnboardingTour team flow', () => {
     startTeamTour({ isOwner: true, hasTeam: true })
     await flushPromises()
 
+    // 页码保留给用户确认导览进度，键盘提示由自定义 Footer 清理逻辑移除。
+    expect(config.showProgress).toBe(true)
+
     for (let index = 0; index < 5; index += 1) {
       await config.onNextClick(null, config.steps[index], {
         config,

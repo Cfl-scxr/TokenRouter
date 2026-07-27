@@ -97,6 +97,7 @@ func RegisterUserRoutes(
 			team.POST("/leave", h.Team.Leave)
 			team.GET("/invitations", h.Team.ListInvitations)
 			team.POST("/invitations", h.Team.Invite)
+			team.POST("/invitations/preview", h.Team.PreviewInvitation)
 			team.POST("/invitations/resolve", h.Team.ResolveInvitation)
 			team.POST("/invitations/:id/reissue", h.Team.ReissueInvitation)
 			team.DELETE("/invitations/:id", h.Team.RevokeInvitation)

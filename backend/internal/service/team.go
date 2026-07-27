@@ -26,26 +26,27 @@ const (
 )
 
 var (
-	ErrTeamFeatureDisabled       = infraerrors.Forbidden("TEAM_FEATURE_DISABLED", "团队功能未启用")
-	ErrTeamSelfServiceDisabled   = infraerrors.Forbidden("TEAM_SELF_SERVICE_DISABLED", "暂不允许用户自助创建团队")
-	ErrTeamNotFound              = infraerrors.NotFound("TEAM_NOT_FOUND", "团队不存在")
-	ErrTeamMembershipRequired    = infraerrors.Forbidden("TEAM_MEMBERSHIP_REQUIRED", "需要先加入团队")
-	ErrTeamOwnerRequired         = infraerrors.Forbidden("TEAM_OWNER_REQUIRED", "仅团队所有者可执行此操作")
-	ErrTeamAlreadyJoined         = infraerrors.Conflict("TEAM_ALREADY_JOINED", "用户已经属于一个团队")
-	ErrTeamMemberLimitReached    = infraerrors.Conflict("TEAM_MEMBER_LIMIT_REACHED", "团队成员数量已达上限")
-	ErrTeamInvitationInvalid     = infraerrors.BadRequest("TEAM_INVITATION_INVALID", "团队邀请无效")
-	ErrTeamInvitationExpired     = infraerrors.BadRequest("TEAM_INVITATION_EXPIRED", "团队邀请已过期")
-	ErrTeamInvitationEmail       = infraerrors.Forbidden("TEAM_INVITATION_EMAIL_MISMATCH", "当前账号邮箱与受邀邮箱不一致")
-	ErrTeamInvitationRateLimited = infraerrors.TooManyRequests("TEAM_INVITATION_RATE_LIMITED", "团队邀请发送过于频繁")
-	ErrTeamInvitationUnavailable = infraerrors.ServiceUnavailable("TEAM_INVITATION_UNAVAILABLE", "团队邀请服务暂时不可用")
-	ErrTeamOwnerCannotLeave      = infraerrors.Conflict("TEAM_OWNER_CANNOT_LEAVE", "团队所有者必须先转让所有权或解散团队")
-	ErrTeamOwnerTransferRequired = infraerrors.Conflict("TEAM_OWNER_TRANSFER_REQUIRED", "删除团队所有者前必须先转让所有权或解散团队")
-	ErrTeamTransferInvalid       = infraerrors.BadRequest("TEAM_TRANSFER_INVALID", "所有权转让无效")
-	ErrTeamTransferExpired       = infraerrors.BadRequest("TEAM_TRANSFER_EXPIRED", "所有权转让已过期")
-	ErrTeamSuspended             = infraerrors.Forbidden("TEAM_SUSPENDED", "团队已暂停")
-	ErrTeamMemberDailyExceeded   = infraerrors.TooManyRequests("TEAM_MEMBER_DAILY_LIMIT_EXCEEDED", "团队成员日限额已用完")
-	ErrTeamMemberWeeklyExceeded  = infraerrors.TooManyRequests("TEAM_MEMBER_WEEKLY_LIMIT_EXCEEDED", "团队成员周限额已用完")
-	ErrTeamMemberMonthlyExceeded = infraerrors.TooManyRequests("TEAM_MEMBER_MONTHLY_LIMIT_EXCEEDED", "团队成员月限额已用完")
+	ErrTeamFeatureDisabled        = infraerrors.Forbidden("TEAM_FEATURE_DISABLED", "团队功能未启用")
+	ErrTeamSelfServiceDisabled    = infraerrors.Forbidden("TEAM_SELF_SERVICE_DISABLED", "暂不允许用户自助创建团队")
+	ErrTeamNotFound               = infraerrors.NotFound("TEAM_NOT_FOUND", "团队不存在")
+	ErrTeamMembershipRequired     = infraerrors.Forbidden("TEAM_MEMBERSHIP_REQUIRED", "需要先加入团队")
+	ErrTeamOwnerRequired          = infraerrors.Forbidden("TEAM_OWNER_REQUIRED", "仅团队所有者可执行此操作")
+	ErrTeamAlreadyJoined          = infraerrors.Conflict("TEAM_ALREADY_JOINED", "用户已经属于一个团队")
+	ErrTeamMemberLimitReached     = infraerrors.Conflict("TEAM_MEMBER_LIMIT_REACHED", "团队成员数量已达上限")
+	ErrTeamInvitationInvalid      = infraerrors.BadRequest("TEAM_INVITATION_INVALID", "团队邀请无效")
+	ErrTeamInvitationExpired      = infraerrors.BadRequest("TEAM_INVITATION_EXPIRED", "团队邀请已过期")
+	ErrTeamInvitationEmail        = infraerrors.Forbidden("TEAM_INVITATION_EMAIL_MISMATCH", "当前账号邮箱与受邀邮箱不一致")
+	ErrTeamInvitationRateLimited  = infraerrors.TooManyRequests("TEAM_INVITATION_RATE_LIMITED", "团队邀请发送过于频繁")
+	ErrTeamInvitationUnavailable  = infraerrors.ServiceUnavailable("TEAM_INVITATION_UNAVAILABLE", "团队邀请服务暂时不可用")
+	ErrTeamFrontendURLUnavailable = infraerrors.ServiceUnavailable("TEAM_FRONTEND_URL_UNAVAILABLE", "未配置前端地址，无法生成团队邮件链接")
+	ErrTeamOwnerCannotLeave       = infraerrors.Conflict("TEAM_OWNER_CANNOT_LEAVE", "团队所有者必须先转让所有权或解散团队")
+	ErrTeamOwnerTransferRequired  = infraerrors.Conflict("TEAM_OWNER_TRANSFER_REQUIRED", "删除团队所有者前必须先转让所有权或解散团队")
+	ErrTeamTransferInvalid        = infraerrors.BadRequest("TEAM_TRANSFER_INVALID", "所有权转让无效")
+	ErrTeamTransferExpired        = infraerrors.BadRequest("TEAM_TRANSFER_EXPIRED", "所有权转让已过期")
+	ErrTeamSuspended              = infraerrors.Forbidden("TEAM_SUSPENDED", "团队已暂停")
+	ErrTeamMemberDailyExceeded    = infraerrors.TooManyRequests("TEAM_MEMBER_DAILY_LIMIT_EXCEEDED", "团队成员日限额已用完")
+	ErrTeamMemberWeeklyExceeded   = infraerrors.TooManyRequests("TEAM_MEMBER_WEEKLY_LIMIT_EXCEEDED", "团队成员周限额已用完")
+	ErrTeamMemberMonthlyExceeded  = infraerrors.TooManyRequests("TEAM_MEMBER_MONTHLY_LIMIT_EXCEEDED", "团队成员月限额已用完")
 )
 
 // Team 表示团队的公开基础信息。
@@ -101,6 +102,14 @@ type TeamInvitation struct {
 	ExpiresAt     time.Time  `json:"expires_at"`
 	AcceptedAt    *time.Time `json:"accepted_at"`
 	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// TeamInvitationPreview 是受邀用户确认邀请前可查看的最小必要信息。
+type TeamInvitationPreview struct {
+	TeamName     string    `json:"team_name"`
+	InviterName  string    `json:"inviter_name"`
+	InviterEmail string    `json:"inviter_email"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 // TeamInvitationLimiter 对邀请和重发执行跨实例邮件频率限制。
@@ -220,6 +229,7 @@ type TeamRepository interface {
 	GetInvitationByID(ctx context.Context, teamID, invitationID int64) (*TeamInvitation, error)
 	ReissueInvitation(ctx context.Context, teamID, invitationID int64, tokenHash string, expiresAt time.Time) (*TeamInvitation, error)
 	RevokeInvitation(ctx context.Context, teamID, invitationID int64) error
+	PreviewInvitation(ctx context.Context, tokenHash, normalizedEmail string, now time.Time) (*TeamInvitationPreview, error)
 	ResolveInvitation(ctx context.Context, tokenHash string, userID int64, normalizedEmail, resolution string, now time.Time) (*TeamContext, error)
 	RemoveMember(ctx context.Context, teamID, userID int64, now time.Time) error
 	UpdateMemberLimits(ctx context.Context, teamID, userID int64, daily, weekly, monthly float64) error
@@ -245,16 +255,17 @@ type TeamRepository interface {
 
 // TeamService 编排团队权限、令牌、邮件和缓存失效。
 type TeamService struct {
-	repo          TeamRepository
-	userRepo      UserRepository
-	emailService  *EmailService
-	apiKeyCache   APIKeyCache
-	inviteLimiter TeamInvitationLimiter
-	cfg           *config.Config
+	repo           TeamRepository
+	userRepo       UserRepository
+	emailService   *EmailService
+	apiKeyCache    APIKeyCache
+	inviteLimiter  TeamInvitationLimiter
+	settingService *SettingService
+	cfg            *config.Config
 }
 
-func NewTeamService(repo TeamRepository, userRepo UserRepository, emailService *EmailService, apiKeyCache APIKeyCache, inviteLimiter TeamInvitationLimiter, cfg *config.Config) *TeamService {
-	return &TeamService{repo: repo, userRepo: userRepo, emailService: emailService, apiKeyCache: apiKeyCache, inviteLimiter: inviteLimiter, cfg: cfg}
+func NewTeamService(repo TeamRepository, userRepo UserRepository, emailService *EmailService, apiKeyCache APIKeyCache, inviteLimiter TeamInvitationLimiter, settingService *SettingService, cfg *config.Config) *TeamService {
+	return &TeamService{repo: repo, userRepo: userRepo, emailService: emailService, apiKeyCache: apiKeyCache, inviteLimiter: inviteLimiter, settingService: settingService, cfg: cfg}
 }
 
 func (s *TeamService) ensureEnabled() error {
@@ -524,12 +535,19 @@ func (s *TeamService) Invite(ctx context.Context, userID int64, email string) (*
 	if err != nil {
 		return nil, err
 	}
+	link := ""
+	if s.emailService != nil {
+		link, err = s.frontendLink(ctx, "/team", "invitation", token)
+		if err != nil {
+			return nil, err
+		}
+	}
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
 	invitation, err := s.repo.CreateInvitation(ctx, teamCtx.Team.ID, userID, email, tokenHash, expiresAt)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.sendInvitationEmail(ctx, email, teamCtx.Team.Name, token, expiresAt); err != nil {
+	if err := s.sendInvitationEmail(ctx, email, teamCtx.Team.Name, link, expiresAt); err != nil {
 		return nil, err
 	}
 	return invitation, nil
@@ -559,12 +577,19 @@ func (s *TeamService) ReissueInvitation(ctx context.Context, userID, invitationI
 	if err != nil {
 		return nil, err
 	}
+	link := ""
+	if s.emailService != nil {
+		link, err = s.frontendLink(ctx, "/team", "invitation", token)
+		if err != nil {
+			return nil, err
+		}
+	}
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
 	invitation, err := s.repo.ReissueInvitation(ctx, teamCtx.Team.ID, invitationID, tokenHash, expiresAt)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.sendInvitationEmail(ctx, invitation.Email, teamCtx.Team.Name, token, expiresAt); err != nil {
+	if err := s.sendInvitationEmail(ctx, invitation.Email, teamCtx.Team.Name, link, expiresAt); err != nil {
 		return nil, err
 	}
 	return invitation, nil
@@ -595,6 +620,26 @@ func (s *TeamService) RevokeInvitation(ctx context.Context, userID, invitationID
 		return err
 	}
 	return s.repo.RevokeInvitation(ctx, teamCtx.Team.ID, invitationID)
+}
+
+// PreviewInvitation 校验令牌归属后返回邀请弹窗所需的信息。
+func (s *TeamService) PreviewInvitation(ctx context.Context, userID int64, token string) (*TeamInvitationPreview, error) {
+	if err := s.ensureEnabled(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(token) == "" {
+		return nil, ErrTeamInvitationInvalid
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.PreviewInvitation(
+		ctx,
+		hashTeamToken(token),
+		NormalizeRegistrationEmailAddress(user.Email),
+		time.Now(),
+	)
 }
 
 func (s *TeamService) ResolveInvitation(ctx context.Context, userID int64, token, resolution string) (*TeamContext, error) {
@@ -683,15 +728,25 @@ func (s *TeamService) StartOwnershipTransfer(ctx context.Context, ownerUserID, t
 	if err != nil {
 		return nil, err
 	}
+	var targetEmail, link string
+	if s.emailService != nil {
+		target, getErr := s.userRepo.GetByID(ctx, targetUserID)
+		if getErr == nil {
+			link, err = s.frontendLink(ctx, "/team", "transfer", token)
+			if err != nil {
+				return nil, err
+			}
+			targetEmail = target.Email
+		}
+	}
 	expiresAt := time.Now().Add(24 * time.Hour)
 	transfer, err := s.repo.CreateOwnershipTransfer(ctx, teamCtx.Team.ID, ownerUserID, targetUserID, tokenHash, expiresAt)
 	if err != nil {
 		return nil, err
 	}
-	if target, getErr := s.userRepo.GetByID(ctx, targetUserID); getErr == nil && s.emailService != nil {
-		link := s.frontendLink("/team", "transfer", token)
+	if targetEmail != "" {
 		body := fmt.Sprintf("<p>你收到团队 <strong>%s</strong> 的所有权转让请求。</p><p><a href=\"%s\">确认或拒绝转让</a></p>", html.EscapeString(teamCtx.Team.Name), html.EscapeString(link))
-		if sendErr := s.emailService.SendEmail(ctx, target.Email, "团队所有权转让", body); sendErr != nil {
+		if sendErr := s.emailService.SendEmail(ctx, targetEmail, "团队所有权转让", body); sendErr != nil {
 			return nil, sendErr
 		}
 	}
@@ -900,11 +955,13 @@ func teamAPIKeyAuthCacheKey(key string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (s *TeamService) sendInvitationEmail(ctx context.Context, email, teamName, token string, expiresAt time.Time) error {
+func (s *TeamService) sendInvitationEmail(ctx context.Context, email, teamName, link string, expiresAt time.Time) error {
 	if s.emailService == nil {
 		return nil
 	}
-	link := s.frontendLink("/team", "invitation", token)
+	if strings.TrimSpace(link) == "" {
+		return ErrTeamFrontendURLUnavailable
+	}
 	recipientName := emailRecipientName(email)
 	var recipientUserID int64
 	if s.userRepo != nil {
@@ -942,12 +999,18 @@ func (s *TeamService) sendInvitationEmail(ctx context.Context, email, teamName, 
 	return s.emailService.SendEmail(ctx, email, "团队邀请", body)
 }
 
-func (s *TeamService) frontendLink(path, parameter, token string) string {
+func (s *TeamService) frontendLink(ctx context.Context, path, parameter, token string) (string, error) {
 	base := ""
-	if s.cfg != nil {
+	// 管理后台保存的动态设置优先，未配置时兼容启动配置中的 server.frontend_url。
+	if s.settingService != nil {
+		base = strings.TrimRight(strings.TrimSpace(s.settingService.GetFrontendURL(ctx)), "/")
+	} else if s.cfg != nil {
 		base = strings.TrimRight(strings.TrimSpace(s.cfg.Server.FrontendURL), "/")
 	}
-	return base + path + "?" + url.QueryEscape(parameter) + "=" + url.QueryEscape(token)
+	if base == "" {
+		return "", ErrTeamFrontendURLUnavailable
+	}
+	return base + path + "?" + url.QueryEscape(parameter) + "=" + url.QueryEscape(token), nil
 }
 
 func normalizeTeamName(name string) (string, error) {
