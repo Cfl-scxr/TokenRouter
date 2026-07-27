@@ -101,6 +101,8 @@ func TestUsageBillingRepositoryBatchImageAllowanceReserveCaptureAndRelease(t *te
 	captureCommand := *reserveCommand
 	captureCommand.RequestID = service.BatchImageCaptureRequestID(firstBatchID)
 	captureCommand.ActualAmount = 0.3
+	// 模拟服务层把预占结果写回任务后，再按持久化快照执行结算。
+	captureCommand.BalanceHoldAmount = reserveResult.BalanceAmountUSD
 	captureCommand.AllowanceReserved = true
 	captureCommand.RequestFingerprint = ""
 	captureResult, err := repo.CaptureBatchImageBalance(ctx, &captureCommand)

@@ -286,7 +286,11 @@ func applyBatchImageAllowance(ctx context.Context, tx *sql.Tx, cmd *service.Batc
 	}
 	switch operation {
 	case batchImageAllowanceReserve:
-		if err := reserveBatchImageAPIKeyAllowance(ctx, tx, cmd.APIKeyID, cmd.HoldAmount); err != nil {
+		reservedAt := cmd.ReservedAt
+		if reservedAt.IsZero() {
+			reservedAt = time.Now()
+		}
+		if err := reserveBatchImageAPIKeyAllowance(ctx, tx, cmd.APIKeyID, cmd.HoldAmount, reservedAt); err != nil {
 			return err
 		}
 		if err := reserveBatchImageMemberAllowance(ctx, tx, cmd, cmd.HoldAmount); err != nil {
@@ -371,25 +375,26 @@ func setBatchImageAllowanceReserved(ctx context.Context, tx *sql.Tx, batchID str
 	return nil
 }
 
-func reserveBatchImageAPIKeyAllowance(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) error {
+func reserveBatchImageAPIKeyAllowance(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, reservedAt time.Time) error {
 	var id int64
+	// 预记和回退必须使用同一时间点，否则数据库 NOW() 晚于任务创建时间时会误判为跨窗口。
 	err := tx.QueryRowContext(ctx, `
 		UPDATE api_keys SET
 			quota_used = quota_used + $1,
-			usage_5h = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
-			usage_1d = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
-			usage_7d = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
-			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
-			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			usage_5h = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= $5 THEN $1 ELSE usage_5h + $1 END,
+			usage_1d = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= $5 THEN $1 ELSE usage_1d + $1 END,
+			usage_7d = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= $5 THEN $1 ELSE usage_7d + $1 END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= $5 THEN $5 ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= $5 THEN date_trunc('day', $5::timestamptz) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= $5 THEN date_trunc('day', $5::timestamptz) ELSE window_7d_start END,
 			status = CASE WHEN quota > 0 AND quota_used + $1 >= quota THEN $3 ELSE status END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL AND status = $4 AND team_owner_disabled = FALSE
 		  AND (quota <= 0 OR quota_used + $1 <= quota)
-		  AND (rate_limit_5h <= 0 OR (CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN 0 ELSE usage_5h END) + $1 <= rate_limit_5h)
-		  AND (rate_limit_1d <= 0 OR (CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN 0 ELSE usage_1d END) + $1 <= rate_limit_1d)
-		  AND (rate_limit_7d <= 0 OR (CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN 0 ELSE usage_7d END) + $1 <= rate_limit_7d)
-		RETURNING id`, amount, apiKeyID, service.StatusAPIKeyQuotaExhausted, service.StatusAPIKeyActive).Scan(&id)
+		  AND (rate_limit_5h <= 0 OR (CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= $5 THEN 0 ELSE usage_5h END) + $1 <= rate_limit_5h)
+		  AND (rate_limit_1d <= 0 OR (CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= $5 THEN 0 ELSE usage_1d END) + $1 <= rate_limit_1d)
+		  AND (rate_limit_7d <= 0 OR (CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= $5 THEN 0 ELSE usage_7d END) + $1 <= rate_limit_7d)
+		RETURNING id`, amount, apiKeyID, service.StatusAPIKeyQuotaExhausted, service.StatusAPIKeyActive, reservedAt).Scan(&id)
 	if err == nil {
 		return nil
 	}
@@ -1133,6 +1138,7 @@ func reserveUsageBillingBatchImageBilling(ctx context.Context, tx *sql.Tx, cmd *
 	if usageBillingUsesBaseAmount(allocationCommand) {
 		balanceAmount = remainingBase * usageBillingNonNegativeRate(cmd.BalanceRateMultiplier)
 	}
+	balanceAmount = normalizeBatchImageBalanceAmount(balanceAmount)
 
 	balanceCommand := *cmd
 	balanceCommand.HoldAmount = balanceAmount
@@ -1178,7 +1184,8 @@ func reserveUsageBillingBatchImageBilling(ctx context.Context, tx *sql.Tx, cmd *
 
 // captureUsageBillingBatchImageBilling 保留实际费用，并释放未使用的订阅与余额预占。
 func captureUsageBillingBatchImageBilling(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	if cmd != nil && cmd.HoldAmount > 0 {
+	// 新任务必须证明预占已提交；升级前已冻结但没有 dedup 记录的旧任务仍允许安全消费冻结额。
+	if cmd != nil && cmd.HoldAmount > 0 && (cmd.AllowanceReserved || cmd.BalanceHoldAmount > 0 || len(cmd.SubscriptionHoldAllocations) > 0) {
 		held, err := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
 		if err != nil {
 			return nil, err
@@ -1376,10 +1383,12 @@ func reserveUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 }
 
 func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	if cmd.HoldAmount <= 0 && cmd.ActualAmount <= 0 {
+	holdAmount := normalizeBatchImageBalanceAmount(cmd.HoldAmount)
+	actualAmount := normalizeBatchImageBalanceAmount(cmd.ActualAmount)
+	if holdAmount <= 0 && actualAmount <= 0 {
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
-	if cmd.ActualAmount-cmd.HoldAmount > 0.00000001 {
+	if actualAmount-holdAmount > 0.00000001 {
 		return nil, service.ErrBatchImageSettlementCostExceedsHold
 	}
 	var balance, frozen float64
@@ -1392,7 +1401,7 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 			updated_at = NOW()
 		WHERE id = $3 AND deleted_at IS NULL AND COALESCE(frozen_balance, 0) >= $1
 		RETURNING balance, frozen_balance
-	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
+	`, holdAmount, actualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
 		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
 	}
@@ -1408,6 +1417,7 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 }
 
 func releaseUsageBillingBatchImageFrozenBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (*service.BatchImageBalanceHoldResult, error) {
+	amount = normalizeBatchImageBalanceAmount(amount)
 	if amount <= 0 {
 		return &service.BatchImageBalanceHoldResult{}, nil
 	}
@@ -1432,6 +1442,11 @@ func releaseUsageBillingBatchImageFrozenBalance(ctx context.Context, tx *sql.Tx,
 		return nil, service.ErrUserNotFound
 	}
 	return nil, errors.New("batch image frozen balance is insufficient")
+}
+
+// normalizeBatchImageBalanceAmount 对齐 users.balance 的 DECIMAL(20,8) 精度，避免浮点尾差导致冻结额比较失败。
+func normalizeBatchImageBalanceAmount(amount float64) float64 {
+	return math.Round(amount*1e8) / 1e8
 }
 
 // batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
