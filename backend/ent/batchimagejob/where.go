@@ -164,6 +164,26 @@ func ActualCost(v float64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldActualCost, v))
 }
 
+// BalanceHoldAmount applies equality check predicate on the "balance_hold_amount" field. It's identical to BalanceHoldAmountEQ.
+func BalanceHoldAmount(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBalanceHoldAmount, v))
+}
+
+// SubscriptionRateMultiplier applies equality check predicate on the "subscription_rate_multiplier" field. It's identical to SubscriptionRateMultiplierEQ.
+func SubscriptionRateMultiplier(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldSubscriptionRateMultiplier, v))
+}
+
+// BalanceRateMultiplier applies equality check predicate on the "balance_rate_multiplier" field. It's identical to BalanceRateMultiplierEQ.
+func BalanceRateMultiplier(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBalanceRateMultiplier, v))
+}
+
+// PlanGroupRateMultiplierEnabled applies equality check predicate on the "plan_group_rate_multiplier_enabled" field. It's identical to PlanGroupRateMultiplierEnabledEQ.
+func PlanGroupRateMultiplierEnabled(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldPlanGroupRateMultiplierEnabled, v))
+}
+
 // AllowanceReserved applies equality check predicate on the "allowance_reserved" field. It's identical to AllowanceReservedEQ.
 func AllowanceReserved(v bool) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldAllowanceReserved, v))
@@ -1507,6 +1527,136 @@ func ActualCostIsNil() predicate.BatchImageJob {
 // ActualCostNotNil applies the NotNil predicate on the "actual_cost" field.
 func ActualCostNotNil() predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldNotNull(FieldActualCost))
+}
+
+// BalanceHoldAmountEQ applies the EQ predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBalanceHoldAmount, v))
+}
+
+// BalanceHoldAmountNEQ applies the NEQ predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountNEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldBalanceHoldAmount, v))
+}
+
+// BalanceHoldAmountIn applies the In predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldBalanceHoldAmount, vs...))
+}
+
+// BalanceHoldAmountNotIn applies the NotIn predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountNotIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldBalanceHoldAmount, vs...))
+}
+
+// BalanceHoldAmountGT applies the GT predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountGT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldBalanceHoldAmount, v))
+}
+
+// BalanceHoldAmountGTE applies the GTE predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountGTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldBalanceHoldAmount, v))
+}
+
+// BalanceHoldAmountLT applies the LT predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountLT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldBalanceHoldAmount, v))
+}
+
+// BalanceHoldAmountLTE applies the LTE predicate on the "balance_hold_amount" field.
+func BalanceHoldAmountLTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldBalanceHoldAmount, v))
+}
+
+// SubscriptionRateMultiplierEQ applies the EQ predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldSubscriptionRateMultiplier, v))
+}
+
+// SubscriptionRateMultiplierNEQ applies the NEQ predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierNEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldSubscriptionRateMultiplier, v))
+}
+
+// SubscriptionRateMultiplierIn applies the In predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldSubscriptionRateMultiplier, vs...))
+}
+
+// SubscriptionRateMultiplierNotIn applies the NotIn predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierNotIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldSubscriptionRateMultiplier, vs...))
+}
+
+// SubscriptionRateMultiplierGT applies the GT predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierGT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldSubscriptionRateMultiplier, v))
+}
+
+// SubscriptionRateMultiplierGTE applies the GTE predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierGTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldSubscriptionRateMultiplier, v))
+}
+
+// SubscriptionRateMultiplierLT applies the LT predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierLT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldSubscriptionRateMultiplier, v))
+}
+
+// SubscriptionRateMultiplierLTE applies the LTE predicate on the "subscription_rate_multiplier" field.
+func SubscriptionRateMultiplierLTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldSubscriptionRateMultiplier, v))
+}
+
+// BalanceRateMultiplierEQ applies the EQ predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBalanceRateMultiplier, v))
+}
+
+// BalanceRateMultiplierNEQ applies the NEQ predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierNEQ(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldBalanceRateMultiplier, v))
+}
+
+// BalanceRateMultiplierIn applies the In predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldBalanceRateMultiplier, vs...))
+}
+
+// BalanceRateMultiplierNotIn applies the NotIn predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierNotIn(vs ...float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldBalanceRateMultiplier, vs...))
+}
+
+// BalanceRateMultiplierGT applies the GT predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierGT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldBalanceRateMultiplier, v))
+}
+
+// BalanceRateMultiplierGTE applies the GTE predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierGTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldBalanceRateMultiplier, v))
+}
+
+// BalanceRateMultiplierLT applies the LT predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierLT(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldBalanceRateMultiplier, v))
+}
+
+// BalanceRateMultiplierLTE applies the LTE predicate on the "balance_rate_multiplier" field.
+func BalanceRateMultiplierLTE(v float64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldBalanceRateMultiplier, v))
+}
+
+// PlanGroupRateMultiplierEnabledEQ applies the EQ predicate on the "plan_group_rate_multiplier_enabled" field.
+func PlanGroupRateMultiplierEnabledEQ(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldPlanGroupRateMultiplierEnabled, v))
+}
+
+// PlanGroupRateMultiplierEnabledNEQ applies the NEQ predicate on the "plan_group_rate_multiplier_enabled" field.
+func PlanGroupRateMultiplierEnabledNEQ(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldPlanGroupRateMultiplierEnabled, v))
 }
 
 // AllowanceReservedEQ applies the EQ predicate on the "allowance_reserved" field.

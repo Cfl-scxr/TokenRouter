@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"go.uber.org/zap"
 )
@@ -56,22 +58,41 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 		actualAmount = 0
 	}
 	billingUserID := batchImageBillingUserID(job)
-	return &BatchImageBalanceHoldCommand{
-		RequestID:          requestID,
-		APIKeyID:           *job.APIKeyID,
-		UserID:             billingUserID,
-		ActorUserID:        job.UserID,
-		TeamID:             job.TeamID,
-		BatchID:            job.BatchID,
-		HoldAmount:         holdAmount,
-		ActualAmount:       actualAmount,
-		AllowanceReserved:  job.AllowanceReserved,
-		ReservedAt:         job.CreatedAt,
-		RequestPayloadHash: strings.TrimSpace(payloadHash),
-	}, nil
+	command := &BatchImageBalanceHoldCommand{
+		RequestID:                   requestID,
+		APIKeyID:                    *job.APIKeyID,
+		UserID:                      billingUserID,
+		ActorUserID:                 job.UserID,
+		TeamID:                      job.TeamID,
+		BatchID:                     job.BatchID,
+		HoldAmount:                  holdAmount,
+		ActualAmount:                actualAmount,
+		BalanceHoldAmount:           job.BalanceHoldAmount,
+		SubscriptionHoldAllocations: cloneBillingAllocations(job.SubscriptionHoldAllocations),
+		AllowanceReserved:           job.AllowanceReserved,
+		ReservedAt:                  job.CreatedAt,
+		RequestPayloadHash:          strings.TrimSpace(payloadHash),
+	}
+	if job.PricingSnapshotVersion >= 2 {
+		scale := math.Max(job.AccountRateMultiplier, 0) * math.Max(job.HoldMultiplier, 0)
+		settlementScale := 0.0
+		if job.HoldMultiplier > 0 {
+			settlementScale = math.Max(job.BatchDiscountMultiplier, 0) / job.HoldMultiplier
+		}
+		command.PricingSnapshotVersion = job.PricingSnapshotVersion
+		command.BaseAmountUSD = math.Max(job.BaseUnitPrice, 0) * float64(max(job.ItemCount, 0))
+		command.ActualBaseAmountUSD = math.Max(actualAmount, 0)
+		command.ActualAmount = 0
+		command.SubscriptionRateMultiplier = math.Max(job.SubscriptionRateMultiplier, 0) * scale
+		command.SubscriptionRateMultiplierScale = scale
+		command.BalanceRateMultiplier = math.Max(job.BalanceRateMultiplier, 0) * scale
+		command.SettlementRateScale = settlementScale
+		command.DisablePlanGroupRateMultiplier = !job.PlanGroupRateEnabled
+	}
+	return command, nil
 }
 
-func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, payloadHash string) error {
+func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, groupID *int64, payloadHash string) error {
 	if repo == nil {
 		return ErrBatchImageBillingHoldFailed.WithCause(errors.New("batch image billing repository is not configured"))
 	}
@@ -79,10 +100,12 @@ func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 	if err != nil {
 		return err
 	}
-	if cmd.HoldAmount <= 0 {
+	if cmd.HoldAmount <= 0 && cmd.BaseAmountUSD <= 0 {
 		return nil
 	}
-	if _, err := repo.ReserveBatchImageBalance(ctx, cmd); err != nil {
+	cmd.GroupID = batchImageCloneInt64Ptr(groupID)
+	result, err := repo.ReserveBatchImageBalance(ctx, cmd)
+	if err != nil {
 		if errors.Is(err, ErrBatchImageInsufficientBalance) {
 			return ErrBatchImageInsufficientBalance
 		}
@@ -92,23 +115,33 @@ func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 		}
 		return ErrBatchImageBillingHoldFailed.WithCause(err)
 	}
+	if result != nil {
+		job.BalanceHoldAmount = result.BalanceAmountUSD
+		job.SubscriptionHoldAllocations = batchImageSubscriptionAllocations(result.BillingAllocations)
+		if job.PricingSnapshotVersion >= 2 {
+			holdAmount := result.HoldAmountUSD
+			job.HoldAmount = &holdAmount
+			job.EstimatedCost = result.EstimatedAmountUSD
+		}
+	}
 	job.AllowanceReserved = true
 	return nil
 }
 
-func captureBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, actualAmount float64, payloadHash string) error {
+func captureBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, actualAmount float64, payloadHash string) (*BatchImageBalanceHoldResult, error) {
 	if repo == nil {
-		return ErrBatchImageSettlementBillingFailed.WithCause(errors.New("batch image billing repository is not configured"))
+		return nil, ErrBatchImageSettlementBillingFailed.WithCause(errors.New("batch image billing repository is not configured"))
 	}
 	cmd, err := buildBatchImageHoldCommand(job, BatchImageCaptureRequestID(job.BatchID), actualAmount, payloadHash)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if _, err := repo.CaptureBatchImageBalance(ctx, cmd); err != nil {
-		return ErrBatchImageSettlementBillingFailed.WithCause(err)
+	result, err := repo.CaptureBatchImageBalance(ctx, cmd)
+	if err != nil {
+		return nil, ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
 	job.AllowanceReserved = false
-	return nil
+	return result, nil
 }
 
 func releaseBatchImageBalanceHold(ctx context.Context, repo UsageBillingRepository, job *BatchImageJob, payloadHash string) error {
@@ -136,4 +169,23 @@ func releaseBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 	}
 	job.AllowanceReserved = false
 	return nil
+}
+
+func batchImageSubscriptionAllocations(allocations []domain.BillingAllocation) []domain.BillingAllocation {
+	result := make([]domain.BillingAllocation, 0, len(allocations))
+	for _, allocation := range allocations {
+		if allocation.Type != domain.BillingAllocationTypeSubscription || allocation.AmountUSD <= 0 || allocation.SubscriptionID == nil {
+			continue
+		}
+		result = append(result, cloneBatchImageBillingAllocation(allocation, allocation.AmountUSD))
+	}
+	return result
+}
+
+func batchImageCloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }

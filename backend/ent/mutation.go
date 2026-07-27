@@ -11862,70 +11862,79 @@ func (m *BatchImageItemMutation) ResetEdge(name string) error {
 // BatchImageJobMutation represents an operation that mutates the BatchImageJob nodes in the graph.
 type BatchImageJobMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *int64
-	batch_id            *string
-	user_id             *int64
-	adduser_id          *int64
-	billing_user_id     *int64
-	addbilling_user_id  *int64
-	team_id             *int64
-	addteam_id          *int64
-	api_key_id          *int64
-	addapi_key_id       *int64
-	account_id          *int64
-	addaccount_id       *int64
-	provider            *string
-	model               *string
-	task_name           *string
-	status              *string
-	provider_job_name   *string
-	provider_input_ref  *string
-	provider_output_ref *string
-	gcs_input_uri       *string
-	gcs_output_uri      *string
-	item_count          *int
-	additem_count       *int
-	success_count       *int
-	addsuccess_count    *int
-	fail_count          *int
-	addfail_count       *int
-	cancelled_count     *int
-	addcancelled_count  *int
-	estimated_cost      *float64
-	addestimated_cost   *float64
-	hold_amount         *float64
-	addhold_amount      *float64
-	actual_cost         *float64
-	addactual_cost      *float64
-	allowance_reserved  *bool
-	currency            *string
-	hold_id             *string
-	idempotency_key     *string
-	request_hash        *string
-	manifest_hash       *string
-	retry_count         *int
-	addretry_count      *int
-	version             *int
-	addversion          *int
-	output_expires_at   *time.Time
-	input_deleted_at    *time.Time
-	output_deleted_at   *time.Time
-	downloaded_at       *time.Time
-	user_deleted_at     *time.Time
-	last_error_code     *string
-	last_error_message  *string
-	created_at          *time.Time
-	updated_at          *time.Time
-	submitted_at        *time.Time
-	started_at          *time.Time
-	finished_at         *time.Time
-	settled_at          *time.Time
-	clearedFields       map[string]struct{}
-	done                bool
-	oldValue            func(context.Context) (*BatchImageJob, error)
-	predicates          []predicate.BatchImageJob
+	op                                  Op
+	typ                                 string
+	id                                  *int64
+	batch_id                            *string
+	user_id                             *int64
+	adduser_id                          *int64
+	billing_user_id                     *int64
+	addbilling_user_id                  *int64
+	team_id                             *int64
+	addteam_id                          *int64
+	api_key_id                          *int64
+	addapi_key_id                       *int64
+	account_id                          *int64
+	addaccount_id                       *int64
+	provider                            *string
+	model                               *string
+	task_name                           *string
+	status                              *string
+	provider_job_name                   *string
+	provider_input_ref                  *string
+	provider_output_ref                 *string
+	gcs_input_uri                       *string
+	gcs_output_uri                      *string
+	item_count                          *int
+	additem_count                       *int
+	success_count                       *int
+	addsuccess_count                    *int
+	fail_count                          *int
+	addfail_count                       *int
+	cancelled_count                     *int
+	addcancelled_count                  *int
+	estimated_cost                      *float64
+	addestimated_cost                   *float64
+	hold_amount                         *float64
+	addhold_amount                      *float64
+	actual_cost                         *float64
+	addactual_cost                      *float64
+	balance_hold_amount                 *float64
+	addbalance_hold_amount              *float64
+	subscription_hold_allocations       *[]domain.BillingAllocation
+	appendsubscription_hold_allocations []domain.BillingAllocation
+	subscription_rate_multiplier        *float64
+	addsubscription_rate_multiplier     *float64
+	balance_rate_multiplier             *float64
+	addbalance_rate_multiplier          *float64
+	plan_group_rate_multiplier_enabled  *bool
+	allowance_reserved                  *bool
+	currency                            *string
+	hold_id                             *string
+	idempotency_key                     *string
+	request_hash                        *string
+	manifest_hash                       *string
+	retry_count                         *int
+	addretry_count                      *int
+	version                             *int
+	addversion                          *int
+	output_expires_at                   *time.Time
+	input_deleted_at                    *time.Time
+	output_deleted_at                   *time.Time
+	downloaded_at                       *time.Time
+	user_deleted_at                     *time.Time
+	last_error_code                     *string
+	last_error_message                  *string
+	created_at                          *time.Time
+	updated_at                          *time.Time
+	submitted_at                        *time.Time
+	started_at                          *time.Time
+	finished_at                         *time.Time
+	settled_at                          *time.Time
+	clearedFields                       map[string]struct{}
+	done                                bool
+	oldValue                            func(context.Context) (*BatchImageJob, error)
+	predicates                          []predicate.BatchImageJob
 }
 
 var _ ent.Mutation = (*BatchImageJobMutation)(nil)
@@ -13207,6 +13216,261 @@ func (m *BatchImageJobMutation) ResetActualCost() {
 	delete(m.clearedFields, batchimagejob.FieldActualCost)
 }
 
+// SetBalanceHoldAmount sets the "balance_hold_amount" field.
+func (m *BatchImageJobMutation) SetBalanceHoldAmount(f float64) {
+	m.balance_hold_amount = &f
+	m.addbalance_hold_amount = nil
+}
+
+// BalanceHoldAmount returns the value of the "balance_hold_amount" field in the mutation.
+func (m *BatchImageJobMutation) BalanceHoldAmount() (r float64, exists bool) {
+	v := m.balance_hold_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBalanceHoldAmount returns the old "balance_hold_amount" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldBalanceHoldAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceHoldAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceHoldAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceHoldAmount: %w", err)
+	}
+	return oldValue.BalanceHoldAmount, nil
+}
+
+// AddBalanceHoldAmount adds f to the "balance_hold_amount" field.
+func (m *BatchImageJobMutation) AddBalanceHoldAmount(f float64) {
+	if m.addbalance_hold_amount != nil {
+		*m.addbalance_hold_amount += f
+	} else {
+		m.addbalance_hold_amount = &f
+	}
+}
+
+// AddedBalanceHoldAmount returns the value that was added to the "balance_hold_amount" field in this mutation.
+func (m *BatchImageJobMutation) AddedBalanceHoldAmount() (r float64, exists bool) {
+	v := m.addbalance_hold_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBalanceHoldAmount resets all changes to the "balance_hold_amount" field.
+func (m *BatchImageJobMutation) ResetBalanceHoldAmount() {
+	m.balance_hold_amount = nil
+	m.addbalance_hold_amount = nil
+}
+
+// SetSubscriptionHoldAllocations sets the "subscription_hold_allocations" field.
+func (m *BatchImageJobMutation) SetSubscriptionHoldAllocations(da []domain.BillingAllocation) {
+	m.subscription_hold_allocations = &da
+	m.appendsubscription_hold_allocations = nil
+}
+
+// SubscriptionHoldAllocations returns the value of the "subscription_hold_allocations" field in the mutation.
+func (m *BatchImageJobMutation) SubscriptionHoldAllocations() (r []domain.BillingAllocation, exists bool) {
+	v := m.subscription_hold_allocations
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubscriptionHoldAllocations returns the old "subscription_hold_allocations" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldSubscriptionHoldAllocations(ctx context.Context) (v []domain.BillingAllocation, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionHoldAllocations is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionHoldAllocations requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionHoldAllocations: %w", err)
+	}
+	return oldValue.SubscriptionHoldAllocations, nil
+}
+
+// AppendSubscriptionHoldAllocations adds da to the "subscription_hold_allocations" field.
+func (m *BatchImageJobMutation) AppendSubscriptionHoldAllocations(da []domain.BillingAllocation) {
+	m.appendsubscription_hold_allocations = append(m.appendsubscription_hold_allocations, da...)
+}
+
+// AppendedSubscriptionHoldAllocations returns the list of values that were appended to the "subscription_hold_allocations" field in this mutation.
+func (m *BatchImageJobMutation) AppendedSubscriptionHoldAllocations() ([]domain.BillingAllocation, bool) {
+	if len(m.appendsubscription_hold_allocations) == 0 {
+		return nil, false
+	}
+	return m.appendsubscription_hold_allocations, true
+}
+
+// ResetSubscriptionHoldAllocations resets all changes to the "subscription_hold_allocations" field.
+func (m *BatchImageJobMutation) ResetSubscriptionHoldAllocations() {
+	m.subscription_hold_allocations = nil
+	m.appendsubscription_hold_allocations = nil
+}
+
+// SetSubscriptionRateMultiplier sets the "subscription_rate_multiplier" field.
+func (m *BatchImageJobMutation) SetSubscriptionRateMultiplier(f float64) {
+	m.subscription_rate_multiplier = &f
+	m.addsubscription_rate_multiplier = nil
+}
+
+// SubscriptionRateMultiplier returns the value of the "subscription_rate_multiplier" field in the mutation.
+func (m *BatchImageJobMutation) SubscriptionRateMultiplier() (r float64, exists bool) {
+	v := m.subscription_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubscriptionRateMultiplier returns the old "subscription_rate_multiplier" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldSubscriptionRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionRateMultiplier: %w", err)
+	}
+	return oldValue.SubscriptionRateMultiplier, nil
+}
+
+// AddSubscriptionRateMultiplier adds f to the "subscription_rate_multiplier" field.
+func (m *BatchImageJobMutation) AddSubscriptionRateMultiplier(f float64) {
+	if m.addsubscription_rate_multiplier != nil {
+		*m.addsubscription_rate_multiplier += f
+	} else {
+		m.addsubscription_rate_multiplier = &f
+	}
+}
+
+// AddedSubscriptionRateMultiplier returns the value that was added to the "subscription_rate_multiplier" field in this mutation.
+func (m *BatchImageJobMutation) AddedSubscriptionRateMultiplier() (r float64, exists bool) {
+	v := m.addsubscription_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSubscriptionRateMultiplier resets all changes to the "subscription_rate_multiplier" field.
+func (m *BatchImageJobMutation) ResetSubscriptionRateMultiplier() {
+	m.subscription_rate_multiplier = nil
+	m.addsubscription_rate_multiplier = nil
+}
+
+// SetBalanceRateMultiplier sets the "balance_rate_multiplier" field.
+func (m *BatchImageJobMutation) SetBalanceRateMultiplier(f float64) {
+	m.balance_rate_multiplier = &f
+	m.addbalance_rate_multiplier = nil
+}
+
+// BalanceRateMultiplier returns the value of the "balance_rate_multiplier" field in the mutation.
+func (m *BatchImageJobMutation) BalanceRateMultiplier() (r float64, exists bool) {
+	v := m.balance_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBalanceRateMultiplier returns the old "balance_rate_multiplier" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldBalanceRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceRateMultiplier: %w", err)
+	}
+	return oldValue.BalanceRateMultiplier, nil
+}
+
+// AddBalanceRateMultiplier adds f to the "balance_rate_multiplier" field.
+func (m *BatchImageJobMutation) AddBalanceRateMultiplier(f float64) {
+	if m.addbalance_rate_multiplier != nil {
+		*m.addbalance_rate_multiplier += f
+	} else {
+		m.addbalance_rate_multiplier = &f
+	}
+}
+
+// AddedBalanceRateMultiplier returns the value that was added to the "balance_rate_multiplier" field in this mutation.
+func (m *BatchImageJobMutation) AddedBalanceRateMultiplier() (r float64, exists bool) {
+	v := m.addbalance_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBalanceRateMultiplier resets all changes to the "balance_rate_multiplier" field.
+func (m *BatchImageJobMutation) ResetBalanceRateMultiplier() {
+	m.balance_rate_multiplier = nil
+	m.addbalance_rate_multiplier = nil
+}
+
+// SetPlanGroupRateMultiplierEnabled sets the "plan_group_rate_multiplier_enabled" field.
+func (m *BatchImageJobMutation) SetPlanGroupRateMultiplierEnabled(b bool) {
+	m.plan_group_rate_multiplier_enabled = &b
+}
+
+// PlanGroupRateMultiplierEnabled returns the value of the "plan_group_rate_multiplier_enabled" field in the mutation.
+func (m *BatchImageJobMutation) PlanGroupRateMultiplierEnabled() (r bool, exists bool) {
+	v := m.plan_group_rate_multiplier_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlanGroupRateMultiplierEnabled returns the old "plan_group_rate_multiplier_enabled" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldPlanGroupRateMultiplierEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlanGroupRateMultiplierEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlanGroupRateMultiplierEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlanGroupRateMultiplierEnabled: %w", err)
+	}
+	return oldValue.PlanGroupRateMultiplierEnabled, nil
+}
+
+// ResetPlanGroupRateMultiplierEnabled resets all changes to the "plan_group_rate_multiplier_enabled" field.
+func (m *BatchImageJobMutation) ResetPlanGroupRateMultiplierEnabled() {
+	m.plan_group_rate_multiplier_enabled = nil
+}
+
 // SetAllowanceReserved sets the "allowance_reserved" field.
 func (m *BatchImageJobMutation) SetAllowanceReserved(b bool) {
 	m.allowance_reserved = &b
@@ -14232,7 +14496,7 @@ func (m *BatchImageJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BatchImageJobMutation) Fields() []string {
-	fields := make([]string, 0, 43)
+	fields := make([]string, 0, 48)
 	if m.batch_id != nil {
 		fields = append(fields, batchimagejob.FieldBatchID)
 	}
@@ -14298,6 +14562,21 @@ func (m *BatchImageJobMutation) Fields() []string {
 	}
 	if m.actual_cost != nil {
 		fields = append(fields, batchimagejob.FieldActualCost)
+	}
+	if m.balance_hold_amount != nil {
+		fields = append(fields, batchimagejob.FieldBalanceHoldAmount)
+	}
+	if m.subscription_hold_allocations != nil {
+		fields = append(fields, batchimagejob.FieldSubscriptionHoldAllocations)
+	}
+	if m.subscription_rate_multiplier != nil {
+		fields = append(fields, batchimagejob.FieldSubscriptionRateMultiplier)
+	}
+	if m.balance_rate_multiplier != nil {
+		fields = append(fields, batchimagejob.FieldBalanceRateMultiplier)
+	}
+	if m.plan_group_rate_multiplier_enabled != nil {
+		fields = append(fields, batchimagejob.FieldPlanGroupRateMultiplierEnabled)
 	}
 	if m.allowance_reserved != nil {
 		fields = append(fields, batchimagejob.FieldAllowanceReserved)
@@ -14414,6 +14693,16 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.HoldAmount()
 	case batchimagejob.FieldActualCost:
 		return m.ActualCost()
+	case batchimagejob.FieldBalanceHoldAmount:
+		return m.BalanceHoldAmount()
+	case batchimagejob.FieldSubscriptionHoldAllocations:
+		return m.SubscriptionHoldAllocations()
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		return m.SubscriptionRateMultiplier()
+	case batchimagejob.FieldBalanceRateMultiplier:
+		return m.BalanceRateMultiplier()
+	case batchimagejob.FieldPlanGroupRateMultiplierEnabled:
+		return m.PlanGroupRateMultiplierEnabled()
 	case batchimagejob.FieldAllowanceReserved:
 		return m.AllowanceReserved()
 	case batchimagejob.FieldCurrency:
@@ -14509,6 +14798,16 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHoldAmount(ctx)
 	case batchimagejob.FieldActualCost:
 		return m.OldActualCost(ctx)
+	case batchimagejob.FieldBalanceHoldAmount:
+		return m.OldBalanceHoldAmount(ctx)
+	case batchimagejob.FieldSubscriptionHoldAllocations:
+		return m.OldSubscriptionHoldAllocations(ctx)
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		return m.OldSubscriptionRateMultiplier(ctx)
+	case batchimagejob.FieldBalanceRateMultiplier:
+		return m.OldBalanceRateMultiplier(ctx)
+	case batchimagejob.FieldPlanGroupRateMultiplierEnabled:
+		return m.OldPlanGroupRateMultiplierEnabled(ctx)
 	case batchimagejob.FieldAllowanceReserved:
 		return m.OldAllowanceReserved(ctx)
 	case batchimagejob.FieldCurrency:
@@ -14714,6 +15013,41 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetActualCost(v)
 		return nil
+	case batchimagejob.FieldBalanceHoldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBalanceHoldAmount(v)
+		return nil
+	case batchimagejob.FieldSubscriptionHoldAllocations:
+		v, ok := value.([]domain.BillingAllocation)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubscriptionHoldAllocations(v)
+		return nil
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubscriptionRateMultiplier(v)
+		return nil
+	case batchimagejob.FieldBalanceRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBalanceRateMultiplier(v)
+		return nil
+	case batchimagejob.FieldPlanGroupRateMultiplierEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlanGroupRateMultiplierEnabled(v)
+		return nil
 	case batchimagejob.FieldAllowanceReserved:
 		v, ok := value.(bool)
 		if !ok {
@@ -14905,6 +15239,15 @@ func (m *BatchImageJobMutation) AddedFields() []string {
 	if m.addactual_cost != nil {
 		fields = append(fields, batchimagejob.FieldActualCost)
 	}
+	if m.addbalance_hold_amount != nil {
+		fields = append(fields, batchimagejob.FieldBalanceHoldAmount)
+	}
+	if m.addsubscription_rate_multiplier != nil {
+		fields = append(fields, batchimagejob.FieldSubscriptionRateMultiplier)
+	}
+	if m.addbalance_rate_multiplier != nil {
+		fields = append(fields, batchimagejob.FieldBalanceRateMultiplier)
+	}
 	if m.addretry_count != nil {
 		fields = append(fields, batchimagejob.FieldRetryCount)
 	}
@@ -14943,6 +15286,12 @@ func (m *BatchImageJobMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedHoldAmount()
 	case batchimagejob.FieldActualCost:
 		return m.AddedActualCost()
+	case batchimagejob.FieldBalanceHoldAmount:
+		return m.AddedBalanceHoldAmount()
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		return m.AddedSubscriptionRateMultiplier()
+	case batchimagejob.FieldBalanceRateMultiplier:
+		return m.AddedBalanceRateMultiplier()
 	case batchimagejob.FieldRetryCount:
 		return m.AddedRetryCount()
 	case batchimagejob.FieldVersion:
@@ -15039,6 +15388,27 @@ func (m *BatchImageJobMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddActualCost(v)
+		return nil
+	case batchimagejob.FieldBalanceHoldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBalanceHoldAmount(v)
+		return nil
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSubscriptionRateMultiplier(v)
+		return nil
+	case batchimagejob.FieldBalanceRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBalanceRateMultiplier(v)
 		return nil
 	case batchimagejob.FieldRetryCount:
 		v, ok := value.(int)
@@ -15305,6 +15675,21 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldActualCost:
 		m.ResetActualCost()
+		return nil
+	case batchimagejob.FieldBalanceHoldAmount:
+		m.ResetBalanceHoldAmount()
+		return nil
+	case batchimagejob.FieldSubscriptionHoldAllocations:
+		m.ResetSubscriptionHoldAllocations()
+		return nil
+	case batchimagejob.FieldSubscriptionRateMultiplier:
+		m.ResetSubscriptionRateMultiplier()
+		return nil
+	case batchimagejob.FieldBalanceRateMultiplier:
+		m.ResetBalanceRateMultiplier()
+		return nil
+	case batchimagejob.FieldPlanGroupRateMultiplierEnabled:
+		m.ResetPlanGroupRateMultiplierEnabled()
 		return nil
 	case batchimagejob.FieldAllowanceReserved:
 		m.ResetAllowanceReserved()

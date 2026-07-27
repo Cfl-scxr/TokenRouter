@@ -562,6 +562,11 @@ var (
 		{Name: "estimated_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "hold_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "balance_hold_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "subscription_hold_allocations", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "subscription_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "balance_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "plan_group_rate_multiplier_enabled", Type: field.TypeBool, Default: true},
 		{Name: "allowance_reserved", Type: field.TypeBool, Default: false},
 		{Name: "currency", Type: field.TypeString, Size: 16, Default: "USD"},
 		{Name: "hold_id", Type: field.TypeString, Nullable: true, Size: 128},
@@ -598,17 +603,17 @@ var (
 			{
 				Name:    "batchimagejob_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[38]},
+				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[43]},
 			},
 			{
 				Name:    "batchimagejob_billing_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[38]},
+				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[43]},
 			},
 			{
 				Name:    "batchimagejob_team_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[38]},
+				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[43]},
 			},
 			{
 				Name:    "batchimagejob_status",
@@ -623,7 +628,7 @@ var (
 			{
 				Name:    "batchimagejob_idempotency_key",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[26]},
+				Columns: []*schema.Column{BatchImageJobsColumns[31]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
@@ -631,7 +636,7 @@ var (
 			{
 				Name:    "batchimagejob_manifest_hash",
 				Unique:  true,
-				Columns: []*schema.Column{BatchImageJobsColumns[28]},
+				Columns: []*schema.Column{BatchImageJobsColumns[33]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "manifest_hash IS NOT NULL AND manifest_hash <> ''",
 				},
@@ -639,17 +644,17 @@ var (
 			{
 				Name:    "batchimagejob_output_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[31]},
+				Columns: []*schema.Column{BatchImageJobsColumns[36]},
 			},
 			{
 				Name:    "batchimagejob_downloaded_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[34]},
+				Columns: []*schema.Column{BatchImageJobsColumns[39]},
 			},
 			{
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[35]},
+				Columns: []*schema.Column{BatchImageJobsColumns[40]},
 			},
 		},
 	}

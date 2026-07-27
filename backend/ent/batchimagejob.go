@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 )
 
 // BatchImageJob is the model entity for the BatchImageJob schema.
@@ -61,6 +63,16 @@ type BatchImageJob struct {
 	HoldAmount *float64 `json:"hold_amount,omitempty"`
 	// ActualCost holds the value of the "actual_cost" field.
 	ActualCost *float64 `json:"actual_cost,omitempty"`
+	// BalanceHoldAmount holds the value of the "balance_hold_amount" field.
+	BalanceHoldAmount float64 `json:"balance_hold_amount,omitempty"`
+	// SubscriptionHoldAllocations holds the value of the "subscription_hold_allocations" field.
+	SubscriptionHoldAllocations []domain.BillingAllocation `json:"subscription_hold_allocations,omitempty"`
+	// SubscriptionRateMultiplier holds the value of the "subscription_rate_multiplier" field.
+	SubscriptionRateMultiplier float64 `json:"subscription_rate_multiplier,omitempty"`
+	// BalanceRateMultiplier holds the value of the "balance_rate_multiplier" field.
+	BalanceRateMultiplier float64 `json:"balance_rate_multiplier,omitempty"`
+	// PlanGroupRateMultiplierEnabled holds the value of the "plan_group_rate_multiplier_enabled" field.
+	PlanGroupRateMultiplierEnabled bool `json:"plan_group_rate_multiplier_enabled,omitempty"`
 	// AllowanceReserved holds the value of the "allowance_reserved" field.
 	AllowanceReserved bool `json:"allowance_reserved,omitempty"`
 	// Currency holds the value of the "currency" field.
@@ -111,9 +123,11 @@ func (*BatchImageJob) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case batchimagejob.FieldAllowanceReserved:
+		case batchimagejob.FieldSubscriptionHoldAllocations:
+			values[i] = new([]byte)
+		case batchimagejob.FieldPlanGroupRateMultiplierEnabled, batchimagejob.FieldAllowanceReserved:
 			values[i] = new(sql.NullBool)
-		case batchimagejob.FieldEstimatedCost, batchimagejob.FieldHoldAmount, batchimagejob.FieldActualCost:
+		case batchimagejob.FieldEstimatedCost, batchimagejob.FieldHoldAmount, batchimagejob.FieldActualCost, batchimagejob.FieldBalanceHoldAmount, batchimagejob.FieldSubscriptionRateMultiplier, batchimagejob.FieldBalanceRateMultiplier:
 			values[i] = new(sql.NullFloat64)
 		case batchimagejob.FieldID, batchimagejob.FieldUserID, batchimagejob.FieldBillingUserID, batchimagejob.FieldTeamID, batchimagejob.FieldAPIKeyID, batchimagejob.FieldAccountID, batchimagejob.FieldItemCount, batchimagejob.FieldSuccessCount, batchimagejob.FieldFailCount, batchimagejob.FieldCancelledCount, batchimagejob.FieldRetryCount, batchimagejob.FieldVersion:
 			values[i] = new(sql.NullInt64)
@@ -283,6 +297,38 @@ func (_m *BatchImageJob) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ActualCost = new(float64)
 				*_m.ActualCost = value.Float64
+			}
+		case batchimagejob.FieldBalanceHoldAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_hold_amount", values[i])
+			} else if value.Valid {
+				_m.BalanceHoldAmount = value.Float64
+			}
+		case batchimagejob.FieldSubscriptionHoldAllocations:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_hold_allocations", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SubscriptionHoldAllocations); err != nil {
+					return fmt.Errorf("unmarshal field subscription_hold_allocations: %w", err)
+				}
+			}
+		case batchimagejob.FieldSubscriptionRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.SubscriptionRateMultiplier = value.Float64
+			}
+		case batchimagejob.FieldBalanceRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_rate_multiplier", values[i])
+			} else if value.Valid {
+				_m.BalanceRateMultiplier = value.Float64
+			}
+		case batchimagejob.FieldPlanGroupRateMultiplierEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field plan_group_rate_multiplier_enabled", values[i])
+			} else if value.Valid {
+				_m.PlanGroupRateMultiplierEnabled = value.Bool
 			}
 		case batchimagejob.FieldAllowanceReserved:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -546,6 +592,21 @@ func (_m *BatchImageJob) String() string {
 		builder.WriteString("actual_cost=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("balance_hold_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BalanceHoldAmount))
+	builder.WriteString(", ")
+	builder.WriteString("subscription_hold_allocations=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SubscriptionHoldAllocations))
+	builder.WriteString(", ")
+	builder.WriteString("subscription_rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SubscriptionRateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("balance_rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BalanceRateMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("plan_group_rate_multiplier_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PlanGroupRateMultiplierEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("allowance_reserved=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowanceReserved))

@@ -10,9 +10,11 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
 	"github.com/TokenFlux/TokenRouter/ent/predicate"
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 )
 
 // BatchImageJobUpdate is the builder for updating BatchImageJob entities.
@@ -469,6 +471,95 @@ func (_u *BatchImageJobUpdate) AddActualCost(v float64) *BatchImageJobUpdate {
 // ClearActualCost clears the value of the "actual_cost" field.
 func (_u *BatchImageJobUpdate) ClearActualCost() *BatchImageJobUpdate {
 	_u.mutation.ClearActualCost()
+	return _u
+}
+
+// SetBalanceHoldAmount sets the "balance_hold_amount" field.
+func (_u *BatchImageJobUpdate) SetBalanceHoldAmount(v float64) *BatchImageJobUpdate {
+	_u.mutation.ResetBalanceHoldAmount()
+	_u.mutation.SetBalanceHoldAmount(v)
+	return _u
+}
+
+// SetNillableBalanceHoldAmount sets the "balance_hold_amount" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableBalanceHoldAmount(v *float64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetBalanceHoldAmount(*v)
+	}
+	return _u
+}
+
+// AddBalanceHoldAmount adds value to the "balance_hold_amount" field.
+func (_u *BatchImageJobUpdate) AddBalanceHoldAmount(v float64) *BatchImageJobUpdate {
+	_u.mutation.AddBalanceHoldAmount(v)
+	return _u
+}
+
+// SetSubscriptionHoldAllocations sets the "subscription_hold_allocations" field.
+func (_u *BatchImageJobUpdate) SetSubscriptionHoldAllocations(v []domain.BillingAllocation) *BatchImageJobUpdate {
+	_u.mutation.SetSubscriptionHoldAllocations(v)
+	return _u
+}
+
+// AppendSubscriptionHoldAllocations appends value to the "subscription_hold_allocations" field.
+func (_u *BatchImageJobUpdate) AppendSubscriptionHoldAllocations(v []domain.BillingAllocation) *BatchImageJobUpdate {
+	_u.mutation.AppendSubscriptionHoldAllocations(v)
+	return _u
+}
+
+// SetSubscriptionRateMultiplier sets the "subscription_rate_multiplier" field.
+func (_u *BatchImageJobUpdate) SetSubscriptionRateMultiplier(v float64) *BatchImageJobUpdate {
+	_u.mutation.ResetSubscriptionRateMultiplier()
+	_u.mutation.SetSubscriptionRateMultiplier(v)
+	return _u
+}
+
+// SetNillableSubscriptionRateMultiplier sets the "subscription_rate_multiplier" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableSubscriptionRateMultiplier(v *float64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetSubscriptionRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionRateMultiplier adds value to the "subscription_rate_multiplier" field.
+func (_u *BatchImageJobUpdate) AddSubscriptionRateMultiplier(v float64) *BatchImageJobUpdate {
+	_u.mutation.AddSubscriptionRateMultiplier(v)
+	return _u
+}
+
+// SetBalanceRateMultiplier sets the "balance_rate_multiplier" field.
+func (_u *BatchImageJobUpdate) SetBalanceRateMultiplier(v float64) *BatchImageJobUpdate {
+	_u.mutation.ResetBalanceRateMultiplier()
+	_u.mutation.SetBalanceRateMultiplier(v)
+	return _u
+}
+
+// SetNillableBalanceRateMultiplier sets the "balance_rate_multiplier" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableBalanceRateMultiplier(v *float64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetBalanceRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddBalanceRateMultiplier adds value to the "balance_rate_multiplier" field.
+func (_u *BatchImageJobUpdate) AddBalanceRateMultiplier(v float64) *BatchImageJobUpdate {
+	_u.mutation.AddBalanceRateMultiplier(v)
+	return _u
+}
+
+// SetPlanGroupRateMultiplierEnabled sets the "plan_group_rate_multiplier_enabled" field.
+func (_u *BatchImageJobUpdate) SetPlanGroupRateMultiplierEnabled(v bool) *BatchImageJobUpdate {
+	_u.mutation.SetPlanGroupRateMultiplierEnabled(v)
+	return _u
+}
+
+// SetNillablePlanGroupRateMultiplierEnabled sets the "plan_group_rate_multiplier_enabled" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillablePlanGroupRateMultiplierEnabled(v *bool) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetPlanGroupRateMultiplierEnabled(*v)
+	}
 	return _u
 }
 
@@ -1113,6 +1204,35 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.BalanceHoldAmount(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceHoldAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalanceHoldAmount(); ok {
+		_spec.AddField(batchimagejob.FieldBalanceHoldAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SubscriptionHoldAllocations(); ok {
+		_spec.SetField(batchimagejob.FieldSubscriptionHoldAllocations, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSubscriptionHoldAllocations(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, batchimagejob.FieldSubscriptionHoldAllocations, value)
+		})
+	}
+	if value, ok := _u.mutation.SubscriptionRateMultiplier(); ok {
+		_spec.SetField(batchimagejob.FieldSubscriptionRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionRateMultiplier(); ok {
+		_spec.AddField(batchimagejob.FieldSubscriptionRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BalanceRateMultiplier(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalanceRateMultiplier(); ok {
+		_spec.AddField(batchimagejob.FieldBalanceRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PlanGroupRateMultiplierEnabled(); ok {
+		_spec.SetField(batchimagejob.FieldPlanGroupRateMultiplierEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.AllowanceReserved(); ok {
 		_spec.SetField(batchimagejob.FieldAllowanceReserved, field.TypeBool, value)
 	}
@@ -1685,6 +1805,95 @@ func (_u *BatchImageJobUpdateOne) AddActualCost(v float64) *BatchImageJobUpdateO
 // ClearActualCost clears the value of the "actual_cost" field.
 func (_u *BatchImageJobUpdateOne) ClearActualCost() *BatchImageJobUpdateOne {
 	_u.mutation.ClearActualCost()
+	return _u
+}
+
+// SetBalanceHoldAmount sets the "balance_hold_amount" field.
+func (_u *BatchImageJobUpdateOne) SetBalanceHoldAmount(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetBalanceHoldAmount()
+	_u.mutation.SetBalanceHoldAmount(v)
+	return _u
+}
+
+// SetNillableBalanceHoldAmount sets the "balance_hold_amount" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableBalanceHoldAmount(v *float64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetBalanceHoldAmount(*v)
+	}
+	return _u
+}
+
+// AddBalanceHoldAmount adds value to the "balance_hold_amount" field.
+func (_u *BatchImageJobUpdateOne) AddBalanceHoldAmount(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.AddBalanceHoldAmount(v)
+	return _u
+}
+
+// SetSubscriptionHoldAllocations sets the "subscription_hold_allocations" field.
+func (_u *BatchImageJobUpdateOne) SetSubscriptionHoldAllocations(v []domain.BillingAllocation) *BatchImageJobUpdateOne {
+	_u.mutation.SetSubscriptionHoldAllocations(v)
+	return _u
+}
+
+// AppendSubscriptionHoldAllocations appends value to the "subscription_hold_allocations" field.
+func (_u *BatchImageJobUpdateOne) AppendSubscriptionHoldAllocations(v []domain.BillingAllocation) *BatchImageJobUpdateOne {
+	_u.mutation.AppendSubscriptionHoldAllocations(v)
+	return _u
+}
+
+// SetSubscriptionRateMultiplier sets the "subscription_rate_multiplier" field.
+func (_u *BatchImageJobUpdateOne) SetSubscriptionRateMultiplier(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetSubscriptionRateMultiplier()
+	_u.mutation.SetSubscriptionRateMultiplier(v)
+	return _u
+}
+
+// SetNillableSubscriptionRateMultiplier sets the "subscription_rate_multiplier" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableSubscriptionRateMultiplier(v *float64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionRateMultiplier adds value to the "subscription_rate_multiplier" field.
+func (_u *BatchImageJobUpdateOne) AddSubscriptionRateMultiplier(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.AddSubscriptionRateMultiplier(v)
+	return _u
+}
+
+// SetBalanceRateMultiplier sets the "balance_rate_multiplier" field.
+func (_u *BatchImageJobUpdateOne) SetBalanceRateMultiplier(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetBalanceRateMultiplier()
+	_u.mutation.SetBalanceRateMultiplier(v)
+	return _u
+}
+
+// SetNillableBalanceRateMultiplier sets the "balance_rate_multiplier" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableBalanceRateMultiplier(v *float64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetBalanceRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddBalanceRateMultiplier adds value to the "balance_rate_multiplier" field.
+func (_u *BatchImageJobUpdateOne) AddBalanceRateMultiplier(v float64) *BatchImageJobUpdateOne {
+	_u.mutation.AddBalanceRateMultiplier(v)
+	return _u
+}
+
+// SetPlanGroupRateMultiplierEnabled sets the "plan_group_rate_multiplier_enabled" field.
+func (_u *BatchImageJobUpdateOne) SetPlanGroupRateMultiplierEnabled(v bool) *BatchImageJobUpdateOne {
+	_u.mutation.SetPlanGroupRateMultiplierEnabled(v)
+	return _u
+}
+
+// SetNillablePlanGroupRateMultiplierEnabled sets the "plan_group_rate_multiplier_enabled" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillablePlanGroupRateMultiplierEnabled(v *bool) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetPlanGroupRateMultiplierEnabled(*v)
+	}
 	return _u
 }
 
@@ -2358,6 +2567,35 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.BalanceHoldAmount(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceHoldAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalanceHoldAmount(); ok {
+		_spec.AddField(batchimagejob.FieldBalanceHoldAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.SubscriptionHoldAllocations(); ok {
+		_spec.SetField(batchimagejob.FieldSubscriptionHoldAllocations, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSubscriptionHoldAllocations(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, batchimagejob.FieldSubscriptionHoldAllocations, value)
+		})
+	}
+	if value, ok := _u.mutation.SubscriptionRateMultiplier(); ok {
+		_spec.SetField(batchimagejob.FieldSubscriptionRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionRateMultiplier(); ok {
+		_spec.AddField(batchimagejob.FieldSubscriptionRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BalanceRateMultiplier(); ok {
+		_spec.SetField(batchimagejob.FieldBalanceRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBalanceRateMultiplier(); ok {
+		_spec.AddField(batchimagejob.FieldBalanceRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PlanGroupRateMultiplierEnabled(); ok {
+		_spec.SetField(batchimagejob.FieldPlanGroupRateMultiplierEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AllowanceReserved(); ok {
 		_spec.SetField(batchimagejob.FieldAllowanceReserved, field.TypeBool, value)

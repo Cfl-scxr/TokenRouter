@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
@@ -146,6 +147,260 @@ func TestUsageBillingRepositoryBatchImageAllowanceReserveCaptureAndRelease(t *te
 	require.InDelta(t, 0.3, quotaUsed, 0.000001)
 	require.InDelta(t, 0.3, usage5h, 0.000001)
 	require.Equal(t, service.StatusAPIKeyActive, apiKey.Status)
+}
+
+func TestUsageBillingRepositoryBatchImageSubscriptionFirstReserveAndCapture(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email:   fmt.Sprintf("batch-subscription-%d@example.com", time.Now().UnixNano()),
+		Balance: 1,
+	})
+	plan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:            "batch-subscription-plan-" + uuid.NewString(),
+		Description:     "batch image subscription billing test plan",
+		Price:           10,
+		ValidityDays:    30,
+		ValidityUnit:    "day",
+		ForSale:         true,
+		DailyLimitUSD:   float64Ptr(1),
+		WeeklyLimitUSD:  float64Ptr(1),
+		MonthlyLimitUSD: float64Ptr(1),
+	})
+	reservedAt := time.Now().UTC()
+	windowStart := reservedAt.Add(-time.Hour)
+	subscription := mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             plan.ID,
+		DailyWindowStart:   &windowStart,
+		WeeklyWindowStart:  &windowStart,
+		MonthlyWindowStart: &windowStart,
+		DailyLimitUSD:      float64Ptr(1),
+		WeeklyLimitUSD:     float64Ptr(1),
+		MonthlyLimitUSD:    float64Ptr(1),
+		DailyUsageUSD:      0.4,
+		WeeklyUsageUSD:     0.4,
+		MonthlyUsageUSD:    0.4,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-batch-subscription-" + uuid.NewString(),
+		Name:   "batch-subscription",
+	})
+	batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	insertBatchImageAllowanceTestJob(t, batchID, user.ID, user.ID, apiKey.ID, nil, reservedAt)
+	reserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(batchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     batchID,
+		HoldAmount:  1,
+		ReservedAt:  reservedAt,
+	}
+
+	reserved, err := repo.ReserveBatchImageBalance(ctx, reserveCommand)
+	require.NoError(t, err)
+	require.True(t, reserved.Applied)
+	require.InDelta(t, 0.6, reserved.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 0.4, reserved.BalanceAmountUSD, 0.000001)
+
+	var balance, frozen, dailyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 0.6, balance, 0.000001)
+	require.InDelta(t, 0.4, frozen, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1`, subscription.ID).Scan(&dailyUsage))
+	require.InDelta(t, 1, dailyUsage, 0.000001)
+
+	subscriptionHolds := make([]domain.BillingAllocation, 0, 1)
+	for _, allocation := range reserved.BillingAllocations {
+		if allocation.Type == domain.BillingAllocationTypeSubscription {
+			subscriptionHolds = append(subscriptionHolds, allocation)
+		}
+	}
+	captureCommand := *reserveCommand
+	captureCommand.RequestID = service.BatchImageCaptureRequestID(batchID)
+	captureCommand.RequestFingerprint = ""
+	captureCommand.ActualAmount = 0.3
+	captureCommand.BalanceHoldAmount = reserved.BalanceAmountUSD
+	captureCommand.SubscriptionHoldAllocations = subscriptionHolds
+	captureCommand.AllowanceReserved = true
+
+	captured, err := repo.CaptureBatchImageBalance(ctx, &captureCommand)
+	require.NoError(t, err)
+	require.True(t, captured.Applied)
+	require.InDelta(t, 0.3, captured.SubscriptionAmountUSD, 0.000001)
+	require.Zero(t, captured.BalanceAmountUSD)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 1, balance, 0.000001)
+	require.Zero(t, frozen)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1`, subscription.ID).Scan(&dailyUsage))
+	require.InDelta(t, 0.7, dailyUsage, 0.000001)
+
+	releaseReservedAt := time.Now().UTC()
+	releaseBatchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	insertBatchImageAllowanceTestJob(t, releaseBatchID, user.ID, user.ID, apiKey.ID, nil, releaseReservedAt)
+	releaseReserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(releaseBatchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     releaseBatchID,
+		HoldAmount:  0.5,
+		ReservedAt:  releaseReservedAt,
+	}
+	releaseReserved, err := repo.ReserveBatchImageBalance(ctx, releaseReserveCommand)
+	require.NoError(t, err)
+	require.InDelta(t, 0.3, releaseReserved.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 0.2, releaseReserved.BalanceAmountUSD, 0.000001)
+
+	releaseSubscriptionHolds := make([]domain.BillingAllocation, 0, 1)
+	for _, allocation := range releaseReserved.BillingAllocations {
+		if allocation.Type == domain.BillingAllocationTypeSubscription {
+			releaseSubscriptionHolds = append(releaseSubscriptionHolds, allocation)
+		}
+	}
+	releaseCommand := *releaseReserveCommand
+	releaseCommand.RequestID = service.BatchImageReleaseRequestID(releaseBatchID)
+	releaseCommand.RequestFingerprint = ""
+	releaseCommand.BalanceHoldAmount = releaseReserved.BalanceAmountUSD
+	releaseCommand.SubscriptionHoldAllocations = releaseSubscriptionHolds
+	releaseCommand.AllowanceReserved = true
+
+	released, err := repo.ReleaseBatchImageBalance(ctx, &releaseCommand)
+	require.NoError(t, err)
+	require.True(t, released.Applied)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 1, balance, 0.000001)
+	require.Zero(t, frozen)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1`, subscription.ID).Scan(&dailyUsage))
+	require.InDelta(t, 0.7, dailyUsage, 0.000001)
+
+	_, err = integrationDB.ExecContext(ctx, `UPDATE users SET balance = 0.05 WHERE id = $1`, user.ID)
+	require.NoError(t, err)
+	failedReservedAt := time.Now().UTC()
+	failedBatchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	insertBatchImageAllowanceTestJob(t, failedBatchID, user.ID, user.ID, apiKey.ID, nil, failedReservedAt)
+	_, err = repo.ReserveBatchImageBalance(ctx, &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(failedBatchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     failedBatchID,
+		HoldAmount:  0.5,
+		ReservedAt:  failedReservedAt,
+	})
+	require.ErrorIs(t, err, service.ErrBatchImageInsufficientBalance)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 0.05, balance, 0.000001)
+	require.Zero(t, frozen)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1`, subscription.ID).Scan(&dailyUsage))
+	require.InDelta(t, 0.7, dailyUsage, 0.000001)
+}
+
+func TestUsageBillingRepositoryBatchImagePartialSubscriptionUsesBalanceRate(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email:   fmt.Sprintf("batch-partial-rate-%d@example.com", time.Now().UnixNano()),
+		Balance: 5,
+	})
+	group := mustCreateGroup(t, client, &service.Group{
+		Name:     "batch-partial-rate-group-" + uuid.NewString(),
+		Platform: service.PlatformGemini,
+	})
+	plan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:                 "batch-partial-rate-plan-" + uuid.NewString(),
+		Description:          "batch image partial subscription rate test plan",
+		Price:                10,
+		ValidityDays:         30,
+		ValidityUnit:         "day",
+		GroupIDs:             []int64{group.ID},
+		GroupRateMultipliers: map[int64]float64{group.ID: 0.5},
+		ForSale:              true,
+		DailyLimitUSD:        float64Ptr(1),
+		WeeklyLimitUSD:       float64Ptr(1),
+		MonthlyLimitUSD:      float64Ptr(1),
+	})
+	reservedAt := time.Now().UTC()
+	windowStart := reservedAt.Add(-time.Hour)
+	subscription := mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             plan.ID,
+		DailyWindowStart:   &windowStart,
+		WeeklyWindowStart:  &windowStart,
+		MonthlyWindowStart: &windowStart,
+		DailyLimitUSD:      float64Ptr(1),
+		WeeklyLimitUSD:     float64Ptr(1),
+		MonthlyLimitUSD:    float64Ptr(1),
+		DailyUsageUSD:      0.8,
+		WeeklyUsageUSD:     0.8,
+		MonthlyUsageUSD:    0.8,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:  user.ID,
+		GroupID: &group.ID,
+		Key:     "sk-batch-partial-rate-" + uuid.NewString(),
+		Name:    "batch-partial-rate",
+	})
+	batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	insertBatchImageAllowanceTestJob(t, batchID, user.ID, user.ID, apiKey.ID, nil, reservedAt)
+	reserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:                       service.BatchImageHoldRequestID(batchID),
+		APIKeyID:                        apiKey.ID,
+		UserID:                          user.ID,
+		ActorUserID:                     user.ID,
+		GroupID:                         &group.ID,
+		BatchID:                         batchID,
+		HoldAmount:                      0.5,
+		PricingSnapshotVersion:          2,
+		BaseAmountUSD:                   1,
+		SubscriptionRateMultiplier:      1,
+		SubscriptionRateMultiplierScale: 1,
+		BalanceRateMultiplier:           2,
+		SettlementRateScale:             0.5,
+		ReservedAt:                      reservedAt,
+	}
+
+	reserved, err := repo.ReserveBatchImageBalance(ctx, reserveCommand)
+	require.NoError(t, err)
+	require.InDelta(t, 0.2, reserved.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 1.2, reserved.BalanceAmountUSD, 0.000001)
+	require.InDelta(t, 1.4, reserved.HoldAmountUSD, 0.000001)
+	require.InDelta(t, 0.4, reserved.EstimatedAmountUSD, 0.000001)
+	require.Len(t, reserved.BillingAllocations, 2)
+	require.InDelta(t, 0.4, reserved.BillingAllocations[0].BaseAmountUSD, 0.000001)
+	require.InDelta(t, 0.5, reserved.BillingAllocations[0].RateMultiplier, 0.000001)
+
+	subscriptionHolds := make([]domain.BillingAllocation, 0, 1)
+	for _, allocation := range reserved.BillingAllocations {
+		if allocation.Type == domain.BillingAllocationTypeSubscription {
+			subscriptionHolds = append(subscriptionHolds, allocation)
+		}
+	}
+	captureCommand := *reserveCommand
+	captureCommand.RequestID = service.BatchImageCaptureRequestID(batchID)
+	captureCommand.RequestFingerprint = ""
+	captureCommand.HoldAmount = reserved.HoldAmountUSD
+	captureCommand.ActualBaseAmountUSD = 1
+	captureCommand.BalanceHoldAmount = reserved.BalanceAmountUSD
+	captureCommand.SubscriptionHoldAllocations = subscriptionHolds
+	captureCommand.AllowanceReserved = true
+
+	captured, err := repo.CaptureBatchImageBalance(ctx, &captureCommand)
+	require.NoError(t, err)
+	require.InDelta(t, 0.2, captured.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 0.2, captured.BalanceAmountUSD, 0.000001)
+	require.InDelta(t, 0.4, captured.ActualAmountUSD, 0.000001)
+
+	var balance, frozen, dailyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 4.8, balance, 0.000001)
+	require.Zero(t, frozen)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM user_subscriptions WHERE id = $1`, subscription.ID).Scan(&dailyUsage))
+	require.InDelta(t, 1, dailyUsage, 0.000001)
 }
 
 func TestUsageBillingRepositoryBatchImageUnlimitedKeyReleaseKeepsExistingUsage(t *testing.T) {

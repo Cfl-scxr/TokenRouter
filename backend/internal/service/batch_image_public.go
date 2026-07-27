@@ -105,15 +105,18 @@ type BatchImagePublicService struct {
 }
 
 type BatchImagePricingSnapshot struct {
-	BaseUnitPrice           float64
-	GroupRateMultiplier     float64
-	AccountRateMultiplier   float64
-	BatchDiscountMultiplier float64
-	HoldMultiplier          float64
-	BillableUnitPrice       float64
-	HoldUnitPrice           float64
-	EstimatedCost           float64
-	HoldAmount              float64
+	BaseUnitPrice              float64
+	GroupRateMultiplier        float64
+	SubscriptionRateMultiplier float64
+	BalanceRateMultiplier      float64
+	PlanGroupRateEnabled       bool
+	AccountRateMultiplier      float64
+	BatchDiscountMultiplier    float64
+	HoldMultiplier             float64
+	BillableUnitPrice          float64
+	HoldUnitPrice              float64
+	EstimatedCost              float64
+	HoldAmount                 float64
 }
 
 type BatchImagePublicBatch struct {
@@ -268,38 +271,41 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	holdID := BatchImageHoldRequestID(batchID)
 	holdAmount := pricingSnapshot.HoldAmount
 	job, err := s.Repo.CreateBatchImageJob(ctx, CreateBatchImageJobParams{
-		BatchID:                 batchID,
-		UserID:                  owner.UserID,
-		BillingUserID:           owner.BillingUserID,
-		TeamID:                  owner.TeamID,
-		APIKeyID:                &apiKeyID,
-		AccountID:               &accountID,
-		Provider:                provider.Name(),
-		Model:                   normalized.Model,
-		TaskName:                normalized.TaskName,
-		ParentBatchID:           parentBatchID,
-		Status:                  BatchImageJobStatusCreated,
-		ItemCount:               len(normalized.Items),
-		EstimatedCost:           pricingSnapshot.EstimatedCost,
-		HoldAmount:              &holdAmount,
-		BaseUnitPrice:           pricingSnapshot.BaseUnitPrice,
-		GroupRateMultiplier:     pricingSnapshot.GroupRateMultiplier,
-		AccountRateMultiplier:   pricingSnapshot.AccountRateMultiplier,
-		BatchDiscountMultiplier: pricingSnapshot.BatchDiscountMultiplier,
-		HoldMultiplier:          pricingSnapshot.HoldMultiplier,
-		BillableUnitPrice:       pricingSnapshot.BillableUnitPrice,
-		HoldUnitPrice:           pricingSnapshot.HoldUnitPrice,
-		PricingSnapshotVersion:  1,
-		Currency:                "USD",
-		HoldID:                  &holdID,
-		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
-		RequestHash:             batchImageStringPtr(requestHash),
-		SessionID:               normalized.SessionID,
+		BatchID:                    batchID,
+		UserID:                     owner.UserID,
+		BillingUserID:              owner.BillingUserID,
+		TeamID:                     owner.TeamID,
+		APIKeyID:                   &apiKeyID,
+		AccountID:                  &accountID,
+		Provider:                   provider.Name(),
+		Model:                      normalized.Model,
+		TaskName:                   normalized.TaskName,
+		ParentBatchID:              parentBatchID,
+		Status:                     BatchImageJobStatusCreated,
+		ItemCount:                  len(normalized.Items),
+		EstimatedCost:              pricingSnapshot.EstimatedCost,
+		HoldAmount:                 &holdAmount,
+		BaseUnitPrice:              pricingSnapshot.BaseUnitPrice,
+		GroupRateMultiplier:        pricingSnapshot.GroupRateMultiplier,
+		SubscriptionRateMultiplier: pricingSnapshot.SubscriptionRateMultiplier,
+		BalanceRateMultiplier:      pricingSnapshot.BalanceRateMultiplier,
+		PlanGroupRateEnabled:       pricingSnapshot.PlanGroupRateEnabled,
+		AccountRateMultiplier:      pricingSnapshot.AccountRateMultiplier,
+		BatchDiscountMultiplier:    pricingSnapshot.BatchDiscountMultiplier,
+		HoldMultiplier:             pricingSnapshot.HoldMultiplier,
+		BillableUnitPrice:          pricingSnapshot.BillableUnitPrice,
+		HoldUnitPrice:              pricingSnapshot.HoldUnitPrice,
+		PricingSnapshotVersion:     2,
+		Currency:                   "USD",
+		HoldID:                     &holdID,
+		IdempotencyKey:             batchImageOptionalStringPtr(idempotencyKey),
+		RequestHash:                batchImageStringPtr(requestHash),
+		SessionID:                  normalized.SessionID,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if err := reserveBatchImageBalanceHold(ctx, s.BillingRepo, job, requestHash); err != nil {
+	if err := reserveBatchImageBalanceHold(ctx, s.BillingRepo, job, owner.GroupID, requestHash); err != nil {
 		code := "BILLING_HOLD_FAILED"
 		if errors.Is(err, ErrBatchImageInsufficientBalance) {
 			code = "INSUFFICIENT_BALANCE"
@@ -1011,6 +1017,9 @@ func (s *BatchImagePublicService) ensureGroupAllowsBatchImage(ctx context.Contex
 func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, owner BatchImageOwner, req BatchImageSubmitRequest, provider string, account *Account) (*BatchImagePricingSnapshot, error) {
 	unit := -1.0
 	groupMultiplier := 1.0
+	subscriptionRateMultiplier := 1.0
+	balanceRateMultiplier := 1.0
+	planGroupRateEnabled := true
 	discountMultiplier := defaultBatchImageDiscountMultiplier
 	holdMultiplier := defaultBatchImageHoldMultiplier
 	if owner.GroupID != nil && *owner.GroupID > 0 {
@@ -1028,19 +1037,45 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if groupDefaultMultiplier < 0 {
 			groupDefaultMultiplier = 0
 		}
-		effectiveGroupMultiplier := groupDefaultMultiplier
+		subscriptionRateMultiplier = groupDefaultMultiplier
+		balanceRateMultiplier = groupDefaultMultiplier
 		if s.UserGroupRateRepo != nil {
 			userRate, rateErr := s.UserGroupRateRepo.GetByUserAndGroup(ctx, owner.EffectiveBillingUserID(), group.ID)
 			if rateErr != nil {
 				return nil, ErrBatchImageSettlementPricingMissing
 			}
 			if userRate != nil {
-				effectiveGroupMultiplier = *userRate
+				balanceRateMultiplier = *userRate
 			}
+		}
+		effectiveGroupMultiplier := balanceRateMultiplier
+		// 与普通图片请求保持一致：存在可用订阅时优先采用套餐倍率；
+		// 订阅不足的剩余部分则使用已快照的用户按量倍率。
+		subscription := resolveUsageSubscription(
+			ctx,
+			nil,
+			nil,
+			usageSubscriptionResolverFrom(s.BillingRepo),
+			owner.EffectiveBillingUserID(),
+			owner.GroupID,
+		)
+		if subscription != nil {
+			effectiveGroupMultiplier = resolveUsageRateMultiplier(
+				ctx,
+				owner.EffectiveBillingUserID(),
+				owner.GroupID,
+				group,
+				groupDefaultMultiplier,
+				subscription,
+				nil,
+			)
 		}
 		groupMultiplier = effectiveGroupMultiplier
 		if group.ImageRateIndependent {
 			groupMultiplier = group.ImageRateMultiplier
+			subscriptionRateMultiplier = group.ImageRateMultiplier
+			balanceRateMultiplier = group.ImageRateMultiplier
+			planGroupRateEnabled = false
 		}
 		if groupMultiplier < 0 {
 			groupMultiplier = 0
@@ -1087,15 +1122,18 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 	billableUnitPrice := standardUnitPrice * discountMultiplier
 	holdUnitPrice := standardUnitPrice * holdMultiplier
 	return &BatchImagePricingSnapshot{
-		BaseUnitPrice:           unit,
-		GroupRateMultiplier:     groupMultiplier,
-		AccountRateMultiplier:   accountMultiplier,
-		BatchDiscountMultiplier: discountMultiplier,
-		HoldMultiplier:          holdMultiplier,
-		BillableUnitPrice:       billableUnitPrice,
-		HoldUnitPrice:           holdUnitPrice,
-		EstimatedCost:           billableUnitPrice * float64(len(req.Items)),
-		HoldAmount:              holdUnitPrice * float64(len(req.Items)),
+		BaseUnitPrice:              unit,
+		GroupRateMultiplier:        groupMultiplier,
+		SubscriptionRateMultiplier: subscriptionRateMultiplier,
+		BalanceRateMultiplier:      balanceRateMultiplier,
+		PlanGroupRateEnabled:       planGroupRateEnabled,
+		AccountRateMultiplier:      accountMultiplier,
+		BatchDiscountMultiplier:    discountMultiplier,
+		HoldMultiplier:             holdMultiplier,
+		BillableUnitPrice:          billableUnitPrice,
+		HoldUnitPrice:              holdUnitPrice,
+		EstimatedCost:              billableUnitPrice * float64(len(req.Items)),
+		HoldAmount:                 holdUnitPrice * float64(len(req.Items)),
 	}, nil
 }
 

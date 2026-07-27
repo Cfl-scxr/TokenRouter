@@ -743,12 +743,17 @@ func (r *batchImageRepository) AppendBatchImageEvent(ctx context.Context, batchI
 }
 
 func createBatchImageJobWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, params service.CreateBatchImageJobParams) (*service.BatchImageJob, error) {
+	subscriptionHoldAllocations, err := json.Marshal(params.SubscriptionHoldAllocations)
+	if err != nil {
+		return nil, err
+	}
 	return scanBatchImageJob(sqlq.QueryRowContext(ctx, `
 INSERT INTO batch_image_jobs (
     batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, provider, model, task_name, parent_batch_id, status,
     provider_job_name, provider_input_ref, provider_output_ref, gcs_input_uri, gcs_output_uri,
     item_count, success_count, fail_count, cancelled_count,
-    estimated_cost, hold_amount, actual_cost,
+    estimated_cost, hold_amount, actual_cost, balance_hold_amount, subscription_hold_allocations,
+    subscription_rate_multiplier, balance_rate_multiplier, plan_group_rate_multiplier_enabled,
     base_unit_price, group_rate_multiplier, account_rate_multiplier,
     batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price,
     pricing_snapshot_version,
@@ -758,18 +763,20 @@ INSERT INTO batch_image_jobs (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
     $12, $13, $14, $15, $16,
     $17, $18, $19, $20,
-    $21, $22, $23,
-    $24, $25, $26,
-    $27, $28, $29, $30,
-    $31,
-    $32, $33,
-    $34, $35, $36, $37, $38, $39
+    $21, $22, $23, $24, $25,
+    $26, $27, $28,
+    $29, $30, $31,
+    $32, $33, $34, $35,
+    $36,
+    $37, $38,
+    $39, $40, $41, $42, $43, $44
 )
 RETURNING `+batchImageJobColumns,
 		params.BatchID, params.UserID, params.BillingUserID, params.TeamID, params.APIKeyID, params.AccountID, params.Provider, params.Model, params.TaskName, params.ParentBatchID, params.Status,
 		params.ProviderJobName, params.ProviderInputRef, params.ProviderOutputRef, params.GCSInputURI, params.GCSOutputURI,
 		params.ItemCount, params.SuccessCount, params.FailCount, params.CancelledCount,
-		params.EstimatedCost, params.HoldAmount, params.ActualCost,
+		params.EstimatedCost, params.HoldAmount, params.ActualCost, params.BalanceHoldAmount, string(subscriptionHoldAllocations),
+		params.SubscriptionRateMultiplier, params.BalanceRateMultiplier, params.PlanGroupRateEnabled,
 		params.BaseUnitPrice, params.GroupRateMultiplier, params.AccountRateMultiplier,
 		params.BatchDiscountMultiplier, params.HoldMultiplier, params.BillableUnitPrice, params.HoldUnitPrice,
 		params.PricingSnapshotVersion,
@@ -823,6 +830,8 @@ id, batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, provide
 provider_job_name, provider_input_ref, provider_output_ref, gcs_input_uri, gcs_output_uri,
 item_count, success_count, fail_count, cancelled_count,
 estimated_cost, hold_amount, actual_cost, allowance_reserved,
+balance_hold_amount, subscription_hold_allocations,
+subscription_rate_multiplier, balance_rate_multiplier, plan_group_rate_multiplier_enabled,
 base_unit_price, group_rate_multiplier, account_rate_multiplier,
 batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price,
 pricing_snapshot_version,
@@ -840,6 +849,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var providerJobName, providerInputRef, providerOutputRef, gcsInputURI, gcsOutputURI sql.NullString
 	var parentBatchID sql.NullString
 	var holdAmount, actualCost sql.NullFloat64
+	var subscriptionHoldAllocationsRaw []byte
 	var holdID, idempotencyKey, requestHash, manifestHash sql.NullString
 	var sessionID sql.NullString
 	var outputExpiresAt, inputDeletedAt, outputDeletedAt, downloadedAt, userDeletedAt sql.NullTime
@@ -851,6 +861,8 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 		&providerJobName, &providerInputRef, &providerOutputRef, &gcsInputURI, &gcsOutputURI,
 		&job.ItemCount, &job.SuccessCount, &job.FailCount, &job.CancelledCount,
 		&job.EstimatedCost, &holdAmount, &actualCost, &job.AllowanceReserved,
+		&job.BalanceHoldAmount, &subscriptionHoldAllocationsRaw,
+		&job.SubscriptionRateMultiplier, &job.BalanceRateMultiplier, &job.PlanGroupRateEnabled,
 		&job.BaseUnitPrice, &job.GroupRateMultiplier, &job.AccountRateMultiplier,
 		&job.BatchDiscountMultiplier, &job.HoldMultiplier, &job.BillableUnitPrice, &job.HoldUnitPrice,
 		&job.PricingSnapshotVersion,
@@ -875,6 +887,11 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	job.GCSOutputURI = batchImageNullStringPtr(gcsOutputURI)
 	job.HoldAmount = batchImageNullFloat64Ptr(holdAmount)
 	job.ActualCost = batchImageNullFloat64Ptr(actualCost)
+	if len(subscriptionHoldAllocationsRaw) > 0 {
+		if err := json.Unmarshal(subscriptionHoldAllocationsRaw, &job.SubscriptionHoldAllocations); err != nil {
+			return nil, err
+		}
+	}
 	job.HoldID = batchImageNullStringPtr(holdID)
 	job.IdempotencyKey = batchImageNullStringPtr(idempotencyKey)
 	job.RequestHash = batchImageNullStringPtr(requestHash)

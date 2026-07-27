@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 )
 
@@ -125,6 +126,12 @@ type BatchImageJob struct {
 	EstimatedCost float64
 	HoldAmount    *float64
 	ActualCost    *float64
+	// BalanceHoldAmount 和 SubscriptionHoldAllocations 记录提交时的混合预占结果。
+	BalanceHoldAmount           float64
+	SubscriptionHoldAllocations []domain.BillingAllocation
+	SubscriptionRateMultiplier  float64
+	BalanceRateMultiplier       float64
+	PlanGroupRateEnabled        bool
 	// AllowanceReserved 表示预计金额已经计入 Key 和团队成员额度。
 	AllowanceReserved       bool
 	BaseUnitPrice           float64
@@ -186,19 +193,24 @@ type CreateBatchImageJobParams struct {
 	FailCount      int
 	CancelledCount int
 
-	EstimatedCost           float64
-	HoldAmount              *float64
-	ActualCost              *float64
-	BaseUnitPrice           float64
-	GroupRateMultiplier     float64
-	AccountRateMultiplier   float64
-	BatchDiscountMultiplier float64
-	HoldMultiplier          float64
-	BillableUnitPrice       float64
-	HoldUnitPrice           float64
-	PricingSnapshotVersion  int
-	Currency                string
-	HoldID                  *string
+	EstimatedCost               float64
+	HoldAmount                  *float64
+	ActualCost                  *float64
+	BalanceHoldAmount           float64
+	SubscriptionHoldAllocations []domain.BillingAllocation
+	SubscriptionRateMultiplier  float64
+	BalanceRateMultiplier       float64
+	PlanGroupRateEnabled        bool
+	BaseUnitPrice               float64
+	GroupRateMultiplier         float64
+	AccountRateMultiplier       float64
+	BatchDiscountMultiplier     float64
+	HoldMultiplier              float64
+	BillableUnitPrice           float64
+	HoldUnitPrice               float64
+	PricingSnapshotVersion      int
+	Currency                    string
+	HoldID                      *string
 
 	IdempotencyKey *string
 	RequestHash    *string

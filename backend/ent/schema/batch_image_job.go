@@ -3,6 +3,8 @@ package schema
 import (
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/domain"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -51,6 +53,15 @@ func (BatchImageJob) Fields() []ent.Field {
 		field.Float("estimated_cost").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(0),
 		field.Float("hold_amount").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("actual_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+		// 批量任务先占订阅、再冻结余额；这两个字段共同构成完整预占快照。
+		field.Float("balance_hold_amount").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(0),
+		field.JSON("subscription_hold_allocations", []domain.BillingAllocation{}).
+			Default(func() []domain.BillingAllocation { return []domain.BillingAllocation{} }).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		// 分别快照订阅默认倍率和按量倍率，供混合结算按来源还原价格。
+		field.Float("subscription_rate_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(1),
+		field.Float("balance_rate_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(1),
+		field.Bool("plan_group_rate_multiplier_enabled").Default(true),
 		// 标记当前任务是否已按预计金额预记 Key 和团队成员额度。
 		field.Bool("allowance_reserved").Default(false),
 		field.String("currency").MaxLen(16).Default("USD"),
