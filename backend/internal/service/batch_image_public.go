@@ -419,7 +419,7 @@ func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, j
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return ErrBatchImageBillingHoldFailed
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateAuthCache(ctx, batchImageBillingUserID(job))
 	return nil
 }
 

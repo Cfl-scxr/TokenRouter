@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/domain"
 )
@@ -142,6 +143,10 @@ type BatchImageBalanceHoldCommand struct {
 	BatchID            string
 	HoldAmount         float64
 	ActualAmount       float64
+	// AllowanceReserved 区分新任务预记和滚动升级期间的旧任务。
+	AllowanceReserved bool
+	// ReservedAt 用于只回退仍属于原窗口的预记额度。
+	ReservedAt time.Time
 }
 
 func (c *BatchImageBalanceHoldCommand) Normalize() {
@@ -164,7 +169,7 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 		teamID = *c.TeamID
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%d|%s|%0.10f|%0.10f",
+		"%d|%d|%d|%d|%s|%0.10f|%0.10f|%s",
 		c.UserID,
 		c.ActorUserID,
 		teamID,
@@ -172,6 +177,7 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 		strings.TrimSpace(c.BatchID),
 		c.HoldAmount,
 		c.ActualAmount,
+		c.ReservedAt.UTC().Format(time.RFC3339Nano),
 	)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash

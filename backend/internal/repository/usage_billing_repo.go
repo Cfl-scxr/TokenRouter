@@ -207,21 +207,29 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 }
 
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, false, reserveUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageAllowanceReserve, reserveUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, true, captureUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageAllowanceCapture, captureUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, false, releaseUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageAllowanceRelease, releaseUsageBillingBatchImageBalance)
 }
+
+type batchImageAllowanceOperation int
+
+const (
+	batchImageAllowanceReserve batchImageAllowanceOperation = iota
+	batchImageAllowanceCapture
+	batchImageAllowanceRelease
+)
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
 	cmd *service.BatchImageBalanceHoldCommand,
-	countTeamUsage bool,
+	operation batchImageAllowanceOperation,
 	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
 ) (_ *service.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
@@ -261,10 +269,8 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		result = &service.BatchImageBalanceHoldResult{}
 	}
 	result.Applied = true
-	if countTeamUsage && cmd.TeamID != nil && cmd.ActorUserID > 0 && cmd.ActorUserID != cmd.UserID {
-		if err := incrementUsageBillingTeamMember(ctx, tx, *cmd.TeamID, cmd.ActorUserID, cmd.ActualAmount, time.Now()); err != nil {
-			return nil, err
-		}
+	if err := applyBatchImageAllowance(ctx, tx, cmd, operation); err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -272,6 +278,283 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	}
 	tx = nil
 	return result, nil
+}
+
+func applyBatchImageAllowance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand, operation batchImageAllowanceOperation) error {
+	if cmd == nil || cmd.HoldAmount <= 0 {
+		return nil
+	}
+	switch operation {
+	case batchImageAllowanceReserve:
+		if err := reserveBatchImageAPIKeyAllowance(ctx, tx, cmd.APIKeyID, cmd.HoldAmount); err != nil {
+			return err
+		}
+		if err := reserveBatchImageMemberAllowance(ctx, tx, cmd, cmd.HoldAmount); err != nil {
+			return err
+		}
+		return setBatchImageAllowanceReserved(ctx, tx, cmd.BatchID, true)
+	case batchImageAllowanceCapture:
+		if cmd.AllowanceReserved {
+			adjustment := cmd.HoldAmount - cmd.ActualAmount
+			if adjustment > 0 {
+				if err := rollbackBatchImageAllowanceBestEffort(ctx, tx, cmd.BatchID, func() error {
+					if err := releaseBatchImageAPIKeyAllowance(ctx, tx, cmd.APIKeyID, adjustment, cmd.ReservedAt); err != nil {
+						return err
+					}
+					return releaseBatchImageMemberAllowance(ctx, tx, cmd, adjustment)
+				}); err != nil {
+					return err
+				}
+			}
+		} else if cmd.ActualAmount > 0 {
+			// 滚动升级期间的旧任务没有预记标记，结算时按实际金额补记。
+			if err := chargeLegacyBatchImageAPIKey(ctx, tx, cmd.APIKeyID, cmd.ActualAmount); err != nil {
+				return err
+			}
+			if cmd.TeamID != nil && cmd.ActorUserID > 0 && cmd.ActorUserID != cmd.UserID {
+				if err := incrementUsageBillingTeamMember(ctx, tx, *cmd.TeamID, cmd.ActorUserID, cmd.ActualAmount, time.Now()); err != nil {
+					return err
+				}
+			}
+		}
+		return setBatchImageAllowanceReserved(ctx, tx, cmd.BatchID, false)
+	case batchImageAllowanceRelease:
+		if cmd.AllowanceReserved {
+			if err := rollbackBatchImageAllowanceBestEffort(ctx, tx, cmd.BatchID, func() error {
+				if err := releaseBatchImageAPIKeyAllowance(ctx, tx, cmd.APIKeyID, cmd.HoldAmount, cmd.ReservedAt); err != nil {
+					return err
+				}
+				return releaseBatchImageMemberAllowance(ctx, tx, cmd, cmd.HoldAmount)
+			}); err != nil {
+				return err
+			}
+		}
+		return setBatchImageAllowanceReserved(ctx, tx, cmd.BatchID, false)
+	default:
+		return nil
+	}
+}
+
+// rollbackBatchImageAllowanceBestEffort 用保存点隔离额度回退故障。
+// 回退失败时保留偏保守计数，但不能连带撤销已经完成的余额结算。
+func rollbackBatchImageAllowanceBestEffort(ctx context.Context, tx *sql.Tx, batchID string, rollback func() error) error {
+	const savepoint = "batch_image_allowance_rollback"
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+savepoint); err != nil {
+		return err
+	}
+	if err := rollback(); err != nil {
+		if _, rollbackErr := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+savepoint); rollbackErr != nil {
+			return rollbackErr
+		}
+		if _, releaseErr := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint); releaseErr != nil {
+			return releaseErr
+		}
+		logger.LegacyPrintf("repository.usage_billing", "[BatchImage] allowance rollback skipped: batch=%s error=%v", batchID, err)
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+savepoint)
+	return err
+}
+
+func setBatchImageAllowanceReserved(ctx context.Context, tx *sql.Tx, batchID string, reserved bool) error {
+	result, err := tx.ExecContext(ctx, `UPDATE batch_image_jobs SET allowance_reserved = $2, updated_at = NOW() WHERE batch_id = $1`, batchID, reserved)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrBatchImageJobNotFound
+	}
+	return nil
+}
+
+func reserveBatchImageAPIKeyAllowance(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) error {
+	var id int64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE api_keys SET
+			quota_used = CASE WHEN quota > 0 THEN quota_used + $1 ELSE quota_used END,
+			usage_5h = CASE WHEN rate_limit_5h <= 0 THEN usage_5h WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
+			usage_1d = CASE WHEN rate_limit_1d <= 0 THEN usage_1d WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
+			usage_7d = CASE WHEN rate_limit_7d <= 0 THEN usage_7d WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
+			window_5h_start = CASE WHEN rate_limit_5h > 0 AND (window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW()) THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN rate_limit_1d > 0 AND (window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN rate_limit_7d > 0 AND (window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			status = CASE WHEN quota > 0 AND quota_used + $1 >= quota THEN $3 ELSE status END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL AND status = $4 AND team_owner_disabled = FALSE
+		  AND (quota <= 0 OR quota_used + $1 <= quota)
+		  AND (rate_limit_5h <= 0 OR (CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN 0 ELSE usage_5h END) + $1 <= rate_limit_5h)
+		  AND (rate_limit_1d <= 0 OR (CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN 0 ELSE usage_1d END) + $1 <= rate_limit_1d)
+		  AND (rate_limit_7d <= 0 OR (CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN 0 ELSE usage_7d END) + $1 <= rate_limit_7d)
+		RETURNING id`, amount, apiKeyID, service.StatusAPIKeyQuotaExhausted, service.StatusAPIKeyActive).Scan(&id)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return batchImageAPIKeyAllowanceError(ctx, tx, apiKeyID, amount)
+}
+
+func batchImageAPIKeyAllowanceError(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) error {
+	var status string
+	var ownerDisabled bool
+	var quota, quotaUsed, limit5h, limit1d, limit7d, usage5h, usage1d, usage7d float64
+	var start5h, start1d, start7d sql.NullTime
+	err := tx.QueryRowContext(ctx, `
+		SELECT status, team_owner_disabled, quota, quota_used, rate_limit_5h, rate_limit_1d, rate_limit_7d,
+		       usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
+		FROM api_keys WHERE id = $1 AND deleted_at IS NULL`, apiKeyID).
+		Scan(&status, &ownerDisabled, &quota, &quotaUsed, &limit5h, &limit1d, &limit7d, &usage5h, &usage1d, &usage7d, &start5h, &start1d, &start7d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return service.ErrAPIKeyNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if ownerDisabled || status != service.StatusAPIKeyActive {
+		if status == service.StatusAPIKeyQuotaExhausted {
+			return service.ErrAPIKeyQuotaExhausted
+		}
+		return service.ErrAPIKeyNotFound
+	}
+	if quota > 0 && quotaUsed+amount > quota {
+		return service.ErrAPIKeyQuotaExhausted
+	}
+	now := time.Now()
+	if limit5h > 0 && effectiveSQLWindowUsage(usage5h, start5h, service.RateLimitWindow5h, now)+amount > limit5h {
+		return service.ErrAPIKeyRateLimit5hExceeded
+	}
+	if limit1d > 0 && effectiveSQLWindowUsage(usage1d, start1d, service.RateLimitWindow1d, now)+amount > limit1d {
+		return service.ErrAPIKeyRateLimit1dExceeded
+	}
+	if limit7d > 0 && effectiveSQLWindowUsage(usage7d, start7d, service.RateLimitWindow7d, now)+amount > limit7d {
+		return service.ErrAPIKeyRateLimit7dExceeded
+	}
+	return service.ErrAPIKeyNotFound
+}
+
+func effectiveSQLWindowUsage(usage float64, start sql.NullTime, duration time.Duration, now time.Time) float64 {
+	if !start.Valid || !start.Time.Add(duration).After(now) {
+		return 0
+	}
+	return usage
+}
+
+func reserveBatchImageMemberAllowance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand, amount float64) error {
+	if cmd.TeamID == nil || cmd.ActorUserID <= 0 || cmd.ActorUserID == cmd.UserID {
+		return nil
+	}
+	now := time.Now()
+	dailyStart := timezone.StartOfDay(now)
+	weeklyStart := timezone.StartOfWeek(now)
+	monthlyStart := timezone.StartOfMonth(now)
+	var id int64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE team_memberships SET
+			daily_usage_usd = CASE WHEN daily_window_start IS NULL OR daily_window_start < $4 THEN $3 ELSE daily_usage_usd + $3 END,
+			weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $5 THEN $3 ELSE weekly_usage_usd + $3 END,
+			monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $6 THEN $3 ELSE monthly_usage_usd + $3 END,
+			daily_window_start = CASE WHEN daily_window_start IS NULL OR daily_window_start < $4 THEN $4 ELSE daily_window_start END,
+			weekly_window_start = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $5 THEN $5 ELSE weekly_window_start END,
+			monthly_window_start = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $6 THEN $6 ELSE monthly_window_start END,
+			updated_at = $7
+		WHERE team_id = $1 AND user_id = $2 AND left_at IS NULL AND role = 'member'
+		  AND (daily_limit_usd <= 0 OR (CASE WHEN daily_window_start IS NULL OR daily_window_start < $4 THEN 0 ELSE daily_usage_usd END) + $3 <= daily_limit_usd)
+		  AND (weekly_limit_usd <= 0 OR (CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $5 THEN 0 ELSE weekly_usage_usd END) + $3 <= weekly_limit_usd)
+		  AND (monthly_limit_usd <= 0 OR (CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $6 THEN 0 ELSE monthly_usage_usd END) + $3 <= monthly_limit_usd)
+		RETURNING id`, *cmd.TeamID, cmd.ActorUserID, amount, dailyStart, weeklyStart, monthlyStart, now).Scan(&id)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return batchImageMemberAllowanceError(ctx, tx, *cmd.TeamID, cmd.ActorUserID, amount, dailyStart, weeklyStart, monthlyStart)
+}
+
+func batchImageMemberAllowanceError(ctx context.Context, tx *sql.Tx, teamID, userID int64, amount float64, dailyStart, weeklyStart, monthlyStart time.Time) error {
+	var role string
+	var dailyLimit, weeklyLimit, monthlyLimit, dailyUsage, weeklyUsage, monthlyUsage float64
+	var dailyWindow, weeklyWindow, monthlyWindow sql.NullTime
+	err := tx.QueryRowContext(ctx, `
+		SELECT role, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
+		       daily_usage_usd, weekly_usage_usd, monthly_usage_usd,
+		       daily_window_start, weekly_window_start, monthly_window_start
+		FROM team_memberships WHERE team_id = $1 AND user_id = $2 AND left_at IS NULL`, teamID, userID).
+		Scan(&role, &dailyLimit, &weeklyLimit, &monthlyLimit, &dailyUsage, &weeklyUsage, &monthlyUsage, &dailyWindow, &weeklyWindow, &monthlyWindow)
+	if errors.Is(err, sql.ErrNoRows) {
+		return service.ErrTeamMembershipRequired
+	}
+	if err != nil {
+		return err
+	}
+	if role == service.TeamRoleOwner {
+		return nil
+	}
+	if dailyLimit > 0 && effectiveNaturalWindowUsage(dailyUsage, dailyWindow, dailyStart)+amount > dailyLimit {
+		return service.ErrTeamMemberDailyExceeded
+	}
+	if weeklyLimit > 0 && effectiveNaturalWindowUsage(weeklyUsage, weeklyWindow, weeklyStart)+amount > weeklyLimit {
+		return service.ErrTeamMemberWeeklyExceeded
+	}
+	if monthlyLimit > 0 && effectiveNaturalWindowUsage(monthlyUsage, monthlyWindow, monthlyStart)+amount > monthlyLimit {
+		return service.ErrTeamMemberMonthlyExceeded
+	}
+	return service.ErrTeamMembershipRequired
+}
+
+func effectiveNaturalWindowUsage(usage float64, window sql.NullTime, expectedStart time.Time) float64 {
+	if !window.Valid || window.Time.Before(expectedStart) {
+		return 0
+	}
+	return usage
+}
+
+func releaseBatchImageAPIKeyAllowance(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64, reservedAt time.Time) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE api_keys SET
+			quota_used = GREATEST(0, quota_used - $1),
+			usage_5h = CASE WHEN window_5h_start <= $3 AND $3 < window_5h_start + INTERVAL '5 hours' THEN GREATEST(0, usage_5h - $1) ELSE usage_5h END,
+			usage_1d = CASE WHEN window_1d_start <= $3 AND $3 < window_1d_start + INTERVAL '24 hours' THEN GREATEST(0, usage_1d - $1) ELSE usage_1d END,
+			usage_7d = CASE WHEN window_7d_start <= $3 AND $3 < window_7d_start + INTERVAL '7 days' THEN GREATEST(0, usage_7d - $1) ELSE usage_7d END,
+			status = CASE WHEN status = $4 AND team_owner_disabled = FALSE AND (quota <= 0 OR GREATEST(0, quota_used - $1) < quota) THEN $5 ELSE status END,
+			updated_at = NOW()
+		WHERE id = $2`, amount, apiKeyID, reservedAt, service.StatusAPIKeyQuotaExhausted, service.StatusAPIKeyActive)
+	return err
+}
+
+func releaseBatchImageMemberAllowance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand, amount float64) error {
+	if cmd.TeamID == nil || cmd.ActorUserID <= 0 || cmd.ActorUserID == cmd.UserID {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `
+		UPDATE team_memberships SET
+			daily_usage_usd = CASE WHEN daily_window_start <= $4 AND $4 < daily_window_start + INTERVAL '1 day' THEN GREATEST(0, daily_usage_usd - $3) ELSE daily_usage_usd END,
+			weekly_usage_usd = CASE WHEN weekly_window_start <= $4 AND $4 < weekly_window_start + INTERVAL '7 days' THEN GREATEST(0, weekly_usage_usd - $3) ELSE weekly_usage_usd END,
+			monthly_usage_usd = CASE WHEN monthly_window_start <= $4 AND $4 < monthly_window_start + INTERVAL '1 month' THEN GREATEST(0, monthly_usage_usd - $3) ELSE monthly_usage_usd END,
+			updated_at = NOW()
+		WHERE team_id = $1 AND user_id = $2`, *cmd.TeamID, cmd.ActorUserID, amount, cmd.ReservedAt)
+	return err
+}
+
+func chargeLegacyBatchImageAPIKey(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE api_keys SET
+			quota_used = CASE WHEN quota > 0 THEN quota_used + $1 ELSE quota_used END,
+			usage_5h = CASE WHEN rate_limit_5h <= 0 THEN usage_5h WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
+			usage_1d = CASE WHEN rate_limit_1d <= 0 THEN usage_1d WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
+			usage_7d = CASE WHEN rate_limit_7d <= 0 THEN usage_7d WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
+			window_5h_start = CASE WHEN rate_limit_5h > 0 AND (window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW()) THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN rate_limit_1d > 0 AND (window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN rate_limit_7d > 0 AND (window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW()) THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			status = CASE WHEN quota > 0 AND quota_used + $1 >= quota AND team_owner_disabled = FALSE THEN $3 ELSE status END,
+			updated_at = NOW()
+		WHERE id = $2`, amount, apiKeyID, service.StatusAPIKeyQuotaExhausted)
+	return err
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {

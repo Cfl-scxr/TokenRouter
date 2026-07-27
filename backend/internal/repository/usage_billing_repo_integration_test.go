@@ -4,8 +4,10 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +19,364 @@ import (
 
 func float64Ptr(v float64) *float64 {
 	return &v
+}
+
+// insertBatchImageAllowanceTestJob 创建额度预记测试所需的最小任务记录。
+func insertBatchImageAllowanceTestJob(t *testing.T, batchID string, actorUserID, billingUserID, apiKeyID int64, teamID *int64, createdAt time.Time) {
+	t.Helper()
+	_, err := integrationDB.ExecContext(context.Background(), `
+		INSERT INTO batch_image_jobs (
+			batch_id, user_id, billing_user_id, team_id, api_key_id,
+			provider, model, item_count, estimated_cost, hold_amount, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, 'gemini', 'image-test', 1, 1, 1, $6, $6)`,
+		batchID, actorUserID, billingUserID, teamID, apiKeyID, createdAt)
+	require.NoError(t, err)
+}
+
+func TestUsageBillingRepositoryBatchImageAllowanceReserveCaptureAndRelease(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email:   fmt.Sprintf("batch-allowance-%d@example.com", time.Now().UnixNano()),
+		Balance: 10,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:      user.ID,
+		Key:         "sk-batch-allowance-" + uuid.NewString(),
+		Name:        "batch-allowance",
+		Quota:       1,
+		RateLimit5h: 1,
+		RateLimit1d: 1,
+		RateLimit7d: 1,
+	})
+
+	firstBatchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	reservedAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, firstBatchID, user.ID, user.ID, apiKey.ID, nil, reservedAt)
+	reserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(firstBatchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     firstBatchID,
+		HoldAmount:  0.8,
+		ReservedAt:  reservedAt,
+	}
+	reserveResult, err := repo.ReserveBatchImageBalance(ctx, reserveCommand)
+	require.NoError(t, err)
+	require.True(t, reserveResult.Applied)
+
+	var balance, frozen, quotaUsed, usage5h, usage1d, usage7d float64
+	var allowanceReserved bool
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 9.2, balance, 0.000001)
+	require.InDelta(t, 0.8, frozen, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT quota_used, usage_5h, usage_1d, usage_7d FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&quotaUsed, &usage5h, &usage1d, &usage7d))
+	require.InDelta(t, 0.8, quotaUsed, 0.000001)
+	require.InDelta(t, 0.8, usage5h, 0.000001)
+	require.InDelta(t, 0.8, usage1d, 0.000001)
+	require.InDelta(t, 0.8, usage7d, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT allowance_reserved FROM batch_image_jobs WHERE batch_id = $1`, firstBatchID).Scan(&allowanceReserved))
+	require.True(t, allowanceReserved)
+
+	overflowBatchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	overflowReservedAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, overflowBatchID, user.ID, user.ID, apiKey.ID, nil, overflowReservedAt)
+	_, err = repo.ReserveBatchImageBalance(ctx, &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(overflowBatchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     overflowBatchID,
+		HoldAmount:  0.3,
+		ReservedAt:  overflowReservedAt,
+	})
+	require.ErrorIs(t, err, service.ErrAPIKeyQuotaExhausted)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 9.2, balance, 0.000001)
+	require.InDelta(t, 0.8, frozen, 0.000001)
+
+	captureCommand := *reserveCommand
+	captureCommand.RequestID = service.BatchImageCaptureRequestID(firstBatchID)
+	captureCommand.ActualAmount = 0.3
+	captureCommand.AllowanceReserved = true
+	captureCommand.RequestFingerprint = ""
+	captureResult, err := repo.CaptureBatchImageBalance(ctx, &captureCommand)
+	require.NoError(t, err)
+	require.True(t, captureResult.Applied)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 9.7, balance, 0.000001)
+	require.InDelta(t, 0, frozen, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT quota_used, usage_5h FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&quotaUsed, &usage5h))
+	require.InDelta(t, 0.3, quotaUsed, 0.000001)
+	require.InDelta(t, 0.3, usage5h, 0.000001)
+
+	// 成功后任务标记会翻转为 false，重复结算仍必须命中原幂等记录。
+	retryCapture := captureCommand
+	retryCapture.AllowanceReserved = false
+	retryCapture.RequestFingerprint = ""
+	retryResult, err := repo.CaptureBatchImageBalance(ctx, &retryCapture)
+	require.NoError(t, err)
+	require.False(t, retryResult.Applied)
+
+	secondBatchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	secondReservedAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, secondBatchID, user.ID, user.ID, apiKey.ID, nil, secondReservedAt)
+	secondReserve := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(secondBatchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     secondBatchID,
+		HoldAmount:  0.7,
+		ReservedAt:  secondReservedAt,
+	}
+	_, err = repo.ReserveBatchImageBalance(ctx, secondReserve)
+	require.NoError(t, err)
+
+	releaseCommand := *secondReserve
+	releaseCommand.RequestID = service.BatchImageReleaseRequestID(secondBatchID)
+	releaseCommand.AllowanceReserved = true
+	releaseCommand.RequestFingerprint = ""
+	releaseResult, err := repo.ReleaseBatchImageBalance(ctx, &releaseCommand)
+	require.NoError(t, err)
+	require.True(t, releaseResult.Applied)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT quota_used, usage_5h, status FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&quotaUsed, &usage5h, &apiKey.Status))
+	require.InDelta(t, 0.3, quotaUsed, 0.000001)
+	require.InDelta(t, 0.3, usage5h, 0.000001)
+	require.Equal(t, service.StatusAPIKeyActive, apiKey.Status)
+}
+
+func TestUsageBillingRepositoryBatchImageMemberAllowanceSerializesConcurrentReserve(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	teamRepo := NewTeamRepository(integrationDB)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	owner := mustCreateUser(t, client, &service.User{Email: uniqueTeamTestEmail("batch-owner"), Balance: 10})
+	member := mustCreateUser(t, client, &service.User{Email: uniqueTeamTestEmail("batch-member")})
+	teamCtx, err := teamRepo.Create(ctx, "批任务并发额度团队", owner.ID, 5)
+	require.NoError(t, err)
+	token := uuid.NewString()
+	_, err = teamRepo.CreateInvitation(ctx, teamCtx.Team.ID, owner.ID, member.Email, token, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	_, err = teamRepo.ResolveInvitation(ctx, token, member.ID, member.Email, "accepted", time.Now())
+	require.NoError(t, err)
+	require.NoError(t, teamRepo.UpdateMemberLimits(ctx, teamCtx.Team.ID, member.ID, 1, 10, 30))
+	teamID := teamCtx.Team.ID
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: member.ID,
+		TeamID: &teamID,
+		Key:    "sk-batch-member-" + uuid.NewString(),
+		Name:   "batch-member",
+	})
+
+	commands := make([]*service.BatchImageBalanceHoldCommand, 2)
+	for index := range commands {
+		batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		reservedAt := time.Now().UTC()
+		insertBatchImageAllowanceTestJob(t, batchID, member.ID, owner.ID, apiKey.ID, &teamID, reservedAt)
+		commands[index] = &service.BatchImageBalanceHoldCommand{
+			RequestID:   service.BatchImageHoldRequestID(batchID),
+			APIKeyID:    apiKey.ID,
+			UserID:      owner.ID,
+			ActorUserID: member.ID,
+			TeamID:      &teamID,
+			BatchID:     batchID,
+			HoldAmount:  0.75,
+			ReservedAt:  reservedAt,
+		}
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, len(commands))
+	var waitGroup sync.WaitGroup
+	for _, command := range commands {
+		waitGroup.Add(1)
+		go func(command *service.BatchImageBalanceHoldCommand) {
+			defer waitGroup.Done()
+			<-start
+			_, reserveErr := repo.ReserveBatchImageBalance(ctx, command)
+			results <- reserveErr
+		}(command)
+	}
+	close(start)
+	waitGroup.Wait()
+	close(results)
+
+	var accepted, limited int
+	for result := range results {
+		switch {
+		case result == nil:
+			accepted++
+		case errors.Is(result, service.ErrTeamMemberDailyExceeded):
+			limited++
+		default:
+			require.NoError(t, result)
+		}
+	}
+	require.Equal(t, 1, accepted)
+	require.Equal(t, 1, limited)
+
+	var dailyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM team_memberships WHERE team_id = $1 AND user_id = $2 AND left_at IS NULL`, teamID, member.ID).Scan(&dailyUsage))
+	require.InDelta(t, 0.75, dailyUsage, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, owner.ID).Scan(&owner.Balance, &owner.FrozenBalance))
+	require.InDelta(t, 9.25, owner.Balance, 0.000001)
+	require.InDelta(t, 0.75, owner.FrozenBalance, 0.000001)
+}
+
+func TestUsageBillingRepositoryBatchImageLegacyJobChargesActualAmount(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email:   fmt.Sprintf("batch-legacy-%d@example.com", time.Now().UnixNano()),
+		Balance: 10,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:      user.ID,
+		Key:         "sk-batch-legacy-" + uuid.NewString(),
+		Name:        "batch-legacy",
+		Quota:       10,
+		RateLimit5h: 10,
+	})
+	batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	createdAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, batchID, user.ID, user.ID, apiKey.ID, nil, createdAt)
+	// 模拟升级前已经冻结余额、但任务行还没有 allowance_reserved 标记的存量任务。
+	_, err := integrationDB.ExecContext(ctx, `UPDATE users SET balance = balance - 1, frozen_balance = frozen_balance + 1 WHERE id = $1`, user.ID)
+	require.NoError(t, err)
+
+	result, err := repo.CaptureBatchImageBalance(ctx, &service.BatchImageBalanceHoldCommand{
+		RequestID:          service.BatchImageCaptureRequestID(batchID),
+		APIKeyID:           apiKey.ID,
+		UserID:             user.ID,
+		ActorUserID:        user.ID,
+		BatchID:            batchID,
+		HoldAmount:         1,
+		ActualAmount:       0.4,
+		AllowanceReserved:  false,
+		ReservedAt:         createdAt,
+		RequestPayloadHash: "legacy-job",
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	var balance, frozen, quotaUsed, usage5h float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, user.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 9.6, balance, 0.000001)
+	require.InDelta(t, 0, frozen, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT quota_used, usage_5h FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&quotaUsed, &usage5h))
+	require.InDelta(t, 0.4, quotaUsed, 0.000001)
+	require.InDelta(t, 0.4, usage5h, 0.000001)
+}
+
+func TestUsageBillingRepositoryBatchImageReleaseAfterKeyDeletedAndMemberLeft(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	teamRepo := NewTeamRepository(integrationDB)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	owner := mustCreateUser(t, client, &service.User{Email: uniqueTeamTestEmail("release-owner"), Balance: 10})
+	member := mustCreateUser(t, client, &service.User{Email: uniqueTeamTestEmail("release-member")})
+	teamCtx, err := teamRepo.Create(ctx, "离队退款团队", owner.ID, 5)
+	require.NoError(t, err)
+	token := uuid.NewString()
+	_, err = teamRepo.CreateInvitation(ctx, teamCtx.Team.ID, owner.ID, member.Email, token, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	_, err = teamRepo.ResolveInvitation(ctx, token, member.ID, member.Email, "accepted", time.Now())
+	require.NoError(t, err)
+	require.NoError(t, teamRepo.UpdateMemberLimits(ctx, teamCtx.Team.ID, member.ID, 2, 5, 10))
+	teamID := teamCtx.Team.ID
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: member.ID,
+		TeamID: &teamID,
+		Key:    "sk-batch-release-" + uuid.NewString(),
+		Name:   "batch-release",
+		Quota:  2,
+	})
+	batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	reservedAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, batchID, member.ID, owner.ID, apiKey.ID, &teamID, reservedAt)
+	reserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(batchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      owner.ID,
+		ActorUserID: member.ID,
+		TeamID:      &teamID,
+		BatchID:     batchID,
+		HoldAmount:  0.5,
+		ReservedAt:  reservedAt,
+	}
+	_, err = repo.ReserveBatchImageBalance(ctx, reserveCommand)
+	require.NoError(t, err)
+	require.NoError(t, teamRepo.RemoveMember(ctx, teamID, member.ID, time.Now()))
+	_, err = integrationDB.ExecContext(ctx, `UPDATE api_keys SET deleted_at = NOW(), status = 'disabled' WHERE id = $1`, apiKey.ID)
+	require.NoError(t, err)
+
+	releaseCommand := *reserveCommand
+	releaseCommand.RequestID = service.BatchImageReleaseRequestID(batchID)
+	releaseCommand.AllowanceReserved = true
+	releaseCommand.RequestFingerprint = ""
+	result, err := repo.ReleaseBatchImageBalance(ctx, &releaseCommand)
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	var balance, frozen, dailyUsage float64
+	var allowanceReserved bool
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id = $1`, owner.ID).Scan(&balance, &frozen))
+	require.InDelta(t, 10, balance, 0.000001)
+	require.InDelta(t, 0, frozen, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT daily_usage_usd FROM team_memberships WHERE team_id = $1 AND user_id = $2`, teamID, member.ID).Scan(&dailyUsage))
+	require.InDelta(t, 0, dailyUsage, 0.000001)
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT allowance_reserved FROM batch_image_jobs WHERE batch_id = $1`, batchID).Scan(&allowanceReserved))
+	require.False(t, allowanceReserved)
+}
+
+func TestUsageBillingRepositoryBatchImageReleaseKeepsNewWindowConservative(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	user := mustCreateUser(t, client, &service.User{
+		Email:   fmt.Sprintf("batch-window-%d@example.com", time.Now().UnixNano()),
+		Balance: 10,
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID:      user.ID,
+		Key:         "sk-batch-window-" + uuid.NewString(),
+		Name:        "batch-window",
+		Quota:       2,
+		RateLimit5h: 2,
+	})
+	batchID := "imgbatch_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	reservedAt := time.Now().UTC()
+	insertBatchImageAllowanceTestJob(t, batchID, user.ID, user.ID, apiKey.ID, nil, reservedAt)
+	reserveCommand := &service.BatchImageBalanceHoldCommand{
+		RequestID:   service.BatchImageHoldRequestID(batchID),
+		APIKeyID:    apiKey.ID,
+		UserID:      user.ID,
+		ActorUserID: user.ID,
+		BatchID:     batchID,
+		HoldAmount:  0.5,
+		ReservedAt:  reservedAt,
+	}
+	_, err := repo.ReserveBatchImageBalance(ctx, reserveCommand)
+	require.NoError(t, err)
+	// 模拟额度窗口已经滚动，新窗口中的 0.5 不能被旧任务退款减掉。
+	_, err = integrationDB.ExecContext(ctx, `UPDATE api_keys SET window_5h_start = $2, usage_5h = 0.5 WHERE id = $1`, apiKey.ID, reservedAt.Add(6*time.Hour))
+	require.NoError(t, err)
+
+	releaseCommand := *reserveCommand
+	releaseCommand.RequestID = service.BatchImageReleaseRequestID(batchID)
+	releaseCommand.AllowanceReserved = true
+	releaseCommand.RequestFingerprint = ""
+	_, err = repo.ReleaseBatchImageBalance(ctx, &releaseCommand)
+	require.NoError(t, err)
+
+	var quotaUsed, usage5h float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT quota_used, usage_5h FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&quotaUsed, &usage5h))
+	require.InDelta(t, 0, quotaUsed, 0.000001)
+	require.InDelta(t, 0.5, usage5h, 0.000001)
 }
 
 func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {

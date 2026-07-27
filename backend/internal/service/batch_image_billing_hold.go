@@ -27,6 +27,17 @@ func BatchImageReleaseRequestID(batchID string) string {
 	return batchImageReleaseRequestPrefix + strings.TrimSpace(batchID)
 }
 
+// batchImageBillingUserID 返回余额实际归属用户，兼容旧任务未写付款人的情况。
+func batchImageBillingUserID(job *BatchImageJob) int64 {
+	if job == nil {
+		return 0
+	}
+	if job.BillingUserID > 0 {
+		return job.BillingUserID
+	}
+	return job.UserID
+}
+
 func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmount float64, payloadHash string) (*BatchImageBalanceHoldCommand, error) {
 	if job == nil {
 		return nil, ErrBatchImageBillingHoldFailed
@@ -44,10 +55,7 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 	if actualAmount < 0 {
 		actualAmount = 0
 	}
-	billingUserID := job.BillingUserID
-	if billingUserID <= 0 {
-		billingUserID = job.UserID
-	}
+	billingUserID := batchImageBillingUserID(job)
 	return &BatchImageBalanceHoldCommand{
 		RequestID:          requestID,
 		APIKeyID:           *job.APIKeyID,
@@ -57,6 +65,8 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 		BatchID:            job.BatchID,
 		HoldAmount:         holdAmount,
 		ActualAmount:       actualAmount,
+		AllowanceReserved:  job.AllowanceReserved,
+		ReservedAt:         job.CreatedAt,
 		RequestPayloadHash: strings.TrimSpace(payloadHash),
 	}, nil
 }
@@ -76,8 +86,13 @@ func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 		if errors.Is(err, ErrBatchImageInsufficientBalance) {
 			return ErrBatchImageInsufficientBalance
 		}
+		if errors.Is(err, ErrAPIKeyQuotaExhausted) || errors.Is(err, ErrAPIKeyRateLimit5hExceeded) || errors.Is(err, ErrAPIKeyRateLimit1dExceeded) || errors.Is(err, ErrAPIKeyRateLimit7dExceeded) ||
+			errors.Is(err, ErrTeamMemberDailyExceeded) || errors.Is(err, ErrTeamMemberWeeklyExceeded) || errors.Is(err, ErrTeamMemberMonthlyExceeded) {
+			return err
+		}
 		return ErrBatchImageBillingHoldFailed.WithCause(err)
 	}
+	job.AllowanceReserved = true
 	return nil
 }
 
@@ -92,6 +107,7 @@ func captureBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 	if _, err := repo.CaptureBatchImageBalance(ctx, cmd); err != nil {
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
+	job.AllowanceReserved = false
 	return nil
 }
 
@@ -118,5 +134,6 @@ func releaseBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 		}
 		return ErrBatchImageBillingHoldFailed.WithCause(err)
 	}
+	job.AllowanceReserved = false
 	return nil
 }

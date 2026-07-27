@@ -122,9 +122,11 @@ type BatchImageJob struct {
 	FailCount      int
 	CancelledCount int
 
-	EstimatedCost           float64
-	HoldAmount              *float64
-	ActualCost              *float64
+	EstimatedCost float64
+	HoldAmount    *float64
+	ActualCost    *float64
+	// AllowanceReserved 表示预计金额已经计入 Key 和团队成员额度。
+	AllowanceReserved       bool
 	BaseUnitPrice           float64
 	GroupRateMultiplier     float64
 	AccountRateMultiplier   float64

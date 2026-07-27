@@ -156,7 +156,7 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		}
 		return nil, err
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateAuthCache(ctx, batchImageBillingUserID(job))
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -230,7 +230,7 @@ func (s *BatchImageSettlementService) failExhaustedSettlement(ctx context.Contex
 		}
 		return ErrBatchImageSettlementBillingFailed.WithCause(err)
 	}
-	s.invalidateAuthCache(ctx, job.UserID)
+	s.invalidateAuthCache(ctx, batchImageBillingUserID(job))
 	msg := strings.TrimSpace(message)
 	if msg == "" {
 		msg = "settlement billing retry limit reached"
