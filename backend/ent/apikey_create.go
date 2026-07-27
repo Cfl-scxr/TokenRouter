@@ -88,6 +88,20 @@ func (_c *APIKeyCreate) SetNillableTeamID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (_c *APIKeyCreate) SetTeamOwnerDisabled(v bool) *APIKeyCreate {
+	_c.mutation.SetTeamOwnerDisabled(v)
+	return _c
+}
+
+// SetNillableTeamOwnerDisabled sets the "team_owner_disabled" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableTeamOwnerDisabled(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetTeamOwnerDisabled(*v)
+	}
+	return _c
+}
+
 // SetKey sets the "key" field.
 func (_c *APIKeyCreate) SetKey(v string) *APIKeyCreate {
 	_c.mutation.SetKey(v)
@@ -473,6 +487,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.TeamOwnerDisabled(); !ok {
+		v := apikey.DefaultTeamOwnerDisabled
+		_c.mutation.SetTeamOwnerDisabled(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -534,6 +552,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "APIKey.user_id"`)}
+	}
+	if _, ok := _c.mutation.TeamOwnerDisabled(); !ok {
+		return &ValidationError{Name: "team_owner_disabled", err: errors.New(`ent: missing required field "APIKey.team_owner_disabled"`)}
 	}
 	if _, ok := _c.mutation.Key(); !ok {
 		return &ValidationError{Name: "key", err: errors.New(`ent: missing required field "APIKey.key"`)}
@@ -638,6 +659,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(apikey.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
+	}
+	if value, ok := _c.mutation.TeamOwnerDisabled(); ok {
+		_spec.SetField(apikey.FieldTeamOwnerDisabled, field.TypeBool, value)
+		_node.TeamOwnerDisabled = value
 	}
 	if value, ok := _c.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
@@ -907,6 +932,18 @@ func (u *APIKeyUpsert) UpdateTeamID() *APIKeyUpsert {
 // ClearTeamID clears the value of the "team_id" field.
 func (u *APIKeyUpsert) ClearTeamID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldTeamID)
+	return u
+}
+
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (u *APIKeyUpsert) SetTeamOwnerDisabled(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldTeamOwnerDisabled, v)
+	return u
+}
+
+// UpdateTeamOwnerDisabled sets the "team_owner_disabled" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateTeamOwnerDisabled() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldTeamOwnerDisabled)
 	return u
 }
 
@@ -1430,6 +1467,20 @@ func (u *APIKeyUpsertOne) UpdateTeamID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearTeamID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearTeamID()
+	})
+}
+
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (u *APIKeyUpsertOne) SetTeamOwnerDisabled(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetTeamOwnerDisabled(v)
+	})
+}
+
+// UpdateTeamOwnerDisabled sets the "team_owner_disabled" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateTeamOwnerDisabled() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateTeamOwnerDisabled()
 	})
 }
 
@@ -2187,6 +2238,20 @@ func (u *APIKeyUpsertBulk) UpdateTeamID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearTeamID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearTeamID()
+	})
+}
+
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (u *APIKeyUpsertBulk) SetTeamOwnerDisabled(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetTeamOwnerDisabled(v)
+	})
+}
+
+// UpdateTeamOwnerDisabled sets the "team_owner_disabled" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateTeamOwnerDisabled() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateTeamOwnerDisabled()
 	})
 }
 

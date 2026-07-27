@@ -33,7 +33,7 @@
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
-              <ScopeDropdown v-model="scope" @change="onScopeChange" />
+              <ScopeDropdown v-if="teamFeatureEnabled" v-model="scope" @change="onScopeChange" />
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click.stop="showColumnDropdown = !showColumnDropdown"
@@ -1386,6 +1386,7 @@ const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
+const teamFeatureEnabled = computed(() => publicSettings.value?.team_enabled !== false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
@@ -1633,7 +1634,7 @@ const loadGroups = async () => {
 
 const loadUserGroupRates = async () => {
   try {
-    userGroupRates.value = await userGroupsAPI.getUserGroupRates()
+    userGroupRates.value = await userGroupsAPI.getUserGroupRates(scope.value)
   } catch (error) {
     console.error('Failed to load user group rates:', error)
   }
@@ -1642,6 +1643,7 @@ const loadUserGroupRates = async () => {
 const loadPublicSettings = async () => {
   try {
     publicSettings.value = await authAPI.getPublicSettings()
+    if (!teamFeatureEnabled.value && scope.value === 'team') scope.value = 'personal'
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -1997,7 +1999,7 @@ const submitKeyForm = async (
 const onScopeChange = () => {
   pagination.value.page = 1
   filterGroupId.value = ''
-  void Promise.all([loadApiKeys(), loadGroups()])
+  void Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates()])
 }
 
 const handleSubmit = async () => {
@@ -2228,14 +2230,12 @@ function formatResetTime(resetAt: string | null): string {
   return `${mins}m`
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadSavedColumns()
-  loadApiKeys()
-  loadGroups()
-  loadUserGroupRates()
-  loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
+  await loadPublicSettings()
+  await Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates()])
 })
 
 onUnmounted(() => {

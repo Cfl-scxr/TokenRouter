@@ -25,6 +25,8 @@ const (
 	FieldUserID = "user_id"
 	// FieldTeamID holds the string denoting the team_id field in the database.
 	FieldTeamID = "team_id"
+	// FieldTeamOwnerDisabled holds the string denoting the team_owner_disabled field in the database.
+	FieldTeamOwnerDisabled = "team_owner_disabled"
 	// FieldKey holds the string denoting the key field in the database.
 	FieldKey = "key"
 	// FieldName holds the string denoting the name field in the database.
@@ -121,6 +123,7 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldUserID,
 	FieldTeamID,
+	FieldTeamOwnerDisabled,
 	FieldKey,
 	FieldName,
 	FieldGroupID,
@@ -171,6 +174,8 @@ var (
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
 	UpdateDefaultUpdatedAt func() time.Time
+	// DefaultTeamOwnerDisabled holds the default value on creation for the "team_owner_disabled" field.
+	DefaultTeamOwnerDisabled bool
 	// KeyValidator is a validator for the "key" field. It is called by the builders before save.
 	KeyValidator func(string) error
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
@@ -236,6 +241,11 @@ func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 // ByTeamID orders the results by the team_id field.
 func ByTeamID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTeamID, opts...).ToFunc()
+}
+
+// ByTeamOwnerDisabled orders the results by the team_owner_disabled field.
+func ByTeamOwnerDisabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTeamOwnerDisabled, opts...).ToFunc()
 }
 
 // ByKey orders the results by the key field.

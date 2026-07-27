@@ -51,6 +51,8 @@ func (BatchImageJob) Fields() []ent.Field {
 		field.Float("estimated_cost").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(0),
 		field.Float("hold_amount").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("actual_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+		// 标记当前任务是否已按预计金额预记 Key 和团队成员额度。
+		field.Bool("allowance_reserved").Default(false),
 		field.String("currency").MaxLen(16).Default("USD"),
 		field.String("hold_id").Optional().Nillable().MaxLen(128),
 		field.String("idempotency_key").Optional().Nillable().MaxLen(255),

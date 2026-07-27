@@ -290,6 +290,20 @@ func (_c *BatchImageJobCreate) SetNillableActualCost(v *float64) *BatchImageJobC
 	return _c
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_c *BatchImageJobCreate) SetAllowanceReserved(v bool) *BatchImageJobCreate {
+	_c.mutation.SetAllowanceReserved(v)
+	return _c
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableAllowanceReserved(v *bool) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetAllowanceReserved(*v)
+	}
+	return _c
+}
+
 // SetCurrency sets the "currency" field.
 func (_c *BatchImageJobCreate) SetCurrency(v string) *BatchImageJobCreate {
 	_c.mutation.SetCurrency(v)
@@ -629,6 +643,10 @@ func (_c *BatchImageJobCreate) defaults() {
 		v := batchimagejob.DefaultEstimatedCost
 		_c.mutation.SetEstimatedCost(v)
 	}
+	if _, ok := _c.mutation.AllowanceReserved(); !ok {
+		v := batchimagejob.DefaultAllowanceReserved
+		_c.mutation.SetAllowanceReserved(v)
+	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		v := batchimagejob.DefaultCurrency
 		_c.mutation.SetCurrency(v)
@@ -735,6 +753,9 @@ func (_c *BatchImageJobCreate) check() error {
 	}
 	if _, ok := _c.mutation.EstimatedCost(); !ok {
 		return &ValidationError{Name: "estimated_cost", err: errors.New(`ent: missing required field "BatchImageJob.estimated_cost"`)}
+	}
+	if _, ok := _c.mutation.AllowanceReserved(); !ok {
+		return &ValidationError{Name: "allowance_reserved", err: errors.New(`ent: missing required field "BatchImageJob.allowance_reserved"`)}
 	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		return &ValidationError{Name: "currency", err: errors.New(`ent: missing required field "BatchImageJob.currency"`)}
@@ -895,6 +916,10 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ActualCost(); ok {
 		_spec.SetField(batchimagejob.FieldActualCost, field.TypeFloat64, value)
 		_node.ActualCost = &value
+	}
+	if value, ok := _c.mutation.AllowanceReserved(); ok {
+		_spec.SetField(batchimagejob.FieldAllowanceReserved, field.TypeBool, value)
+		_node.AllowanceReserved = value
 	}
 	if value, ok := _c.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)
@@ -1415,6 +1440,18 @@ func (u *BatchImageJobUpsert) AddActualCost(v float64) *BatchImageJobUpsert {
 // ClearActualCost clears the value of the "actual_cost" field.
 func (u *BatchImageJobUpsert) ClearActualCost() *BatchImageJobUpsert {
 	u.SetNull(batchimagejob.FieldActualCost)
+	return u
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *BatchImageJobUpsert) SetAllowanceReserved(v bool) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldAllowanceReserved, v)
+	return u
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateAllowanceReserved() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldAllowanceReserved)
 	return u
 }
 
@@ -2248,6 +2285,20 @@ func (u *BatchImageJobUpsertOne) UpdateActualCost() *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) ClearActualCost() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearActualCost()
+	})
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *BatchImageJobUpsertOne) SetAllowanceReserved(v bool) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetAllowanceReserved(v)
+	})
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateAllowanceReserved() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateAllowanceReserved()
 	})
 }
 
@@ -3302,6 +3353,20 @@ func (u *BatchImageJobUpsertBulk) UpdateActualCost() *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) ClearActualCost() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearActualCost()
+	})
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *BatchImageJobUpsertBulk) SetAllowanceReserved(v bool) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetAllowanceReserved(v)
+	})
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateAllowanceReserved() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateAllowanceReserved()
 	})
 }
 

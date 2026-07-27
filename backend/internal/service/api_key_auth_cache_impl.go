@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 24 // v24：认证快照包含团队付款人、成员和限额
+const apiKeyAuthSnapshotVersion = 25 // v25：认证快照包含 Owner 锁定和 Key 创建时间
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -324,11 +324,21 @@ func (s *APIKeyService) hydrateTeamAPIKey(ctx context.Context, apiKey *APIKey, e
 	if err != nil || apiKey == nil || apiKey.TeamID == nil {
 		return apiKey, err
 	}
+	// 禁用 Key 必须先由中间件返回稳定的 401，不能因离队后无法加载 Membership 变成 500。
+	if !apiKey.IsActive() && apiKey.Status != StatusAPIKeyExpired && apiKey.Status != StatusAPIKeyQuotaExhausted {
+		return apiKey, nil
+	}
+	if s.cfg != nil && !s.cfg.Team.Enabled {
+		return nil, ErrTeamFeatureDisabled
+	}
 	if s.teamRepo == nil {
 		return nil, ErrTeamFeatureDisabled
 	}
 	teamCtx, err := s.teamRepo.GetContextByUserID(ctx, apiKey.UserID)
-	if err != nil || teamCtx.Team.ID != *apiKey.TeamID {
+	if err != nil || teamCtx == nil || teamCtx.Team == nil || teamCtx.Membership == nil || teamCtx.Team.ID != *apiKey.TeamID {
+		return nil, ErrTeamMembershipRequired
+	}
+	if teamCtx.Membership.JoinedAt.After(apiKey.CreatedAt) {
 		return nil, ErrTeamMembershipRequired
 	}
 	actor, err := s.userRepo.GetByID(ctx, apiKey.UserID)
@@ -371,6 +381,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		APIKeyID:                              apiKey.ID,
 		UserID:                                apiKey.UserID,
 		TeamID:                                apiKey.TeamID,
+		TeamOwnerDisabled:                     apiKey.TeamOwnerDisabled,
+		CreatedAt:                             apiKey.CreatedAt,
 		GroupID:                               apiKey.GroupID,
 		Name:                                  apiKey.Name,
 		Status:                                apiKey.Status,
@@ -474,6 +486,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		ID:                                    snapshot.APIKeyID,
 		UserID:                                snapshot.UserID,
 		TeamID:                                snapshot.TeamID,
+		TeamOwnerDisabled:                     snapshot.TeamOwnerDisabled,
+		CreatedAt:                             snapshot.CreatedAt,
 		GroupID:                               snapshot.GroupID,
 		Key:                                   key,
 		Name:                                  snapshot.Name,

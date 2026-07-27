@@ -93,6 +93,20 @@ func (_u *APIKeyUpdate) ClearTeamID() *APIKeyUpdate {
 	return _u
 }
 
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (_u *APIKeyUpdate) SetTeamOwnerDisabled(v bool) *APIKeyUpdate {
+	_u.mutation.SetTeamOwnerDisabled(v)
+	return _u
+}
+
+// SetNillableTeamOwnerDisabled sets the "team_owner_disabled" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableTeamOwnerDisabled(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetTeamOwnerDisabled(*v)
+	}
+	return _u
+}
+
 // SetKey sets the "key" field.
 func (_u *APIKeyUpdate) SetKey(v string) *APIKeyUpdate {
 	_u.mutation.SetKey(v)
@@ -720,6 +734,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.TeamOwnerDisabled(); ok {
+		_spec.SetField(apikey.FieldTeamOwnerDisabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)
 	}
@@ -1065,6 +1082,20 @@ func (_u *APIKeyUpdateOne) SetNillableTeamID(v *int64) *APIKeyUpdateOne {
 // ClearTeamID clears the value of the "team_id" field.
 func (_u *APIKeyUpdateOne) ClearTeamID() *APIKeyUpdateOne {
 	_u.mutation.ClearTeamID()
+	return _u
+}
+
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (_u *APIKeyUpdateOne) SetTeamOwnerDisabled(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetTeamOwnerDisabled(v)
+	return _u
+}
+
+// SetNillableTeamOwnerDisabled sets the "team_owner_disabled" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableTeamOwnerDisabled(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetTeamOwnerDisabled(*v)
+	}
 	return _u
 }
 
@@ -1724,6 +1755,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(apikey.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.TeamOwnerDisabled(); ok {
+		_spec.SetField(apikey.FieldTeamOwnerDisabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Key(); ok {
 		_spec.SetField(apikey.FieldKey, field.TypeString, value)

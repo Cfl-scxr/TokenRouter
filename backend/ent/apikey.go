@@ -31,6 +31,8 @@ type APIKey struct {
 	UserID int64 `json:"user_id,omitempty"`
 	// TeamID holds the value of the "team_id" field.
 	TeamID *int64 `json:"team_id,omitempty"`
+	// TeamOwnerDisabled holds the value of the "team_owner_disabled" field.
+	TeamOwnerDisabled bool `json:"team_owner_disabled,omitempty"`
 	// Key holds the value of the "key" field.
 	Key string `json:"key,omitempty"`
 	// Name holds the value of the "name" field.
@@ -149,7 +151,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
-		case apikey.FieldFallbackToDefaultGroupWhenUnavailable:
+		case apikey.FieldTeamOwnerDisabled, apikey.FieldFallbackToDefaultGroupWhenUnavailable:
 			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -211,6 +213,12 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TeamID = new(int64)
 				*_m.TeamID = value.Int64
+			}
+		case apikey.FieldTeamOwnerDisabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field team_owner_disabled", values[i])
+			} else if value.Valid {
+				_m.TeamOwnerDisabled = value.Bool
 			}
 		case apikey.FieldKey:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -442,6 +450,9 @@ func (_m *APIKey) String() string {
 		builder.WriteString("team_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("team_owner_disabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TeamOwnerDisabled))
 	builder.WriteString(", ")
 	builder.WriteString("key=")
 	builder.WriteString(_m.Key)

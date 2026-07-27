@@ -651,6 +651,7 @@ const ChevronDownIcon = {
 
 // 批量图片入口还需要用户 API Key 和分组权限同时满足。
 const flagBatchImageAccess = () => canUseBatchImage.value
+const flagTeamAccess = () => appStore.cachedPublicSettings?.team_enabled !== false
 
 // 普通用户导航项。
 const userNavItems = computed((): NavItem[] => {
@@ -659,7 +660,7 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon },
     { path: '/usage-ranking', label: t('nav.usageRanking'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true },
+    { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagTeamAccess },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/data-sharing', label: t('nav.dataSharing'), icon: DatabaseIcon, hideInSimpleMode: true },
@@ -714,7 +715,7 @@ const personalNavItems = computed((): NavItem[] => {
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon },
     { path: '/usage-ranking', label: t('nav.usageRanking'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true },
+    { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagTeamAccess },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/data-sharing', label: t('nav.dataSharing'), icon: DatabaseIcon, hideInSimpleMode: true },

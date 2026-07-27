@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,7 +36,10 @@ var (
 	ErrTeamInvitationInvalid     = infraerrors.BadRequest("TEAM_INVITATION_INVALID", "团队邀请无效")
 	ErrTeamInvitationExpired     = infraerrors.BadRequest("TEAM_INVITATION_EXPIRED", "团队邀请已过期")
 	ErrTeamInvitationEmail       = infraerrors.Forbidden("TEAM_INVITATION_EMAIL_MISMATCH", "当前账号邮箱与受邀邮箱不一致")
+	ErrTeamInvitationRateLimited = infraerrors.TooManyRequests("TEAM_INVITATION_RATE_LIMITED", "团队邀请发送过于频繁")
+	ErrTeamInvitationUnavailable = infraerrors.ServiceUnavailable("TEAM_INVITATION_UNAVAILABLE", "团队邀请服务暂时不可用")
 	ErrTeamOwnerCannotLeave      = infraerrors.Conflict("TEAM_OWNER_CANNOT_LEAVE", "团队所有者必须先转让所有权或解散团队")
+	ErrTeamOwnerTransferRequired = infraerrors.Conflict("TEAM_OWNER_TRANSFER_REQUIRED", "删除团队所有者前必须先转让所有权或解散团队")
 	ErrTeamTransferInvalid       = infraerrors.BadRequest("TEAM_TRANSFER_INVALID", "所有权转让无效")
 	ErrTeamTransferExpired       = infraerrors.BadRequest("TEAM_TRANSFER_EXPIRED", "所有权转让已过期")
 	ErrTeamSuspended             = infraerrors.Forbidden("TEAM_SUSPENDED", "团队已暂停")
@@ -99,6 +103,11 @@ type TeamInvitation struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+// TeamInvitationLimiter 对邀请和重发执行跨实例邮件频率限制。
+type TeamInvitationLimiter interface {
+	CheckAndRecord(ctx context.Context, teamID int64, email string) (allowed bool, retryAfter time.Duration, err error)
+}
+
 // TeamOwnershipTransfer 表示待目标成员确认的所有权转让。
 type TeamOwnershipTransfer struct {
 	ID         int64      `json:"id"`
@@ -116,6 +125,13 @@ type TeamAdminListItem struct {
 	Team
 	OwnerUserID int64  `json:"owner_user_id"`
 	OwnerEmail  string `json:"owner_email"`
+}
+
+// TeamAdminUpdate 表示管理员一次 PATCH 中经过完整校验的可选字段。
+type TeamAdminUpdate struct {
+	Name        *string
+	Status      *string
+	MemberLimit *int
 }
 
 // TeamUsageQuery 描述团队用量的时间范围与可选成员、Key 筛选条件。
@@ -144,6 +160,14 @@ type TeamUsageSummary struct {
 	Daily        []TeamUsageDaily `json:"daily"`
 }
 
+// TeamMemberUsageSeries 同时覆盖当前成员和查询范围内存在历史消费的离队成员。
+type TeamMemberUsageSeries struct {
+	ActorUserID int64            `json:"actor_user_id"`
+	DisplayName string           `json:"display_name"`
+	Status      string           `json:"status"`
+	Summary     TeamUsageSummary `json:"summary"`
+}
+
 // TeamUsageLogItem 是团队页面可展示的脱敏用量明细。
 type TeamUsageLogItem struct {
 	ID           int64     `json:"id"`
@@ -169,17 +193,18 @@ type TeamUsagePage struct {
 
 // TeamAPIKeyItem 是团队管理视图使用的密钥元数据，永不序列化完整密钥。
 type TeamAPIKeyItem struct {
-	ID         int64      `json:"id"`
-	UserID     int64      `json:"user_id"`
-	UserEmail  string     `json:"user_email"`
-	Name       string     `json:"name"`
-	MaskedKey  string     `json:"masked_key"`
-	Status     string     `json:"status"`
-	GroupID    *int64     `json:"group_id"`
-	GroupName  string     `json:"group_name"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	Key        string     `json:"-"`
+	ID            int64      `json:"id"`
+	UserID        int64      `json:"user_id"`
+	UserEmail     string     `json:"user_email"`
+	Name          string     `json:"name"`
+	MaskedKey     string     `json:"masked_key"`
+	Status        string     `json:"status"`
+	OwnerDisabled bool       `json:"team_owner_disabled"`
+	GroupID       *int64     `json:"group_id"`
+	GroupName     string     `json:"group_name"`
+	LastUsedAt    *time.Time `json:"last_used_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	Key           string     `json:"-"`
 }
 
 // TeamRepository 定义团队生命周期所需的原子仓储操作。
@@ -192,6 +217,7 @@ type TeamRepository interface {
 	ListMembers(ctx context.Context, teamID int64) ([]TeamMembership, error)
 	CreateInvitation(ctx context.Context, teamID, inviterUserID int64, email, tokenHash string, expiresAt time.Time) (*TeamInvitation, error)
 	ListInvitations(ctx context.Context, teamID int64) ([]TeamInvitation, error)
+	GetInvitationByID(ctx context.Context, teamID, invitationID int64) (*TeamInvitation, error)
 	ReissueInvitation(ctx context.Context, teamID, invitationID int64, tokenHash string, expiresAt time.Time) (*TeamInvitation, error)
 	RevokeInvitation(ctx context.Context, teamID, invitationID int64) error
 	ResolveInvitation(ctx context.Context, tokenHash string, userID int64, normalizedEmail, resolution string, now time.Time) (*TeamContext, error)
@@ -204,27 +230,31 @@ type TeamRepository interface {
 	Dissolve(ctx context.Context, teamID int64, now time.Time) error
 	SetStatus(ctx context.Context, teamID int64, status string) error
 	SetMemberLimit(ctx context.Context, teamID int64, limit int) error
+	UpdateAdmin(ctx context.Context, teamID int64, update TeamAdminUpdate) error
 	ForceTransfer(ctx context.Context, teamID, toUserID int64, now time.Time) (*TeamContext, error)
 	ListAdmin(ctx context.Context) ([]TeamAdminListItem, error)
 	ListTeamKeyStrings(ctx context.Context, teamID int64) ([]string, error)
 	GetUsageSummary(ctx context.Context, teamID int64, query TeamUsageQuery) (*TeamUsageSummary, error)
+	ListMemberUsageSeries(ctx context.Context, teamID int64, query TeamUsageQuery) ([]TeamMemberUsageSeries, error)
 	ListUsageLogs(ctx context.Context, teamID int64, query TeamUsageQuery) ([]TeamUsageLogItem, int64, error)
 	ListTeamKeys(ctx context.Context, teamID int64, actorUserID *int64) ([]TeamAPIKeyItem, error)
 	DisableTeamKey(ctx context.Context, teamID, keyID int64, actorUserID *int64) (string, error)
+	EnableTeamKey(ctx context.Context, teamID, keyID int64, actorUserID *int64) (string, error)
 	DeleteTeamKey(ctx context.Context, teamID, keyID int64, actorUserID *int64) (string, error)
 }
 
 // TeamService 编排团队权限、令牌、邮件和缓存失效。
 type TeamService struct {
-	repo         TeamRepository
-	userRepo     UserRepository
-	emailService *EmailService
-	apiKeyCache  APIKeyCache
-	cfg          *config.Config
+	repo          TeamRepository
+	userRepo      UserRepository
+	emailService  *EmailService
+	apiKeyCache   APIKeyCache
+	inviteLimiter TeamInvitationLimiter
+	cfg           *config.Config
 }
 
-func NewTeamService(repo TeamRepository, userRepo UserRepository, emailService *EmailService, apiKeyCache APIKeyCache, cfg *config.Config) *TeamService {
-	return &TeamService{repo: repo, userRepo: userRepo, emailService: emailService, apiKeyCache: apiKeyCache, cfg: cfg}
+func NewTeamService(repo TeamRepository, userRepo UserRepository, emailService *EmailService, apiKeyCache APIKeyCache, inviteLimiter TeamInvitationLimiter, cfg *config.Config) *TeamService {
+	return &TeamService{repo: repo, userRepo: userRepo, emailService: emailService, apiKeyCache: apiKeyCache, inviteLimiter: inviteLimiter, cfg: cfg}
 }
 
 func (s *TeamService) ensureEnabled() error {
@@ -253,6 +283,9 @@ func (s *TeamService) Create(ctx context.Context, userID int64, name string) (*T
 }
 
 func (s *TeamService) AdminCreate(ctx context.Context, ownerUserID int64, name string, memberLimit *int) (*TeamContext, error) {
+	if err := s.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	name, err := normalizeTeamName(name)
 	if err != nil {
 		return nil, err
@@ -357,6 +390,19 @@ func (s *TeamService) GetUsageSummary(ctx context.Context, userID int64, query T
 	return s.repo.GetUsageSummary(ctx, teamCtx.Team.ID, query)
 }
 
+// ListMemberUsageSeries 返回 Owner 的全团队成员趋势，Member 只能读取自己。
+func (s *TeamService) ListMemberUsageSeries(ctx context.Context, userID int64, query TeamUsageQuery) ([]TeamMemberUsageSeries, error) {
+	teamCtx, err := s.requireMembership(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	query = normalizeTeamUsageQuery(query)
+	if teamCtx.Membership.Role != TeamRoleOwner {
+		query.ActorUserID = &userID
+	}
+	return s.repo.ListMemberUsageSeries(ctx, teamCtx.Team.ID, query)
+}
+
 // ListUsageLogs 返回当前成员有权查看的团队 Key 用量明细。
 func (s *TeamService) ListUsageLogs(ctx context.Context, userID int64, query TeamUsageQuery) (*TeamUsagePage, error) {
 	teamCtx, err := s.requireMembership(ctx, userID)
@@ -376,7 +422,7 @@ func (s *TeamService) ListUsageLogs(ctx context.Context, userID int64, query Tea
 
 // ListTeamKeys 返回角色允许查看的团队 Key，并统一生成脱敏展示值。
 func (s *TeamService) ListTeamKeys(ctx context.Context, userID int64) ([]TeamAPIKeyItem, error) {
-	teamCtx, err := s.requireMembership(ctx, userID)
+	teamCtx, err := s.requireMembershipIncludingSuspended(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -392,13 +438,27 @@ func (s *TeamService) ListTeamKeys(ctx context.Context, userID int64) ([]TeamAPI
 	return items, nil
 }
 
-// DisableTeamKey 允许 Owner 禁用任意团队 Key，Member 只能禁用自己的团队 Key。
+// DisableTeamKey 由 Owner 锁定任意团队 Key，Member 的普通更新不能解除锁定。
 func (s *TeamService) DisableTeamKey(ctx context.Context, userID, keyID int64) error {
-	teamCtx, err := s.requireMembership(ctx, userID)
+	teamCtx, err := s.requireOwnerIncludingSuspended(ctx, userID)
 	if err != nil {
 		return err
 	}
-	key, err := s.repo.DisableTeamKey(ctx, teamCtx.Team.ID, keyID, teamKeyActorFilter(teamCtx, userID))
+	key, err := s.repo.DisableTeamKey(ctx, teamCtx.Team.ID, keyID, nil)
+	if err != nil {
+		return err
+	}
+	s.invalidateKey(ctx, key)
+	return nil
+}
+
+// EnableTeamKey 仅允许 Owner 清除团队锁定并恢复 Key。
+func (s *TeamService) EnableTeamKey(ctx context.Context, userID, keyID int64) error {
+	teamCtx, err := s.requireOwnerIncludingSuspended(ctx, userID)
+	if err != nil {
+		return err
+	}
+	key, err := s.repo.EnableTeamKey(ctx, teamCtx.Team.ID, keyID, nil)
 	if err != nil {
 		return err
 	}
@@ -408,11 +468,11 @@ func (s *TeamService) DisableTeamKey(ctx context.Context, userID, keyID int64) e
 
 // DeleteTeamKey 软删除团队 Key 并立即清除认证缓存。
 func (s *TeamService) DeleteTeamKey(ctx context.Context, userID, keyID int64) error {
-	teamCtx, err := s.requireMembership(ctx, userID)
+	teamCtx, err := s.requireOwnerIncludingSuspended(ctx, userID)
 	if err != nil {
 		return err
 	}
-	key, err := s.repo.DeleteTeamKey(ctx, teamCtx.Team.ID, keyID, teamKeyActorFilter(teamCtx, userID))
+	key, err := s.repo.DeleteTeamKey(ctx, teamCtx.Team.ID, keyID, nil)
 	if err != nil {
 		return err
 	}
@@ -457,6 +517,9 @@ func (s *TeamService) Invite(ctx context.Context, userID int64, email string) (*
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkInvitationRate(ctx, teamCtx.Team.ID, email); err != nil {
+		return nil, err
+	}
 	token, tokenHash, err := newTeamToken()
 	if err != nil {
 		return nil, err
@@ -485,6 +548,13 @@ func (s *TeamService) ReissueInvitation(ctx context.Context, userID, invitationI
 	if err != nil {
 		return nil, err
 	}
+	existing, err := s.repo.GetInvitationByID(ctx, teamCtx.Team.ID, invitationID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkInvitationRate(ctx, teamCtx.Team.ID, existing.Email); err != nil {
+		return nil, err
+	}
 	token, tokenHash, err := newTeamToken()
 	if err != nil {
 		return nil, err
@@ -500,6 +570,25 @@ func (s *TeamService) ReissueInvitation(ctx context.Context, userID, invitationI
 	return invitation, nil
 }
 
+func (s *TeamService) checkInvitationRate(ctx context.Context, teamID int64, email string) error {
+	if s.inviteLimiter == nil {
+		return ErrTeamInvitationUnavailable
+	}
+	allowed, retryAfter, err := s.inviteLimiter.CheckAndRecord(ctx, teamID, email)
+	if err != nil {
+		slog.Warn("团队邀请限流器不可用", "team_id", teamID, "error", err)
+		return ErrTeamInvitationUnavailable
+	}
+	if allowed {
+		return nil
+	}
+	retrySeconds := int64((retryAfter + time.Second - 1) / time.Second)
+	if retrySeconds < 1 {
+		retrySeconds = 1
+	}
+	return ErrTeamInvitationRateLimited.WithMetadata(map[string]string{"retry_after": strconv.FormatInt(retrySeconds, 10)})
+}
+
 func (s *TeamService) RevokeInvitation(ctx context.Context, userID, invitationID int64) error {
 	teamCtx, err := s.requireOwner(ctx, userID)
 	if err != nil {
@@ -509,6 +598,9 @@ func (s *TeamService) RevokeInvitation(ctx context.Context, userID, invitationID
 }
 
 func (s *TeamService) ResolveInvitation(ctx context.Context, userID int64, token, resolution string) (*TeamContext, error) {
+	if err := s.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -607,6 +699,9 @@ func (s *TeamService) StartOwnershipTransfer(ctx context.Context, ownerUserID, t
 }
 
 func (s *TeamService) ResolveOwnershipTransfer(ctx context.Context, userID int64, token, resolution string) (*TeamContext, error) {
+	if err := s.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	if resolution != "accepted" && resolution != "declined" {
 		return nil, ErrTeamTransferInvalid
 	}
@@ -664,6 +759,33 @@ func (s *TeamService) AdminSetMemberLimit(ctx context.Context, teamID int64, lim
 	return s.repo.SetMemberLimit(ctx, teamID, limit)
 }
 
+// AdminUpdate 在写入前校验所有字段，再由仓储使用一条语句原子更新。
+func (s *TeamService) AdminUpdate(ctx context.Context, teamID int64, update TeamAdminUpdate) (*TeamContext, error) {
+	if update.Name != nil {
+		name, err := normalizeTeamName(*update.Name)
+		if err != nil {
+			return nil, err
+		}
+		update.Name = &name
+	}
+	if update.Status != nil && *update.Status != TeamStatusActive && *update.Status != TeamStatusSuspended {
+		return nil, infraerrors.BadRequest("TEAM_STATUS_INVALID", "无效的团队状态")
+	}
+	if update.MemberLimit != nil && *update.MemberLimit < 0 {
+		return nil, infraerrors.BadRequest("TEAM_MEMBER_LIMIT_INVALID", "团队成员上限不能为负数")
+	}
+	if update.Name == nil && update.Status == nil && update.MemberLimit == nil {
+		return s.repo.GetContextByTeamID(ctx, teamID)
+	}
+	if err := s.repo.UpdateAdmin(ctx, teamID, update); err != nil {
+		return nil, err
+	}
+	if update.Status != nil {
+		s.invalidateTeamKeys(ctx, teamID)
+	}
+	return s.repo.GetContextByTeamID(ctx, teamID)
+}
+
 func (s *TeamService) AdminForceTransfer(ctx context.Context, teamID, targetUserID int64) (*TeamContext, error) {
 	teamCtx, err := s.repo.ForceTransfer(ctx, teamID, targetUserID, time.Now())
 	if err == nil {
@@ -714,6 +836,9 @@ func (s *TeamService) requireMembership(ctx context.Context, userID int64) (*Tea
 }
 
 func (s *TeamService) requireMembershipIncludingSuspended(ctx context.Context, userID int64) (*TeamContext, error) {
+	if err := s.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	teamCtx, err := s.repo.GetContextByUserID(ctx, userID)
 	if err != nil {
 		return nil, err

@@ -8,9 +8,12 @@ type APIKeyAuthSnapshot struct {
 	APIKeyID int64  `json:"api_key_id"`
 	UserID   int64  `json:"user_id"`
 	TeamID   *int64 `json:"team_id,omitempty"`
-	GroupID  *int64 `json:"group_id,omitempty"`
-	Name     string `json:"name"`
-	Status   string `json:"status"`
+	// TeamOwnerDisabled 表示团队 Owner 的独立锁定状态。
+	TeamOwnerDisabled bool      `json:"team_owner_disabled"`
+	CreatedAt         time.Time `json:"created_at"`
+	GroupID           *int64    `json:"group_id,omitempty"`
+	Name              string    `json:"name"`
+	Status            string    `json:"status"`
 	// FastModePolicy 随鉴权快照下发，供网关热路径读取。
 	FastModePolicy string                   `json:"fast_mode_policy"`
 	IPWhitelist    []string                 `json:"ip_whitelist,omitempty"`

@@ -35,6 +35,8 @@ func (APIKey) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id"),
 		field.Int64("team_id").Optional().Nillable(),
+		// Owner 锁定与 Member 自行停用必须分开保存，普通 Key 更新不得清除此标记。
+		field.Bool("team_owner_disabled").Default(false),
 		field.String("key").
 			MaxLen(128).
 			NotEmpty().

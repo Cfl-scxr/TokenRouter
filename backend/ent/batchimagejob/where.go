@@ -164,6 +164,11 @@ func ActualCost(v float64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldActualCost, v))
 }
 
+// AllowanceReserved applies equality check predicate on the "allowance_reserved" field. It's identical to AllowanceReservedEQ.
+func AllowanceReserved(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldAllowanceReserved, v))
+}
+
 // Currency applies equality check predicate on the "currency" field. It's identical to CurrencyEQ.
 func Currency(v string) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldCurrency, v))
@@ -1502,6 +1507,16 @@ func ActualCostIsNil() predicate.BatchImageJob {
 // ActualCostNotNil applies the NotNil predicate on the "actual_cost" field.
 func ActualCostNotNil() predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldNotNull(FieldActualCost))
+}
+
+// AllowanceReservedEQ applies the EQ predicate on the "allowance_reserved" field.
+func AllowanceReservedEQ(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldAllowanceReserved, v))
+}
+
+// AllowanceReservedNEQ applies the NEQ predicate on the "allowance_reserved" field.
+func AllowanceReservedNEQ(v bool) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldAllowanceReserved, v))
 }
 
 // CurrencyEQ applies the EQ predicate on the "currency" field.

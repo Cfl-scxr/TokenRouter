@@ -57,6 +57,8 @@ const (
 	FieldHoldAmount = "hold_amount"
 	// FieldActualCost holds the string denoting the actual_cost field in the database.
 	FieldActualCost = "actual_cost"
+	// FieldAllowanceReserved holds the string denoting the allowance_reserved field in the database.
+	FieldAllowanceReserved = "allowance_reserved"
 	// FieldCurrency holds the string denoting the currency field in the database.
 	FieldCurrency = "currency"
 	// FieldHoldID holds the string denoting the hold_id field in the database.
@@ -126,6 +128,7 @@ var Columns = []string{
 	FieldEstimatedCost,
 	FieldHoldAmount,
 	FieldActualCost,
+	FieldAllowanceReserved,
 	FieldCurrency,
 	FieldHoldID,
 	FieldIdempotencyKey,
@@ -191,6 +194,8 @@ var (
 	DefaultCancelledCount int
 	// DefaultEstimatedCost holds the default value on creation for the "estimated_cost" field.
 	DefaultEstimatedCost float64
+	// DefaultAllowanceReserved holds the default value on creation for the "allowance_reserved" field.
+	DefaultAllowanceReserved bool
 	// DefaultCurrency holds the default value on creation for the "currency" field.
 	DefaultCurrency string
 	// CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
@@ -333,6 +338,11 @@ func ByHoldAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByActualCost orders the results by the actual_cost field.
 func ByActualCost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActualCost, opts...).ToFunc()
+}
+
+// ByAllowanceReserved orders the results by the allowance_reserved field.
+func ByAllowanceReserved(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowanceReserved, opts...).ToFunc()
 }
 
 // ByCurrency orders the results by the currency field.

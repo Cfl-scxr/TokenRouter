@@ -472,6 +472,20 @@ func (_u *BatchImageJobUpdate) ClearActualCost() *BatchImageJobUpdate {
 	return _u
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_u *BatchImageJobUpdate) SetAllowanceReserved(v bool) *BatchImageJobUpdate {
+	_u.mutation.SetAllowanceReserved(v)
+	return _u
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableAllowanceReserved(v *bool) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetAllowanceReserved(*v)
+	}
+	return _u
+}
+
 // SetCurrency sets the "currency" field.
 func (_u *BatchImageJobUpdate) SetCurrency(v string) *BatchImageJobUpdate {
 	_u.mutation.SetCurrency(v)
@@ -1099,6 +1113,9 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.AllowanceReserved(); ok {
+		_spec.SetField(batchimagejob.FieldAllowanceReserved, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)
 	}
@@ -1668,6 +1685,20 @@ func (_u *BatchImageJobUpdateOne) AddActualCost(v float64) *BatchImageJobUpdateO
 // ClearActualCost clears the value of the "actual_cost" field.
 func (_u *BatchImageJobUpdateOne) ClearActualCost() *BatchImageJobUpdateOne {
 	_u.mutation.ClearActualCost()
+	return _u
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_u *BatchImageJobUpdateOne) SetAllowanceReserved(v bool) *BatchImageJobUpdateOne {
+	_u.mutation.SetAllowanceReserved(v)
+	return _u
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableAllowanceReserved(v *bool) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetAllowanceReserved(*v)
+	}
 	return _u
 }
 
@@ -2327,6 +2358,9 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.AllowanceReserved(); ok {
+		_spec.SetField(batchimagejob.FieldAllowanceReserved, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)

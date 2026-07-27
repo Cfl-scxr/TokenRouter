@@ -13,7 +13,7 @@ const {
   getCurrentTeam,
   getTeamKeys,
   getTeamMembers,
-  getTeamUsage,
+  getTeamMemberUsage,
   showError,
   showWarning,
   showSuccess,
@@ -28,7 +28,7 @@ const {
   getCurrentTeam: vi.fn(),
   getTeamKeys: vi.fn(),
   getTeamMembers: vi.fn(),
-  getTeamUsage: vi.fn(),
+  getTeamMemberUsage: vi.fn(),
   showError: vi.fn(),
   showWarning: vi.fn(),
   showSuccess: vi.fn(),
@@ -92,7 +92,7 @@ vi.mock('@/api/team', () => ({
     current: getCurrentTeam,
     keys: getTeamKeys,
     members: getTeamMembers,
-    usage: getTeamUsage,
+    memberUsage: getTeamMemberUsage,
   },
 }))
 
@@ -180,7 +180,7 @@ describe('user UsageView', () => {
     getCurrentTeam.mockReset()
     getTeamKeys.mockReset()
     getTeamMembers.mockReset()
-    getTeamUsage.mockReset()
+    getTeamMemberUsage.mockReset()
     showError.mockReset()
     showWarning.mockReset()
     showSuccess.mockReset()
@@ -218,7 +218,7 @@ describe('user UsageView', () => {
     getCurrentTeam.mockRejectedValue({ response: { status: 404 } })
     getTeamKeys.mockResolvedValue([])
     getTeamMembers.mockResolvedValue([])
-    getTeamUsage.mockResolvedValue({ actual_cost: 0, request_count: 0, input_tokens: 0, output_tokens: 0, daily: [] })
+    getTeamMemberUsage.mockResolvedValue([])
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
@@ -237,7 +237,7 @@ describe('user UsageView', () => {
     expect(getAvailable).toHaveBeenCalled()
   })
 
-  it('loads team keys and per-member charts for a team owner', async () => {
+  it('loads team keys and aggregated member charts for a team owner', async () => {
     getCurrentTeam.mockResolvedValue({
       team: { id: 7, name: 'Demo team' },
       membership: { user_id: 42, role: 'owner' },
@@ -248,21 +248,31 @@ describe('user UsageView', () => {
       { user_id: 42, username: 'Owner', email: 'owner@example.com', role: 'owner' },
       { user_id: 43, username: 'Member', email: 'member@example.com', role: 'member' },
     ])
-    getTeamUsage.mockImplementation(({ member_id }: { member_id: number }) => Promise.resolve({
-      actual_cost: member_id === 42 ? 1.2 : 0.8,
-      request_count: 1,
-      input_tokens: 10,
-      output_tokens: 5,
-      daily: [{ date: '2026-03-08', actual_cost: member_id === 42 ? 1.2 : 0.8, request_count: 1 }],
-    }))
+    getTeamMemberUsage.mockResolvedValue([
+      {
+        actor_user_id: 42,
+        display_name: 'Owner',
+        status: 'active',
+        summary: { actual_cost: 1.2, request_count: 1, input_tokens: 10, output_tokens: 5, daily: [] },
+      },
+      {
+        actor_user_id: 43,
+        display_name: 'Former member',
+        status: 'left',
+        summary: { actual_cost: 0.8, request_count: 1, input_tokens: 10, output_tokens: 5, daily: [] },
+      },
+    ])
 
     const wrapper = mountUsageView()
     await flushPromises()
 
     expect(getTeamKeys).toHaveBeenCalledOnce()
     expect(getTeamMembers).toHaveBeenCalledOnce()
-    expect(getTeamUsage).toHaveBeenCalledTimes(2)
-    expect(getTeamUsage).toHaveBeenCalledWith(expect.objectContaining({ member_id: 43 }))
+    expect(getTeamMemberUsage).toHaveBeenCalledOnce()
+    expect(getTeamMemberUsage).toHaveBeenCalledWith(expect.objectContaining({
+      from: expect.any(String),
+      to: expect.any(String),
+    }))
     const usageTable = wrapper.findComponent(UsageTableStub)
     const columns = usageTable.props('columns') as Array<{ key: string; class?: string }>
     expect(columns.map((column) => column.key)).toContain('user')

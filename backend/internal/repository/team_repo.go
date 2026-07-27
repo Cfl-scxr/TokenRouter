@@ -56,9 +56,6 @@ func (r *teamRepository) Create(ctx context.Context, name string, ownerUserID in
 }
 
 func (r *teamRepository) GetContextByUserID(ctx context.Context, userID int64) (*service.TeamContext, error) {
-	if err := r.refreshMembershipWindows(ctx, 0, userID, time.Now()); err != nil {
-		return nil, err
-	}
 	return r.scanContext(ctx, `WHERE current_membership.user_id = $1 AND current_membership.left_at IS NULL`, userID)
 }
 
@@ -111,6 +108,10 @@ func (r *teamRepository) scanContext(ctx context.Context, where string, arg int6
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrTeamNotFound
 	}
+	if err == nil {
+		normalizeTeamMembershipWindows(teamCtx.Membership, time.Now())
+		normalizeTeamMembershipWindows(teamCtx.Owner, time.Now())
+	}
 	return teamCtx, err
 }
 
@@ -128,9 +129,6 @@ func (r *teamRepository) SetDefaultMemberLimits(ctx context.Context, teamID int6
 }
 
 func (r *teamRepository) ListMembers(ctx context.Context, teamID int64) ([]service.TeamMembership, error) {
-	if err := r.refreshMembershipWindows(ctx, teamID, 0, time.Now()); err != nil {
-		return nil, err
-	}
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT m.id, m.team_id, m.user_id, u.email, u.username, m.role,
 		       m.daily_limit_usd, m.weekly_limit_usd, m.monthly_limit_usd,
@@ -151,6 +149,7 @@ func (r *teamRepository) ListMembers(ctx context.Context, teamID int64) ([]servi
 		if err := scanTeamMembership(rows, &member); err != nil {
 			return nil, err
 		}
+		normalizeTeamMembershipWindows(&member, time.Now())
 		members = append(members, member)
 	}
 	return members, rows.Err()
@@ -199,6 +198,21 @@ func (r *teamRepository) ListInvitations(ctx context.Context, teamID int64) ([]s
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *teamRepository) GetInvitationByID(ctx context.Context, teamID, invitationID int64) (*service.TeamInvitation, error) {
+	item := &service.TeamInvitation{}
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, team_id, inviter_user_id, email, status, expires_at, accepted_at, created_at
+		FROM team_invitations WHERE team_id = $1 AND id = $2`, teamID, invitationID).
+		Scan(&item.ID, &item.TeamID, &item.InviterUserID, &item.Email, &item.Status, &item.ExpiresAt, &item.AcceptedAt, &item.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, service.ErrTeamInvitationInvalid
+	}
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (r *teamRepository) ReissueInvitation(ctx context.Context, teamID, invitationID int64, tokenHash string, expiresAt time.Time) (*service.TeamInvitation, error) {
@@ -260,6 +274,10 @@ func (r *teamRepository) ResolveInvitation(ctx context.Context, tokenHash string
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 同一用户接受不同邀请时先串行化，再获取邀请和团队行锁，避免形成反向等待。
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, userID); err != nil {
+		return nil, err
+	}
 	var invitationID, teamID int64
 	var email, status string
 	var expiresAt time.Time
@@ -291,9 +309,6 @@ func (r *teamRepository) ResolveInvitation(ctx context.Context, tokenHash string
 		}
 		return nil, nil
 	}
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, userID); err != nil {
-		return nil, err
-	}
 	var teamStatus string
 	var defaultDaily, defaultWeekly, defaultMonthly float64
 	var memberLimit, memberCount int
@@ -315,7 +330,7 @@ func (r *teamRepository) ResolveInvitation(ctx context.Context, tokenHash string
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM team_memberships WHERE team_id = $1 AND left_at IS NULL AND role = 'member'`, teamID).Scan(&memberCount); err != nil {
 		return nil, err
 	}
-	if memberLimit > 0 && memberCount >= memberLimit {
+	if memberCount >= memberLimit {
 		return nil, service.ErrTeamMemberLimitReached
 	}
 	var alreadyJoined bool
@@ -333,6 +348,13 @@ func (r *teamRepository) ResolveInvitation(ctx context.Context, tokenHash string
 		VALUES ($1, $2, 'member', $3, $4, $5, $6, $6, $6)`,
 		teamID, userID, defaultDaily, defaultWeekly, defaultMonthly, now); err != nil {
 		return nil, mapTeamConstraintError(err)
+	}
+	// 再次加入时旧 Membership 生命周期内的 Key 不得自动恢复可用。
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE api_keys
+		SET status = 'disabled', updated_at = $3
+		WHERE team_id = $1 AND user_id = $2 AND created_at < $3 AND deleted_at IS NULL`, teamID, userID, now); err != nil {
+		return nil, err
 	}
 	if _, err = tx.ExecContext(ctx, `
 		UPDATE team_invitations SET status = 'accepted', accepted_by_user_id = $2, accepted_at = $3, updated_at = $3 WHERE id = $1`, invitationID, userID, now); err != nil {
@@ -536,6 +558,25 @@ func (r *teamRepository) SetMemberLimit(ctx context.Context, teamID int64, limit
 	return requireTeamAffected(result, err)
 }
 
+func (r *teamRepository) UpdateAdmin(ctx context.Context, teamID int64, update service.TeamAdminUpdate) error {
+	setClauses := []string{"updated_at = NOW()"}
+	args := []any{teamID}
+	if update.Name != nil {
+		args = append(args, *update.Name)
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", len(args)))
+	}
+	if update.Status != nil {
+		args = append(args, *update.Status)
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if update.MemberLimit != nil {
+		args = append(args, *update.MemberLimit)
+		setClauses = append(setClauses, fmt.Sprintf("member_limit = $%d", len(args)))
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE teams SET `+strings.Join(setClauses, ", ")+` WHERE id = $1 AND deleted_at IS NULL`, args...)
+	return requireTeamAffected(result, err)
+}
+
 func (r *teamRepository) ForceTransfer(ctx context.Context, teamID, toUserID int64, now time.Time) (*service.TeamContext, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
@@ -550,6 +591,13 @@ func (r *teamRepository) ForceTransfer(ctx context.Context, teamID, toUserID int
 		return nil, err
 	}
 	if fromUserID == toUserID {
+		return nil, service.ErrTeamTransferInvalid
+	}
+	var targetAvailable bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL)`, toUserID).Scan(&targetAvailable); err != nil {
+		return nil, err
+	}
+	if !targetAvailable {
 		return nil, service.ErrTeamTransferInvalid
 	}
 	if err = transferTeamOwnership(ctx, tx, teamID, fromUserID, toUserID, now); err != nil {
@@ -673,6 +721,86 @@ func (r *teamRepository) GetUsageSummary(ctx context.Context, teamID int64, quer
 	return summary, rows.Err()
 }
 
+func (r *teamRepository) ListMemberUsageSeries(ctx context.Context, teamID int64, query service.TeamUsageQuery) ([]service.TeamMemberUsageSeries, error) {
+	args := []any{teamID, query.From, query.To, timezone.Name()}
+	membershipActorFilter := ""
+	usageActorFilter := ""
+	if query.ActorUserID != nil && *query.ActorUserID > 0 {
+		args = append(args, *query.ActorUserID)
+		position := len(args)
+		membershipActorFilter = fmt.Sprintf(" AND m.user_id = $%d", position)
+		usageActorFilter = fmt.Sprintf(" AND ul.user_id = $%d", position)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		WITH actors AS (
+			SELECT m.user_id
+			FROM team_memberships m
+			WHERE m.team_id = $1 AND m.left_at IS NULL`+membershipActorFilter+`
+			UNION
+			SELECT ul.user_id
+			FROM usage_logs ul
+			WHERE ul.team_id = $1 AND ul.created_at >= $2 AND ul.created_at < $3`+usageActorFilter+`
+		), daily AS (
+			SELECT ul.user_id,
+			       TO_CHAR(ul.created_at AT TIME ZONE $4, 'YYYY-MM-DD') AS usage_date,
+			       COALESCE(SUM(ul.actual_cost), 0) AS actual_cost,
+			       COUNT(*) AS request_count,
+			       COALESCE(SUM(ul.input_tokens), 0) AS input_tokens,
+			       COALESCE(SUM(ul.output_tokens), 0) AS output_tokens
+			FROM usage_logs ul
+			WHERE ul.team_id = $1 AND ul.created_at >= $2 AND ul.created_at < $3`+usageActorFilter+`
+			GROUP BY ul.user_id, usage_date
+		)
+		SELECT a.user_id,
+		       COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), 'User #' || a.user_id::text),
+		       CASE WHEN EXISTS (
+			   SELECT 1 FROM team_memberships current_m
+			   WHERE current_m.team_id = $1 AND current_m.user_id = a.user_id AND current_m.left_at IS NULL
+		       ) THEN 'active' ELSE 'left' END,
+		       d.usage_date, COALESCE(d.actual_cost, 0), COALESCE(d.request_count, 0),
+		       COALESCE(d.input_tokens, 0), COALESCE(d.output_tokens, 0)
+		FROM actors a
+		LEFT JOIN users u ON u.id = a.user_id
+		LEFT JOIN daily d ON d.user_id = a.user_id
+		ORDER BY a.user_id, d.usage_date`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]service.TeamMemberUsageSeries, 0)
+	indexByUser := make(map[int64]int)
+	for rows.Next() {
+		var userID int64
+		var displayName, status string
+		var date sql.NullString
+		var actualCost float64
+		var requestCount, inputTokens, outputTokens int64
+		if err := rows.Scan(&userID, &displayName, &status, &date, &actualCost, &requestCount, &inputTokens, &outputTokens); err != nil {
+			return nil, err
+		}
+		index, exists := indexByUser[userID]
+		if !exists {
+			index = len(items)
+			indexByUser[userID] = index
+			items = append(items, service.TeamMemberUsageSeries{
+				ActorUserID: userID,
+				DisplayName: displayName,
+				Status:      status,
+				Summary:     service.TeamUsageSummary{Daily: make([]service.TeamUsageDaily, 0)},
+			})
+		}
+		item := &items[index]
+		if date.Valid {
+			item.Summary.Daily = append(item.Summary.Daily, service.TeamUsageDaily{Date: date.String, ActualCost: actualCost, RequestCount: requestCount})
+			item.Summary.ActualCost += actualCost
+			item.Summary.RequestCount += requestCount
+			item.Summary.InputTokens += inputTokens
+			item.Summary.OutputTokens += outputTokens
+		}
+	}
+	return items, rows.Err()
+}
+
 func (r *teamRepository) ListUsageLogs(ctx context.Context, teamID int64, query service.TeamUsageQuery) ([]service.TeamUsageLogItem, int64, error) {
 	where, args := teamUsageWhere(teamID, query)
 	var total int64
@@ -720,7 +848,7 @@ func (r *teamRepository) ListTeamKeys(ctx context.Context, teamID int64, actorUs
 	args := []any{teamID}
 	actorCondition, args := teamKeyActorCondition(actorUserID, args)
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT k.id, k.user_id, COALESCE(u.email, ''), k.name, k.key, k.status, k.group_id,
+		SELECT k.id, k.user_id, COALESCE(u.email, ''), k.name, k.key, k.status, k.team_owner_disabled, k.group_id,
 		       COALESCE(g.name, ''), k.last_used_at, k.created_at
 		FROM api_keys k
 		LEFT JOIN users u ON u.id = k.user_id
@@ -736,7 +864,7 @@ func (r *teamRepository) ListTeamKeys(ctx context.Context, teamID int64, actorUs
 		var item service.TeamAPIKeyItem
 		var groupID sql.NullInt64
 		var lastUsedAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.UserID, &item.UserEmail, &item.Name, &item.Key, &item.Status, &groupID, &item.GroupName, &lastUsedAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &item.UserEmail, &item.Name, &item.Key, &item.Status, &item.OwnerDisabled, &groupID, &item.GroupName, &lastUsedAt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		item.GroupID = batchImageNullInt64Ptr(groupID)
@@ -751,7 +879,21 @@ func (r *teamRepository) DisableTeamKey(ctx context.Context, teamID, keyID int64
 	actorCondition, args := teamKeyActorCondition(actorUserID, args)
 	var key string
 	err := r.db.QueryRowContext(ctx, `
-		UPDATE api_keys k SET status = 'disabled', updated_at = NOW()
+		UPDATE api_keys k SET status = 'disabled', team_owner_disabled = TRUE, updated_at = NOW()
+		WHERE k.team_id = $1 AND k.id = $2 AND k.deleted_at IS NULL`+actorCondition+`
+		RETURNING k.key`, args...).Scan(&key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", service.ErrAPIKeyNotFound
+	}
+	return key, err
+}
+
+func (r *teamRepository) EnableTeamKey(ctx context.Context, teamID, keyID int64, actorUserID *int64) (string, error) {
+	args := []any{teamID, keyID}
+	actorCondition, args := teamKeyActorCondition(actorUserID, args)
+	var key string
+	err := r.db.QueryRowContext(ctx, `
+		UPDATE api_keys k SET status = 'active', team_owner_disabled = FALSE, updated_at = NOW()
 		WHERE k.team_id = $1 AND k.id = $2 AND k.deleted_at IS NULL`+actorCondition+`
 		RETURNING k.key`, args...).Scan(&key)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -786,22 +928,25 @@ func (r *teamRepository) DeleteTeamKey(ctx context.Context, teamID, keyID int64,
 	return key, nil
 }
 
-func (r *teamRepository) refreshMembershipWindows(ctx context.Context, teamID, userID int64, now time.Time) error {
+func normalizeTeamMembershipWindows(member *service.TeamMembership, now time.Time) {
+	if member == nil {
+		return
+	}
 	dailyStart := timezone.StartOfDay(now)
 	weeklyStart := timezone.StartOfWeek(now)
 	monthlyStart := timezone.StartOfMonth(now)
-	query := `
-		UPDATE team_memberships SET
-			daily_usage_usd = CASE WHEN daily_window_start IS NULL OR daily_window_start < $3 THEN 0 ELSE daily_usage_usd END,
-			weekly_usage_usd = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $4 THEN 0 ELSE weekly_usage_usd END,
-			monthly_usage_usd = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $5 THEN 0 ELSE monthly_usage_usd END,
-			daily_window_start = CASE WHEN daily_window_start IS NULL OR daily_window_start < $3 THEN $3 ELSE daily_window_start END,
-			weekly_window_start = CASE WHEN weekly_window_start IS NULL OR weekly_window_start < $4 THEN $4 ELSE weekly_window_start END,
-			monthly_window_start = CASE WHEN monthly_window_start IS NULL OR monthly_window_start < $5 THEN $5 ELSE monthly_window_start END,
-			updated_at = CASE WHEN daily_window_start IS NULL OR daily_window_start < $3 OR weekly_window_start IS NULL OR weekly_window_start < $4 OR monthly_window_start IS NULL OR monthly_window_start < $5 THEN NOW() ELSE updated_at END
-		WHERE ($1 = 0 OR team_id = $1) AND left_at IS NULL AND ($2 = 0 OR user_id = $2)`
-	_, err := r.db.ExecContext(ctx, query, teamID, userID, dailyStart, weeklyStart, monthlyStart)
-	return err
+	if member.DailyWindowStart == nil || member.DailyWindowStart.Before(dailyStart) {
+		member.DailyUsageUSD = 0
+		member.DailyWindowStart = &dailyStart
+	}
+	if member.WeeklyWindowStart == nil || member.WeeklyWindowStart.Before(weeklyStart) {
+		member.WeeklyUsageUSD = 0
+		member.WeeklyWindowStart = &weeklyStart
+	}
+	if member.MonthlyWindowStart == nil || member.MonthlyWindowStart.Before(monthlyStart) {
+		member.MonthlyUsageUSD = 0
+		member.MonthlyWindowStart = &monthlyStart
+	}
 }
 
 type teamRowScanner interface {

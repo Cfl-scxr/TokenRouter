@@ -80,6 +80,11 @@ func TeamID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldTeamID, v))
 }
 
+// TeamOwnerDisabled applies equality check predicate on the "team_owner_disabled" field. It's identical to TeamOwnerDisabledEQ.
+func TeamOwnerDisabled(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldTeamOwnerDisabled, v))
+}
+
 // Key applies equality check predicate on the "key" field. It's identical to KeyEQ.
 func Key(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldKey, v))
@@ -368,6 +373,16 @@ func TeamIDIsNil() predicate.APIKey {
 // TeamIDNotNil applies the NotNil predicate on the "team_id" field.
 func TeamIDNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldTeamID))
+}
+
+// TeamOwnerDisabledEQ applies the EQ predicate on the "team_owner_disabled" field.
+func TeamOwnerDisabledEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldTeamOwnerDisabled, v))
+}
+
+// TeamOwnerDisabledNEQ applies the NEQ predicate on the "team_owner_disabled" field.
+func TeamOwnerDisabledNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldTeamOwnerDisabled, v))
 }
 
 // KeyEQ applies the EQ predicate on the "key" field.

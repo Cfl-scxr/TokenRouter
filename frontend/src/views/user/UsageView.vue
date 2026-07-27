@@ -860,25 +860,24 @@ const loadFilterOptions = async () => {
   }
 }
 
-// Owner 才加载成员对比数据，Member 的图表继续只使用统一接口返回的本人记录。
+// Owner 使用聚合接口一次读取当前和历史成员，避免离队后图表总额与团队总额不一致。
 const loadTeamMemberUsage = async () => {
-  if (!isTeamOwner.value || teamMembers.value.length === 0) {
+  if (!isTeamOwner.value) {
     teamMemberSeries.value = []
     return
   }
   const seq = ++teamStatsReqSeq
   teamChartsLoading.value = true
   try {
-    const summaries = await Promise.all(teamMembers.value.map((member) => teamAPI.usage({
+    const series = await teamAPI.memberUsage({
       from: startDate.value,
       to: endDate.value,
-      member_id: member.user_id,
-    })))
+    })
     if (seq !== teamStatsReqSeq) return
-    teamMemberSeries.value = teamMembers.value.map((member, index) => ({
-      userID: member.user_id,
-      label: member.username || member.email,
-      summary: summaries[index],
+    teamMemberSeries.value = series.map((member) => ({
+      userID: member.actor_user_id,
+      label: member.display_name,
+      summary: member.summary,
     }))
   } catch (error) {
     if (seq !== teamStatsReqSeq) return

@@ -160,6 +160,41 @@
           </section>
         </section>
 
+        <section v-else-if="activeTab === 'keys'" class="space-y-6">
+          <div class="card overflow-hidden">
+            <div class="flex items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-dark-700">
+              <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.keys') }}</h2>
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{ teamKeys.length }}</span>
+            </div>
+            <div v-if="teamKeys.length === 0" class="py-12 text-center text-sm text-gray-500">{{ t('team.noKeys') }}</div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+              <div v-for="key in teamKeys" :key="key.id" class="flex flex-wrap items-center justify-between gap-4 p-5">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-medium text-gray-900 dark:text-white">{{ key.name }}</p>
+                    <span class="badge" :class="key.team_owner_disabled || key.status !== 'active' ? 'badge-gray' : 'badge-success'">
+                      {{ key.team_owner_disabled ? t('team.ownerDisabled') : statusLabel(key.status) }}
+                    </span>
+                  </div>
+                  <p class="mt-1 truncate font-mono text-xs text-gray-500">{{ key.masked_key }}</p>
+                  <p class="mt-1 text-xs text-gray-500">{{ key.user_email }} · {{ key.group_name || t('team.noGroup') }}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button v-if="key.team_owner_disabled || key.status !== 'active'" class="btn btn-secondary btn-sm" @click="askEnableKey(key)">
+                    <Icon name="play" size="sm" />{{ t('team.enable') }}
+                  </button>
+                  <button v-else class="btn btn-secondary btn-sm" @click="askDisableKey(key)">
+                    <Icon name="ban" size="sm" />{{ t('team.disable') }}
+                  </button>
+                  <button class="btn btn-danger btn-sm" @click="askDeleteKey(key)">
+                    <Icon name="trash" size="sm" />{{ t('common.delete') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section v-else class="space-y-6">
           <div v-if="isOwner" class="card p-5">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('team.name') }}</h2>
@@ -223,14 +258,14 @@ import Icon from '@/components/icons/Icon.vue'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import BalanceAmount from '@/components/common/BalanceAmount.vue'
 import BalanceIcon from '@/components/common/BalanceIcon.vue'
-import { teamAPI, type TeamContext, type TeamInvitation, type TeamMembership } from '@/api/team'
+import { teamAPI, type TeamAPIKey, type TeamContext, type TeamInvitation, type TeamMembership } from '@/api/team'
 import { useAppStore } from '@/stores/app'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useStepUp, isStepUpCancelled } from '@/composables/useStepUp'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { formatDateTime } from '@/utils/format'
 
-type TeamTab = 'overview' | 'settings'
+type TeamTab = 'overview' | 'keys' | 'settings'
 type LimitKey = 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd'
 type ResetKey = 'daily' | 'weekly' | 'monthly'
 
@@ -248,6 +283,7 @@ const resolvingToken = ref(false)
 const teamContext = ref<TeamContext | null>(null)
 const members = ref<TeamMembership[]>([])
 const invitations = ref<TeamInvitation[]>([])
+const teamKeys = ref<TeamAPIKey[]>([])
 const activeTab = ref<TeamTab>('overview')
 const createName = ref('')
 const renameName = ref('')
@@ -263,10 +299,12 @@ const startTeamGuide = () => onboardingStore.startTeamGuide({
   hasTeam: Boolean(teamContext.value)
 })
 
-const visibleTabs = computed(() => [
-  { value: 'overview' as const, label: t('team.overview') },
-  { value: 'settings' as const, label: t('team.settings') }
-])
+const visibleTabs = computed(() => {
+  const tabs: Array<{ value: TeamTab; label: string }> = [{ value: 'overview', label: t('team.overview') }]
+  if (isOwner.value) tabs.push({ value: 'keys', label: t('team.keys') })
+  tabs.push({ value: 'settings', label: t('team.settings') })
+  return tabs
+})
 const defaultLimitFields = computed(() => ([
   { key: 'daily_limit_usd' as const, label: t('team.defaultDailyLimit') },
   { key: 'weekly_limit_usd' as const, label: t('team.defaultWeeklyLimit') },
@@ -313,12 +351,14 @@ const loadTeamData = async () => {
   if (teamContext.value.team.status !== 'active') {
     members.value = []
     invitations.value = []
+    teamKeys.value = isOwner.value ? await teamAPI.keys() : []
     return
   }
   const requests: Promise<unknown>[] = []
   if (isOwner.value) {
     requests.push(teamAPI.members().then((value) => { members.value = value }))
     requests.push(teamAPI.invitations().then((value) => { invitations.value = value }))
+    requests.push(teamAPI.keys().then((value) => { teamKeys.value = value }))
   }
   await Promise.all(requests)
 }
@@ -383,6 +423,29 @@ const askSetStatus = () => {
     message: nextStatus === 'suspended' ? t('team.pauseMessage') : t('team.resumeMessage'),
     danger: nextStatus === 'suspended',
     run: async () => { teamContext.value = await stepUp.run(() => teamAPI.setStatus(nextStatus)); await loadTeamData() }
+  }
+}
+
+const askDisableKey = (key: TeamAPIKey) => {
+  confirmAction.value = {
+    title: t('team.disableKeyTitle'),
+    message: t('team.disableKeyMessage'),
+    run: async () => { await teamAPI.disableKey(key.id); teamKeys.value = await teamAPI.keys() }
+  }
+}
+const askEnableKey = (key: TeamAPIKey) => {
+  confirmAction.value = {
+    title: t('team.enableKeyTitle'),
+    message: t('team.enableKeyMessage'),
+    run: async () => { await teamAPI.enableKey(key.id); teamKeys.value = await teamAPI.keys() }
+  }
+}
+const askDeleteKey = (key: TeamAPIKey) => {
+  confirmAction.value = {
+    title: t('team.deleteKeyTitle'),
+    message: t('team.deleteKeyMessage'),
+    danger: true,
+    run: async () => { await teamAPI.deleteKey(key.id); teamKeys.value = await teamAPI.keys() }
   }
 }
 

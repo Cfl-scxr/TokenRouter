@@ -121,6 +121,7 @@ type APIKeyMutation struct {
 	created_at                                 *time.Time
 	updated_at                                 *time.Time
 	deleted_at                                 *time.Time
+	team_owner_disabled                        *bool
 	key                                        *string
 	name                                       *string
 	status                                     *string
@@ -473,6 +474,42 @@ func (m *APIKeyMutation) TeamIDCleared() bool {
 func (m *APIKeyMutation) ResetTeamID() {
 	m.team = nil
 	delete(m.clearedFields, apikey.FieldTeamID)
+}
+
+// SetTeamOwnerDisabled sets the "team_owner_disabled" field.
+func (m *APIKeyMutation) SetTeamOwnerDisabled(b bool) {
+	m.team_owner_disabled = &b
+}
+
+// TeamOwnerDisabled returns the value of the "team_owner_disabled" field in the mutation.
+func (m *APIKeyMutation) TeamOwnerDisabled() (r bool, exists bool) {
+	v := m.team_owner_disabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamOwnerDisabled returns the old "team_owner_disabled" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldTeamOwnerDisabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamOwnerDisabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamOwnerDisabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamOwnerDisabled: %w", err)
+	}
+	return oldValue.TeamOwnerDisabled, nil
+}
+
+// ResetTeamOwnerDisabled resets all changes to the "team_owner_disabled" field.
+func (m *APIKeyMutation) ResetTeamOwnerDisabled() {
+	m.team_owner_disabled = nil
 }
 
 // SetKey sets the "key" field.
@@ -1871,7 +1908,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1886,6 +1923,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.team != nil {
 		fields = append(fields, apikey.FieldTeamID)
+	}
+	if m.team_owner_disabled != nil {
+		fields = append(fields, apikey.FieldTeamOwnerDisabled)
 	}
 	if m.key != nil {
 		fields = append(fields, apikey.FieldKey)
@@ -1977,6 +2017,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case apikey.FieldTeamID:
 		return m.TeamID()
+	case apikey.FieldTeamOwnerDisabled:
+		return m.TeamOwnerDisabled()
 	case apikey.FieldKey:
 		return m.Key()
 	case apikey.FieldName:
@@ -2044,6 +2086,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldUserID(ctx)
 	case apikey.FieldTeamID:
 		return m.OldTeamID(ctx)
+	case apikey.FieldTeamOwnerDisabled:
+		return m.OldTeamOwnerDisabled(ctx)
 	case apikey.FieldKey:
 		return m.OldKey(ctx)
 	case apikey.FieldName:
@@ -2135,6 +2179,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTeamID(v)
+		return nil
+	case apikey.FieldTeamOwnerDisabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamOwnerDisabled(v)
 		return nil
 	case apikey.FieldKey:
 		v, ok := value.(string)
@@ -2565,6 +2616,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldTeamID:
 		m.ResetTeamID()
+		return nil
+	case apikey.FieldTeamOwnerDisabled:
+		m.ResetTeamOwnerDisabled()
 		return nil
 	case apikey.FieldKey:
 		m.ResetKey()
@@ -11845,6 +11899,7 @@ type BatchImageJobMutation struct {
 	addhold_amount      *float64
 	actual_cost         *float64
 	addactual_cost      *float64
+	allowance_reserved  *bool
 	currency            *string
 	hold_id             *string
 	idempotency_key     *string
@@ -13152,6 +13207,42 @@ func (m *BatchImageJobMutation) ResetActualCost() {
 	delete(m.clearedFields, batchimagejob.FieldActualCost)
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (m *BatchImageJobMutation) SetAllowanceReserved(b bool) {
+	m.allowance_reserved = &b
+}
+
+// AllowanceReserved returns the value of the "allowance_reserved" field in the mutation.
+func (m *BatchImageJobMutation) AllowanceReserved() (r bool, exists bool) {
+	v := m.allowance_reserved
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowanceReserved returns the old "allowance_reserved" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldAllowanceReserved(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowanceReserved is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowanceReserved requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowanceReserved: %w", err)
+	}
+	return oldValue.AllowanceReserved, nil
+}
+
+// ResetAllowanceReserved resets all changes to the "allowance_reserved" field.
+func (m *BatchImageJobMutation) ResetAllowanceReserved() {
+	m.allowance_reserved = nil
+}
+
 // SetCurrency sets the "currency" field.
 func (m *BatchImageJobMutation) SetCurrency(s string) {
 	m.currency = &s
@@ -14141,7 +14232,7 @@ func (m *BatchImageJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BatchImageJobMutation) Fields() []string {
-	fields := make([]string, 0, 42)
+	fields := make([]string, 0, 43)
 	if m.batch_id != nil {
 		fields = append(fields, batchimagejob.FieldBatchID)
 	}
@@ -14207,6 +14298,9 @@ func (m *BatchImageJobMutation) Fields() []string {
 	}
 	if m.actual_cost != nil {
 		fields = append(fields, batchimagejob.FieldActualCost)
+	}
+	if m.allowance_reserved != nil {
+		fields = append(fields, batchimagejob.FieldAllowanceReserved)
 	}
 	if m.currency != nil {
 		fields = append(fields, batchimagejob.FieldCurrency)
@@ -14320,6 +14414,8 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.HoldAmount()
 	case batchimagejob.FieldActualCost:
 		return m.ActualCost()
+	case batchimagejob.FieldAllowanceReserved:
+		return m.AllowanceReserved()
 	case batchimagejob.FieldCurrency:
 		return m.Currency()
 	case batchimagejob.FieldHoldID:
@@ -14413,6 +14509,8 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHoldAmount(ctx)
 	case batchimagejob.FieldActualCost:
 		return m.OldActualCost(ctx)
+	case batchimagejob.FieldAllowanceReserved:
+		return m.OldAllowanceReserved(ctx)
 	case batchimagejob.FieldCurrency:
 		return m.OldCurrency(ctx)
 	case batchimagejob.FieldHoldID:
@@ -14615,6 +14713,13 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetActualCost(v)
+		return nil
+	case batchimagejob.FieldAllowanceReserved:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowanceReserved(v)
 		return nil
 	case batchimagejob.FieldCurrency:
 		v, ok := value.(string)
@@ -15200,6 +15305,9 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldActualCost:
 		m.ResetActualCost()
+		return nil
+	case batchimagejob.FieldAllowanceReserved:
+		m.ResetAllowanceReserved()
 		return nil
 	case batchimagejob.FieldCurrency:
 		m.ResetCurrency()

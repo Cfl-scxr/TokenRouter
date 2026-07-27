@@ -15,6 +15,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "team_owner_disabled", Type: field.TypeBool, Default: false},
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 128},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
@@ -50,19 +51,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[27]},
+				Columns:    []*schema.Column{APIKeysColumns[28]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_teams_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[28]},
+				Columns:    []*schema.Column{APIKeysColumns[29]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[29]},
+				Columns:    []*schema.Column{APIKeysColumns[30]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -71,22 +72,22 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[29]},
+				Columns: []*schema.Column{APIKeysColumns[30]},
 			},
 			{
 				Name:    "apikey_team_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[28]},
+				Columns: []*schema.Column{APIKeysColumns[29]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[27]},
+				Columns: []*schema.Column{APIKeysColumns[28]},
 			},
 			{
 				Name:    "apikey_status",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[6]},
+				Columns: []*schema.Column{APIKeysColumns[7]},
 			},
 			{
 				Name:    "apikey_deleted_at",
@@ -96,22 +97,22 @@ var (
 			{
 				Name:    "apikey_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[8]},
+				Columns: []*schema.Column{APIKeysColumns[9]},
 			},
 			{
 				Name:    "apikey_quota_quota_used",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[11], APIKeysColumns[12]},
+				Columns: []*schema.Column{APIKeysColumns[12], APIKeysColumns[13]},
 			},
 			{
 				Name:    "apikey_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[13]},
+				Columns: []*schema.Column{APIKeysColumns[14]},
 			},
 			{
 				Name:    "apikey_data_sharing_confirmed_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[24]},
+				Columns: []*schema.Column{APIKeysColumns[25]},
 			},
 		},
 	}
@@ -561,6 +562,7 @@ var (
 		{Name: "estimated_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "hold_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "allowance_reserved", Type: field.TypeBool, Default: false},
 		{Name: "currency", Type: field.TypeString, Size: 16, Default: "USD"},
 		{Name: "hold_id", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "idempotency_key", Type: field.TypeString, Nullable: true, Size: 255},
@@ -596,17 +598,17 @@ var (
 			{
 				Name:    "batchimagejob_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[37]},
+				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[38]},
 			},
 			{
 				Name:    "batchimagejob_billing_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[37]},
+				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[38]},
 			},
 			{
 				Name:    "batchimagejob_team_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[37]},
+				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[38]},
 			},
 			{
 				Name:    "batchimagejob_status",
@@ -621,7 +623,7 @@ var (
 			{
 				Name:    "batchimagejob_idempotency_key",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[25]},
+				Columns: []*schema.Column{BatchImageJobsColumns[26]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
@@ -629,7 +631,7 @@ var (
 			{
 				Name:    "batchimagejob_manifest_hash",
 				Unique:  true,
-				Columns: []*schema.Column{BatchImageJobsColumns[27]},
+				Columns: []*schema.Column{BatchImageJobsColumns[28]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "manifest_hash IS NOT NULL AND manifest_hash <> ''",
 				},
@@ -637,17 +639,17 @@ var (
 			{
 				Name:    "batchimagejob_output_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[30]},
+				Columns: []*schema.Column{BatchImageJobsColumns[31]},
 			},
 			{
 				Name:    "batchimagejob_downloaded_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[33]},
+				Columns: []*schema.Column{BatchImageJobsColumns[34]},
 			},
 			{
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[34]},
+				Columns: []*schema.Column{BatchImageJobsColumns[35]},
 			},
 		},
 	}

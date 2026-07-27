@@ -108,25 +108,9 @@ func (h *TeamHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if req.Name != nil {
-		if err := h.service.AdminUpdateName(c.Request.Context(), teamID, *req.Name); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-	}
-	if req.Status != nil {
-		if err := h.service.AdminSetStatus(c.Request.Context(), teamID, *req.Status); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-	}
-	if req.MemberLimit != nil {
-		if err := h.service.AdminSetMemberLimit(c.Request.Context(), teamID, *req.MemberLimit); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-	}
-	teamCtx, err := h.service.AdminGet(c.Request.Context(), teamID)
+	teamCtx, err := h.service.AdminUpdate(c.Request.Context(), teamID, service.TeamAdminUpdate{
+		Name: req.Name, Status: req.Status, MemberLimit: req.MemberLimit,
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

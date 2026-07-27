@@ -74,8 +74,12 @@ func init() {
 	apikey.DefaultUpdatedAt = apikeyDescUpdatedAt.Default.(func() time.Time)
 	// apikey.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	apikey.UpdateDefaultUpdatedAt = apikeyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// apikeyDescTeamOwnerDisabled is the schema descriptor for team_owner_disabled field.
+	apikeyDescTeamOwnerDisabled := apikeyFields[2].Descriptor()
+	// apikey.DefaultTeamOwnerDisabled holds the default value on creation for the team_owner_disabled field.
+	apikey.DefaultTeamOwnerDisabled = apikeyDescTeamOwnerDisabled.Default.(bool)
 	// apikeyDescKey is the schema descriptor for key field.
-	apikeyDescKey := apikeyFields[2].Descriptor()
+	apikeyDescKey := apikeyFields[3].Descriptor()
 	// apikey.KeyValidator is a validator for the "key" field. It is called by the builders before save.
 	apikey.KeyValidator = func() func(string) error {
 		validators := apikeyDescKey.Validators
@@ -93,7 +97,7 @@ func init() {
 		}
 	}()
 	// apikeyDescName is the schema descriptor for name field.
-	apikeyDescName := apikeyFields[3].Descriptor()
+	apikeyDescName := apikeyFields[4].Descriptor()
 	// apikey.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	apikey.NameValidator = func() func(string) error {
 		validators := apikeyDescName.Validators
@@ -111,55 +115,55 @@ func init() {
 		}
 	}()
 	// apikeyDescStatus is the schema descriptor for status field.
-	apikeyDescStatus := apikeyFields[5].Descriptor()
+	apikeyDescStatus := apikeyFields[6].Descriptor()
 	// apikey.DefaultStatus holds the default value on creation for the status field.
 	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
 	// apikeyDescFastModePolicy is the schema descriptor for fast_mode_policy field.
-	apikeyDescFastModePolicy := apikeyFields[6].Descriptor()
+	apikeyDescFastModePolicy := apikeyFields[7].Descriptor()
 	// apikey.DefaultFastModePolicy holds the default value on creation for the fast_mode_policy field.
 	apikey.DefaultFastModePolicy = apikeyDescFastModePolicy.Default.(string)
 	// apikey.FastModePolicyValidator is a validator for the "fast_mode_policy" field. It is called by the builders before save.
 	apikey.FastModePolicyValidator = apikeyDescFastModePolicy.Validators[0].(func(string) error)
 	// apikeyDescQuota is the schema descriptor for quota field.
-	apikeyDescQuota := apikeyFields[10].Descriptor()
+	apikeyDescQuota := apikeyFields[11].Descriptor()
 	// apikey.DefaultQuota holds the default value on creation for the quota field.
 	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
 	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
-	apikeyDescQuotaUsed := apikeyFields[11].Descriptor()
+	apikeyDescQuotaUsed := apikeyFields[12].Descriptor()
 	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
 	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	// apikeyDescRateLimit5h is the schema descriptor for rate_limit_5h field.
-	apikeyDescRateLimit5h := apikeyFields[13].Descriptor()
+	apikeyDescRateLimit5h := apikeyFields[14].Descriptor()
 	// apikey.DefaultRateLimit5h holds the default value on creation for the rate_limit_5h field.
 	apikey.DefaultRateLimit5h = apikeyDescRateLimit5h.Default.(float64)
 	// apikeyDescRateLimit1d is the schema descriptor for rate_limit_1d field.
-	apikeyDescRateLimit1d := apikeyFields[14].Descriptor()
+	apikeyDescRateLimit1d := apikeyFields[15].Descriptor()
 	// apikey.DefaultRateLimit1d holds the default value on creation for the rate_limit_1d field.
 	apikey.DefaultRateLimit1d = apikeyDescRateLimit1d.Default.(float64)
 	// apikeyDescRateLimit7d is the schema descriptor for rate_limit_7d field.
-	apikeyDescRateLimit7d := apikeyFields[15].Descriptor()
+	apikeyDescRateLimit7d := apikeyFields[16].Descriptor()
 	// apikey.DefaultRateLimit7d holds the default value on creation for the rate_limit_7d field.
 	apikey.DefaultRateLimit7d = apikeyDescRateLimit7d.Default.(float64)
 	// apikeyDescUsage5h is the schema descriptor for usage_5h field.
-	apikeyDescUsage5h := apikeyFields[16].Descriptor()
+	apikeyDescUsage5h := apikeyFields[17].Descriptor()
 	// apikey.DefaultUsage5h holds the default value on creation for the usage_5h field.
 	apikey.DefaultUsage5h = apikeyDescUsage5h.Default.(float64)
 	// apikeyDescUsage1d is the schema descriptor for usage_1d field.
-	apikeyDescUsage1d := apikeyFields[17].Descriptor()
+	apikeyDescUsage1d := apikeyFields[18].Descriptor()
 	// apikey.DefaultUsage1d holds the default value on creation for the usage_1d field.
 	apikey.DefaultUsage1d = apikeyDescUsage1d.Default.(float64)
 	// apikeyDescUsage7d is the schema descriptor for usage_7d field.
-	apikeyDescUsage7d := apikeyFields[18].Descriptor()
+	apikeyDescUsage7d := apikeyFields[19].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
 	// apikeyDescDataSharingNoticeVersion is the schema descriptor for data_sharing_notice_version field.
-	apikeyDescDataSharingNoticeVersion := apikeyFields[22].Descriptor()
+	apikeyDescDataSharingNoticeVersion := apikeyFields[23].Descriptor()
 	// apikey.DefaultDataSharingNoticeVersion holds the default value on creation for the data_sharing_notice_version field.
 	apikey.DefaultDataSharingNoticeVersion = apikeyDescDataSharingNoticeVersion.Default.(int)
 	// apikeyDescFallbackToDefaultGroupWhenUnavailable is the schema descriptor for fallback_to_default_group_when_unavailable field.
-	apikeyDescFallbackToDefaultGroupWhenUnavailable := apikeyFields[25].Descriptor()
+	apikeyDescFallbackToDefaultGroupWhenUnavailable := apikeyFields[26].Descriptor()
 	// apikey.DefaultFallbackToDefaultGroupWhenUnavailable holds the default value on creation for the fallback_to_default_group_when_unavailable field.
 	apikey.DefaultFallbackToDefaultGroupWhenUnavailable = apikeyDescFallbackToDefaultGroupWhenUnavailable.Default.(bool)
 	accountMixin := schema.Account{}.Mixin()
@@ -575,46 +579,50 @@ func init() {
 	batchimagejobDescEstimatedCost := batchimagejobFields[19].Descriptor()
 	// batchimagejob.DefaultEstimatedCost holds the default value on creation for the estimated_cost field.
 	batchimagejob.DefaultEstimatedCost = batchimagejobDescEstimatedCost.Default.(float64)
+	// batchimagejobDescAllowanceReserved is the schema descriptor for allowance_reserved field.
+	batchimagejobDescAllowanceReserved := batchimagejobFields[22].Descriptor()
+	// batchimagejob.DefaultAllowanceReserved holds the default value on creation for the allowance_reserved field.
+	batchimagejob.DefaultAllowanceReserved = batchimagejobDescAllowanceReserved.Default.(bool)
 	// batchimagejobDescCurrency is the schema descriptor for currency field.
-	batchimagejobDescCurrency := batchimagejobFields[22].Descriptor()
+	batchimagejobDescCurrency := batchimagejobFields[23].Descriptor()
 	// batchimagejob.DefaultCurrency holds the default value on creation for the currency field.
 	batchimagejob.DefaultCurrency = batchimagejobDescCurrency.Default.(string)
 	// batchimagejob.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
 	batchimagejob.CurrencyValidator = batchimagejobDescCurrency.Validators[0].(func(string) error)
 	// batchimagejobDescHoldID is the schema descriptor for hold_id field.
-	batchimagejobDescHoldID := batchimagejobFields[23].Descriptor()
+	batchimagejobDescHoldID := batchimagejobFields[24].Descriptor()
 	// batchimagejob.HoldIDValidator is a validator for the "hold_id" field. It is called by the builders before save.
 	batchimagejob.HoldIDValidator = batchimagejobDescHoldID.Validators[0].(func(string) error)
 	// batchimagejobDescIdempotencyKey is the schema descriptor for idempotency_key field.
-	batchimagejobDescIdempotencyKey := batchimagejobFields[24].Descriptor()
+	batchimagejobDescIdempotencyKey := batchimagejobFields[25].Descriptor()
 	// batchimagejob.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
 	batchimagejob.IdempotencyKeyValidator = batchimagejobDescIdempotencyKey.Validators[0].(func(string) error)
 	// batchimagejobDescRequestHash is the schema descriptor for request_hash field.
-	batchimagejobDescRequestHash := batchimagejobFields[25].Descriptor()
+	batchimagejobDescRequestHash := batchimagejobFields[26].Descriptor()
 	// batchimagejob.RequestHashValidator is a validator for the "request_hash" field. It is called by the builders before save.
 	batchimagejob.RequestHashValidator = batchimagejobDescRequestHash.Validators[0].(func(string) error)
 	// batchimagejobDescManifestHash is the schema descriptor for manifest_hash field.
-	batchimagejobDescManifestHash := batchimagejobFields[26].Descriptor()
+	batchimagejobDescManifestHash := batchimagejobFields[27].Descriptor()
 	// batchimagejob.ManifestHashValidator is a validator for the "manifest_hash" field. It is called by the builders before save.
 	batchimagejob.ManifestHashValidator = batchimagejobDescManifestHash.Validators[0].(func(string) error)
 	// batchimagejobDescRetryCount is the schema descriptor for retry_count field.
-	batchimagejobDescRetryCount := batchimagejobFields[27].Descriptor()
+	batchimagejobDescRetryCount := batchimagejobFields[28].Descriptor()
 	// batchimagejob.DefaultRetryCount holds the default value on creation for the retry_count field.
 	batchimagejob.DefaultRetryCount = batchimagejobDescRetryCount.Default.(int)
 	// batchimagejobDescVersion is the schema descriptor for version field.
-	batchimagejobDescVersion := batchimagejobFields[28].Descriptor()
+	batchimagejobDescVersion := batchimagejobFields[29].Descriptor()
 	// batchimagejob.DefaultVersion holds the default value on creation for the version field.
 	batchimagejob.DefaultVersion = batchimagejobDescVersion.Default.(int)
 	// batchimagejobDescLastErrorCode is the schema descriptor for last_error_code field.
-	batchimagejobDescLastErrorCode := batchimagejobFields[34].Descriptor()
+	batchimagejobDescLastErrorCode := batchimagejobFields[35].Descriptor()
 	// batchimagejob.LastErrorCodeValidator is a validator for the "last_error_code" field. It is called by the builders before save.
 	batchimagejob.LastErrorCodeValidator = batchimagejobDescLastErrorCode.Validators[0].(func(string) error)
 	// batchimagejobDescCreatedAt is the schema descriptor for created_at field.
-	batchimagejobDescCreatedAt := batchimagejobFields[36].Descriptor()
+	batchimagejobDescCreatedAt := batchimagejobFields[37].Descriptor()
 	// batchimagejob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	batchimagejob.DefaultCreatedAt = batchimagejobDescCreatedAt.Default.(func() time.Time)
 	// batchimagejobDescUpdatedAt is the schema descriptor for updated_at field.
-	batchimagejobDescUpdatedAt := batchimagejobFields[37].Descriptor()
+	batchimagejobDescUpdatedAt := batchimagejobFields[38].Descriptor()
 	// batchimagejob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	batchimagejob.DefaultUpdatedAt = batchimagejobDescUpdatedAt.Default.(func() time.Time)
 	// batchimagejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

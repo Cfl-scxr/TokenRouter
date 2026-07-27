@@ -201,6 +201,25 @@ func (h *TeamHandler) GetUsageSummary(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// ListMemberUsageSeries 返回当前和历史成员的一次性趋势汇总。
+func (h *TeamHandler) ListMemberUsageSeries(c *gin.Context) {
+	subject, ok := teamSubject(c)
+	if !ok {
+		return
+	}
+	query, err := parseTeamUsageQuery(c)
+	if err != nil {
+		response.BadRequest(c, "Invalid team usage query")
+		return
+	}
+	result, err := h.service.ListMemberUsageSeries(c.Request.Context(), subject.UserID, query)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // ListUsageLogs 返回团队作用域的分页用量明细。
 func (h *TeamHandler) ListUsageLogs(c *gin.Context) {
 	subject, ok := teamSubject(c)
@@ -249,6 +268,23 @@ func (h *TeamHandler) DisableTeamKey(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"disabled": true})
+}
+
+func (h *TeamHandler) EnableTeamKey(c *gin.Context) {
+	subject, ok := teamSubject(c)
+	if !ok {
+		return
+	}
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || keyID <= 0 {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+	if err := h.service.EnableTeamKey(c.Request.Context(), subject.UserID, keyID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"enabled": true})
 }
 
 func (h *TeamHandler) DeleteTeamKey(c *gin.Context) {

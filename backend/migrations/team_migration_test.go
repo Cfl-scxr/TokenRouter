@@ -42,3 +42,19 @@ func TestTeamDefaultMemberLimitsMigration(t *testing.T) {
 	require.Contains(t, sql, "default_monthly_limit_usd")
 	require.Contains(t, sql, "teams_default_member_limits_check")
 }
+
+func TestTeamLifecycleAndAllowanceMigration(t *testing.T) {
+	content, err := FS.ReadFile("223_harden_team_lifecycle_and_allowance.sql")
+	require.NoError(t, err)
+	sql := strings.ToLower(string(content))
+
+	// 两个轻量字段分别承载 Owner 锁定和批任务额度预记，不引入额外预留表。
+	require.Contains(t, sql, "team_owner_disabled")
+	require.Contains(t, sql, "allowance_reserved")
+	require.NotContains(t, sql, "batch_image_billing_reservations")
+
+	// 删除用户必须同时处理 Owner 保护、Member 离队和团队 Key 禁用。
+	require.Contains(t, sql, "team_owner_transfer_required")
+	require.Contains(t, sql, "update team_memberships")
+	require.Contains(t, sql, "update api_keys")
+}

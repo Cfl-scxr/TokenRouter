@@ -57,6 +57,7 @@ export interface TeamAPIKey {
   name: string
   masked_key: string
   status: string
+  team_owner_disabled: boolean
   group_id: number | null
   group_name: string
   last_used_at: string | null
@@ -75,6 +76,14 @@ export interface TeamUsageSummary {
   input_tokens: number
   output_tokens: number
   daily: TeamUsageDaily[]
+}
+
+// 成员趋势同时包含当前成员和查询范围内有消费的离队成员。
+export interface TeamMemberUsageSeries {
+  actor_user_id: number
+  display_name: string
+  status: 'active' | 'left'
+  summary: TeamUsageSummary
 }
 
 export interface TeamUsageLog {
@@ -181,6 +190,10 @@ export const teamAPI = {
     const { data } = await apiClient.get<TeamUsageSummary>('/team/usage', { params: query })
     return data
   },
+  async memberUsage(query: Pick<TeamUsageQuery, 'from' | 'to'> = {}): Promise<TeamMemberUsageSeries[]> {
+    const { data } = await apiClient.get<TeamMemberUsageSeries[]>('/team/usage/members', { params: query })
+    return data
+  },
   async usageLogs(query: TeamUsageQuery = {}): Promise<TeamUsagePage> {
     const { data } = await apiClient.get<TeamUsagePage>('/team/usage/logs', { params: query })
     return data
@@ -191,6 +204,9 @@ export const teamAPI = {
   },
   async disableKey(id: number): Promise<void> {
     await apiClient.post(`/team/keys/${id}/disable`)
+  },
+  async enableKey(id: number): Promise<void> {
+    await apiClient.post(`/team/keys/${id}/enable`)
   },
   async deleteKey(id: number): Promise<void> {
     await apiClient.delete(`/team/keys/${id}`)
