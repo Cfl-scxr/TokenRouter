@@ -142,7 +142,8 @@ func (r *teamRepository) ListMembers(ctx context.Context, teamID int64) ([]servi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	members := make([]service.TeamMembership, 0)
 	for rows.Next() {
 		var member service.TeamMembership
@@ -188,7 +189,8 @@ func (r *teamRepository) ListInvitations(ctx context.Context, teamID int64) ([]s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	items := make([]service.TeamInvitation, 0)
 	for rows.Next() {
 		var item service.TeamInvitation
@@ -647,7 +649,8 @@ func (r *teamRepository) ListAdmin(ctx context.Context) ([]service.TeamAdminList
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	items := make([]service.TeamAdminListItem, 0)
 	for rows.Next() {
 		var item service.TeamAdminListItem
@@ -668,7 +671,8 @@ func (r *teamRepository) ListTeamKeyStrings(ctx context.Context, teamID int64) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	keys := make([]string, 0)
 	for rows.Next() {
 		var key string
@@ -710,7 +714,8 @@ func (r *teamRepository) GetUsageSummary(ctx context.Context, teamID int64, quer
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var item service.TeamUsageDaily
 		if err := rows.Scan(&item.Date, &item.ActualCost, &item.RequestCount); err != nil {
@@ -766,7 +771,8 @@ func (r *teamRepository) ListMemberUsageSeries(ctx context.Context, teamID int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	items := make([]service.TeamMemberUsageSeries, 0)
 	indexByUser := make(map[int64]int)
 	for rows.Next() {
@@ -821,7 +827,8 @@ func (r *teamRepository) ListUsageLogs(ctx context.Context, teamID int64, query 
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	items := make([]service.TeamUsageLogItem, 0, query.Limit)
 	for rows.Next() {
 		var item service.TeamUsageLogItem
@@ -858,7 +865,8 @@ func (r *teamRepository) ListTeamKeys(ctx context.Context, teamID int64, actorUs
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// 查询结束时关闭结果集，读取阶段的错误统一通过 rows.Err 返回。
+	defer func() { _ = rows.Close() }()
 	items := make([]service.TeamAPIKeyItem, 0)
 	for rows.Next() {
 		var item service.TeamAPIKeyItem

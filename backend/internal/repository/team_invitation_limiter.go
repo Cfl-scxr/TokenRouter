@@ -57,7 +57,7 @@ func (l *teamInvitationLimiter) CheckAndRecord(ctx context.Context, teamID int64
 	if err != nil {
 		return false, 0, err
 	}
-	parts, ok := value.([]interface{})
+	parts, ok := value.([]any)
 	if !ok || len(parts) != 2 {
 		return false, 0, fmt.Errorf("团队邀请限流返回值无效")
 	}
@@ -72,7 +72,7 @@ func (l *teamInvitationLimiter) CheckAndRecord(ctx context.Context, teamID int64
 	return allowed == 1, time.Duration(retryMillis) * time.Millisecond, nil
 }
 
-func redisInt64(value interface{}) (int64, error) {
+func redisInt64(value any) (int64, error) {
 	switch typed := value.(type) {
 	case int64:
 		return typed, nil
@@ -81,6 +81,7 @@ func redisInt64(value interface{}) (int64, error) {
 		_, err := fmt.Sscan(typed, &parsed)
 		return parsed, err
 	default:
-		return 0, fmt.Errorf("Redis 整数类型无效: %T", value)
+		// 错误字符串保持小写开头，便于上层继续包装上下文。
+		return 0, fmt.Errorf("redis 整数类型无效: %T", value)
 	}
 }

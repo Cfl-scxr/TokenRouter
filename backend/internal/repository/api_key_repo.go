@@ -516,9 +516,11 @@ func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 		}
 	}
-	if filters.Scope == "personal" {
+	// scope 只接受已定义的个人和团队范围，空值表示不限制。
+	switch filters.Scope {
+	case "personal":
 		q = q.Where(apikey.TeamIDIsNil())
-	} else if filters.Scope == "team" {
+	case "team":
 		q = q.Where(apikey.TeamIDNotNil())
 	}
 
