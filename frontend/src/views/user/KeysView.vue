@@ -1449,7 +1449,8 @@ const columns = computed<Column[]>(() =>
 
 const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
-const loading = ref(false)
+// 首次 Key 请求开始前也保持加载态，避免公共设置请求期间误显示空列表。
+const loading = ref(true)
 const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null

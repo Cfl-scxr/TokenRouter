@@ -215,7 +215,7 @@ const TablePageLayoutStub = {
 
 const DataTableStub = {
   name: 'DataTable',
-  props: ['columns', 'data'],
+  props: ['columns', 'data', 'loading'],
   emits: ['sort'],
   template: `
     <div>
@@ -224,6 +224,7 @@ const DataTableStub = {
       <button data-test="sort-current-concurrency" @click="$emit('sort', 'current_concurrency', 'asc')">
         Sort Current Concurrency
       </button>
+      <div v-if="loading" data-test="table-loading">Loading</div>
       <div v-for="row in data" :key="row.id">
         <div
           v-if="columns.some((col) => col.key === 'id')"
@@ -249,7 +250,7 @@ const DataTableStub = {
           <slot name="cell-last_used_ip" :value="row.last_used_ip" :row="row" />
         </div>
       </div>
-      <slot name="empty" />
+      <div v-if="!loading && data.length === 0" data-test="table-empty"><slot name="empty" /></div>
     </div>
   `,
 }
@@ -291,7 +292,7 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
-const mountView = async () => {
+const mountView = async (settle = true) => {
   const wrapper = mount(KeysView, {
     global: {
       stubs: {
@@ -314,8 +315,10 @@ const mountView = async () => {
       },
     },
   })
-  await flushPromises()
-  await nextTick()
+  if (settle) {
+    await flushPromises()
+    await nextTick()
+  }
   return wrapper
 }
 
@@ -368,6 +371,28 @@ describe('user KeysView column settings', () => {
     isCurrentStep.mockReturnValue(false)
     createKey.mockResolvedValue(createApiKey())
     updateKey.mockResolvedValue(createApiKey())
+  })
+
+  it('keeps the table loading until the first API key request completes', async () => {
+    let resolvePublicSettings!: (settings: Record<string, never>) => void
+    getPublicSettings.mockReturnValueOnce(new Promise((resolve) => {
+      resolvePublicSettings = resolve
+    }))
+
+    const wrapper = await mountView(false)
+    await nextTick()
+
+    expect(wrapper.find('[data-test="table-loading"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="table-empty"]').exists()).toBe(false)
+    expect(listKeys).not.toHaveBeenCalled()
+
+    resolvePublicSettings({})
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find('[data-test="table-loading"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="table-empty"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="status"]').exists()).toBe(true)
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {
