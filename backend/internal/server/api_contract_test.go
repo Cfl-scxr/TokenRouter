@@ -2013,6 +2013,11 @@ func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.Gro
 	return nil
 }
 
+// LockGroupSortOrder 满足管理端分组仓储接口；合同测试不执行创建流程。
+func (stubGroupRepo) LockGroupSortOrder(ctx context.Context) error {
+	return nil
+}
+
 func (stubGroupRepo) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.Group, error) {
 	return nil, nil
 }
