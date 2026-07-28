@@ -351,19 +351,22 @@ type ContentModerationModelFilter struct {
 	Models []string `json:"models"`
 }
 
+// ContentModerationCheckInput 中 UserID 表示实际处置对象，BillingUserID 和 TeamID 仅表示归属。
 type ContentModerationCheckInput struct {
-	RequestID  string
-	UserID     int64
-	UserEmail  string
-	APIKeyID   int64
-	APIKeyName string
-	GroupID    *int64
-	GroupName  string
-	Endpoint   string
-	Provider   string
-	Model      string
-	Protocol   string
-	Body       []byte
+	RequestID     string
+	UserID        int64
+	UserEmail     string
+	BillingUserID int64
+	TeamID        *int64
+	APIKeyID      int64
+	APIKeyName    string
+	GroupID       *int64
+	GroupName     string
+	Endpoint      string
+	Provider      string
+	Model         string
+	Protocol      string
+	Body          []byte
 }
 
 const (
@@ -523,11 +526,14 @@ type ContentModerationMedia struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// ContentModerationLog 保留实际处置对象、付款用户和团队三层审计身份。
 type ContentModerationLog struct {
 	ID                int64                         `json:"id"`
 	RequestID         string                        `json:"request_id"`
 	UserID            *int64                        `json:"user_id,omitempty"`
 	UserEmail         string                        `json:"user_email"`
+	BillingUserID     *int64                        `json:"billing_user_id,omitempty"`
+	TeamID            *int64                        `json:"team_id,omitempty"`
 	APIKeyID          *int64                        `json:"api_key_id,omitempty"`
 	APIKeyName        string                        `json:"api_key_name"`
 	GroupID           *int64                        `json:"group_id,omitempty"`
@@ -569,6 +575,8 @@ type ContentModerationCyberWarning struct {
 	RequestID       string                        `json:"request_id"`
 	UserID          *int64                        `json:"user_id,omitempty"`
 	UserEmail       string                        `json:"user_email"`
+	BillingUserID   *int64                        `json:"billing_user_id,omitempty"`
+	TeamID          *int64                        `json:"team_id,omitempty"`
 	APIKeyID        *int64                        `json:"api_key_id,omitempty"`
 	APIKeyName      string                        `json:"api_key_name"`
 	GroupID         *int64                        `json:"group_id,omitempty"`
@@ -608,6 +616,8 @@ type ContentModerationCyberWarningInput struct {
 	RequestID      string
 	UserID         int64
 	UserEmail      string
+	BillingUserID  int64
+	TeamID         *int64
 	APIKeyID       int64
 	APIKeyName     string
 	GroupID        *int64
@@ -2666,6 +2676,10 @@ func (s *ContentModerationService) buildStructuredLog(input ContentModerationChe
 	if input.UserID > 0 {
 		userID = &input.UserID
 	}
+	var billingUserID *int64
+	if input.BillingUserID > 0 {
+		billingUserID = &input.BillingUserID
+	}
 	var apiKeyID *int64
 	if input.APIKeyID > 0 {
 		apiKeyID = &input.APIKeyID
@@ -2674,6 +2688,8 @@ func (s *ContentModerationService) buildStructuredLog(input ContentModerationChe
 		RequestID:         input.RequestID,
 		UserID:            userID,
 		UserEmail:         input.UserEmail,
+		BillingUserID:     billingUserID,
+		TeamID:            cloneInt64Ptr(input.TeamID),
 		APIKeyID:          apiKeyID,
 		APIKeyName:        input.APIKeyName,
 		GroupID:           cloneInt64Ptr(input.GroupID),
@@ -2811,6 +2827,10 @@ func (s *ContentModerationService) buildCyberWarning(input ContentModerationCybe
 	if input.UserID > 0 {
 		userID = &input.UserID
 	}
+	var billingUserID *int64
+	if input.BillingUserID > 0 {
+		billingUserID = &input.BillingUserID
+	}
 	var apiKeyID *int64
 	if input.APIKeyID > 0 {
 		apiKeyID = &input.APIKeyID
@@ -2836,6 +2856,8 @@ func (s *ContentModerationService) buildCyberWarning(input ContentModerationCybe
 		RequestID:      strings.TrimSpace(input.RequestID),
 		UserID:         userID,
 		UserEmail:      strings.TrimSpace(input.UserEmail),
+		BillingUserID:  billingUserID,
+		TeamID:         cloneInt64Ptr(input.TeamID),
 		APIKeyID:       apiKeyID,
 		APIKeyName:     strings.TrimSpace(input.APIKeyName),
 		GroupID:        cloneInt64Ptr(input.GroupID),

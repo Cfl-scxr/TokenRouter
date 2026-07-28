@@ -58,3 +58,37 @@ func TestTeamLifecycleAndAllowanceMigration(t *testing.T) {
 	require.Contains(t, sql, "update team_memberships")
 	require.Contains(t, sql, "update api_keys")
 }
+
+func TestContentModerationTeamAttributionMigration(t *testing.T) {
+	content, err := FS.ReadFile("225_content_moderation_team_attribution.sql")
+	require.NoError(t, err)
+	sql := strings.ToLower(string(content))
+
+	// 两类风控记录都必须新增付款人和团队字段。
+	require.Equal(t, 2, strings.Count(sql, "add column if not exists billing_user_id bigint"))
+	require.Equal(t, 2, strings.Count(sql, "add column if not exists team_id bigint"))
+
+	// 删除关联对象后应保留审计记录本身。
+	require.Contains(t, sql, "content_moderation_logs_billing_user_id_fkey")
+	require.Contains(t, sql, "content_moderation_logs_team_id_fkey")
+	require.Contains(t, sql, "content_moderation_cyber_warnings_billing_user_id_fkey")
+	require.Contains(t, sql, "content_moderation_cyber_warnings_team_id_fkey")
+	require.Equal(t, 4, strings.Count(sql, "on delete set null"))
+
+	// 列表查询需要按付款人和团队使用时间索引。
+	require.Contains(t, sql, "idx_content_moderation_logs_billing_user_created_at")
+	require.Contains(t, sql, "idx_content_moderation_logs_team_created_at")
+	require.Contains(t, sql, "idx_content_moderation_cyber_warnings_billing_user_created_at")
+	require.Contains(t, sql, "idx_content_moderation_cyber_warnings_team_created_at")
+
+	// 本地审计可回填原付款人，Cyber 必须优先使用用量记录的准确归属。
+	require.Contains(t, sql, "set billing_user_id = user_id")
+	require.Contains(t, sql, "set team_id = keys.team_id")
+	require.Contains(t, sql, "from usage_logs as usage")
+	require.Contains(t, sql, "set billing_user_id = usage.billing_user_id")
+	require.Contains(t, sql, "keys.team_id is null")
+	require.NotContains(t, sql, "update content_moderation_cyber_warnings\nset billing_user_id = user_id")
+
+	// 无论是否能完整恢复归属，都不能改写历史处置对象。
+	require.NotContains(t, sql, "set user_id =")
+}
