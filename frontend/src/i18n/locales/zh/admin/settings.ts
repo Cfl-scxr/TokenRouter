@@ -46,6 +46,18 @@ dataSharing: {
         bucketLimitHint: '如果窗口和粒度会产生超过 720 根柱子，后端会自动放大单柱时间窗口。'
       },
       features: {
+        team: {
+          title: '团队功能',
+          description: '控制用户团队页和管理员团队管理页是否开放。',
+          enabled: '启用团队功能',
+          enabledHint: '关闭后隐藏相关页面入口，并阻止通过地址直接访问。'
+        },
+        dataSharing: {
+          title: '数据共享',
+          description: '控制用户和管理员的数据共享页是否开放。',
+          enabled: '启用数据共享',
+          enabledHint: '关闭后隐藏相关页面入口，并阻止通过地址直接访问。'
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',
