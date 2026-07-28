@@ -866,6 +866,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	if err != nil {
 		return nil, err
 	}
+	if apiKey.IsComposite {
+		return nil, ErrCompositeKeyGroupConflict
+	}
 
 	if groupID == nil {
 		// nil 表示不修改，直接返回

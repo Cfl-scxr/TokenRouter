@@ -102,6 +102,22 @@ export default {
     namePlaceholder: '我的 API 密钥',
     groupLabel: '分组',
     selectGroup: '选择分组',
+    composite: {
+      label: '复合 Key',
+      hint: '通过“前缀/模型 ID”选择不同分组。',
+      addMapping: '添加分组映射',
+      editMappings: '编辑复合 Key 映射',
+      prefixPlaceholder: '例如 GPT',
+      groupRequired: '请选择分组',
+      prefixRequired: '请输入前缀',
+      prefixInvalid: '前缀仅允许 1 至 32 位字母、数字、下划线或连字符',
+      prefixDuplicate: '前缀不能重复（不区分大小写）',
+      groupDuplicate: '同一分组只能添加一次',
+      mappingRequired: '复合 Key 至少需要一个分组映射',
+      tooManyMappings: '复合 Key 最多支持 20 个分组映射',
+      moveUp: '上移',
+      moveDown: '下移'
+    },
     fastModePolicyLabel: 'Fast 模式策略',
     fastModePolicy: {
       followRequest: '跟随请求',
@@ -139,6 +155,7 @@ export default {
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',
+      compositeDescription: '调用模型时，请在模型 ID 前添加对应分组前缀。',
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
       copy: '复制',
       copied: '已复制',

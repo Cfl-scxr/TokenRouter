@@ -102,6 +102,22 @@ export default {
     namePlaceholder: 'My API Key',
     groupLabel: 'Group',
     selectGroup: 'Select a group',
+    composite: {
+      label: 'Composite key',
+      hint: 'Choose a group with a prefix/model ID.',
+      addMapping: 'Add group mapping',
+      editMappings: 'Edit composite key mappings',
+      prefixPlaceholder: 'For example, GPT',
+      groupRequired: 'Select a group',
+      prefixRequired: 'Enter a prefix',
+      prefixInvalid: 'Use 1-32 letters, numbers, underscores, or hyphens',
+      prefixDuplicate: 'Prefixes must be unique, ignoring case',
+      groupDuplicate: 'Each group can only be added once',
+      mappingRequired: 'A composite key needs at least one group mapping',
+      tooManyMappings: 'A composite key supports up to 20 group mappings',
+      moveUp: 'Move up',
+      moveDown: 'Move down'
+    },
     fastModePolicyLabel: 'Fast mode policy',
     fastModePolicy: {
       followRequest: 'Follow request',
@@ -139,6 +155,7 @@ export default {
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
+      compositeDescription: 'Prefix each model ID with the group prefix when making requests.',
       description:
         'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',

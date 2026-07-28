@@ -21,6 +21,42 @@ vi.mock('@/composables/useClipboard', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
+  it('renders and copies composite model examples', async () => {
+    copyToClipboardMock.mockClear()
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-composite-test',
+        baseUrl: 'https://example.com/v1',
+        platform: null,
+        compositeGroups: [
+          { group_id: 7, prefix: 'GPT', group: { id: 7, name: 'OpenAI', platform: 'openai' } },
+          { group_id: 8, prefix: 'Claude', group: { id: 8, name: 'Anthropic', platform: 'anthropic' } }
+        ]
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('GPT/gpt-5')
+    expect(wrapper.text()).toContain('Claude/claude-sonnet-4')
+    // 每个示例的复制按钮必须复制带前缀模型，而不是内部真实模型。
+    const copyButtons = wrapper.findAll('button').filter((button) =>
+      button.text().includes('keys.useKeyModal.copy')
+    )
+    expect(copyButtons).toHaveLength(2)
+    await copyButtons[1]!.trigger('click')
+    expect(copyToClipboardMock).toHaveBeenCalledWith('Claude/claude-sonnet-4', 'keys.copied')
+  })
+
   it('renders Grok Build and OpenCode setup for Grok groups', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
