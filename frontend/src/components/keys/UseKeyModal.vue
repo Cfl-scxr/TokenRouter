@@ -134,6 +134,57 @@
           </div>
         </div>
 
+        <!-- Codex WebSocket 连接模式 -->
+        <div
+          v-if="showCodexWebSocketMode"
+          class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+        >
+          <div class="mb-2">
+            <p class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('keys.useKeyModal.openai.websocketTitle') }}
+            </p>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('keys.useKeyModal.openai.websocketDescription') }}
+            </p>
+          </div>
+          <div
+            class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-700"
+            role="radiogroup"
+            :aria-label="t('keys.useKeyModal.openai.websocketTitle')"
+          >
+            <button
+              type="button"
+              role="radio"
+              data-testid="codex-websocket-disabled"
+              :aria-checked="!codexWebSocketEnabled"
+              :class="[
+                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                !codexWebSocketEnabled
+                  ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+              ]"
+              @click="codexWebSocketEnabled = false"
+            >
+              {{ t('keys.useKeyModal.openai.websocketDisabled') }}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              data-testid="codex-websocket-enabled"
+              :aria-checked="codexWebSocketEnabled"
+              :class="[
+                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                codexWebSocketEnabled
+                  ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+              ]"
+              @click="codexWebSocketEnabled = true"
+            >
+              {{ t('keys.useKeyModal.openai.websocketEnabled') }}
+            </button>
+          </div>
+        </div>
+
         <!-- OS/Shell Tabs -->
         <div v-if="showShellTabs" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex min-w-max gap-4" aria-label="Tabs">
@@ -285,6 +336,7 @@ const compositeExamples = computed(() => (props.compositeGroups || []).map((bind
 }))
 type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
+const codexWebSocketEnabled = ref(false)
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -306,12 +358,14 @@ watch(() => props.platform, () => {
   activeTab.value = 'unix'
   activeClientTab.value = defaultClientTab.value
   codexAuthMode.value = 'legacy'
+  codexWebSocketEnabled.value = false
 }, { immediate: true })
 
-// 每次重新打开弹窗都回到兼容模式，避免沿用上一次密钥的临时选择。
+// 每次重新打开弹窗都恢复默认配置，避免沿用上一次密钥的临时选择。
 watch(() => props.show, (show) => {
   if (show) {
     codexAuthMode.value = 'legacy'
+    codexWebSocketEnabled.value = false
   }
 })
 
@@ -389,7 +443,6 @@ const clientTabs = computed((): TabConfig[] => {
     case 'openai': {
       const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
       ]
       if (props.allowMessagesDispatch) {
         tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
@@ -549,12 +602,16 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
-  (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws')
+  activeClientTab.value === 'codex'
+)
+
+const showCodexWebSocketMode = computed(() =>
+  props.platform === 'openai' && activeClientTab.value === 'codex'
 )
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws' || activeClientTab.value === 'grok') {
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'grok') {
     return openaiTabs
   }
   return shellTabs
@@ -681,9 +738,6 @@ const currentFiles = computed((): FileConfig[] => {
     case 'openai':
       if (activeClientTab.value === 'claude') {
         return generateAnthropicFiles(baseUrl, apiKey)
-      }
-      if (activeClientTab.value === 'codex-ws') {
-        return generateOpenAIWsFiles(baseUrl, apiKey)
       }
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'gemini':
@@ -866,6 +920,12 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const websocketProviderConfig = codexWebSocketEnabled.value
+    ? '\nsupports_websockets = true'
+    : ''
+  const websocketFeatureConfig = codexWebSocketEnabled.value
+    ? 'responses_websockets_v2 = true\n'
+    : ''
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
@@ -879,11 +939,11 @@ windows_wsl_setup_acknowledged = true
 [model_providers.OpenAI]
 name = "OpenAI"
 base_url = "${baseUrl}"
-wire_api = "responses"
+wire_api = "responses"${websocketProviderConfig}
 ${generateCodexProviderAuthConfig()}
 
 [features]
-goals = true`
+${websocketFeatureConfig}goals = true`
 
   // auth.json content
   const authContent = `{
@@ -970,48 +1030,6 @@ responses_websockets_v2 = true`
     {
       path: isWindows ? 'PowerShell' : 'Terminal',
       content: environmentContent
-    }
-  ]
-}
-
-function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  const isWindows = activeTab.value === 'windows'
-  const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
-
-  // config.toml content with WebSocket v2
-  const configContent = `model_provider = "OpenAI"
-model = "${OPENAI_CODEX_DEFAULT_MODEL}"
-review_model = "${OPENAI_CODEX_DEFAULT_MODEL}"
-model_reasoning_effort = "xhigh"
-disable_response_storage = true
-network_access = "enabled"
-windows_wsl_setup_acknowledged = true
-
-[model_providers.OpenAI]
-name = "OpenAI"
-base_url = "${baseUrl}"
-wire_api = "responses"
-supports_websockets = true
-${generateCodexProviderAuthConfig()}
-
-[features]
-responses_websockets_v2 = true
-goals = true`
-
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKey}"
-}`
-
-  return [
-    {
-      path: `${configDir}/config.toml`,
-      content: configContent,
-      hint: t('keys.useKeyModal.openai.configTomlHint')
-    },
-    {
-      path: `${configDir}/auth.json`,
-      content: authContent
     }
   ]
 }
