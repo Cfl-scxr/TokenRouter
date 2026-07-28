@@ -73,7 +73,10 @@ func TestResolveCompositeAPIKeyRequestMultipart(t *testing.T) {
 	fileHeader := c.Request.MultipartForm.File["image"][0]
 	opened, err := fileHeader.Open()
 	require.NoError(t, err)
-	defer opened.Close()
+	// 确保测试结束前关闭 multipart 文件句柄，并校验关闭错误。
+	defer func() {
+		require.NoError(t, opened.Close())
+	}()
 	content, err := io.ReadAll(opened)
 	require.NoError(t, err)
 	require.Equal(t, []byte("image-data"), content)
