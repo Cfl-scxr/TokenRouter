@@ -67,7 +67,7 @@ dataSharing: {
           enabled: 'Enable Risk Control',
           enabledHint: 'When off, the admin sidebar entry is hidden and gateway moderation is skipped.',
           cyberSessionBlockEnabled: 'Cyber Session Block',
-          cyberSessionBlockEnabledHint: 'After upstream returns cyber_policy, temporarily reject later requests in the same explicit session_id / conversation_id / prompt_cache_key.',
+          cyberSessionBlockEnabledHint: 'Applies only to groups included in the risk control scope. After upstream returns cyber_policy, temporarily reject later requests in the same explicit session_id / conversation_id / prompt_cache_key.',
           cyberSessionBlockTTLSeconds: 'Block Duration (seconds)',
           cyberSessionBlockTTLSecondsHint: 'Default is 3600 seconds. When disabled, only audit and usage records are written.',
         },

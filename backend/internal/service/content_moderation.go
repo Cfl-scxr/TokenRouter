@@ -2091,6 +2091,21 @@ func (s *ContentModerationService) CyberWarningInScope(ctx context.Context, inpu
 	return cfg.cyberInputInScope(input, "content_moderation.cyber_policy"), nil
 }
 
+// CyberSessionBlockGroupInScope 判断当前分组是否已纳入启用中的风控范围，供会话屏蔽热路径使用。
+func (s *ContentModerationService) CyberSessionBlockGroupInScope(ctx context.Context, groupID *int64) (bool, error) {
+	if s == nil || s.settingRepo == nil {
+		return false, nil
+	}
+	runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
+	if err != nil {
+		return false, err
+	}
+	if runtimeSnapshot == nil || !runtimeSnapshot.riskControlEnabled || runtimeSnapshot.config == nil {
+		return false, nil
+	}
+	return runtimeSnapshot.config.includesGroup(groupID), nil
+}
+
 func (cfg *ContentModerationConfig) cyberInputInScope(input ContentModerationCyberWarningInput, logPrefix string) bool {
 	if cfg == nil {
 		return true

@@ -1975,6 +1975,68 @@ func TestContentModerationRecordCyberWarning_RecordsCyberPolicyCode(t *testing.T
 	require.Equal(t, "Request blocked by upstream cyber policy", repo.cyberWarnings[0].WarningText)
 }
 
+func TestContentModerationCyberSessionBlockGroupInScope_RespectsRiskControlGroups(t *testing.T) {
+	selectedGroupID := int64(101)
+	otherGroupID := int64(202)
+	tests := []struct {
+		name               string
+		riskControlEnabled bool
+		allGroups          bool
+		groupIDs           []int64
+		groupID            *int64
+		want               bool
+	}{
+		{
+			name:               "已选分组启用会话屏蔽",
+			riskControlEnabled: true,
+			groupIDs:           []int64{selectedGroupID},
+			groupID:            &selectedGroupID,
+			want:               true,
+		},
+		{
+			name:               "未选分组跳过会话屏蔽",
+			riskControlEnabled: true,
+			groupIDs:           []int64{selectedGroupID},
+			groupID:            &otherGroupID,
+			want:               false,
+		},
+		{
+			name:               "全部分组启用会话屏蔽",
+			riskControlEnabled: true,
+			allGroups:          true,
+			groupID:            &otherGroupID,
+			want:               true,
+		},
+		{
+			name:               "风控中心关闭时跳过会话屏蔽",
+			riskControlEnabled: false,
+			allGroups:          true,
+			groupID:            &selectedGroupID,
+			want:               false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultContentModerationConfig()
+			cfg.AllGroups = tc.allGroups
+			cfg.GroupIDs = tc.groupIDs
+			rawCfg, err := json.Marshal(cfg)
+			require.NoError(t, err)
+			settingRepo := &contentModerationTestSettingRepo{values: map[string]string{
+				SettingKeyRiskControlEnabled:      fmt.Sprintf("%t", tc.riskControlEnabled),
+				SettingKeyContentModerationConfig: string(rawCfg),
+			}}
+			svc := NewContentModerationService(settingRepo, nil, nil, nil, nil, nil, nil)
+
+			inScope, err := svc.CyberSessionBlockGroupInScope(context.Background(), tc.groupID)
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, inScope)
+		})
+	}
+}
+
 func TestContentModerationRecordCyberWarning_SkipsGroupOutOfScope(t *testing.T) {
 	cfg := defaultContentModerationConfig()
 	cfg.AllGroups = false
