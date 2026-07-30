@@ -1311,8 +1311,25 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if routingModel == "" {
 					routingModel = loadCapturedModel(&capturedSessionRoutingModel)
 				}
-				if isOpenAIWSTerminalEvent(eventType) {
-					s.handleOpenAIWSTerminalTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
+				if eventType == "response.failed" {
+					terminalPolicy := s.handleOpenAIWSTerminalTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
+					if terminalPolicy.Decision.ShouldReturnGenericError() {
+						return openAIWSGenericPolicyCloseError(terminalPolicy.StatusCode)
+					}
+					if !wroteDownstream && terminalPolicy.Decision.ShouldFailoverWithDefaults(
+						account,
+						terminalPolicy.StatusCode,
+						false,
+						s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, payload),
+					) {
+						return newOpenAIUpstreamFailoverError(
+							terminalPolicy.StatusCode,
+							handshakeHeaders,
+							payload,
+							extractOpenAISSEErrorMessage(payload),
+							terminalPolicy.Decision.RetryableOnSameAccount(account, terminalPolicy.StatusCode),
+						)
+					}
 				}
 				if eventType == "error" {
 					errorDecision := s.handleOpenAIWSErrorEventTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)

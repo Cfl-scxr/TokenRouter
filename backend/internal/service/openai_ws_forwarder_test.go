@@ -87,11 +87,69 @@ func TestOpenAIWSTerminalEvent_ResponseFailedRecordsModelTransient(t *testing.T)
 	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","message":"Internal error"}}}`)
 
 	for range 2 {
-		terminalEvent := svc.handleOpenAIWSTerminalTransientFailure(context.Background(), account, "gpt-5.5", http.Header{}, payload)
-		require.Equal(t, "response.failed", terminalEvent)
+		terminalPolicy := svc.handleOpenAIWSTerminalTransientFailure(context.Background(), account, "gpt-5.5", http.Header{}, payload)
+		require.Equal(t, "response.failed", terminalPolicy.TerminalEvent)
+		require.Equal(t, http.StatusBadGateway, terminalPolicy.StatusCode)
 	}
 
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+}
+
+// TestOpenAIWSTerminalFailureReturnsExplicitPolicyDecision 验证 response.failed
+// 不只写账号状态，还把显式策略结果返回给写客户端事件的调用方。
+func TestOpenAIWSTerminalFailureReturnsExplicitPolicyDecision(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	repo := &openAIWSPolicyRepo{}
+	svc.rateLimitService = NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5206,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusUnprocessableEntity)},
+		},
+	}
+	payload := []byte(`{"type":"response.failed","response":{"error":{"status_code":422,"message":"configured"}}}`)
+
+	terminalPolicy := svc.handleOpenAIWSTerminalTransientFailure(
+		context.Background(), account, "gpt-5.5", http.Header{}, payload,
+	)
+
+	require.Equal(t, "response.failed", terminalPolicy.TerminalEvent)
+	require.Equal(t, http.StatusUnprocessableEntity, terminalPolicy.StatusCode)
+	require.Equal(t, ErrorPolicyCustomMatched, terminalPolicy.Decision.Policy)
+	require.True(t, terminalPolicy.Decision.ShouldFailover(account, terminalPolicy.StatusCode, false))
+	require.Equal(t, 1, repo.setErrorCalls)
+}
+
+// TestOpenAIWSTerminalContentPolicyBypassesAccountPolicy 验证内容安全拒绝
+// 即使被语义映射为 502，也不会误命中账号自定义错误码。
+func TestOpenAIWSTerminalContentPolicyBypassesAccountPolicy(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	repo := &openAIWSPolicyRepo{}
+	svc.rateLimitService = NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5207,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusBadGateway)},
+		},
+	}
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"content_policy","message":"request blocked by policy"}}}`)
+
+	terminalPolicy := svc.handleOpenAIWSTerminalTransientFailure(
+		context.Background(), account, "gpt-5.5", http.Header{}, payload,
+	)
+
+	require.Equal(t, http.StatusBadGateway, terminalPolicy.StatusCode)
+	require.Equal(t, ErrorPolicyNone, terminalPolicy.Decision.Policy)
+	require.False(t, terminalPolicy.Decision.ShouldFailover(
+		account, terminalPolicy.StatusCode, openAIStreamFailedEventShouldFailover(payload, "request blocked by policy"),
+	))
+	require.Zero(t, repo.setErrorCalls)
 }
 
 func TestOpenAIWSErrorEvent_ServerErrorRecordsModelTransient(t *testing.T) {

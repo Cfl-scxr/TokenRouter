@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -44,6 +46,38 @@ func isOpenAIAccount(account *Account) bool {
 	return account != nil && (account.Platform == PlatformOpenAI || account.Platform == PlatformGrok)
 }
 
+// isOpenAIContentPolicyRejection 识别只由当前请求内容触发的 OpenAI 安全拒绝。
+// 这类错误即使通过流内事件被推断为 502，也不能命中账号级自定义错误策略。
+func isOpenAIContentPolicyRejection(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+	for _, path := range []string{
+		"error.code",
+		"error.type",
+		"response.error.code",
+		"response.error.type",
+	} {
+		marker := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, path).String()))
+		if strings.Contains(marker, "content_policy") ||
+			strings.Contains(marker, "content_filter") ||
+			strings.Contains(marker, "safety") ||
+			strings.Contains(marker, "moderation") {
+			return true
+		}
+	}
+	for _, path := range []string{"error.message", "response.error.message", "message"} {
+		message := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, path).String()))
+		if strings.Contains(message, "content policy") ||
+			strings.Contains(message, "blocked by policy") ||
+			strings.Contains(message, "safety system") ||
+			strings.Contains(message, "violates our policies") {
+			return true
+		}
+	}
+	return false
+}
+
 // isOpenAIAccountPolicyRequestScopedError 识别只与当前请求有关、不能修改账号健康状态的错误。
 // 413 请求体限制可能是账号上游代理的独有限制，仍允许切换账号，因此不在这里统一排除。
 func isOpenAIAccountPolicyRequestScopedError(account *Account, statusCode int, responseBody []byte) bool {
@@ -52,6 +86,7 @@ func isOpenAIAccountPolicyRequestScopedError(account *Account, statusCode int, r
 		return true
 	}
 	if IsOpenAICyberWarningPayload(responseBody, upstreamMsg) ||
+		isOpenAIContentPolicyRejection(responseBody) ||
 		isOpenAIClientInvalidRequestError(statusCode, upstreamMsg, responseBody) ||
 		isOpenAIContextWindowError(upstreamMsg, responseBody) {
 		return true

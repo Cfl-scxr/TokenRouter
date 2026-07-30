@@ -169,8 +169,7 @@ func detectOpenAIWSHTTPBridgeRequestScopedError(account *Account, statusCode int
 	}
 	if IsOpenAICyberWarningPayload(body, message) ||
 		isOpenAIClientInvalidRequestError(statusCode, message, body) ||
-		isOpenAIContextWindowError(message, body) ||
-		isOpenAIRequestBodyTooLargeError(statusCode, message, body) {
+		isOpenAIContextWindowError(message, body) {
 		return true
 	}
 	return account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, body)
@@ -425,6 +424,38 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
+		terminalPolicy := openAIWSTerminalPolicyDecision{
+			TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
+			Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
+		}
+		if isOpenAIWSTerminalEvent(eventType) {
+			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(
+				ctx,
+				account,
+				canonicalOpenAIAccountSchedulingModel(account, routingModel),
+				resp.Header,
+				upstreamMessage,
+			)
+		}
+		if eventType == "response.failed" {
+			if terminalPolicy.Decision.ShouldReturnGenericError() {
+				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
+				upstreamEventErr = errors.New("upstream response failed with status not in custom error codes")
+			} else if turn == 1 && !wroteDownstream && terminalPolicy.Decision.ShouldFailoverWithDefaults(
+				account,
+				terminalPolicy.StatusCode,
+				false,
+				s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, upstreamMessage),
+			) {
+				return nil, newOpenAIUpstreamFailoverError(
+					terminalPolicy.StatusCode,
+					resp.Header,
+					upstreamMessage,
+					extractOpenAISSEErrorMessage(upstreamMessage),
+					terminalPolicy.Decision.RetryableOnSameAccount(account, terminalPolicy.StatusCode),
+				)
+			}
+		}
 		if eventType == "error" {
 			_, _, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 			errMessage := strings.TrimSpace(errMsgRaw)
@@ -498,7 +529,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			return resultWithUsage(), upstreamEventErr
 		}
 		if isOpenAIWSTerminalEvent(eventType) {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalOpenAIAccountSchedulingModel(account, routingModel), resp.Header, upstreamMessage)
+			upstreamTerminalEvent = terminalPolicy.TerminalEvent
 			terminalEventCount++
 			firstTokenMsValue := -1
 			if firstTokenMs != nil {

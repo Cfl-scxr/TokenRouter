@@ -997,6 +997,39 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			imageCounter.AddSSEData(upstreamMessage)
+			terminalPolicy := openAIWSTerminalPolicyDecision{
+				TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
+				Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
+			}
+			if isTerminalEvent {
+				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
+				terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), upstreamMessage)
+			}
+			if eventType == "response.failed" {
+				if turn == 1 && !wroteDownstream && terminalPolicy.Decision.ShouldReturnGenericError() {
+					lease.MarkBroken()
+					return nil, openAIWSGenericPolicyCloseError(terminalPolicy.StatusCode)
+				}
+				if turn == 1 && !wroteDownstream && terminalPolicy.Decision.ShouldFailoverWithDefaults(
+					account,
+					terminalPolicy.StatusCode,
+					false,
+					s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, upstreamMessage),
+				) {
+					lease.MarkBroken()
+					return nil, newOpenAIUpstreamFailoverError(
+						terminalPolicy.StatusCode,
+						lease.HandshakeHeaders(),
+						upstreamMessage,
+						extractOpenAISSEErrorMessage(upstreamMessage),
+						terminalPolicy.Decision.RetryableOnSameAccount(account, terminalPolicy.StatusCode),
+					)
+				}
+				if terminalPolicy.Decision.ShouldReturnGenericError() {
+					// 已发送前导事件时无法切换 HTTP 状态，改用通用 WS 错误结束当前 turn。
+					upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
+				}
+			}
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -1033,8 +1066,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if isTerminalEvent {
 				terminalResponseBody = openAIWSTerminalEventResponseBody(upstreamMessage)
-				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
-				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), upstreamMessage)
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()
@@ -1070,7 +1101,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
 					Stream:                reqStream,
 					OpenAIWSMode:          true,
-					UpstreamTerminalEvent: terminalEvent,
+					UpstreamTerminalEvent: terminalPolicy.TerminalEvent,
 					ResponseHeaders:       lease.HandshakeHeaders(),
 					ResponseBody:          cloneDataSharingRequestBody(terminalResponseBody),
 					Duration:              time.Since(turnStart),

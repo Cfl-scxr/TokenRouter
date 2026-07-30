@@ -308,17 +308,28 @@ func openAIWSErrorPolicyStatus(payload []byte) int {
 	return openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw)
 }
 
-func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) string {
+// openAIWSTerminalPolicyDecision 保留终止事件类型及其账号策略结果，
+// 调用方必须在写给客户端前判断通用错误和故障转移。
+type openAIWSTerminalPolicyDecision struct {
+	TerminalEvent string
+	StatusCode    int
+	Decision      UpstreamErrorDecision
+}
+
+func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) openAIWSTerminalPolicyDecision {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-	terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
-	if terminalEvent != "response.failed" {
-		return terminalEvent
+	result := openAIWSTerminalPolicyDecision{
+		TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
+		Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
 	}
-	status := openAIWSErrorPolicyStatus(payload)
-	if status != 0 {
-		_ = s.applyOpenAIWSEventErrorPolicy(ctx, account, canonicalModel, status, headers, payload)
+	if result.TerminalEvent != "response.failed" {
+		return result
 	}
-	return terminalEvent
+	result.StatusCode = openAIWSErrorPolicyStatus(payload)
+	if result.StatusCode != 0 {
+		result.Decision = s.applyOpenAIWSEventErrorPolicy(ctx, account, canonicalModel, result.StatusCode, headers, payload)
+	}
+	return result
 }
 
 func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) UpstreamErrorDecision {

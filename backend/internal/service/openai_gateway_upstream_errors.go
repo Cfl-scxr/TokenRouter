@@ -240,6 +240,9 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
+	if isOpenAIContentPolicyRejection(upstreamBody) {
+		return false
+	}
 	if IsOpenAICyberWarningPayload(upstreamBody, upstreamMsg) {
 		return false
 	}

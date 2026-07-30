@@ -716,6 +716,52 @@ type errorPolicyRepoStub struct {
 	modelRateLimitCalls []modelNotFoundRateLimitCall
 }
 
+// retryExhaustedCooldownRepoStub 记录同账号重试耗尽后的本地冷却写入。
+type retryExhaustedCooldownRepoStub struct {
+	AccountRepository
+	account   *Account
+	tempCalls int
+}
+
+func (r *retryExhaustedCooldownRepoStub) GetByID(context.Context, int64) (*Account, error) {
+	return r.account, nil
+}
+
+func (r *retryExhaustedCooldownRepoStub) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	r.tempCalls++
+	return nil
+}
+
+// TestTempUnscheduleRetryableError_PoolModeSkipsLegacyCooldown 验证池模式的
+// 同账号重试耗尽后只切号，不复用旧版 400/502 一分钟冷却。
+func TestTempUnscheduleRetryableError_PoolModeSkipsLegacyCooldown(t *testing.T) {
+	poolAccount := &Account{
+		ID:       81,
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	repo := &retryExhaustedCooldownRepoStub{account: poolAccount}
+	svc := &GatewayService{accountRepo: repo}
+
+	svc.TempUnscheduleRetryableError(context.Background(), poolAccount.ID, &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		RetryableOnSameAccount: true,
+	})
+
+	require.Zero(t, repo.tempCalls)
+
+	// 非池账号继续保留旧版特殊错误的冷却行为。
+	repo.account = &Account{ID: 82, Type: AccountTypeOAuth, Platform: PlatformAntigravity}
+	svc.TempUnscheduleRetryableError(context.Background(), repo.account.ID, &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		RetryableOnSameAccount: true,
+	})
+	require.Equal(t, 1, repo.tempCalls)
+}
+
 func (r *errorPolicyRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.tempCalls++
 	return nil

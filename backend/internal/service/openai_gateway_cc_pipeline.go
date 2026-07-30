@@ -97,7 +97,6 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		IsOpenAICyberWarningPayload(respBody, upstreamMsg) ||
 		isOpenAIClientInvalidRequestError(resp.StatusCode, upstreamMsg, respBody) ||
 		isOpenAIContextWindowError(upstreamMsg, respBody) ||
-		isOpenAIRequestBodyTooLargeError(resp.StatusCode, upstreamMsg, respBody) ||
 		(account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, respBody)) {
 		return nil
 	}

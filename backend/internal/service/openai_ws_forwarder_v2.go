@@ -607,6 +607,38 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if warning := buildOpenAIWSUpstreamWarning(eventType, message); warning != nil {
 			upstreamWarning = warning
 		}
+		terminalPolicy := openAIWSTerminalPolicyDecision{
+			TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
+			Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
+		}
+		if isTerminalEvent {
+			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+		}
+		if eventType == "response.failed" {
+			if terminalPolicy.Decision.ShouldReturnGenericError() {
+				if !wroteDownstream {
+					lease.MarkBroken()
+					return nil, &openAIWSGenericPolicyError{upstreamStatus: terminalPolicy.StatusCode}
+				}
+				// 流已提交时无法改写 HTTP 状态，只下发净化后的通用终止事件。
+				message = openAIStreamGenericFailedEventPayload()
+			}
+			if !wroteDownstream && terminalPolicy.Decision.ShouldFailoverWithDefaults(
+				account,
+				terminalPolicy.StatusCode,
+				false,
+				s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, message),
+			) {
+				lease.MarkBroken()
+				return nil, newOpenAIUpstreamFailoverError(
+					terminalPolicy.StatusCode,
+					lease.HandshakeHeaders(),
+					message,
+					extractOpenAISSEErrorMessage(message),
+					terminalPolicy.Decision.RetryableOnSameAccount(account, terminalPolicy.StatusCode),
+				)
+			}
+		}
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
@@ -753,7 +785,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if isTerminalEvent {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			upstreamTerminalEvent = terminalPolicy.TerminalEvent
 			// 终止事件必须是当前 WS 消息中的最后一个 JSON 文档；尾随文档不再写给已完成的
 			// 客户端请求，同时禁止复用语义不明确的上游连接。
 			cleanExit = len(pendingJSONDocuments) == 0
