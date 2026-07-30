@@ -874,8 +874,8 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
-	// 在可配置的透传分支返回前先同步账号可调度状态，避免 Grok 429 后账号仍可被调度。
-	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	// 在可配置的透传分支返回前同步账号策略；池模式默认只保留上游观测，不写本地冷却。
+	shouldDisable := s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel)
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
@@ -956,7 +956,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
 			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		}
 	}
 
