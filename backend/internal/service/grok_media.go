@@ -449,7 +449,8 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	requestIDHeader := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))
 	requestModel := requestInfo.Model
 	if resp.StatusCode >= 400 {
-		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, requestModel)
+		// 错误策略必须使用实际发往上游的映射后模型，确保模型级暂停与调度键一致。
+		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, upstreamModel)
 	}
 
 	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)

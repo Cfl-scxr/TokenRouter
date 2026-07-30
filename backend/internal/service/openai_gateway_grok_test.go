@@ -2882,6 +2882,51 @@ func TestGrokMediaPoolModeRetryFlagFollowsExplicitPolicies(t *testing.T) {
 		require.Equal(t, 1, repo.setErrorCalls)
 		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	})
+
+	t.Run("mapped model is used by temporary policy", func(t *testing.T) {
+		t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+		account := newGrokPoolAccount(632)
+		account.Credentials["api_key"] = "api-key"
+		account.Credentials["base_url"] = "https://xai.test/v1"
+		account.Credentials["model_mapping"] = map[string]any{"image-alias": "vendor-image-model"}
+		account.Credentials["temp_unschedulable_enabled"] = true
+		account.Credentials["temp_unschedulable_rules"] = []any{
+			map[string]any{
+				"error_code":       float64(http.StatusServiceUnavailable),
+				"keywords":         []any{"maintenance"},
+				"duration_minutes": float64(30),
+			},
+		}
+		svc, repo := newGrokPoolPolicyGateway(account)
+		upstream := &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"maintenance in progress"}}`)),
+		}}
+		svc.httpUpstream = upstream
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		body := []byte(`{"model":"image-alias","prompt":"draw a cat"}`)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		result, err := svc.ForwardGrokMedia(
+			context.Background(),
+			c,
+			account,
+			GrokMediaEndpointImagesGenerations,
+			"",
+			body,
+			"application/json",
+		)
+
+		require.Nil(t, result)
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr)
+		require.Equal(t, 1, repo.modelRateLimitCalls)
+		require.Equal(t, "vendor-image-model", repo.lastModelRateLimitScope)
+		require.Equal(t, "vendor-image-model", gjson.GetBytes(upstream.lastBody, "model").String())
+	})
 }
 
 func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *testing.T) {
