@@ -724,7 +724,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		if acquireErr != nil {
 			canonicalModel := canonicalOpenAIAccountSchedulingModel(account, ingressSessionOriginalModel)
-			s.handleOpenAIWSDialTransientFailure(ctx, account, canonicalModel, acquireErr)
+			errorDecision := s.handleOpenAIWSDialTransientFailure(ctx, account, canonicalModel, acquireErr)
 			dialStatus, dialClass, dialCloseStatus, dialCloseReason, dialRespServer, dialRespVia, dialRespCFRay, dialRespReqID := summarizeOpenAIWSDialError(acquireErr)
 			logOpenAIWSModeInfo(
 				"ingress_ws_upstream_acquire_fail account_id=%d turn=%d reason=%s dial_status=%d dial_class=%s dial_close_status=%s dial_close_reason=%s dial_resp_server=%s dial_resp_via=%s dial_resp_cf_ray=%s dial_resp_x_request_id=%s cause=%s preferred_conn_id=%s force_preferred_conn=%v ws_host=%s ws_path=%s proxy_enabled=%v",
@@ -747,16 +747,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				account.ProxyID != nil && account.Proxy != nil,
 			)
 			var dialErr *openAIWSDialError
-			if errors.As(acquireErr, &dialErr) && dialErr != nil {
-				switch dialErr.StatusCode {
-				case http.StatusTooManyRequests:
-					s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
-					return nil, &UpstreamFailoverError{
-						StatusCode:      http.StatusTooManyRequests,
-						ResponseHeaders: cloneHeader(dialErr.ResponseHeaders),
-					}
-				case http.StatusForbidden:
-					s.persistOpenAIWSForbiddenSignal(ctx, account, dialErr.ResponseHeaders, []byte(strings.TrimSpace(acquireErr.Error())))
+			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode != 0 {
+				if turn == 1 && errorDecision.ShouldReturnGenericError() {
+					return nil, openAIWSGenericPolicyCloseError(dialErr.StatusCode)
+				}
+				if turn == 1 && errorDecision.ShouldFailoverWithDefaults(
+					account,
+					dialErr.StatusCode,
+					dialErr.StatusCode == http.StatusTooManyRequests,
+					s.shouldFailoverOpenAIWSError(account, dialErr.StatusCode, dialErr.ResponseBody),
+				) {
+					return nil, newOpenAIUpstreamFailoverError(
+						dialErr.StatusCode,
+						dialErr.ResponseHeaders,
+						dialErr.ResponseBody,
+						extractUpstreamErrorMessage(dialErr.ResponseBody),
+						errorDecision.RetryableOnSameAccount(account, dialErr.StatusCode),
+					)
 				}
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
@@ -879,9 +886,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if eventType == "error" {
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
-				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), upstreamMessage)
+				errorDecision := s.handleOpenAIWSErrorEventTransientFailure(ctx, account, canonicalModel, lease.HandshakeHeaders(), upstreamMessage)
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
-				s.persistOpenAIWSErrorSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw)
+				errorStatus := openAIWSErrorPolicyStatus(upstreamMessage)
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				errCode, errType, errMessage := summarizeOpenAIWSErrorEventFieldsFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				recoverablePrevNotFound := fallbackReason == openAIWSIngressStagePreviousResponseNotFound &&
@@ -939,12 +946,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						false,
 					)
 				}
-				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				defaultFailover := s.shouldFailoverOpenAIWSError(account, errorStatus, upstreamMessage)
+				if turn == 1 && !wroteDownstream && errorDecision.ShouldReturnGenericError() {
+					lease.MarkBroken()
+					return nil, openAIWSGenericPolicyCloseError(errorStatus)
+				}
+				if turn == 1 && !wroteDownstream && errorStatus != 0 && errorDecision.ShouldFailoverWithDefaults(
+					account,
+					errorStatus,
+					errorStatus == http.StatusTooManyRequests,
+					defaultFailover,
+				) {
 					lease.MarkBroken()
 					return nil, &UpstreamFailoverError{
-						StatusCode:      http.StatusTooManyRequests,
-						ResponseBody:    append([]byte(nil), upstreamMessage...),
-						ResponseHeaders: cloneHeader(lease.HandshakeHeaders()),
+						StatusCode:             errorStatus,
+						ResponseBody:           append([]byte(nil), upstreamMessage...),
+						ResponseHeaders:        cloneHeader(lease.HandshakeHeaders()),
+						RetryableOnSameAccount: errorDecision.RetryableOnSameAccount(account, errorStatus),
 					}
 				}
 			}

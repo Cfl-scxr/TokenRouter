@@ -99,6 +99,19 @@ type openAIWSIngressTurnError struct {
 	wroteDownstream bool
 }
 
+// openAIWSGenericPolicyError 表示自定义错误码已开启但当前状态未命中。
+// HTTP 入站路径据此返回统一 500，避免把不可信的握手或事件错误透传给客户端。
+type openAIWSGenericPolicyError struct {
+	upstreamStatus int
+}
+
+func (e *openAIWSGenericPolicyError) Error() string {
+	if e == nil || e.upstreamStatus == 0 {
+		return "upstream websocket error not in custom error codes"
+	}
+	return fmt.Sprintf("upstream websocket status %d not in custom error codes", e.upstreamStatus)
+}
+
 func (e *openAIWSIngressTurnError) Error() string {
 	if e == nil {
 		return ""
@@ -449,24 +462,6 @@ func (s *OpenAIGatewayService) bindOpenAIWSResponseSessionOwner(ctx context.Cont
 		return
 	}
 	_ = s.EnsureSessionIsolation(ctx, apiKey, apiKey.UserID, SessionIsolationSourceOpenAIPreviousResponse, responseHash)
-}
-
-// persistOpenAIWSErrorSignal 根据 WS error 事件语义同步账号运行态信号。
-func (s *OpenAIGatewayService) persistOpenAIWSErrorSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string) {
-	if isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
-		s.persistOpenAIWSRateLimitSignal(ctx, account, headers, responseBody, codeRaw, errTypeRaw, msgRaw)
-		return
-	}
-	if openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw) == http.StatusForbidden {
-		s.persistOpenAIWSForbiddenSignal(ctx, account, headers, responseBody)
-	}
-}
-
-func (s *OpenAIGatewayService) persistOpenAIWSForbiddenSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
-	if s == nil || s.rateLimitService == nil || account == nil || !account.IsOpenAIOAuth() {
-		return
-	}
-	s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusForbidden, headers, responseBody)
 }
 
 func (e *openAIWSUpstreamWarningError) Error() string {

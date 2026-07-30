@@ -158,8 +158,9 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
+		decision := s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 		kind := "http_error"
-		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+		if decision.ShouldFailover(account, resp.StatusCode, s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)) {
 			kind = "failover"
 		}
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -171,13 +172,15 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			Kind:               kind,
 			Message:            upstreamMsg,
 		})
-		shouldDisable := s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
-		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+		if decision.ShouldReturnGenericError() {
+			return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
+		}
+		if kind == "failover" {
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -924,8 +927,9 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI image bridge upstream returned status %d", resp.StatusCode)
 		}
+		decision := s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, grokComposerImageBridgeVisionModel)
 		kind := "http_error"
-		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+		if decision.ShouldFailover(account, resp.StatusCode, s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)) {
 			kind = "failover"
 		}
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -937,20 +941,15 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			Kind:               kind,
 			Message:            upstreamMsg,
 		})
-		shouldDisable := s.handleGrokAccountUpstreamError(
-			ctx,
-			account,
-			resp.StatusCode,
-			resp.Header,
-			respBody,
-			grokComposerImageBridgeVisionModel,
-		)
-		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
+		if decision.ShouldReturnGenericError() {
+			return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream gateway error")
+		}
+		if kind == "failover" {
 			return "", OpenAIUsage{}, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
 			}
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
@@ -1360,56 +1359,72 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 }
 
-// handleGrokAccountUpstreamError 同步 Grok 上游错误对应的账号状态，并返回是否应停止
-// 当前账号的同账号重试。池模式复用 GPT API Key 的通用错误策略，避免 Grok 专用
-// 额度和冷却逻辑绕过 pool_mode，同时保留管理员显式配置的本地错误策略。
-func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
+// applyGrokAccountUpstreamError 先执行显式策略，再处理非池模式的 Grok 默认状态。
+// 返回完整决策，供媒体、HTTP 和 WebSocket 路径统一判断故障转移与同账号重试。
+func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 	ctx context.Context,
 	account *Account,
 	statusCode int,
 	headers http.Header,
 	responseBody []byte,
 	requestedModel ...string,
-) bool {
+) UpstreamErrorDecision {
 	if s == nil || account == nil {
-		return false
+		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
-	if isGrokContentPolicyRejection(statusCode, responseBody) {
-		return false
+	if isOpenAIAccountPolicyRequestScopedError(account, statusCode, responseBody) {
+		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
 	now := time.Now()
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
 
-	// 仅对本来就会触发故障转移的上游状态提前执行通用策略；非故障转移错误仍由
-	// 各协议的既有错误响应链处理，避免模型级状态等副作用被执行两次。
-	if account.IsPoolMode() && s.shouldFailoverGrokUpstreamError(statusCode, responseBody) {
-		return s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, responseBody, requestedModel...)
+	decision := upstreamErrorDecisionWithoutPersistence(account, statusCode)
+	if s.rateLimitService != nil {
+		decision.Policy = s.rateLimitService.ApplyExplicitErrorPolicy(ctx, account, statusCode, responseBody, requestedModel...)
+		decision.StopScheduling = decision.Policy == ErrorPolicyCustomMatched || decision.Policy == ErrorPolicyTempUnscheduled
+	}
+	switch decision.Policy {
+	case ErrorPolicyCustomMatched:
+		decision.StopScheduling = true
+		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
+		return decision
+	case ErrorPolicyTempUnscheduled:
+		decision.StopScheduling = true
+		return decision
+	case ErrorPolicyCustomSkipped, ErrorPolicyPoolBypassed:
+		return decision
 	}
 
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
-		return true
+		decision.StopScheduling = true
+		return decision
 	case http.StatusPaymentRequired:
 		// 402 表示当前账号计费不可用，短期排除以避免后续请求反复命中。
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
-		return true
+		decision.StopScheduling = true
+		return decision
 	case http.StatusForbidden:
 		if s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
-			return true
+			decision.StopScheduling = true
+			return decision
 		}
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
-		return true
+		decision.StopScheduling = true
+		return decision
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot 已同时写入运行时和持久化限流状态。
-		return true
+		decision.StopScheduling = true
+		return decision
 	default:
 		if statusCode >= 500 {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
-			return true
+			decision.StopScheduling = true
+			return decision
 		}
 	}
-	return false
+	return decision
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {

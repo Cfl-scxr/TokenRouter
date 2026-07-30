@@ -926,13 +926,23 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			statusCode,
 			truncateOpenAIWSLogValue(err.Error(), openAIWSLogValueMaxLen),
 		)
-		s.handleOpenAIWSDialTransientFailure(ctx, account, loadCapturedModel(&capturedSessionRoutingModel), dialErr)
-		if statusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
-			return &UpstreamFailoverError{
-				StatusCode:      http.StatusTooManyRequests,
-				ResponseHeaders: cloneHeader(handshakeHeaders),
-			}
+		errorDecision := s.handleOpenAIWSDialTransientFailure(ctx, account, loadCapturedModel(&capturedSessionRoutingModel), dialErr)
+		if statusCode != 0 && errorDecision.ShouldReturnGenericError() {
+			return openAIWSGenericPolicyCloseError(statusCode)
+		}
+		if statusCode != 0 && errorDecision.ShouldFailoverWithDefaults(
+			account,
+			statusCode,
+			statusCode == http.StatusTooManyRequests,
+			s.shouldFailoverOpenAIWSError(account, statusCode, responseBody),
+		) {
+			return newOpenAIUpstreamFailoverError(
+				statusCode,
+				handshakeHeaders,
+				responseBody,
+				extractUpstreamErrorMessage(responseBody),
+				errorDecision.RetryableOnSameAccount(account, statusCode),
+			)
 		}
 		return s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders)
 	}
@@ -1305,28 +1315,41 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					s.handleOpenAIWSTerminalTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
 				}
 				if eventType == "error" {
-					s.handleOpenAIWSErrorEventTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
+					errorDecision := s.handleOpenAIWSErrorEventTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
+					if wroteDownstream {
+						return nil
+					}
+					errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
+					errorStatus := openAIWSErrorPolicyStatus(payload)
+					if errorDecision.ShouldReturnGenericError() {
+						return openAIWSGenericPolicyCloseError(errorStatus)
+					}
+					defaultFailover := s.shouldFailoverOpenAIWSError(account, errorStatus, payload)
+					if errorStatus == 0 || !errorDecision.ShouldFailoverWithDefaults(
+						account,
+						errorStatus,
+						errorStatus == http.StatusTooManyRequests,
+						defaultFailover,
+					) {
+						return nil
+					}
+					logOpenAIWSV2Passthrough(
+						"relay_error_failover account_id=%d status=%d err_code=%s err_type=%s err_message=%s",
+						account.ID,
+						errorStatus,
+						truncateOpenAIWSLogValue(errCodeRaw, openAIWSLogValueMaxLen),
+						truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
+						truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
+					)
+					return newOpenAIUpstreamFailoverError(
+						errorStatus,
+						handshakeHeaders,
+						append([]byte(nil), payload...),
+						errMsgRaw,
+						errorDecision.RetryableOnSameAccount(account, errorStatus),
+					)
 				}
-				if wroteDownstream || eventType != "error" {
-					return nil
-				}
-				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
-				if !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
-					return nil
-				}
-				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw)
-				logOpenAIWSV2Passthrough(
-					"relay_rate_limit_failover account_id=%d err_code=%s err_type=%s err_message=%s",
-					account.ID,
-					truncateOpenAIWSLogValue(errCodeRaw, openAIWSLogValueMaxLen),
-					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
-					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
-				)
-				return &UpstreamFailoverError{
-					StatusCode:      http.StatusTooManyRequests,
-					ResponseBody:    append([]byte(nil), payload...),
-					ResponseHeaders: cloneHeader(handshakeHeaders),
-				}
+				return nil
 			},
 			OnTrace: func(event openaiwsv2.RelayTraceEvent) {
 				logOpenAIWSV2Passthrough(

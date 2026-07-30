@@ -206,7 +206,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 			return nil, &agentIdentityTaskRecoveredError{}
 		}
-		s.handleOpenAIWSDialTransientFailure(ctx, account, mappedModel, err)
+		errorDecision := s.handleOpenAIWSDialTransientFailure(ctx, account, mappedModel, err)
 		dialStatus, dialClass, dialCloseStatus, dialCloseReason, dialRespServer, dialRespVia, dialRespCFRay, dialRespReqID := summarizeOpenAIWSDialError(err)
 		logOpenAIWSModeInfo(
 			"acquire_fail account_id=%d account_type=%s transport=%s reason=%s dial_status=%d dial_class=%s dial_close_status=%s dial_close_reason=%s dial_resp_server=%s dial_resp_via=%s dial_resp_cf_ray=%s dial_resp_x_request_id=%s cause=%s preferred_conn_id=%s force_new_conn=%v ws_host=%s ws_path=%s proxy_enabled=%v",
@@ -229,13 +229,24 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			wsPath,
 			account.ProxyID != nil && account.Proxy != nil,
 		)
-		var dialErr *openAIWSDialError
-		if errors.As(err, &dialErr) && dialErr != nil {
-			switch dialErr.StatusCode {
-			case http.StatusTooManyRequests:
-				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
-			case http.StatusForbidden:
-				s.persistOpenAIWSForbiddenSignal(ctx, account, dialErr.ResponseHeaders, []byte(strings.TrimSpace(err.Error())))
+		var policyDialErr *openAIWSDialError
+		if errors.As(err, &policyDialErr) && policyDialErr != nil && policyDialErr.StatusCode != 0 {
+			if errorDecision.ShouldReturnGenericError() {
+				return nil, &openAIWSGenericPolicyError{upstreamStatus: policyDialErr.StatusCode}
+			}
+			if errorDecision.ShouldFailoverWithDefaults(
+				account,
+				policyDialErr.StatusCode,
+				false,
+				s.shouldFailoverOpenAIWSError(account, policyDialErr.StatusCode, policyDialErr.ResponseBody),
+			) {
+				return nil, newOpenAIUpstreamFailoverError(
+					policyDialErr.StatusCode,
+					policyDialErr.ResponseHeaders,
+					policyDialErr.ResponseBody,
+					extractUpstreamErrorMessage(policyDialErr.ResponseBody),
+					errorDecision.RetryableOnSameAccount(account, policyDialErr.StatusCode),
+				)
 			}
 		}
 		return nil, wrapOpenAIWSFallback(classifyOpenAIWSAcquireError(err), err)
@@ -316,6 +327,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		payload,
 		previousResponseID,
 		reqBody,
+		mappedModel,
 		account,
 		stateStore,
 		groupID,
@@ -597,9 +609,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if eventType == "error" {
-			s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			s.persistOpenAIWSErrorSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			statusCode := openAIWSErrorPolicyStatus(message)
+			errorDecision := s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "Upstream websocket error"
@@ -645,9 +657,25 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 			// error 事件后连接不再可复用，避免回池后污染下一请求。
 			lease.MarkBroken()
-			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
 			if upstreamWarning != nil {
 				upstreamWarning.StatusCode = statusCode
+			}
+			if !wroteDownstream && errorDecision.ShouldReturnGenericError() {
+				return nil, &openAIWSGenericPolicyError{upstreamStatus: statusCode}
+			}
+			if !wroteDownstream && errorDecision.ShouldFailoverWithDefaults(
+				account,
+				statusCode,
+				false,
+				s.shouldFailoverOpenAIWSError(account, statusCode, message),
+			) {
+				return nil, newOpenAIUpstreamFailoverError(
+					statusCode,
+					lease.HandshakeHeaders(),
+					message,
+					errMsg,
+					errorDecision.RetryableOnSameAccount(account, statusCode),
+				)
 			}
 			if !wroteDownstream && canFallback {
 				if openAIUpstreamWarningIsCyber(upstreamWarning) {

@@ -2778,6 +2778,28 @@ func TestHandleGrokAccountUpstreamErrorPoolModeKeepsExplicitPolicies(t *testing.
 		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	})
 
+	t.Run("custom non-failover code still disables account", func(t *testing.T) {
+		account := newGrokPoolAccount(633)
+		account.Credentials["custom_error_codes_enabled"] = true
+		account.Credentials["custom_error_codes"] = []any{float64(http.StatusUnprocessableEntity)}
+		svc, repo := newGrokPoolPolicyGateway(account)
+
+		decision := svc.applyGrokAccountUpstreamError(
+			context.Background(),
+			account,
+			http.StatusUnprocessableEntity,
+			nil,
+			[]byte(`{"error":{"message":"configured"}}`),
+			"grok-4.5",
+		)
+
+		require.Equal(t, ErrorPolicyCustomMatched, decision.Policy)
+		require.True(t, decision.ShouldFailover(account, http.StatusUnprocessableEntity, false))
+		require.False(t, decision.RetryableOnSameAccount(account, http.StatusUnprocessableEntity))
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	})
+
 	t.Run("matching temporary rule only pauses requested model", func(t *testing.T) {
 		account := newGrokPoolAccount(628)
 		account.Credentials["temp_unschedulable_enabled"] = true

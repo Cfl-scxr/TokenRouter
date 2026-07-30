@@ -113,6 +113,11 @@ func TestOpenAIWSPayloadTransientStatus_Explicit529IsNotModelTransient(t *testin
 	require.Zero(t, openAIWSPayloadTransientStatus(payload))
 }
 
+func TestOpenAIWSErrorPolicyStatus_PreservesExplicitStatusAndFallbackMapping(t *testing.T) {
+	require.Equal(t, 529, openAIWSErrorPolicyStatus([]byte(`{"type":"response.failed","response":{"error":{"status_code":529,"code":"server_error"}}}`)))
+	require.Equal(t, http.StatusBadGateway, openAIWSErrorPolicyStatus([]byte(`{"type":"error","error":{"type":"server_error"}}`)))
+}
+
 func TestOpenAIWSDial5xxRecordsModelTransient(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
@@ -130,6 +135,68 @@ func TestOpenAIWSDial5xxRecordsModelTransient(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5")
 	}, time.Second, 10*time.Millisecond)
+}
+
+// TestOpenAIWSPoolModeErrorUsesConfiguredRetry 验证原生 WebSocket 错误也使用
+// 池模式统一决策，不再写入默认模型瞬态冷却。
+func TestOpenAIWSPoolModeErrorUsesConfiguredRetry(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5204,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_status_codes": []any{float64(http.StatusBadGateway)},
+		},
+	}
+
+	decision := svc.applyOpenAIWSEventErrorPolicy(
+		context.Background(), account, "gpt-5.5", http.StatusBadGateway, http.Header{}, []byte(`{"error":{"message":"bad gateway"}}`),
+	)
+
+	require.Equal(t, ErrorPolicyPoolBypassed, decision.Policy)
+	require.True(t, decision.RetryableOnSameAccount(account, http.StatusBadGateway))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+}
+
+// openAIWSPolicyRepo 记录 WebSocket 显式策略触发的账号错误写入。
+type openAIWSPolicyRepo struct {
+	transientCooldownAccountRepo
+	setErrorCalls int
+}
+
+func (r *openAIWSPolicyRepo) SetError(context.Context, int64, string) error {
+	r.setErrorCalls++
+	return nil
+}
+
+// TestOpenAIWSCustomNonFailoverStatusStopsScheduling 验证 WebSocket 派生出的
+// 非默认故障转移状态也执行管理员显式策略，并禁止同账号重试。
+func TestOpenAIWSCustomNonFailoverStatusStopsScheduling(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	repo := &openAIWSPolicyRepo{}
+	svc.rateLimitService = NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5205,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                  true,
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusUnprocessableEntity)},
+		},
+	}
+
+	decision := svc.applyOpenAIWSEventErrorPolicy(
+		context.Background(), account, "gpt-5.5", http.StatusUnprocessableEntity, http.Header{}, []byte(`{"error":{"message":"configured"}}`),
+	)
+
+	require.Equal(t, ErrorPolicyCustomMatched, decision.Policy)
+	require.True(t, decision.StopScheduling)
+	require.False(t, decision.RetryableOnSameAccount(account, http.StatusUnprocessableEntity))
+	require.Equal(t, 1, repo.setErrorCalls)
 }
 
 // TestIsOpenAIWSTokenEvent_DisjointWithTerminal 守护「token 事件集合与终止事件集合互斥」的不变量。

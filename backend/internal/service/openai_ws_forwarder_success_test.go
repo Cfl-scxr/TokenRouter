@@ -1565,6 +1565,7 @@ func TestOpenAIGatewayService_PrewarmReadHonorsParentContext(t *testing.T) {
 		payload,
 		"",
 		map[string]any{"model": "gpt-5.1"},
+		"gpt-5.1",
 		account,
 		nil,
 		0,
