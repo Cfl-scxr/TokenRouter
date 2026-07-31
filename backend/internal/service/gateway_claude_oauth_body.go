@@ -1208,3 +1208,27 @@ func (s *GatewayService) claudeOAuthSystemPromptInjectionSettings(ctx context.Co
 	}
 	return s.settingService.GetClaudeOAuthSystemPromptInjectionSettings(ctx)
 }
+
+// systemHasClaudeCodeBillingAttribution 检查 system 数组中是否保留了 Claude Code 格式的计费归因块。
+// 该信号仅用于识别 User-Agent 被中间网关覆盖的流量，不参与 ClaudeCodeOnly 鉴权。
+func systemHasClaudeCodeBillingAttribution(body []byte) bool {
+	system := gjson.GetBytes(body, "system")
+	if !system.IsArray() {
+		return false
+	}
+	found := false
+	system.ForEach(func(_, item gjson.Result) bool {
+		text := item.Get("text").String()
+		if strings.HasPrefix(text, claudeCodeBillingHeaderPrefix+":") && strings.Contains(text, claudeCodeEntrypointMarker) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// isProxiedClaudeCodeRequest 同时校验 metadata 格式和计费块，避免任意 user_id 绕过 OAuth mimicry。
+func isProxiedClaudeCodeRequest(body []byte, metadataUserID string) bool {
+	return ParseMetadataUserID(metadataUserID) != nil && systemHasClaudeCodeBillingAttribution(body)
+}

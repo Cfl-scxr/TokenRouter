@@ -86,6 +86,63 @@ func TestIsClaudeCodeClient(t *testing.T) {
 	}
 }
 
+// TestSystemHasClaudeCodeBillingAttribution 验证代理流量识别只接受完整的 system 计费归因块。
+func TestSystemHasClaudeCodeBillingAttribution(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "完整计费块",
+			body: `{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;"}]}`,
+			want: true,
+		},
+		{
+			name: "计费块可位于后续 system 元素",
+			body: `{"system":[{"type":"text","text":"project"},{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=claude-vscode;"}]}`,
+			want: true,
+		},
+		{
+			name: "缺少入口字段",
+			body: `{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.abc;"}]}`,
+		},
+		{
+			name: "前缀不精确",
+			body: `{"system":[{"type":"text","text":"prefix x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;"}]}`,
+		},
+		{
+			name: "system 字符串不接受",
+			body: `{"system":"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;"}`,
+		},
+		{
+			name: "无效 JSON",
+			body: `{"system":`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, systemHasClaudeCodeBillingAttribution([]byte(tt.body)))
+		})
+	}
+}
+
+// TestIsProxiedClaudeCodeRequest 验证代理识别不能由任意 metadata.user_id 绕过。
+func TestIsProxiedClaudeCodeRequest(t *testing.T) {
+	validMetadata := FormatMetadataUserID(
+		"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+		"550e8400-e29b-41d4-a716-446655440000",
+		"123e4567-e89b-42d3-a456-426614174000",
+		claude.CLICurrentVersion,
+	)
+	body := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;"}]}`)
+
+	require.True(t, isProxiedClaudeCodeRequest(body, validMetadata))
+	require.False(t, isProxiedClaudeCodeRequest(body, "arbitrary-user-id"))
+	require.False(t, isProxiedClaudeCodeRequest([]byte(`{"system":[{"type":"text","text":"project"}]}`), validMetadata))
+}
+
 func TestRewriteSystemForNonClaudeCodeWithPrompt_UsesCustomExpansionPrompt(t *testing.T) {
 	body := []byte(`{"model":"claude-3","system":"Project instructions","messages":[{"role":"user","content":"hello"}]}`)
 	customPrompt := "Custom Claude OAuth expansion prompt"
