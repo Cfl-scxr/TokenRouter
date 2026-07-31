@@ -3427,17 +3427,10 @@ func normalizeGeminiRequestForAIStudio(body []byte) []byte {
 
 func isClaudeWebSearchToolMap(tool map[string]any) bool {
 	toolType, _ := tool["type"].(string)
-	if strings.HasPrefix(toolType, "web_search") || toolType == "google_search" {
-		return true
-	}
-
-	name, _ := tool["name"].(string)
-	switch strings.TrimSpace(name) {
-	case "web_search", "google_search", "web_search_20250305":
-		return true
-	default:
-		return false
-	}
+	// 名为 web_search 的普通 function 仍属于客户端工具；Hermes 等 Chat Completions
+	// 客户端会用普通 function 表示其内置运行时工具。只有显式声明为服务端搜索类型的
+	// 工具才能提升为 Gemini 的 googleSearch 内置工具。
+	return strings.HasPrefix(toolType, "web_search") || toolType == "google_search"
 }
 
 // cleanToolSchema 清理工具的 JSON Schema，移除 Gemini 不支持的字段
