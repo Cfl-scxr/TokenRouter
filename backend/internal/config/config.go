@@ -1687,20 +1687,7 @@ func LoadForBootstrap() (*Config, error) {
 func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-
-	// Add config paths in priority order
-	// 1. DATA_DIR environment variable (highest priority)
-	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
-		viper.AddConfigPath(dataDir)
-	}
-	// 2. Docker data directory
-	viper.AddConfigPath("/app/data")
-	// 3. Current directory
-	viper.AddConfigPath(".")
-	// 4. Config subdirectory
-	viper.AddConfigPath("./config")
-	// 5. System config directory
-	viper.AddConfigPath("/etc/sub2api")
+	configureConfigSource(viper.SetConfigFile, viper.AddConfigPath)
 
 	// 环境变量支持
 	viper.AutomaticEnv()
@@ -1873,6 +1860,23 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// configureConfigSource 优先使用显式 CONFIG_FILE，否则按既有目录顺序搜索 config.yaml。
+func configureConfigSource(setConfigFile, addConfigPath func(string)) {
+	if configFile := strings.TrimSpace(os.Getenv("CONFIG_FILE")); configFile != "" {
+		setConfigFile(configFile)
+		return
+	}
+
+	// DATA_DIR 优先于容器、当前目录和系统级默认路径。
+	if dataDir := strings.TrimSpace(os.Getenv("DATA_DIR")); dataDir != "" {
+		addConfigPath(dataDir)
+	}
+	addConfigPath("/app/data")
+	addConfigPath(".")
+	addConfigPath("./config")
+	addConfigPath("/etc/sub2api")
 }
 
 func setDefaults() {
@@ -3565,25 +3569,21 @@ func generateJWTSecret(byteLength int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// GetServerAddress returns the server address (host:port) from config file or environment variable.
-// This is a lightweight function that can be used before full config validation,
-// such as during setup wizard startup.
-// Priority: config.yaml > environment variables > defaults
+// GetServerAddress 在完整配置校验前读取服务监听地址，供安装向导等启动阶段使用。
+// 优先级为环境变量、配置文件、默认值。
 func GetServerAddress() string {
 	v := viper.New()
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath(".")
-	v.AddConfigPath("./config")
-	v.AddConfigPath("/etc/sub2api")
+	configureConfigSource(v.SetConfigFile, v.AddConfigPath)
 
-	// Support SERVER_HOST and SERVER_PORT environment variables
+	// 支持用环境变量覆盖配置文件中的监听地址。
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
 
-	// Try to read config file (ignore errors if not found)
+	// 轻量读取保持容错；完整 Load 会对显式文件缺失或不可读返回错误。
 	_ = v.ReadInConfig()
 
 	host := v.GetString("server.host")
