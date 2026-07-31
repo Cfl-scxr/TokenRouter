@@ -384,6 +384,24 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestUsageLogRepositoryListWithFiltersRequestID 验证请求 ID 使用裁剪后的参数做精确查询。
+func TestUsageLogRepositoryListWithFiltersRequestID(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{RequestID: " req-0123 "}
+
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE request_id = \\$1 ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+		WithArgs("req-0123", 21, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryListWithFiltersRequestedModelSource(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
