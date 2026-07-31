@@ -3358,6 +3358,10 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 
 // ListDueUpstreamBillingProbeAccounts 将结果加载和网络探测数量限制在 limit 内。
 // PostgreSQL 仍需筛选并排序全部启用账号；MATERIALIZED 可避免重复执行防御性时间解析表达式。
+// Go 使用 RFC3339Nano 写入 next_probe_at（小数秒最多 9 位），而 jsonpath datetime()
+// 最多只能解析到微秒，因此先把超过 6 位的小数截断；该处理与
+// ListDueOllamaCloudUsageAccounts 保持一致。若不截断，纳秒时间戳都会被视为非法，
+// 开放式失败排序会让每轮固定选择 ID 最小的账号，导致号池中其余账号得不到探测。
 func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{}, nil
@@ -3387,7 +3391,11 @@ func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Cont
 				jsonb_path_query_first_tz(
 					jsonb_build_object(
 						'value',
-						replace(regexp_replace(next_probe_at, 'Z$', '+00:00'), 'T', ' ')
+						replace(regexp_replace(regexp_replace(
+							next_probe_at,
+							'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
+							'\1\2'
+						), 'Z$', '+00:00'), 'T', ' ')
 					),
 					'$.value.datetime()',
 					'{}'::jsonb,
