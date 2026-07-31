@@ -71,14 +71,14 @@ var (
 		SupportsPromptCaching:               true,
 	}
 	openAIGPT56TerraPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   2.5e-06,  // $2.50 per MTok
-		InputCostPerTokenPriority:           5e-06,    // $5 per MTok
-		OutputCostPerToken:                  1.5e-05,  // $15 per MTok
-		OutputCostPerTokenPriority:          3e-05,    // $30 per MTok
-		CacheCreationInputTokenCost:         3.125e-6, // $3.125 per MTok
-		CacheCreationInputTokenCostPriority: 6.25e-6,  // $6.25 per MTok
-		CacheReadInputTokenCost:             2.5e-07,  // $0.25 per MTok
-		CacheReadInputTokenCostPriority:     5e-07,    // $0.50 per MTok
+		InputCostPerToken:                   2e-06,   // 每百万 token $2
+		InputCostPerTokenPriority:           4e-06,   // 每百万 token $4
+		OutputCostPerToken:                  1.2e-05, // 每百万 token $12
+		OutputCostPerTokenPriority:          2.4e-05, // 每百万 token $24
+		CacheCreationInputTokenCost:         2.5e-6,  // 每百万 token $2.50
+		CacheCreationInputTokenCostPriority: 5e-6,    // 每百万 token $5
+		CacheReadInputTokenCost:             2e-07,   // 每百万 token $0.20
+		CacheReadInputTokenCostPriority:     4e-07,   // 每百万 token $0.40
 		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
 		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
 		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
@@ -88,14 +88,14 @@ var (
 		SupportsPromptCaching:               true,
 	}
 	openAIGPT56LunaPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   1e-06,   // $1 per MTok
-		InputCostPerTokenPriority:           2e-06,   // $2 per MTok
-		OutputCostPerToken:                  6e-06,   // $6 per MTok
-		OutputCostPerTokenPriority:          1.2e-05, // $12 per MTok
-		CacheCreationInputTokenCost:         1.25e-6, // $1.25 per MTok
-		CacheCreationInputTokenCostPriority: 2.5e-6,  // $2.5 per MTok
-		CacheReadInputTokenCost:             1e-07,   // $0.10 per MTok
-		CacheReadInputTokenCostPriority:     2e-07,   // $0.20 per MTok
+		InputCostPerToken:                   2e-07,   // 每百万 token $0.20
+		InputCostPerTokenPriority:           4e-07,   // 每百万 token $0.40
+		OutputCostPerToken:                  1.2e-06, // 每百万 token $1.20
+		OutputCostPerTokenPriority:          2.4e-06, // 每百万 token $2.40
+		CacheCreationInputTokenCost:         2.5e-7,  // 每百万 token $0.25
+		CacheCreationInputTokenCostPriority: 5e-7,    // 每百万 token $0.50
+		CacheReadInputTokenCost:             2e-08,   // 每百万 token $0.02
+		CacheReadInputTokenCostPriority:     4e-08,   // 每百万 token $0.04
 		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
 		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
 		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
