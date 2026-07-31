@@ -454,6 +454,13 @@ func (s *BillingService) initFallbackPricing() {
 	// ---- 智谱 GLM（Z.AI）----
 	// 资料来源：https://docs.z.ai/guides/overview/pricing（美元/百万 token）
 	// CacheReadPricePerToken 对应缓存命中价；未公开缓存写入价时按 0 处理。
+	// GLM-5.2 与 GLM-5.1 的公开价格一致。
+	s.fallbackPrices["glm-5.2"] = &ModelPricing{
+		InputPricePerToken:     1.4e-6,
+		OutputPricePerToken:    4.4e-6,
+		CacheReadPricePerToken: 0.26e-6,
+		SupportsCacheBreakdown: false,
+	}
 	s.fallbackPrices["glm-5.1"] = &ModelPricing{
 		InputPricePerToken:     1.4e-6,
 		OutputPricePerToken:    4.4e-6,
@@ -701,6 +708,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "deepseek-chat") || strings.Contains(modelLower, "deepseek-reasoner") {
 		return s.fallbackPrices["deepseek-v4-flash"]
+	}
+	// 带小数点的具体型号必须先于裸 glm-5 匹配，避免被子串规则抢走。
+	if strings.Contains(modelLower, "glm-5.2") {
+		return s.fallbackPrices["glm-5.2"]
 	}
 	if strings.Contains(modelLower, "glm-5.1") {
 		return s.fallbackPrices["glm-5.1"]
