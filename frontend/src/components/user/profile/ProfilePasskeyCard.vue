@@ -141,13 +141,19 @@ const credentials = ref<PasskeyCredentialSummary[]>([])
 
 // 只在后端启用且浏览器支持 WebAuthn 时读取凭据，避免无效请求与错误提示。
 async function loadCredentials(): Promise<void> {
+  if (!props.enabled) {
+    credentials.value = []
+    return
+  }
   if (!supported) return
   loading.value = true
   try {
     credentials.value = await passkeyAPI.list()
   } catch (error) {
-    const code = (error as { code?: string }).code
-    if (code !== 'PASSKEY_DISABLED') {
+    // API 客户端把字符串错误码放在 reason，code 是数字业务状态码。
+    // 设置变更竞态下后端仍可能返回 PASSKEY_DISABLED，此时保持静默。
+    const reason = (error as { reason?: string }).reason
+    if (reason !== 'PASSKEY_DISABLED') {
       appStore.showError(t('profile.passkey.loadFailed'))
     }
   } finally {
@@ -215,8 +221,8 @@ function formatDate(value: string): string {
 
 watch(
   () => props.enabled,
-  (enabled) => {
-    if (enabled) void loadCredentials()
+  () => {
+    void loadCredentials()
   },
   { immediate: true }
 )
