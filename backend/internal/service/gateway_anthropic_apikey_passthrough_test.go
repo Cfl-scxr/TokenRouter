@@ -468,7 +468,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *test
 }
 
 // TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields
-// 确保模型映射只替换 model 字段，不影响请求体中的其他字段
+// 确保模型映射只替换 model，业务输入字段保持不变，生成参数仍按 count_tokens 规则清理。
 func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -523,7 +523,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
 	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(), "count_tokens 不应携带 max_tokens")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
@@ -565,7 +565,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String(), "system 应保留")
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String(), "messages 应保留")
 	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String(), "tools 应保留")
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 应保留")
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
+		"count_tokens 请求不得携带生成参数 max_tokens")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 应保留")
 }
 
