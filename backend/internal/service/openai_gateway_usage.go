@@ -110,6 +110,36 @@ func (s *OpenAIGatewayService) ResolveUserGroupRateMultiplier(ctx context.Contex
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+// openAIUsageBillingModel 按渠道计费来源选择模型，并保留图片结果已经解析出的专用定价模型。
+func openAIUsageBillingModel(result *OpenAIForwardResult, fields ChannelUsageFields) string {
+	if result == nil {
+		return ""
+	}
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	explicitBillingModel := strings.TrimSpace(result.BillingModel)
+	if explicitBillingModel != "" {
+		billingModel = explicitBillingModel
+	}
+
+	switch fields.BillingModelSource {
+	case BillingModelSourceUpstream:
+		// 图片轮次的上游文本模型不是图片计价 SKU，必须保留显式解析出的图片模型。
+		if upstreamModel := strings.TrimSpace(result.UpstreamModel); upstreamModel != "" && (result.ImageCount <= 0 || explicitBillingModel == "") {
+			billingModel = upstreamModel
+		}
+	case BillingModelSourceChannelMapped:
+		mappedModel := strings.TrimSpace(fields.ChannelMappedModel)
+		if mappedModel != "" && mappedModel != strings.TrimSpace(fields.OriginalModel) {
+			billingModel = mappedModel
+		}
+	case BillingModelSourceRequested:
+		if requestedModel := strings.TrimSpace(fields.OriginalModel); requestedModel != "" {
+			billingModel = requestedModel
+		}
+	}
+	return billingModel
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -186,19 +216,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	var cost *CostBreakdown
 	var err error
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if result.BillingModel != "" {
-		billingModel = strings.TrimSpace(result.BillingModel)
-	}
-	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
-		billingModel = result.UpstreamModel
-	}
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
-	}
+	billingModel := openAIUsageBillingModel(result, input.ChannelUsageFields)
 	billingModels := usageBillingModelCandidates(
 		billingModel,
 		result.BillingModel,

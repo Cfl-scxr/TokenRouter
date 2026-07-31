@@ -42,6 +42,20 @@ type OpenAIGatewayHandler struct {
 	cfg                        *config.Config
 }
 
+var errOpenAIWSLocalRoutingRejected = errors.New("local websocket routing rejected")
+
+// newOpenAIWSLocalRoutingRejectedError 标记请求在本地路由阶段被拒绝，避免把未发送到上游的错误归咎于账号。
+func newOpenAIWSLocalRoutingRejectedError(model string, err error) error {
+	reason := fmt.Sprintf("model %s is not available for this websocket channel or account", strings.TrimSpace(model))
+	cause := fmt.Errorf("%w: %w", errOpenAIWSLocalRoutingRejected, err)
+	return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, reason, cause)
+}
+
+// shouldReportOpenAIWSProxyAccountFailure 排除明确的本地模型路由拒绝，其余代理错误维持现有上报行为。
+func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
+	return err != nil && !errors.Is(err, errOpenAIWSLocalRoutingRejected)
+}
+
 // grokMediaEligibilityProber 在首次媒体转发前补齐 OAuth 账号的计费观测。
 type grokMediaEligibilityProber interface {
 	ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error)
@@ -2002,8 +2016,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnCapability,
 				)
 				if resolveErr != nil {
-					reason := fmt.Sprintf("model %s is not available for this websocket channel or account", requestedModel)
-					return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, reason, resolveErr)
+					return "", newOpenAIWSLocalRoutingRejectedError(requestedModel, resolveErr)
 				}
 				return routingModel, nil
 			},
@@ -2222,7 +2235,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return
 			}
 
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMappingWS.MappedModel), false, nil)
+			if shouldReportOpenAIWSProxyAccountFailure(err) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMappingWS.MappedModel), false, nil)
+			}
 			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 			proxyFailedFields := []zap.Field{
 				zap.Int64("account_id", account.ID),

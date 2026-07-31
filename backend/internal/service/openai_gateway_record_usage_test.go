@@ -1741,6 +1741,84 @@ func TestOpenAIGatewayServiceRecordUsage_ResponsesMappedBillingModelHonorsBillin
 	}
 }
 
+// TestOpenAIUsageBillingModelPreservesImagePricingModel 验证图片轮次不会被文本上游模型覆盖计价。
+func TestOpenAIUsageBillingModelPreservesImagePricingModel(t *testing.T) {
+	tests := []struct {
+		name   string
+		result OpenAIForwardResult
+		fields ChannelUsageFields
+		want   string
+	}{
+		{
+			name: "上游计费保留图片模型",
+			result: OpenAIForwardResult{
+				Model:         "gpt-5.6-sol",
+				UpstreamModel: "gpt-5.6-sol",
+				BillingModel:  "gpt-image-2",
+				ImageCount:    1,
+			},
+			fields: ChannelUsageFields{BillingModelSource: BillingModelSourceUpstream},
+			want:   "gpt-image-2",
+		},
+		{
+			name: "普通上游计费使用最终模型",
+			result: OpenAIForwardResult{
+				Model:         "public-alias",
+				UpstreamModel: "gpt-5.6-sol",
+				BillingModel:  "channel-model",
+			},
+			fields: ChannelUsageFields{BillingModelSource: BillingModelSourceUpstream},
+			want:   "gpt-5.6-sol",
+		},
+		{
+			name: "未映射渠道计费保留图片模型",
+			result: OpenAIForwardResult{
+				Model:         "gpt-5.6-sol",
+				UpstreamModel: "gpt-5.6-sol",
+				BillingModel:  "gpt-image-2",
+				ImageCount:    1,
+			},
+			fields: ChannelUsageFields{
+				BillingModelSource: BillingModelSourceChannelMapped,
+				OriginalModel:      "gpt-5.6-sol",
+				ChannelMappedModel: "gpt-5.6-sol",
+			},
+			want: "gpt-image-2",
+		},
+		{
+			name: "请求模型来源覆盖图片模型",
+			result: OpenAIForwardResult{
+				BillingModel: "gpt-image-2",
+				ImageCount:   1,
+			},
+			fields: ChannelUsageFields{
+				BillingModelSource: BillingModelSourceRequested,
+				OriginalModel:      "public-image-alias",
+			},
+			want: "public-image-alias",
+		},
+		{
+			name: "映射渠道来源覆盖图片模型",
+			result: OpenAIForwardResult{
+				BillingModel: "gpt-image-2",
+				ImageCount:   1,
+			},
+			fields: ChannelUsageFields{
+				BillingModelSource: BillingModelSourceChannelMapped,
+				OriginalModel:      "public-image-alias",
+				ChannelMappedModel: "priced-channel-model",
+			},
+			want: "priced-channel-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIUsageBillingModel(&tt.result, tt.fields))
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
