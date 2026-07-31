@@ -758,16 +758,24 @@ func isClaudeOpus48Model(model string) bool {
 }
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
-	// Prefer canonical model name first (this also improves billing compatibility with "models/xxx").
-	candidates := []string{
-		normalizeModelNameForPricing(modelLower),
+	rawCandidates := []string{
 		modelLower,
-	}
-	candidates = append(candidates,
 		strings.TrimPrefix(modelLower, "models/"),
 		lastSegment(modelLower),
 		lastSegment(strings.TrimPrefix(modelLower, "models/")),
-	)
+	}
+	normalized := normalizeModelNameForPricing(modelLower)
+
+	// 未来定价目录出现 tier 专属条目时必须优先使用该条目。目前 Antigravity 的
+	// Gemini 3.6 Flash 各 tier 共用基础价格，因此标准化后的基础名称作为精确别名
+	// 未命中时的 fallback。
+	candidates := rawCandidates
+	if normalizeGeminiThinkingTierAlias(lastSegment(modelLower)) != lastSegment(modelLower) {
+		candidates = append(candidates, normalized)
+	} else {
+		// 其他别名（包括 models/xxx）仍优先使用规范模型名。
+		candidates = append([]string{normalized}, candidates...)
+	}
 
 	seen := make(map[string]struct{}, len(candidates))
 	out := make([]string, 0, len(candidates))
@@ -814,6 +822,19 @@ func normalizeModelNameForPricing(model string) string {
 			return "gpt-5.6-sol"
 		}
 		return canonical
+	}
+	return normalizeGeminiThinkingTierAlias(model)
+}
+
+// normalizeGeminiThinkingTierAlias 将 Antigravity 的 Gemini 3.6 Flash 思考 tier
+// 模型 ID 映射到公开基础模型。tier 只控制推理行为，不改变公布的 token 价格，
+// 因此 -high/-low/-medium/-tiered 请求共用 gemini-3.6-flash 价格卡。
+func normalizeGeminiThinkingTierAlias(model string) string {
+	const baseModel = "gemini-3.6-flash"
+	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
+		if model == baseModel+tier {
+			return baseModel
+		}
 	}
 	return model
 }
