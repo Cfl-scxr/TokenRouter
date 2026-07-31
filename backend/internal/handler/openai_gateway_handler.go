@@ -472,6 +472,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	var passthroughFailoverState openAIPassthroughFailoverState
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
@@ -571,13 +572,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		// 跨透传边界时，从不可变的 canonical 请求体派生当前尝试体，
+		// 避免非透传上游拒绝透传账号产生的私有加密 reasoning 项。
+		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
 		}()
 		cyberBlockKeyHTTP := ""
 		if service.GetOpsCyberPolicy(c) != nil {

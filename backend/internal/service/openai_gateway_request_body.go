@@ -156,6 +156,107 @@ func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep
 	return inputItem, true, true
 }
 
+// SanitizeOpenAICrossModeFailoverReasoning 从 canonical 请求体派生跨模式重试请求，
+// 完整删除带 provider 私有 encrypted_content 的 reasoning 项及其关联的 id/summary。
+// 使用 UseNumber 保留请求中大整数的精确 JSON 表示，且不会修改传入的字节切片。
+func SanitizeOpenAICrossModeFailoverReasoning(body []byte) (sanitized []byte, changed bool, err error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+	if !gjson.GetBytes(body, "input").Exists() {
+		return body, false, nil
+	}
+
+	var decoded map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return body, false, fmt.Errorf("decode cross-mode failover body: %w", err)
+	}
+	if !dropOpenAIEncryptedReasoningInputItems(decoded) {
+		return body, false, nil
+	}
+	out, marshalErr := marshalOpenAIUpstreamJSON(decoded)
+	if marshalErr != nil {
+		return body, false, fmt.Errorf("serialize cross-mode failover body: %w", marshalErr)
+	}
+	return out, true, nil
+}
+
+// dropOpenAIEncryptedReasoningInputItems 删除带 encrypted_content 的 reasoning 项，
+// 并返回请求体是否发生变化。没有加密字段的普通 reasoning 必须原样保留。
+func dropOpenAIEncryptedReasoningInputItems(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	inputValue, has := reqBody["input"]
+	if !has {
+		return false
+	}
+
+	switch input := inputValue.(type) {
+	case []any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			if isOpenAIEncryptedReasoningInputItem(item) {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case []map[string]any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			if isOpenAIEncryptedReasoningInputItem(item) {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		if !changed {
+			return false
+		}
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+		}
+		reqBody["input"] = filtered
+		return true
+	case map[string]any:
+		if isOpenAIEncryptedReasoningInputItem(input) {
+			delete(reqBody, "input")
+			return true
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func isOpenAIEncryptedReasoningInputItem(item any) bool {
+	inputItem, ok := item.(map[string]any)
+	if !ok {
+		return false
+	}
+	itemType, _ := inputItem["type"].(string)
+	if strings.TrimSpace(itemType) != "reasoning" {
+		return false
+	}
+	_, has := inputItem["encrypted_content"]
+	return has
+}
+
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
 	return isOpenAIResponsesCompactPath(c)
 }
