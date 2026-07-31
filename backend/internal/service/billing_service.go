@@ -534,6 +534,12 @@ func (s *BillingService) initFallbackPricing() {
 	// ---- 月之暗面 Kimi（K 系列）----
 	// 资料来源：https://platform.moonshot.cn/docs/pricing/overview
 	// Moonshot V1 与旧 K2 型号未保留清晰美元价，不做宽泛回退。
+	s.fallbackPrices["kimi-k3"] = &ModelPricing{
+		InputPricePerToken:     3e-6,
+		OutputPricePerToken:    15e-6,
+		CacheReadPricePerToken: 0.30e-6,
+		SupportsCacheBreakdown: false,
+	}
 	s.fallbackPrices["kimi-k2.6"] = &ModelPricing{
 		InputPricePerToken:     0.95e-6,
 		OutputPricePerToken:    4e-6,
@@ -737,6 +743,13 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "kimi-for-coding") {
 		return s.fallbackPrices["kimi-for-coding"]
+	}
+	// Kimi Code 使用无厂商前缀的 bare ID；这里只做完整 ID 或路径尾段匹配，
+	// 避免把客户端上下文语法 kimi-k3[1m] 和其他近似名称误计为 K3。
+	if modelLower == "kimi-k3" || strings.HasSuffix(modelLower, "/kimi-k3") ||
+		modelLower == "k3" || modelLower == "k3-256k" ||
+		strings.HasSuffix(modelLower, "/k3") || strings.HasSuffix(modelLower, "/k3-256k") {
+		return s.fallbackPrices["kimi-k3"]
 	}
 	if strings.Contains(modelLower, "kimi-k2.6") || strings.Contains(modelLower, "kimi-k2-6") {
 		return s.fallbackPrices["kimi-k2.6"]

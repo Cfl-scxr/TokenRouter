@@ -761,6 +761,10 @@ func TestLoadDefaultSecurityToggles(t *testing.T) {
 	if !cfg.Security.URLAllowlist.AllowPrivateHosts {
 		t.Fatalf("URLAllowlist.AllowPrivateHosts = false, want true")
 	}
+	// Kimi 的国际站、国内站和 Coding 接口都应允许作为默认上游。
+	for _, host := range []string{"api.kimi.com", "api.moonshot.ai", "api.moonshot.cn"} {
+		require.Contains(t, cfg.Security.URLAllowlist.UpstreamHosts, host)
+	}
 	if !cfg.Security.ResponseHeaders.Enabled {
 		t.Fatalf("ResponseHeaders.Enabled = false, want true")
 	}
