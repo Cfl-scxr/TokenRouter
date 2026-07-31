@@ -393,6 +393,7 @@ export const useAppStore = defineStore('app', () => {
         github_oauth_enabled: false,
         google_oauth_enabled: false,
         backend_mode_enabled: false,
+        passkey_enabled: false,
         version: siteVersion.value,
         balance_unit_name: 'USD',
         balance_unit_symbol: '$',

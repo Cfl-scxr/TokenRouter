@@ -72,6 +72,19 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# WebAuthn / Passkey 配置
+# =============================================================================
+# Passkey 在生产环境要求 HTTPS。RP ID 只填写域名（不含协议和端口），RP origins
+# 填写浏览器访问使用的完整 Origin。
+webauthn:
+  enabled: false
+  rp_display_name: "TokenRouter"
+  # 示例: "tokenrouter.example.com"
+  rp_id: ""
+  # 示例: ["https://tokenrouter.example.com"]
+  rp_origins: []
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================
