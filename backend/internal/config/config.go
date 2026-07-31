@@ -1054,6 +1054,8 @@ type GatewayOpenAIHTTP2Config struct {
 
 // GatewayOpenAIProxyStreamCircuitConfig 配置进程内有界的 Responses SSE 代理断流熔断器。
 type GatewayOpenAIProxyStreamCircuitConfig struct {
+	// Disabled: 完全关闭代理断流熔断，默认保持开启。
+	Disabled bool `mapstructure:"disabled"`
 	// FailureThreshold: 统计窗口内多少次断流后隔离代理。
 	FailureThreshold int `mapstructure:"failure_threshold"`
 	// WindowSeconds: 断流统计窗口（秒）。
@@ -2336,6 +2338,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.ttl_seconds", 600)
