@@ -83,9 +83,9 @@
               </div>
 
               <!-- Announcements List -->
-              <div v-else-if="announcements.length > 0">
+              <div v-else-if="displayedAnnouncements.length > 0">
                 <div
-                  v-for="item in announcements"
+                  v-for="item in displayedAnnouncements"
                   :key="item.id"
                   class="group relative flex items-center gap-4 border-b border-gray-100 px-6 py-4 transition-all hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/30"
                   :class="{ 'bg-blue-50/30 dark:bg-blue-900/5': !item.read_at }"
@@ -346,6 +346,8 @@ marked.setOptions({
 // Use store state (storeToRefs for reactivity)
 const { announcements, loading } = storeToRefs(announcementStore)
 const unreadCount = computed(() => announcementStore.unreadCount)
+// Header 维持原有的 20 条展示上限，完整列表留给未读统计和仪表盘时间排序。
+const displayedAnnouncements = computed(() => announcements.value.slice(0, 20))
 const triggerClass = computed(() => {
   if (props.variant === 'status') {
     return 'relative flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/70 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white'
