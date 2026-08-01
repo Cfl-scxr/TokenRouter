@@ -107,6 +107,7 @@
     <AnnouncementPopup
       :announcement="selectedAnnouncement"
       preview
+      show-read-status
       @close="selectedAnnouncement = null"
     />
   </div>

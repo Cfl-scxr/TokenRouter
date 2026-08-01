@@ -28,7 +28,7 @@ vi.mock('@/utils/format', () => ({
   formatDate: (date: string | Date, options: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat('zh-CN', options).format(new Date(date)),
   formatDateTime: () => '2026/08/01 12:00:00',
-  formatRelativeWithDateTime: () => '2 hours ago · 2026/08/01 12:00:00',
+  formatRelativeTime: () => '2 hours ago',
 }))
 
 function createAnnouncement(
