@@ -56,6 +56,7 @@ export default {
     batchImageAgentDesc: '复制给 Agent 的任务说明',
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
+    purchasePlanOrRecharge: '购买套餐或充值余额',
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值'
   },

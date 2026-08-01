@@ -56,6 +56,7 @@ export default {
     batchImageAgentDesc: 'Copy instructions for an agent',
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
+    purchasePlanOrRecharge: 'Purchase a plan or add balance',
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code'
   },
