@@ -604,6 +604,10 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	// 固定在峰值窗口内，避免测试在每天 23:59 的右开边界偶发失败。
+	svc.usageBillingNow = func() time.Time {
+		return time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	}
 	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "gpt-5.1")
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
@@ -621,8 +625,8 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 				ID:                 groupID,
 				RateMultiplier:     groupRate,
 				PeakRateEnabled:    true,
-				PeakStart:          "00:00",
-				PeakEnd:            "23:59",
+				PeakStart:          "11:59",
+				PeakEnd:            "12:01",
 				PeakRateMultiplier: 3.0,
 			},
 		},

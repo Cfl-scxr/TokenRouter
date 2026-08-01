@@ -1451,6 +1451,10 @@ func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	// 固定在峰值窗口内，避免测试在每天 23:59 的右开边界偶发失败。
+	svc.usageBillingNow = func() time.Time {
+		return time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	}
 	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "gemini-image")
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
@@ -1472,8 +1476,8 @@ func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *
 				ID:                 groupID,
 				RateMultiplier:     1.0,
 				PeakRateEnabled:    true,
-				PeakStart:          "00:00",
-				PeakEnd:            "23:59",
+				PeakStart:          "11:59",
+				PeakEnd:            "12:01",
 				PeakRateMultiplier: 3.0,
 			},
 		},

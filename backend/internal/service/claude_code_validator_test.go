@@ -246,7 +246,10 @@ func TestClaudeCodeValidator_SecurityMonitorWithoutBillingBlock(t *testing.T) {
 			headers: validHeaders,
 			body: func() map[string]any {
 				body := validBody(string(monitorPrompt))
-				body["system"] = append(body["system"].([]any), map[string]any{
+				// 显式校验测试夹具类型，避免夹具结构变化时静默触发 panic。
+				system, ok := body["system"].([]any)
+				require.True(t, ok)
+				body["system"] = append(system, map[string]any{
 					"type": "text",
 					"text": "Additional unrelated system content.",
 				})

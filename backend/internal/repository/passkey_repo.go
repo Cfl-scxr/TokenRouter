@@ -82,7 +82,7 @@ func (r *passkeyRepository) GetByCredentialID(
 func (r *passkeyRepository) ListByUserID(
 	ctx context.Context,
 	userID int64,
-) ([]service.PasskeyCredentialRecord, error) {
+) (records []service.PasskeyCredentialRecord, retErr error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT c.id, c.user_id, h.user_handle, c.name, c.credential_data,
 		       c.last_used_at, c.created_at, c.updated_at
@@ -94,9 +94,14 @@ func (r *passkeyRepository) ListByUserID(
 	if err != nil {
 		return nil, fmt.Errorf("list passkey credentials: %w", err)
 	}
-	defer rows.Close()
+	// 查询提前退出时也要关闭游标，并在原流程成功时向上返回关闭错误。
+	defer func() {
+		if closeErr := rows.Close(); retErr == nil && closeErr != nil {
+			retErr = fmt.Errorf("close passkey credential rows: %w", closeErr)
+		}
+	}()
 
-	records := make([]service.PasskeyCredentialRecord, 0)
+	records = make([]service.PasskeyCredentialRecord, 0)
 	for rows.Next() {
 		record, scanErr := scanPasskeyCredential(rows)
 		if scanErr != nil {
