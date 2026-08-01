@@ -176,7 +176,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape)
-  if (props.preview && props.lockBodyScroll) {
+  // 路由切换会直接卸载弹窗，组件需要自行解除页面滚动锁定。
+  if (props.lockBodyScroll) {
     document.body.style.overflow = ''
   }
 })
