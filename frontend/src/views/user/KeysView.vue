@@ -1305,6 +1305,7 @@ import type { DataShareNotice } from '@/api/dataSharing'
 import { formatDateTime } from '@/utils/format'
 import {
   buildCcSwitchImportDeeplink,
+  buildCcSwitchUsageScript,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
 
@@ -2401,34 +2402,11 @@ const importToCcswitch = (row: ApiKey) => {
   executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
 }
 
-const toJsStringLiteral = (value: string) =>
-  JSON.stringify(value || 'USD')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
-
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
-  const fallbackUnitLiteral = toJsStringLiteral(balanceUnitName.value)
-  // Anthropic 导入的是根地址，客户端请求时会自行拼接 /v1，用量查询仍要走网关路由。
-  const usagePath = platform === 'anthropic' ? '/v1/usage' : '/usage'
-  const usageScript = `({
-    request: {
-      url: "{{baseUrl}}${usagePath}",
-      method: "GET",
-      headers: { "Authorization": "Bearer {{apiKey}}" }
-    },
-    extractor: function(response) {
-      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
-      const unit = response?.unit ?? response?.quota?.unit ?? ${fallbackUnitLiteral};
-      return {
-        isValid: response?.is_active ?? response?.isValid ?? true,
-        remaining,
-        unit
-      };
-    }
-  })`
+  const usageScript = buildCcSwitchUsageScript(baseUrl, balanceUnitName.value)
   const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
