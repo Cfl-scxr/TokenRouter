@@ -17,6 +17,9 @@ const (
 	defaultDashboardAggregationTimeout         = 2 * time.Minute
 	defaultDashboardAggregationBackfillTimeout = 30 * time.Minute
 	dashboardAggregationRetentionInterval      = 6 * time.Hour
+	dashboardAggregationSchedulerTick          = 30 * time.Second
+	dashboardAggregationBackfillBudget         = 10 * time.Second
+	dashboardAggregationBackfillMaxHours       = 24
 
 	dashboardAggregationLeaderLockKey = "dashboard:aggregation:leader"
 	// 锁 TTL 需长于单轮定时聚合的最坏运行时间，避免任务未结束时锁过期。
@@ -48,13 +51,36 @@ type DashboardAggregationRepository interface {
 // DashboardAggregationService 负责定时聚合与回填。
 type DashboardAggregationService struct {
 	repo                 DashboardAggregationRepository
+	analyticsRepo        UsageAnalyticsAggregationRepository
 	timingWheel          *TimingWheelService
 	cfg                  config.DashboardAggregationConfig
+	settings             *PreAggregationSettingsService
 	running              int32
+	lastScheduledAt      atomic.Int64
+	lastBackfillAt       atomic.Int64
 	lastRetentionCleanup atomic.Value // time.Time
 	lockCache            LeaderLockCache
 	db                   *sql.DB
 	instanceID           string
+}
+
+// SetPreAggregationSettings 注入统一运行时配置，并在开启或修改周期时立即唤醒任务。
+func (s *DashboardAggregationService) SetPreAggregationSettings(settings *PreAggregationSettingsService) {
+	if s == nil {
+		return
+	}
+	s.settings = settings
+	if analyticsRepo, ok := s.repo.(UsageAnalyticsAggregationRepository); ok {
+		s.analyticsRepo = analyticsRepo
+	}
+	if settings != nil {
+		settings.RegisterListener(func(previous, next PreAggregationSettings) {
+			if (!previous.Usage.Enabled && next.Usage.Enabled) || previous.Usage.IntervalSeconds != next.Usage.IntervalSeconds {
+				s.lastScheduledAt.Store(0)
+				go s.runScheduledAggregation()
+			}
+		})
+	}
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -80,7 +106,7 @@ func (s *DashboardAggregationService) SetLeaderLock(lockCache LeaderLockCache, d
 	s.db = db
 }
 
-// Start 启动定时聚合作业（重启生效配置）。
+// Start 启动定时聚合作业；实际启停和周期由统一运行时配置决定。
 func (s *DashboardAggregationService) Start() {
 	if s == nil || s.repo == nil || s.timingWheel == nil {
 		return
@@ -90,19 +116,15 @@ func (s *DashboardAggregationService) Start() {
 		return
 	}
 
-	interval := time.Duration(s.cfg.IntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = time.Minute
-	}
-
-	if s.cfg.RecomputeDays > 0 {
+	if s.cfg.RecomputeDays > 0 && s.analyticsRepo == nil {
 		go s.recomputeRecentDays()
 	}
 
-	s.timingWheel.ScheduleRecurring("dashboard:aggregation", interval, func() {
+	s.timingWheel.ScheduleRecurring("dashboard:aggregation", dashboardAggregationSchedulerTick, func() {
 		s.runScheduledAggregation()
 	})
-	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
+	go s.runScheduledAggregation()
+	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (scheduler_tick=%v, lookback=%ds)", dashboardAggregationSchedulerTick, s.cfg.LookbackSeconds)
 	if !s.cfg.BackfillEnabled {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
 	}
@@ -126,27 +148,40 @@ func (s *DashboardAggregationService) TriggerBackfill(start, end time.Time) erro
 			return ErrDashboardBackfillTooLarge
 		}
 	}
+	if s.analyticsRepo == nil {
+		return errors.New("多维聚合服务未初始化")
+	}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
-		defer cancel()
-		if err := s.backfillRange(ctx, start, end); err != nil {
-			logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填失败: %v", err)
-		}
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
+	defer cancel()
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		return err
+	}
+	requestedStart := start.UTC().Truncate(time.Hour)
+	if state.BackfillCursor == nil {
+		cursor := end.UTC().Truncate(time.Hour)
+		state.BackfillCursor = &cursor
+	}
+	if state.CoverageStart == nil || state.CoverageStart.After(requestedStart) {
+		state.Phase = "backfill"
+	}
+	if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
+		return err
+	}
+	// 手动操作复用定时任务的分布式锁和资源预算。
+	s.TriggerNow()
 	return nil
 }
 
 // TriggerRecomputeRange 触发指定范围的重新计算（异步）。
 // 与 TriggerBackfill 不同：
 // - 不依赖 backfill_enabled（这是内部一致性修复）
+// - 不受运行时开关影响，避免关闭期间删除原始记录后留下陈旧聚合
 // - 不更新 watermark（避免影响正常增量聚合游标）
 func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time) error {
 	if s == nil || s.repo == nil {
 		return errors.New("聚合服务未初始化")
-	}
-	if !s.cfg.Enabled {
-		return errors.New("聚合服务已禁用")
 	}
 	if !end.After(start) {
 		return errors.New("重新计算时间范围无效")
@@ -198,6 +233,11 @@ func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start,
 	if err := s.repo.RecomputeRange(ctx, start, end); err != nil {
 		return err
 	}
+	if s.analyticsRepo != nil {
+		if err := s.analyticsRepo.AggregateUsageAnalyticsRange(ctx, start, end); err != nil {
+			return err
+		}
+	}
 	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 重新计算完成 (start=%s end=%s duration=%s)",
 		start.UTC().Format(time.RFC3339),
 		end.UTC().Format(time.RFC3339),
@@ -207,6 +247,9 @@ func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start,
 }
 
 func (s *DashboardAggregationService) runScheduledAggregation() {
+	if !s.usageEnabled(context.Background()) || !s.scheduledRunDue(time.Now()) {
+		return
+	}
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return
 	}
@@ -224,6 +267,7 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	defer release()
 
 	now := time.Now().UTC()
+	s.markAnalyticsRunStarted(ctx, now)
 	last, err := s.repo.GetAggregationWatermark(ctx)
 	if err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 读取水位失败: %v", err)
@@ -234,17 +278,15 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	epoch := time.Unix(0, 0).UTC()
 	start := last.Add(-lookback)
 	if !last.After(epoch) {
-		retentionDays := s.cfg.Retention.UsageLogsDays
-		if retentionDays <= 0 {
-			retentionDays = 1
-		}
-		start = truncateToDayUTC(now.AddDate(0, 0, -retentionDays))
+		// 新实例只实时聚合当前窗口，历史数据交给受预算约束的反向回填，避免启动时长时间扫描。
+		start = now.Add(-lookback)
 	} else if start.After(now) {
 		start = now.Add(-lookback)
 	}
 
 	if err := s.aggregateRange(ctx, start, now); err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合失败: %v", err)
+		s.markAnalyticsRunFailed(ctx, now, jobStart, err)
 		return
 	}
 
@@ -258,6 +300,8 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 		"duration", time.Since(jobStart).String(),
 		"watermark_updated", updateErr == nil,
 	)
+	s.markAnalyticsLiveSuccess(ctx, now, start, jobStart)
+	s.runHistoricalBackfill(ctx, now)
 
 	s.maybeCleanupRetention(ctx, now)
 }
@@ -309,7 +353,13 @@ func (s *DashboardAggregationService) aggregateRange(ctx context.Context, start,
 	if err := s.repo.EnsureUsageLogsPartitions(ctx, end); err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 分区检查失败: %v", err)
 	}
-	return s.repo.AggregateRange(ctx, start, end)
+	if err := s.repo.AggregateRange(ctx, start, end); err != nil {
+		return err
+	}
+	if s.analyticsRepo != nil {
+		return s.analyticsRepo.AggregateUsageAnalyticsRange(ctx, start, end)
+	}
+	return nil
 }
 
 func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context, now time.Time) {
@@ -329,6 +379,12 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	if aggErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
 	}
+	if s.analyticsRepo != nil {
+		if analyticsErr := s.analyticsRepo.CleanupUsageAnalytics(ctx, hourlyCutoff, dailyCutoff); analyticsErr != nil {
+			logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 多维聚合保留清理失败: %v", analyticsErr)
+			aggErr = analyticsErr
+		}
+	}
 	usageErr := s.repo.CleanupUsageLogs(ctx, usageCutoff)
 	if usageErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
@@ -340,6 +396,215 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	if aggErr == nil && usageErr == nil && dedupErr == nil {
 		s.lastRetentionCleanup.Store(now)
 	}
+}
+
+// TriggerNow 立即尝试执行一轮聚合，供运行时开关开启后使用。
+func (s *DashboardAggregationService) TriggerNow() {
+	if s == nil {
+		return
+	}
+	s.lastScheduledAt.Store(0)
+	go s.runScheduledAggregation()
+}
+
+// RuntimeStatus 返回设置页面所需的多维聚合状态。
+func (s *DashboardAggregationService) RuntimeStatus(ctx context.Context) PreAggregationRuntimeStatus {
+	status := PreAggregationRuntimeStatus{Phase: "unavailable"}
+	if s == nil || s.analyticsRepo == nil {
+		return status
+	}
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		status.Phase = "error"
+		status.LastError = err.Error()
+		return status
+	}
+	status.Phase = state.Phase
+	if !s.usageEnabled(ctx) {
+		status.Phase = "disabled"
+	}
+	if !state.LiveWatermark.IsZero() && state.LiveWatermark.After(time.Unix(0, 0)) {
+		watermark := state.LiveWatermark.UTC()
+		status.LiveWatermark = &watermark
+		status.LagSeconds = maxInt64(0, int64(time.Since(watermark).Seconds()))
+	}
+	status.CoverageStart = state.CoverageStart
+	status.SourceOldestAt = state.SourceOldestAt
+	status.LastRunAt = state.LastRunAt
+	status.LastSuccessAt = state.LastSuccessAt
+	status.LastErrorAt = state.LastErrorAt
+	status.LastError = state.LastError
+	status.LastDurationMS = state.LastDurationMS
+	return status
+}
+
+func (s *DashboardAggregationService) usageEnabled(ctx context.Context) bool {
+	if s == nil || !s.cfg.Enabled {
+		return false
+	}
+	if s.settings == nil {
+		return true
+	}
+	return s.settings.UsageEnabled(ctx)
+}
+
+func (s *DashboardAggregationService) scheduledRunDue(now time.Time) bool {
+	interval := time.Duration(s.cfg.IntervalSeconds) * time.Second
+	if s.settings != nil {
+		interval = time.Duration(s.settings.Resolve(context.Background()).Usage.IntervalSeconds) * time.Second
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	last := s.lastScheduledAt.Load()
+	if last > 0 && now.Sub(time.Unix(0, last)) < interval {
+		return false
+	}
+	return s.lastScheduledAt.CompareAndSwap(last, now.UnixNano())
+}
+
+func (s *DashboardAggregationService) markAnalyticsRunStarted(ctx context.Context, now time.Time) {
+	if s.analyticsRepo == nil {
+		return
+	}
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		return
+	}
+	state.Phase = "live"
+	state.LastRunAt = timePointer(now)
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+}
+
+func (s *DashboardAggregationService) markAnalyticsLiveSuccess(ctx context.Context, now, start, jobStart time.Time) {
+	if s.analyticsRepo == nil {
+		return
+	}
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		return
+	}
+	state.LiveWatermark = now
+	if state.CoverageStart == nil {
+		coverage := start.UTC().Truncate(time.Hour)
+		state.CoverageStart = &coverage
+		state.BackfillCursor = &coverage
+	}
+	state.Phase = "idle"
+	state.LastSuccessAt = timePointer(now)
+	state.LastError = ""
+	state.LastErrorAt = nil
+	state.LastDurationMS = time.Since(jobStart).Milliseconds()
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+}
+
+func (s *DashboardAggregationService) markAnalyticsRunFailed(ctx context.Context, now, jobStart time.Time, runErr error) {
+	if s.analyticsRepo == nil {
+		return
+	}
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		return
+	}
+	state.Phase = "error"
+	state.LastError = runErr.Error()
+	state.LastErrorAt = timePointer(now)
+	state.LastDurationMS = time.Since(jobStart).Milliseconds()
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+}
+
+func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context, now time.Time) {
+	if s.analyticsRepo == nil {
+		return
+	}
+	last := s.lastBackfillAt.Load()
+	if last > 0 && now.Sub(time.Unix(0, last)) < time.Minute {
+		return
+	}
+	if !s.lastBackfillAt.CompareAndSwap(last, now.UnixNano()) {
+		return
+	}
+	state, err := s.analyticsRepo.GetUsageAnalyticsAggregationState(ctx)
+	if err != nil {
+		return
+	}
+	if state.SourceOldestAt == nil {
+		oldest, oldestErr := s.analyticsRepo.GetOldestUsageLogTime(ctx)
+		if oldestErr != nil {
+			return
+		}
+		state.SourceOldestAt = oldest
+	}
+	if state.SourceOldestAt == nil {
+		return
+	}
+	oldestHour := state.SourceOldestAt.UTC().Truncate(time.Hour)
+	cursor := now.UTC().Truncate(time.Hour)
+	if state.BackfillCursor != nil {
+		cursor = state.BackfillCursor.UTC().Truncate(time.Hour)
+	}
+	if !cursor.After(oldestHour) {
+		state.Phase = "idle"
+		state.CoverageStart = timePointer(oldestHour)
+		state.BackfillCursor = timePointer(oldestHour)
+		_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+		return
+	}
+
+	started := time.Now()
+	state.Phase = "backfill"
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+	for processed := 0; processed < dashboardAggregationBackfillMaxHours && time.Since(started) < dashboardAggregationBackfillBudget; processed++ {
+		chunkStart := cursor.Add(-time.Hour)
+		if chunkStart.Before(oldestHour) {
+			chunkStart = oldestHour
+		}
+		remaining := dashboardAggregationBackfillBudget - time.Since(started)
+		if remaining <= 0 {
+			return
+		}
+		chunkCtx, cancel := context.WithTimeout(ctx, remaining)
+		chunkErr := s.aggregateRange(chunkCtx, chunkStart, cursor)
+		cancel()
+		if chunkErr != nil {
+			if errors.Is(chunkErr, context.DeadlineExceeded) {
+				state.Phase = "backfill"
+				state.LastDurationMS = time.Since(started).Milliseconds()
+				_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+				return
+			}
+			s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, chunkErr)
+			return
+		}
+		cursor = chunkStart
+		state.CoverageStart = timePointer(cursor)
+		state.BackfillCursor = timePointer(cursor)
+		state.LastSuccessAt = timePointer(time.Now().UTC())
+		state.LastDurationMS = time.Since(started).Milliseconds()
+		if !cursor.After(oldestHour) {
+			state.Phase = "idle"
+		} else {
+			state.Phase = "backfill"
+		}
+		if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
+			return
+		}
+		if !cursor.After(oldestHour) {
+			return
+		}
+	}
+}
+
+func timePointer(value time.Time) *time.Time {
+	result := value.UTC()
+	return &result
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func truncateToDayUTC(t time.Time) time.Time {

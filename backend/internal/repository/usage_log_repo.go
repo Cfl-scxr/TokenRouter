@@ -82,11 +82,11 @@ func appendUsageLogBillingModeWhereConditionWithAlias(conditions []string, args 
 	placeholder := fmt.Sprintf("$%d", len(args)+1)
 	switch service.BillingMode(mode) {
 	case service.BillingModeImage:
-		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) > 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
+		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) <= 0 AND COALESCE(%s, 0) > 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("video_duration_seconds"), column("image_count")))
 	case service.BillingModeVideo:
-		conditions = append(conditions, fmt.Sprintf("%s = %s", column("billing_mode"), placeholder))
+		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) > 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("video_duration_seconds")))
 	case service.BillingModeToken:
-		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) <= 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
+		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) <= 0 AND COALESCE(%s, 0) <= 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("video_duration_seconds"), column("image_count")))
 	default:
 		conditions = append(conditions, fmt.Sprintf("%s = %s", column("billing_mode"), placeholder))
 	}
@@ -138,9 +138,10 @@ func appendUsageLogModelQueryFilter(query string, args []any, model string, sour
 }
 
 type usageLogRepository struct {
-	client *dbent.Client
-	sql    sqlExecutor
-	db     *sql.DB
+	client         *dbent.Client
+	sql            sqlExecutor
+	db             *sql.DB
+	preAggregation *service.PreAggregationSettingsService
 
 	createBatchOnce     sync.Once
 	createBatchCh       chan usageLogCreateRequest
@@ -149,8 +150,10 @@ type usageLogRepository struct {
 	bestEffortRecent    *gocache.Cache
 }
 
-func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
-	return newUsageLogRepositoryWithSQL(client, sqlDB)
+func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB, preAggregation *service.PreAggregationSettingsService) service.UsageLogRepository {
+	repo := newUsageLogRepositoryWithSQL(client, sqlDB)
+	repo.preAggregation = preAggregation
+	return repo
 }
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {
@@ -245,6 +248,9 @@ func (r *usageLogRepository) GetDashboardPublicStats(ctx context.Context, start,
 func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UsageRankingResponse, err error) {
 	if limit <= 0 {
 		limit = service.DefaultUsageRankingLimit
+	}
+	if aggregated, ok, aggregateErr := r.getUsageRankingFromAnalytics(ctx, startTime, endTime, limit); aggregateErr == nil && ok {
+		return aggregated, nil
 	}
 
 	query := `

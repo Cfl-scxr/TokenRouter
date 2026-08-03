@@ -316,8 +316,9 @@ func ProvideGrokTokenProvider(
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务。
-func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *DashboardAggregationService {
+func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config, settings *PreAggregationSettingsService) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
+	svc.SetPreAggregationSettings(settings)
 	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
@@ -455,8 +456,9 @@ func ProvideOpsAggregationService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	preAggregationSettings *PreAggregationSettingsService,
 ) *OpsAggregationService {
-	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
+	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg, preAggregationSettings)
 	svc.Start()
 	return svc
 }
@@ -663,6 +665,7 @@ func ProvideOpsService(
 	settingService *SettingService,
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker,
 	apiKeyService *APIKeyService,
+	preAggregationSettings *PreAggregationSettingsService,
 ) *OpsService {
 	svc := NewOpsService(
 		opsRepo,
@@ -677,6 +680,7 @@ func ProvideOpsService(
 		antigravityGatewayService,
 		systemLogSink,
 	)
+	svc.SetPreAggregationSettings(preAggregationSettings)
 	if settingService != nil {
 		svc.SetOpenAIQuotaAutoPauseSettingsSink(settingService.SetOpenAIQuotaAutoPauseSettings)
 		// 可选预热：让进程启动后的首个调度请求看到已填充缓存，而不是零默认值。
@@ -817,7 +821,7 @@ var ProviderSet = wire.NewSet(
 	NewPromoService,
 	NewUsageService,
 	ProvideDataSharingService,
-	NewDashboardService,
+	ProvideDashboardService,
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
@@ -867,6 +871,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
 	ProvideSettingService,
+	NewPreAggregationSettingsService,
 	NewDataManagementService,
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,

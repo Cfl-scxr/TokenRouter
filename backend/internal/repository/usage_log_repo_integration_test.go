@@ -1098,6 +1098,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	aggStart := hour1.Add(-5 * time.Minute)
 	aggEnd := hour2.Add(time.Hour) // 确保覆盖 hour2 的所有数据
 	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd))
+	s.Require().NoError(aggRepo.AggregateUsageAnalyticsRange(s.ctx, aggStart, aggEnd))
 
 	type hourlyRow struct {
 		totalRequests       int64
@@ -1177,6 +1178,52 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	s.Require().Equal(2.1, daily.actualCost)
 	s.Require().Equal(int64(450), daily.totalDurationMs)
 	s.Require().Equal(int64(2), daily.activeUsers)
+
+	// 多维小时表的用户汇总必须与相同范围的原始记录一致。
+	var analyticsRequests, analyticsInput, analyticsOutput, analyticsDuration int64
+	var analyticsTotalCost, analyticsActualCost float64
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT COALESCE(SUM(total_requests), 0), COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_duration_ms), 0),
+		       COALESCE(SUM(total_cost), 0), COALESCE(SUM(actual_cost), 0)
+		FROM usage_analytics_hourly
+		WHERE user_id = $1 AND bucket_start >= $2 AND bucket_start < $3
+	`, []any{user1.ID, hour1, hour2}, &analyticsRequests, &analyticsInput, &analyticsOutput,
+		&analyticsDuration, &analyticsTotalCost, &analyticsActualCost)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), analyticsRequests)
+	s.Require().Equal(int64(15), analyticsInput)
+	s.Require().Equal(int64(25), analyticsOutput)
+	s.Require().Equal(int64(300), analyticsDuration)
+	s.Require().InDelta(1.5, analyticsTotalCost, 0.000001)
+	s.Require().InDelta(1.4, analyticsActualCost, 0.000001)
+
+	// 迟到记录落入已完成小时后，回看重算应替换该桶而不是重复累加。
+	lateDuration := 50
+	_, err = s.repo.Create(s.ctx, &service.UsageLog{
+		UserID: user1.ID, APIKeyID: apiKey1.ID, AccountID: account.ID,
+		RequestID: uuid.NewString(), Model: "claude-3", InputTokens: 3, OutputTokens: 4,
+		TotalCost: 0.2, ActualCost: 0.15, DurationMs: &lateDuration,
+		CreatedAt: hour1.Add(45 * time.Minute),
+	})
+	s.Require().NoError(err)
+	s.Require().NoError(aggRepo.AggregateUsageAnalyticsRange(s.ctx, hour1, hour1.Add(time.Hour)))
+
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT COALESCE(SUM(total_requests), 0), COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_duration_ms), 0),
+		       COALESCE(SUM(total_cost), 0), COALESCE(SUM(actual_cost), 0)
+		FROM usage_analytics_hourly
+		WHERE user_id = $1 AND bucket_start = $2
+	`, []any{user1.ID, hour1}, &analyticsRequests, &analyticsInput, &analyticsOutput,
+		&analyticsDuration, &analyticsTotalCost, &analyticsActualCost)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), analyticsRequests)
+	s.Require().Equal(int64(18), analyticsInput)
+	s.Require().Equal(int64(29), analyticsOutput)
+	s.Require().Equal(int64(350), analyticsDuration)
+	s.Require().InDelta(1.7, analyticsTotalCost, 0.000001)
+	s.Require().InDelta(1.55, analyticsActualCost, 0.000001)
 }
 
 // --- GetBatchUserUsageStats ---
