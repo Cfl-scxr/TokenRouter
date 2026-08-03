@@ -210,13 +210,26 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
+	billingModel := ""
+	mappedModel := ""
+	if account.Platform == PlatformGrok {
+		billingModel, mappedModel = resolveGrokWSModels(account, body, routingModel)
+	} else if routingModel != "" {
+		billingModel = resolveAccountMappedModelForForward(account, routingModel)
+		mappedModel = normalizeOpenAIModelForUpstream(account, billingModel)
+	}
+	// 只有客户端明确提供模型时才回写下游，避免默认模型被替换成空字符串。
+	needModelReplace := routingModel != "" && mappedModel != "" && mappedModel != originalModel
+	var mappedModelBytes []byte
+	if needModelReplace {
+		mappedModelBytes = []byte(mappedModel)
+	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
-		upstreamModel := resolveGrokWSUpstreamModel(account, body, routingModel)
 		grokIntentSourceBody := body
-		body, err = patchGrokResponsesBody(body, upstreamModel)
+		body, err = patchGrokResponsesBody(body, mappedModel)
 		if err != nil {
 			releaseUpstreamCtx()
 			return nil, err
@@ -278,11 +291,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			defaultFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 		}
 		if !requestScopedError {
-			canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
 			if account.Platform == PlatformGrok {
-				decision = s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, canonicalModel)
+				decision = s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
 			} else {
-				decision = s.applyOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, canonicalModel)
+				decision = s.applyOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
 			}
 		}
 		if decision.ShouldReturnGenericError() {
@@ -320,17 +332,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	sawDone := false
 	wroteDownstream := false
 	clientDisconnected := false
-	mappedModel := ""
-	needModelReplace := false
-	var mappedModelBytes []byte
-	if routingModel != "" {
-		mappedModel = normalizeOpenAIModelForUpstream(account, resolveAccountMappedModelForForward(account, routingModel))
-		needModelReplace = mappedModel != "" && mappedModel != originalModel
-		if needModelReplace {
-			mappedModelBytes = []byte(mappedModel)
-		}
-	}
-
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
@@ -338,6 +339,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			ResponseID:            responseID,
 			Usage:                 usage,
 			Model:                 originalModel,
+			BillingModel:          billingModel,
 			UpstreamModel:         mappedModel,
 			ServiceTier:           extractOpenAIServiceTierFromBody(body),
 			ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
@@ -432,7 +434,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(
 				ctx,
 				account,
-				canonicalOpenAIAccountSchedulingModel(account, routingModel),
+				mappedModel,
 				resp.Header,
 				upstreamMessage,
 			)
@@ -476,13 +478,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 					defaultFailover = false
 				} else {
 					defaultFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
-					canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
-					decision = s.applyGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage, canonicalModel)
+					decision = s.applyGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage, mappedModel)
 				}
 			} else if !requestScopedError {
 				defaultFailover = s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
-				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, routingModel)
-				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, resp.Header, upstreamMessage, canonicalModel)
+				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, resp.Header, upstreamMessage, mappedModel)
 			}
 			if decision.ShouldReturnGenericError() {
 				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
@@ -584,14 +584,23 @@ func resolveGrokWSCacheIdentity(c *gin.Context, account *Account, payload []byte
 }
 
 func resolveGrokWSUpstreamModel(account *Account, body []byte, originalModel string) string {
-	upstreamModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	if account != nil && originalModel != "" {
-		if mappedModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel)); mappedModel != "" {
-			upstreamModel = mappedModel
-		}
+	_, upstreamModel := resolveGrokWSModels(account, body, originalModel)
+	return upstreamModel
+}
+
+// resolveGrokWSModels 只解析一次账号映射与 Grok 平台规范化，供请求、错误状态和结果记录复用。
+func resolveGrokWSModels(account *Account, body []byte, originalModel string) (string, string) {
+	requestedModel := strings.TrimSpace(originalModel)
+	if requestedModel == "" {
+		requestedModel = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	}
+	billingModel := requestedModel
+	if account != nil {
+		billingModel = resolveAccountMappedModelForForward(account, requestedModel)
+	}
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if upstreamModel == "" {
 		upstreamModel = grokDefaultResponsesModel
 	}
-	return upstreamModel
+	return billingModel, upstreamModel
 }

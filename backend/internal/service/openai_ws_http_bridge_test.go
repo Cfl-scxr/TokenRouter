@@ -446,7 +446,51 @@ func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, grokDefaultResponsesModel, gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Empty(t, result.BillingModel)
+	require.Equal(t, grokDefaultResponsesModel, result.UpstreamModel)
 	require.Len(t, events, 2)
+}
+
+// TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultModelErrorUsesCanonicalKey 验证 WS 空模型旁路
+// 在错误策略中复用实际发送给 xAI 的默认模型。
+func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultModelErrorUsesCanonicalKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"model_not_found","message":"model not found"}}`)),
+	}}
+	repo := &grokModelStateAccountRepo{}
+	svc := &OpenAIGatewayService{
+		accountRepo:      repo,
+		rateLimitService: &RateLimitService{accountRepo: repo},
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+		httpUpstream:     upstream,
+	}
+	account := &Account{
+		ID:          73,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"base_url": xai.DefaultCLIBaseURL},
+	}
+	payload := []byte(`{"type":"response.create","generate":true,"stream":true,"input":"hi"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+
+	result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+		context.Background(), c, account, "access-token", payload, len(payload),
+		"", "", "", "", "", "", 1,
+		func([]byte) error { return nil },
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, grokDefaultResponsesModel, repo.modelRateLimitCalls[0].scope)
 }
 
 // TestProxyOpenAIWSHTTPBridgeTurnForGrokFreeFunctionToolsUsesMixedRoute 验证 Grok WS HTTP bridge

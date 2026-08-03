@@ -26,7 +26,7 @@ const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
 	grokCLIVersion                         = "0.2.93"
-	grokDefaultResponsesModel              = "grok-4.5"
+	grokDefaultResponsesModel              = xai.DefaultResponsesModel
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 	grokRateLimitRepeatCooldown            = 10 * time.Minute
 	grokRateLimitSustainedCooldown         = 30 * time.Minute
@@ -47,10 +47,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		return nil, fmt.Errorf("grok account type %s is not supported by Responses forwarding", account.Type)
 	}
 
-	upstreamModel := account.GetMappedModel(originalModel)
-	if strings.TrimSpace(upstreamModel) == "" {
-		upstreamModel = grokDefaultResponsesModel
-	}
+	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if isGrokImageGenerationModel(upstreamModel) {
 		err := fmt.Errorf("model %s is an image model and is not available on the Responses endpoint; use /v1/images/generations instead", upstreamModel)
 		// 这是客户端点选择错误，直接返回 400，避免 handler 将普通错误改写为通用 502。
@@ -224,6 +222,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		ResponseID:      responseID,
 		Usage:           *usage,
 		Model:           originalModel,
+		BillingModel:    billingModel,
 		UpstreamModel:   upstreamModel,
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
@@ -1359,15 +1358,15 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 }
 
-// applyGrokAccountUpstreamError 先执行显式策略，再处理非池模式的 Grok 默认状态。
-// 返回完整决策，供媒体、HTTP 和 WebSocket 路径统一判断故障转移与同账号重试。
+// applyGrokAccountUpstreamError 先处理精确模型状态和显式策略，再处理非池模式的 Grok 默认状态。
+// 调用方应传入账号映射后的模型；这里仅补做幂等的平台规范化，绝不再次执行账号映射。
 func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 	ctx context.Context,
 	account *Account,
 	statusCode int,
 	headers http.Header,
 	responseBody []byte,
-	requestedModel ...string,
+	canonicalModel ...string,
 ) UpstreamErrorDecision {
 	if s == nil || account == nil {
 		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
@@ -1375,13 +1374,24 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 	if isOpenAIAccountPolicyRequestScopedError(account, statusCode, responseBody) {
 		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
+	if model := firstRequestedModel(canonicalModel); model != "" {
+		canonicalModel = []string{normalizeOpenAIModelForUpstream(account, model)}
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
+
 	now := time.Now()
-	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+	s.updateGrokUsageSnapshot(stateCtx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
 
 	decision := upstreamErrorDecisionWithoutPersistence(account, statusCode)
 	if s.rateLimitService != nil {
-		decision.Policy = s.rateLimitService.ApplyExplicitErrorPolicy(ctx, account, statusCode, responseBody, requestedModel...)
-		decision.StopScheduling = decision.Policy == ErrorPolicyCustomMatched || decision.Policy == ErrorPolicyTempUnscheduled
+		if account.IsPoolMode() || account.IsCustomErrorCodesEnabled() {
+			decision.Policy = s.rateLimitService.ApplyExplicitErrorPolicy(stateCtx, account, statusCode, responseBody, canonicalModel...)
+			decision.StopScheduling = decision.Policy == ErrorPolicyCustomMatched || decision.Policy == ErrorPolicyTempUnscheduled
+		} else {
+			decision = UpstreamErrorDecision{Policy: ErrorPolicyNone}
+		}
 	}
 	switch decision.Policy {
 	case ErrorPolicyCustomMatched:
@@ -1395,22 +1405,48 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 		return decision
 	}
 
+	if s.rateLimitService != nil && len(canonicalModel) > 0 &&
+		s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
+		decision.StopScheduling = true
+		return decision
+	}
+	// 普通账号先保留模型不存在等精确处理，再应用管理员临时规则。
+	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized &&
+		!account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() &&
+		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel...) {
+		decision.Policy = ErrorPolicyTempUnscheduled
+		decision.StopScheduling = true
+		if firstRequestedModel(canonicalModel) == "" {
+			s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
+		}
+		return decision
+	}
+
+	// Grok API Key 的 5xx 与 OpenAI API Key 共用账号+最终模型的瞬态冷却；
+	// OAuth 和模型未知的请求继续沿用账号级退避，避免扩大既有行为变化。
+	model := firstRequestedModel(canonicalModel)
+	if account.Type == AccountTypeAPIKey && model != "" && statusCode >= 500 &&
+		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {
+		s.recordOpenAICompatibleModelTransientFailure(account, model)
+		return decision
+	}
+
 	switch statusCode {
 	case http.StatusUnauthorized:
-		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
+		s.tempUnscheduleGrok(stateCtx, account, 10*time.Minute, "grok credentials unauthorized")
 		decision.StopScheduling = true
 		return decision
 	case http.StatusPaymentRequired:
 		// 402 表示当前账号计费不可用，短期排除以避免后续请求反复命中。
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
+		s.tempUnscheduleGrok(stateCtx, account, 30*time.Minute, "grok payment required")
 		decision.StopScheduling = true
 		return decision
 	case http.StatusForbidden:
-		if s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
+		if s.applyGrokForbiddenPolicy(stateCtx, account, responseBody) {
 			decision.StopScheduling = true
 			return decision
 		}
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
+		s.tempUnscheduleGrok(stateCtx, account, 30*time.Minute, "grok access or entitlement denied")
 		decision.StopScheduling = true
 		return decision
 	case http.StatusTooManyRequests:
@@ -1419,7 +1455,7 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 		return decision
 	default:
 		if statusCode >= 500 {
-			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")
+			s.tempUnscheduleGrok(stateCtx, account, 2*time.Minute, "grok upstream temporary error")
 			decision.StopScheduling = true
 			return decision
 		}
