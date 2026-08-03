@@ -702,6 +702,7 @@ func TestQoderGatewayAllowsExplicitPreviewCompatibilityMapping(t *testing.T) {
 	require.Equal(t, "qmodel_38max", result.UpstreamModel)
 	require.Equal(t, "qmodel_38max", client.headers["x-model-key"])
 	require.Contains(t, rec.Body.String(), `"model":"qwen3.8-max-preview"`)
+	assertQoderContextCapabilityForTest(t, qoderLastUpstreamPayloadForTest(t, client), 1000000, true)
 }
 
 func TestQoderGatewayForwardUsesOriginalModelAfterChannelMapping(t *testing.T) {

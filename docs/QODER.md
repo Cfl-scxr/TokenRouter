@@ -89,7 +89,23 @@ The gateway reads the protocol-native controls from each inbound endpoint:
 
 Explicit `thinking.type=disabled` or effort `none` always wins. Otherwise an explicit valid effort wins over a positive budget, followed by `enabled` / `adaptive`; missing or invalid controls remain disabled. Toggle-capable models use Qoder's `reasoning_effort=none` override when disabled so the request cannot fall back to an upstream default. This preserves TokenRouter's explicit-control contract even though Qoder marks Qwen3.8-Max Thinking as enabled by default. Unknown effort strings are ignored instead of rejecting the request.
 
-Qoder requests continue to send `model_config.max_input_tokens=180000`. The client's 200K, 400K, and 1M context choices are not exposed or selected by TokenRouter in this integration.
+## Context Windows
+
+Context lookup runs after account-level model mapping and public alias resolution. Each request therefore selects the highest context verified for the final route and the selected account's site. A failover attempt that selects an account from another site recalculates the capability before rebuilding the Qoder payload.
+
+| Site | Maximum input tokens | Route keys |
+| --- | ---: | --- |
+| International | 1,000,000 | `ultimate`, `performance`, `qmodel_38max`, `qmodel_latest`, `qmodel`, `kmodel_latest`, `gm51model`, `dmodel`, `dfmodel`, `mmodel` |
+| International | 256,000 | `kmodel` |
+| International | 180,000 | `auto`, `efficient`, `lite` |
+| China | 1,000,000 | `qmodel_38max`, `qmodel_latest`, `qmodel`, `q36fmodel`, `dmodel`, `dfmodel`, `gm51model` |
+| China | 256,000 | `kmodel` |
+| China | 200,000 | `mmodel` |
+| China | 180,000 | `auto` |
+
+Routes with an official runtime `contextConfig` send the selected maximum in `model_config.max_input_tokens`, `chat_context.extra.ideModelConfigOverride.max_input_tokens`, and `parameters.context_length`. Routes with a fixed maximum send only `model_config.max_input_tokens`. Unknown, hidden, and removed raw route keys remain pass-through models, use a conservative 200,000-token fallback, and do not receive a fabricated runtime context selection.
+
+TokenRouter does not read a client-declared context limit. Chat Completions, Responses, and Anthropic Messages output-token fields continue to control output only. Clients retain their own model catalogs, compaction thresholds, and truncation behavior; `/v1/models` and `/models` do not expose non-standard context metadata.
 
 ## Billing Scope
 

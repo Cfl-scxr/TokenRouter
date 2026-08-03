@@ -117,6 +117,47 @@ var cnThinkingCapabilities = map[string]ThinkingCapability{
 	"mmodel":        ThinkingUnsupported,
 }
 
+// FallbackMaxInputTokens 是未知或尚未纳入能力快照的 Qoder route 使用的保守输入上限。
+const FallbackMaxInputTokens = 200000
+
+// ContextCapability 描述 Qoder route 的最高输入上限以及是否支持运行时上下文档位。
+type ContextCapability struct {
+	MaxInputTokens    int
+	RuntimeSelectable bool
+}
+
+// globalContextCapabilities 来自 Qoder 国际版 1.21.2 的 Assistant 运行时模型配置。
+var globalContextCapabilities = map[string]ContextCapability{
+	"ultimate":      {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"auto":          {MaxInputTokens: 180000},
+	"performance":   {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"efficient":     {MaxInputTokens: 180000},
+	"lite":          {MaxInputTokens: 180000},
+	"qmodel_38max":  {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"qmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"qmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"kmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"kmodel":        {MaxInputTokens: 256000, RuntimeSelectable: true},
+	"gm51model":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"dmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"dfmodel":       {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"mmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+}
+
+// cnContextCapabilities 来自 Qoder CN 1.10.0 的 Assistant 运行时模型配置。
+var cnContextCapabilities = map[string]ContextCapability{
+	"auto":          {MaxInputTokens: 180000},
+	"qmodel_38max":  {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"qmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"qmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"q36fmodel":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"dmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"dfmodel":       {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"gm51model":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	"kmodel":        {MaxInputTokens: 256000, RuntimeSelectable: true},
+	"mmodel":        {MaxInputTokens: 200000, RuntimeSelectable: true},
+}
+
 // DefaultModels 是无账号上下文使用的两站稳定并集，国际站模型排在前面。
 var DefaultModels = unionModels(globalModels, cnModels)
 
@@ -170,6 +211,29 @@ func ThinkingCapabilityForSite(site Site, model string) ThinkingCapability {
 		model = route
 	}
 	return capabilities[model]
+}
+
+// ContextCapabilityForSite 按站点和最终路由返回最高上下文能力。
+// 公开 alias 会先解析为 route key；空站点按国际站处理，未知 route 回退 200K 且不选择运行时档位。
+func ContextCapabilityForSite(site Site, model string) ContextCapability {
+	var capabilities map[string]ContextCapability
+	switch site {
+	case "", SiteGlobal:
+		capabilities = globalContextCapabilities
+	case SiteCN:
+		capabilities = cnContextCapabilities
+	default:
+		return ContextCapability{MaxInputTokens: FallbackMaxInputTokens}
+	}
+
+	model = strings.ToLower(strings.TrimSpace(model))
+	if route, ok := AliasForSite(site, model); ok {
+		model = route
+	}
+	if capability, ok := capabilities[model]; ok {
+		return capability
+	}
+	return ContextCapability{MaxInputTokens: FallbackMaxInputTokens}
 }
 
 // ModelCompatibleWithSite 判断已知 alias 或 route key 是否能由指定站点处理。

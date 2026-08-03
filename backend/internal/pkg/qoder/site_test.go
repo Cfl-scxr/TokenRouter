@@ -2,6 +2,7 @@ package qoder
 
 import (
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -223,4 +224,91 @@ func TestSharedThinkingCapabilitiesStayInSyncAcrossSites(t *testing.T) {
 		}
 		require.Equal(t, cnCapability, globalCapability, "共有 route %q 的 Thinking 能力不一致", route)
 	}
+}
+
+func TestContextCapabilitySnapshotCoversEveryPublishedRoute(t *testing.T) {
+	globalExpected := map[string]ContextCapability{
+		"ultimate":      {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"auto":          {MaxInputTokens: 180000},
+		"performance":   {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"efficient":     {MaxInputTokens: 180000},
+		"lite":          {MaxInputTokens: 180000},
+		"qmodel_38max":  {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"qmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"qmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"kmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"kmodel":        {MaxInputTokens: 256000, RuntimeSelectable: true},
+		"gm51model":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"dmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"dfmodel":       {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"mmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+	}
+	cnExpected := map[string]ContextCapability{
+		"auto":          {MaxInputTokens: 180000},
+		"qmodel_38max":  {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"qmodel_latest": {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"qmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"q36fmodel":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"dmodel":        {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"dfmodel":       {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"gm51model":     {MaxInputTokens: 1000000, RuntimeSelectable: true},
+		"kmodel":        {MaxInputTokens: 256000, RuntimeSelectable: true},
+		"mmodel":        {MaxInputTokens: 200000, RuntimeSelectable: true},
+	}
+	tests := []struct {
+		name     string
+		site     Site
+		actual   map[string]ContextCapability
+		expected map[string]ContextCapability
+	}{
+		{name: "国际站", site: SiteGlobal, actual: globalContextCapabilities, expected: globalExpected},
+		{name: "国内站", site: SiteCN, actual: cnContextCapabilities, expected: cnExpected},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.actual, "%s上下文能力快照与已验证值不一致", tt.name)
+			aliases := AliasesForSite(tt.site)
+			for alias, route := range aliases {
+				want, ok := tt.expected[route]
+				require.True(t, ok, "公开模型 %q 的 route %q 缺少上下文能力", alias, route)
+				require.Equal(t, want, ContextCapabilityForSite(tt.site, alias), "公开 alias %q", alias)
+				require.Equal(t, want, ContextCapabilityForSite(tt.site, " "+strings.ToUpper(route)+" "), "raw route %q", route)
+			}
+		})
+	}
+}
+
+func TestContextCapabilityForSiteUsesHighestVerifiedTier(t *testing.T) {
+	tests := []struct {
+		name  string
+		site  Site
+		model string
+		want  ContextCapability
+	}{
+		{name: "国际站 Ultimate", site: SiteGlobal, model: "ultimate", want: ContextCapability{MaxInputTokens: 1000000, RuntimeSelectable: true}},
+		{name: "国际站 Performance", site: SiteGlobal, model: "performance", want: ContextCapability{MaxInputTokens: 1000000, RuntimeSelectable: true}},
+		{name: "国际站 Auto", site: SiteGlobal, model: "auto", want: ContextCapability{MaxInputTokens: 180000}},
+		{name: "国际站 Kimi K2.7", site: SiteGlobal, model: "kimi-k2.7-code", want: ContextCapability{MaxInputTokens: 256000, RuntimeSelectable: true}},
+		{name: "国内站 Qwen3.6", site: SiteCN, model: "qwen3.6-flash", want: ContextCapability{MaxInputTokens: 1000000, RuntimeSelectable: true}},
+		{name: "国内站 Kimi K2.7", site: SiteCN, model: "kmodel", want: ContextCapability{MaxInputTokens: 256000, RuntimeSelectable: true}},
+		{name: "国内站 MiniMax", site: SiteCN, model: "minimax-m2.7", want: ContextCapability{MaxInputTokens: 200000, RuntimeSelectable: true}},
+		{name: "空站点按国际站", site: "", model: "qwen3.8-max", want: ContextCapability{MaxInputTokens: 1000000, RuntimeSelectable: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ContextCapabilityForSite(tt.site, tt.model))
+		})
+	}
+}
+
+func TestContextCapabilityForSiteFallsBackForUnknownRoutes(t *testing.T) {
+	want := ContextCapability{MaxInputTokens: FallbackMaxInputTokens}
+	for _, site := range []Site{SiteGlobal, SiteCN} {
+		for _, model := range []string{"custom-route", "cmodel", "qmodel_preview", "qwen3.8-max-preview"} {
+			require.Equal(t, want, ContextCapabilityForSite(site, model), "site=%s model=%s", site, model)
+		}
+	}
+	require.Equal(t, want, ContextCapabilityForSite(Site("invalid"), "qmodel_38max"))
 }

@@ -1746,6 +1746,7 @@ func buildQoderPayloadWithOptions(request qoderPayloadRequest, sessionID string,
 	chatText["text"] = prompt
 	extraModelConfig["key"] = modelInfo.Key
 	extraModelConfig["source"] = modelInfo.Source
+	applyQoderContextCapability(payload, request.site, modelInfo.Key)
 	applyQoderThinkingDirective(payload, request.site, modelInfo.Key, request.thinking)
 	extraOriginalContent["text"] = prompt
 	payload["business"] = map[string]any{
@@ -1773,6 +1774,28 @@ func buildQoderPayloadWithOptions(request qoderPayloadRequest, sessionID string,
 		payload["tools"] = []any{}
 	}
 	return payload, modelInfo.Key
+}
+
+// applyQoderContextCapability 按站点和最终 route 选择官方最高上下文档位。
+// 只有官方声明 contextConfig 的 route 才写入运行时覆盖，避免为固定上限或未知 route 伪造档位。
+func applyQoderContextCapability(payload map[string]any, site qoder.Site, modelKey string) {
+	capability := qoder.ContextCapabilityForSite(site, modelKey)
+	modelConfig, _ := payload["model_config"].(map[string]any)
+	modelConfig["max_input_tokens"] = capability.MaxInputTokens
+	if !capability.RuntimeSelectable {
+		return
+	}
+
+	parameters, _ := payload["parameters"].(map[string]any)
+	parameters["context_length"] = capability.MaxInputTokens
+	chatContext, _ := payload["chat_context"].(map[string]any)
+	extra, _ := chatContext["extra"].(map[string]any)
+	runtimeOverride, _ := extra["ideModelConfigOverride"].(map[string]any)
+	if runtimeOverride == nil {
+		runtimeOverride = map[string]any{}
+		extra["ideModelConfigOverride"] = runtimeOverride
+	}
+	runtimeOverride["max_input_tokens"] = capability.MaxInputTokens
 }
 
 // applyQoderThinkingDirective 同步 Qoder 请求中重复出现的模型配置。
@@ -1880,7 +1903,7 @@ func qoderBasePayload() map[string]any {
 			"api_key":          "",
 			"url":              "",
 			"source":           "system",
-			"max_input_tokens": 180000,
+			"max_input_tokens": qoder.FallbackMaxInputTokens,
 		},
 		"messages": []any{},
 		"tools":    []any{},
