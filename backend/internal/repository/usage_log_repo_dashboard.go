@@ -82,6 +82,24 @@ func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, sta
 // DashboardStats 仪表盘统计
 type DashboardStats = usagestats.DashboardStats
 
+// runDashboardQueries 仅在连接池上并行查询；事务等单连接执行器必须串行使用。
+func (r *usageLogRepository) runDashboardQueries(ctx context.Context, queries ...func(context.Context) error) error {
+	if r.db == nil {
+		for _, query := range queries {
+			if err := query(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	for _, query := range queries {
+		group.Go(func() error { return query(groupCtx) })
+	}
+	return group.Wait()
+}
+
 func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
 	if r.preAggregation != nil && !r.preAggregation.UsageEnabled(ctx) {
 		return r.GetDashboardStatsWithRange(ctx, time.Unix(0, 0), time.Now())
@@ -91,16 +109,22 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 	todayStart := timezone.Today()
 
 	// 实体、聚合用量和近五分钟性能彼此独立，并行读取可缩短接口关键路径。
-	group, groupCtx := errgroup.WithContext(ctx)
 	var rpm, tpm int64
-	group.Go(func() error { return r.fillDashboardEntityStats(groupCtx, stats, todayStart, now) })
-	group.Go(func() error { return r.fillDashboardUsageStatsAggregated(groupCtx, stats, todayStart, now) })
-	group.Go(func() error {
-		var err error
-		rpm, tpm, err = r.getPerformanceStats(groupCtx, 0, false)
-		return err
-	})
-	if err := group.Wait(); err != nil {
+	err := r.runDashboardQueries(
+		ctx,
+		func(queryCtx context.Context) error {
+			return r.fillDashboardEntityStats(queryCtx, stats, todayStart, now)
+		},
+		func(queryCtx context.Context) error {
+			return r.fillDashboardUsageStatsAggregated(queryCtx, stats, todayStart, now)
+		},
+		func(queryCtx context.Context) error {
+			var err error
+			rpm, tpm, err = r.getPerformanceStats(queryCtx, 0, false)
+			return err
+		},
+	)
+	if err != nil {
 		return nil, err
 	}
 	stats.Rpm = rpm
@@ -138,7 +162,6 @@ func (r *usageLogRepository) GetDashboardStatsWithRange(ctx context.Context, sta
 }
 
 func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {
-	group, groupCtx := errgroup.WithContext(ctx)
 	userStatsQuery := `
 		SELECT
 			COUNT(*) as total_users,
@@ -146,10 +169,6 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		FROM users
 		WHERE deleted_at IS NULL
 	`
-	group.Go(func() error {
-		return scanSingleRow(groupCtx, r.sql, userStatsQuery, []any{todayUTC}, &stats.TotalUsers, &stats.TodayNewUsers)
-	})
-
 	apiKeyStatsQuery := `
 		SELECT
 			COUNT(*) as total_api_keys,
@@ -157,10 +176,6 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		FROM api_keys
 		WHERE deleted_at IS NULL
 	`
-	group.Go(func() error {
-		return scanSingleRow(groupCtx, r.sql, apiKeyStatsQuery, []any{service.StatusActive}, &stats.TotalAPIKeys, &stats.ActiveAPIKeys)
-	})
-
 	accountStatsQuery := `
 		SELECT
 			COUNT(*) as total_accounts,
@@ -171,15 +186,23 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		FROM accounts
 		WHERE deleted_at IS NULL
 	`
-	group.Go(func() error {
-		return scanSingleRow(
-			groupCtx, r.sql, accountStatsQuery,
-			[]any{service.StatusActive, service.StatusError, now, now},
-			&stats.TotalAccounts, &stats.NormalAccounts, &stats.ErrorAccounts,
-			&stats.RateLimitAccounts, &stats.OverloadAccounts,
-		)
-	})
-	return group.Wait()
+	return r.runDashboardQueries(
+		ctx,
+		func(queryCtx context.Context) error {
+			return scanSingleRow(queryCtx, r.sql, userStatsQuery, []any{todayUTC}, &stats.TotalUsers, &stats.TodayNewUsers)
+		},
+		func(queryCtx context.Context) error {
+			return scanSingleRow(queryCtx, r.sql, apiKeyStatsQuery, []any{service.StatusActive}, &stats.TotalAPIKeys, &stats.ActiveAPIKeys)
+		},
+		func(queryCtx context.Context) error {
+			return scanSingleRow(
+				queryCtx, r.sql, accountStatsQuery,
+				[]any{service.StatusActive, service.StatusError, now, now},
+				&stats.TotalAccounts, &stats.NormalAccounts, &stats.ErrorAccounts,
+				&stats.RateLimitAccounts, &stats.OverloadAccounts,
+			)
+		},
+	)
 }
 
 func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {
@@ -202,10 +225,9 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 		FROM usage_dashboard_daily
 	`
 	var totalDurationMs int64
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
+	combinedStats := func(queryCtx context.Context) error {
 		return scanSingleRow(
-			groupCtx, r.sql, combinedStatsQuery, []any{todayUTC},
+			queryCtx, r.sql, combinedStatsQuery, []any{todayUTC},
 			&stats.TotalRequests,
 			&stats.TotalInputTokens,
 			&stats.TotalOutputTokens,
@@ -225,7 +247,7 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 			&stats.TodayAccountCost,
 			&stats.ActiveUsers,
 		)
-	})
+	}
 
 	hourlyActiveQuery := `
 		SELECT active_users
@@ -233,15 +255,15 @@ func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Conte
 		WHERE bucket_start = $1
 	`
 	hourStart := now.In(timezone.Location()).Truncate(time.Hour)
-	group.Go(func() error {
-		if err := scanSingleRow(groupCtx, r.sql, hourlyActiveQuery, []any{hourStart}, &stats.HourlyActiveUsers); err != nil {
+	hourlyActive := func(queryCtx context.Context) error {
+		if err := scanSingleRow(queryCtx, r.sql, hourlyActiveQuery, []any{hourStart}, &stats.HourlyActiveUsers); err != nil {
 			if err != sql.ErrNoRows {
 				return err
 			}
 		}
 		return nil
-	})
-	if err := group.Wait(); err != nil {
+	}
+	if err := r.runDashboardQueries(ctx, combinedStats, hourlyActive); err != nil {
 		return err
 	}
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheCreationTokens + stats.TotalCacheReadTokens

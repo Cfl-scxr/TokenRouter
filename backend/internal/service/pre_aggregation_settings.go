@@ -138,7 +138,11 @@ func (s *PreAggregationSettingsService) Get(ctx context.Context) (PreAggregation
 	if err != nil {
 		return defaults, err
 	}
-	return value.(PreAggregationSettings), nil
+	settings, ok := value.(PreAggregationSettings)
+	if !ok {
+		return defaults, errors.New("预聚合设置加载结果类型无效")
+	}
+	return settings, nil
 }
 
 // Resolve 供查询热路径使用；数据库暂时不可用时沿用缓存或部署默认值。
