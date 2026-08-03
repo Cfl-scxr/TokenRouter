@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 type dashboardAggregationRepoTestStub struct {
 	aggregateCalls       int
+	aggregateRanges      []aggregationRangeCall
 	recomputeCalls       int
 	cleanupUsageCalls    int
 	cleanupDedupCalls    int
@@ -29,6 +31,7 @@ type dashboardAggregationRepoTestStub struct {
 
 func (s *dashboardAggregationRepoTestStub) AggregateRange(ctx context.Context, start, end time.Time) error {
 	s.aggregateCalls++
+	s.aggregateRanges = append(s.aggregateRanges, aggregationRangeCall{start: start, end: end})
 	s.lastStart = start
 	s.lastEnd = end
 	if s.aggregateStarted != nil {
@@ -38,6 +41,48 @@ func (s *dashboardAggregationRepoTestStub) AggregateRange(ctx context.Context, s
 		}
 	}
 	return s.aggregateErr
+}
+
+type aggregationRangeCall struct {
+	start time.Time
+	end   time.Time
+}
+
+type usageAnalyticsAggregationRepoTestStub struct {
+	state          UsageAnalyticsAggregationState
+	oldest         *time.Time
+	aggregateCalls []aggregationRangeCall
+	recomputeCalls []aggregationRangeCall
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) AggregateUsageAnalyticsRange(_ context.Context, start, end time.Time) error {
+	s.aggregateCalls = append(s.aggregateCalls, aggregationRangeCall{start: start, end: end})
+	return nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) RecomputeUsageAnalyticsRange(_ context.Context, start, end time.Time) error {
+	s.recomputeCalls = append(s.recomputeCalls, aggregationRangeCall{start: start, end: end})
+	return nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) GetUsageAnalyticsAggregationState(context.Context) (*UsageAnalyticsAggregationState, error) {
+	state := s.state
+	return &state, nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) SaveUsageAnalyticsAggregationState(_ context.Context, state *UsageAnalyticsAggregationState) error {
+	if state != nil {
+		s.state = *state
+	}
+	return nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) GetOldestUsageLogTime(context.Context) (*time.Time, error) {
+	return s.oldest, nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) CleanupUsageAnalytics(context.Context, time.Time, time.Time) error {
+	return nil
 }
 
 func (s *dashboardAggregationRepoTestStub) RecomputeRange(ctx context.Context, start, end time.Time) error {
@@ -140,6 +185,25 @@ func TestDashboardAggregationServiceRuntimeEnableTriggersImmediately(t *testing.
 	}
 }
 
+// TestDashboardAggregationServiceRunningJobPreservesWakeup 验证在途任务不会消费新的立即运行信号。
+func TestDashboardAggregationServiceRunningJobPreservesWakeup(t *testing.T) {
+	repo := &dashboardAggregationRepoTestStub{}
+	svc := &DashboardAggregationService{
+		repo: repo,
+		cfg: config.DashboardAggregationConfig{
+			Enabled:         true,
+			IntervalSeconds: 3600,
+		},
+	}
+	atomic.StoreInt32(&svc.running, 1)
+	svc.lastScheduledAt.Store(0)
+
+	svc.runScheduledAggregation()
+
+	require.Zero(t, svc.lastScheduledAt.Load())
+	require.Zero(t, repo.aggregateCalls)
+}
+
 // TestDashboardAggregationServiceRecomputeRunsWhileRuntimeDisabled 验证删除后的内部重算不会留下陈旧聚合。
 func TestDashboardAggregationServiceRecomputeRunsWhileRuntimeDisabled(t *testing.T) {
 	repo := &dashboardAggregationRepoTestStub{aggregateStarted: make(chan struct{}, 1)}
@@ -236,4 +300,111 @@ func TestDashboardAggregationService_TriggerBackfill_TooLarge(t *testing.T) {
 	err := svc.TriggerBackfill(start, end)
 	require.ErrorIs(t, err, ErrDashboardBackfillTooLarge)
 	require.Equal(t, 0, repo.aggregateCalls)
+}
+
+// TestDashboardAggregationServiceTriggerBackfillPersistsManualRange 验证天数请求不会覆盖自动历史游标。
+func TestDashboardAggregationServiceTriggerBackfillPersistsManualRange(t *testing.T) {
+	now := time.Date(2026, 8, 4, 10, 35, 0, 0, time.UTC)
+	automaticCursor := now.AddDate(0, 0, -10).Truncate(time.Hour)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{BackfillCursor: timePointer(automaticCursor)},
+	}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+		cfg: config.DashboardAggregationConfig{
+			BackfillEnabled: true,
+			BackfillMaxDays: 31,
+		},
+	}
+	svc.lastBackfillAt.Store(now.Add(-30 * time.Second).UnixNano())
+
+	require.NoError(t, svc.TriggerBackfill(now.AddDate(0, 0, -7), now))
+
+	require.Equal(t, now.AddDate(0, 0, -7).Truncate(time.Hour), *analyticsRepo.state.ManualBackfillStart)
+	require.Equal(t, now.Truncate(time.Hour), *analyticsRepo.state.ManualBackfillCursor)
+	require.Equal(t, automaticCursor, *analyticsRepo.state.BackfillCursor)
+	require.Equal(t, "backfill", analyticsRepo.state.Phase)
+	require.Zero(t, svc.lastBackfillAt.Load())
+}
+
+// TestDashboardAggregationServiceManualBackfillStopsAtRequestedStart 验证手动任务到达目标后不会继续处理更早历史。
+func TestDashboardAggregationServiceManualBackfillStopsAtRequestedStart(t *testing.T) {
+	now := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
+	target := now.Add(-2 * time.Hour)
+	oldest := now.Add(-10 * time.Hour)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:        timePointer(now),
+			BackfillCursor:       timePointer(now),
+			SourceOldestAt:       timePointer(oldest),
+			ManualBackfillStart:  timePointer(target),
+			ManualBackfillCursor: timePointer(now),
+		},
+		oldest: timePointer(oldest),
+	}
+	dashboardRepo := &dashboardAggregationRepoTestStub{}
+	svc := &DashboardAggregationService{repo: dashboardRepo, analyticsRepo: analyticsRepo}
+
+	svc.runHistoricalBackfill(context.Background(), now)
+
+	require.Len(t, analyticsRepo.aggregateCalls, 2)
+	require.Equal(t, target, analyticsRepo.aggregateCalls[1].start)
+	require.Equal(t, target.Add(time.Hour), analyticsRepo.aggregateCalls[1].end)
+	require.Nil(t, analyticsRepo.state.ManualBackfillStart)
+	require.Nil(t, analyticsRepo.state.ManualBackfillCursor)
+	require.Equal(t, target, *analyticsRepo.state.CoverageStart)
+	require.Equal(t, target, *analyticsRepo.state.BackfillCursor)
+	require.Equal(t, "idle", analyticsRepo.state.Phase)
+	require.Equal(t, 2, dashboardRepo.aggregateCalls)
+}
+
+// TestDashboardAggregationServiceManualBackfillResumesFromSavedCursor 验证超过单轮上限的范围会续跑且不越过目标。
+func TestDashboardAggregationServiceManualBackfillResumesFromSavedCursor(t *testing.T) {
+	now := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
+	target := now.Add(-26 * time.Hour)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:        timePointer(now),
+			BackfillCursor:       timePointer(now),
+			ManualBackfillStart:  timePointer(target),
+			ManualBackfillCursor: timePointer(now),
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), now)
+
+	require.Len(t, analyticsRepo.aggregateCalls, dashboardAggregationBackfillMaxHours)
+	require.Equal(t, now.Add(-24*time.Hour), *analyticsRepo.state.ManualBackfillCursor)
+	require.Equal(t, target, *analyticsRepo.state.ManualBackfillStart)
+	require.Equal(t, "backfill", analyticsRepo.state.Phase)
+
+	svc.lastBackfillAt.Store(0)
+	svc.runHistoricalBackfill(context.Background(), now.Add(time.Minute))
+
+	require.Len(t, analyticsRepo.aggregateCalls, 26)
+	require.Equal(t, target, analyticsRepo.aggregateCalls[25].start)
+	require.Equal(t, target.Add(time.Hour), analyticsRepo.aggregateCalls[25].end)
+	require.Nil(t, analyticsRepo.state.ManualBackfillStart)
+	require.Nil(t, analyticsRepo.state.ManualBackfillCursor)
+}
+
+// TestDashboardAggregationServiceRecomputeUsesCompleteAnalyticsBuckets 验证删除修复不会复用实时部分桶接口。
+func TestDashboardAggregationServiceRecomputeUsesCompleteAnalyticsBuckets(t *testing.T) {
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+	start := time.Date(2026, 8, 4, 9, 15, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 4, 10, 30, 0, 0, time.UTC)
+
+	require.NoError(t, svc.recomputeRange(context.Background(), start, end))
+
+	require.Empty(t, analyticsRepo.aggregateCalls)
+	require.Equal(t, []aggregationRangeCall{{start: start, end: end}}, analyticsRepo.recomputeCalls)
 }

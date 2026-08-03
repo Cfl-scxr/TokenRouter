@@ -8,21 +8,35 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
-// AggregateUsageAnalyticsRange 重建范围内完整 UTC 小时桶，并同步刷新受影响的 UTC 日桶。
+// AggregateUsageAnalyticsRange 重建实时范围涉及的 UTC 小时桶，末桶只扫描到实时水位。
 func (r *dashboardAggregationRepository) AggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time) error {
+	return r.aggregateUsageAnalyticsRange(ctx, start, end, false)
+}
+
+// RecomputeUsageAnalyticsRange 为删除后的包含结束时间范围重建完整 UTC 小时桶。
+func (r *dashboardAggregationRepository) RecomputeUsageAnalyticsRange(ctx context.Context, start, end time.Time) error {
+	return r.aggregateUsageAnalyticsRange(ctx, start, end, true)
+}
+
+func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time, includeEndBucket bool) error {
 	if r == nil || r.sql == nil || !end.After(start) {
 		return nil
 	}
 	hourStart := start.UTC().Truncate(time.Hour)
-	hourEnd := end.UTC().Truncate(time.Hour)
-	if end.UTC().After(hourEnd) {
+	endUTC := end.UTC()
+	hourEnd := endUTC.Truncate(time.Hour)
+	if includeEndBucket || endUTC.After(hourEnd) {
 		hourEnd = hourEnd.Add(time.Hour)
 	}
 	if !hourEnd.After(hourStart) {
 		return nil
 	}
 
-	scanEnd := end.UTC()
+	scanEnd := endUTC
+	if includeEndBucket {
+		// 删除任务的结束时间为包含端点；完整重扫末桶可保留范围外未删除的记录。
+		scanEnd = hourEnd
+	}
 	if scanEnd.After(hourEnd) {
 		scanEnd = hourEnd
 	}
@@ -139,19 +153,24 @@ func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx co
 // GetUsageAnalyticsAggregationState 读取单行聚合状态。
 func (r *dashboardAggregationRepository) GetUsageAnalyticsAggregationState(ctx context.Context) (*service.UsageAnalyticsAggregationState, error) {
 	state := &service.UsageAnalyticsAggregationState{}
-	var coverageStart, backfillCursor, sourceOldest, lastRun, lastSuccess, lastErrorAt sql.NullTime
+	var coverageStart, backfillCursor, sourceOldest, manualStart, manualCursor sql.NullTime
+	var lastRun, lastSuccess, lastErrorAt sql.NullTime
 	err := scanSingleRow(ctx, r.sql, `
 		SELECT live_watermark, coverage_start, backfill_cursor, source_oldest_at,
+		       manual_backfill_start, manual_backfill_cursor,
 		       phase, last_run_at, last_success_at, last_error_at, last_error, last_duration_ms
 		FROM usage_analytics_aggregation_state WHERE id = 1
 	`, nil, &state.LiveWatermark, &coverageStart, &backfillCursor, &sourceOldest,
-		&state.Phase, &lastRun, &lastSuccess, &lastErrorAt, &state.LastError, &state.LastDurationMS)
+		&manualStart, &manualCursor, &state.Phase, &lastRun, &lastSuccess, &lastErrorAt,
+		&state.LastError, &state.LastDurationMS)
 	if err != nil {
 		return nil, err
 	}
 	state.CoverageStart = nullableTimePointer(coverageStart)
 	state.BackfillCursor = nullableTimePointer(backfillCursor)
 	state.SourceOldestAt = nullableTimePointer(sourceOldest)
+	state.ManualBackfillStart = nullableTimePointer(manualStart)
+	state.ManualBackfillCursor = nullableTimePointer(manualCursor)
 	state.LastRunAt = nullableTimePointer(lastRun)
 	state.LastSuccessAt = nullableTimePointer(lastSuccess)
 	state.LastErrorAt = nullableTimePointer(lastErrorAt)
@@ -167,14 +186,16 @@ func (r *dashboardAggregationRepository) SaveUsageAnalyticsAggregationState(ctx 
 	_, err := r.sql.ExecContext(ctx, `
 		INSERT INTO usage_analytics_aggregation_state (
 			id, live_watermark, coverage_start, backfill_cursor, source_oldest_at,
-			phase, last_run_at, last_success_at, last_error_at, last_error,
-			last_duration_ms, updated_at
-		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+			manual_backfill_start, manual_backfill_cursor, phase, last_run_at,
+			last_success_at, last_error_at, last_error, last_duration_ms, updated_at
+		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			live_watermark = EXCLUDED.live_watermark,
 			coverage_start = EXCLUDED.coverage_start,
 			backfill_cursor = EXCLUDED.backfill_cursor,
 			source_oldest_at = EXCLUDED.source_oldest_at,
+			manual_backfill_start = EXCLUDED.manual_backfill_start,
+			manual_backfill_cursor = EXCLUDED.manual_backfill_cursor,
 			phase = EXCLUDED.phase,
 			last_run_at = EXCLUDED.last_run_at,
 			last_success_at = EXCLUDED.last_success_at,
@@ -183,7 +204,8 @@ func (r *dashboardAggregationRepository) SaveUsageAnalyticsAggregationState(ctx 
 			last_duration_ms = EXCLUDED.last_duration_ms,
 			updated_at = NOW()
 	`, state.LiveWatermark.UTC(), state.CoverageStart, state.BackfillCursor, state.SourceOldestAt,
-		state.Phase, state.LastRunAt, state.LastSuccessAt, state.LastErrorAt, state.LastError, state.LastDurationMS)
+		state.ManualBackfillStart, state.ManualBackfillCursor, state.Phase, state.LastRunAt,
+		state.LastSuccessAt, state.LastErrorAt, state.LastError, state.LastDurationMS)
 	return err
 }
 

@@ -22,3 +22,17 @@ func TestUsageAnalyticsRollupMigrationAvoidsLargeTableRewrite(t *testing.T) {
 	require.Contains(t, sql, "WHERE KEY = 'OPS_ADVANCED_SETTINGS'")
 	require.Contains(t, sql, "DELETE FROM SETTINGS WHERE KEY = 'OPS_QUERY_MODE_DEFAULT'")
 }
+
+// TestManualBackfillStateMigrationAvoidsUsageLogs 验证手动游标迁移只修改单行状态表。
+func TestManualBackfillStateMigrationAvoidsUsageLogs(t *testing.T) {
+	content, err := FS.ReadFile("230_pre_aggregation_manual_backfill.sql")
+	require.NoError(t, err)
+
+	sql := strings.ToUpper(string(content))
+	require.Contains(t, sql, "ALTER TABLE USAGE_ANALYTICS_AGGREGATION_STATE")
+	require.Contains(t, sql, "MANUAL_BACKFILL_START")
+	require.Contains(t, sql, "MANUAL_BACKFILL_CURSOR")
+	require.NotContains(t, sql, "ALTER TABLE USAGE_LOGS")
+	require.NotContains(t, sql, "UPDATE USAGE_LOGS")
+	require.NotContains(t, sql, "FROM USAGE_LOGS")
+}

@@ -159,17 +159,15 @@ func (s *DashboardAggregationService) TriggerBackfill(start, end time.Time) erro
 		return err
 	}
 	requestedStart := start.UTC().Truncate(time.Hour)
-	if state.BackfillCursor == nil {
-		cursor := end.UTC().Truncate(time.Hour)
-		state.BackfillCursor = &cursor
-	}
-	if state.CoverageStart == nil || state.CoverageStart.After(requestedStart) {
-		state.Phase = "backfill"
-	}
+	requestedCursor := end.UTC().Truncate(time.Hour)
+	state.ManualBackfillStart = timePointer(requestedStart)
+	state.ManualBackfillCursor = timePointer(requestedCursor)
+	state.Phase = "backfill"
 	if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
 		return err
 	}
 	// 手动操作复用定时任务的分布式锁和资源预算。
+	s.lastBackfillAt.Store(0)
 	s.TriggerNow()
 	return nil
 }
@@ -234,7 +232,7 @@ func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start,
 		return err
 	}
 	if s.analyticsRepo != nil {
-		if err := s.analyticsRepo.AggregateUsageAnalyticsRange(ctx, start, end); err != nil {
+		if err := s.analyticsRepo.RecomputeUsageAnalyticsRange(ctx, start, end); err != nil {
 			return err
 		}
 	}
@@ -247,13 +245,17 @@ func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start,
 }
 
 func (s *DashboardAggregationService) runScheduledAggregation() {
-	if !s.usageEnabled(context.Background()) || !s.scheduledRunDue(time.Now()) {
+	if !s.usageEnabled(context.Background()) {
 		return
 	}
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return
 	}
 	defer atomic.StoreInt32(&s.running, 0)
+	// 取得运行权后再消费调度信号，避免立即触发与在途任务冲突时丢失唤醒。
+	if !s.scheduledRunDue(time.Now()) {
+		return
+	}
 
 	jobStart := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
@@ -528,6 +530,10 @@ func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context,
 	if err != nil {
 		return
 	}
+	if state.ManualBackfillStart != nil && state.ManualBackfillCursor != nil {
+		s.runManualHistoricalBackfill(ctx, state)
+		return
+	}
 	if state.SourceOldestAt == nil {
 		oldest, oldestErr := s.analyticsRepo.GetOldestUsageLogTime(ctx)
 		if oldestErr != nil {
@@ -592,6 +598,83 @@ func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context,
 		if !cursor.After(oldestHour) {
 			return
 		}
+	}
+}
+
+// runManualHistoricalBackfill 仅重算管理员指定的最近时间范围，并保存独立游标以支持重启续跑。
+func (s *DashboardAggregationService) runManualHistoricalBackfill(ctx context.Context, state *UsageAnalyticsAggregationState) {
+	if state == nil || state.ManualBackfillStart == nil || state.ManualBackfillCursor == nil {
+		return
+	}
+	target := state.ManualBackfillStart.UTC().Truncate(time.Hour)
+	cursor := state.ManualBackfillCursor.UTC().Truncate(time.Hour)
+	if !cursor.After(target) {
+		state.ManualBackfillStart = nil
+		state.ManualBackfillCursor = nil
+		state.Phase = "idle"
+		_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+		return
+	}
+
+	started := time.Now()
+	state.Phase = "backfill"
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+	for processed := 0; processed < dashboardAggregationBackfillMaxHours && time.Since(started) < dashboardAggregationBackfillBudget; processed++ {
+		chunkEnd := cursor
+		chunkStart := cursor.Add(-time.Hour)
+		if chunkStart.Before(target) {
+			chunkStart = target
+		}
+		remaining := dashboardAggregationBackfillBudget - time.Since(started)
+		if remaining <= 0 {
+			return
+		}
+		chunkCtx, cancel := context.WithTimeout(ctx, remaining)
+		chunkErr := s.aggregateRange(chunkCtx, chunkStart, chunkEnd)
+		cancel()
+		if chunkErr != nil {
+			if errors.Is(chunkErr, context.DeadlineExceeded) {
+				state.LastDurationMS = time.Since(started).Milliseconds()
+				_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+				return
+			}
+			s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, chunkErr)
+			return
+		}
+
+		cursor = chunkStart
+		extendUsageAnalyticsCoverage(state, chunkStart, chunkEnd)
+		state.ManualBackfillCursor = timePointer(cursor)
+		state.LastSuccessAt = timePointer(time.Now().UTC())
+		state.LastDurationMS = time.Since(started).Milliseconds()
+		if !cursor.After(target) {
+			state.ManualBackfillStart = nil
+			state.ManualBackfillCursor = nil
+			state.Phase = "idle"
+		} else {
+			state.Phase = "backfill"
+		}
+		if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
+			return
+		}
+		if !cursor.After(target) {
+			return
+		}
+	}
+}
+
+// extendUsageAnalyticsCoverage 只在手动块与现有连续覆盖相接时推进公共覆盖游标。
+func extendUsageAnalyticsCoverage(state *UsageAnalyticsAggregationState, chunkStart, chunkEnd time.Time) {
+	if state == nil || state.CoverageStart == nil {
+		return
+	}
+	coverage := state.CoverageStart.UTC().Truncate(time.Hour)
+	if chunkEnd.Before(coverage) || chunkStart.After(coverage) {
+		return
+	}
+	state.CoverageStart = timePointer(chunkStart)
+	if state.BackfillCursor == nil || state.BackfillCursor.After(chunkStart) {
+		state.BackfillCursor = timePointer(chunkStart)
 	}
 }
 
