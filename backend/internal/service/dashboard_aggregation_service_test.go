@@ -52,11 +52,31 @@ type usageAnalyticsAggregationRepoTestStub struct {
 	state          UsageAnalyticsAggregationState
 	oldest         *time.Time
 	aggregateCalls []aggregationRangeCall
+	hourlyCalls    []aggregationRangeCall
+	dailyCalls     []aggregationRangeCall
 	recomputeCalls []aggregationRangeCall
+	hourlyCallback func(context.Context, time.Time, time.Time) error
+	dailyCallback  func(context.Context, time.Time, time.Time) error
 }
 
 func (s *usageAnalyticsAggregationRepoTestStub) AggregateUsageAnalyticsRange(_ context.Context, start, end time.Time) error {
 	s.aggregateCalls = append(s.aggregateCalls, aggregationRangeCall{start: start, end: end})
+	return nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) AggregateUsageAnalyticsHourlyRange(ctx context.Context, start, end time.Time) error {
+	s.hourlyCalls = append(s.hourlyCalls, aggregationRangeCall{start: start, end: end})
+	if s.hourlyCallback != nil {
+		return s.hourlyCallback(ctx, start, end)
+	}
+	return nil
+}
+
+func (s *usageAnalyticsAggregationRepoTestStub) RebuildUsageAnalyticsDailyRange(ctx context.Context, start, end time.Time) error {
+	s.dailyCalls = append(s.dailyCalls, aggregationRangeCall{start: start, end: end})
+	if s.dailyCallback != nil {
+		return s.dailyCallback(ctx, start, end)
+	}
 	return nil
 }
 
@@ -391,6 +411,193 @@ func TestDashboardAggregationServiceManualBackfillResumesFromSavedCursor(t *test
 	require.Equal(t, target.Add(time.Hour), analyticsRepo.aggregateCalls[25].end)
 	require.Nil(t, analyticsRepo.state.ManualBackfillStart)
 	require.Nil(t, analyticsRepo.state.ManualBackfillCursor)
+}
+
+// TestDashboardAggregationServiceLiveRebuildsTouchedClosedUTCDays 验证迟到记录的回看范围仍会刷新已闭合日表。
+func TestDashboardAggregationServiceLiveRebuildsTouchedClosedUTCDays(t *testing.T) {
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+	start := time.Date(2026, 8, 3, 23, 58, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 4, 0, 2, 0, 0, time.UTC)
+
+	require.NoError(t, svc.aggregateLiveRange(context.Background(), start, end))
+	require.Equal(t, []aggregationRangeCall{{start: start, end: end}}, analyticsRepo.hourlyCalls)
+	require.Equal(t, []aggregationRangeCall{{
+		start: truncateToDayUTC(start),
+		end:   truncateToDayUTC(end),
+	}}, analyticsRepo.dailyCalls)
+
+	analyticsRepo.dailyCalls = nil
+	// 首轮完成后到达的前一日迟到记录，仍需通过跨日回看同步到日表。
+	require.NoError(t, svc.aggregateLiveRange(context.Background(), start.Add(time.Minute), end.Add(time.Minute)))
+	require.Equal(t, []aggregationRangeCall{{
+		start: truncateToDayUTC(start),
+		end:   truncateToDayUTC(end),
+	}}, analyticsRepo.dailyCalls)
+
+	analyticsRepo.dailyCalls = nil
+	// 回看范围完全进入当前日期后，不再改写前一日日表。
+	require.NoError(t, svc.aggregateLiveRange(context.Background(), start.Add(2*time.Minute), end.Add(2*time.Minute)))
+	require.Empty(t, analyticsRepo.dailyCalls)
+}
+
+// TestDashboardAggregationServiceAutomaticBackfillRebuildsCompletedDay 验证自动回填完成一个 UTC 日后只重建一次日表。
+func TestDashboardAggregationServiceAutomaticBackfillRebuildsCompletedDay(t *testing.T) {
+	cursor := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	oldest := cursor.Add(-24 * time.Hour)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:  timePointer(cursor),
+			BackfillCursor: timePointer(cursor),
+			SourceOldestAt: timePointer(oldest),
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), cursor)
+
+	require.Len(t, analyticsRepo.hourlyCalls, 24)
+	require.Equal(t, []aggregationRangeCall{{start: oldest, end: cursor}}, analyticsRepo.dailyCalls)
+	require.Equal(t, oldest, *analyticsRepo.state.BackfillCursor)
+	require.Equal(t, "idle", analyticsRepo.state.Phase)
+}
+
+// TestDashboardAggregationServiceAutomaticBackfillRebuildsOldestPartialDay 验证到达最早的部分日期时也生成对应日表。
+func TestDashboardAggregationServiceAutomaticBackfillRebuildsOldestPartialDay(t *testing.T) {
+	cursor := time.Date(2026, 8, 2, 8, 0, 0, 0, time.UTC)
+	oldest := time.Date(2026, 8, 2, 5, 0, 0, 0, time.UTC)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:  timePointer(cursor),
+			BackfillCursor: timePointer(cursor),
+			SourceOldestAt: timePointer(oldest),
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), cursor)
+
+	require.Len(t, analyticsRepo.hourlyCalls, 3)
+	dayStart := truncateToDayUTC(oldest)
+	require.Equal(t, []aggregationRangeCall{{start: dayStart, end: dayStart.AddDate(0, 0, 1)}}, analyticsRepo.dailyCalls)
+	require.Equal(t, oldest, *analyticsRepo.state.BackfillCursor)
+}
+
+// TestDashboardAggregationServiceDailyFailureDoesNotAdvanceCursor 验证日表失败后保留旧游标并在下轮幂等重试。
+func TestDashboardAggregationServiceDailyFailureDoesNotAdvanceCursor(t *testing.T) {
+	oldest := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	cursor := oldest.Add(time.Hour)
+	dailyErr := errors.New("日表写入失败")
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:  timePointer(cursor),
+			BackfillCursor: timePointer(cursor),
+			SourceOldestAt: timePointer(oldest),
+		},
+		dailyCallback: func(context.Context, time.Time, time.Time) error {
+			return dailyErr
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:          &dashboardAggregationRepoTestStub{},
+		analyticsRepo: analyticsRepo,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), cursor)
+	require.Equal(t, cursor, *analyticsRepo.state.BackfillCursor)
+	require.Equal(t, "error", analyticsRepo.state.Phase)
+	require.Equal(t, dailyErr.Error(), analyticsRepo.state.LastError)
+
+	analyticsRepo.dailyCallback = nil
+	svc.lastBackfillAt.Store(0)
+	svc.runHistoricalBackfill(context.Background(), cursor.Add(time.Minute))
+	require.Len(t, analyticsRepo.hourlyCalls, 2)
+	require.Len(t, analyticsRepo.dailyCalls, 2)
+	require.Equal(t, oldest, *analyticsRepo.state.BackfillCursor)
+	require.Equal(t, "idle", analyticsRepo.state.Phase)
+}
+
+// TestDashboardAggregationServiceBudgetExhaustionKeepsBackfill 验证完成块后的数据库主动取消不会误报异常。
+func TestDashboardAggregationServiceBudgetExhaustionKeepsBackfill(t *testing.T) {
+	cursor := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
+	oldest := cursor.Add(-4 * time.Hour)
+	call := 0
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:  timePointer(cursor),
+			BackfillCursor: timePointer(cursor),
+			SourceOldestAt: timePointer(oldest),
+			LastError:      "旧错误",
+			LastErrorAt:    timePointer(cursor.Add(-time.Minute)),
+		},
+		hourlyCallback: func(ctx context.Context, _ time.Time, _ time.Time) error {
+			call++
+			if call == 1 {
+				time.Sleep(5 * time.Millisecond)
+				return nil
+			}
+			<-ctx.Done()
+			return errors.New("pq: canceling statement due to user request")
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:           &dashboardAggregationRepoTestStub{},
+		analyticsRepo:  analyticsRepo,
+		backfillBudget: 30 * time.Millisecond,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), cursor)
+
+	require.Equal(t, "backfill", analyticsRepo.state.Phase)
+	require.Empty(t, analyticsRepo.state.LastError)
+	require.Nil(t, analyticsRepo.state.LastErrorAt)
+	require.Equal(t, cursor.Add(-time.Hour), *analyticsRepo.state.BackfillCursor)
+}
+
+// TestDashboardAggregationServiceFirstChunkTimeoutIsError 验证首个小时耗尽完整预算时才标记真实异常。
+func TestDashboardAggregationServiceFirstChunkTimeoutIsError(t *testing.T) {
+	cursor := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)
+	oldest := cursor.Add(-2 * time.Hour)
+	analyticsRepo := &usageAnalyticsAggregationRepoTestStub{
+		state: UsageAnalyticsAggregationState{
+			CoverageStart:  timePointer(cursor),
+			BackfillCursor: timePointer(cursor),
+			SourceOldestAt: timePointer(oldest),
+		},
+		hourlyCallback: func(ctx context.Context, _ time.Time, _ time.Time) error {
+			<-ctx.Done()
+			return errors.New("pq: canceling statement due to user request")
+		},
+	}
+	svc := &DashboardAggregationService{
+		repo:           &dashboardAggregationRepoTestStub{},
+		analyticsRepo:  analyticsRepo,
+		backfillBudget: 20 * time.Millisecond,
+	}
+
+	svc.runHistoricalBackfill(context.Background(), cursor)
+
+	require.Equal(t, "error", analyticsRepo.state.Phase)
+	require.Contains(t, analyticsRepo.state.LastError, "单个小时回填超过 20ms 工作预算")
+	require.NotNil(t, analyticsRepo.state.LastErrorAt)
+	require.Equal(t, cursor, *analyticsRepo.state.BackfillCursor)
+}
+
+// TestShouldStartBackfillChunkUsesPreviousDuration 验证尾部预算不足时不会启动大概率超时的新块。
+func TestShouldStartBackfillChunkUsesPreviousDuration(t *testing.T) {
+	require.True(t, shouldStartBackfillChunk(0, time.Millisecond, time.Second))
+	require.True(t, shouldStartBackfillChunk(1, 11*time.Millisecond, 10*time.Millisecond))
+	require.False(t, shouldStartBackfillChunk(1, 10*time.Millisecond, 10*time.Millisecond))
+	require.False(t, shouldStartBackfillChunk(1, 0, time.Millisecond))
 }
 
 // TestDashboardAggregationServiceRecomputeUsesCompleteAnalyticsBuckets 验证删除修复不会复用实时部分桶接口。

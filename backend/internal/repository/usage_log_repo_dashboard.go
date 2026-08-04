@@ -377,6 +377,8 @@ type PlatformDashboardStats = usagestats.PlatformDashboardStats
 func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID int64) (*UserDashboardStats, error) {
 	if stats, ok, err := r.getUserDashboardStatsFromAnalytics(ctx, userID); err == nil && ok {
 		return stats, nil
+	} else if err != nil {
+		r.logUsageAnalyticsFallback("user_dashboard", err)
 	}
 	stats := &UserDashboardStats{}
 	today := timezone.Today()

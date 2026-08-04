@@ -63,6 +63,83 @@ func TestBuildUsageAnalyticsQueryUsesHalfOpenRanges(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestUsageAnalyticsFallbackWarningIsRateLimited 验证同一操作一分钟内只产生一次聚合故障告警。
+func TestUsageAnalyticsFallbackWarningIsRateLimited(t *testing.T) {
+	operation := "test_rate_limit_analytics_fallback"
+	started := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	usageAnalyticsFallbackLogState.Lock()
+	delete(usageAnalyticsFallbackLogState.lastByOperation, operation)
+	usageAnalyticsFallbackLogState.Unlock()
+	t.Cleanup(func() {
+		usageAnalyticsFallbackLogState.Lock()
+		delete(usageAnalyticsFallbackLogState.lastByOperation, operation)
+		usageAnalyticsFallbackLogState.Unlock()
+	})
+
+	require.True(t, shouldLogUsageAnalyticsFallback(operation, started))
+	require.False(t, shouldLogUsageAnalyticsFallback(operation, started.Add(59*time.Second)))
+	require.True(t, shouldLogUsageAnalyticsFallback(operation, started.Add(time.Minute)))
+}
+
+// TestBuildUsageAnalyticsQueryWithoutDailyUsesContiguousArgs 验证小时查询不携带未引用的日边界参数。
+func TestBuildUsageAnalyticsQueryWithoutDailyUsesContiguousArgs(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	start := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	end := start.Add(4 * time.Hour)
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(end, start))
+
+	query, ok, err := repo.buildUsageAnalyticsQuery(context.Background(), UsageLogFilters{}, start, end, false)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, query.args, 5)
+	require.NotContains(t, query.cte, "$6")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBuildUsageAnalyticsQueryNumbersOwnedTeamFiltersContinuously 验证团队范围与筛选参数从基础边界后连续编号。
+func TestBuildUsageAnalyticsQueryNumbersOwnedTeamFiltersContinuously(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	start := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	end := start.Add(4 * time.Hour)
+	requestType := int16(service.RequestTypeStream)
+	stream := true
+	billingType := int8(1)
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(end, start))
+	mock.ExpectQuery("(?s)SELECT \\(.*SELECT tm.team_id.*team_memberships").
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"team_id"}).AddRow(int64(9)))
+
+	query, ok, err := repo.buildUsageAnalyticsQuery(context.Background(), UsageLogFilters{
+		UserID: 7, IncludeOwnedTeam: true, APIKeyID: 11, GroupID: 12, TeamID: 13,
+		Model: "requested-model", ModelFilterSource: usagestats.ModelSourceRequested,
+		RequestType: &requestType, Stream: &stream, BillingType: &billingType, BillingMode: "token",
+	}, start, end, false)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, query.args, 15)
+	require.Contains(t, query.cte, "user_id = $6")
+	require.Contains(t, query.cte, "team_id = $7 AND user_id <> $6")
+	require.Contains(t, query.where, "api_key_id = $8")
+	require.Contains(t, query.where, "group_id = $9")
+	require.Contains(t, query.where, "team_id = $10")
+	require.Contains(t, query.where, "requested_model = $11")
+	require.Contains(t, query.where, "request_type = $12")
+	require.Contains(t, query.where, "stream = $13")
+	require.Contains(t, query.where, "billing_type = $14")
+	require.Contains(t, query.where, "billing_mode = $15")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestBuildUsageAnalyticsQueryUsesIndexableOwnedTeamRawSource 验证未覆盖原始区间不会恢复成标量子查询 OR。
 func TestBuildUsageAnalyticsQueryUsesIndexableOwnedTeamRawSource(t *testing.T) {
 	db, mock := newSQLMock(t)
@@ -149,14 +226,72 @@ func TestGetUsageTrendFromAnalyticsUsesNamedTimezoneForDST(t *testing.T) {
 	end := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(end, start))
-	mock.ExpectQuery("(?s)TO_CHAR\\(occurred_at AT TIME ZONE \\$8").
-		WithArgs(start, end, start, end, end, start.Truncate(24*time.Hour), start.Truncate(24*time.Hour), "America/New_York").
+	mock.ExpectQuery("(?s)TO_CHAR\\(occurred_at AT TIME ZONE \\$6").
+		WithArgs(start, end, start, end, end, "America/New_York").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens",
 			"cache_read_tokens", "total_tokens", "cost", "actual_cost",
 		}))
 
 	_, ok, err := repo.getUsageTrendFromAnalytics(context.Background(), start, end, "hour", UsageLogFilters{})
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBatchAPIKeyUsageAnalyticsUsesDynamicTodayIDPosition 验证批量 Key 今日查询紧接 5 个边界参数编号。
+func TestBatchAPIKeyUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	start := time.Now().UTC().Add(-4 * time.Hour).Truncate(time.Hour)
+	end := time.Now().UTC().Add(time.Hour).Truncate(time.Hour)
+	coverage := timezone.Today().UTC().Add(-time.Hour).Truncate(time.Hour)
+	watermark := end.Add(time.Hour)
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
+
+	// 首次查询使用日表形态，共 8 个参数（批量 ID 加 7 个边界）。
+	mock.ExpectQuery("(?s)SELECT api_key_id, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "actual_cost"}))
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
+	mock.ExpectQuery("(?s)WHERE api_key_id = ANY\\(\\$6\\)").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "actual_cost"}))
+
+	_, ok, err := repo.getBatchAPIKeyUsageStatsFromAnalytics(context.Background(), []int64{3, 5}, start, end)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBatchUserUsageAnalyticsUsesDynamicTodayIDPosition 验证批量用户今日查询紧接 5 个边界参数编号。
+func TestBatchUserUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	start := time.Now().UTC().Add(-4 * time.Hour).Truncate(time.Hour)
+	end := time.Now().UTC().Add(time.Hour).Truncate(time.Hour)
+	coverage := timezone.Today().UTC().Add(-time.Hour).Truncate(time.Hour)
+	watermark := end.Add(time.Hour)
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
+	mock.ExpectQuery("(?s)SELECT user_id, platform, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "platform", "actual_cost"}))
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
+	mock.ExpectQuery("(?s)WHERE user_id = ANY\\(\\$6\\) AND actual_cost > 0").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "platform", "actual_cost"}))
+
+	_, ok, err := repo.getBatchUserUsageStatsFromAnalytics(context.Background(), []int64{7, 9}, start, end)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.NoError(t, mock.ExpectationsWereMet())

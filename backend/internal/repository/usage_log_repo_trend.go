@@ -30,6 +30,8 @@ type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
 func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
 	if aggregated, ok, aggregateErr := r.getAPIKeyUsageTrendFromAnalytics(ctx, startTime, endTime, granularity, limit); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("api_key_usage_trend", aggregateErr)
 	}
 	dateFormat := safeDateFormat(granularity)
 
@@ -88,6 +90,8 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []UserUsageTrendPoint, err error) {
 	if aggregated, ok, aggregateErr := r.getUserUsageTrendFromAnalytics(ctx, startTime, endTime, granularity, limit); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("user_usage_trend", aggregateErr)
 	}
 	dateFormat := safeDateFormat(granularity)
 
@@ -152,6 +156,8 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}
 	if aggregated, ok, aggregateErr := r.getUserSpendingRankingFromAnalytics(ctx, startTime, endTime, limit); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("user_spending_ranking", aggregateErr)
 	}
 
 	query := `
@@ -256,6 +262,8 @@ func (r *usageLogRepository) getUsageTrendWithFilters(ctx context.Context, start
 	}
 	if aggregated, ok, aggregateErr := r.getUsageTrendFromAnalytics(ctx, startTime, endTime, granularity, analyticsFilters); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("usage_trend", aggregateErr)
 	}
 	if teamID == 0 && shouldUsePreaggregatedTrend(granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType, billingMode, personalOnly, includeOwnedTeam) {
 		aggregated, aggregatedErr := r.getUsageTrendFromAggregates(ctx, startTime, endTime, granularity)
@@ -441,6 +449,8 @@ func (r *usageLogRepository) getModelStatsWithFiltersBySource(ctx context.Contex
 	}
 	if aggregated, ok, aggregateErr := r.getModelStatsFromAnalytics(ctx, startTime, endTime, analyticsFilters); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("model_stats", aggregateErr)
 	}
 	// “实际”始终表示用户实际扣费，账号成本由独立的 account_cost 字段承载。
 	accountCostExpr := "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as account_cost"
@@ -539,6 +549,8 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 	}
 	if aggregated, ok, aggregateErr := r.getGroupStatsFromAnalytics(ctx, startTime, endTime, analyticsFilters); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("group_stats", aggregateErr)
 	}
 	args := []any{startTime, endTime}
 	usageSource, scopeCondition, args, scopeErr := r.buildUsageLogScopeSource(ctx, args, userID, includeOwnedTeam, "ul")
@@ -631,6 +643,8 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) (results []usagestats.UserBreakdownItem, err error) {
 	if aggregated, ok, aggregateErr := r.getUserBreakdownStatsFromAnalytics(ctx, startTime, endTime, dim, limit); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("user_breakdown_stats", aggregateErr)
 	}
 	query := `
 		SELECT
@@ -744,6 +758,8 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 func (r *usageLogRepository) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	if aggregated, ok, aggregateErr := r.getAllGroupUsageSummaryFromAnalytics(ctx, todayStart); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("all_group_usage_summary", aggregateErr)
 	}
 	query := `
 		SELECT

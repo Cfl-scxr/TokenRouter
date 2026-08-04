@@ -45,6 +45,50 @@ func TestAggregateUsageAnalyticsRangeStopsAtLiveWatermark(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestAggregateUsageAnalyticsHourlyRangeSkipsDailyRebuild 验证定时小时刷新不会重复改写日表。
+func TestAggregateUsageAnalyticsHourlyRangeSkipsDailyRebuild(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+	start := time.Date(2026, 8, 4, 9, 15, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 4, 10, 30, 0, 0, time.UTC)
+	hourStart := start.Truncate(time.Hour)
+	hourEnd := end.Truncate(time.Hour).Add(time.Hour)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("DELETE FROM usage_analytics_hourly").
+		WithArgs(hourStart, hourEnd).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO usage_analytics_hourly").
+		WithArgs(hourStart, end).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.AggregateUsageAnalyticsHourlyRange(context.Background(), start, end))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestRebuildUsageAnalyticsDailyRangeUsesUTCDateBounds 验证日表接口按 UTC 日期边界独立重建。
+func TestRebuildUsageAnalyticsDailyRangeUsesUTCDateBounds(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+	start := time.Date(2026, 8, 3, 23, 30, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 4, 0, 30, 0, 0, time.UTC)
+	dayStart := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+	dayEnd := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("DELETE FROM usage_analytics_daily").
+		WithArgs(dayStart, dayEnd).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO usage_analytics_daily").
+		WithArgs(dayStart, dayEnd).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, repo.RebuildUsageAnalyticsDailyRange(context.Background(), start, end))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestRecomputeUsageAnalyticsRangeRebuildsPartialEndBucket 验证删除范围落在小时中间时会保留末桶范围外记录。
 func TestRecomputeUsageAnalyticsRangeRebuildsPartialEndBucket(t *testing.T) {
 	db, mock := newSQLMock(t)

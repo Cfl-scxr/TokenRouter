@@ -850,6 +850,8 @@ func (r *apiKeyRepository) loadAPIKeyUsageTotals(ctx context.Context, keyIDs []i
 				}
 			}
 			return result, nil
+		} else if err != nil {
+			usageRepo.logUsageAnalyticsFallback("api_key_list_usage", err)
 		}
 	}
 

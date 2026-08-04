@@ -32,7 +32,11 @@ func (r *usageLogRepository) buildUsageAnalyticsQuery(ctx context.Context, filte
 
 	args := []any{
 		window.start, window.end, window.aggregateStart, window.aggregateEnd,
-		window.rawTailStart, window.dailyStart, window.dailyEnd,
+		window.rawTailStart,
+	}
+	if useDaily {
+		// 非日聚合查询不能携带未引用参数，否则 PostgreSQL 无法推断空洞参数的类型。
+		args = append(args, window.dailyStart, window.dailyEnd)
 	}
 	rawUsageSource := "usage_logs ul"
 	conditions := make([]string, 0, 10)

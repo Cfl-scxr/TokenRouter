@@ -24,6 +24,8 @@ type UsageAnalyticsAggregationState struct {
 // UsageAnalyticsAggregationRepository 定义多维用量预聚合所需的仓储能力。
 type UsageAnalyticsAggregationRepository interface {
 	AggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time) error
+	AggregateUsageAnalyticsHourlyRange(ctx context.Context, start, end time.Time) error
+	RebuildUsageAnalyticsDailyRange(ctx context.Context, start, end time.Time) error
 	RecomputeUsageAnalyticsRange(ctx context.Context, start, end time.Time) error
 	GetUsageAnalyticsAggregationState(ctx context.Context) (*UsageAnalyticsAggregationState, error)
 	SaveUsageAnalyticsAggregationState(ctx context.Context, state *UsageAnalyticsAggregationState) error

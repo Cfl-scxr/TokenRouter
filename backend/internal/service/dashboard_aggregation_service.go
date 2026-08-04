@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -62,6 +63,8 @@ type DashboardAggregationService struct {
 	lockCache            LeaderLockCache
 	db                   *sql.DB
 	instanceID           string
+	// backfillBudget 仅供测试缩短单轮预算；生产为零时使用固定的 10 秒预算。
+	backfillBudget time.Duration
 }
 
 // SetPreAggregationSettings 注入统一运行时配置，并在开启或修改周期时立即唤醒任务。
@@ -285,8 +288,7 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	} else if start.After(now) {
 		start = now.Add(-lookback)
 	}
-
-	if err := s.aggregateRange(ctx, start, now); err != nil {
+	if err := s.aggregateLiveRange(ctx, start, now); err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合失败: %v", err)
 		s.markAnalyticsRunFailed(ctx, now, jobStart, err)
 		return
@@ -362,6 +364,50 @@ func (s *DashboardAggregationService) aggregateRange(ctx context.Context, start,
 		return s.analyticsRepo.AggregateUsageAnalyticsRange(ctx, start, end)
 	}
 	return nil
+}
+
+// aggregateHourlyRange 只写入实时或自动回填所需的小时聚合表。
+func (s *DashboardAggregationService) aggregateHourlyRange(ctx context.Context, start, end time.Time) error {
+	if !end.After(start) {
+		return nil
+	}
+	if err := s.repo.EnsureUsageLogsPartitions(ctx, end); err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 分区检查失败: %v", err)
+	}
+	if err := s.repo.AggregateRange(ctx, start, end); err != nil {
+		return err
+	}
+	if s.analyticsRepo != nil {
+		return s.analyticsRepo.AggregateUsageAnalyticsHourlyRange(ctx, start, end)
+	}
+	return nil
+}
+
+// aggregateLiveRange 每轮刷新小时表，并同步重建本轮实际触及的已闭合 UTC 日期。
+func (s *DashboardAggregationService) aggregateLiveRange(ctx context.Context, start, end time.Time) error {
+	if err := s.aggregateHourlyRange(ctx, start, end); err != nil || s.analyticsRepo == nil {
+		return err
+	}
+	// 回看窗口跨午夜时可能持续吸收前一日迟到记录，必须在窗口离开该日期前持续刷新日表。
+	dayStart := truncateToDayUTC(start)
+	closedDayEnd := truncateToDayUTC(end)
+	if !closedDayEnd.After(dayStart) {
+		return nil
+	}
+	return s.analyticsRepo.RebuildUsageAnalyticsDailyRange(ctx, dayStart, closedDayEnd)
+}
+
+// aggregateAutomaticBackfillHour 在日期完成后生成日桶，日桶成功前不会推进调用方游标。
+func (s *DashboardAggregationService) aggregateAutomaticBackfillHour(ctx context.Context, start, end, oldestHour time.Time) error {
+	if err := s.aggregateHourlyRange(ctx, start, end); err != nil || s.analyticsRepo == nil {
+		return err
+	}
+	chunkStart := start.UTC().Truncate(time.Hour)
+	if chunkStart.Hour() != 0 && !chunkStart.Equal(oldestHour.UTC().Truncate(time.Hour)) {
+		return nil
+	}
+	dayStart := truncateToDayUTC(chunkStart)
+	return s.analyticsRepo.RebuildUsageAnalyticsDailyRange(ctx, dayStart, dayStart.AddDate(0, 0, 1))
 }
 
 func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context, now time.Time) {
@@ -558,25 +604,33 @@ func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context,
 	}
 
 	started := time.Now()
+	budget := s.resolveBackfillBudget()
+	var previousIterationDuration time.Duration
 	state.Phase = "backfill"
 	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
-	for processed := 0; processed < dashboardAggregationBackfillMaxHours && time.Since(started) < dashboardAggregationBackfillBudget; processed++ {
+	for processed := 0; processed < dashboardAggregationBackfillMaxHours; processed++ {
 		chunkStart := cursor.Add(-time.Hour)
 		if chunkStart.Before(oldestHour) {
 			chunkStart = oldestHour
 		}
-		remaining := dashboardAggregationBackfillBudget - time.Since(started)
-		if remaining <= 0 {
+		remaining := budget - time.Since(started)
+		if !shouldStartBackfillChunk(processed, remaining, previousIterationDuration) {
+			s.pauseHistoricalBackfill(ctx, state, started)
 			return
 		}
+		iterationStarted := time.Now()
 		chunkCtx, cancel := context.WithTimeout(ctx, remaining)
-		chunkErr := s.aggregateRange(chunkCtx, chunkStart, cursor)
+		chunkErr := s.aggregateAutomaticBackfillHour(chunkCtx, chunkStart, cursor, oldestHour)
+		chunkContextErr := chunkCtx.Err()
 		cancel()
 		if chunkErr != nil {
-			if errors.Is(chunkErr, context.DeadlineExceeded) {
-				state.Phase = "backfill"
-				state.LastDurationMS = time.Since(started).Milliseconds()
-				_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+			if errors.Is(chunkContextErr, context.DeadlineExceeded) {
+				if processed > 0 {
+					s.pauseHistoricalBackfill(ctx, state, started)
+					return
+				}
+				timeoutErr := fmt.Errorf("单个小时回填超过 %s 工作预算", budget)
+				s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, timeoutErr)
 				return
 			}
 			s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, chunkErr)
@@ -586,6 +640,8 @@ func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context,
 		state.CoverageStart = timePointer(cursor)
 		state.BackfillCursor = timePointer(cursor)
 		state.LastSuccessAt = timePointer(time.Now().UTC())
+		state.LastError = ""
+		state.LastErrorAt = nil
 		state.LastDurationMS = time.Since(started).Milliseconds()
 		if !cursor.After(oldestHour) {
 			state.Phase = "idle"
@@ -595,6 +651,7 @@ func (s *DashboardAggregationService) runHistoricalBackfill(ctx context.Context,
 		if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
 			return
 		}
+		previousIterationDuration = time.Since(iterationStarted)
 		if !cursor.After(oldestHour) {
 			return
 		}
@@ -617,25 +674,34 @@ func (s *DashboardAggregationService) runManualHistoricalBackfill(ctx context.Co
 	}
 
 	started := time.Now()
+	budget := s.resolveBackfillBudget()
+	var previousIterationDuration time.Duration
 	state.Phase = "backfill"
 	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
-	for processed := 0; processed < dashboardAggregationBackfillMaxHours && time.Since(started) < dashboardAggregationBackfillBudget; processed++ {
+	for processed := 0; processed < dashboardAggregationBackfillMaxHours; processed++ {
 		chunkEnd := cursor
 		chunkStart := cursor.Add(-time.Hour)
 		if chunkStart.Before(target) {
 			chunkStart = target
 		}
-		remaining := dashboardAggregationBackfillBudget - time.Since(started)
-		if remaining <= 0 {
+		remaining := budget - time.Since(started)
+		if !shouldStartBackfillChunk(processed, remaining, previousIterationDuration) {
+			s.pauseHistoricalBackfill(ctx, state, started)
 			return
 		}
+		iterationStarted := time.Now()
 		chunkCtx, cancel := context.WithTimeout(ctx, remaining)
 		chunkErr := s.aggregateRange(chunkCtx, chunkStart, chunkEnd)
+		chunkContextErr := chunkCtx.Err()
 		cancel()
 		if chunkErr != nil {
-			if errors.Is(chunkErr, context.DeadlineExceeded) {
-				state.LastDurationMS = time.Since(started).Milliseconds()
-				_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
+			if errors.Is(chunkContextErr, context.DeadlineExceeded) {
+				if processed > 0 {
+					s.pauseHistoricalBackfill(ctx, state, started)
+					return
+				}
+				timeoutErr := fmt.Errorf("单个小时回填超过 %s 工作预算", budget)
+				s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, timeoutErr)
 				return
 			}
 			s.markAnalyticsRunFailed(ctx, time.Now().UTC(), started, chunkErr)
@@ -646,6 +712,8 @@ func (s *DashboardAggregationService) runManualHistoricalBackfill(ctx context.Co
 		extendUsageAnalyticsCoverage(state, chunkStart, chunkEnd)
 		state.ManualBackfillCursor = timePointer(cursor)
 		state.LastSuccessAt = timePointer(time.Now().UTC())
+		state.LastError = ""
+		state.LastErrorAt = nil
 		state.LastDurationMS = time.Since(started).Milliseconds()
 		if !cursor.After(target) {
 			state.ManualBackfillStart = nil
@@ -657,10 +725,42 @@ func (s *DashboardAggregationService) runManualHistoricalBackfill(ctx context.Co
 		if err := s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state); err != nil {
 			return
 		}
+		previousIterationDuration = time.Since(iterationStarted)
 		if !cursor.After(target) {
 			return
 		}
 	}
+}
+
+// resolveBackfillBudget 返回单轮数据库工作预算，测试可注入更短时长。
+func (s *DashboardAggregationService) resolveBackfillBudget() time.Duration {
+	if s != nil && s.backfillBudget > 0 {
+		return s.backfillBudget
+	}
+	return dashboardAggregationBackfillBudget
+}
+
+// shouldStartBackfillChunk 用上一轮完整耗时判断剩余预算是否足以启动下一小时。
+func shouldStartBackfillChunk(processed int, remaining, previousIterationDuration time.Duration) bool {
+	if remaining <= 0 {
+		return false
+	}
+	if processed == 0 || previousIterationDuration <= 0 {
+		return true
+	}
+	return remaining > previousIterationDuration
+}
+
+// pauseHistoricalBackfill 保存已完成游标，预算正常耗尽不记录为任务错误。
+func (s *DashboardAggregationService) pauseHistoricalBackfill(ctx context.Context, state *UsageAnalyticsAggregationState, started time.Time) {
+	if s == nil || s.analyticsRepo == nil || state == nil {
+		return
+	}
+	state.Phase = "backfill"
+	state.LastError = ""
+	state.LastErrorAt = nil
+	state.LastDurationMS = time.Since(started).Milliseconds()
+	_ = s.analyticsRepo.SaveUsageAnalyticsAggregationState(ctx, state)
 }
 
 // extendUsageAnalyticsCoverage 只在手动块与现有连续覆盖相接时推进公共覆盖游标。

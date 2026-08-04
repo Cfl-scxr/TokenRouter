@@ -489,6 +489,8 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 	}
 	if stats, ok, err := r.getBatchUserUsageStatsFromAnalytics(ctx, normalizedUserIDs, startTime, endTime); err == nil && ok {
 		return stats, nil
+	} else if err != nil {
+		r.logUsageAnalyticsFallback("batch_user_usage", err)
 	}
 
 	for _, id := range normalizedUserIDs {
@@ -570,6 +572,8 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	}
 	if stats, ok, err := r.getBatchAPIKeyUsageStatsFromAnalytics(ctx, normalizedAPIKeyIDs, startTime, endTime); err == nil && ok {
 		return stats, nil
+	} else if err != nil {
+		r.logUsageAnalyticsFallback("batch_api_key_usage", err)
 	}
 
 	for _, id := range normalizedAPIKeyIDs {
@@ -744,6 +748,8 @@ func (r *usageLogRepository) getStatsWithFilters(ctx context.Context, filters Us
 		if aggregated.TotalAccountCost != nil {
 			totalAccountCost = *aggregated.TotalAccountCost
 		}
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("usage_stats", aggregateErr)
 	}
 
 	start := time.Unix(0, 0).UTC()
@@ -863,6 +869,8 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 		}
 		if aggregated, ok, aggregateErr := r.getInboundEndpointStatsFromAnalytics(ctx, startTime, endTime, analyticsFilters); aggregateErr == nil && ok {
 			return aggregated, nil
+		} else if aggregateErr != nil {
+			r.logUsageAnalyticsFallback("inbound_endpoint_stats", aggregateErr)
 		}
 	}
 	// 端点统计的“实际”保持用户扣费口径，不能因账号筛选切换为账号成本。

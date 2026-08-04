@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,33 @@ import (
 )
 
 const rawUsageLogModelColumn = "model"
+
+const usageAnalyticsFallbackLogInterval = time.Minute
+
+var usageAnalyticsFallbackLogState = struct {
+	sync.Mutex
+	lastByOperation map[string]time.Time
+}{lastByOperation: make(map[string]time.Time)}
+
+// logUsageAnalyticsFallback 对真实聚合查询错误限频告警，避免透明回退长期掩盖故障。
+func (r *usageLogRepository) logUsageAnalyticsFallback(operation string, err error) {
+	if err == nil || !shouldLogUsageAnalyticsFallback(operation, time.Now()) {
+		return
+	}
+	slog.Warn("预聚合查询失败，已透明回退使用记录原始表", "operation", operation, "error", err)
+}
+
+// shouldLogUsageAnalyticsFallback 按操作限制同类聚合故障每分钟最多告警一次。
+func shouldLogUsageAnalyticsFallback(operation string, now time.Time) bool {
+	usageAnalyticsFallbackLogState.Lock()
+	defer usageAnalyticsFallbackLogState.Unlock()
+	last := usageAnalyticsFallbackLogState.lastByOperation[operation]
+	if now.Sub(last) < usageAnalyticsFallbackLogInterval {
+		return false
+	}
+	usageAnalyticsFallbackLogState.lastByOperation[operation] = now
+	return true
+}
 
 // rawUsageLogModelColumn preserves the exact stored usage_logs.model semantics for direct filters.
 // Historical rows may contain upstream/billing model values, while newer rows store requested_model.
@@ -251,6 +279,8 @@ func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, end
 	}
 	if aggregated, ok, aggregateErr := r.getUsageRankingFromAnalytics(ctx, startTime, endTime, limit); aggregateErr == nil && ok {
 		return aggregated, nil
+	} else if aggregateErr != nil {
+		r.logUsageAnalyticsFallback("usage_ranking", aggregateErr)
 	}
 
 	query := `

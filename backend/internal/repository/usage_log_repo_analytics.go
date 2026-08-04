@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/timezone"
@@ -341,12 +342,14 @@ func (r *usageLogRepository) getBatchAPIKeyUsageStatsFromAnalytics(ctx context.C
 	if todayErr != nil || !todayOK {
 		return nil, false, todayErr
 	}
-	todayRows, err := r.sql.QueryContext(ctx, todayQuery.cte+`
+	todayQuery.args = append(todayQuery.args, pq.Array(apiKeyIDs))
+	apiKeyIDsPosition := len(todayQuery.args)
+	todayRows, err := r.sql.QueryContext(ctx, todayQuery.cte+fmt.Sprintf(`
 		SELECT api_key_id, COALESCE(SUM(actual_cost), 0)
 		FROM combined
-		WHERE api_key_id = ANY($8)
+		WHERE api_key_id = ANY($%d)
 		GROUP BY api_key_id
-	`, append(todayQuery.args, pq.Array(apiKeyIDs))...)
+	`, apiKeyIDsPosition), todayQuery.args...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -432,12 +435,14 @@ func (r *usageLogRepository) getBatchUserUsageStatsFromAnalytics(ctx context.Con
 	if todayErr != nil || !todayOK {
 		return nil, false, todayErr
 	}
-	todayRows, err := r.sql.QueryContext(ctx, todayQuery.cte+`
+	todayQuery.args = append(todayQuery.args, pq.Array(userIDs))
+	userIDsPosition := len(todayQuery.args)
+	todayRows, err := r.sql.QueryContext(ctx, todayQuery.cte+fmt.Sprintf(`
 		SELECT user_id, platform, COALESCE(SUM(actual_cost), 0)
 		FROM combined
-		WHERE user_id = ANY($8) AND actual_cost > 0
+		WHERE user_id = ANY($%d) AND actual_cost > 0
 		GROUP BY user_id, platform
-	`, append(todayQuery.args, pq.Array(userIDs))...)
+	`, userIDsPosition), todayQuery.args...)
 	if err != nil {
 		return nil, false, err
 	}

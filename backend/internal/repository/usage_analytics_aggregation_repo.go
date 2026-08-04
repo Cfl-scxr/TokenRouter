@@ -8,17 +8,22 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
-// AggregateUsageAnalyticsRange 重建实时范围涉及的 UTC 小时桶，末桶只扫描到实时水位。
+// AggregateUsageAnalyticsRange 完整重建范围涉及的 UTC 小时桶与日桶，末桶只扫描到结束水位。
 func (r *dashboardAggregationRepository) AggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time) error {
-	return r.aggregateUsageAnalyticsRange(ctx, start, end, false)
+	return r.aggregateUsageAnalyticsRange(ctx, start, end, false, true)
 }
 
-// RecomputeUsageAnalyticsRange 为删除后的包含结束时间范围重建完整 UTC 小时桶。
+// AggregateUsageAnalyticsHourlyRange 只重建实时范围涉及的 UTC 小时桶。
+func (r *dashboardAggregationRepository) AggregateUsageAnalyticsHourlyRange(ctx context.Context, start, end time.Time) error {
+	return r.aggregateUsageAnalyticsRange(ctx, start, end, false, false)
+}
+
+// RecomputeUsageAnalyticsRange 为删除后的包含结束时间范围重建完整 UTC 小时桶与日桶。
 func (r *dashboardAggregationRepository) RecomputeUsageAnalyticsRange(ctx context.Context, start, end time.Time) error {
-	return r.aggregateUsageAnalyticsRange(ctx, start, end, true)
+	return r.aggregateUsageAnalyticsRange(ctx, start, end, true, true)
 }
 
-func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time, includeEndBucket bool) error {
+func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRange(ctx context.Context, start, end time.Time, includeEndBucket, rebuildDaily bool) error {
 	if r == nil || r.sql == nil || !end.After(start) {
 		return nil
 	}
@@ -46,16 +51,16 @@ func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRange(ctx contex
 			return err
 		}
 		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
-		if err := txRepo.aggregateUsageAnalyticsRangeInTx(ctx, hourStart, hourEnd, scanEnd); err != nil {
+		if err := txRepo.aggregateUsageAnalyticsRangeInTx(ctx, hourStart, hourEnd, scanEnd, rebuildDaily); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
 		return tx.Commit()
 	}
-	return r.aggregateUsageAnalyticsRangeInTx(ctx, hourStart, hourEnd, scanEnd)
+	return r.aggregateUsageAnalyticsRangeInTx(ctx, hourStart, hourEnd, scanEnd, rebuildDaily)
 }
 
-func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx context.Context, hourStart, hourEnd, scanEnd time.Time) error {
+func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx context.Context, hourStart, hourEnd, scanEnd time.Time, rebuildDaily bool) error {
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_analytics_hourly
 		WHERE bucket_start >= $1 AND bucket_start < $2
@@ -118,9 +123,44 @@ func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx co
 		return err
 	}
 
-	dayStart := time.Date(hourStart.Year(), hourStart.Month(), hourStart.Day(), 0, 0, 0, 0, time.UTC)
+	if !rebuildDaily {
+		return nil
+	}
+	dayStart := truncateUsageAnalyticsDay(hourStart)
 	lastHour := hourEnd.Add(-time.Nanosecond)
-	dayEnd := time.Date(lastHour.Year(), lastHour.Month(), lastHour.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	dayEnd := truncateUsageAnalyticsDay(lastHour).AddDate(0, 0, 1)
+	return r.rebuildUsageAnalyticsDailyRangeInTx(ctx, dayStart, dayEnd)
+}
+
+// RebuildUsageAnalyticsDailyRange 从小时表重建覆盖范围涉及的完整 UTC 日桶。
+func (r *dashboardAggregationRepository) RebuildUsageAnalyticsDailyRange(ctx context.Context, start, end time.Time) error {
+	if r == nil || r.sql == nil || !end.After(start) {
+		return nil
+	}
+	dayStart := truncateUsageAnalyticsDay(start)
+	dayEnd := truncateUsageAnalyticsDay(end)
+	if end.UTC().After(dayEnd) {
+		dayEnd = dayEnd.AddDate(0, 0, 1)
+	}
+	if !dayEnd.After(dayStart) {
+		return nil
+	}
+	if db, ok := r.sql.(*sql.DB); ok {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
+		if err := txRepo.rebuildUsageAnalyticsDailyRangeInTx(ctx, dayStart, dayEnd); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}
+	return r.rebuildUsageAnalyticsDailyRangeInTx(ctx, dayStart, dayEnd)
+}
+
+func (r *dashboardAggregationRepository) rebuildUsageAnalyticsDailyRangeInTx(ctx context.Context, dayStart, dayEnd time.Time) error {
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_analytics_daily
 		WHERE bucket_date >= $1::date AND bucket_date < $2::date
@@ -148,6 +188,11 @@ func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx co
 		GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
 	`, dayStart, dayEnd)
 	return err
+}
+
+func truncateUsageAnalyticsDay(value time.Time) time.Time {
+	value = value.UTC()
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // GetUsageAnalyticsAggregationState 读取单行聚合状态。
