@@ -516,7 +516,7 @@ func qoderCanUseDefaultDisplayPricing(billingService *BillingService, model stri
 	if qoderKnownDefaultImagePricingModel(model) {
 		return true
 	}
-	return billingService != nil && hasExplicitImagePricing(billingService.getRawModelPricing(model))
+	return billingService != nil && hasExplicitImageGenerationPricing(billingService.getRawModelPricing(model))
 }
 
 func firstNonEmptyMarketplaceHint(hints ...string) string {
