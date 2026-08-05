@@ -752,6 +752,7 @@ export interface ApiKey {
   composite_groups?: ApiKeyCompositeGroup[]
   status: 'active' | 'inactive' | 'disabled' | 'quota_exhausted' | 'expired'
   fast_mode_policy: ApiKeyFastModePolicy
+  model_mapping: Record<string, string>
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
@@ -788,6 +789,7 @@ export interface CreateApiKeyRequest {
   is_composite?: boolean
   composite_groups?: Array<{ group_id: number; prefix: string }>
   fast_mode_policy?: ApiKeyFastModePolicy
+  model_mapping?: Record<string, string>
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -808,6 +810,7 @@ export interface UpdateApiKeyRequest {
   composite_groups?: Array<{ group_id: number; prefix: string }>
   status?: 'active' | 'inactive'
   fast_mode_policy?: ApiKeyFastModePolicy
+  model_mapping?: Record<string, string>
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)

@@ -93,6 +93,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		IsComposite:                           k.IsComposite,
 		Status:                                k.Status,
 		FastModePolicy:                        k.FastModePolicy,
+		ModelMapping:                          service.CloneModelMapping(k.ModelMapping),
 		IPWhitelist:                           k.IPWhitelist,
 		IPBlacklist:                           k.IPBlacklist,
 		LastUsedAt:                            k.LastUsedAt,

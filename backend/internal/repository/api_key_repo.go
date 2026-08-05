@@ -150,6 +150,7 @@ func createAPIKeyRecord(ctx context.Context, client *dbent.Client, key *service.
 		SetStatus(key.Status).
 		SetIsComposite(key.IsComposite).
 		SetFastModePolicy(apiKeyFastModePolicyForPersistence(key.FastModePolicy)).
+		SetModelMapping(service.CloneModelMapping(key.ModelMapping)).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -280,6 +281,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldName,
 			apikey.FieldStatus,
 			apikey.FieldFastModePolicy,
+			apikey.FieldModelMapping,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -414,6 +416,9 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.FastModePolicy {
 		builder.SetFastModePolicy(apiKeyFastModePolicyForPersistence(key.FastModePolicy))
+	}
+	if fields.ModelMapping {
+		builder.SetModelMapping(service.CloneModelMapping(key.ModelMapping))
 	}
 	if fields.FallbackToDefaultGroupWhenUnavailable {
 		builder.SetFallbackToDefaultGroupWhenUnavailable(key.FallbackToDefaultGroupWhenUnavailable)
@@ -1218,6 +1223,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Name:                                  m.Name,
 		Status:                                m.Status,
 		FastModePolicy:                        m.FastModePolicy,
+		ModelMapping:                          service.CloneModelMapping(m.ModelMapping),
 		IPWhitelist:                           m.IPWhitelist,
 		IPBlacklist:                           m.IPBlacklist,
 		LastUsedAt:                            m.LastUsedAt,

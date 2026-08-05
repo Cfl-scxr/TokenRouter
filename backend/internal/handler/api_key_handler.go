@@ -46,6 +46,7 @@ type CreateAPIKeyRequest struct {
 	IPWhitelist     []string                            `json:"ip_whitelist"`     // IP 白名单
 	IPBlacklist     []string                            `json:"ip_blacklist"`     // IP 黑名单
 	FastModePolicy  string                              `json:"fast_mode_policy"` // Fast 模式策略，空值表示跟随请求
+	ModelMapping    map[string]string                   `json:"model_mapping"`    // 当前 Key 的完整模型重定向规则
 	Quota           *float64                            `json:"quota"`            // 配额限制 (USD)
 	ExpiresInDays   *int                                `json:"expires_in_days"`  // 过期天数
 
@@ -71,6 +72,7 @@ type UpdateAPIKeyRequest struct {
 	IPWhitelist     *[]string                            `json:"ip_whitelist"`     // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist     *[]string                            `json:"ip_blacklist"`     // IP 黑名单（nil 不修改，空数组清空）
 	FastModePolicy  *string                              `json:"fast_mode_policy"` // nil 表示保持原配置
+	ModelMapping    *map[string]string                   `json:"model_mapping"`    // nil 不修改，空对象清空
 	Quota           *float64                             `json:"quota"`            // 配额限制 (USD), 0=无限制
 	ExpiresAt       *string                              `json:"expires_at"`       // 过期时间 (ISO 8601)
 	ResetQuota      *bool                                `json:"reset_quota"`      // 重置已用配额
@@ -189,6 +191,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
 		FastModePolicy:                        req.FastModePolicy,
+		ModelMapping:                          req.ModelMapping,
 		ExpiresInDays:                         req.ExpiresInDays,
 		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
 		DataSharingConfirmed:                  req.DataSharingConfirmed,
@@ -243,6 +246,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
 		FastModePolicy:                        req.FastModePolicy,
+		ModelMapping:                          req.ModelMapping,
 		Quota:                                 req.Quota,
 		ResetQuota:                            req.ResetQuota,
 		RateLimit5h:                           req.RateLimit5h,

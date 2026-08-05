@@ -1053,8 +1053,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		// 自定义列表只能与已通过渠道和账号校验的模型取交集，不能重新加入被拒绝的模型。
 		availableModels = filterModelsByCustomList(availableModels, nil, apiKey.Group.ModelsListConfig.Models)
+		availableModels = service.AppendAPIKeyModelAliases(availableModels, apiKey.ModelMapping)
 		writeCustomModelsList(c, platform, availableModels)
 		return
+	}
+	if apiKey != nil {
+		availableModels = service.AppendAPIKeyModelAliases(availableModels, apiKey.ModelMapping)
 	}
 
 	if len(availableModels) > 0 {
@@ -1076,39 +1080,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	// 未绑定分组时保留旧版默认模型回退行为。
-	if platform == service.PlatformOpenAI {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   openai.DefaultModels,
-		})
-		return
+	// 未绑定分组时保留旧版默认模型，并按默认可请求集合追加精确别名。
+	fallbackModels := defaultModelIDsForPlatform(platform)
+	if apiKey != nil {
+		fallbackModels = service.AppendAPIKeyModelAliases(fallbackModels, apiKey.ModelMapping)
 	}
-
-	if platform == service.PlatformGemini {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   geminicli.DefaultModels,
-		})
-		return
-	}
-	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, xai.DefaultModelIDs())
-		return
-	}
-
-	if platform == service.PlatformQoder {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   qoder.DefaultModels,
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   claude.DefaultModels,
-	})
+	writeDefaultModelsList(c, platform, fallbackModels)
 }
 
 // compositeRequestableModels 按映射顺序聚合可请求模型，并在模型 ID 前添加展示前缀。
@@ -1129,6 +1106,7 @@ func (h *GatewayHandler) compositeRequestableModels(ctx context.Context, apiKey 
 		if group.CustomModelsListEnabled() {
 			available = filterModelsByCustomList(available, nil, group.ModelsListConfig.Models)
 		}
+		available = service.AppendAPIKeyModelAliases(available, apiKey.ModelMapping)
 		for _, model := range available {
 			prefixed := binding.Prefix + "/" + model
 			if _, exists := seen[prefixed]; exists {
@@ -1462,6 +1440,11 @@ func mergeModelIDs(primary, secondary []string) []string {
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey.IsComposite {
 		writeCompositeModelsList(c, h.compositeRequestableModels(c.Request.Context(), apiKey, service.PlatformAntigravity))
+		return
+	}
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && len(apiKey.ModelMapping) > 0 {
+		modelIDs := service.AppendAPIKeyModelAliases(defaultModelIDsForPlatform(service.PlatformAntigravity), apiKey.ModelMapping)
+		writeClaudeCompatiblePlatformModelsList(c, service.PlatformAntigravity, modelIDs)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

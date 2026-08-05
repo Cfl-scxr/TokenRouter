@@ -196,6 +196,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		ctx = context.WithValue(ctx, ctxkey.APIKeyFastModePolicy, apiKey.FastModePolicy)
 		c.Request = c.Request.WithContext(ctx)
+		applyAPIKeyModelRedirect(c, apiKey)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
 		// 异步图片任务管理只读取已有数据或释放冻结；即使任务耗尽额度，结果仍应可取回或取消。
 		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||

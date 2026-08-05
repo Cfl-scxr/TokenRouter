@@ -155,7 +155,7 @@ func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) 
 	if log == nil {
 		return false, nil
 	}
-	applyCompositeClientModel(ctx, log)
+	applyClientModel(ctx, log)
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		return r.createSingle(ctx, tx.Client(), log)
@@ -172,7 +172,7 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	if log == nil {
 		return nil
 	}
-	applyCompositeClientModel(ctx, log)
+	applyClientModel(ctx, log)
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		_, err := r.createSingle(ctx, tx.Client(), log)
@@ -217,8 +217,8 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	}
 }
 
-// applyCompositeClientModel 仅覆盖展示用请求模型，不改变实际模型与计费模型。
-func applyCompositeClientModel(ctx context.Context, log *service.UsageLog) {
+// applyClientModel 仅覆盖展示用请求模型，不改变实际模型与计费模型。
+func applyClientModel(ctx context.Context, log *service.UsageLog) {
 	if ctx == nil || log == nil {
 		return
 	}

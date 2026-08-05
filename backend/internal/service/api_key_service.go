@@ -94,6 +94,8 @@ type APIKeyUpdateFields struct {
 	CompositeConfiguration bool
 	// FastModePolicy 覆盖 fork 的快速模式策略。
 	FastModePolicy bool
+	// ModelMapping 覆盖当前 API Key 的整份模型重定向规则。
+	ModelMapping bool
 	// FallbackToDefaultGroupWhenUnavailable 覆盖绑定分组不可用时的回退策略。
 	FallbackToDefaultGroupWhenUnavailable bool
 	// DataSharingConfirmation 覆盖数据共享须知版本、确认分组与确认时间。
@@ -250,6 +252,8 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist     []string                    `json:"ip_blacklist"` // IP 黑名单
 	// FastModePolicy 为空时默认跟随下游请求。
 	FastModePolicy string `json:"fast_mode_policy"`
+	// ModelMapping 是当前 Key 的完整模型重定向规则。
+	ModelMapping map[string]string `json:"model_mapping"`
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -280,6 +284,8 @@ type UpdateAPIKeyRequest struct {
 	IPBlacklist     *[]string                    `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
 	// FastModePolicy 为 nil 时保持原值。
 	FastModePolicy *string `json:"fast_mode_policy"`
+	// ModelMapping 为 nil 时保持原值，空对象表示清空规则。
+	ModelMapping *map[string]string `json:"model_mapping"`
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -521,6 +527,10 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	if !ok {
 		return nil, ErrInvalidAPIKeyFastModePolicy
 	}
+	modelMapping, err := NormalizeAPIKeyModelMapping(req.ModelMapping)
+	if err != nil {
+		return nil, err
+	}
 
 	// 验证调用成员存在，并根据 Key 作用域解析实际付款用户。
 	actor, err := s.userRepo.GetByID(ctx, userID)
@@ -666,6 +676,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		CompositeGroups:                       compositeGroups,
 		Status:                                StatusActive,
 		FastModePolicy:                        fastModePolicy,
+		ModelMapping:                          modelMapping,
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
 		Quota:                                 req.Quota,
@@ -1108,6 +1119,13 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
 		}
 	}
+	if req.ModelMapping != nil {
+		modelMapping, normalizeErr := NormalizeAPIKeyModelMapping(*req.ModelMapping)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		apiKey.ModelMapping = modelMapping
+	}
 
 	// fields 只登记本次请求真正要改的列。quota_used 与 usage_5h/1d/7d 由计费热路径
 	// 原子递增，除非用户显式点了"重置"，否则这里不用快照把它们写回去。
@@ -1129,6 +1147,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		}
 		apiKey.FastModePolicy = fastModePolicy
 		fields.FastModePolicy = true
+	}
+	if req.ModelMapping != nil {
+		fields.ModelMapping = true
 	}
 
 	targetComposite := apiKey.IsComposite

@@ -14,6 +14,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type asyncImageMemoryStore struct {
@@ -52,7 +53,12 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	h := &AsyncImageHandler{tasks: tasks}
 	h.execute = func(_ string, c *gin.Context) {
 		<-release
-		c.JSON(http.StatusOK, gin.H{"created": 123, "data": []gin.H{{"url": "https://example.test/image.png"}}})
+		c.JSON(http.StatusOK, gin.H{
+			"model":       "gpt-image-1",
+			"output_text": "gpt-image-1",
+			"created":     123,
+			"data":        []gin.H{{"url": "https://example.test/image.png"}},
+		})
 	}
 
 	router := gin.New()
@@ -64,6 +70,10 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 			GroupID: &groupID,
 			Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, AllowImageGeneration: true},
 		})
+		if c.Request.Method == http.MethodPost {
+			trace := service.NewAPIKeyModelRedirectTrace("image-alias", "image-alias", "gpt-image-1")
+			c.Request = c.Request.WithContext(service.WithAPIKeyModelRedirectTrace(c.Request.Context(), trace))
+		}
 		c.Next()
 	})
 	router.POST("/v1/images/generations/async", h.Submit)
@@ -103,6 +113,8 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	require.Equal(t, "no-store", pollWriter.Header().Get("Cache-Control"))
 	require.Empty(t, pollWriter.Header().Get("Retry-After"))
 	require.Contains(t, pollWriter.Body.String(), "https://example.test/image.png")
+	require.Equal(t, "image-alias", gjson.Get(pollWriter.Body.String(), "result.model").String())
+	require.Equal(t, "gpt-image-1", gjson.Get(pollWriter.Body.String(), "result.output_text").String())
 }
 
 // 未配置对象存储时完全禁用该功能：接口返回 404，且不能创建任务或写入 Redis。

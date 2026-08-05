@@ -72,6 +72,22 @@ const messages: Record<string, string> = {
   'keys.composite.groupDuplicate': 'Duplicate group',
   'keys.composite.mappingRequired': 'Mapping required',
   'keys.composite.tooManyMappings': 'Too many mappings',
+  'keys.modelRedirect.label': 'Model redirects',
+  'keys.modelRedirect.hint': 'Redirect models',
+  'keys.modelRedirect.addRule': 'Add rule',
+  'keys.modelRedirect.empty': 'No redirect rules',
+  'keys.modelRedirect.source': 'Source model',
+  'keys.modelRedirect.target': 'Target model',
+  'keys.modelRedirect.sourcePlaceholder': 'Source model',
+  'keys.modelRedirect.targetPlaceholder': 'Target model',
+  'keys.modelRedirect.sourceRequired': 'Source required',
+  'keys.modelRedirect.targetRequired': 'Target required',
+  'keys.modelRedirect.nameTooLong': 'Model name too long',
+  'keys.modelRedirect.sourceWildcardInvalid': 'Invalid source wildcard',
+  'keys.modelRedirect.targetWildcardInvalid': 'Invalid target wildcard',
+  'keys.modelRedirect.selfMapping': 'Source and target must differ',
+  'keys.modelRedirect.duplicateSource': 'Duplicate source model',
+  'keys.modelRedirect.tooManyRules': 'Too many redirect rules',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
   'keys.lastUsedAt': 'Last Used',
@@ -169,6 +185,7 @@ const createApiKey = (): ApiKey => ({
   group_id: null,
   status: 'active',
   fast_mode_policy: 'follow_request',
+  model_mapping: {},
   ip_whitelist: [],
   ip_blacklist: [],
   last_used_at: null,
@@ -919,5 +936,72 @@ describe('user KeysView column settings', () => {
       is_composite: false,
       composite_groups: undefined,
     }))
+  })
+
+  it('creates a key with a trimmed model redirect rule', async () => {
+    getAvailableGroups.mockResolvedValueOnce([
+      { id: 42, name: 'OpenAI', platform: 'openai', rate_multiplier: 1, data_sharing_enabled: false },
+    ])
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('redirect-key')
+    const groupSelect = wrapper.findAllComponents({ name: 'Select' }).find(
+      (select) => select.attributes('data-tour') === 'key-form-group'
+    )
+    await groupSelect!.vm.$emit('update:modelValue', 42)
+    await wrapper.get('[data-test="model-mapping-add"]').trigger('click')
+    await wrapper.get('[data-test="model-mapping-source-0"]').setValue(' codex-auto-review ')
+    await wrapper.get('[data-test="model-mapping-target-0"]').setValue(' gpt-5.6-luna ')
+    await wrapper.get('form#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(createKey).toHaveBeenCalledWith(expect.objectContaining({
+      model_mapping: { 'codex-auto-review': 'gpt-5.6-luna' },
+    }))
+  })
+
+  it('loads and clears model redirect rules while editing', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{
+        ...createApiKey(),
+        group_id: 42,
+        model_mapping: { 'codex-auto-review': 'gpt-5.6-luna' },
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Edit').trigger('click')
+    expect((wrapper.get('[data-test="model-mapping-source-0"]').element as HTMLInputElement).value)
+      .toBe('codex-auto-review')
+    await wrapper.get('[data-test="model-mapping-remove-0"]').trigger('click')
+    await wrapper.get('form#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ model_mapping: {} }))
+  })
+
+  it('validates duplicate and wildcard model redirect sources in real time', async () => {
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await wrapper.get('[data-test="model-mapping-add"]').trigger('click')
+    await wrapper.get('[data-test="model-mapping-source-0"]').setValue('bad*source')
+    await wrapper.get('[data-test="model-mapping-target-0"]').setValue('target')
+    expect(wrapper.get('[role="alert"]').text()).toBe('Invalid source wildcard')
+
+    await wrapper.get('[data-test="model-mapping-source-0"]').setValue('alias')
+    await wrapper.get('[data-test="model-mapping-add"]').trigger('click')
+    await wrapper.get('[data-test="model-mapping-source-1"]').setValue(' alias ')
+    await wrapper.get('[data-test="model-mapping-target-1"]').setValue('target-2')
+    expect(wrapper.findAll('[role="alert"]').some((error) => error.text() === 'Duplicate source model')).toBe(true)
+
+    await wrapper.get('form#key-form').trigger('submit')
+    expect(showError).toHaveBeenCalledWith('Duplicate source model')
+    expect(createKey).not.toHaveBeenCalled()
   })
 })

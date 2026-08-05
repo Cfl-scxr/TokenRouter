@@ -63,8 +63,10 @@ type APIKey struct {
 	Status          string
 	// FastModePolicy 控制该 Key 的请求级 Fast 模式，系统策略仍拥有更高优先级。
 	FastModePolicy string
-	IPWhitelist    []string
-	IPBlacklist    []string
+	// ModelMapping 在渠道和账号映射前把客户端模型重定向到内部目标模型。
+	ModelMapping map[string]string
+	IPWhitelist  []string
+	IPBlacklist  []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`

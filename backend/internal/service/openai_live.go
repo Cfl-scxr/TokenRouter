@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -72,6 +73,15 @@ func liveOptionalID(value int64) *int64 {
 	}
 	result := value
 	return &result
+}
+
+// liveOptionalString 把非空模型追踪字段转换为可选日志值。
+func liveOptionalString(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (s *OpenAIGatewayService) liveStore() (LiveCallStore, error) {
@@ -144,6 +154,10 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	if err != nil {
 		return nil, err
 	}
+	model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
+	if model == "" {
+		model = "gpt-live"
+	}
 
 	excluded := make(map[int64]struct{})
 	var lastErr error
@@ -153,7 +167,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			identity.GroupID,
 			"",
 			uuid.NewString(),
-			"",
+			model,
 			excluded,
 			OpenAIUpstreamTransportHTTPSSE,
 			OpenAIEndpointCapabilityLive,
@@ -175,6 +189,31 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		}
 
 		account := selection.Account
+		routingModel, routingErr := s.ResolveOpenAIWSRoutingModelForAccount(
+			ctx,
+			identity.GroupID,
+			account,
+			model,
+			OpenAIEndpointCapabilityLive,
+		)
+		if routingErr != nil {
+			selection.ReleaseFunc()
+			excluded[account.ID] = struct{}{}
+			lastErr = routingErr
+			continue
+		}
+		upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, routingModel, false, false)
+		if strings.TrimSpace(upstreamModel) == "" {
+			upstreamModel = routingModel
+		}
+		RegisterAPIKeyModelRedirectStage(ctx, routingModel)
+		RegisterAPIKeyModelRedirectStage(ctx, upstreamModel)
+		upstreamSession, rewriteErr := sjson.SetBytes(request.Session, "model", upstreamModel)
+		if rewriteErr != nil {
+			selection.ReleaseFunc()
+			return nil, rewriteErr
+		}
+		upstreamRequest := &LiveCallRequest{SDP: request.SDP, Session: upstreamSession}
 		tlsRouterMatch := s.matchLiveTLSFingerprintRouter(account, identity.UserAgent)
 		policyResult := s.liveClientPolicyResult(ctx, account, identity, tlsRouterMatch)
 		if policyResult.Enabled && !policyResult.Matched {
@@ -208,7 +247,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			return nil, ErrLiveConcurrencyFull
 		}
 
-		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation, tlsRouterMatch)
+		created, createErr := s.createUpstreamLiveCall(ctx, account, upstreamRequest, attestation, tlsRouterMatch)
 		selection.ReleaseFunc()
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
@@ -221,10 +260,11 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		}
 
 		now := time.Now()
-		model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
-		if model == "" {
-			model = "gpt-live"
+		requestedModel := model
+		if trace, ok := APIKeyModelRedirectTraceFromContext(ctx); ok && strings.TrimSpace(trace.ClientModel) != "" {
+			requestedModel = trace.ClientModel
 		}
+		channelMapping, _ := s.ResolveChannelMappingAndRestrict(ctx, identity.GroupID, model)
 		record := &LiveCallRecord{
 			CallID:                created.CallID,
 			CallHash:              hashLiveCallID(created.CallID),
@@ -237,6 +277,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			SubscriptionID:        liveGroupID(identity.SubscriptionID),
 			LeaseID:               leaseID,
 			Model:                 model,
+			RequestedModel:        requestedModel,
+			UpstreamModel:         upstreamModel,
+			ModelMappingChain:     channelMapping.BuildModelMappingChain(model, upstreamModel),
 			CreatedAt:             now,
 			ExpiresAt:             now.Add(s.liveMaxSessionDuration()),
 			Controller:            LiveControllerPending,
@@ -891,24 +934,26 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	// 或 token 计费，应在这里接入统一扣费逻辑并补充余额与订阅模式回归测试。
 	// Live finalize 只有一次落库机会，复用批量写入与同步 Create 兜底，避免队列故障吞掉记录。
 	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, &UsageLog{
-		UserID:           actorUserID,
-		BillingUserID:    record.UserID,
-		TeamID:           liveOptionalID(record.TeamID),
-		APIKeyID:         record.APIKeyID,
-		AccountID:        record.AccountID,
-		RequestID:        record.CallHash,
-		Model:            record.Model,
-		RequestedModel:   record.Model,
-		GroupID:          liveOptionalID(record.GroupID),
-		SubscriptionID:   liveOptionalID(record.SubscriptionID),
-		RateMultiplier:   1,
-		BillingType:      billingType,
-		RequestType:      RequestTypeLive,
-		DurationMs:       &duration,
-		UserAgent:        &userAgent,
-		IPAddress:        &ipAddress,
-		InboundEndpoint:  &inboundEndpoint,
-		UpstreamEndpoint: &upstreamEndpoint,
-		CreatedAt:        record.CreatedAt,
+		UserID:            actorUserID,
+		BillingUserID:     record.UserID,
+		TeamID:            liveOptionalID(record.TeamID),
+		APIKeyID:          record.APIKeyID,
+		AccountID:         record.AccountID,
+		RequestID:         record.CallHash,
+		Model:             record.Model,
+		RequestedModel:    firstNonBlank(record.RequestedModel, record.Model),
+		UpstreamModel:     liveOptionalString(record.UpstreamModel),
+		ModelMappingChain: liveOptionalString(record.ModelMappingChain),
+		GroupID:           liveOptionalID(record.GroupID),
+		SubscriptionID:    liveOptionalID(record.SubscriptionID),
+		RateMultiplier:    1,
+		BillingType:       billingType,
+		RequestType:       RequestTypeLive,
+		DurationMs:        &duration,
+		UserAgent:         &userAgent,
+		IPAddress:         &ipAddress,
+		InboundEndpoint:   &inboundEndpoint,
+		UpstreamEndpoint:  &upstreamEndpoint,
+		CreatedAt:         record.CreatedAt,
 	}, "service.openai_live")
 }

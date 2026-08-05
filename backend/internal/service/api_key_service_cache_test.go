@@ -746,6 +746,26 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyServiceSnapshotRoundTripPreservesIndependentModelMapping(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	apiKey := &APIKey{
+		ID:           1,
+		UserID:       2,
+		Key:          "k-model-mapping",
+		Status:       StatusActive,
+		ModelMapping: map[string]string{"review": "gpt-5.6-luna"},
+		User:         &User{ID: 2, Status: StatusActive},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+	require.Equal(t, apiKey.ModelMapping, roundTrip.ModelMapping)
+
+	roundTrip.ModelMapping["review"] = "changed"
+	require.Equal(t, "gpt-5.6-luna", snapshot.ModelMapping["review"])
+}
+
 func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testing.T) {
 	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
 	groupID := int64(9)

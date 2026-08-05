@@ -169,14 +169,20 @@ func TestResolveCompositeAPIKeyRequestSpecialEndpoints(t *testing.T) {
 }
 
 func TestReplaceCompositeResponseModel(t *testing.T) {
-	response := []byte("data: {\"id\":\"gpt-5\",\"model\":\"gpt-5\",\"name\":\"models/gpt-5\",\"text\":\"gpt-5\"}\n\n")
+	response := []byte("data: {\"id\":\"gpt-5\",\"model\":\"gpt-5\",\"modelVersion\":\"gpt-5\",\"model_version\":\"gpt-5\",\"name\":\"models/gpt-5\",\"text\":\"gpt-5\"}\n\n")
 
 	// 只恢复协议中的模型标识，正文里相同的普通文本必须保持不变。
 	rewritten := replaceCompositeResponseModel(response, "gpt-5", "GPT/gpt-5")
 	require.Contains(t, string(rewritten), `"id":"GPT/gpt-5"`)
 	require.Contains(t, string(rewritten), `"model":"GPT/gpt-5"`)
+	require.Contains(t, string(rewritten), `"modelVersion":"GPT/gpt-5"`)
+	require.Contains(t, string(rewritten), `"model_version":"GPT/gpt-5"`)
 	require.Contains(t, string(rewritten), `"name":"models/GPT/gpt-5"`)
 	require.Contains(t, string(rewritten), `"text":"gpt-5"`)
+
+	// 模型名允许普通字符串字符，恢复时必须保持 JSON 转义有效。
+	escaped := replaceCompositeResponseModel([]byte(`{"model":"safe-target","text":"safe-target"}`), "safe-target", `review"alias`)
+	require.JSONEq(t, `{"model":"review\"alias","text":"safe-target"}`, string(escaped))
 }
 
 func TestAbortCompositeKeyErrorPreservesProtocolShape(t *testing.T) {

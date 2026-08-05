@@ -445,7 +445,14 @@ func setOpsRequestContext(c *gin.Context, model string, stream bool) {
 		return
 	}
 	model = strings.TrimSpace(model)
-	if clientModel, _, ok := middleware2.GetCompositeModelFromContext(c); ok {
+	hasClientModel := false
+	if c.Request != nil {
+		if clientModel, ok := c.Request.Context().Value(ctxkey.ClientModel).(string); ok && strings.TrimSpace(clientModel) != "" {
+			model = strings.TrimSpace(clientModel)
+			hasClientModel = true
+		}
+	}
+	if clientModel, _, ok := middleware2.GetCompositeModelFromContext(c); ok && !hasClientModel {
 		model = clientModel
 	}
 	c.Set(opsModelKey, model)

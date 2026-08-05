@@ -15,6 +15,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -43,8 +44,22 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
-	model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
-	setOpsRequestContext(c, model, false)
+	clientModel := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
+	redirectCtx, model := apiKeyModelRedirectContext(c.Request.Context(), apiKey, clientModel)
+	if model != clientModel {
+		request.Session, err = sjson.SetBytes(request.Session, "model", model)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "session.model is invalid")
+			return
+		}
+	}
+	request.Session, err = service.RewriteAPIKeyAdditionalModels(request.Session, apiKey.ModelMapping)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "session.tools contains an invalid model")
+		return
+	}
+	c.Request = c.Request.WithContext(redirectCtx)
+	setOpsRequestContext(c, clientModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeLive))
 	reqLog := requestLogger(
 		c,

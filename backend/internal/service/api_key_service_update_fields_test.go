@@ -47,12 +47,18 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 	whitelist := []string{"10.0.0.1"}
 	fastModePolicy := APIKeyFastModePolicyForceOff
 	fallbackToDefaultGroup := false
+	modelMapping := map[string]string{"review": "gpt-5.6-luna"}
 
 	tests := []struct {
 		name string
 		req  UpdateAPIKeyRequest
 		want APIKeyUpdateFields
 	}{
+		{
+			name: "model mapping only",
+			req:  UpdateAPIKeyRequest{ModelMapping: &modelMapping},
+			want: APIKeyUpdateFields{ModelMapping: true},
+		},
 		{
 			name: "name only",
 			req:  UpdateAPIKeyRequest{Name: &name},
@@ -103,6 +109,19 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 			require.Equal(t, []APIKeyUpdateFields{tt.want}, repo.updateFields)
 		})
 	}
+}
+
+func TestAPIKeyUpdateClearsModelMappingWithEmptyObject(t *testing.T) {
+	emptyMapping := map[string]string{}
+	svc, repo := newUpdateFieldsAPIKeyService(&APIKey{
+		ID: 1, UserID: 7, Key: "sk-test", Status: StatusActive,
+		ModelMapping: map[string]string{"review": "gpt-5.6-luna"},
+	})
+
+	updated, err := svc.Update(context.Background(), 1, 7, UpdateAPIKeyRequest{ModelMapping: &emptyMapping})
+	require.NoError(t, err)
+	require.Empty(t, updated.ModelMapping)
+	require.Equal(t, []APIKeyUpdateFields{{ModelMapping: true}}, repo.updateFields)
 }
 
 // 显式重置仍需声明对应的列，避免收窄写入列时把功能改坏。

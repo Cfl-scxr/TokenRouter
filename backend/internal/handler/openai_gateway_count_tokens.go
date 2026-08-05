@@ -129,7 +129,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	if channelMappedModel == "" {
 		channelMappedModel = reqModel
 	}
-	accountLayerModel := resolveOpenAIMessagesAccountLayerModel(apiKey, channelMappedModel)
+	accountLayerModel := resolveOpenAIMessagesAccountLayerModelForRequest(c.Request.Context(), apiKey, channelMappedModel)
 	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)

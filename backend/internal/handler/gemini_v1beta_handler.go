@@ -65,7 +65,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 
 	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
 	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
+		writeGeminiModelsListWithAPIKeyAliases(c, antigravity.FallbackGeminiModelsList(), apiKey)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
 		if hasAntigravity {
 			// antigravity 账户使用静态模型列表
-			c.JSON(http.StatusOK, gemini.FallbackModelsList())
+			writeGeminiModelsListWithAPIKeyAliases(c, gemini.FallbackModelsList(), apiKey)
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -89,10 +89,81 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 	if shouldFallbackGeminiModels(res) {
-		c.JSON(http.StatusOK, gemini.FallbackModelsList())
+		writeGeminiModelsListWithAPIKeyAliases(c, gemini.FallbackModelsList(), apiKey)
 		return
 	}
+	res.Body = appendAPIKeyAliasesToGeminiModelsJSON(res.Body, apiKey.ModelMapping)
 	writeUpstreamResponse(c, res)
+}
+
+// writeGeminiModelsListWithAPIKeyAliases 返回 Gemini 列表并追加当前可请求目标的精确别名。
+func writeGeminiModelsListWithAPIKeyAliases(c *gin.Context, payload any, apiKey *service.APIKey) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		googleError(c, http.StatusInternalServerError, "Failed to encode models")
+		return
+	}
+	if apiKey != nil {
+		body = appendAPIKeyAliasesToGeminiModelsJSON(body, apiKey.ModelMapping)
+	}
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+}
+
+// appendAPIKeyAliasesToGeminiModelsJSON 克隆目标元数据，仅改写 Gemini 协议的模型字段。
+func appendAPIKeyAliasesToGeminiModelsJSON(body []byte, mapping map[string]string) []byte {
+	if len(body) == 0 || len(mapping) == 0 {
+		return body
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	var models []map[string]json.RawMessage
+	if err := json.Unmarshal(payload["models"], &models); err != nil {
+		return body
+	}
+
+	modelIDs := make([]string, 0, len(models))
+	templates := make(map[string]map[string]json.RawMessage, len(models))
+	for _, model := range models {
+		var name string
+		if err := json.Unmarshal(model["name"], &name); err != nil {
+			continue
+		}
+		modelID := strings.TrimPrefix(strings.TrimSpace(name), "models/")
+		if modelID == "" {
+			continue
+		}
+		modelIDs = append(modelIDs, modelID)
+		if _, exists := templates[modelID]; !exists {
+			templates[modelID] = model
+		}
+	}
+
+	for _, alias := range service.AvailableAPIKeyModelAliases(modelIDs, mapping) {
+		template, exists := templates[mapping[alias]]
+		if !exists {
+			continue
+		}
+		cloned := make(map[string]json.RawMessage, len(template))
+		for key, value := range template {
+			cloned[key] = value
+		}
+		cloned["name"], _ = json.Marshal("models/" + alias)
+		cloned["displayName"], _ = json.Marshal(alias)
+		models = append(models, cloned)
+	}
+
+	encodedModels, err := json.Marshal(models)
+	if err != nil {
+		return body
+	}
+	payload["models"] = encodedModels
+	updated, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return updated
 }
 
 // GeminiV1BetaGetModel proxies:

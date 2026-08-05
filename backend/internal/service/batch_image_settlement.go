@@ -298,6 +298,7 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		// 混合结算没有单一来源倍率，日志记录本次实际生效的等效分组倍率。
 		rateMultiplier = actualCost / (job.BaseUnitPrice * float64(job.SuccessCount) * accountRateMultiplier)
 	}
+	requestedModel := batchImageRequestedModel(job)
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
 		BillingUserID:         job.BillingUserID,
@@ -306,7 +307,9 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		AccountID:             *job.AccountID,
 		RequestID:             strings.TrimSpace(requestID),
 		Model:                 job.Model,
-		RequestedModel:        batchImageRequestedModel(job),
+		RequestedModel:        requestedModel,
+		UpstreamModel:         optionalTrimmedStringPtr(job.Model),
+		ModelMappingChain:     optionalTrimmedStringPtr(buildModelMappingChain(requestedModel, job.Model)),
 		InboundEndpoint:       &inboundEndpoint,
 		UpstreamEndpoint:      &upstreamEndpoint,
 		ImageCount:            job.SuccessCount,

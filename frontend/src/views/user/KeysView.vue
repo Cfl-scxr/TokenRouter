@@ -604,6 +604,83 @@
           <Toggle v-model="formData.fallback_to_default_group_when_unavailable" size="sm" />
         </div>
 
+        <!-- 模型重定向按行编辑，删除全部行会在更新时提交空对象。 -->
+        <div class="space-y-3" data-test="model-mapping-editor">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <label class="input-label mb-0">{{ t('keys.modelRedirect.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                {{ t('keys.modelRedirect.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn btn-secondary shrink-0"
+              :disabled="formData.model_mapping_rows.length >= 100"
+              :title="t('keys.modelRedirect.addRule')"
+              data-test="model-mapping-add"
+              @click="addModelMappingRow"
+            >
+              <Icon name="plus" size="sm" class="mr-1.5" />
+              {{ t('keys.modelRedirect.addRule') }}
+            </button>
+          </div>
+
+          <p
+            v-if="formData.model_mapping_rows.length === 0"
+            class="rounded-md border border-dashed border-gray-200 px-3 py-4 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+          >
+            {{ t('keys.modelRedirect.empty') }}
+          </p>
+
+          <div
+            v-for="(row, index) in formData.model_mapping_rows"
+            :key="row.local_id"
+            class="grid min-w-0 grid-cols-1 items-start gap-2 border-b border-gray-200 pb-3 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] dark:border-dark-600"
+            data-test="model-mapping-row"
+          >
+            <div class="min-w-0">
+              <input
+                v-model="row.source"
+                type="text"
+                class="input min-w-0 font-mono"
+                :class="{ 'border-red-500 dark:border-red-500': modelMappingRowErrors[row.local_id]?.source }"
+                :placeholder="t('keys.modelRedirect.sourcePlaceholder')"
+                :aria-label="t('keys.modelRedirect.source')"
+                :data-test="`model-mapping-source-${index}`"
+              />
+              <p v-if="modelMappingRowErrors[row.local_id]?.source" class="mt-1 text-xs text-red-500" role="alert">
+                {{ modelMappingRowErrors[row.local_id]?.source }}
+              </p>
+            </div>
+            <Icon name="arrowRight" size="sm" class="hidden text-gray-400 sm:mt-3 sm:block" />
+            <div class="min-w-0">
+              <input
+                v-model="row.target"
+                type="text"
+                class="input min-w-0 font-mono"
+                :class="{ 'border-red-500 dark:border-red-500': modelMappingRowErrors[row.local_id]?.target }"
+                :placeholder="t('keys.modelRedirect.targetPlaceholder')"
+                :aria-label="t('keys.modelRedirect.target')"
+                :data-test="`model-mapping-target-${index}`"
+              />
+              <p v-if="modelMappingRowErrors[row.local_id]?.target" class="mt-1 text-xs text-red-500" role="alert">
+                {{ modelMappingRowErrors[row.local_id]?.target }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="flex h-10 w-10 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+              :title="t('common.delete')"
+              :aria-label="t('common.delete')"
+              :data-test="`model-mapping-remove-${index}`"
+              @click="removeModelMappingRow(index)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+        </div>
+
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1503,12 +1580,20 @@ const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 let dataSharingCountdownTimer: number | null = null
 let compositeBindingSequence = 0
+let modelMappingSequence = 0
 
 // 新建本地映射行时使用稳定 ID，排序不会导致输入框重建。
 const newCompositeBinding = (groupId: number | null = null, prefix = '') => ({
   local_id: ++compositeBindingSequence,
   group_id: groupId,
   prefix
+})
+
+// 模型重定向行使用稳定 ID，输入校验更新时不会重建相邻输入框。
+const newModelMappingRow = (source = '', target = '') => ({
+  local_id: ++modelMappingSequence,
+  source,
+  target
 })
 
 const dataSharingNoticeDialog = ref<{
@@ -1550,6 +1635,7 @@ const formData = ref({
   composite_groups: [] as Array<ReturnType<typeof newCompositeBinding>>,
   status: 'active' as 'active' | 'inactive',
   fast_mode_policy: 'follow_request' as ApiKeyFastModePolicy,
+  model_mapping_rows: [] as Array<ReturnType<typeof newModelMappingRow>>,
   use_custom_key: false,
   custom_key: '',
   enable_ip_restriction: false,
@@ -1568,6 +1654,74 @@ const formData = ref({
   expiration_date: '',
   fallback_to_default_group_when_unavailable: true
 })
+
+type ModelMappingRowError = { source?: string; target?: string }
+
+// 前端与后端共享相同的大小写敏感、单尾通配符和长度约束。
+const modelMappingRowErrors = computed<Record<number, ModelMappingRowError>>(() => {
+  const errors: Record<number, ModelMappingRowError> = {}
+  const sourceCounts = new Map<string, number>()
+  for (const row of formData.value.model_mapping_rows) {
+    const source = row.source.trim()
+    if (source) sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1)
+  }
+
+  for (const row of formData.value.model_mapping_rows) {
+    const source = row.source.trim()
+    const target = row.target.trim()
+    const rowError: ModelMappingRowError = {}
+    if (!source) {
+      rowError.source = t('keys.modelRedirect.sourceRequired')
+    } else if ([...source].length > 100) {
+      rowError.source = t('keys.modelRedirect.nameTooLong')
+    } else {
+      const wildcardCount = (source.match(/\*/g) ?? []).length
+      if (wildcardCount > 1 || (wildcardCount === 1 && !source.endsWith('*'))) {
+        rowError.source = t('keys.modelRedirect.sourceWildcardInvalid')
+      } else if ((sourceCounts.get(source) ?? 0) > 1) {
+        rowError.source = t('keys.modelRedirect.duplicateSource')
+      }
+    }
+
+    if (!target) {
+      rowError.target = t('keys.modelRedirect.targetRequired')
+    } else if ([...target].length > 100) {
+      rowError.target = t('keys.modelRedirect.nameTooLong')
+    } else if (target.includes('*')) {
+      rowError.target = t('keys.modelRedirect.targetWildcardInvalid')
+    } else if (source && source === target) {
+      rowError.target = t('keys.modelRedirect.selfMapping')
+    }
+    if (rowError.source || rowError.target) errors[row.local_id] = rowError
+  }
+  return errors
+})
+
+const modelMappingFormError = computed(() => {
+  if (formData.value.model_mapping_rows.length > 100) {
+    return t('keys.modelRedirect.tooManyRules')
+  }
+  for (const row of formData.value.model_mapping_rows) {
+    const error = modelMappingRowErrors.value[row.local_id]
+    if (error?.source) return error.source
+    if (error?.target) return error.target
+  }
+  return ''
+})
+
+const addModelMappingRow = () => {
+  if (formData.value.model_mapping_rows.length >= 100) return
+  formData.value.model_mapping_rows.push(newModelMappingRow())
+}
+
+const removeModelMappingRow = (index: number) => {
+  formData.value.model_mapping_rows.splice(index, 1)
+}
+
+const buildModelMappingPayload = (): Record<string, string> =>
+  Object.fromEntries(
+    formData.value.model_mapping_rows.map((row) => [row.source.trim(), row.target.trim()])
+  )
 
 // 自定义Key验证
 const customKeyError = computed(() => {
@@ -1890,6 +2044,9 @@ const editKey = (key: ApiKey) => {
     // 后端的终态统一映射为不可用，编辑表单只提交 active/inactive。
     status: key.status === 'active' ? 'active' : 'inactive',
     fast_mode_policy: key.fast_mode_policy ?? 'follow_request',
+    model_mapping_rows: Object.entries(key.model_mapping ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([source, target]) => newModelMappingRow(source, target)),
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: hasIPRestriction,
@@ -2161,13 +2318,21 @@ const buildKeyFormPayload = () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
-  return { ipWhitelist, ipBlacklist, quota, expiresInDays, expiresAt, rateLimitData }
+  return {
+    ipWhitelist,
+    ipBlacklist,
+    quota,
+    expiresInDays,
+    expiresAt,
+    rateLimitData,
+    modelMapping: buildModelMappingPayload()
+  }
 }
 
 const submitKeyForm = async (
   consent?: { data_sharing_confirmed: boolean; data_sharing_notice_version: number }
 ) => {
-  const { ipWhitelist, ipBlacklist, quota, expiresInDays, expiresAt, rateLimitData } = buildKeyFormPayload()
+  const { ipWhitelist, ipBlacklist, quota, expiresInDays, expiresAt, rateLimitData, modelMapping } = buildKeyFormPayload()
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
@@ -2182,6 +2347,7 @@ const submitKeyForm = async (
             }))
           : undefined,
         fast_mode_policy: formData.value.fast_mode_policy,
+        model_mapping: modelMapping,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -2211,6 +2377,7 @@ const submitKeyForm = async (
             }))
           : undefined,
         fast_mode_policy: formData.value.fast_mode_policy,
+        model_mapping: modelMapping,
         custom_key: customKey,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
@@ -2253,6 +2420,11 @@ const onScopeChange = () => {
 }
 
 const handleSubmit = async () => {
+	if (modelMappingFormError.value) {
+		appStore.showError(modelMappingFormError.value)
+		return
+	}
+
 	if (formData.value.is_composite && compositeFormError.value) {
 		appStore.showError(compositeFormError.value)
 		return
@@ -2330,6 +2502,7 @@ const closeModals = () => {
     composite_groups: [],
     status: 'active',
     fast_mode_policy: 'follow_request',
+    model_mapping_rows: [],
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: false,

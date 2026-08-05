@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 26 // v26：认证快照包含复合 Key 的有序分组映射
+const apiKeyAuthSnapshotVersion = 27 // v27：认证快照包含 API Key 模型重定向规则
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -394,6 +394,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		Name:                                  apiKey.Name,
 		Status:                                apiKey.Status,
 		FastModePolicy:                        apiKey.FastModePolicy,
+		ModelMapping:                          CloneModelMapping(apiKey.ModelMapping),
 		IPWhitelist:                           apiKey.IPWhitelist,
 		IPBlacklist:                           apiKey.IPBlacklist,
 		Quota:                                 apiKey.Quota,
@@ -523,6 +524,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Name:                                  snapshot.Name,
 		Status:                                snapshot.Status,
 		FastModePolicy:                        snapshot.FastModePolicy,
+		ModelMapping:                          CloneModelMapping(snapshot.ModelMapping),
 		IPWhitelist:                           snapshot.IPWhitelist,
 		IPBlacklist:                           snapshot.IPBlacklist,
 		Quota:                                 snapshot.Quota,

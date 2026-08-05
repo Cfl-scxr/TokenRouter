@@ -171,6 +171,12 @@ func (_c *APIKeyCreate) SetNillableFastModePolicy(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetModelMapping sets the "model_mapping" field.
+func (_c *APIKeyCreate) SetModelMapping(v map[string]string) *APIKeyCreate {
+	_c.mutation.SetModelMapping(v)
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -533,6 +539,13 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultFastModePolicy
 		_c.mutation.SetFastModePolicy(v)
 	}
+	if _, ok := _c.mutation.ModelMapping(); !ok {
+		if apikey.DefaultModelMapping == nil {
+			return fmt.Errorf("ent: uninitialized apikey.DefaultModelMapping (forgotten import ent/runtime?)")
+		}
+		v := apikey.DefaultModelMapping()
+		_c.mutation.SetModelMapping(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -624,6 +637,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.FastModePolicyValidator(v); err != nil {
 			return &ValidationError{Name: "fast_mode_policy", err: fmt.Errorf(`ent: validator failed for field "APIKey.fast_mode_policy": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.ModelMapping(); !ok {
+		return &ValidationError{Name: "model_mapping", err: errors.New(`ent: missing required field "APIKey.model_mapping"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -720,6 +736,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
 		_node.FastModePolicy = value
+	}
+	if value, ok := _c.mutation.ModelMapping(); ok {
+		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)
+		_node.ModelMapping = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -1079,6 +1099,18 @@ func (u *APIKeyUpsert) SetFastModePolicy(v string) *APIKeyUpsert {
 // UpdateFastModePolicy sets the "fast_mode_policy" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateFastModePolicy() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldFastModePolicy)
+	return u
+}
+
+// SetModelMapping sets the "model_mapping" field.
+func (u *APIKeyUpsert) SetModelMapping(v map[string]string) *APIKeyUpsert {
+	u.Set(apikey.FieldModelMapping, v)
+	return u
+}
+
+// UpdateModelMapping sets the "model_mapping" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateModelMapping() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldModelMapping)
 	return u
 }
 
@@ -1641,6 +1673,20 @@ func (u *APIKeyUpsertOne) SetFastModePolicy(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateFastModePolicy() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateFastModePolicy()
+	})
+}
+
+// SetModelMapping sets the "model_mapping" field.
+func (u *APIKeyUpsertOne) SetModelMapping(v map[string]string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModelMapping(v)
+	})
+}
+
+// UpdateModelMapping sets the "model_mapping" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateModelMapping() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModelMapping()
 	})
 }
 
@@ -2426,6 +2472,20 @@ func (u *APIKeyUpsertBulk) SetFastModePolicy(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateFastModePolicy() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateFastModePolicy()
+	})
+}
+
+// SetModelMapping sets the "model_mapping" field.
+func (u *APIKeyUpsertBulk) SetModelMapping(v map[string]string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModelMapping(v)
+	})
+}
+
+// UpdateModelMapping sets the "model_mapping" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateModelMapping() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModelMapping()
 	})
 }
 

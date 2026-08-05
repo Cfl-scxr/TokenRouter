@@ -107,23 +107,39 @@ type ChannelMappingResult struct {
 	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
 	Mapped             bool   // 是否发生了映射
 	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped"）
+	// ClientModel 仅用于展示和映射链；计费仍以调用方传入的 reqModel 为准。
+	ClientModel      string
+	APIKeyRedirected bool
 }
 
 // BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
-// reqModel: 客户端请求的原始模型名。
+// reqModel: API Key 重定向后的请求模型名。
 // upstreamModel: 上游实际使用的模型名（ForwardResult.UpstreamModel）。
 // 返回空字符串表示无映射。
 func (r ChannelMappingResult) BuildModelMappingChain(reqModel, upstreamModel string) string {
-	if !r.Mapped {
-		if upstreamModel != "" && upstreamModel != reqModel {
-			return reqModel + "→" + upstreamModel
-		}
-		return ""
+	stages := make([]string, 0, 4)
+	if r.APIKeyRedirected {
+		stages = append(stages, r.ClientModel)
 	}
-	if upstreamModel != "" && upstreamModel != r.MappedModel {
-		return reqModel + "→" + r.MappedModel + "→" + upstreamModel
+	stages = append(stages, reqModel)
+	if r.Mapped {
+		stages = append(stages, r.MappedModel)
 	}
-	return reqModel + "→" + r.MappedModel
+	stages = append(stages, upstreamModel)
+	return buildModelMappingChain(stages...)
+}
+
+// WithAPIKeyModelRedirect 把 Key 级映射追踪附加到渠道结果，并登记响应恢复阶段。
+func (r ChannelMappingResult) WithAPIKeyModelRedirect(ctx context.Context, requestedModel string) ChannelMappingResult {
+	trace, ok := APIKeyModelRedirectTraceFromContext(ctx)
+	if !ok {
+		return r
+	}
+	r.ClientModel = trace.ClientModel
+	r.APIKeyRedirected = true
+	RegisterAPIKeyModelRedirectStage(ctx, requestedModel)
+	RegisterAPIKeyModelRedirectStage(ctx, r.MappedModel)
+	return r
 }
 
 // ToUsageFields 将渠道映射结果转为使用记录字段

@@ -84,6 +84,13 @@ func resolveOpenAIMessagesAccountLayerModel(apiKey *service.APIKey, channelMappe
 	return service.NormalizeOpenAICompatRequestedModel(channelMappedModel)
 }
 
+// resolveOpenAIMessagesAccountLayerModelForRequest 登记分组派发后的模型，供响应恢复与映射链记录使用。
+func resolveOpenAIMessagesAccountLayerModelForRequest(ctx context.Context, apiKey *service.APIKey, channelMappedModel string) string {
+	model := resolveOpenAIMessagesAccountLayerModel(apiKey, channelMappedModel)
+	service.RegisterAPIKeyModelRedirectStage(ctx, model)
+	return model
+}
+
 type openAIModelBodyReplaceFunc func([]byte, string) []byte
 
 // openAIChannelMappedModel 返回渠道模型 C；渠道没有有效结果时保留客户端模型 R。
@@ -997,7 +1004,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if channelMappedModel == "" {
 		channelMappedModel = reqModel
 	}
-	accountLayerModel := resolveOpenAIMessagesAccountLayerModel(apiKey, channelMappedModel)
+	accountLayerModel := resolveOpenAIMessagesAccountLayerModelForRequest(c.Request.Context(), apiKey, channelMappedModel)
 	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
@@ -1639,12 +1646,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	// 用户提示词替换必须在首帧模型解析、内容审计和会话 hash 前执行，保证 WS 首轮请求与 HTTP 入口一致。
 	firstMessage = h.gatewayService.ApplyUserPromptReplacement(ctx, firstMessage, "openai_responses")
+	firstMessage, err = service.RewriteAPIKeyAdditionalModels(firstMessage, apiKey.ModelMapping)
+	if err != nil {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid websocket tool model")
+		return
+	}
 
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
+	clientReqModel := reqModel
+	ctx, reqModel = apiKeyModelRedirectContext(ctx, apiKey, clientReqModel)
+	c.Request = c.Request.WithContext(ctx)
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
@@ -1655,11 +1670,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
-		zap.String("model", reqModel),
+		zap.String("model", clientReqModel),
 		zap.Bool("has_previous_response_id", previousResponseID != ""),
 		zap.String("previous_response_id_kind", previousResponseIDKind),
 	)
-	setOpsRequestContext(c, reqModel, true)
+	setOpsRequestContext(c, clientReqModel, true)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 	setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, firstMessage)
 	// WS passthrough 的客户端帧和上游事件可能并发回调，按 turn 保存提示词摘要需要加锁。
@@ -1780,7 +1795,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if cyberBlockKeyWS != "" && h.cyberSessionBlockAppliesToGroup(c, apiKey) && h.gatewayService.IsCyberSessionBlocked(ctx, cyberBlockKeyWS) {
 		writeCyberSessionBlockedWSError(ctx, wsConn)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg)
-		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, reqModel, cyberBlockKeyWS)
+		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, clientReqModel, cyberBlockKeyWS)
 		return
 	}
 	var cyberBlockedThisConn atomic.Bool
@@ -1988,11 +2003,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			ResolveRoutingModel: func(_ int, requestedModel string, payload []byte) (string, error) {
 				requestedModel = strings.TrimSpace(requestedModel)
 				if requestedModel == "" {
-					requestedModel = reqModel
+					requestedModel = clientReqModel
 				}
-				turnMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, requestedModel)
+				turnCtx, redirectedModel := apiKeyModelRedirectContext(ctx, apiKey, requestedModel)
+				turnMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(turnCtx, apiKey.GroupID, redirectedModel)
 				mappedPayload, turnRoutingModel, _ := resolveOpenAIChannelMappedImageIntent(
-					"/v1/responses", requestedModel, payload, turnMapping, requestPlatform, h.gatewayService.ReplaceModelInBody,
+					"/v1/responses", redirectedModel, payload, turnMapping, requestPlatform, h.gatewayService.ReplaceModelInBody,
 				)
 				turnImageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", turnRoutingModel, mappedPayload)
 				if turnImageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
@@ -2003,7 +2019,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						nil,
 					)
 				}
-				turnCtx := ctx
 				if turnImageIntent {
 					// 后续 turn 的账号资格检查必须包含该轮生图限流范围。
 					turnCtx = service.WithOpenAIImageGenerationIntent(turnCtx)
@@ -2016,11 +2031,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnCtx,
 					apiKey.GroupID,
 					account,
-					requestedModel,
+					redirectedModel,
 					turnCapability,
 				)
 				if resolveErr != nil {
-					return "", newOpenAIWSLocalRoutingRejectedError(requestedModel, resolveErr)
+					return "", newOpenAIWSLocalRoutingRejectedError(redirectedModel, resolveErr)
 				}
 				return routingModel, nil
 			},
@@ -2031,14 +2046,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if !gjson.ValidBytes(payload) {
 					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 				}
+				rewrittenPayload, rewriteErr := service.RewriteAPIKeyAdditionalModels(payload, apiKey.ModelMapping)
+				if rewriteErr != nil {
+					return payload, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket tool model", rewriteErr)
+				}
+				payload = rewrittenPayload
 				payloadPreviousResponseID := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
 				}
 				if model == "" {
-					model = reqModel
+					model = clientReqModel
 				}
+				_, model = apiKeyModelRedirectContext(ctx, apiKey, model)
 				setOpenAICyberWarningRequestSnapshot(c, service.ContentModerationProtocolOpenAIResponses, payload)
 				setCyberPromptExcerpt(turn, currentOpenAICyberWarningPromptExcerpt(c), currentOpenAICyberWarningSnapshot(c))
 				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
@@ -2097,7 +2118,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			OnUpstreamError: func(turn int, originalModel string, statusCode int, responseBody []byte, warningText string) {
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
-					model = reqModel
+					model = clientReqModel
 				}
 				h.recordOpenAICyberWarningWithSnapshot(c, reqLog, apiKey, account, model, statusCode, responseBody, warningText, getCyberPromptExcerpt(turn), getCyberSnapshot(turn))
 			},
@@ -2105,11 +2126,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				turn := capture.Turn
 				result := capture.Result
 				turnErr := capture.Err
-				turnModel := strings.TrimSpace(capture.OriginalModel)
-				if turnModel == "" {
-					turnModel = reqModel
+				turnClientModel := strings.TrimSpace(capture.OriginalModel)
+				if turnClientModel == "" {
+					turnClientModel = clientReqModel
 				}
-				turnChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, turnModel)
+				turnCtx, turnModel := apiKeyModelRedirectContext(ctx, apiKey, turnClientModel)
+				turnChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(turnCtx, apiKey.GroupID, turnModel)
 				releaseTurnSlots()
 				defer clearCyberPolicyTurnState(c)
 				turnRequestBodyForCyber := capture.RequestBody
@@ -2167,6 +2189,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 				clientSessionID := service.ExtractClientSessionID(c)
 				h.submitOpenAIUsageRecordTask(c, result, func(taskCtx context.Context) {
+					taskCtx = service.PropagateAPIKeyModelRedirectTrace(taskCtx, turnCtx)
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
 						APIKey:             apiKey,

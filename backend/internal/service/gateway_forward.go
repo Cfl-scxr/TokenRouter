@@ -851,9 +851,10 @@ func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, m
 // 模型限制检查已移至调度阶段（checkChannelPricingRestriction），restricted 始终返回 false。
 func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
 	if s.channelService == nil {
-		return ChannelMappingResult{MappedModel: model}, false
+		return (ChannelMappingResult{MappedModel: model}).WithAPIKeyModelRedirect(ctx, model), false
 	}
-	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+	result, restricted := s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+	return result.WithAPIKeyModelRedirect(ctx, model), restricted
 }
 
 // checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。

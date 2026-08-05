@@ -59,6 +59,11 @@ func (APIKey) Fields() []ent.Field {
 			MaxLen(32).
 			Default("follow_request").
 			Comment("API Key 的 Fast 模式策略：follow_request、force_on 或 force_off"),
+		// 每个 API Key 可在进入渠道与账号映射前覆盖客户端模型名。
+		field.JSON("model_mapping", map[string]string{}).
+			Default(func() map[string]string { return map[string]string{} }).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("API Key 自定义模型重定向规则"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

@@ -198,6 +198,12 @@ func (_u *APIKeyUpdate) SetNillableFastModePolicy(v *string) *APIKeyUpdate {
 	return _u
 }
 
+// SetModelMapping sets the "model_mapping" field.
+func (_u *APIKeyUpdate) SetModelMapping(v map[string]string) *APIKeyUpdate {
+	_u.mutation.SetModelMapping(v)
+	return _u
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetLastUsedAt(v)
@@ -803,6 +809,9 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ModelMapping(); ok {
+		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -1285,6 +1294,12 @@ func (_u *APIKeyUpdateOne) SetNillableFastModePolicy(v *string) *APIKeyUpdateOne
 	if v != nil {
 		_u.SetFastModePolicy(*v)
 	}
+	return _u
+}
+
+// SetModelMapping sets the "model_mapping" field.
+func (_u *APIKeyUpdateOne) SetModelMapping(v map[string]string) *APIKeyUpdateOne {
+	_u.mutation.SetModelMapping(v)
 	return _u
 }
 
@@ -1922,6 +1937,9 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModelMapping(); ok {
+		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)

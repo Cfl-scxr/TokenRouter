@@ -195,7 +195,8 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 	}()
 
 	h.execute(platform, taskCtx)
-	body := bytes.TrimSpace(recorder.Body.Bytes())
+	body := service.RestoreAPIKeyModelResponse(taskCtx.Request.Context(), recorder.Body.Bytes())
+	body = bytes.TrimSpace(body)
 	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
 		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
 		return

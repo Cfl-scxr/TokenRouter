@@ -39,6 +39,8 @@ const (
 	FieldStatus = "status"
 	// FieldFastModePolicy holds the string denoting the fast_mode_policy field in the database.
 	FieldFastModePolicy = "fast_mode_policy"
+	// FieldModelMapping holds the string denoting the model_mapping field in the database.
+	FieldModelMapping = "model_mapping"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -141,6 +143,7 @@ var Columns = []string{
 	FieldIsComposite,
 	FieldStatus,
 	FieldFastModePolicy,
+	FieldModelMapping,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -202,6 +205,8 @@ var (
 	DefaultFastModePolicy string
 	// FastModePolicyValidator is a validator for the "fast_mode_policy" field. It is called by the builders before save.
 	FastModePolicyValidator func(string) error
+	// DefaultModelMapping holds the default value on creation for the "model_mapping" field.
+	DefaultModelMapping func() map[string]string
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.

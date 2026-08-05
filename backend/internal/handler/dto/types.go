@@ -68,6 +68,7 @@ type APIKey struct {
 	CompositeGroups []APIKeyCompositeGroup `json:"composite_groups"`
 	Status          string                 `json:"status"`
 	FastModePolicy  string                 `json:"fast_mode_policy"`
+	ModelMapping    map[string]string      `json:"model_mapping"`
 	IPWhitelist     []string               `json:"ip_whitelist"`
 	IPBlacklist     []string               `json:"ip_blacklist"`
 	LastUsedAt      *time.Time             `json:"last_used_at"`

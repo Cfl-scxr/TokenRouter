@@ -59,24 +59,27 @@ type LiveCallIdentity struct {
 
 // LiveCallRecord 保存跨实例接管 Live 控制连接所需的会话状态。
 type LiveCallRecord struct {
-	CallID          string
-	CallHash        string
-	AccountID       int64
-	APIKeyID        int64
-	ActorUserID     int64
-	UserID          int64
-	TeamID          int64
-	GroupID         int64
-	SubscriptionID  int64
-	LeaseID         string
-	Model           string
-	CreatedAt       time.Time
-	ExpiresAt       time.Time
-	Controller      string
-	ControllerOwner string
-	UserAgent       string
-	IPAddress       string
-	InboundEndpoint string
+	CallID            string
+	CallHash          string
+	AccountID         int64
+	APIKeyID          int64
+	ActorUserID       int64
+	UserID            int64
+	TeamID            int64
+	GroupID           int64
+	SubscriptionID    int64
+	LeaseID           string
+	Model             string
+	RequestedModel    string
+	UpstreamModel     string
+	ModelMappingChain string
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
+	Controller        string
+	ControllerOwner   string
+	UserAgent         string
+	IPAddress         string
+	InboundEndpoint   string
 	// AttestationCiphertext 仅用于让同一会话的 Sideband 复用创建时的证明。
 	AttestationCiphertext string
 }

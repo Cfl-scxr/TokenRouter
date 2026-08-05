@@ -108,24 +108,7 @@ func (w *compositeModelResponseWriter) WriteString(value string) (int, error) {
 
 // replaceCompositeResponseModel 只改写模型字段，避免影响正文中恰好相同的文本。
 func replaceCompositeResponseModel(data []byte, actualModel, clientModel string) []byte {
-	actualModel = strings.TrimSpace(actualModel)
-	clientModel = strings.TrimSpace(clientModel)
-	if actualModel == "" || clientModel == "" || actualModel == clientModel {
-		return data
-	}
-	patterns := [][2]string{
-		{`"model":"` + actualModel + `"`, `"model":"` + clientModel + `"`},
-		{`"model": "` + actualModel + `"`, `"model": "` + clientModel + `"`},
-		{`"id":"` + actualModel + `"`, `"id":"` + clientModel + `"`},
-		{`"id": "` + actualModel + `"`, `"id": "` + clientModel + `"`},
-		{`"name":"models/` + actualModel + `"`, `"name":"models/` + clientModel + `"`},
-		{`"name": "models/` + actualModel + `"`, `"name": "models/` + clientModel + `"`},
-	}
-	rewritten := data
-	for _, pattern := range patterns {
-		rewritten = bytes.ReplaceAll(rewritten, []byte(pattern[0]), []byte(pattern[1]))
-	}
-	return rewritten
+	return service.ReplaceModelMetadata(data, actualModel, clientModel)
 }
 
 // GetCompositeModelFromContext 返回复合 Key 的客户端模型与真实模型。

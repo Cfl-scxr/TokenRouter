@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/antigravity"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	middleware2 "github.com/TokenFlux/TokenRouter/internal/server/middleware"
 	"github.com/TokenFlux/TokenRouter/internal/service"
@@ -120,7 +121,8 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{ID: groupID, Platform: service.PlatformGemini},
+		Group:        &service.Group{ID: groupID, Platform: service.PlatformGemini},
+		ModelMapping: map[string]string{"gemini-review": "gemini-2.5-flash", "wild-*": "gemini-2.5-flash"},
 	})
 
 	h.Models(c)
@@ -131,7 +133,36 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, "list", got.Object)
 	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
+	require.Contains(t, modelIDsForTest(got.Data), "gemini-review")
+	require.NotContains(t, modelIDsForTest(got.Data), "wild-*")
 	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
+}
+
+func TestAntigravityModelsIncludesRequestableExactAPIKeyAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defaults := antigravity.DefaultModels()
+	require.NotEmpty(t, defaults)
+	targetModel := defaults[0].ID
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/antigravity/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{ModelMapping: map[string]string{
+		"antigravity-review": targetModel,
+		"wild-*":             targetModel,
+		"missing":            "not-requestable",
+	}})
+
+	(&GatewayHandler{}).AntigravityModels(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, targetModel)
+	require.Contains(t, ids, "antigravity-review")
+	require.NotContains(t, ids, "wild-*")
+	require.NotContains(t, ids, "missing")
 }
 
 func TestGatewayModelsCompositeKeyAggregatesMappingsInOrder(t *testing.T) {
@@ -156,7 +187,12 @@ func TestGatewayModelsCompositeKeyAggregatesMappingsInOrder(t *testing.T) {
 	context.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	context.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
 		IsComposite: true,
-		User:        &service.User{Status: service.StatusActive, AllowedGroups: []int64{anthropicGroupID}},
+		ModelMapping: map[string]string{
+			"review":        "gpt-5",
+			"missing-alias": "not-requestable",
+			"wild-*":        "gpt-5",
+		},
+		User: &service.User{Status: service.StatusActive, AllowedGroups: []int64{anthropicGroupID}},
 		CompositeGroups: []service.APIKeyCompositeGroup{
 			{GroupID: openAIGroupID, Prefix: "GPT", SortOrder: 0, Group: &service.Group{ID: openAIGroupID, Platform: service.PlatformOpenAI, Status: service.StatusActive}},
 			{GroupID: anthropicGroupID, Prefix: "Claude", SortOrder: 1, Group: &service.Group{ID: anthropicGroupID, Platform: service.PlatformAnthropic, Status: service.StatusActive}},
@@ -170,6 +206,9 @@ func TestGatewayModelsCompositeKeyAggregatesMappingsInOrder(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &got))
 	ids := modelIDsForTest(got.Data)
 	require.NotEmpty(t, ids)
+	require.Contains(t, ids, "GPT/review")
+	require.NotContains(t, ids, "GPT/missing-alias")
+	require.NotContains(t, ids, "GPT/wild-*")
 	firstClaude := -1
 	for index, id := range ids {
 		if len(id) >= len("Claude/") && id[:len("Claude/")] == "Claude/" {

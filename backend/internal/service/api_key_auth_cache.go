@@ -17,7 +17,9 @@ type APIKeyAuthSnapshot struct {
 	Name              string                             `json:"name"`
 	Status            string                             `json:"status"`
 	// FastModePolicy 随鉴权快照下发，供网关热路径读取。
-	FastModePolicy string                   `json:"fast_mode_policy"`
+	FastModePolicy string `json:"fast_mode_policy"`
+	// ModelMapping 随鉴权快照下发，避免请求期查询数据库。
+	ModelMapping   map[string]string        `json:"model_mapping,omitempty"`
 	IPWhitelist    []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist    []string                 `json:"ip_blacklist,omitempty"`
 	User           APIKeyAuthUserSnapshot   `json:"user"`

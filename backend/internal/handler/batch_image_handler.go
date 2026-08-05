@@ -106,7 +106,7 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 				batchImageError(c, err)
 				return
 			}
-			for _, model := range models.Data {
+			for _, model := range appendBatchImageAPIKeyModelAliases(models.Data, apiKey.ModelMapping) {
 				model.ID = binding.Prefix + "/" + model.ID
 				out.Data = append(out.Data, model)
 			}
@@ -119,7 +119,28 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 		batchImageError(c, err)
 		return
 	}
+	if apiKey != nil {
+		got.Data = appendBatchImageAPIKeyModelAliases(got.Data, apiKey.ModelMapping)
+	}
 	c.JSON(http.StatusOK, got)
+}
+
+// appendBatchImageAPIKeyModelAliases 按目标模型的提供方克隆批量图片模型别名。
+func appendBatchImageAPIKeyModelAliases(models []service.BatchImagePublicModel, mapping map[string]string) []service.BatchImagePublicModel {
+	modelIDs := make([]string, 0, len(models))
+	templates := make(map[string][]service.BatchImagePublicModel)
+	for _, model := range models {
+		modelIDs = append(modelIDs, model.ID)
+		templates[model.ID] = append(templates[model.ID], model)
+	}
+	result := append([]service.BatchImagePublicModel(nil), models...)
+	for _, alias := range service.AvailableAPIKeyModelAliases(modelIDs, mapping) {
+		for _, template := range templates[mapping[alias]] {
+			template.ID = alias
+			result = append(result, template)
+		}
+	}
+	return result
 }
 
 func (h *BatchImageHandler) Items(c *gin.Context) {
