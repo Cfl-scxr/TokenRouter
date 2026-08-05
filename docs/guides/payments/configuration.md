@@ -1,6 +1,6 @@
 # 支付系统配置指南
 
-Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支付服务。
+TokenRouter 内置支付系统，支持用户自助充值、套餐购买和订阅权益发放，无需部署独立的支付服务。其他管理员手册见 [指南目录](../index.md)，工程状态与结算边界见 [支付与权益 Project Doc](../../domains/payments_and_entitlements.md)。
 
 ---
 
@@ -11,7 +11,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 - [系统设置](#系统设置)
 - [服务商配置](#服务商配置)
 - [服务商实例管理](#服务商实例管理)
-- [Webhook 配置](#webhook-配置)
+- [回调配置](#回调配置)
 - [支付流程](#支付流程)
 - [从 Sub2ApiPay 迁移](#从-sub2apipay-迁移)
 
@@ -25,15 +25,11 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | 桌面二维码扫码、移动端支付宝跳转或当面付唤起 | 直接对接支付宝开放平台；移动端默认 WAP，也可选择当面付二维码唤起支付宝 |
 | **微信官方** | Native 扫码、H5、公众号/JSAPI 支付 | 直接对接微信支付 APIv3，按终端环境自动分流 |
 | **Stripe** | 银行卡、支付宝、微信支付、Link 等 | 国际支付，支持多币种 |
+| **Airwallex（空中云汇）** | Airwallex 托管收银台支持的支付方式 | 国际支付，支持测试与生产 API、多币种和可选平台账户 |
 
 > 支付宝官方 / 微信官方与易支付可以同时作为后台服务商实例存在，但前台始终只展示 `支付宝`、`微信支付` 两个可见按钮。管理员需要分别为这两个按钮选择唯一支付来源：官方或易支付。官方渠道直接对接 API，资金直达商户账户，手续费更低；易支付通过第三方平台聚合，接入门槛更低。
 
-> **易支付服务商推荐**：以下两家均为兼容易支付协议的第三方聚合支付，按资金通道与结算方式选择：
->
-> - **国内渠道 / 人民币结算** — [ZPay](https://z-pay.cn/?uid=23808)（`https://z-pay.cn/?uid=23808`）：支付宝 / 微信官方 API 直连，手续费 **1.6%**；资金直达商家账户，**T+1 自动到账**。支持**个人用户**（无营业执照）每日 1 万元以内交易；拥有营业执照则无限额。链接含 [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) 原作者 [@touwaeriol](https://github.com/touwaeriol) 的邀请码，介意可去掉。
-> - **国际渠道 / USDT 或美元结算** — [启润支付](https://merchant.kyrenpay.com/?code=SUB2API)（`https://merchant.kyrenpay.com/?code=SUB2API`）：为 AI 项目提供低门槛国际收款通道，支持国际版微信支付与支付宝，本地货币支付、美元结算。微信 2.5%、支付宝 2.5%；多种提现方式，海外公司账户提现手续费 20 美金，USDT 提现手续费 30 美金 + 0.4% 流水，以 **USDT 或美元** 到账。无资质审核、注册即用，使用门槛最低；提现门槛略高，适合**不使用国内支付渠道、无法接受 Stripe 高达 6%+ 手续费、流水较大，且拥有美元或 USDT 渠道可接收提现资金**的用户。启润支付开户费 200 美元，通过本链接注册（含 Sub2Api 作者 [@Wei-Shaw](https://github.com/Wei-Shaw) 邀请码）可**免开户费**，介意可去掉。
->
-> 支付渠道的安全性、稳定性及合规性请自行鉴别，本项目不对任何第三方支付服务商做担保或背书。
+> 第三方支付渠道的费率、结算、准入和合规要求会变化，请以服务商当前官方条款为准。TokenRouter 不对任何第三方支付服务商做担保或背书。
 
 ---
 
@@ -161,6 +157,21 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **Secret Key** | Stripe 密钥（`sk_live_...` 或 `sk_test_...`） | 是 |
 | **Publishable Key** | Stripe 可公开密钥（`pk_live_...` 或 `pk_test_...`） | 是 |
 | **Webhook Secret** | Stripe Webhook 签名密钥（`whsec_...`） | 是 |
+| **币种** | 三位支付币种代码，例如 `CNY`、`USD` | 是 |
+
+### Airwallex（空中云汇）
+
+通过 Airwallex 托管收银台完成国际支付。测试和生产环境必须选择对应的 API 地址和凭证。
+
+| 参数 | 说明 | 必填 |
+|------|------|------|
+| **Client ID** | Airwallex API Client ID | 是 |
+| **API Key** | Airwallex API Key | 是 |
+| **Webhook Secret** | Airwallex Webhook 签名密钥 | 是 |
+| **API 地址** | 生产环境使用 `https://api.airwallex.com/api/v1`，测试环境使用 `https://api-demo.airwallex.com/api/v1` | 是 |
+| **国家代码** | 两位 ISO 国家代码，默认 `CN` | 是 |
+| **币种** | 三位支付币种代码，例如 `CNY`、`USD` | 是 |
+| **Account ID** | 平台账户或被授权账户 ID | 否 |
 
 ---
 
@@ -189,7 +200,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 
 ---
 
-## Webhook 配置
+## 回调配置
 
 支付回调是支付系统的核心环节，必须正确配置：
 
@@ -203,16 +214,24 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **微信官方** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **Airwallex** | `https://your-domain.com/api/v1/payment/webhook/airwallex` |
 
 > 将 `your-domain.com` 替换为你的实际域名。EasyPay / 支付宝 / 微信的回调地址在添加服务商时自动填入，无需手动配置。
 
-### Stripe Webhook 设置
+### Stripe 回调设置
 
 1. 登录 [Stripe Dashboard](https://dashboard.stripe.com/)
 2. 进入 **Developers → Webhooks**
 3. 添加端点，填写回调地址
 4. 订阅事件：`payment_intent.succeeded`、`payment_intent.payment_failed`
 5. 将生成的 Webhook Secret（`whsec_...`）填入服务商配置
+
+### Airwallex 回调设置
+
+1. 在 Airwallex 管理后台创建 Webhook，并填写上表中的回调地址。
+2. 订阅支付成功和支付失败相关事件。
+3. 将 Webhook 签名密钥填入对应的 TokenRouter 服务商实例。
+4. 先使用 Demo API 和测试凭证完成下单、回调与补单验证，再切换生产 API。
 
 ### 注意事项
 
@@ -239,7 +258,8 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
   ├─ EasyPay    → 扫码 / H5 跳转
   ├─ 支付宝官方  → 桌面扫码单（当面付优先，电脑网站支付回退）/ 移动端 WAP 或当面付唤起 + 动态二维码备用页
   ├─ 微信官方    → 桌面 Native 扫码 / 非微信 H5 / 微信内 JSAPI
-  └─ Stripe     → Payment Element（银行卡/支付宝/微信等）
+  ├─ Stripe     → Payment Element（银行卡/支付宝/微信等）
+  └─ Airwallex  → 托管收银台
        │
        ▼
   支付回调验签 → 订单 PAID
@@ -278,17 +298,17 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 
 | 对比项 | Sub2ApiPay | 内置支付 |
 |--------|-----------|---------|
-| 部署方式 | 独立服务（Next.js + PostgreSQL） | 内置于 Sub2API，无需额外部署 |
-| 支付方式 | EasyPay、支付宝、微信、Stripe | 相同 |
-| 配置方式 | 环境变量 + 独立管理后台 | Sub2API 管理后台内统一配置 |
+| 部署方式 | 独立服务（Next.js + PostgreSQL） | 内置于 TokenRouter，无需额外部署 |
+| 支付方式 | EasyPay、支付宝、微信、Stripe | EasyPay、支付宝、微信、Stripe、Airwallex |
+| 配置方式 | 环境变量 + 独立管理后台 | TokenRouter 管理后台内统一配置 |
 | 充值对接 | 通过 Admin API 回调 | 内部直接处理，更可靠 |
-| 订阅套餐 | 支持 | 暂不支持（计划中） |
-| 订单管理 | 独立管理界面 | 集成在 Sub2API 管理后台 |
+| 订阅套餐 | 支持 | 支持内置套餐与订阅权益 |
+| 订单管理 | 独立管理界面 | 集成在 TokenRouter 管理后台 |
 
 ### 迁移步骤
 
-1. 在 Sub2API 管理后台启用支付并配置服务商（使用相同的支付凭证）
-2. 更新 Webhook 回调地址为 Sub2API 的回调地址
+1. 在 TokenRouter 管理后台启用支付并配置服务商（使用相同的支付凭证）
+2. 更新 Webhook 回调地址为 TokenRouter 的回调地址
 3. 确认新订单通过内置支付正常处理
 4. 停用 Sub2ApiPay 服务
 

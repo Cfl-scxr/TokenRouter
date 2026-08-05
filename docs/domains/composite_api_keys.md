@@ -10,7 +10,7 @@
 - [请求选组](#请求选组)：修改前缀解析和请求改写时读取。
 - [支持入口](#支持入口)：新增协议入口时核对。
 - [错误](#错误)：保持协议错误形状时读取。
-- [Realtime 限制](#realtime-限制)：修改长连接能力时读取。
+- [实时接口限制](#实时接口限制)：修改长连接能力时读取。
 
 ## 创建与更新
 
@@ -78,7 +78,7 @@ POST /v1beta/models/Gemini/gemini-2.5-pro:generateContent
 - `COMPOSITE_KEY_TOO_MANY_GROUPS`
 - `COMPOSITE_KEY_ENDPOINT_UNSUPPORTED`
 
-## Realtime 限制
+## 实时接口限制
 
 复合 Key 不支持 `/v1/live`、Codex Realtime、Responses WebSocket 和 Live sideband。这些入口可能在同一连接中切换模型，服务会返回 `COMPOSITE_KEY_ENDPOINT_UNSUPPORTED`，不会选择任意默认分组。
 

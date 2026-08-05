@@ -90,7 +90,7 @@ Go 模块路径为 `github.com/TokenFlux/TokenRouter`。后端以 `backend/go.mo
 - `embed` 构建标签：把 `backend/internal/web/dist/` 嵌入 Go 二进制，由同一 HTTP server 提供 SPA、注入公开设置并应用 CSP nonce。
 - 非 `embed` 构建：Go 服务只提供 API，前端需要由 Vite 开发服务器或外部静态站点单独提供。
 
-官方运行资产覆盖发布镜像三服务 Compose、仅应用容器配合外部 PostgreSQL/Redis、源码构建和 Apple container 本地栈。具体步骤以库外 [中文部署指南](DEPLOY_GUIDE.md)、[Docker 镜像说明](DOCKER.md) 和 [Apple container 指南](APPLE_CONTAINER.md) 为准；工程生命周期约束由[运维文档目录](operations/index.md)路由。
+官方运行资产覆盖发布镜像三服务 Compose、仅应用容器配合外部 PostgreSQL/Redis、源码构建和 Apple container 本地栈。具体步骤以库外 [中文部署指南](guides/deployment/index.md)、[Docker 镜像说明](../deploy/DOCKER.md) 和 [Apple container 指南](guides/deployment/apple_container.md) 为准；工程生命周期约束由[运维文档目录](operations/index.md)路由。
 
 ## 事实来源
 

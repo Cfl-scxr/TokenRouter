@@ -39,7 +39,7 @@ Claude Code 可把 base URL 指向部署地址的 `/antigravity`，认证值仍�
 
 Anthropic Messages 经过 Antigravity request transformer 生成上游 Gemini/内部请求形状，响应和 SSE 再恢复为 Anthropic 协议。工具定义、tool choice、thinking、缓存断点、图片输入、token 用量和停止原因都需要双向转换；schema cleaner 会移除上游不接受的 JSON Schema 表达。
 
-通用 OpenAI Chat Completions 和 Responses 在选到原生 Antigravity OAuth 账号时走 compatibility adapter：
+通用 OpenAI Chat Completions 和 Responses 在选到原生 Antigravity OAuth 账号时走兼容适配器：
 
 ```text
 Chat Completions / Responses

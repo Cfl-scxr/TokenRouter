@@ -93,6 +93,6 @@ Vite 在构建/dev server 启动时读取 `VITE_API_BASE_URL`、`VITE_WS_BASE_UR
 - 明确环境变量名称、YAML 点分键和优先级；新增兼容旧键时规定弃用与新键优先条件。
 - 明确是否热生效、是否多实例一致、缓存如何失效以及失败时 fail-open 还是 fail-close。
 - secret 使用 write-only/掩码语义并覆盖日志脱敏；不能暴露到 `VITE_*` 或普通设置响应。
-- 更新 config/env reachability、validation、setup round-trip、SettingService/handler 和部署 smoke tests。
+- 更新配置和环境变量可达性、校验、setup 往返、SettingService/handler 以及部署冒烟测试。
 
 相关文档：[HTTP 接口边界](http_api.md)、[系统架构](../architecture/system_architecture.md)、[部署与迁移](../operations/index.md)、[接口目录](index.md)。

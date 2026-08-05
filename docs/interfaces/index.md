@@ -12,5 +12,5 @@
 - [配置边界](configuration.md)：默认值、YAML、环境变量、数据库运行时设置和首次初始化之间的边界。读取时机：新增配置项、修改加载优先级、设置页面或部署变量时读取。
 - [Antigravity 上游](antigravity_upstream.md)：Antigravity 专用端点、混合调度及模型协议边界。读取时机：修改 Antigravity 账号、OAuth、Claude/Gemini 转换或调度隔离时读取。
 - [Grok / xAI 上游](grok_upstream.md)：Grok OAuth/API Key、媒体资格与 OpenAI 兼容转发契约。读取时机：修改 Grok 登录、聊天、图片、视频、计费探测或模型配置时读取。
-- [Qoder Native Upstream](qoder_upstream.md)：Qoder 站点、模型别名、Thinking、上下文、计费和刷新契约。读取时机：修改 Qoder 账号、模型能力、请求转换、定价或运维探测时读取。
+- [Qoder 原生上游](qoder_upstream.md)：Qoder 站点、模型别名、思考能力、上下文、计费和刷新契约。读取时机：修改 Qoder 账号、模型能力、请求转换、定价或运维探测时读取。
 - [异步图片任务](async_image_tasks.md)：长耗时图片请求的提交、轮询、存储和计费接口。读取时机：修改异步图片端点、对象存储、任务 TTL、幂等或结果读取时读取。

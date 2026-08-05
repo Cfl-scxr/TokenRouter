@@ -1,32 +1,32 @@
-# Qoder Native Upstream
+# Qoder 原生上游
 
-TokenRouter supports Qoder native upstream accounts through the Qoder COSY gateway path. Public request-side aliases map to Qoder route keys, and raw route keys remain valid direct request models for compatibility and operations.
+TokenRouter 通过 Qoder COSY 网关路径支持 Qoder 原生上游账号。面向请求公开的别名会映射到 Qoder 路由键，原始路由键仍可作为直接请求模型，以满足兼容和运维需要。
 
-This document owns the Qoder account, site, model capability, request adaptation, pricing, quota, and failure boundaries. It does not define TokenRouter's shared scheduling or ledger semantics, and it does not promise support for Qoder enterprise login variants that are absent from the implementation.
+本文拥有 Qoder 账号、站点、模型能力、请求适配、定价、配额和失败边界。TokenRouter 的共用调度与账本语义不在本文定义范围内；实现中尚不存在的 Qoder 企业登录变体也不在支持承诺内。
 
-## Navigation
+## 章节导航
 
-- [Account Types](#account-types): read when changing credential import, OAuth, refresh, or site selection.
-- [Model Aliases and Mapping](#model-aliases-and-mapping): read when changing model catalogs, route keys, or restrictions.
-- [Site Thinking Controls](#site-thinking-controls): read when changing protocol-native reasoning controls.
-- [Context Windows](#context-windows): read when changing per-site context capabilities or request payloads.
-- [Billing Scope](#billing-scope): read when changing Qoder price lookup or zero-cost behavior.
-- [Upstream Account Usage](#upstream-account-usage): read when changing quota probes or scheduling cooldowns.
-- [Operations](#operations): read when changing failover, error classification, or import/export.
+- [账号类型](#账号类型)：修改凭据导入、OAuth、刷新或站点选择时读取。
+- [模型别名与映射](#模型别名与映射)：修改模型目录、路由键或限制时读取。
+- [站点思考控制](#站点思考控制)：修改协议原生推理控制时读取。
+- [上下文窗口](#上下文窗口)：修改各站点上下文能力或请求载荷时读取。
+- [计费范围](#计费范围)：修改 Qoder 价格查找或零费用行为时读取。
+- [上游账号用量](#上游账号用量)：修改配额探测或调度冷却时读取。
+- [运维](#运维)：修改故障转移、错误分类或导入导出时读取。
 
-## Account Types
+## 账号类型
 
-- `cosy` accounts can use a PAT bootstrap or device OAuth credentials on either the international (`global`) or China (`cn`) site.
-- `credentials.site` selects the site. Missing values remain compatible with existing accounts and resolve to `global`.
-- `credentials.refresh_mode` records the token source. Missing values resolve to `cosy`; China standard OAuth uses `qodercn20`.
-- Manual import accepts either `pat` by itself, or an existing COSY token set.
-- Existing COSY token credentials include `security_oauth_token`, `refresh_token`, `machine_id`, `machine_token`, `machine_type`, `uid` or `aid`, and optional organization metadata.
-- International OAuth and manual COSY credentials refresh through the international Center flow. China standard OAuth refreshes its OpenAPI token and then completes `userinfo -> status`; China manual COSY credentials use the Gateway legacy refresh path. PAT sessions are rebuilt from the original PAT.
-- The China integration covers the standard QODER_PAT and QoderCN20 login. Enterprise dedicated-domain `PERSONAL_TOKEN`, organization selection, AK/SK, and region discovery are not supported.
+- `cosy` 账号可以在国际站（`global`）或中国站（`cn`）使用 PAT 引导或设备 OAuth 凭据。
+- `credentials.site` 选择站点。缺失时为兼容已有账号而解析为 `global`。
+- `credentials.refresh_mode` 记录令牌来源。缺失时解析为 `cosy`；中国站标准 OAuth 使用 `qodercn20`。
+- 手工导入可以只提供 `pat`，也可以提供一组现有 COSY 令牌。
+- 现有 COSY 令牌凭据包括 `security_oauth_token`、`refresh_token`、`machine_id`、`machine_token`、`machine_type`、`uid` 或 `aid`，以及可选的组织元数据。
+- 国际站 OAuth 和手工 COSY 凭据通过国际站 Center 流程刷新。中国站标准 OAuth 先刷新 OpenAPI 令牌，再完成 `userinfo -> status`；中国站手工 COSY 凭据使用 Gateway 旧刷新路径。PAT 会话根据原始 PAT 重建。
+- 中国站集成覆盖标准 QODER_PAT 和 QoderCN20 登录。不支持企业专属域名 `PERSONAL_TOKEN`、组织选择、AK/SK 和区域发现。
 
-## Model Aliases and Mapping
+## 模型别名与映射
 
-International public aliases are:
+国际站公开别名：
 
 - `claude-opus-4-6`
 - `auto`
@@ -43,7 +43,7 @@ International public aliases are:
 - `deepseek-v4-flash`
 - `minimax-m3`
 
-China public aliases are:
+中国站公开别名：
 
 - `auto`
 - `qwen3.8-max`
@@ -56,98 +56,98 @@ China public aliases are:
 - `kimi-k2.7-code`
 - `minimax-m2.7`
 
-Account model lists and default alias resolution follow `credentials.site`. Lists without account context use a stable union with international models first. A mixed-site group exposes the union supported by its schedulable accounts, while site-specific aliases and route keys are not scheduled to an incompatible account. Explicit account mapping remains the override mechanism, and unknown raw route keys continue to pass through.
+账号模型列表和默认别名解析遵循 `credentials.site`。没有账号上下文的列表使用稳定并集，并把国际站模型排在前面。混合站点分组公开其可调度账号支持的并集，但站点专属别名和路由键不会调度给不兼容账号。显式账号映射仍是覆盖机制，未知原始路由键继续透传。
 
-On both sites, `qwen3.8-max` maps to the formal `qmodel_38max` route. The removed `qwen3.8-max-preview` alias and `qmodel_preview` route are not silently redirected. Accounts that still need the old request name must configure an explicit `model_mapping`, for example `qwen3.8-max-preview -> qmodel_38max`.
+两个站点的 `qwen3.8-max` 都映射到正式路由 `qmodel_38max`。已移除的 `qwen3.8-max-preview` 别名和 `qmodel_preview` 路由不会被静默重定向。仍需使用旧请求名称的账号必须配置显式 `model_mapping`，例如 `qwen3.8-max-preview -> qmodel_38max`。
 
-Qoder account `model_mapping` follows the same rewrite-rule semantics as other platforms:
+Qoder 账号的 `model_mapping` 与其他平台使用相同的重写规则：
 
-- key: model name accepted at that routing layer;
-- value: final Qoder route/upstream model name;
-- the mapping itself does not restrict the request model space.
+- 键：该路由层接受的模型名称。
+- 值：最终 Qoder 路由或上游模型名称。
+- 映射本身不会限制可请求模型范围。
 
-Use `model_whitelist` when an account must be limited to specific final route/upstream models. The gateway applies mapping first and then checks the whitelist. If no whitelist is configured, the account remains unrestricted. Channel-level mapping is also a one-step rewrite; do not configure alias chains such as `custom -> public alias -> route key`. Configure `model -> upstream route key` directly.
+需要把账号限制到特定最终路由或上游模型时，应使用 `model_whitelist`。网关先应用映射，再检查白名单；未配置白名单的账号不受限制。渠道级映射同样只执行一步重写，不要配置 `custom -> 公共别名 -> 路由键` 这类别名链，应直接配置 `模型 -> 上游路由键`。
 
-## Site Thinking Controls
+## 站点思考控制
 
-The site capability snapshots were verified against Qoder international 1.21.2 and Qoder CN 1.10.0. These versions are propagated through the OpenAPI User-Agent, `Cosy-Version`, the signed `cosyVersion` payload, and inference `business.version`.
+站点能力快照已基于 Qoder 国际站 1.21.2 和 Qoder 中国站 1.10.0 验证。这些版本会通过 OpenAPI User-Agent、`Cosy-Version`、签名载荷中的 `cosyVersion` 和推理请求中的 `business.version` 传递。
 
-Capability lookup runs after account-level model mapping and public alias resolution, so a custom request model mapped directly to a known route key receives the same handling. Shared international and China route keys use the same Thinking capabilities. Unknown route keys and international-only models without a verified capability are not modified.
+能力查找发生在账号级模型映射和公共别名解析之后，因此直接映射到已知路由键的自定义请求模型会获得相同处理。国际站和中国站共用的路由键使用相同思考能力。未知路由键以及未经验证的国际站专属模型不会被修改。
 
-| Site | Public model | Route key | Thinking capability | Downstream mapping |
+| 站点 | 公开模型 | 路由键 | 思考能力 | 下游映射 |
 | --- | --- | --- | --- | --- |
-| International | `qwen3.8-max` | `qmodel_38max` | Toggle only | Any valid effort, enabled/adaptive switch, or positive budget enables Thinking; no level is sent |
-| International | `qwen3.7-max` | `qmodel_latest` | Toggle only | Same as Qwen3.8-Max |
-| International | `qwen3.7-plus` | `qmodel` | Toggle only | Same as Qwen3.8-Max |
-| International | `deepseek-v4-pro` | `dmodel` | High / Max | Minimal, Low, and Medium become High; High, Very High, and Max become Max; any positive budget becomes Max |
-| International | `deepseek-v4-flash` | `dfmodel` | High / Max | Same as DeepSeek-V4-Pro |
-| International | `glm-5.2` | `gm51model` | High / Max | Same as DeepSeek-V4-Pro |
-| China | `auto` | `auto` | No user-editable control | No override |
-| China | `qwen3.8-max` | `qmodel_38max` | Toggle only | Same as international Qwen3.8-Max |
-| China | `qwen3.7-max` | `qmodel_latest` | Toggle only | Same as Qwen3.8-Max |
-| China | `qwen3.7-plus` | `qmodel` | Toggle only | Same as Qwen3.8-Max |
-| China | `qwen3.6-flash` | `q36fmodel` | No user-editable control | No override |
-| China | `deepseek-v4-pro` | `dmodel` | High / Max | Minimal, Low, and Medium become High; High, Very High, and Max become Max; any positive budget becomes Max |
-| China | `deepseek-v4-flash` | `dfmodel` | High / Max | Same as DeepSeek-V4-Pro |
-| China | `glm-5.2` | `gm51model` | High / Max | Same as DeepSeek-V4-Pro |
-| China | `kimi-k2.7-code` | `kmodel` | No user-editable control | No override |
-| China | `minimax-m2.7` | `mmodel` | No user-editable control | No override |
+| 国际站 | `qwen3.8-max` | `qmodel_38max` | 仅开关 | 任意有效强度、启用/自适应开关或正数预算都会开启思考，不发送级别 |
+| 国际站 | `qwen3.7-max` | `qmodel_latest` | 仅开关 | 与 Qwen3.8-Max 相同 |
+| 国际站 | `qwen3.7-plus` | `qmodel` | 仅开关 | 与 Qwen3.8-Max 相同 |
+| 国际站 | `deepseek-v4-pro` | `dmodel` | High / Max | Minimal、Low、Medium 映射为 High；High、Very High、Max 映射为 Max；任何正数预算映射为 Max |
+| 国际站 | `deepseek-v4-flash` | `dfmodel` | High / Max | 与 DeepSeek-V4-Pro 相同 |
+| 国际站 | `glm-5.2` | `gm51model` | High / Max | 与 DeepSeek-V4-Pro 相同 |
+| 中国站 | `auto` | `auto` | 用户不可编辑 | 不覆盖 |
+| 中国站 | `qwen3.8-max` | `qmodel_38max` | 仅开关 | 与国际站 Qwen3.8-Max 相同 |
+| 中国站 | `qwen3.7-max` | `qmodel_latest` | 仅开关 | 与 Qwen3.8-Max 相同 |
+| 中国站 | `qwen3.7-plus` | `qmodel` | 仅开关 | 与 Qwen3.8-Max 相同 |
+| 中国站 | `qwen3.6-flash` | `q36fmodel` | 用户不可编辑 | 不覆盖 |
+| 中国站 | `deepseek-v4-pro` | `dmodel` | High / Max | Minimal、Low、Medium 映射为 High；High、Very High、Max 映射为 Max；任何正数预算映射为 Max |
+| 中国站 | `deepseek-v4-flash` | `dfmodel` | High / Max | 与 DeepSeek-V4-Pro 相同 |
+| 中国站 | `glm-5.2` | `gm51model` | High / Max | 与 DeepSeek-V4-Pro 相同 |
+| 中国站 | `kimi-k2.7-code` | `kmodel` | 用户不可编辑 | 不覆盖 |
+| 中国站 | `minimax-m2.7` | `mmodel` | 用户不可编辑 | 不覆盖 |
 
-The gateway reads the protocol-native controls from each inbound endpoint:
+网关从各入站协议读取原生控制字段：
 
-- Chat Completions: `reasoning_effort`, with `reasoning.effort` accepted as a compatibility fallback.
-- Responses: `reasoning.effort`, with `reasoning_effort` accepted as a compatibility fallback.
-- Anthropic Messages: `output_config.effort`, `thinking.type`, and `thinking.budget_tokens`.
+- Chat Completions：读取 `reasoning_effort`，兼容回退到 `reasoning.effort`。
+- Responses：读取 `reasoning.effort`，兼容回退到 `reasoning_effort`。
+- Anthropic Messages：读取 `output_config.effort`、`thinking.type` 和 `thinking.budget_tokens`。
 
-Explicit `thinking.type=disabled` or effort `none` always wins. Otherwise an explicit valid effort wins over a positive budget, followed by `enabled` / `adaptive`; missing or invalid controls remain disabled. Toggle-capable models use Qoder's `reasoning_effort=none` override when disabled so the request cannot fall back to an upstream default. This preserves TokenRouter's explicit-control contract even though Qoder marks Qwen3.8-Max Thinking as enabled by default. Unknown effort strings are ignored instead of rejecting the request.
+显式 `thinking.type=disabled` 或强度 `none` 始终优先。否则，显式有效强度优先于正数预算，其次是 `enabled` 或 `adaptive`；字段缺失或无效时保持关闭。可切换模型在关闭时使用 Qoder 的 `reasoning_effort=none` 覆盖，避免请求回退到上游默认值。虽然 Qoder 把 Qwen3.8-Max 的思考标记为默认开启，这一规则仍保持 TokenRouter 的显式控制契约。未知强度字符串会被忽略，不会拒绝请求。
 
-## Context Windows
+## 上下文窗口
 
-Context lookup runs after account-level model mapping and public alias resolution. Each request therefore selects the highest context verified for the final route and the selected account's site. A failover attempt that selects an account from another site recalculates the capability before rebuilding the Qoder payload.
+上下文查找发生在账号级模型映射和公共别名解析之后。每次请求都根据最终路由和已选账号站点选择经验证的最大上下文。故障转移选择另一站点账号时，会在重新构建 Qoder 载荷前重新计算能力。
 
-| Site | Maximum input tokens | Route keys |
+| 站点 | 最大输入 Token | 路由键 |
 | --- | ---: | --- |
-| International | 1,000,000 | `ultimate`, `performance`, `qmodel_38max`, `qmodel_latest`, `qmodel`, `kmodel_latest`, `gm51model`, `dmodel`, `dfmodel`, `mmodel` |
-| International | 256,000 | `kmodel` |
-| International | 180,000 | `auto`, `efficient`, `lite` |
-| China | 1,000,000 | `qmodel_38max`, `qmodel_latest`, `qmodel`, `q36fmodel`, `dmodel`, `dfmodel`, `gm51model` |
-| China | 256,000 | `kmodel` |
-| China | 200,000 | `mmodel` |
-| China | 180,000 | `auto` |
+| 国际站 | 1,000,000 | `ultimate`、`performance`、`qmodel_38max`、`qmodel_latest`、`qmodel`、`kmodel_latest`、`gm51model`、`dmodel`、`dfmodel`、`mmodel` |
+| 国际站 | 256,000 | `kmodel` |
+| 国际站 | 180,000 | `auto`、`efficient`、`lite` |
+| 中国站 | 1,000,000 | `qmodel_38max`、`qmodel_latest`、`qmodel`、`q36fmodel`、`dmodel`、`dfmodel`、`gm51model` |
+| 中国站 | 256,000 | `kmodel` |
+| 中国站 | 200,000 | `mmodel` |
+| 中国站 | 180,000 | `auto` |
 
-Routes with an official runtime `contextConfig` send the selected maximum in `model_config.max_input_tokens`, `chat_context.extra.ideModelConfigOverride.max_input_tokens`, and `parameters.context_length`. Routes with a fixed maximum send only `model_config.max_input_tokens`. Unknown, hidden, and removed raw route keys remain pass-through models, use a conservative 200,000-token fallback, and do not receive a fabricated runtime context selection.
+存在官方运行时 `contextConfig` 的路由，会把所选上限写入 `model_config.max_input_tokens`、`chat_context.extra.ideModelConfigOverride.max_input_tokens` 和 `parameters.context_length`。最大值固定的路由只写入 `model_config.max_input_tokens`。未知、隐藏或已移除的原始路由键继续透传，使用保守的 200,000 Token 回退值，并且不会收到虚构的运行时上下文选择。
 
-TokenRouter does not read a client-declared context limit. Chat Completions, Responses, and Anthropic Messages output-token fields continue to control output only. Clients retain their own model catalogs, compaction thresholds, and truncation behavior; `/v1/models` and `/models` do not expose non-standard context metadata.
+TokenRouter 不读取客户端声明的上下文上限。Chat Completions、Responses 和 Anthropic Messages 的输出 Token 字段仍只控制输出。客户端继续拥有自己的模型目录、压缩阈值和截断行为；`/v1/models` 和 `/models` 不公开非标准上下文元数据。
 
-## Billing Scope
+## 计费范围
 
-Qoder built-in public aliases and their route keys are manual-pricing-only. They do not fall back to LiteLLM, Claude Opus, or any model-file price when no effective channel price is configured.
+Qoder 内置公开别名及其路由键只能使用手工定价。没有配置有效渠道价格时，不会回退到 LiteLLM、Claude Opus 或模型文件价格。
 
-- Effective channel price means at least one price pointer or valid interval is configured.
-- `nil` price fields mean unconfigured.
-- A pointer value of `0` means explicitly free and is treated as an effective manual price.
-- Empty Qoder channel pricing rows are treated as unconfigured for billing and do not mask an alias-level manual price.
-- Non-Qoder requested model names, such as a custom `gpt-5.4` entry mapped to a Qoder route key, continue to use the normal TokenRouter requested-model pricing when no effective Qoder manual price is configured, even if the channel's billing model source is `upstream`.
+- 有效渠道价格指至少配置了一个价格指针或有效区间。
+- `nil` 价格字段表示未配置。
+- 指针值为 `0` 表示显式免费，属于有效手工价格。
+- 空 Qoder 渠道定价行在计费时视为未配置，不会遮蔽别名级手工价格。
+- 非 Qoder 请求模型名称，例如映射到 Qoder 路由键的自定义 `gpt-5.4`，在没有有效 Qoder 手工价格时仍使用普通 TokenRouter 请求模型定价，即使渠道计费模型来源为 `upstream`。
 
-Pricing precedence for Qoder billing is:
+Qoder 计费定价优先级：
 
-1. requested public/custom alias manual channel price;
-2. channel-mapped route key manual channel price;
-3. upstream model manual channel price;
-4. unpriced / zero-cost usage record.
+1. 请求的公共或自定义别名的手工渠道价格。
+2. 渠道映射后路由键的手工渠道价格。
+3. 上游模型的手工渠道价格。
+4. 未定价或零费用使用记录。
 
-Unpriced Qoder models are shown as unknown/unpriced in marketplace and admin pricing surfaces. Successful zero-cost Qoder requests still write full usage logs and continue through the normal subscription/balance billing pipeline with a zero billable amount. Qoder remains part of user × platform USD quota accounting when a positive balance-billed amount exists.
+未定价的 Qoder 模型在市场和管理定价界面显示为未知或未定价。成功的零费用 Qoder 请求仍会写入完整使用记录，并以零计费金额走完正常订阅和余额结算流程。存在正数余额计费金额时，Qoder 仍计入用户与平台维度的美元配额。
 
-## Upstream Account Usage
+## 上游账号用量
 
-Qoder has its own upstream monthly credits quota. TokenRouter treats this as account usage/capacity information only; it is separate from TokenRouter user balance, subscription, and user × platform USD quotas.
+Qoder 有独立的上游月度 Credits 配额。TokenRouter 只把它作为账号用量和容量信息，它与 TokenRouter 用户余额、订阅以及用户与平台维度的美元配额相互独立。
 
-The account usage view queries the selected site's COSY-signed Gateway quota endpoint and stores a last-known snapshot in `account.extra.qoder_quota_snapshot`. China requests include cached `orgId` and an optional `quota_key` credential when present. If the live query fails, the admin UI can show the cached snapshot together with a degraded usage error. The complete upstream monthly credit balance is the sum of `userQuota`, `addOnQuota`, and `orgResourcePackage` / `sharedQuota`, matching qodercli's usage view. For non-personal zero-quota accounts, `isQuotaExceeded=true` or a depleted positive combined quota applies the normal account `rate_limited_until` scheduling signal until Qoder's `expiresAt`; remaining add-on or organization credits prevent or clear a stale quota lock. The observed `personal_standard` shape with `total=0`, `remaining=0`, and an extremely distant `expiresAt` is display-only until real request errors confirm it. Request-time signals such as code `115`, `agentLimitResetTime`, or HTTP 429 still use the normal account rate-limit cooldown path.
+账号用量界面会查询所选站点经过 COSY 签名的 Gateway 配额端点，并把最近成功快照保存到 `account.extra.qoder_quota_snapshot`。中国站请求会包含缓存的 `orgId`，凭据存在时还会包含可选 `quota_key`。实时查询失败时，管理界面可以同时显示缓存快照和降级用量错误。完整上游月度 Credit 余额是 `userQuota`、`addOnQuota` 与 `orgResourcePackage` 或 `sharedQuota` 之和，与 qodercli 用量视图一致。对于非个人零配额账号，`isQuotaExceeded=true` 或已耗尽的正数合计配额会把正常账号 `rate_limited_until` 调度信号设置到 Qoder 的 `expiresAt`；仍有附加或组织 Credit 时会阻止或清除过期配额锁。观测到的 `personal_standard` 结构如果 `total=0`、`remaining=0` 且 `expiresAt` 极远，只用于展示，直到真实请求错误确认限制。请求时的错误码 `115`、`agentLimitResetTime` 或 HTTP 429 仍走正常账号限流冷却路径。
 
-## Operations
+## 运维
 
-Qoder participates in scheduler snapshots, error passthrough rules, failover, and admin user platform usage views under the `qoder` platform key. For retryable upstream failures (Qoder entitlement denial code `112`, agent limit / 429 / 5xx), the gateway can fail over to another account before any stream chunk has been written; after streaming starts, it returns a stream-aware error instead of switching accounts. Code `112` is treated as model/account entitlement denial, not an auth-token failure, so it does not trigger token refresh.
+Qoder 以 `qoder` 平台键参与调度快照、错误透传、故障转移和管理端用户平台用量视图。对于可重试的上游故障，例如 Qoder 权益拒绝错误码 `112`、Agent 限制、429 或 5xx，网关可以在任何流式分块写出前切换到另一账号；流式输出开始后只返回符合流语义的错误，不再切换账号。错误码 `112` 被视为模型或账号权益拒绝，而不是认证令牌故障，因此不会触发令牌刷新。
 
-Admin account data export/import preserves `qoder` / `cosy` accounts and their credentials for backup migration.
+管理端账号数据导出和导入会保留用于备份迁移的 `qoder`、`cosy` 账号及其凭据。
 
-Related documents: [Gateway Request Lifecycle](../architecture/gateway_request_lifecycle.md), [Routing and Billing](../domains/routing_and_billing.md), [HTTP API Boundaries](http_api.md), and [Interfaces Index](index.md).
+相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)和[接口目录](index.md)。

@@ -108,4 +108,4 @@ Webhook 路由不依赖用户 JWT，因此提供商验签、订单绑定和金�
 - 取消、超时和退款不能覆盖并发发生的真实付款，所有不确定状态优先查提供商而不是猜测。
 - 权益变更后同步失效 Billing/API Key 认证缓存，并为状态、金额和操作者写审计记录。
 
-相关资料：[支付配置与运营指南](../PAYMENT_CN.md)、[外部支付集成 API](../ADMIN_PAYMENT_INTEGRATION_API.md)。相关 Project Doc：[路由与结算](routing_and_billing.md)、[身份与租户](identity_and_tenancy.md)、[领域目录](index.md)。
+相关资料：[支付配置与运营指南](../guides/payments/configuration.md)、[外部支付集成 API](../guides/payments/admin_integration_api.md)。相关 Project Doc：[路由与结算](routing_and_billing.md)、[身份与租户](identity_and_tenancy.md)、[领域目录](index.md)。

@@ -40,7 +40,7 @@
 
 - Usage record worker 使用有界队列；默认拥塞策略可同步降级，也支持 sample/drop。队列深度、成功、失败、丢弃和同步降级计数必须进入运行时诊断。
 - Ops system log sink 只索引选定等级/组件，按批写 PostgreSQL；队列满时不阻塞主请求，而是增加 dropped counter。停止时会尽力排空。
-- Ops metrics collector、hourly/daily aggregation、alert evaluator、scheduled report 和 cleanup 各自维护周期、开关、leader lock 与 job heartbeat。
+- 运维指标采集器、小时/日聚合器、告警评估器、计划报告和清理任务各自维护周期、开关、leader lock 与 job heartbeat。
 - Usage cleanup 任务持久化为 pending/running/succeeded/failed/canceled，分批删除；进程中断后 stale running 任务可以重新抢占继续执行。
 - Audit、data-sharing capture、scheduler snapshot outbox、幂等记录和批量图片清理有各自 worker。不能用某一 worker 健康推断整个后台体系健康。
 

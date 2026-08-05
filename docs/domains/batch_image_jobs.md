@@ -1,28 +1,28 @@
-# Batch Image Jobs
+# 批量图片作业
 
-TokenRouter provides asynchronous Gemini image batch generation through a unified API surface backed by Redis workers, PostgreSQL state, and provider-specific batch backends.
+TokenRouter 通过统一 API 提供异步 Gemini 批量图片生成，底层由 Redis worker、PostgreSQL 状态和提供商专用批处理后端共同实现。
 
-This document covers the public resource shape, persistent job lifecycle, queue coordination, billing holds, provider execution, cleanup, security boundaries, configuration, and verification. It does not define production prices, Google Cloud IAM policy for a particular deployment, or ordinary synchronous image generation.
+本文覆盖公共资源形状、持久化作业生命周期、队列协调、计费预留、提供商执行、清理、安全边界、配置和验证。不定义生产价格、特定部署的 Google Cloud IAM 策略或普通同步图片生成。
 
-Supported providers:
+支持的提供商：
 
 - `gemini_api`
 - `vertex`
 
-API users do not see Gemini file names, Vertex job names, GCS paths, signed URLs, API keys, or service account material. Downloads are proxied through TokenRouter in the current implementation.
+API 用户不会看到 Gemini 文件名、Vertex 作业名、GCS 路径、签名 URL、API Key 或服务账号材料。当前实现通过 TokenRouter 代理下载。
 
-## Navigation
+## 章节导航
 
-- [API Routes](#api-routes) defines the owned public resources and request limits.
-- [Lifecycle](#lifecycle) describes persisted state and public status projection.
-- [Redis](#redis) describes queue coordination and recovery boundaries.
-- [Billing](#billing) describes reserve, capture, release, and settlement idempotency.
-- [Cleanup](#cleanup) describes input/output retention and safe deletion.
-- [Provider Notes](#provider-notes) describes the supported upstream credential shapes.
-- [Config](#config) and [Operations Checklist](#operations-checklist) cover runtime enablement.
-- [Security Checklist](#security-checklist) and [Test Commands](#test-commands) cover change verification.
+- [API 路由](#api-路由)：说明公共资源和请求限制。
+- [生命周期](#生命周期)：说明持久化状态和公共状态投影。
+- [Redis](#redis)：说明队列协调与恢复边界。
+- [计费](#计费)：说明预留、捕获、释放和结算幂等。
+- [清理](#清理)：说明输入输出留存与安全删除。
+- [提供商说明](#提供商说明)：说明受支持的上游凭据形状。
+- [配置](#配置)和[运维检查清单](#运维检查清单)：说明运行时启用条件。
+- [安全检查清单](#安全检查清单)和[测试命令](#测试命令)：说明变更验证要求。
 
-## API Routes
+## API 路由
 
 ```text
 POST   /v1/images/batches
@@ -34,7 +34,7 @@ POST   /v1/images/batches/{id}/cancel
 DELETE /v1/images/batches/{id}/outputs
 ```
 
-Submit request:
+提交请求示例：
 
 ```json
 {
@@ -43,14 +43,14 @@ Submit request:
   "items": [
     {
       "custom_id": "cover_001",
-      "prompt": "A clean product hero image...",
+      "prompt": "干净的产品主视觉图片",
       "output_count": 1,
       "reference_images": [
         {
           "id": "product-front",
           "type": "subject",
           "mime_type": "image/png",
-          "data": "<base64 image bytes without a data URL prefix>"
+          "data": "<不带 data URL 前缀的 Base64 图片字节>"
         },
         {
           "id": "style",
@@ -66,20 +66,20 @@ Submit request:
 }
 ```
 
-`reference_images` is optional per item. Inline `data` is a base64 string decoded by the backend; `file_uri` is reserved for internal Google Cloud Storage references and must be a `gs://` URI. Each reference image must use one of `image/png`, `image/jpeg`, or `image/webp`. Current model limits are:
+每个条目的 `reference_images` 可选。内联 `data` 是由后端解码的 Base64 字符串；`file_uri` 保留给内部 Google Cloud Storage 引用，且必须是 `gs://` URI。每张参考图片只能使用 `image/png`、`image/jpeg` 或 `image/webp`。当前模型限制：
 
-- `gemini-2.5-flash-image` and other Flash Image aliases: up to 3 reference images per item.
-- `gemini-3-pro-image` and other Pro Image aliases: up to 14 reference images per item.
-- Per batch job: up to 1000 reference image attachments total after `output_count` expansion across all items. This is an internal TokenRouter guardrail for request size and cost control, not the generated-image cap and not a Pro Image per-item capability. The generated-output cap is 200 images per job.
-- Per batch job: up to 128 MB decoded inline reference image data total. For large batches or repeated reference images, prefer `gs://` `file_uri` references or split the request into multiple jobs.
+- `gemini-2.5-flash-image` 和其他 Flash Image 别名：每个条目最多 3 张参考图片。
+- `gemini-3-pro-image` 和其他 Pro Image 别名：每个条目最多 14 张参考图片。
+- 每个批量作业：所有条目按 `output_count` 展开后，参考图片附件总数最多 1000。这是 TokenRouter 用于控制请求大小和成本的内部限制，不是生成图片上限，也不是 Pro Image 单条目能力。每个作业的生成结果上限为 200 张图片。
+- 每个批量作业：解码后的内联参考图片数据总计最多 128 MB。大批量或重复参考图应优先使用 `gs://` `file_uri`，也可以拆分为多个作业。
 
-`output_count` is optional per item and defaults to `1`. It means "repeat this prompt and reference image set N times" rather than relying on Gemini to return multiple images from one upstream request. The backend expands each repeat into a separate provider JSONL line with suffixed custom ids such as `cover_001_01`, `cover_001_02`. Current limits are:
+每个条目的 `output_count` 可选，默认为 `1`。它表示“用同一提示词和参考图集合重复 N 次”，而不是依赖 Gemini 在一次上游请求中返回多张图片。后端会把每次重复展开为独立提供商 JSONL 行，并使用 `cover_001_01`、`cover_001_02` 等带后缀的自定义 ID。当前限制：
 
-- Per prompt item: up to 4 output images.
-- Per batch job: up to 200 expected output images after expansion. This is the hard generated-output cap for a single job; clients and Codex skills must split larger workloads before submission.
-- The output-image limit intentionally matches the default ZIP item limit so newly submitted jobs are always downloadable as one ZIP by item count. ZIP byte size is still capped separately by `max_download_bytes_per_request`.
+- 每个提示词条目最多生成 4 张图片。
+- 展开后每个批量作业最多生成 200 张预期图片。这是单个作业的硬性生成结果上限；客户端和 Codex 技能必须在提交前拆分更大的工作量。
+- 输出图片上限有意与默认 ZIP 条目上限保持一致，使新提交作业按条目数都能下载为一个 ZIP。ZIP 字节大小仍单独受 `max_download_bytes_per_request` 限制。
 
-Public batch response:
+公共批量响应示例：
 
 ```json
 {
@@ -99,7 +99,7 @@ Public batch response:
 }
 ```
 
-Public items response:
+公共条目响应示例：
 
 ```json
 {
@@ -119,15 +119,15 @@ Public items response:
 ```
 
 <a id="job_lifecycle"></a>
-## Lifecycle
+## 生命周期
 
-Internal lifecycle:
+内部生命周期：
 
 ```text
 created -> uploading -> submitted -> running -> indexing -> settling -> completed
 ```
 
-Terminal and cleanup statuses:
+终态和清理状态：
 
 ```text
 failed
@@ -135,7 +135,7 @@ cancelled
 completed -> output_deleted
 ```
 
-Public status mapping:
+公共状态映射：
 
 ```text
 created/uploading/submitted -> queued
@@ -148,120 +148,118 @@ cancelled                  -> cancelled
 output_deleted             -> output_deleted
 ```
 
-`completed -> output_deleted` happens after manual output deletion or TTL cleanup.
+手工删除输出或 TTL 清理后，状态从 `completed` 变为 `output_deleted`。
 
 ## Redis
 
-Redis is used for wakeups, retries, worker coordination, per-job locks, and download limiting. PostgreSQL remains the source of truth.
+Redis 用于唤醒、重试、worker 协调、单作业锁和下载限制。PostgreSQL 始终是权威数据源。
 
-`batch_image.queue_enabled` defaults to `false`. When it is set to `true`, app startup starts `BatchImageWorker` runtime loops for the Redis ready queue, delayed queue mover, and stale active recovery. The worker reserves jobs from the Redis ready queue and blocks there when no job is available.
+`batch_image.queue_enabled` 默认为 `false`。设为 `true` 后，应用启动会运行 `BatchImageWorker` 的 Redis 就绪队列、延迟队列搬运和过期活跃作业恢复循环。worker 从 Redis 就绪队列预留作业；没有作业时会阻塞等待。
 
-Redis structures:
+Redis 结构：
 
-- Ready queue: `batch_image.queue_ready_key`
-- Delayed queue: `batch_image.queue_delayed_key`
-- Active set: `batch_image.queue_active_key`
-- Inflight keys: `batch_image.inflight_key_prefix`
-- Per-job lock keys: `batch_image.lock_key_prefix`
-- Queue idempotency keys: `batch_image.idempotency_key_prefix`
-- Download limiter keys managed by the download limiter
+- 就绪队列：`batch_image.queue_ready_key`
+- 延迟队列：`batch_image.queue_delayed_key`
+- 活跃集合：`batch_image.queue_active_key`
+- 执行中键：`batch_image.inflight_key_prefix`
+- 单作业锁键：`batch_image.lock_key_prefix`
+- 队列幂等键：`batch_image.idempotency_key_prefix`
+- 由下载限流器管理的下载限制键
 
-Workers should reserve from Redis. They are not expected to run as a database scan loop.
+worker 必须从 Redis 预留作业，不应以数据库扫描循环方式运行。只有 Redis 队列预留返回具体批量作业 ID 后才读取数据库。
 
-The worker does not perform DB scan polling. Database reads happen only after a Redis queue reservation yields a specific batch id.
+## 计费
 
-## Billing
+计费规则：
 
-Billing rules:
+- 提交时可以估算费用。
+- 提交时先预留适用的订阅额度，只冻结未被订阅覆盖部分所需的钱包余额。
+- 定价快照遵循普通图片计费：每份订阅分配使用其套餐分组倍率；订阅覆盖后剩余的基础成本使用快照中的用户专属按量倍率。
+- 结果索引完成后执行结算。
+- 只对成功图片计费。
+- 失败条目不计费。
+- 结算先消耗订阅用量，只有超出预留订阅量后才捕获钱包余额；失败或取消时通过幂等路径释放所有未使用预留。
+- 参考图片作为输入发送给 Gemini，可能产生少量上游输入 Token 和临时存储成本。`output_count > 1` 时，每个展开后的输出请求都会计算一次参考图，但公共计费模型不额外收取参考图费用。用户可见的估算、冻结和结算金额仍根据输出图片数量和已配置的批量图片单价计算。
+- 结算请求 ID 为 `batch_image_settlement:{batch_id}`。
+- 结算必须幂等，重复执行不能重复扣费。
+- 结算计费失败会在有限次数内重试。达到重试上限后作业标记为失败，并通过幂等释放路径释放剩余冻结金额。
 
-- Submit may estimate cost.
-- Submit reserves applicable subscription quota first and freezes wallet balance only for the uncovered remainder.
-- Pricing snapshots follow normal image billing: each subscription allocation uses its plan group multiplier, while any base cost left after subscription coverage uses the snapshotted user-specific pay-as-you-go multiplier.
-- Settlement runs after result indexing.
-- Only successful images are charged.
-- Failed items are not charged.
-- Settlement keeps subscription usage first, captures wallet balance only after the reserved subscription amount is exhausted, and releases every unused reservation on failure or cancellation.
-- Reference images are sent to Gemini as input and can create small upstream input-token and temporary storage cost. They are counted once per expanded output request when `output_count > 1`, but the public billing model does not add a separate reference-image surcharge. User-facing estimated, held, and settled amounts are still based on the output image count and configured batch image unit price.
-- Settlement request id is `batch_image_settlement:{batch_id}`.
-- Settlement is idempotent; re-running settlement must not double charge.
-- Settlement billing failures are retried with a bounded retry limit. After the retry limit is reached, the job is failed and the remaining hold is released through the idempotent release path.
+生产环境准确价格通过模型定价配置解析，本文不定义价格数值。
 
-Exact production pricing is resolved through model pricing configuration and is not defined here.
+## 清理
 
-## Cleanup
+默认值：
 
-Defaults:
+- 进入终态后的输入留存时间：24 小时。
+- 进入终态后的输出留存时间：72 小时。
+- 输出最长留存时间：7 天。
+- 清理间隔：30 分钟。
+- 单批清理数量：100。
 
-- Input retention after terminal status: 24 hours.
-- Output retention after terminal status: 72 hours.
-- Maximum output retention: 7 days.
-- Cleanup interval: 30 minutes.
-- Cleanup batch size: 100.
-
-Manual output deletion:
+手工删除输出：
 
 ```text
 DELETE /v1/images/batches/{id}/outputs
 ```
 
-After output cleanup, downloads return `410 Gone` with `BATCH_IMAGE_OUTPUT_DELETED`.
+输出清理后，下载返回 `410 Gone` 和 `BATCH_IMAGE_OUTPUT_DELETED`。
 
-Cleanup never accepts user-supplied provider paths. Provider cleanup must use server-generated refs and prefix-safe deletion.
+清理接口从不接受用户提供的提供商路径。提供商清理只能使用服务端生成的引用，并执行前缀安全删除。
 
-For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or configure lifecycle carefully to avoid hidden retained storage cost.
+使用受管 Vertex/GCS 批量存储桶时，应关闭 Cloud Storage 软删除或谨慎配置生命周期，避免隐藏的保留存储成本。
 
-## Provider Notes
+## 提供商说明
 
-`gemini_api`:
+`gemini_api`：
 
-- Uses Gemini Batch API with JSONL file mode.
-- Supports Gemini `apikey` upstream accounts with a configured API key.
-- Result file refs are internal.
-- API keys are never returned.
-- The provider can be selected and submitted through TokenRouter when an administrator configures an eligible Gemini API-key upstream account.
+- 使用 JSONL 文件模式的 Gemini Batch API。
+- 支持配置了 API Key 的 Gemini `apikey` 上游账号。
+- 结果文件引用只在内部使用。
+- 永不返回 API Key。
+- 管理员配置符合条件的 Gemini API Key 上游账号后，可以通过 TokenRouter 选择并提交该提供商。
 
-`vertex`:
+`vertex`：
 
-- Uses Vertex `BatchPredictionJob` with managed GCS JSONL.
-- Supports Gemini `service_account` upstream accounts with valid service account JSON.
-- GCS bucket and prefix are server-managed.
-- Vertex job name and GCS paths are internal.
-- Batch image output should be treated as `1K`/default only in the current implementation.
-- Do not promise `2K` or `4K`.
+- 使用基于受管 GCS JSONL 的 Vertex `BatchPredictionJob`。
+- 支持包含有效服务账号 JSON 的 Gemini `service_account` 上游账号。
+- GCS 存储桶和前缀由服务端管理。
+- Vertex 作业名和 GCS 路径只在内部使用。
+- 当前实现中的批量图片输出只能按 `1K` 或默认值处理。
+- 不得承诺 `2K` 或 `4K`。
 
-Other Gemini account/login types are not selected by the current batch image providers unless they expose equivalent API-key or service-account credentials through the same provider flow.
+其他 Gemini 账号或登录类型不会被当前批量图片提供商选择，除非它们通过相同提供商流程公开等价的 API Key 或服务账号凭据。
 
-## Official Google Enablement
+## 启用 Google 官方能力
 
-Operators must enable Gemini/Vertex capability in Google's official console before turning on TokenRouter batch image for any group. TokenRouter feature flags and group switches do not create Google-side access by themselves.
+运维人员为任何分组开启 TokenRouter 批量图片前，必须先在 Google 官方控制台启用 Gemini 或 Vertex 能力。TokenRouter 功能开关和分组开关不会自动创建 Google 侧访问权限。
 
-Recommended production path:
+推荐生产路径：
 
-- Use a Google Cloud project with billing enabled.
-- Enable the relevant Gemini API / Vertex AI APIs for the project.
-- Use a service account or Application Default Credentials for the TokenRouter runtime.
-- Create one fixed Cloud Storage bucket for batch image input and output, then grant the runtime and Vertex service agent the minimum required bucket permissions.
-- Configure TokenRouter with the project id, location, managed bucket, provider account, model whitelist, and pricing.
-- Enable `BATCH_IMAGE_ENABLED` globally, enable image generation on the intended Gemini group, then enable `allow_batch_image_generation` for that group. Non-Gemini groups are not eligible for batch image generation, and the admin UI only shows the batch image group switch after image generation is enabled on a Gemini group.
+- 使用已启用结算的 Google Cloud 项目。
+- 为项目启用相应 Gemini API 或 Vertex AI API。
+- TokenRouter 运行时使用服务账号或应用默认凭据。
+- 为批量图片输入输出创建固定 Cloud Storage 存储桶，并向运行时和 Vertex 服务代理授予最低必要存储桶权限。
+- 在 TokenRouter 中配置项目 ID、区域、受管存储桶、提供商账号、模型白名单和价格。
+- 全局启用 `BATCH_IMAGE_ENABLED`，在目标 Gemini 分组上启用图片生成，再为该分组启用 `allow_batch_image_generation`。非 Gemini 分组不支持批量图片；只有 Gemini 分组先启用图片生成后，管理界面才显示批量图片开关。
 
-API-key path:
+API Key 路径：
 
-- Google API keys are suitable for Gemini API development and supported Gemini methods.
-- The TokenRouter `x-goog-api-key` compatibility header still expects a TokenRouter key, not a plain Google key.
-- Plain Google API keys should not be documented as the default production credential for Vertex service-account batch jobs.
-- If an administrator configures a Gemini API-key upstream account, validate it with one low-cost batch image after the Google account has the required billing/prepayment state. If it has no prepayment, record only that the provider is selectable/callable and that failed submit releases hold.
+- Google API Key 适合 Gemini API 开发和受支持的 Gemini 方法。
+- TokenRouter 的 `x-goog-api-key` 兼容请求头仍要求 TokenRouter Key，而不是普通 Google Key。
+- 不应把普通 Google API Key 记录为 Vertex 服务账号批量作业的默认生产凭据。
+- 管理员配置 Gemini API Key 上游账号后，应在 Google 账号具备必要结算或预付状态时执行一次低成本批量图片验证。没有预付时，只能记录提供商可被选择和调用，以及提交失败会释放预留，不应推断更多能力。
 
-Official references:
+官方参考：
 
-- Gemini API key guide: https://ai.google.dev/gemini-api/docs/api-key
-- Gemini API Batch API: https://ai.google.dev/gemini-api/docs/batch-api
-- Gemini API image generation and batch image notes: https://ai.google.dev/gemini-api/docs/image-generation
-- Vertex/Gemini batch inference: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/batch-inference
-- Vertex batch predictions API: https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/models/batch-prediction-api
+- Gemini API Key 指南：https://ai.google.dev/gemini-api/docs/api-key
+- Gemini API Batch API：https://ai.google.dev/gemini-api/docs/batch-api
+- Gemini API 图片生成与批量图片说明：https://ai.google.dev/gemini-api/docs/image-generation
+- Vertex/Gemini 批量推理：https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/batch-inference
+- Vertex 批量预测 API：https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/models/batch-prediction-api
 
-## Config
+## 配置
 
-These keys exist in `backend/internal/config/config.go`:
+以下配置键定义在 `backend/internal/config/config.go`：
 
 ```yaml
 batch_image:
@@ -316,39 +314,39 @@ batch_image:
   vertex_gcs_base_url: ""
 ```
 
-Feature flags default to disabled.
+所有功能开关默认关闭。
 
-## Operations Checklist
+## 运维检查清单
 
-- Enable `batch_image.enabled`.
-- Configure Redis.
-- Enable `batch_image.queue_enabled` when workers should consume queue jobs.
-- Configure provider accounts.
-- Configure the Vertex managed GCS bucket if using Vertex.
-- Ensure bucket permissions are correct.
-- Disable or manage GCS soft delete.
-- Configure cleanup worker settings.
-- Configure max items per job.
-- Configure download concurrency.
-- Confirm billing pricing.
-- Run smoke tests before enabling.
+- 启用 `batch_image.enabled`。
+- 配置 Redis。
+- 需要 worker 消费队列作业时启用 `batch_image.queue_enabled`。
+- 配置提供商账号。
+- 使用 Vertex 时配置受管 GCS 存储桶。
+- 确认存储桶权限正确。
+- 关闭或妥善管理 GCS 软删除。
+- 配置清理 worker。
+- 配置单作业最大条目数。
+- 配置下载并发。
+- 确认计费价格。
+- 启用前执行冒烟测试。
 
-## Security Checklist
+## 安全检查清单
 
-- No provider refs in public responses.
-- No GCS URI exposure.
-- No signed URL exposure.
-- No service account exposure.
-- No API key exposure.
-- No image bytes/base64 in PostgreSQL.
-- No base64 in logs.
-- Owner-scoped status, item, download, cancel, and delete routes.
-- Output deletion is owner-scoped.
-- Cleanup paths are server-generated only.
+- 公共响应不包含提供商引用。
+- 不暴露 GCS URI。
+- 不暴露签名 URL。
+- 不暴露服务账号。
+- 不暴露 API Key。
+- PostgreSQL 不保存图片字节或 Base64。
+- 日志不记录 Base64。
+- 状态、条目、下载、取消和删除路由都受所有者范围约束。
+- 输出删除受所有者范围约束。
+- 清理路径只能由服务端生成。
 
-## Test Commands
+## 测试命令
 
-Core smoke and compile commands:
+核心冒烟和编译命令：
 
 ```bash
 go test -tags=unit ./internal/service -run 'BatchImage' -count=1
@@ -357,6 +355,6 @@ go test ./internal/config ./internal/service ./internal/repository ./internal/ha
 go test ./... -run '^$'
 ```
 
-These commands should not require Docker, testcontainers, Redis, GCP, Gemini, Vertex, or GCS.
+这些命令不应依赖 Docker、Testcontainers、Redis、GCP、Gemini、Vertex 或 GCS。
 
-Related Project Doc: [Routing and billing](routing_and_billing.md), [Composite API keys](composite_api_keys.md), [Gateway request lifecycle](../architecture/gateway_request_lifecycle.md), and the [domain index](index.md).
+相关 Project Doc：[路由与结算](routing_and_billing.md)、[复合 API Key](composite_api_keys.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)和[领域目录](index.md)。

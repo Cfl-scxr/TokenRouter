@@ -1,5 +1,7 @@
 # 部署指南
 
+本文面向部署和日常运维；工程生命周期与迁移约束以 [Project Doc：部署与数据库迁移](../../operations/deployment_and_migrations.md) 为准。其他手册见 [指南目录](../index.md)。
+
 ## 部署方式
 
 ### 方式一：脚本安装（推荐）
@@ -79,6 +81,8 @@ curl -sSL https://raw.githubusercontent.com/TokenFlux/TokenRouter/main/deploy/in
 ### 方式二：Docker Compose（推荐）
 
 使用 Docker Compose 部署，包含 PostgreSQL 和 Redis 容器。
+
+官方多架构镜像为 `ghcr.io/tokenflux/tokenrouter`。生产环境建议固定 `vX.Y.Z` 标签或镜像摘要；支持架构和独立容器所需变量见 [Docker 镜像说明](../../../deploy/DOCKER.md)。
 
 #### 前置条件
 
@@ -203,7 +207,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 - 只有该 Socket 可连通时，数据管理功能才会开启
 - Docker 场景需将宿主机 Socket 挂载到容器同路径
 
-详细部署步骤见：[DATAMANAGEMENTD_CN.md](./DATAMANAGEMENTD_CN.md)
+当前仓库不包含该进程的源码或二进制，启用前请先阅读 [datamanagementd 部署说明](datamanagementd.md)。
 
 #### 访问
 
@@ -507,7 +511,7 @@ transport http {
 **验证：**
 
 ```bash
-# h2c prior knowledge
+# h2c 先验模式
 curl --http2-prior-knowledge -I http://localhost:8080/health
 # HTTP/1.1 回退
 curl --http1.1 -I http://localhost:8080/health

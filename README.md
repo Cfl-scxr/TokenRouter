@@ -19,15 +19,17 @@ TokenRouter 基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 开发，在�
 
 ## 部署方式
 
-详细部署说明见 [DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md)。Apple 芯片 Mac 也可按 [Apple container 部署指南](docs/APPLE_CONTAINER.md) 运行本地三服务栈。
+详细部署说明见 [中文部署指南](docs/guides/deployment/index.md)。Apple 芯片 Mac 也可按 [Apple container 部署指南](docs/guides/deployment/apple_container.md) 运行本地三服务栈；其他操作手册见 [使用与运维指南](docs/guides/index.md)。
 
 ## 功能文档
 
 - [Grok / xAI 使用说明](docs/interfaces/grok_upstream.md)
 - [异步图片任务](docs/interfaces/async_image_tasks.md)
+- [支付系统配置](docs/guides/payments/configuration.md)
+- [项目工程文档库](docs/index.md)
 
 ## 许可证
 
-This project is licensed under the [GNU Lesser General Public License v3.0](LICENSE) (or later).
+本项目依据 [GNU 宽通用公共许可证 v3.0](LICENSE)（或更高版本）开源。
 
-Copyright (c) 2026 Wesley Liddick & TokenFlux
+版权所有 (c) 2026 Wesley Liddick & TokenFlux

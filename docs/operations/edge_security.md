@@ -1,83 +1,41 @@
-# Edge and HTTP Ingress Security
+# 边缘与 HTTP 入口安全
 
-TokenRouter supports long-lived SSE and WebSocket requests. Protect the request
-ingress without imposing a response `WriteTimeout`: a write deadline would
-terminate healthy long generations and streams.
+TokenRouter 支持长时间运行的 SSE 和 WebSocket 请求。入口保护不能依赖响应 `WriteTimeout`，因为写超时会终止正常的长耗时生成和流式响应。
 
-This document owns the application and reverse-proxy ingress limits, trusted client-IP resolution, streaming transport, and DDoS responsibility boundary. It does not replace provider firewall/CDN policy, and it does not define authenticated account concurrency or rate billing.
+本文拥有应用与反向代理入口限制、可信客户端 IP 解析、流式传输和 DDoS 责任边界。它不能替代云厂商防火墙或 CDN 策略，也不定义已认证账号的并发和计费限速。
 
-## Navigation
+## 章节导航
 
-- [Application defaults](#http_ingress_limits): read when changing HTTP/H2C limits or request-body classes.
-- [Trusted client IPs](#trusted-client-ips): read when changing proxy trust, IP ACLs, or runtime security settings.
-- [Nginx baseline](#nginx-baseline): read when operating an Nginx edge.
-- [Caddy and CDN](#caddy-and-cdn): read before changing the bundled Caddyfile or adding a CDN.
-- [DDoS boundary](#ddos-boundary): read when deciding whether mitigation belongs in the app or at the network edge.
+- [应用默认值](#http_ingress_limits)：修改 HTTP/H2C 限制或请求体分类时读取。
+- [可信客户端 IP](#可信客户端-ip)：修改代理信任、IP ACL 或运行时安全设置时读取。
+- [Nginx 基线](#nginx-基线)：使用 Nginx 作为边缘入口时读取。
+- [Caddy 与 CDN](#caddy-与-cdn)：修改仓库内 Caddyfile 或接入 CDN 前读取。
+- [DDoS 边界](#ddos-边界)：判断防护应位于应用还是网络边缘时读取。
 
 <a id="http_ingress_limits"></a>
-## Application defaults
+## 应用默认值
 
-- `server.max_header_bytes: 65536` limits HTTP/1 request headers to 64 KiB;
-  Go maps it to the corresponding HTTP/2 header-list limit.
-- `server.read_header_timeout: 10` bounds slow-header attacks. It does not
-  limit request processing or response streaming.
-- `server.max_request_body_size: 268435456` is the absolute 256 MiB safety net.
-- `gateway.max_body_size: 268435456` remains available to multimodal, Gemini,
-  image, video, and batch-image endpoints.
-- `gateway.text_max_body_size: 33554432` limits the known pure-text
-  `/embeddings` and `/alpha/search` endpoints to 32 MiB.
-- H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
-  upload window, and a 512 KiB stream upload window.
-- Invalid credential abuse is limited in process by trusted client IP (IPv6
-  `/64`): 120 failures per 60 seconds followed by a 60-second block. This is a
-  per-instance safety net; multi-instance enforcement still belongs at the
-  load balancer, CDN, or WAF.
+- `server.max_header_bytes: 65536` 把 HTTP/1 请求头限制为 64 KiB，Go 会把它映射为对应的 HTTP/2 Header List 限制。
+- `server.read_header_timeout: 10` 限制慢请求头攻击，不限制请求处理时间或响应流时长。
+- `server.max_request_body_size: 268435456` 是绝对的 256 MiB 安全上限。
+- `gateway.max_body_size: 268435456` 继续供多模态、Gemini、图片、视频和批量图片端点使用。
+- `gateway.text_max_body_size: 33554432` 把已知纯文本 `/embeddings` 和 `/alpha/search` 端点限制为 32 MiB。
+- H2C 默认每条连接最多 50 个并发流，连接上传窗口为 2 MiB，单流上传窗口为 512 KiB。
+- 进程内按可信客户端 IP 限制无效凭据滥用，IPv6 聚合到 `/64`：60 秒内允许 120 次失败，超过后封禁 60 秒。这只是单实例安全网，多实例强制限制仍应由负载均衡器、CDN 或 WAF 完成。
 
-Do not add a single application-wide request semaphore: an SSE request may
-legitimately occupy it for many minutes. Apply connection and unauthenticated
-request controls at the edge; authenticated user/API-key concurrency remains
-the application's responsibility.
+不要增加全应用共用的请求信号量，因为一个 SSE 请求可能正常占用它数分钟。连接和未认证请求限制应放在边缘；已认证用户或 API Key 的并发仍由应用负责。
 
-## Trusted client IPs
+## 可信客户端 IP
 
-`security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade
-compatibility. While enabled, raw forwarding headers take over client-IP
-resolution for logs and security-sensitive paths. Custom headers from
-`security.forwarded_client_ip_headers` are checked in configured order before
-the built-in `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` fallback.
-Header names are case-insensitive, normalized when loaded, de-duplicated, and
-limited to 16 unique valid HTTP field names. Header values must contain IP
-literals; comma-separated values are supported, invalid entries are skipped,
-and public addresses are preferred over private fallback addresses.
+为兼容升级，`security.trust_forwarded_ip_for_api_key_acl` 默认开启。开启后，原始转发请求头接管日志与安全敏感路径的客户端 IP 解析。`security.forwarded_client_ip_headers` 中的自定义请求头按配置顺序检查，优先于内置的 `CF-Connecting-IP`、`X-Real-IP` 和 `X-Forwarded-For` 回退。请求头名称不区分大小写，加载时会规范化并去重，最多允许 16 个唯一且有效的 HTTP 字段名。请求头值必须包含 IP 字面量；支持逗号分隔，跳过无效项，并优先选择公网地址而不是私网回退地址。
 
-The list can be supplied in YAML or with the comma-separated environment
-variable `SECURITY_FORWARDED_CLIENT_IP_HEADERS`; an explicitly empty environment
-value clears YAML values. It is also editable from the admin security settings
-and updates at runtime without a restart. A request snapshots the switch and
-header list together, so one request cannot mix old and new settings. Custom
-headers are ignored completely when the switch is disabled. In that mode Gin's
-`server.trusted_proxies` chain is authoritative: configure only the exact
-CIDR/IP addresses that connect directly to TokenRouter. An explicit empty list
-trusts no forwarded client IPs.
+该列表可以通过 YAML 或逗号分隔的 `SECURITY_FORWARDED_CLIENT_IP_HEADERS` 环境变量提供；显式空环境变量会清除 YAML 值。管理后台安全设置也可以编辑它，并在无需重启的情况下更新运行状态。每个请求会同时快照开关与请求头列表，不能在同一次请求中混用新旧设置。开关关闭时完全忽略自定义请求头，此时以 Gin 的 `server.trusted_proxies` 链为准，只能配置直接连接 TokenRouter 的准确 CIDR 或 IP。显式空列表表示不信任任何转发客户端 IP。
 
-On the first upgrade to this mode, a legacy `false` value is changed to `true`
-only when `server.trusted_proxies` was not explicitly configured; explicit
-proxy policies remain in secure mode. New installations persist the configured
-custom header list during database initialization. Existing installations
-backfill a missing database value from the YAML configuration. A hidden
-migration marker prevents later administrator changes from being overwritten.
-If settings cannot be read or the persisted custom-header list is malformed,
-the process fails closed to trusted-proxy mode with no custom headers. If a
-migration write fails, the computed mode remains active for the current process
-and startup records a warning.
+首次升级到该模式时，只有在 `server.trusted_proxies` 未被显式配置的情况下，旧的 `false` 才会改成 `true`；已有明确代理策略的环境继续使用安全模式。新安装在数据库初始化期间持久化自定义请求头列表。旧安装会用 YAML 配置回填缺失的数据库值。隐藏迁移标记会阻止后续管理员修改被再次覆盖。设置读取失败或已持久化的自定义请求头列表格式错误时，进程会以无自定义请求头的可信代理模式安全关闭兼容路径。迁移写入失败时，本次进程仍使用计算后的模式，并在启动日志记录警告。
 
-Compatibility takeover accepts forwarded headers without validating the direct
-peer, including any configured custom header. Protect the origin from direct
-access while it is enabled. A CDN deployment must firewall the origin so only
-the CDN or load balancer can reach it, and that proxy must overwrite every
-trusted client-IP header rather than append an untrusted client value.
+兼容接管模式会接受转发请求头而不校验直接对端，包括任何已配置的自定义请求头。开启时必须阻止外部直接访问源站。CDN 部署应通过防火墙只允许 CDN 或负载均衡器连接源站，并由该代理覆盖每个可信客户端 IP 请求头，而不是在不可信客户端值后追加。
 
-Example for a proxy on the same host:
+同主机代理示例：
 
 ```yaml
 server:
@@ -86,11 +44,9 @@ server:
     - ::1/128
 ```
 
-## Nginx baseline
+## Nginx 基线
 
-Define shared zones in the `http` block. Tune rates to measured legitimate
-traffic; the values below are conservative starting points, not universal
-capacity targets.
+在 `http` 块中定义共享区域。限速值必须根据实际合法流量调整；下面的值只是保守起点，不是通用容量目标。
 
 ```nginx
 limit_conn_zone $binary_remote_addr zone=sub2api_conn:20m;
@@ -139,46 +95,24 @@ server {
 }
 ```
 
-If Nginx gzip is enabled in the `http` block, keep `text/event-stream` out of
-`gzip_types` and do not use `gzip_types *` for TokenRouter. The
-`proxy_buffering off` setting above prevents proxy buffering, but it does not
-disable the gzip response filter. Use an explicit list for ordinary responses:
+如果在 `http` 块中启用 Nginx gzip，必须从 `gzip_types` 排除 `text/event-stream`，也不能为 TokenRouter 使用 `gzip_types *`。上面的 `proxy_buffering off` 会关闭代理缓冲，但不会关闭 gzip 响应过滤器。普通响应应使用明确列表：
 
 ```nginx
 gzip on;
 gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
 ```
 
-If a shared global configuration cannot exclude SSE by content type, set
-`gzip off;` in the locations serving streaming API routes. This leaves gzip
-available for the web UI and static assets.
+如果共享全局配置无法按内容类型排除 SSE，应在提供流式 API 的 location 中设置 `gzip off;`，同时保留 Web 管理界面和静态资源的 gzip。
 
-Do not use an incoming `$http_x_forwarded_for` value unless Nginx real-IP
-processing is restricted to explicit trusted proxy CIDRs.
+除非 Nginx 的 Real IP 处理只信任明确的代理 CIDR，否则不要使用入站 `$http_x_forwarded_for` 值。
 
-## Caddy and CDN
+## Caddy 与 CDN
 
-The bundled `deploy/Caddyfile` sets a 64 KiB header limit, a 10-second header
-timeout, a 256 MiB absolute body limit, and overwrites forwarded addresses from
-the TCP peer. It is therefore a direct-to-Caddy baseline. Do not use its
-`{remote_host}` forwarding lines unchanged behind a CDN: all clients would be
-attributed to a CDN egress address, collapsing rejection aggregation and the
-invalid-auth limiter onto unrelated users.
+仓库内 `deploy/Caddyfile` 设置了 64 KiB 请求头上限、10 秒请求头超时和 256 MiB 绝对请求体上限，并根据 TCP 对端覆盖转发地址，因此它是客户端直连 Caddy 的基线。Caddy 位于 CDN 后方时，不能原样使用其中的 `{remote_host}` 转发行；否则所有客户端都会被归因到 CDN 出口地址，使拒绝聚合和无效认证限速错误地作用于互不相关的用户。
 
-The bundled Caddy configuration leaves `flush_interval` unset so Caddy can
-automatically flush `text/event-stream` responses while still propagating
-client cancellation upstream. Do not set it globally: positive values can add
-streaming latency, while Caddy 2.6.2's special `-1` mode also causes
-reverse-proxied requests to continue after clients disconnect. The
-configuration uses an explicit response content-type list for compression. Do
-not replace that list with `text/*` or the shorthand `encode gzip zstd`: both
-match `text/event-stream` and can buffer SSE until the response ends. Keep
-streaming responses uncompressed while retaining compression for the web UI,
-JSON, and static assets.
+仓库内 Caddy 配置没有设置 `flush_interval`，让 Caddy 自动刷新 `text/event-stream` 响应，同时把客户端取消向上游传播。不要全局设置它：正值会增加流式延迟，而 Caddy 2.6.2 的特殊 `-1` 模式还会让反向代理请求在客户端断开后继续执行。配置使用明确的响应内容类型列表进行压缩，不能替换为 `text/*` 或简写 `encode gzip zstd`，因为二者都会匹配 `text/event-stream`，可能缓冲 SSE 直到响应结束。流式响应应保持不压缩，Web 管理界面、JSON 和静态资源仍可压缩。
 
-For a CDN deployment, first firewall the origin so only current CDN egress
-CIDRs can connect. Then configure those exact ranges as Caddy trusted proxies
-and derive upstream headers from Caddy's parsed `{client_ip}`. For example:
+CDN 部署应先通过防火墙限制源站，只允许当前 CDN 出口 CIDR 连接；再把这些准确网段配置为 Caddy 可信代理，并根据 Caddy 解析后的 `{client_ip}` 生成上游请求头。例如：
 
 ```caddyfile
 {
@@ -197,26 +131,14 @@ api.example.com {
 }
 ```
 
-Replace the documentation ranges with the CDN's published, automatically
-maintained egress ranges. `CF-Connecting-IP` is safe here only because direct
-origin access is blocked and Caddy trusts only those TCP peers. Configure
-TokenRouter `server.trusted_proxies` with the Caddy address/private subnet so the
-application accepts only Caddy's rewritten headers.
+必须把示例网段替换为 CDN 已发布且自动维护的出口网段。只有在源站直连被阻止且 Caddy 只信任这些 TCP 对端时，`CF-Connecting-IP` 才是安全的。TokenRouter 的 `server.trusted_proxies` 应配置为 Caddy 地址或私有子网，使应用只接受 Caddy 重写的请求头。
 
-Caddy core does not provide a general request-rate limiter; use a trusted
-CDN/WAF, a supported rate-limit module, or host firewall controls.
+Caddy 核心不提供通用请求限速器，应使用可信 CDN/WAF、受支持的限速模块或宿主机防火墙控制。
 
-At a CDN/WAF, configure connection limits, header/body limits, bot challenges,
-and per-IP/ASN rates before traffic reaches the origin. Allow origin ingress
-only from CDN egress CIDRs or a private load balancer. Keep the application port
-off the public Internet.
+在 CDN/WAF 上，应在流量到达源站前配置连接数限制、请求头和请求体限制、机器人挑战，以及按 IP 或 ASN 的速率限制。源站只允许 CDN 出口 CIDR 或私有负载均衡器进入，不要把应用端口直接暴露到公网。
 
-## DDoS boundary
+## DDoS 边界
 
-Application checks reduce amplification after a connection reaches Go. They
-cannot absorb volumetric attacks, TLS floods, bandwidth saturation, or a large
-distributed source set. Those require upstream network capacity, CDN/WAF
-filtering, provider firewall rules, and origin isolation. Avoid high-cardinality
-metrics or per-request database security logs during rejection storms.
+应用检查只能减少连接到达 Go 进程后的放大效应，无法吸收容量型攻击、TLS 洪泛、带宽饱和或大规模分布式来源。这些威胁需要上游网络容量、CDN/WAF 过滤、云厂商防火墙规则和源站隔离。拒绝风暴期间应避免高基数指标或每请求数据库安全日志。
 
-Related documents: [HTTP API Boundaries](../interfaces/http_api.md), [Configuration](../interfaces/configuration.md), [Gateway Request Lifecycle](../architecture/gateway_request_lifecycle.md), [Observability and Data Lifecycle](observability_and_data_lifecycle.md), and [Operations Index](index.md).
+相关文档：[HTTP 接口边界](../interfaces/http_api.md)、[配置边界](../interfaces/configuration.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[可观测性与数据生命周期](observability_and_data_lifecycle.md)和[运维目录](index.md)。

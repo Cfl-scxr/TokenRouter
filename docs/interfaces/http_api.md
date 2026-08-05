@@ -7,6 +7,7 @@
 - [全局入口](#全局入口)：理解所有请求共享的处理顺序。
 - [路由族](#路由族)：选择 URL、认证和拥有者。
 - [认证方式](#认证方式)：区分 JWT、管理密钥、API Key 和签名票据。
+- [外部支付管理集成](#外部支付管理集成)：服务间充值和嵌入页对接边界。
 - [响应与错误](#响应与错误)：保持面板与协议兼容形状。
 - [请求关联](#请求关联)：正确透传 request ID。
 - [变更规则](#变更规则)：新增接口时检查。
@@ -64,6 +65,12 @@ RequestLogger
 | 下载/resume ticket | 指定公共恢复或下载路由 | 有时限、限定资源和操作，不能升级为一般会话 |
 
 认证成功只建立主体。资源 owner、团队成员、管理员 step-up、支付订单 user ID、异步任务 owner 和分组能力仍由相应 handler/service 检查。不得因为路由已挂认证中间件就省略对象级授权。
+
+## 外部支付管理集成
+
+外部支付服务应使用管理 API Key 通过 `x-api-key` 调用管理路由，管理员 JWT 只适合交互式管理端。支付成功后的余额发放优先使用 `POST /api/v1/admin/redeem-codes/create-and-redeem`，由服务端原子创建并兑换余额兑换码；调用方必须提供稳定的业务 `code` 和 `Idempotency-Key`，同一操作重试时复用二者，并按 200、409 和业务错误区分重放、冲突与失败。`GET /api/v1/admin/users/:id` 可用于前置查询，`POST /api/v1/admin/users/:id/balance` 只用于明确的人工增减或补偿，同样需要幂等键。
+
+购买页和用户自定义页面由前端追加 `user_id`、`token`、`theme`、`lang`、`ui_mode`、`src_host` 和 `src_url`。其中 `token` 是用户 Bearer 凭据，只能发送到部署者信任且使用 HTTPS 的页面来源；接收方不得写入访问日志、分析参数或转发给第三方。完整请求示例和重试约定见 [外部支付管理 API 指南](../guides/payments/admin_integration_api.md)。
 
 ## 响应与错误
 
