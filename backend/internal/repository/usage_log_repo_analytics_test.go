@@ -246,10 +246,13 @@ func TestBatchAPIKeyUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
 		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
 	})
 	repo := &usageLogRepository{sql: db, preAggregation: settings}
-	start := time.Now().UTC().Add(-4 * time.Hour).Truncate(time.Hour)
-	end := time.Now().UTC().Add(time.Hour).Truncate(time.Hour)
-	coverage := timezone.Today().UTC().Add(-time.Hour).Truncate(time.Hour)
-	watermark := end.Add(time.Hour)
+	now := time.Now().UTC()
+	start := now.Add(-4 * time.Hour).Truncate(time.Hour)
+	end := now.Add(time.Hour).Truncate(time.Hour)
+	todayStart := timezone.Today().UTC()
+	coverage := todayStart.Add(-time.Hour).Truncate(time.Hour)
+	// 水位线紧邻当前时间，确保任意服务器时区及 UTC 零点首小时都有可用聚合窗口。
+	watermark := now.Add(-time.Nanosecond)
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
 
@@ -276,10 +279,13 @@ func TestBatchUserUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
 		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
 	})
 	repo := &usageLogRepository{sql: db, preAggregation: settings}
-	start := time.Now().UTC().Add(-4 * time.Hour).Truncate(time.Hour)
-	end := time.Now().UTC().Add(time.Hour).Truncate(time.Hour)
-	coverage := timezone.Today().UTC().Add(-time.Hour).Truncate(time.Hour)
-	watermark := end.Add(time.Hour)
+	now := time.Now().UTC()
+	start := now.Add(-4 * time.Hour).Truncate(time.Hour)
+	end := now.Add(time.Hour).Truncate(time.Hour)
+	todayStart := timezone.Today().UTC()
+	coverage := todayStart.Add(-time.Hour).Truncate(time.Hour)
+	// 水位线紧邻当前时间，确保任意服务器时区及 UTC 零点首小时都有可用聚合窗口。
+	watermark := now.Add(-time.Nanosecond)
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
 	mock.ExpectQuery("(?s)SELECT user_id, platform, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
