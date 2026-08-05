@@ -1,13 +1,50 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"mime"
+	"mime/multipart"
 	"testing"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestApplyGrokMediaChannelMappingRewritesForwardBody(t *testing.T) {
+	jsonBody, contentType, err := applyGrokMediaChannelMapping(
+		[]byte(`{"model":"key-target","prompt":"keep key-target in text"}`),
+		"application/json",
+		service.ChannelMappingResult{Mapped: true, MappedModel: "channel-target"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.JSONEq(t, `{"model":"channel-target","prompt":"keep key-target in text"}`, string(jsonBody))
+
+	var multipartBody bytes.Buffer
+	writer := multipart.NewWriter(&multipartBody)
+	require.NoError(t, writer.WriteField("model", "key-target"))
+	require.NoError(t, writer.WriteField("prompt", "keep key-target in text"))
+	require.NoError(t, writer.Close())
+	rewritten, rewrittenType, err := applyGrokMediaChannelMapping(
+		multipartBody.Bytes(),
+		writer.FormDataContentType(),
+		service.ChannelMappingResult{Mapped: true, MappedModel: "channel-target"},
+	)
+	require.NoError(t, err)
+	reader, err := multipart.NewReader(bytes.NewReader(rewritten), multipartBoundaryForTest(t, rewrittenType)).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, "channel-target", reader.Value["model"][0])
+	require.Equal(t, "keep key-target in text", reader.Value["prompt"][0])
+}
+
+func multipartBoundaryForTest(t *testing.T, contentType string) string {
+	t.Helper()
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	return params["boundary"]
+}
 
 type grokMediaEligibilityProberStub struct {
 	eligible bool

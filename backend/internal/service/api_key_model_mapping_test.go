@@ -116,6 +116,23 @@ func TestChannelMappingChainIncludesAPIKeyRedirectAndDeduplicatesStages(t *testi
 	require.Equal(t, []string{"gpt-5.6-luna", "gpt-5.6-luna-channel"}, mustAPIKeyResponseModels(t, ctx))
 }
 
+func TestResolveAccountUpstreamModelRegistersFinalRedirectStage(t *testing.T) {
+	ctx := WithAPIKeyModelRedirectTrace(
+		context.Background(),
+		NewAPIKeyModelRedirectTrace("model-alias", "model-alias", "key-target"),
+	)
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"key-target": "upstream-target"},
+		},
+	}
+
+	require.Equal(t, "upstream-target", resolveAccountUpstreamModel(ctx, account, "key-target"))
+	require.Equal(t, []string{"key-target", "upstream-target"}, mustAPIKeyResponseModels(t, ctx))
+}
+
 func mustAPIKeyResponseModels(t *testing.T, ctx context.Context) []string {
 	t.Helper()
 	trace, ok := APIKeyModelRedirectTraceFromContext(ctx)

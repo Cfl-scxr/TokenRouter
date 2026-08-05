@@ -395,18 +395,17 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	billingModel := requestInfo.Model
 	upstreamModel := billingModel
 	if endpoint.RequiresRequestBody() {
-		if gjson.ValidBytes(body) {
-			if mappedModel := strings.TrimSpace(account.GetMappedModel(requestInfo.Model)); mappedModel != "" {
-				billingModel = mappedModel
-			}
+		if mappedModel := strings.TrimSpace(account.GetMappedModel(requestInfo.Model)); mappedModel != "" {
+			billingModel = mappedModel
 		}
 		upstreamModel = normalizeOpenAIModelForUpstream(account, billingModel)
-		if gjson.ValidBytes(body) && upstreamModel != requestInfo.Model {
-			body, err = sjson.SetBytes(body, "model", upstreamModel)
+		if upstreamModel != requestInfo.Model {
+			body, contentType, err = RewriteGrokMediaRequestModel(body, contentType, upstreamModel)
 			if err != nil {
 				return nil, fmt.Errorf("rewrite grok media account mapped model: %w", err)
 			}
 		}
+		RegisterAPIKeyModelRedirectStage(ctx, upstreamModel)
 	}
 	body, contentType, err = sanitizeGrokMediaForwardBody(endpoint, body, contentType)
 	if err != nil {
@@ -498,6 +497,11 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		VideoResolution:      usage.VideoResolution,
 		VideoDurationSeconds: usage.VideoDurationSeconds,
 	}, nil
+}
+
+// RewriteGrokMediaRequestModel 同时支持 JSON 与 multipart 媒体请求的模型改写。
+func RewriteGrokMediaRequestModel(body []byte, contentType, model string) ([]byte, string, error) {
+	return rewriteOpenAIImagesModel(body, contentType, model)
 }
 
 func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(

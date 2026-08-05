@@ -95,6 +95,7 @@ func (o BatchImageOwner) EffectiveBillingUserID() int64 {
 type BatchImagePublicService struct {
 	Repo              BatchImageRepository
 	AccountRepo       BatchImageAccountSelectionRepository
+	ChannelService    *ChannelService
 	GroupRepo         BatchImageGroupPricingRepository
 	UserGroupRateRepo BatchImageUserGroupRateRepository
 	Queue             BatchImageQueue
@@ -196,10 +197,11 @@ type BatchImageItemsQuery struct {
 	Cursor string
 }
 
-func NewBatchImagePublicService(repo BatchImageRepository, accountRepo AccountRepository, groupRepo GroupRepository, userGroupRateRepo UserGroupRateRepository, queue BatchImageQueue, pricing *BatchImageModelPricingResolver, billingRepo UsageBillingRepository, authCache APIKeyAuthCacheInvalidator, cfg *config.Config) *BatchImagePublicService {
+func NewBatchImagePublicService(repo BatchImageRepository, accountRepo AccountRepository, channelService *ChannelService, groupRepo GroupRepository, userGroupRateRepo UserGroupRateRepository, queue BatchImageQueue, pricing *BatchImageModelPricingResolver, billingRepo UsageBillingRepository, authCache APIKeyAuthCacheInvalidator, cfg *config.Config) *BatchImagePublicService {
 	return &BatchImagePublicService{
 		Repo:              repo,
 		AccountRepo:       accountRepo,
+		ChannelService:    channelService,
 		GroupRepo:         groupRepo,
 		UserGroupRateRepo: userGroupRateRepo,
 		Queue:             queue,
@@ -252,11 +254,23 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		}
 	}
 
-	provider, account, err := s.selectProviderAndAccount(ctx, owner, normalized.Provider, normalized.Model)
+	channelMapping, routingModel, err := s.resolveBatchImageChannelModel(ctx, owner.GroupID, normalized.Model)
 	if err != nil {
 		return nil, err
 	}
-	pricingSnapshot, err := s.resolvePricingSnapshot(ctx, owner, normalized, provider.Name(), account)
+	provider, account, upstreamModel, err := s.selectProviderAndAccount(
+		ctx,
+		owner,
+		normalized.Provider,
+		routingModel,
+		channelMapping,
+	)
+	if err != nil {
+		return nil, err
+	}
+	pricingRequest := normalized
+	pricingRequest.Model = batchImagePricingModel(channelMapping, normalized.Model, routingModel, upstreamModel)
+	pricingSnapshot, err := s.resolvePricingSnapshot(ctx, owner, pricingRequest, provider.Name(), account)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +301,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		AccountID:                  &accountID,
 		GroupID:                    owner.GroupID,
 		Provider:                   provider.Name(),
-		Model:                      normalized.Model,
+		Model:                      upstreamModel,
 		RequestedModel:             requestedModel,
 		TaskName:                   normalized.TaskName,
 		ParentBatchID:              parentBatchID,
@@ -336,7 +350,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 
 	input := BatchImageInput{
 		BatchID:          job.BatchID,
-		Model:            normalized.Model,
+		Model:            upstreamModel,
 		DisplayName:      job.BatchID,
 		ResponseMimeType: normalized.ResponseMimeType,
 		AspectRatio:      normalized.AspectRatio,
@@ -961,7 +975,45 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 	return 0
 }
 
-func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+// resolveBatchImageChannelModel 执行批量图片的渠道映射和渠道计费模型限制。
+func (s *BatchImagePublicService) resolveBatchImageChannelModel(ctx context.Context, groupID *int64, requestedModel string) (ChannelMappingResult, string, error) {
+	mapping := (ChannelMappingResult{MappedModel: requestedModel}).WithAPIKeyModelRedirect(ctx, requestedModel)
+	if s == nil || s.ChannelService == nil || groupID == nil || *groupID <= 0 {
+		return mapping, requestedModel, nil
+	}
+	mapping = s.ChannelService.ResolveChannelMapping(ctx, *groupID, requestedModel).WithAPIKeyModelRedirect(ctx, requestedModel)
+	routingModel := strings.TrimSpace(mapping.MappedModel)
+	if routingModel == "" {
+		routingModel = requestedModel
+	}
+	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, routingModel)
+	if billingModel != "" && s.ChannelService.IsModelRestricted(ctx, *groupID, billingModel) {
+		return mapping, routingModel, ErrBatchImageNoAccountAvailable
+	}
+	return mapping, routingModel, nil
+}
+
+// batchImagePricingModel 按渠道计费基准选择价格模型，且最早只从 Key 重定向目标开始。
+func batchImagePricingModel(mapping ChannelMappingResult, requestedModel, channelMappedModel, upstreamModel string) string {
+	switch mapping.BillingModelSource {
+	case BillingModelSourceRequested:
+		return strings.TrimSpace(requestedModel)
+	case BillingModelSourceUpstream:
+		return strings.TrimSpace(upstreamModel)
+	case BillingModelSourceChannelMapped:
+		return strings.TrimSpace(channelMappedModel)
+	default:
+		return strings.TrimSpace(channelMappedModel)
+	}
+}
+
+// selectProviderAndAccount 按渠道模型选择账号，并返回账号映射后的实际上游模型。
+func (s *BatchImagePublicService) selectProviderAndAccount(
+	ctx context.Context,
+	owner BatchImageOwner,
+	requestedProvider, routingModel string,
+	mapping ChannelMappingResult,
+) (BatchImageProvider, *Account, string, error) {
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)
@@ -970,7 +1022,7 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		}
 		accounts, err := s.listCandidateAccounts(ctx, owner.GroupID, batchImageProviderPlatform(providerName))
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		sort.SliceStable(accounts, func(i, j int) bool {
 			if accounts[i].Priority != accounts[j].Priority {
@@ -980,18 +1032,29 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		})
 		for i := range accounts {
 			account := accounts[i]
-			if !account.IsSchedulable() || !account.IsModelSupported(model) {
+			if !account.IsSchedulable() || !account.IsModelSupported(routingModel) {
 				continue
 			}
-			if provider.SupportsAccount(&account) {
-				return provider, &account, nil
+			if !provider.SupportsAccount(&account) {
+				continue
 			}
+			upstreamModel := strings.TrimSpace(resolveAccountUpstreamModel(ctx, &account, routingModel))
+			if upstreamModel == "" {
+				continue
+			}
+			if owner.GroupID != nil && *owner.GroupID > 0 && s.ChannelService != nil &&
+				mapping.BillingModelSource == BillingModelSourceUpstream &&
+				s.ChannelService.IsModelRestricted(ctx, *owner.GroupID, upstreamModel) {
+				continue
+			}
+			RegisterAPIKeyModelRedirectStage(ctx, upstreamModel)
+			return provider, &account, upstreamModel, nil
 		}
 	}
 	if requestedProvider != "" {
-		return nil, nil, ErrBatchImageNoAccountAvailable
+		return nil, nil, "", ErrBatchImageNoAccountAvailable
 	}
-	return nil, nil, ErrBatchImageNoAccountAvailable
+	return nil, nil, "", ErrBatchImageNoAccountAvailable
 }
 
 func (s *BatchImagePublicService) listCandidateAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {

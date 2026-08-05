@@ -13,4 +13,3 @@ ALTER TABLE api_keys
 
 COMMENT ON COLUMN api_keys.model_mapping
     IS 'API Key 自定义模型重定向规则，键为客户端模型，值为内部目标模型';
-

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -154,6 +155,10 @@ func (c *gatewayCache) SaveLiveCall(ctx context.Context, record *service.LiveCal
 	if record == nil || record.CallHash == "" || record.CallID == "" {
 		return fmt.Errorf("invalid live call record")
 	}
+	modelMapping, err := json.Marshal(record.APIKeyModelMapping)
+	if err != nil {
+		return fmt.Errorf("marshal live API key model mapping: %w", err)
+	}
 	values := map[string]any{
 		"call_id":          record.CallID,
 		"account_id":       record.AccountID,
@@ -166,6 +171,7 @@ func (c *gatewayCache) SaveLiveCall(ctx context.Context, record *service.LiveCal
 		"requested_model":  record.RequestedModel,
 		"upstream_model":   record.UpstreamModel,
 		"mapping_chain":    record.ModelMappingChain,
+		"api_key_mapping":  string(modelMapping),
 		"created_at":       record.CreatedAt.UnixMilli(),
 		"expires_at":       record.ExpiresAt.UnixMilli(),
 		"controller":       record.Controller,
@@ -179,7 +185,7 @@ func (c *gatewayCache) SaveLiveCall(ctx context.Context, record *service.LiveCal
 	pipe := c.rdb.TxPipeline()
 	pipe.HSet(ctx, key, values)
 	pipe.Expire(ctx, key, ttl)
-	_, err := pipe.Exec(ctx)
+	_, err = pipe.Exec(ctx)
 	return err
 }
 
@@ -197,6 +203,12 @@ func (c *gatewayCache) GetLiveCall(ctx context.Context, callHash string) (*servi
 	}
 	createdAt := time.UnixMilli(parseInt("created_at"))
 	expiresAt := time.UnixMilli(parseInt("expires_at"))
+	modelMapping := make(map[string]string)
+	if rawMapping := values["api_key_mapping"]; rawMapping != "" {
+		if err := json.Unmarshal([]byte(rawMapping), &modelMapping); err != nil {
+			return nil, fmt.Errorf("decode live API key model mapping: %w", err)
+		}
+	}
 	return &service.LiveCallRecord{
 		CallID:                values["call_id"],
 		CallHash:              callHash,
@@ -210,6 +222,7 @@ func (c *gatewayCache) GetLiveCall(ctx context.Context, callHash string) (*servi
 		RequestedModel:        values["requested_model"],
 		UpstreamModel:         values["upstream_model"],
 		ModelMappingChain:     values["mapping_chain"],
+		APIKeyModelMapping:    modelMapping,
 		CreatedAt:             createdAt,
 		ExpiresAt:             expiresAt,
 		Controller:            values["controller"],

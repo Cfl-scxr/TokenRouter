@@ -13,6 +13,7 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	pkghttputil "github.com/TokenFlux/TokenRouter/internal/pkg/httputil"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -283,12 +284,28 @@ func readAndRestoreRequestBody(request *http.Request) ([]byte, error) {
 	if request == nil || request.Body == nil {
 		return nil, service.ErrCompositeKeyPrefixRequired
 	}
-	body, err := io.ReadAll(request.Body)
+	rawBody, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, err
 	}
-	setRequestBody(request, body)
-	return body, nil
+	setRequestBody(request, rawBody)
+
+	encoding := strings.ToLower(strings.TrimSpace(request.Header.Get("Content-Encoding")))
+	if encoding == "" || encoding == "identity" {
+		return rawBody, nil
+	}
+
+	// 使用临时请求解压，失败时原请求仍保留完整压缩体，便于后续处理器返回原有错误。
+	decodeRequest := request.Clone(request.Context())
+	decodeRequest.Body = io.NopCloser(bytes.NewReader(rawBody))
+	decodeRequest.ContentLength = int64(len(rawBody))
+	decodedBody, err := pkghttputil.ReadRequestBodyWithPrealloc(decodeRequest)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Del("Content-Encoding")
+	setRequestBody(request, decodedBody)
+	return decodedBody, nil
 }
 
 func setRequestBody(request *http.Request, body []byte) {

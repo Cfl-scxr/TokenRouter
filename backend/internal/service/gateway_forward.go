@@ -950,29 +950,35 @@ func resolveAccountUpstreamModel(ctx context.Context, account *Account, requeste
 	if account == nil {
 		return ""
 	}
+	var upstreamModel string
 	if account.IsBedrock() {
 		mappedModel, ok := ResolveBedrockModelID(account, requestedModel)
 		if !ok {
 			return ""
 		}
-		return strings.TrimSpace(mappedModel)
-	}
-	if account.Platform == PlatformAntigravity {
-		return strings.TrimSpace(resolveFinalAntigravityModelKey(ctx, account, requestedModel))
-	}
-	if account.Platform == PlatformOpenAI || account.Platform == PlatformGrok {
+		upstreamModel = mappedModel
+	} else if account.Platform == PlatformAntigravity {
+		upstreamModel = resolveFinalAntigravityModelKey(ctx, account, requestedModel)
+	} else if account.Platform == PlatformOpenAI || account.Platform == PlatformGrok {
 		// 模型列表按账号的 HTTP 自动透传规则展示真实可请求模型。
-		return resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, false, true)
-	}
-	mappedModel := resolveAccountMappedModelForForward(account, requestedModel)
-	if account.Platform == PlatformQoder {
-		site, err := qoderSiteForAccount(account)
-		if err != nil {
-			return ""
+		upstreamModel = resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, false, true)
+	} else {
+		mappedModel := resolveAccountMappedModelForForward(account, requestedModel)
+		if account.Platform == PlatformQoder {
+			site, err := qoderSiteForAccount(account)
+			if err != nil {
+				return ""
+			}
+			upstreamModel = resolveQoderModelForSite(site, mappedModel).Key
+		} else {
+			upstreamModel = resolveAnthropicAccountUpstreamModel(account, mappedModel)
 		}
-		return strings.TrimSpace(resolveQoderModelForSite(site, mappedModel).Key)
 	}
-	return resolveAnthropicAccountUpstreamModel(account, mappedModel)
+
+	// 最终账号模型必须在写响应前登记，确保流式与非流式元数据都能恢复为客户端别名。
+	upstreamModel = strings.TrimSpace(upstreamModel)
+	RegisterAPIKeyModelRedirectStage(ctx, upstreamModel)
+	return upstreamModel
 }
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。

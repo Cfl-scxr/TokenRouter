@@ -1438,19 +1438,38 @@ func mergeModelIDs(primary, secondary []string) []string {
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
-	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey.IsComposite {
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+	if apiKey != nil && apiKey.IsComposite {
 		writeCompositeModelsList(c, h.compositeRequestableModels(c.Request.Context(), apiKey, service.PlatformAntigravity))
 		return
 	}
-	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && len(apiKey.ModelMapping) > 0 {
-		modelIDs := service.AppendAPIKeyModelAliases(defaultModelIDsForPlatform(service.PlatformAntigravity), apiKey.ModelMapping)
-		writeClaudeCompatiblePlatformModelsList(c, service.PlatformAntigravity, modelIDs)
+	var groupID *int64
+	if apiKey != nil && apiKey.Group != nil {
+		value := apiKey.Group.ID
+		groupID = &value
+	}
+	if h != nil && h.gatewayService != nil {
+		resolution := h.gatewayService.ResolveRequestableModels(c.Request.Context(), groupID, service.PlatformAntigravity)
+		modelIDs := service.RequestableModelIDs(resolution.Models)
+		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+			modelIDs = filterModelsByCustomList(modelIDs, nil, apiKey.Group.ModelsListConfig.Models)
+		}
+		if apiKey != nil {
+			modelIDs = service.AppendAPIKeyModelAliases(modelIDs, apiKey.ModelMapping)
+		}
+		if len(modelIDs) > 0 || resolution.Restricted || groupID != nil {
+			writeClaudeCompatiblePlatformModelsList(c, service.PlatformAntigravity, modelIDs)
+			return
+		}
+	} else if groupID != nil {
+		writeClaudeCompatiblePlatformModelsList(c, service.PlatformAntigravity, nil)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   antigravity.DefaultModels(),
-	})
+	modelIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
+	if apiKey != nil {
+		modelIDs = service.AppendAPIKeyModelAliases(modelIDs, apiKey.ModelMapping)
+	}
+	writeClaudeCompatiblePlatformModelsList(c, service.PlatformAntigravity, modelIDs)
 }
 
 func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {

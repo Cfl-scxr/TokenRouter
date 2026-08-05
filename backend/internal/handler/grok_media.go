@@ -201,6 +201,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	requestCtx := c.Request.Context()
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, routingModel)
+	forwardBody, forwardContentType, err := applyGrokMediaChannelMapping(body, contentType, channelMapping)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to rewrite request model")
+		return
+	}
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -330,7 +335,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
+			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, forwardBody, forwardContentType)
 		}()
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -436,6 +441,14 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		)
 		return
 	}
+}
+
+// applyGrokMediaChannelMapping 把渠道模型写入实际转发体，未命中映射时保持原请求。
+func applyGrokMediaChannelMapping(body []byte, contentType string, mapping service.ChannelMappingResult) ([]byte, string, error) {
+	if !mapping.Mapped || strings.TrimSpace(mapping.MappedModel) == "" {
+		return body, contentType, nil
+	}
+	return service.RewriteGrokMediaRequestModel(body, contentType, mapping.MappedModel)
 }
 
 // resolveCompositeGrokVideoAPIKey 从任务绑定缓存中找回创建视频时使用的复合映射。

@@ -480,9 +480,13 @@ type fakeBatchImagePricingResolver struct {
 	unitPrice     float64
 	missingModels map[string]bool
 	err           error
+	models        []string
 }
 
 func (r *fakeBatchImagePricingResolver) BatchImageUnitPrice(_ context.Context, job *BatchImageJob) (float64, error) {
+	if job != nil {
+		r.models = append(r.models, job.Model)
+	}
 	if r.err != nil {
 		return 0, r.err
 	}

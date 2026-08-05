@@ -165,6 +165,51 @@ func TestAntigravityModelsIncludesRequestableExactAPIKeyAlias(t *testing.T) {
 	require.NotContains(t, ids, "missing")
 }
 
+func TestAntigravityModelsExcludesAliasWhoseTargetIsUnavailableToBoundGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	defaults := antigravity.DefaultModels()
+	require.GreaterOrEqual(t, len(defaults), 2)
+	availableModel := defaults[0].ID
+	unavailableModel := defaults[1].ID
+	groupID := int64(46)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {
+			{
+				ID:          9,
+				Platform:    service.PlatformAntigravity,
+				Status:      service.StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{availableModel: availableModel},
+				},
+			},
+		},
+	}})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/antigravity/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformAntigravity},
+		ModelMapping: map[string]string{
+			"available-alias":   availableModel,
+			"unavailable-alias": unavailableModel,
+		},
+	})
+
+	h.AntigravityModels(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, availableModel)
+	require.Contains(t, ids, "available-alias")
+	require.NotContains(t, ids, unavailableModel)
+	require.NotContains(t, ids, "unavailable-alias")
+}
+
 func TestGatewayModelsCompositeKeyAggregatesMappingsInOrder(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	openAIGroupID := int64(50)

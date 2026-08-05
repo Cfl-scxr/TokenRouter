@@ -100,6 +100,7 @@ type apiKeyModelResponseWriter struct {
 
 func (w *apiKeyModelResponseWriter) Write(data []byte) (int, error) {
 	w.Header().Del("Content-Length")
+	w.trace.RegisterResponsePayload(data)
 	rewritten := data
 	for _, model := range w.trace.ResponseModels() {
 		rewritten = replaceCompositeResponseModel(rewritten, model, w.clientModel)

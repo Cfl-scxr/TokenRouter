@@ -16,6 +16,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type liveTestFrame struct {
@@ -351,6 +352,45 @@ func TestGetLiveCallForIdentityRejectsMismatchedCaller(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, record.AccountID, loaded.AccountID)
+}
+
+func TestLiveSidebandRewritesEachSessionModelAndRestoresResponse(t *testing.T) {
+	account := &Account{
+		ID:          11,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5": "gpt-5.1-codex"},
+		},
+	}
+	upstreamModel := resolveOpenAIAccountUpstreamModelForRequest(account, "gpt-5", false, false)
+	record := &LiveCallRecord{
+		GroupID:            44,
+		Model:              "gpt-5",
+		RequestedModel:     "live-alias",
+		UpstreamModel:      upstreamModel,
+		APIKeyModelMapping: map[string]string{"live-alias": "gpt-5", "tool-alias": "tool-target"},
+	}
+	service := &OpenAIGatewayService{}
+	payload := []byte(`{"type":"session.update","session":{"model":"live-alias","tools":[{"model":"tool-alias"}],"instructions":"keep live-alias and gpt-5.1-codex"}}`)
+
+	rewritten, clientModel, internalModels, err := service.rewriteLiveSidebandClientPayload(context.Background(), record, account, payload)
+
+	require.NoError(t, err)
+	require.Equal(t, "live-alias", clientModel)
+	require.Equal(t, upstreamModel, gjson.GetBytes(rewritten, "session.model").String())
+	require.Equal(t, "tool-target", gjson.GetBytes(rewritten, "session.tools.0.model").String())
+	require.Equal(t, "keep live-alias and gpt-5.1-codex", gjson.GetBytes(rewritten, "session.instructions").String())
+
+	response := restoreLiveSidebandServerPayload(
+		[]byte(fmt.Sprintf(`{"type":"session.updated","session":{"model":%q,"instructions":"keep gpt-5.1-codex"}}`, upstreamModel)),
+		clientModel,
+		internalModels,
+	)
+	require.Equal(t, "live-alias", gjson.GetBytes(response, "session.model").String())
+	require.Equal(t, "keep gpt-5.1-codex", gjson.GetBytes(response, "session.instructions").String())
 }
 
 func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {

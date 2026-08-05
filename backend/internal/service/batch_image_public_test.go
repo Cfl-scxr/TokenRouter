@@ -110,6 +110,70 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.ErrorIs(t, err, ErrBatchImageIdempotencyConflict)
 	})
 
+	t.Run("applies channel and account model mappings before provider submit", func(t *testing.T) {
+		svc, repo, _, gemini, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				Platform:                     PlatformGemini,
+				RateMultiplier:               1,
+				AllowBatchImageGeneration:    true,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+			},
+		}}
+		svc.ChannelService = newTestChannelService(makeStandardRepo(Channel{
+			ID:       31,
+			Status:   StatusActive,
+			GroupIDs: []int64{groupID},
+			ModelMapping: map[string]map[string]string{
+				PlatformGemini: {"gemini-2.5-flash-image": "channel-image-model"},
+			},
+		}, map[int64]string{groupID: PlatformGemini}))
+		svc.AccountRepo = &publicBatchImageAccountRepo{accounts: []Account{
+			testBatchImageMappedAccount(301, AccountTypeAPIKey, map[string]any{
+				"channel-image-model": "upstream-image-model",
+			}),
+		}}
+		trace := NewAPIKeyModelRedirectTrace("image-alias", "image-alias", "gemini-2.5-flash-image")
+		requestCtx := WithAPIKeyModelRedirectTrace(ctx, trace)
+		requestCtx = context.WithValue(requestCtx, ctxkey.ClientModel, "image-alias")
+
+		got, err := svc.Submit(requestCtx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, validBatchImageSubmitRequest(), "")
+
+		require.NoError(t, err)
+		require.Equal(t, "image-alias", got.Model)
+		require.Len(t, gemini.submits, 1)
+		require.Equal(t, "upstream-image-model", gemini.submits[0].Model)
+		job := repo.jobs[got.ID]
+		require.Equal(t, "upstream-image-model", job.Model)
+		require.Equal(t, "image-alias", job.RequestedModel)
+		require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "channel-image-model", "upstream-image-model"}, trace.ResponseModels())
+		pricing := svc.Pricing.(*fakeBatchImagePricingResolver)
+		require.Equal(t, []string{"channel-image-model"}, pricing.models)
+	})
+
+	t.Run("selects batch pricing model from channel billing source", func(t *testing.T) {
+		tests := []struct {
+			source string
+			want   string
+		}{
+			{source: BillingModelSourceRequested, want: "key-target"},
+			{source: BillingModelSourceChannelMapped, want: "channel-target"},
+			{source: BillingModelSourceUpstream, want: "upstream-target"},
+			{source: "", want: "channel-target"},
+		}
+		for _, test := range tests {
+			require.Equal(t, test.want, batchImagePricingModel(
+				ChannelMappingResult{BillingModelSource: test.source},
+				"key-target",
+				"channel-target",
+				"upstream-target",
+			))
+		}
+	})
+
 	t.Run("combines user group image rate account rate discount and hold margin", func(t *testing.T) {
 		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
 		groupID := int64(7)

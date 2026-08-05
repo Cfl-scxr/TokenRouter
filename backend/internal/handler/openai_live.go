@@ -184,6 +184,7 @@ func liveCallIdentity(
 		Originator:      c.GetHeader("originator"),
 		IPAddress:       ip.GetClientIP(c),
 		InboundEndpoint: GetInboundEndpoint(c),
+		ModelMapping:    service.CloneModelMapping(apiKey.ModelMapping),
 	}
 }
 

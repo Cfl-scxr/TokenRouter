@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
@@ -280,6 +281,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			RequestedModel:        requestedModel,
 			UpstreamModel:         upstreamModel,
 			ModelMappingChain:     channelMapping.BuildModelMappingChain(model, upstreamModel),
+			APIKeyModelMapping:    CloneModelMapping(identity.ModelMapping),
 			CreatedAt:             now,
 			ExpiresAt:             now.Add(s.liveMaxSessionDuration()),
 			Controller:            LiveControllerPending,
@@ -520,7 +522,11 @@ func (s *OpenAIGatewayService) liveSidebandHeaders(
 	return headers, nil
 }
 
-func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *LiveCallRecord) (liveFrameConn, error) {
+// liveSidebandAccount 加载并校验创建 Live 会话时绑定的账号。
+func (s *OpenAIGatewayService) liveSidebandAccount(ctx context.Context, record *LiveCallRecord) (*Account, error) {
+	if record == nil {
+		return nil, ErrLiveCallNotFound
+	}
 	account, err := s.accountRepo.GetByID(ctx, record.AccountID)
 	if err != nil {
 		return nil, err
@@ -528,6 +534,19 @@ func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *Liv
 	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
 		return nil, ErrLiveUnavailable
 	}
+	return account, nil
+}
+
+func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *LiveCallRecord) (liveFrameConn, error) {
+	account, err := s.liveSidebandAccount(ctx, record)
+	if err != nil {
+		return nil, err
+	}
+	return s.dialLiveSidebandForAccount(ctx, record, account)
+}
+
+// dialLiveSidebandForAccount 复用已经校验的会话账号建立控制连接。
+func (s *OpenAIGatewayService) dialLiveSidebandForAccount(ctx context.Context, record *LiveCallRecord, account *Account) (liveFrameConn, error) {
 	tlsRouterMatch := s.matchLiveTLSFingerprintRouter(account, record.UserAgent)
 	headers, err := s.liveSidebandHeaders(ctx, account, record, tlsRouterMatch)
 	if err != nil {
@@ -597,6 +616,143 @@ func (s *OpenAIGatewayService) GetLiveCallForIdentity(
 	return record, nil
 }
 
+type liveSidebandModelState struct {
+	mu             sync.RWMutex
+	clientModel    string
+	internalModels map[string]struct{}
+}
+
+// newLiveSidebandModelState 使用创建会话时的模型链初始化双向恢复状态。
+func newLiveSidebandModelState(record *LiveCallRecord) *liveSidebandModelState {
+	state := &liveSidebandModelState{internalModels: make(map[string]struct{})}
+	if record == nil {
+		return state
+	}
+	state.update(firstNonEmptyString(record.RequestedModel, record.Model), record.Model, record.UpstreamModel)
+	return state
+}
+
+func (s *liveSidebandModelState) update(clientModel string, internalModels ...string) {
+	if s == nil {
+		return
+	}
+	clientModel = strings.TrimSpace(clientModel)
+	s.mu.Lock()
+	if clientModel != "" {
+		s.clientModel = clientModel
+	}
+	s.internalModels = make(map[string]struct{}, len(internalModels))
+	for _, model := range internalModels {
+		model = strings.TrimSpace(model)
+		if model == "" || model == s.clientModel {
+			continue
+		}
+		s.internalModels[model] = struct{}{}
+	}
+	s.mu.Unlock()
+}
+
+func (s *liveSidebandModelState) snapshot() (string, []string) {
+	if s == nil {
+		return "", nil
+	}
+	s.mu.RLock()
+	clientModel := s.clientModel
+	models := make([]string, 0, len(s.internalModels))
+	for model := range s.internalModels {
+		models = append(models, model)
+	}
+	s.mu.RUnlock()
+	return clientModel, models
+}
+
+// rewriteLiveSidebandClientPayload 对每轮 session.model 执行 Key、渠道和账号映射。
+func (s *OpenAIGatewayService) rewriteLiveSidebandClientPayload(
+	ctx context.Context,
+	record *LiveCallRecord,
+	account *Account,
+	payload []byte,
+) ([]byte, string, []string, error) {
+	if record == nil || account == nil || !gjson.ValidBytes(payload) {
+		return payload, "", nil, nil
+	}
+	rewritten := payload
+	if session := gjson.GetBytes(rewritten, "session"); session.IsObject() && len(record.APIKeyModelMapping) > 0 {
+		rewrittenSession, err := RewriteAPIKeyAdditionalModels([]byte(session.Raw), record.APIKeyModelMapping)
+		if err != nil {
+			return payload, "", nil, err
+		}
+		if !bytes.Equal(rewrittenSession, []byte(session.Raw)) {
+			rewritten, err = sjson.SetRawBytes(rewritten, "session", rewrittenSession)
+			if err != nil {
+				return payload, "", nil, err
+			}
+		}
+	}
+	clientModel := strings.TrimSpace(gjson.GetBytes(rewritten, "session.model").String())
+	if clientModel == "" {
+		return rewritten, "", nil, nil
+	}
+	keyTarget := clientModel
+	if mappedModel, matched := ResolveModelMapping(record.APIKeyModelMapping, clientModel); matched {
+		keyTarget = mappedModel
+	} else if clientModel == strings.TrimSpace(record.RequestedModel) && strings.TrimSpace(record.Model) != "" {
+		keyTarget = strings.TrimSpace(record.Model)
+	}
+	var groupID *int64
+	if record.GroupID > 0 {
+		value := record.GroupID
+		groupID = &value
+	}
+	routingModel, err := s.ResolveOpenAIWSRoutingModelForAccount(
+		ctx,
+		groupID,
+		account,
+		keyTarget,
+		OpenAIEndpointCapabilityLive,
+	)
+	if err != nil {
+		return payload, "", nil, err
+	}
+	upstreamModel := strings.TrimSpace(resolveOpenAIAccountUpstreamModelForRequest(account, routingModel, false, false))
+	if upstreamModel == "" {
+		return payload, "", nil, fmt.Errorf("live session model %s has no upstream mapping", clientModel)
+	}
+	rewritten, err = sjson.SetBytes(rewritten, "session.model", upstreamModel)
+	if err != nil {
+		return payload, "", nil, err
+	}
+	return rewritten, clientModel, []string{keyTarget, routingModel, upstreamModel}, nil
+}
+
+// restoreLiveSidebandServerPayload 只恢复 Live 响应中的协议模型字段。
+func restoreLiveSidebandServerPayload(payload []byte, clientModel string, internalModels []string) []byte {
+	clientModel = strings.TrimSpace(clientModel)
+	if clientModel == "" || len(internalModels) == 0 || !gjson.ValidBytes(payload) {
+		return payload
+	}
+	internal := make(map[string]struct{}, len(internalModels))
+	for _, model := range internalModels {
+		if model = strings.TrimSpace(model); model != "" && model != clientModel {
+			internal[model] = struct{}{}
+		}
+	}
+	rewritten := payload
+	for _, modelPath := range []string{"model", "modelVersion", "model_version", "response.model", "session.model"} {
+		value := gjson.GetBytes(rewritten, modelPath)
+		if value.Type != gjson.String {
+			continue
+		}
+		if _, ok := internal[strings.TrimSpace(value.String())]; !ok {
+			continue
+		}
+		if next, err := sjson.SetBytes(rewritten, modelPath, clientModel); err == nil {
+			rewritten = next
+		}
+	}
+	return rewritten
+}
+
 // ProxyLiveSideband 让认证后的客户端接管控制连接；媒体始终不经过这里。
 func (s *OpenAIGatewayService) ProxyLiveSideband(
 	ctx context.Context,
@@ -621,7 +777,13 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 
 	// observer 轮询到接管状态后会关闭旧控制连接；同一个 call 可重新加入。
 	time.Sleep(liveObserverPollInterval)
-	upstream, err := s.dialLiveSideband(ctx, record)
+	account, err := s.liveSidebandAccount(ctx, record)
+	if err != nil {
+		_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
+		go s.observeLiveCall(record)
+		return err
+	}
+	upstream, err := s.dialLiveSidebandForAccount(ctx, record, account)
 	if err != nil {
 		_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
 		go s.observeLiveCall(record)
@@ -633,12 +795,24 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	proxyCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errCh := make(chan error, 2)
+	modelState := newLiveSidebandModelState(record)
 	go func() {
 		for {
 			messageType, payload, readErr := downstream.Read(proxyCtx)
 			if readErr != nil {
 				errCh <- readErr
 				return
+			}
+			if messageType == coderws.MessageText {
+				rewritten, clientModel, internalModels, rewriteErr := s.rewriteLiveSidebandClientPayload(proxyCtx, record, account, payload)
+				if rewriteErr != nil {
+					errCh <- rewriteErr
+					return
+				}
+				payload = rewritten
+				if clientModel != "" {
+					modelState.update(clientModel, internalModels...)
+				}
 			}
 			if writeErr := upstream.WriteFrame(proxyCtx, messageType, payload); writeErr != nil {
 				errCh <- writeErr
@@ -652,6 +826,10 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 			if readErr != nil {
 				errCh <- liveSidebandReadError(readErr)
 				return
+			}
+			if messageType == coderws.MessageText {
+				clientModel, internalModels := modelState.snapshot()
+				payload = restoreLiveSidebandServerPayload(payload, clientModel, internalModels)
 			}
 			if writeErr := downstream.Write(proxyCtx, messageType, payload); writeErr != nil {
 				errCh <- writeErr
