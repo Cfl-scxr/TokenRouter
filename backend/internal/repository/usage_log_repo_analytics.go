@@ -24,6 +24,40 @@ type usageAnalyticsWindow struct {
 	rawTailStart   time.Time
 }
 
+// usageAnalyticsDailySplit 保存日表日期区间以及两侧小时表的精确时间边界。
+type usageAnalyticsDailySplit struct {
+	hourlyHeadEnd   time.Time
+	hourlyTailStart time.Time
+	dailyStartDate  string
+	dailyEndDate    string
+}
+
+// dailySplit 将小时边界与日表日期拆成独立参数，避免 PostgreSQL 把小时边界推断成 date。
+func (window usageAnalyticsWindow) dailySplit() usageAnalyticsDailySplit {
+	hourlyHeadEnd := window.dailyStart
+	hourlyTailStart := window.dailyEnd
+	dailyStart := window.dailyStart
+	dailyEnd := window.dailyEnd
+	if !dailyEnd.After(dailyStart) {
+		// 窗口内没有完整 UTC 日时，日表使用空区间，小时表覆盖全部聚合区间。
+		hourlyHeadEnd = window.aggregateStart
+		hourlyTailStart = window.aggregateStart
+		dailyStart = window.dailyEnd
+		dailyEnd = window.dailyEnd
+	}
+	return usageAnalyticsDailySplit{
+		hourlyHeadEnd:   hourlyHeadEnd,
+		hourlyTailStart: hourlyTailStart,
+		dailyStartDate:  dailyStart.Format(time.DateOnly),
+		dailyEndDate:    dailyEnd.Format(time.DateOnly),
+	}
+}
+
+// args 按“小时头部结束、小时尾部开始、日表开始、日表结束”的顺序返回查询参数。
+func (split usageAnalyticsDailySplit) args() []any {
+	return []any{split.hourlyHeadEnd, split.hourlyTailStart, split.dailyStartDate, split.dailyEndDate}
+}
+
 // resolveUsageAnalyticsWindow 仅在聚合覆盖完整时返回可安全组合的聚合与原始边界。
 func (r *usageLogRepository) resolveUsageAnalyticsWindow(ctx context.Context, start, end time.Time) (usageAnalyticsWindow, bool, error) {
 	window := usageAnalyticsWindow{start: start.UTC(), end: end.UTC()}
@@ -70,9 +104,7 @@ func (r *usageLogRepository) resolveUsageAnalyticsWindow(ctx context.Context, st
 	}
 	window.dailyStart = ceilDayUTC(window.aggregateStart)
 	window.dailyEnd = window.aggregateEnd.Truncate(24 * time.Hour)
-	if window.dailyStart.After(window.dailyEnd) {
-		window.dailyStart = window.dailyEnd
-	}
+	// 保留“不存在完整 UTC 日”的边界状态，让查询构造阶段退化为完整小时区间。
 	return window, true, nil
 }
 
@@ -132,6 +164,7 @@ func (r *usageLogRepository) getUserDashboardStatsFromAnalytics(ctx context.Cont
 	if err != nil {
 		return nil, false, err
 	}
+	dailySplit := window.dailySplit()
 
 	stats := &usagestats.UserDashboardStats{}
 	var totalDuration, durationCount int64
@@ -159,7 +192,7 @@ func (r *usageLogRepository) getUserDashboardStatsFromAnalytics(ctx context.Cont
 				cache_creation_tokens, cache_read_tokens,
 				total_cost, actual_cost, total_duration_ms, duration_count
 			FROM usage_analytics_daily
-			WHERE bucket_date >= $8::date AND bucket_date < $9::date
+			WHERE bucket_date >= $10::date AND bucket_date < $11::date
 			  AND user_id = $1
 			UNION ALL
 			SELECT
@@ -167,7 +200,7 @@ func (r *usageLogRepository) getUserDashboardStatsFromAnalytics(ctx context.Cont
 				cache_creation_tokens, cache_read_tokens,
 				total_cost, actual_cost, total_duration_ms, duration_count
 			FROM usage_analytics_daily
-			WHERE bucket_date >= $8::date AND bucket_date < $9::date
+			WHERE bucket_date >= $10::date AND bucket_date < $11::date
 			  AND $2 > 0 AND team_id = $2 AND user_id <> $1
 			UNION ALL
 			SELECT
@@ -219,10 +252,10 @@ func (r *usageLogRepository) getUserDashboardStatsFromAnalytics(ctx context.Cont
 			COALESCE(SUM(total_duration_ms), 0),
 			COALESCE(SUM(duration_count), 0)
 		FROM combined
-		`, []any{
+		`, append([]any{
 			userID, teamID, window.start, window.end, window.aggregateStart,
-			window.aggregateEnd, window.rawTailStart, window.dailyStart, window.dailyEnd,
-		},
+			window.aggregateEnd, window.rawTailStart,
+		}, dailySplit.args()...),
 			&stats.TotalRequests, &stats.TotalInputTokens, &stats.TotalOutputTokens,
 			&stats.TotalCacheCreationTokens, &stats.TotalCacheReadTokens,
 			&stats.TotalCost, &stats.TotalActualCost, &totalDuration, &durationCount,
@@ -296,11 +329,12 @@ func (r *usageLogRepository) getBatchAPIKeyUsageStatsFromAnalytics(ctx context.C
 	for _, id := range apiKeyIDs {
 		result[id] = &usagestats.BatchAPIKeyUsageStats{APIKeyID: id}
 	}
+	dailySplit := window.dailySplit()
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH combined AS (
 			SELECT api_key_id, actual_cost
 			FROM usage_analytics_daily
-			WHERE api_key_id = ANY($1) AND bucket_date >= $7::date AND bucket_date < $8::date
+			WHERE api_key_id = ANY($1) AND bucket_date >= $9::date AND bucket_date < $10::date
 			UNION ALL
 			SELECT api_key_id, actual_cost
 			FROM usage_analytics_hourly
@@ -317,8 +351,10 @@ func (r *usageLogRepository) getBatchAPIKeyUsageStatsFromAnalytics(ctx context.C
 		SELECT api_key_id, COALESCE(SUM(actual_cost), 0)
 		FROM combined
 		GROUP BY api_key_id
-	`, pq.Array(apiKeyIDs), window.start, window.end, window.aggregateStart,
-		window.aggregateEnd, window.rawTailStart, window.dailyStart, window.dailyEnd)
+	`, append([]any{
+		pq.Array(apiKeyIDs), window.start, window.end, window.aggregateStart,
+		window.aggregateEnd, window.rawTailStart,
+	}, dailySplit.args()...)...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -379,11 +415,12 @@ func (r *usageLogRepository) getBatchUserUsageStatsFromAnalytics(ctx context.Con
 	for _, id := range userIDs {
 		result[id] = &usagestats.BatchUserUsageStats{UserID: id}
 	}
+	dailySplit := window.dailySplit()
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH combined AS (
 			SELECT user_id, platform, actual_cost
 			FROM usage_analytics_daily
-			WHERE user_id = ANY($1) AND bucket_date >= $7::date AND bucket_date < $8::date
+			WHERE user_id = ANY($1) AND bucket_date >= $9::date AND bucket_date < $10::date
 			UNION ALL
 			SELECT user_id, platform, actual_cost
 			FROM usage_analytics_hourly
@@ -402,8 +439,10 @@ func (r *usageLogRepository) getBatchUserUsageStatsFromAnalytics(ctx context.Con
 		SELECT user_id, platform, COALESCE(SUM(actual_cost), 0)
 		FROM combined
 		GROUP BY user_id, platform
-	`, pq.Array(userIDs), window.start, window.end, window.aggregateStart,
-		window.aggregateEnd, window.rawTailStart, window.dailyStart, window.dailyEnd)
+	`, append([]any{
+		pq.Array(userIDs), window.start, window.end, window.aggregateStart,
+		window.aggregateEnd, window.rawTailStart,
+	}, dailySplit.args()...)...)
 	if err != nil {
 		return nil, false, err
 	}

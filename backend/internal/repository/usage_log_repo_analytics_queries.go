@@ -35,8 +35,8 @@ func (r *usageLogRepository) buildUsageAnalyticsQuery(ctx context.Context, filte
 		window.rawTailStart,
 	}
 	if useDaily {
-		// 非日聚合查询不能携带未引用参数，否则 PostgreSQL 无法推断空洞参数的类型。
-		args = append(args, window.dailyStart, window.dailyEnd)
+		// 小时边界与日期边界必须使用不同参数，防止日期类型污染小时范围比较。
+		args = append(args, window.dailySplit().args()...)
 	}
 	rawUsageSource := "usage_logs ul"
 	conditions := make([]string, 0, 10)
@@ -111,7 +111,7 @@ func (r *usageLogRepository) buildUsageAnalyticsQuery(ctx context.Context, filte
 		parts = append(parts, `
 			SELECT bucket_date::timestamp AT TIME ZONE 'UTC' AS occurred_at, `+metricColumns+`
 			FROM usage_analytics_daily
-			WHERE bucket_date >= $6::date AND bucket_date < $7::date`)
+			WHERE bucket_date >= $8::date AND bucket_date < $9::date`)
 	}
 	hourlyRange := "bucket_start >= $3 AND bucket_start < $4"
 	if useDaily {

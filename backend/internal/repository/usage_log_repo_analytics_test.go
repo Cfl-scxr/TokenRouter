@@ -47,9 +47,9 @@ func TestBuildUsageAnalyticsQueryUsesHalfOpenRanges(t *testing.T) {
 	})
 	repo := &usageLogRepository{sql: db, preAggregation: settings}
 	start := time.Date(2026, 8, 1, 10, 15, 0, 0, time.UTC)
-	end := time.Date(2026, 8, 2, 11, 45, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 3, 11, 45, 0, 0, time.UTC)
 	coverage := time.Date(2026, 8, 1, 11, 0, 0, 0, time.UTC)
-	watermark := time.Date(2026, 8, 2, 11, 30, 0, 0, time.UTC)
+	watermark := time.Date(2026, 8, 3, 11, 30, 0, 0, time.UTC)
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
 
@@ -58,8 +58,44 @@ func TestBuildUsageAnalyticsQueryUsesHalfOpenRanges(t *testing.T) {
 	require.True(t, ok)
 	require.Contains(t, query.cte, "ul.created_at >= $1 AND ul.created_at < $3")
 	require.Contains(t, query.cte, "ul.created_at >= $5 AND ul.created_at < $2")
-	require.Contains(t, query.cte, "bucket_date >= $6::date AND bucket_date < $7::date")
-	require.Len(t, query.args, 7)
+	require.Contains(t, query.cte, "bucket_date >= $8::date AND bucket_date < $9::date")
+	require.Contains(t, query.cte, "bucket_start >= $3 AND bucket_start < $6")
+	require.Contains(t, query.cte, "bucket_start >= $7 AND bucket_start < $4")
+	require.Len(t, query.args, 9)
+	require.Equal(t, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC), query.args[5])
+	require.Equal(t, time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC), query.args[6])
+	require.Equal(t, "2026-08-02", query.args[7])
+	require.Equal(t, "2026-08-03", query.args[8])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestBuildUsageAnalyticsQueryBeforeUTCMidnightKeepsTodayBoundary 验证东八区今日在 UTC 零点前不会包含昨日小时桶。
+func TestBuildUsageAnalyticsQueryBeforeUTCMidnightKeepsTodayBoundary(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	// 北京时间 2026-08-06 00:00 至 03:30 对应同一 UTC 日内的不完整窗口。
+	start := time.Date(2026, 8, 5, 16, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 5, 19, 30, 0, 0, time.UTC)
+	watermark := time.Date(2026, 8, 5, 19, 25, 0, 0, time.UTC)
+	coverage := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
+
+	query, ok, err := repo.buildUsageAnalyticsQuery(context.Background(), UsageLogFilters{}, start, end, true)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, query.args, 9)
+	// 日表区间为空，小时表的分割点固定在今日开始，不能回退到前一个 UTC 午夜。
+	require.Equal(t, start, query.args[5])
+	require.Equal(t, start, query.args[6])
+	require.Equal(t, "2026-08-05", query.args[7])
+	require.Equal(t, "2026-08-05", query.args[8])
+	require.Contains(t, query.cte, "bucket_date >= $8::date AND bucket_date < $9::date")
+	require.Contains(t, query.cte, "bucket_start >= $3 AND bucket_start < $6")
+	require.Contains(t, query.cte, "bucket_start >= $7 AND bucket_start < $4")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -162,9 +198,9 @@ func TestBuildUsageAnalyticsQueryUsesIndexableOwnedTeamRawSource(t *testing.T) {
 	}, start, end, true)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Contains(t, query.cte, "SELECT * FROM usage_logs WHERE user_id = $8")
-	require.Contains(t, query.cte, "SELECT * FROM usage_logs WHERE team_id = $9 AND user_id <> $8")
-	require.Contains(t, query.where, "user_id = $8 OR (team_id = $9 AND user_id <> $8)")
+	require.Contains(t, query.cte, "SELECT * FROM usage_logs WHERE user_id = $10")
+	require.Contains(t, query.cte, "SELECT * FROM usage_logs WHERE team_id = $11 AND user_id <> $10")
+	require.Contains(t, query.where, "user_id = $10 OR (team_id = $11 AND user_id <> $10)")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -256,9 +292,9 @@ func TestBatchAPIKeyUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
 
-	// 首次查询使用日表形态，共 8 个参数（批量 ID 加 7 个边界）。
+	// 首次查询使用日表形态，共 10 个参数（批量 ID 加 9 个边界）。
 	mock.ExpectQuery("(?s)SELECT api_key_id, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "actual_cost"}))
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
@@ -289,7 +325,7 @@ func TestBatchUserUsageAnalyticsUsesDynamicTodayIDPosition(t *testing.T) {
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
 	mock.ExpectQuery("(?s)SELECT user_id, platform, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "platform", "actual_cost"}))
 	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
 		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, coverage))
