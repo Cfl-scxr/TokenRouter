@@ -1,13 +1,26 @@
-# Batch Image MVP
+# Batch Image Jobs
 
-Sub2API Batch Image MVP provides asynchronous Gemini image batch generation through a unified API surface backed by Redis workers, PostgreSQL state, and provider-specific batch backends.
+TokenRouter provides asynchronous Gemini image batch generation through a unified API surface backed by Redis workers, PostgreSQL state, and provider-specific batch backends.
+
+This document covers the public resource shape, persistent job lifecycle, queue coordination, billing holds, provider execution, cleanup, security boundaries, configuration, and verification. It does not define production prices, Google Cloud IAM policy for a particular deployment, or ordinary synchronous image generation.
 
 Supported providers:
 
 - `gemini_api`
 - `vertex`
 
-API users do not see Gemini file names, Vertex job names, GCS paths, signed URLs, API keys, or service account material. Downloads are proxied through Sub2API in this MVP.
+API users do not see Gemini file names, Vertex job names, GCS paths, signed URLs, API keys, or service account material. Downloads are proxied through TokenRouter in the current implementation.
+
+## Navigation
+
+- [API Routes](#api-routes) defines the owned public resources and request limits.
+- [Lifecycle](#lifecycle) describes persisted state and public status projection.
+- [Redis](#redis) describes queue coordination and recovery boundaries.
+- [Billing](#billing) describes reserve, capture, release, and settlement idempotency.
+- [Cleanup](#cleanup) describes input/output retention and safe deletion.
+- [Provider Notes](#provider-notes) describes the supported upstream credential shapes.
+- [Config](#config) and [Operations Checklist](#operations-checklist) cover runtime enablement.
+- [Security Checklist](#security-checklist) and [Test Commands](#test-commands) cover change verification.
 
 ## API Routes
 
@@ -57,7 +70,7 @@ Submit request:
 
 - `gemini-2.5-flash-image` and other Flash Image aliases: up to 3 reference images per item.
 - `gemini-3-pro-image` and other Pro Image aliases: up to 14 reference images per item.
-- Per batch job: up to 1000 reference image attachments total after `output_count` expansion across all items. This is an internal Sub2API guardrail for request size and cost control, not the generated-image cap and not a Pro Image per-item capability. The generated-output cap is 200 images per job.
+- Per batch job: up to 1000 reference image attachments total after `output_count` expansion across all items. This is an internal TokenRouter guardrail for request size and cost control, not the generated-image cap and not a Pro Image per-item capability. The generated-output cap is 200 images per job.
 - Per batch job: up to 128 MB decoded inline reference image data total. For large batches or repeated reference images, prefer `gs://` `file_uri` references or split the request into multiple jobs.
 
 `output_count` is optional per item and defaults to `1`. It means "repeat this prompt and reference image set N times" rather than relying on Gemini to return multiple images from one upstream request. The backend expands each repeat into a separate provider JSONL line with suffixed custom ids such as `cover_001_01`, `cover_001_02`. Current limits are:
@@ -105,6 +118,7 @@ Public items response:
 }
 ```
 
+<a id="job_lifecycle"></a>
 ## Lifecycle
 
 Internal lifecycle:
@@ -158,7 +172,7 @@ The worker does not perform DB scan polling. Database reads happen only after a 
 
 ## Billing
 
-MVP billing rules:
+Billing rules:
 
 - Submit may estimate cost.
 - Submit reserves applicable subscription quota first and freezes wallet balance only for the uncovered remainder.
@@ -167,7 +181,7 @@ MVP billing rules:
 - Only successful images are charged.
 - Failed items are not charged.
 - Settlement keeps subscription usage first, captures wallet balance only after the reserved subscription amount is exhausted, and releases every unused reservation on failure or cancellation.
-- Reference images are sent to Gemini as input and can create small upstream input-token and temporary storage cost. They are counted once per expanded output request when `output_count > 1`, but the public MVP billing model does not add a separate reference-image surcharge. User-facing estimated, held, and settled amounts are still based on the output image count and configured batch image unit price.
+- Reference images are sent to Gemini as input and can create small upstream input-token and temporary storage cost. They are counted once per expanded output request when `output_count > 1`, but the public billing model does not add a separate reference-image surcharge. User-facing estimated, held, and settled amounts are still based on the output image count and configured batch image unit price.
 - Settlement request id is `batch_image_settlement:{batch_id}`.
 - Settlement is idempotent; re-running settlement must not double charge.
 - Settlement billing failures are retried with a bounded retry limit. After the retry limit is reached, the job is failed and the remaining hold is released through the idempotent release path.
@@ -204,7 +218,7 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 - Supports Gemini `apikey` upstream accounts with a configured API key.
 - Result file refs are internal.
 - API keys are never returned.
-- The provider can be selected and submitted through Sub2API when an administrator configures a Gemini API-key upstream account. In the 2026-07-07 PR validation, this path was verified as selectable/callable, but successful image generation was not continued because the test API key had no prepayment.
+- The provider can be selected and submitted through TokenRouter when an administrator configures an eligible Gemini API-key upstream account.
 
 `vertex`:
 
@@ -212,28 +226,28 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 - Supports Gemini `service_account` upstream accounts with valid service account JSON.
 - GCS bucket and prefix are server-managed.
 - Vertex job name and GCS paths are internal.
-- Batch image output should be treated as `1K`/default only in MVP.
+- Batch image output should be treated as `1K`/default only in the current implementation.
 - Do not promise `2K` or `4K`.
 
-Other Gemini account/login types are not selected by the current batch image providers unless they expose equivalent API-key or service-account credentials through the same provider flow. They were not covered by the 2026-07-07 PR validation.
+Other Gemini account/login types are not selected by the current batch image providers unless they expose equivalent API-key or service-account credentials through the same provider flow.
 
 ## Official Google Enablement
 
-Operators must enable Gemini/Vertex capability in Google's official console before turning on Sub2API batch image for any group. Sub2API feature flags and group switches do not create Google-side access by themselves.
+Operators must enable Gemini/Vertex capability in Google's official console before turning on TokenRouter batch image for any group. TokenRouter feature flags and group switches do not create Google-side access by themselves.
 
 Recommended production path:
 
 - Use a Google Cloud project with billing enabled.
 - Enable the relevant Gemini API / Vertex AI APIs for the project.
-- Use a service account or Application Default Credentials for the Sub2API runtime.
+- Use a service account or Application Default Credentials for the TokenRouter runtime.
 - Create one fixed Cloud Storage bucket for batch image input and output, then grant the runtime and Vertex service agent the minimum required bucket permissions.
-- Configure Sub2API with the project id, location, managed bucket, provider account, model whitelist, and pricing.
+- Configure TokenRouter with the project id, location, managed bucket, provider account, model whitelist, and pricing.
 - Enable `BATCH_IMAGE_ENABLED` globally, enable image generation on the intended Gemini group, then enable `allow_batch_image_generation` for that group. Non-Gemini groups are not eligible for batch image generation, and the admin UI only shows the batch image group switch after image generation is enabled on a Gemini group.
 
 API-key path:
 
 - Google API keys are suitable for Gemini API development and supported Gemini methods.
-- The Sub2API `x-goog-api-key` compatibility header still expects a Sub2API key, not a plain Google key.
+- The TokenRouter `x-goog-api-key` compatibility header still expects a TokenRouter key, not a plain Google key.
 - Plain Google API keys should not be documented as the default production credential for Vertex service-account batch jobs.
 - If an administrator configures a Gemini API-key upstream account, validate it with one low-cost batch image after the Google account has the required billing/prepayment state. If it has no prepayment, record only that the provider is selectable/callable and that failed submit releases hold.
 
@@ -319,10 +333,6 @@ Feature flags default to disabled.
 - Confirm billing pricing.
 - Run smoke tests before enabling.
 
-## Future Optimization
-
-- Optional object-storage download offload: persist completed image outputs to an operator-configured object store such as GCS, S3, or R2, then issue short-lived signed download links to users. This would avoid routing large image/ZIP downloads through the Sub2API server, which is useful for small-bandwidth deployments. Keep it opt-in because it needs extra storage credentials, lifecycle cleanup, signed-URL expiry policy, access auditing, and compatibility with output deletion.
-
 ## Security Checklist
 
 - No provider refs in public responses.
@@ -349,13 +359,4 @@ go test ./... -run '^$'
 
 These commands should not require Docker, testcontainers, Redis, GCP, Gemini, Vertex, or GCS.
 
-## PR Hygiene Checklist
-
-- Do not accidentally commit `rfcs/batch-image-issue-draft.md` unless maintainers explicitly want it.
-- Keep migrations ordered: `180_batch_image_foundation.sql`, `181_add_user_frozen_balance.sql`, `182_batch_image_provider_refs.sql`, then later migrations.
-- Include generated Ent code if generated code is committed in this repository.
-- Keep generated server and wire files updated.
-- Keep feature flags disabled by default unless maintainers ask otherwise.
-- Do not commit real secrets, API keys, service account JSON, or local machine paths.
-- Keep fixtures tiny and fake; no real cloud refs or credentials.
-- Do not add new public routes, providers, dashboards, queues, or billing behavior in this stabilization PR.
+Related Project Doc: [Routing and billing](routing_and_billing.md), [Composite API keys](composite_api_keys.md), [Gateway request lifecycle](../architecture/gateway_request_lifecycle.md), and the [domain index](index.md).

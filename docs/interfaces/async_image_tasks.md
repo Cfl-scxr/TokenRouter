@@ -2,6 +2,14 @@
 
 Asynchronous image tasks let clients submit long-running OpenAI-compatible image requests without keeping one HTTP connection open. OpenAI and Grok image generations or edits can be submitted to `/v1/images/generations/async` or `/v1/images/edits/async`, then polled through `/v1/images/tasks/{task_id}`. This avoids proxy/CDN response timeouts such as Cloudflare 524 while preserving the existing image routing, billing, moderation, concurrency, and failover behavior.
 
+This document owns the async submission, polling, Redis state, object-storage offload, timeout, and ownership contract. The synchronous image gateway still owns provider selection and billing. This feature is an in-process execution wrapper, not a durable work queue: an accepted task is persisted in Redis, but a process restart does not resume its goroutine.
+
+## Navigation
+
+- [Endpoints](#endpoints): read when changing route registration or supported platforms.
+- [Enabling the feature](#enabling-the-feature-object-storage): read when changing runtime settings or S3-compatible storage.
+- [Task lifecycle](#task-lifecycle): read when changing submission, execution, state, ownership, TTL, or billing behavior.
+
 ## Endpoints
 
 The authenticated gateway exposes both `/v1` paths and their existing no-prefix aliases:
@@ -24,7 +32,7 @@ Asynchronous image tasks are **disabled by default** and gated on object storage
 
 **Admin → Backup → Async image object storage.** Saving the form takes effect immediately — the object-storage client is rebuilt on the next request, so there is no container restart.
 
-Because the async image storage and the database backup share one S3 client, the form defaults to **reusing the backup S3 configuration**: it borrows the endpoint, region and credentials already configured above and keeps only its own bucket and prefix, so backups stay under `backups/` while images go to `images/`. Leave the bucket empty to use the backup bucket as well. Untick the box to point images at a completely separate account.
+The form can **reuse the backup S3 configuration**: it borrows the endpoint, region, and credentials while retaining an image-specific bucket and prefix. Leaving the image bucket empty also reuses the backup bucket. Disabling reuse allows a separate S3-compatible account.
 
 Saving requires step-up 2FA when that gate is enabled, for the same reason the backup S3 form does: changing the target redirects generated content to another account.
 
@@ -67,11 +75,18 @@ WARN image_storage.enabled is true but object storage is not fully configured; a
 
 `missing_keys` names exactly which credentials were empty when the config was loaded.
 
-Note that releases **before v0.1.161 silently dropped `IMAGE_STORAGE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and `_PUBLIC_BASE_URL`** when they were supplied only through the environment: those keys had no registered default, and viper cannot see an environment variable for a key it does not already know about. Deployments driven purely by `environment:` — which is what `deploy/docker-compose.yml` does by default — therefore reported `enabled: true` with empty credentials and 404'd on every async call. On an affected release the workaround is to also place the `image_storage` block in `/app/data/config.yaml` (copy it from `deploy/config.example.yaml`); once the keys exist in the file, the environment overrides apply normally.
+Every `image_storage` key has a registered default and is reachable through its `IMAGE_STORAGE_*` environment variable. Keep `config` environment-reachability tests updated when adding fields; otherwise Viper can silently ignore a variable that has no known key.
 
 Two further causes of a 404 that are unrelated to storage: the API key's group must be on the **OpenAI or Grok** platform (any other platform, or a key with no group at all, yields `Images API is not supported for this platform`), and a task may only be polled with the **same API key that submitted it** — polling with a different key of the same user returns `image task not found` by design.
 
-## Submit a task
+<a id="task_lifecycle"></a>
+## Task lifecycle
+
+An accepted request moves through `processing -> completed` or `processing -> failed`. Submission creates a fresh `imgtask_...` identifier and Redis record before starting an in-process goroutine. There is no `Idempotency-Key` deduplication: retrying a submission creates another task and may generate and bill another image.
+
+The goroutine uses the same normalized request, API-key context, model mapping, account scheduling, failover, usage recording, and settlement path as the synchronous image endpoint. It is detached from client disconnects but bounded by a 30-minute execution timeout. Polling only reads task state and never performs another upstream request or settlement.
+
+### Submit a task
 
 ```bash
 curl -i https://api.example.com/v1/images/generations/async \
@@ -100,7 +115,7 @@ The server stores the initial task in Redis and responds with `202 Accepted`:
 
 `Location` contains the polling path and `Retry-After: 3` provides the recommended polling interval.
 
-## Poll a task
+### Poll a task
 
 Use the same API key that submitted the task:
 
@@ -161,6 +176,8 @@ For URL responses, `image_url` mirrors the first `data[].url` for simple clients
 }
 ```
 
-All submit and poll responses include `Cache-Control: no-store`, preventing a CDN from caching the `processing` state. Tasks and results expire 24 hours after their latest state update. A task executes for at most 30 minutes.
+All submit and poll responses include `Cache-Control: no-store`, preventing a CDN from caching the `processing` state. Tasks and results expire 24 hours after their latest state update. A task executes for at most 30 minutes. Result metadata stored in Redis is capped at 256 KiB and errors at 64 KiB; oversized or invalid results become a safe `failed` state.
 
 Task ownership is scoped to both user and API key. Unknown task IDs and IDs owned by another key both return `404`, avoiding task-existence disclosure. Polling remains available when the completed generation used the key's remaining balance; normal authentication, disabled-key, user, IP, and group checks still apply.
+
+Related documents: [Gateway Request Lifecycle](../architecture/gateway_request_lifecycle.md), [Routing and Billing](../domains/routing_and_billing.md), [Configuration](configuration.md), and [Interfaces Index](index.md).

@@ -27,7 +27,7 @@ This guide covers the files in [`deploy/`](../deploy/) for deploying TokenRouter
 | [`deploy/sub2api-datamanagementd.service`](../deploy/sub2api-datamanagementd.service) | datamanagementd systemd service unit file |
 | [DATAMANAGEMENTD_CN.md](./DATAMANAGEMENTD_CN.md) | datamanagementd 部署与联动说明（中文） |
 | [`deploy/config.example.yaml`](../deploy/config.example.yaml) | Example configuration file |
-| [EDGE_SECURITY.md](./EDGE_SECURITY.md) | Reverse proxy, CDN/WAF, trusted proxy, and ingress hardening guide |
+| [Edge security](./operations/edge_security.md) | Reverse proxy, CDN/WAF, trusted proxy, and ingress hardening guide |
 
 ---
 

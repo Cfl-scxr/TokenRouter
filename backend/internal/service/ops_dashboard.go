@@ -10,6 +10,8 @@ import (
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 )
 
+// GetDashboardOverview 按统一预聚合设置选择数据源，并在聚合路径失败时回退原始表。
+// @project-doc docs/operations/pre_aggregation.md#query_routing_and_fallback
 func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error) {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return nil, err

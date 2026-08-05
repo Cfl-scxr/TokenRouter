@@ -2,6 +2,16 @@
 
 复合 API Key 允许一个密钥绑定多个分组。每个映射由分组和前缀组成，请求通过 `前缀/模型 ID` 选择分组。
 
+本文覆盖复合 Key 的配置、单请求选组、支持入口、错误和实时连接限制，不覆盖选组后的渠道/账号调度或单 Key 模型重定向规则。
+
+## 章节导航
+
+- [创建与更新](#创建与更新)：修改持久映射和校验时读取。
+- [请求选组](#请求选组)：修改前缀解析和请求改写时读取。
+- [支持入口](#支持入口)：新增协议入口时核对。
+- [错误](#错误)：保持协议错误形状时读取。
+- [Realtime 限制](#realtime-限制)：修改长连接能力时读取。
+
 ## 创建与更新
 
 创建复合 Key 时提交 `is_composite: true` 和完整的 `composite_groups`：
@@ -23,7 +33,8 @@
 
 新增数据共享分组时，请求必须携带当前数据共享须知的确认字段。一次确认覆盖该次请求新增的全部数据共享映射，每个映射都会独立保存确认记录。
 
-## 请求格式
+<a id="group_selection"></a>
+## 请求选组
 
 以下示例选择前缀为 `GPT` 的分组，内部实际模型为 `gpt-5`：
 
@@ -70,3 +81,5 @@ POST /v1beta/models/Gemini/gemini-2.5-pro:generateContent
 ## Realtime 限制
 
 复合 Key 不支持 `/v1/live`、Codex Realtime、Responses WebSocket 和 Live sideband。这些入口可能在同一连接中切换模型，服务会返回 `COMPOSITE_KEY_ENDPOINT_UNSUPPORTED`，不会选择任意默认分组。
+
+相关文档：[API Key 模型重定向](api_key_model_redirects.md)、[路由与结算](routing_and_billing.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)。

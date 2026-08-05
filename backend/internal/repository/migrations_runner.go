@@ -96,6 +96,8 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 //
 // 返回：
 //   - error: 迁移过程中的任何错误
+//
+// @project-doc docs/operations/deployment_and_migrations.md#migration_execution
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return errors.New("nil sql db")

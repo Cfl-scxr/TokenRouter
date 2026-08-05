@@ -213,6 +213,8 @@ func NewBatchImagePublicService(repo BatchImageRepository, accountRepo AccountRe
 	}
 }
 
+// 批量图片作业的提交、预占和后续状态生命周期由对应工程文档维护。
+// @project-doc docs/domains/batch_image_jobs.md#job_lifecycle
 func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOwner, req BatchImageSubmitRequest, idempotencyKey string) (*BatchImagePublicBatch, error) {
 	if !s.enabled() {
 		return nil, ErrBatchImageDisabled

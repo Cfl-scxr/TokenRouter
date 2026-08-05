@@ -11,7 +11,7 @@
 # 修改为你的域名
 api.sub2api.com {
 	# 此基线假设客户端直连 Caddy。Caddy 位于 CDN 后时，应按
-	# docs/EDGE_SECURITY.md 配置明确的可信代理 CIDR 并使用 {client_ip}；
+	# docs/operations/edge_security.md 配置明确的可信代理 CIDR 并使用 {client_ip}；
 	# 否则 {remote_host} 只会得到 CDN 出口地址。
 	# =========================================================================
 	# TLS 安全配置

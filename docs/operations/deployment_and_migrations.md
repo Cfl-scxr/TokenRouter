@@ -1,0 +1,76 @@
+# 部署与数据库迁移
+
+本文记录 TokenRouter 构建产物、运行拓扑、首次初始化、数据库迁移、升级和恢复之间的工程边界。逐命令安装步骤由既有部署手册维护；修改启动装配、镜像、Compose、setup、SQL 迁移或在线更新前应先读本文。
+
+## 章节导航
+
+- [构建与运行形态](#构建与运行形态)：修改产物或部署拓扑时读取。
+- [初始化与启动](#初始化与启动)：修改 setup、配置或健康检查时读取。
+- [迁移执行](#migration_execution)：修改 runner 或迁移格式时读取。
+- [新增与同步迁移](#新增与同步迁移)：创建本 fork 迁移或同步上游时读取。
+- [升级与恢复](#升级与恢复)：修改更新、备份或回退流程时读取。
+
+## 构建与运行形态
+
+发布镜像通过多阶段构建生成前端静态资源、Go 后端和必要运行时工具；前端最终嵌入后端二进制。GitHub Release 同时发布 Linux `amd64`、Linux `arm64` 等产物，具体矩阵以 [release workflow](../../.github/workflows/release.yml) 为准。
+
+仓库支持以下运行形态：
+
+| 形态 | 权威入口 | 持久依赖与边界 |
+| --- | --- | --- |
+| 单二进制/systemd | `deploy/install.sh` | 外置 PostgreSQL、Redis；安装器管理二进制版本和服务 |
+| 完整 Compose | `deploy/docker-compose.yml`、`docker-compose.local.yml` | 应用、PostgreSQL、Redis；分别使用命名卷或本地目录 |
+| 独立应用容器 | `deploy/docker-compose.standalone.yml` | PostgreSQL、Redis 由部署环境提供 |
+| 源码开发 Compose | `deploy/docker-compose.dev.yml` | 本地构建应用并启动配套依赖 |
+| Apple Container | `deploy/apple-container.sh` | 独立脚本管理容器、卷和健康状态 |
+
+应用至少依赖 PostgreSQL 和 Redis。`/app/data` 或等价 `DATA_DIR` 保存配置、安装锁及本地运维产物；数据库、Redis 和对象存储各有独立生命周期，不能只备份应用数据目录就宣称完成系统备份。
+
+逐步操作见 [中文部署指南](../DEPLOY_GUIDE.md)、[Docker 镜像说明](../DOCKER.md) 和 [Apple Container 指南](../APPLE_CONTAINER.md)。这些是部署者手册，不替代本文的工程约束。
+
+## 初始化与启动
+
+进程入口先判断是否需要 setup。未安装时可使用 Web setup、`--setup` CLI 或容器的 `AUTO_SETUP`；setup 测试 PostgreSQL/Redis，执行迁移，创建首个管理员，写入配置，最后创建只读安装锁。安装锁用于阻止重新初始化攻击，不能用删除它的方式修复普通配置问题。
+
+正常启动在依赖注入创建 Ent 客户端时再次运行同一套嵌入迁移，因此每个新版本在监听 HTTP 前完成 schema 对齐。迁移或安全密钥初始化失败会使应用初始化失败，不允许带着部分 schema 提供流量。多实例滚动发布时，各实例可同时启动，但迁移锁只允许一个实例执行 SQL。
+
+`GET /health` 是容器健康检查入口。健康响应只能说明当前进程可服务，不能替代升级后的业务抽样、账本核对或后台任务检查。
+
+<a id="migration_execution"></a>
+## 迁移执行
+
+`backend/migrations/*.sql` 通过 `go:embed` 编入二进制，文件名是迁移身份并按字典序决定顺序。执行器使用固定 PostgreSQL advisory lock 串行化多实例迁移；`schema_migrations` 记录文件名、去除首尾空白后的 SHA-256 和应用时间。已有文件校验和不匹配时启动失败，只有 runner 中逐文件列出的历史兼容集合可以放行。
+
+普通 `*.sql` 在单个事务中执行，SQL 与迁移记录一起提交或回滚。包含 `CREATE INDEX CONCURRENTLY` 或 `DROP INDEX CONCURRENTLY` 的文件必须以 `_notx.sql` 结尾；该模式逐语句在事务外执行，只接受带 `IF NOT EXISTS`/`IF EXISTS` 的并发索引语句，也禁止 `BEGIN`、`COMMIT` 和 `ROLLBACK`。非事务迁移可能在 SQL 成功但记录写入前中断，因此每条语句必须可安全重放。
+
+首次检测到旧 `schema_migrations` 且缺少 Atlas 记录时，runner 会用当前最后一个迁移建立 `atlas_schema_revisions` 基线。该兼容记录不改变 SQL 文件仍为 schema 权威来源的事实。
+
+迁移是前向且不可变的：
+
+- 已进入任何环境的文件不得修改、删除或改名；修正必须使用新迁移。
+- 文件内不能放可执行的 Down 段；runner 不解析 Goose/Up/Down 标记。
+- 普通迁移应尽量幂等并在 SQL 中写中文注释解释变更原因和兼容窗口。
+- schema、数据回填、Repository 查询和 Ent schema 变化必须在同一兼容序列中设计，支持滚动发布期间的新旧二进制共存。
+
+## 新增与同步迁移
+
+新增文件使用 `<递增数字>_<snake_case 描述>.sql`；并发索引使用 `<递增数字>_<描述>_notx.sql`。仓库历史上存在重复编号和字母后缀，不能据此复用编号。每次创建前都要扫描 `backend/migrations/` 的数字前缀，取当前最大值再加一，并确认按字典序排在预期位置。
+
+本 fork 同步上游时有额外硬约束：上游在 `backend/migrations/` 新增的迁移不能原名照搬。应按上游提交顺序逐个把数字前缀改为本 fork 当前最大编号加一；同时更新测试、runner 特例、文档或其它对原文件名的精确引用。已存在于 fork 的迁移保持原名，不为“整理顺序”重编号。
+
+迁移变更至少验证：
+
+- runner 单元测试，包括事务模式、`_notx` 校验、锁和 checksum；
+- 受影响 schema/data migration 测试；
+- 从空数据库完整应用，以及在已有 schema 上重复执行；
+- `schema_migrations` 文件名与预期一致，未修改既有文件 checksum。
+
+## 升级与恢复
+
+升级前先创建并实际验证 PostgreSQL 备份，同时保存 Redis/对象存储中业务要求恢复的数据。后台备份服务可把数据库 dump 流式写入本地或 S3 兼容存储，并用维护锁串行化备份/恢复；敏感存储配置需要稳定的安全密钥。备份内容策略可能排除大体量历史表，恢复目标必须先核对备份范围。
+
+在线更新和安装脚本可以保留上一版二进制或镜像，但这只是应用回退。数据库迁移不会因镜像回退自动撤销；上线前必须确认新迁移对旧版本是否向后兼容。若 schema 已不兼容，应使用经过演练的数据库备份恢复或新增前向修复迁移，而不是手工删除 `schema_migrations` 记录。
+
+升级完成后至少检查 `/health`、登录/API Key 鉴权、一个非流和流式网关请求、用量结算、关键后台任务及迁移表。保留旧产物和升级前备份，直到这些检查完成。
+
+相关文档：[系统架构](../architecture/system_architecture.md)、[配置边界](../interfaces/configuration.md)、[运维目录](index.md)。

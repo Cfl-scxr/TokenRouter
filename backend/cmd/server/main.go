@@ -131,6 +131,8 @@ func runSetupServer() {
 	}
 }
 
+// runMainServer 装配正式服务并协调进程启动与关闭。
+// @project-doc docs/architecture/system_architecture.md#startup_and_shutdown
 func runMainServer() {
 	cfg, err := config.LoadForBootstrap()
 	if err != nil {

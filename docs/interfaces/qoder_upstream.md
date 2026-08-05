@@ -2,6 +2,18 @@
 
 TokenRouter supports Qoder native upstream accounts through the Qoder COSY gateway path. Public request-side aliases map to Qoder route keys, and raw route keys remain valid direct request models for compatibility and operations.
 
+This document owns the Qoder account, site, model capability, request adaptation, pricing, quota, and failure boundaries. It does not define TokenRouter's shared scheduling or ledger semantics, and it does not promise support for Qoder enterprise login variants that are absent from the implementation.
+
+## Navigation
+
+- [Account Types](#account-types): read when changing credential import, OAuth, refresh, or site selection.
+- [Model Aliases and Mapping](#model-aliases-and-mapping): read when changing model catalogs, route keys, or restrictions.
+- [Site Thinking Controls](#site-thinking-controls): read when changing protocol-native reasoning controls.
+- [Context Windows](#context-windows): read when changing per-site context capabilities or request payloads.
+- [Billing Scope](#billing-scope): read when changing Qoder price lookup or zero-cost behavior.
+- [Upstream Account Usage](#upstream-account-usage): read when changing quota probes or scheduling cooldowns.
+- [Operations](#operations): read when changing failover, error classification, or import/export.
+
 ## Account Types
 
 - `cosy` accounts can use a PAT bootstrap or device OAuth credentials on either the international (`global`) or China (`cn`) site.
@@ -137,3 +149,5 @@ The account usage view queries the selected site's COSY-signed Gateway quota end
 Qoder participates in scheduler snapshots, error passthrough rules, failover, and admin user platform usage views under the `qoder` platform key. For retryable upstream failures (Qoder entitlement denial code `112`, agent limit / 429 / 5xx), the gateway can fail over to another account before any stream chunk has been written; after streaming starts, it returns a stream-aware error instead of switching accounts. Code `112` is treated as model/account entitlement denial, not an auth-token failure, so it does not trigger token refresh.
 
 Admin account data export/import preserves `qoder` / `cosy` accounts and their credentials for backup migration.
+
+Related documents: [Gateway Request Lifecycle](../architecture/gateway_request_lifecycle.md), [Routing and Billing](../domains/routing_and_billing.md), [HTTP API Boundaries](http_api.md), and [Interfaces Index](index.md).

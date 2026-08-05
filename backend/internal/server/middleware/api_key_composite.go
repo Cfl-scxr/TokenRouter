@@ -23,6 +23,7 @@ import (
 const compositeKeyNoGroupContextKey = "composite_key_no_group"
 
 // resolveCompositeAPIKeyRequest 根据客户端模型选择复合 Key 分组，并改写为真实模型。
+// @project-doc docs/domains/composite_api_keys.md#group_selection
 func resolveCompositeAPIKeyRequest(c *gin.Context, apiKeyService *service.APIKeyService, apiKey *service.APIKey) (*service.APIKey, error) {
 	if apiKey == nil || !apiKey.IsComposite {
 		return apiKey, nil

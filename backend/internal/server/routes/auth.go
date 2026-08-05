@@ -12,6 +12,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// 认证路由的主体、会话和权限边界由对应工程文档维护。
+// @project-doc docs/domains/identity_and_tenancy.md#authentication_boundaries
 // RegisterAuthRoutes 注册认证相关路由
 func RegisterAuthRoutes(
 	v1 *gin.RouterGroup,

@@ -44,6 +44,7 @@ func (h *AsyncImageHandler) pollable() bool {
 }
 
 // Submit 接收与同步 Images 接口相同的请求体，并在上游开始生成图片前返回任务信息。
+// @project-doc docs/interfaces/async_image_tasks.md#task_lifecycle
 func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if !h.enabled() {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")

@@ -1,9 +1,20 @@
 # Edge and HTTP Ingress Security
 
-Sub2API supports long-lived SSE and WebSocket requests. Protect the request
+TokenRouter supports long-lived SSE and WebSocket requests. Protect the request
 ingress without imposing a response `WriteTimeout`: a write deadline would
 terminate healthy long generations and streams.
 
+This document owns the application and reverse-proxy ingress limits, trusted client-IP resolution, streaming transport, and DDoS responsibility boundary. It does not replace provider firewall/CDN policy, and it does not define authenticated account concurrency or rate billing.
+
+## Navigation
+
+- [Application defaults](#http_ingress_limits): read when changing HTTP/H2C limits or request-body classes.
+- [Trusted client IPs](#trusted-client-ips): read when changing proxy trust, IP ACLs, or runtime security settings.
+- [Nginx baseline](#nginx-baseline): read when operating an Nginx edge.
+- [Caddy and CDN](#caddy-and-cdn): read before changing the bundled Caddyfile or adding a CDN.
+- [DDoS boundary](#ddos-boundary): read when deciding whether mitigation belongs in the app or at the network edge.
+
+<a id="http_ingress_limits"></a>
 ## Application defaults
 
 - `server.max_header_bytes: 65536` limits HTTP/1 request headers to 64 KiB;
@@ -46,7 +57,7 @@ and updates at runtime without a restart. A request snapshots the switch and
 header list together, so one request cannot mix old and new settings. Custom
 headers are ignored completely when the switch is disabled. In that mode Gin's
 `server.trusted_proxies` chain is authoritative: configure only the exact
-CIDR/IP addresses that connect directly to Sub2API. An explicit empty list
+CIDR/IP addresses that connect directly to TokenRouter. An explicit empty list
 trusts no forwarded client IPs.
 
 On the first upgrade to this mode, a legacy `false` value is changed to `true`
@@ -189,7 +200,7 @@ api.example.com {
 Replace the documentation ranges with the CDN's published, automatically
 maintained egress ranges. `CF-Connecting-IP` is safe here only because direct
 origin access is blocked and Caddy trusts only those TCP peers. Configure
-Sub2API `server.trusted_proxies` with the Caddy address/private subnet so the
+TokenRouter `server.trusted_proxies` with the Caddy address/private subnet so the
 application accepts only Caddy's rewritten headers.
 
 Caddy core does not provide a general request-rate limiter; use a trusted
@@ -207,3 +218,5 @@ cannot absorb volumetric attacks, TLS floods, bandwidth saturation, or a large
 distributed source set. Those require upstream network capacity, CDN/WAF
 filtering, provider firewall rules, and origin isolation. Avoid high-cardinality
 metrics or per-request database security logs during rejection storms.
+
+Related documents: [HTTP API Boundaries](../interfaces/http_api.md), [Configuration](../interfaces/configuration.md), [Gateway Request Lifecycle](../architecture/gateway_request_lifecycle.md), [Observability and Data Lifecycle](observability_and_data_lifecycle.md), and [Operations Index](index.md).

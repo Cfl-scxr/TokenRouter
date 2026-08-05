@@ -23,8 +23,8 @@ TokenRouter 基于 [Sub2API](https://github.com/Wei-Shaw/sub2api) 开发，在�
 
 ## 功能文档
 
-- [Grok / xAI 使用说明](docs/GROK.md)
-- [异步图片任务](docs/ASYNC_IMAGE_TASKS.md)
+- [Grok / xAI 使用说明](docs/interfaces/grok_upstream.md)
+- [异步图片任务](docs/interfaces/async_image_tasks.md)
 
 ## 许可证
 
