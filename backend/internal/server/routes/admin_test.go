@@ -59,3 +59,49 @@ func TestAdminDataSharingArtifactDownloadRouteIsStillRegistered(t *testing.T) {
 
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
+
+// TestAdminImageStorageRoutesAreRemoved 验证异步图片存储配置下线且备份配置仍可用。
+func TestAdminImageStorageRoutesAreRemoved(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	admin := router.Group("/api/v1/admin")
+	h := &handler.Handlers{
+		Admin: &handler.AdminHandlers{
+			Backup: adminhandler.NewBackupHandler(nil, nil),
+		},
+	}
+	registerBackupRoutes(admin, h, func(c *gin.Context) { c.Next() })
+
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+
+	removed := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/admin/backups/image-storage"},
+		{method: http.MethodPut, path: "/api/v1/admin/backups/image-storage"},
+		{method: http.MethodPost, path: "/api/v1/admin/backups/image-storage/test"},
+	}
+	for _, route := range removed {
+		routeKey := route.method + " " + route.path
+		require.False(t, registered[routeKey], "%s should not be registered", routeKey)
+	}
+
+	for _, route := range []string{
+		"GET /api/v1/admin/backups/storage-config",
+		"PUT /api/v1/admin/backups/storage-config",
+		"POST /api/v1/admin/backups/storage-config/test",
+		"GET /api/v1/admin/backups/content-config",
+		"PUT /api/v1/admin/backups/content-config",
+		"GET /api/v1/admin/backups/s3-config",
+		"PUT /api/v1/admin/backups/s3-config",
+		"POST /api/v1/admin/backups/s3-config/test",
+		"GET /api/v1/admin/backups/schedule",
+		"PUT /api/v1/admin/backups/schedule",
+	} {
+		require.True(t, registered[route], "%s should remain registered", route)
+	}
+}

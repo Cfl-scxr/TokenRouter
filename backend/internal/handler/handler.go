@@ -63,7 +63,6 @@ type Handlers struct {
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	DataSharing      *DataSharingHandler
-	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 	Team             *TeamHandler
 }

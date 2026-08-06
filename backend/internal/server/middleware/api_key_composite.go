@@ -131,7 +131,7 @@ func isCompositeKeyNoModelEndpoint(method, path string) bool {
 		"/v1/usage", "/antigravity/v1/usage", "/v1/sub2api/billing":
 		return true
 	}
-	return isAsyncImageTaskRead(method, path) || isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
+	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
 }
 
 // isCompositeKeyBillingBypassEndpoint 仅识别按 Key 身份读取既有数据的入口。
@@ -142,7 +142,7 @@ func isCompositeKeyBillingBypassEndpoint(method, path string) bool {
 	case "/v1/usage", "/antigravity/v1/usage", "/v1/sub2api/billing":
 		return true
 	}
-	return isAsyncImageTaskRead(method, path) || isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
+	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
 }
 
 // isGrokVideoTaskRead 识别不携带模型、仅通过任务归属查询的 Grok 视频入口。

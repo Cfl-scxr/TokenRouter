@@ -58,10 +58,10 @@ POST /v1beta/models/Gemini/gemini-2.5-pro:generateContent
 ## 支持入口
 
 - OpenAI、Anthropic 及兼容入口的 JSON 请求。
-- 图片生成与编辑的 JSON 或 multipart 请求，包括异步图片提交。
+- 图片生成与编辑的 JSON 或 multipart 请求。
 - 单模型批量图片提交。
 - Gemini `/v1beta/models/<前缀>/<模型>:<动作>` 入口。
-- 无模型的用量、账单、异步图片与视频任务查询和批任务管理接口，这些接口只校验 Key 身份。
+- 无模型的用量、账单、视频任务查询和批任务管理接口，这些接口只校验 Key 身份。
 
 `/v1/models`、裸 `/models`、Gemini 模型列表和批量图片模型列表会按映射顺序聚合可用模型，并在每个模型 ID 前添加对应前缀。
 

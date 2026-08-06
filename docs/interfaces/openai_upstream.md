@@ -28,7 +28,7 @@ OpenAI 平台拥有以下正式协议族：
 | Chat Completions | 可原生转发或转换到 Responses；每次 attempt 重建协议状态 |
 | Anthropic Messages | 转换到 OpenAI 请求并把事件、工具、thinking/usage 恢复为 Anthropic 形状 |
 | Embeddings | 仅 OpenAI 分组，账号必须声明或探测到相应 endpoint capability |
-| Images | OpenAI 图片生成/编辑；同步、异步和批量任务使用各自生命周期 |
+| Images | OpenAI 图片生成/编辑；当前网关保留同步生命周期，批量图片由 Gemini/Vertex 专题定义 |
 | Realtime/Live/sideband、Alpha Search | 仅 OpenAI 分组，并受分组开关、账号类型和 transport capability 限制 |
 
 `/backend-api/codex` 和无 `/v1` 别名服务特定客户端兼容，但仍经过 TokenRouter Key 鉴权、分组准入、调度和结算。Responses WebSocket 不支持 Qoder；其它平台是否可进入 OpenAI 兼容处理器由路由和平台专题共同决定，不能仅凭 URL 推断。

@@ -31,7 +31,6 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/responses/compact/detail", EndpointResponsesCompact},
 		{"/v1/images/generations", EndpointImagesGenerations},
 		{"/v1/images/edits", EndpointImagesEdits},
-		{"/v1/images/tasks/imgtask_123", EndpointImageTasks},
 		{"/v1/videos/generations", EndpointVideosGenerations},
 		{"/v1/videos/edits", EndpointVideosEdits},
 		{"/v1/videos/extensions", EndpointVideosExtensions},
@@ -54,7 +53,6 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/responses/compact", EndpointResponsesCompact},
 		{"/responses/compact/detail", EndpointResponsesCompact},
 		{"/alpha/search", EndpointAlphaSearch},
-		{"/images/tasks/imgtask_123", EndpointImageTasks},
 
 		// Codex 直连别名路径需要区分根端点与 Compact。
 		{"/backend-api/codex/responses", EndpointResponses},

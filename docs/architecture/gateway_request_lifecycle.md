@@ -23,7 +23,7 @@
 | `/v1beta` | Gemini 原生模型、生成、流式生成、token 统计 | Google 形状的 API Key 认证和 Gemini/Antigravity 兼容服务 |
 | `/antigravity/v1`、`/antigravity/v1beta` | 强制 Antigravity 平台的 Claude/Gemini 专用入口 | 在上下文写入 force platform，再复用通用 handler 与调度 |
 | `/backend-api/codex` | Codex/ChatGPT 风格 Responses、Realtime 和 sideband | OpenAI handler；部分路径有专用认证/路由限制 |
-| 异步图片与批量图片管理 | 提交、轮询、下载、取消和清理任务 | 专用 handler/service；查询类入口只按任务归属认证，不重新选择模型账号 |
+| 批量图片管理 | 提交、查询、下载、取消和清理任务 | 专用 handler/service；查询类入口只按任务归属认证，不重新选择模型账号 |
 
 同一个 URL 可能因方法、请求意图或分组平台走不同处理器。例如 `/v1/messages` 对 OpenAI/Grok 分组走 OpenAI 协议桥，对 Qoder 走 Qoder handler，其余走通用 Anthropic handler。路由层负责这个分派，service 层不能假设路径名唯一决定上游平台。
 
@@ -75,7 +75,7 @@
 5. `simple` 模式在写入认证上下文后跳过正常计费准入。`standard` 模式解析当前可用订阅，并对消费入口检查 Key 过期/配额、订阅窗口限额或余额。
 6. 写入 API Key、认证主体、角色、分组和可选订阅上下文，再进入 handler。`last_used_at` 更新失败不阻断已认证请求。
 
-`/v1/usage`、Key 账单自省、已有异步任务读取/取消及部分批任务管理会跳过消费准入，使额度耗尽或 Key 过期后仍可取回自己的数据；它们仍执行身份、用户、团队、IP 和资源归属检查。模型列表虽然对复合 Key 不需要选中一个分组，但仍要执行适用的 Key 额度、余额和订阅检查。
+`/v1/usage`、Key 账单自省及部分批任务管理会跳过消费准入，使额度耗尽或 Key 过期后仍可取回或清理自己的数据；它们仍执行身份、用户、团队、IP 和资源归属检查。模型列表虽然对复合 Key 不需要选中一个分组，但仍要执行适用的 Key 额度、余额和订阅检查。
 
 进入协议 handler 后，请求体先按端点限制读取并做宽容 JSON/Multipart 处理，再完成用户提示词替换、协议解析、客户端识别、内容审查和 Ops 元数据设置。用户并发槽位在账号选择前获取，避免为已经超过用户并发的请求消耗调度资源。
 

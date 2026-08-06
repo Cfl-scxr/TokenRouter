@@ -18,7 +18,7 @@ func TestTeamMigrationContainsIsolationAndAttributionConstraints(t *testing.T) {
 	require.Contains(t, sql, "team_memberships_active_owner_uq")
 	require.Contains(t, sql, "where left_at is null and role = 'owner'")
 
-	// Key、普通用量和异步图片任务都必须保留团队及付款人归因。
+	// Key、普通用量和批量图片作业都必须保留团队及付款人归因。
 	require.Contains(t, sql, "api_keys_team_id_fkey")
 	require.Contains(t, sql, "usage_logs_billing_user_id_fkey")
 	require.Contains(t, sql, "usage_logs_team_id_fkey")

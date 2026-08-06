@@ -47,7 +47,6 @@ func newGatewayRoutesTestRouterWithOptions(cfg *config.Config, gatewayHandler *h
 			Gateway:       gatewayHandler,
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
 			QoderGateway:  &handler.QoderGatewayHandler{},
-			AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			groupID := int64(1)
@@ -191,22 +190,50 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesAsyncImagesPathsAreRegistered(t *testing.T) {
+// TestGatewayRoutesAsyncImagesPathsAreRemoved 锁定自研异步图片接口不再暴露。
+func TestGatewayRoutesAsyncImagesPathsAreRemoved(t *testing.T) {
 	router := newGatewayRoutesTestRouter()
 	registered := make(map[string]bool)
 	for _, route := range router.Routes() {
 		registered[route.Method+" "+route.Path] = true
 	}
 
+	removed := []struct {
+		method      string
+		routePath   string
+		requestPath string
+	}{
+		{method: http.MethodPost, routePath: "/v1/images/generations/async", requestPath: "/v1/images/generations/async"},
+		{method: http.MethodPost, routePath: "/v1/images/edits/async", requestPath: "/v1/images/edits/async"},
+		{method: http.MethodGet, routePath: "/v1/images/tasks/:task_id", requestPath: "/v1/images/tasks/task-123"},
+		{method: http.MethodPost, routePath: "/images/generations/async", requestPath: "/images/generations/async"},
+		{method: http.MethodPost, routePath: "/images/edits/async", requestPath: "/images/edits/async"},
+		{method: http.MethodGet, routePath: "/images/tasks/:task_id", requestPath: "/images/tasks/task-123"},
+	}
+	for _, route := range removed {
+		routeKey := route.method + " " + route.routePath
+		require.False(t, registered[routeKey], "%s should not be registered", routeKey)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(route.method, route.requestPath, nil)
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", route.method, route.requestPath)
+	}
+
+	// Gemini 批量图片作业是独立功能，移除自研异步接口后仍须保留。
 	for _, route := range []string{
-		"POST /v1/images/generations/async",
-		"POST /v1/images/edits/async",
-		"GET /v1/images/tasks/:task_id",
-		"POST /images/generations/async",
-		"POST /images/edits/async",
-		"GET /images/tasks/:task_id",
+		"POST /v1/images/batches",
+		"GET /v1/images/batches",
+		"GET /v1/images/batches/models",
+		"GET /v1/images/batches/:id",
+		"GET /v1/images/batches/:id/items",
+		"GET /v1/images/batches/:id/items/:custom_id/content",
+		"GET /v1/images/batches/:id/download",
+		"POST /v1/images/batches/:id/cancel",
+		"DELETE /v1/images/batches/:id",
+		"DELETE /v1/images/batches/:id/outputs",
 	} {
-		require.True(t, registered[route], "%s should be registered", route)
+		require.True(t, registered[route], "%s should remain registered", route)
 	}
 }
 

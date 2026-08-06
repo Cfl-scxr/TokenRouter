@@ -161,7 +161,6 @@ func ProvideHandlers(
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	dataSharingHandler *DataSharingHandler,
-	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
 	teamHandler *TeamHandler,
 	_ *service.IdempotencyCoordinator,
@@ -186,7 +185,6 @@ func ProvideHandlers(
 		Payment:          paymentHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		DataSharing:      dataSharingHandler,
-		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
 		Team:             teamHandler,
 	}
@@ -212,7 +210,6 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewDataSharingHandler,
-	NewAsyncImageHandler,
 	NewBatchImageHandler,
 	NewTeamHandler,
 
