@@ -88,6 +88,11 @@ func TestAdminImageStorageRoutesAreRemoved(t *testing.T) {
 	for _, route := range removed {
 		routeKey := route.method + " " + route.path
 		require.False(t, registered[routeKey], "%s should not be registered", routeKey)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(route.method, route.path, nil)
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", route.method, route.path)
 	}
 
 	for _, route := range []string{
@@ -103,5 +108,35 @@ func TestAdminImageStorageRoutesAreRemoved(t *testing.T) {
 		"PUT /api/v1/admin/backups/schedule",
 	} {
 		require.True(t, registered[route], "%s should remain registered", route)
+	}
+}
+
+// TestCanonicalBackupIDRouteGuard 验证备份通配路由只接受服务实际生成的 ID 格式。
+func TestCanonicalBackupIDRouteGuard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/backups/:id", requireCanonicalBackupID, func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	tests := []struct {
+		name       string
+		id         string
+		wantStatus int
+	}{
+		{name: "canonical", id: "0a1b2c3d", wantStatus: http.StatusNoContent},
+		{name: "removed fixed path", id: "image-storage", wantStatus: http.StatusNotFound},
+		{name: "uppercase", id: "0A1B2C3D", wantStatus: http.StatusNotFound},
+		{name: "invalid character", id: "0a1b2c3g", wantStatus: http.StatusNotFound},
+		{name: "wrong length", id: "0a1b2c3", wantStatus: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/backups/"+tt.id, nil)
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.wantStatus, w.Code)
+		})
 	}
 }

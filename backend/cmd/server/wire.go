@@ -28,8 +28,9 @@ type Application struct {
 	Cleanup func()
 }
 
-// initializeApplication 按基础设施、业务和服务器层装配应用依赖。
 // @project-doc docs/architecture/system_architecture.md#dependency_layers
+
+// initializeApplication 按基础设施、业务和服务器层装配应用依赖。
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
 		// Infrastructure layer ProviderSets

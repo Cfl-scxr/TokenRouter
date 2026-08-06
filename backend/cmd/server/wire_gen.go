@@ -32,7 +32,6 @@ import (
 // Injectors from wire.go:
 
 // initializeApplication 按基础设施、业务和服务器层装配应用依赖。
-// @project-doc docs/architecture/system_architecture.md#dependency_layers
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	configConfig, err := config.ProvideConfig()
 	if err != nil {

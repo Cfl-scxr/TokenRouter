@@ -2,6 +2,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/TokenFlux/TokenRouter/internal/handler"
 	"github.com/TokenFlux/TokenRouter/internal/server/middleware"
 
@@ -677,15 +679,37 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		// 备份操作
 		backup.POST("", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.CreateBackup)
 		backup.GET("", h.Admin.Backup.ListBackups)
-		backup.GET("/:id", h.Admin.Backup.GetBackup)
-		backup.DELETE("/:id", h.Admin.Backup.DeleteBackup)
+		backup.GET("/:id", requireCanonicalBackupID, h.Admin.Backup.GetBackup)
+		backup.DELETE("/:id", requireCanonicalBackupID, h.Admin.Backup.DeleteBackup)
 		// 备份下载链接可直接取走整库数据——要求 step-up 2FA
-		backup.GET("/:id/download-url", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.GetDownloadURL)
-		backup.GET("/:id/download", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.DownloadBackup)
+		backup.GET("/:id/download-url", requireCanonicalBackupID, gin.HandlerFunc(stepUpAuth), h.Admin.Backup.GetDownloadURL)
+		backup.GET("/:id/download", requireCanonicalBackupID, gin.HandlerFunc(stepUpAuth), h.Admin.Backup.DownloadBackup)
 
 		// 恢复操作：整库覆盖可回滚安全设置（含 step-up 开关本身）——要求 step-up 2FA
-		backup.POST("/:id/restore", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.RestoreBackup)
+		backup.POST("/:id/restore", requireCanonicalBackupID, gin.HandlerFunc(stepUpAuth), h.Admin.Backup.RestoreBackup)
 	}
+}
+
+// requireCanonicalBackupID 防止固定管理端路径被备份详情通配路由接管。
+func requireCanonicalBackupID(c *gin.Context) {
+	if isCanonicalBackupID(c.Param("id")) {
+		c.Next()
+		return
+	}
+	c.AbortWithStatus(http.StatusNotFound)
+}
+
+// isCanonicalBackupID 匹配备份服务自创建之初一直使用的八位小写十六进制 ID。
+func isCanonicalBackupID(value string) bool {
+	if len(value) != 8 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if (value[i] < '0' || value[i] > '9') && (value[i] < 'a' || value[i] > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
