@@ -299,6 +299,7 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		rateMultiplier = actualCost / (job.BaseUnitPrice * float64(job.SuccessCount) * accountRateMultiplier)
 	}
 	requestedModel := batchImageRequestedModel(job)
+	internalModel := batchImageInternalModel(job)
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
 		BillingUserID:         job.BillingUserID,
@@ -306,10 +307,10 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		APIKeyID:              *job.APIKeyID,
 		AccountID:             *job.AccountID,
 		RequestID:             strings.TrimSpace(requestID),
-		Model:                 job.Model,
+		Model:                 internalModel,
 		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalTrimmedStringPtr(job.Model),
-		ModelMappingChain:     optionalTrimmedStringPtr(buildModelMappingChain(requestedModel, job.Model)),
+		ModelMappingChain:     optionalTrimmedStringPtr(buildModelMappingChain(requestedModel, internalModel, job.Model)),
 		InboundEndpoint:       &inboundEndpoint,
 		UpstreamEndpoint:      &upstreamEndpoint,
 		ImageCount:            job.SuccessCount,

@@ -129,7 +129,8 @@ func (r *usageLogRepository) buildUsageAnalyticsQuery(ctx context.Context, filte
 			COALESCE(ul.team_id, 0),
 			ul.api_key_id,
 			COALESCE(ul.group_id, 0),
-			COALESCE(NULLIF(TRIM(ul.requested_model), ''), ul.model, ''),
+			-- 原始首尾区间必须与小时、日聚合使用同一内部请求模型口径。
+			COALESCE(NULLIF(TRIM(ul.model), ''), NULLIF(TRIM(ul.requested_model), ''), ''),
 			CASE
 				WHEN COALESCE(ul.request_type, 0) <> 0 THEN ul.request_type
 				WHEN COALESCE(ul.openai_ws_mode, FALSE) THEN 3

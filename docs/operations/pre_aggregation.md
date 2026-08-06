@@ -67,13 +67,13 @@ ops:
 
 ## 使用记录聚合
 
-迁移 `229_usage_analytics_rollups.sql` 只创建空表、索引和单行状态，不扫描或回填 `usage_logs`；`230_pre_aggregation_manual_backfill.sql` 为状态表增加手工回填目标和游标。核心表为：
+迁移 `229_usage_analytics_rollups.sql` 只创建空表、索引和单行状态，不扫描或回填 `usage_logs`；`230_pre_aggregation_manual_backfill.sql` 为状态表增加手工回填目标和游标。`232_reset_usage_analytics_model_dimension.sql` 在请求模型维度切换为内部模型时清空可重建桶并重置覆盖状态，不扫描或改写原始使用记录。核心表为：
 
 - `usage_analytics_hourly`：以 UTC 小时为桶的多维明细。
 - `usage_analytics_daily`：从小时表重建的 UTC 日桶。
 - `usage_analytics_aggregation_state`：保存实时水位、连续覆盖起点、原始数据起点、自动/手工回填游标和最近任务状态。
 
-聚合维度包括用户、计费用户、团队、API Key、分组、请求模型、请求类型、流式标记、计费类型、计费模式、有效平台和入站端点。指标包括请求数、各类 Token、总费用、实际费用、账号费用及请求耗时。上游账号、request ID、上游模型和模型映射结果等未进入表的维度不能由这组 rollup 回答。
+聚合维度包括用户、计费用户、团队、API Key、分组、内部请求模型、请求类型、流式标记、计费类型、计费模式、有效平台和入站端点。内部请求模型已移除复合 Key 前缀并完成 Key 级重定向，表中的遗留列名仍为 `requested_model`；原始客户端模型只保存在 `usage_logs` 明细中。指标包括请求数、各类 Token、总费用、实际费用、账号费用及请求耗时。上游账号、request ID、上游模型和模型映射结果等未进入表的维度不能由这组 rollup 回答。
 
 实时任务按运行时周期执行，并用 `lookback_seconds` 重算水位附近的小时范围以吸收迟到记录。每轮先刷新小时表；实际回看范围触及已闭合 UTC 日期时，再从小时表重建对应日表。新实例不会在第一次实时任务中扫描全部历史，历史范围由反向回填逐步覆盖。
 

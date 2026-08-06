@@ -53,3 +53,44 @@ func TestUsageLog_GetStatsWithFilters_AggregatesAndEndpoints(t *testing.T) {
 	require.NotEmpty(t, stats.UpstreamEndpoints)
 	require.NotEmpty(t, stats.EndpointPaths)
 }
+
+// TestUsageLog_GetModelStats_MergesCompositePrefix 验证复合前缀不会拆分内部模型统计。
+func TestUsageLog_GetModelStats_MergesCompositePrefix(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	client := tx.Client()
+	repo := newUsageLogRepositoryWithSQL(client, tx)
+
+	user := mustCreateUser(t, client, &service.User{Email: "model-stats-composite@test.com"})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-model-stats-composite", Name: "k"})
+	account := mustCreateAccount(t, client, &service.Account{Name: "acc-model-stats-composite"})
+	now := time.Now().UTC()
+
+	for _, requestedModel := range []string{"gpt-5.6-sol", "GPT/gpt-5.6-sol"} {
+		_, err := repo.Create(ctx, &service.UsageLog{
+			UserID: user.ID, APIKeyID: apiKey.ID, AccountID: account.ID,
+			Model: "gpt-5.6-sol", RequestedModel: requestedModel,
+			InputTokens: 10, OutputTokens: 5, TotalCost: 0.1, ActualCost: 0.1,
+			CreatedAt: now,
+		})
+		require.NoError(t, err)
+	}
+
+	stats, err := repo.GetModelStatsWithFilters(
+		ctx,
+		now.Add(-time.Hour),
+		now.Add(time.Hour),
+		user.ID,
+		0,
+		0,
+		0,
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, stats, 1)
+	require.Equal(t, "gpt-5.6-sol", stats[0].Model)
+	require.Equal(t, int64(2), stats[0].Requests)
+	require.Equal(t, int64(30), stats[0].TotalTokens)
+}

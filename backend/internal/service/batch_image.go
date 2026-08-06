@@ -100,17 +100,19 @@ var (
 )
 
 type BatchImageJob struct {
-	ID                int64
-	BatchID           string
-	UserID            int64
-	BillingUserID     int64
-	TeamID            *int64
-	APIKeyID          *int64
-	AccountID         *int64
-	GroupID           *int64
-	Provider          string
+	ID            int64
+	BatchID       string
+	UserID        int64
+	BillingUserID int64
+	TeamID        *int64
+	APIKeyID      *int64
+	AccountID     *int64
+	GroupID       *int64
+	Provider      string
+	// Model、RequestedModel 和 InternalModel 分别记录上游模型、客户端模型和内部路由模型。
 	Model             string
 	RequestedModel    string
+	InternalModel     string
 	TaskName          string
 	ParentBatchID     *string
 	Status            string
@@ -173,16 +175,18 @@ type BatchImageJob struct {
 }
 
 type CreateBatchImageJobParams struct {
-	BatchID           string
-	UserID            int64
-	BillingUserID     int64
-	TeamID            *int64
-	APIKeyID          *int64
-	AccountID         *int64
-	GroupID           *int64
-	Provider          string
+	BatchID       string
+	UserID        int64
+	BillingUserID int64
+	TeamID        *int64
+	APIKeyID      *int64
+	AccountID     *int64
+	GroupID       *int64
+	Provider      string
+	// Model、RequestedModel 和 InternalModel 分别记录上游模型、客户端模型和内部路由模型。
 	Model             string
 	RequestedModel    string
+	InternalModel     string
 	TaskName          string
 	ParentBatchID     *string
 	Status            string

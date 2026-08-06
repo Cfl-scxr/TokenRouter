@@ -61,6 +61,7 @@ func TestBuildUsageAnalyticsQueryUsesHalfOpenRanges(t *testing.T) {
 	require.Contains(t, query.cte, "bucket_date >= $8::date AND bucket_date < $9::date")
 	require.Contains(t, query.cte, "bucket_start >= $3 AND bucket_start < $6")
 	require.Contains(t, query.cte, "bucket_start >= $7 AND bucket_start < $4")
+	require.Contains(t, query.cte, "COALESCE(NULLIF(TRIM(ul.model), ''), NULLIF(TRIM(ul.requested_model), ''), '')")
 	require.Len(t, query.args, 9)
 	require.Equal(t, time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC), query.args[5])
 	require.Equal(t, time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC), query.args[6])

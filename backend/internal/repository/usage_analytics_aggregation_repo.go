@@ -84,7 +84,8 @@ func (r *dashboardAggregationRepository) aggregateUsageAnalyticsRangeInTx(ctx co
 			COALESCE(ul.team_id, 0),
 			ul.api_key_id,
 			COALESCE(ul.group_id, 0),
-			COALESCE(NULLIF(TRIM(ul.requested_model), ''), ul.model, ''),
+			-- 聚合使用内部请求模型，避免复合 Key 的自定义前缀拆分同一模型。
+			COALESCE(NULLIF(TRIM(ul.model), ''), NULLIF(TRIM(ul.requested_model), ''), ''),
 			CASE
 				WHEN COALESCE(ul.request_type, 0) <> 0 THEN ul.request_type
 				WHEN COALESCE(ul.openai_ws_mode, FALSE) THEN 3

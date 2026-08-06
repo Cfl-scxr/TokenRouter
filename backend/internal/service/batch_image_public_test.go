@@ -94,6 +94,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		job := repo.jobs[got.ID]
 		require.Equal(t, "gemini-2.5-flash-image", job.Model)
 		require.Equal(t, "Gemini/gemini-2.5-flash-image", job.RequestedModel)
+		require.Equal(t, "gemini-2.5-flash-image", job.InternalModel)
 		require.NotNil(t, job.GroupID)
 		require.Equal(t, groupID, *job.GroupID)
 
@@ -149,6 +150,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		job := repo.jobs[got.ID]
 		require.Equal(t, "upstream-image-model", job.Model)
 		require.Equal(t, "image-alias", job.RequestedModel)
+		require.Equal(t, "gemini-2.5-flash-image", job.InternalModel)
 		require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "channel-image-model", "upstream-image-model"}, trace.ResponseModels())
 		pricing := svc.Pricing.(*fakeBatchImagePricingResolver)
 		require.Equal(t, []string{"channel-image-model"}, pricing.models)

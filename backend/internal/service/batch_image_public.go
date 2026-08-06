@@ -305,6 +305,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		Provider:                   provider.Name(),
 		Model:                      upstreamModel,
 		RequestedModel:             requestedModel,
+		InternalModel:              normalized.Model,
 		TaskName:                   normalized.TaskName,
 		ParentBatchID:              parentBatchID,
 		Status:                     BatchImageJobStatusCreated,
@@ -1405,6 +1406,17 @@ func batchImageRequestedModel(job *BatchImageJob) string {
 		return requestedModel
 	}
 	return job.Model
+}
+
+// batchImageInternalModel 返回提交时确定的内部模型，并兼容迁移前仅保存上游模型的任务。
+func batchImageInternalModel(job *BatchImageJob) string {
+	if job == nil {
+		return ""
+	}
+	if internalModel := strings.TrimSpace(job.InternalModel); internalModel != "" {
+		return internalModel
+	}
+	return strings.TrimSpace(job.Model)
 }
 
 func batchImageProviderPlatform(provider string) string {

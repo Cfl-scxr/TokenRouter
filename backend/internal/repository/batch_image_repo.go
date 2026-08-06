@@ -752,9 +752,14 @@ func createBatchImageJobWithSQL(ctx context.Context, sqlq batchImageSQLExecutor,
 	if requestedModel == "" {
 		requestedModel = params.Model
 	}
+	internalModel := strings.TrimSpace(params.InternalModel)
+	if internalModel == "" {
+		// 兼容未显式传入内部模型的旧调用方，保持任务可正常创建和结算。
+		internalModel = params.Model
+	}
 	return scanBatchImageJob(sqlq.QueryRowContext(ctx, `
 INSERT INTO batch_image_jobs (
-    batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, group_id, provider, model, requested_model, task_name, parent_batch_id, status,
+    batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, group_id, provider, model, requested_model, internal_model, task_name, parent_batch_id, status,
     provider_job_name, provider_input_ref, provider_output_ref, gcs_input_uri, gcs_output_uri,
     item_count, success_count, fail_count, cancelled_count,
     estimated_cost, hold_amount, actual_cost, balance_hold_amount, subscription_hold_allocations,
@@ -765,19 +770,19 @@ INSERT INTO batch_image_jobs (
     currency, hold_id,
     idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18,
-    $19, $20, $21, $22,
-    $23, $24, $25, $26, $27,
-    $28, $29, $30,
-    $31, $32, $33,
-    $34, $35, $36, $37,
-    $38,
-    $39, $40,
-    $41, $42, $43, $44, $45, $46
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+    $15, $16, $17, $18, $19,
+    $20, $21, $22, $23,
+    $24, $25, $26, $27, $28,
+    $29, $30, $31,
+    $32, $33, $34,
+    $35, $36, $37, $38,
+    $39,
+    $40, $41,
+    $42, $43, $44, $45, $46, $47
 )
 RETURNING `+batchImageJobColumns,
-		params.BatchID, params.UserID, params.BillingUserID, params.TeamID, params.APIKeyID, params.AccountID, params.GroupID, params.Provider, params.Model, requestedModel, params.TaskName, params.ParentBatchID, params.Status,
+		params.BatchID, params.UserID, params.BillingUserID, params.TeamID, params.APIKeyID, params.AccountID, params.GroupID, params.Provider, params.Model, requestedModel, internalModel, params.TaskName, params.ParentBatchID, params.Status,
 		params.ProviderJobName, params.ProviderInputRef, params.ProviderOutputRef, params.GCSInputURI, params.GCSOutputURI,
 		params.ItemCount, params.SuccessCount, params.FailCount, params.CancelledCount,
 		params.EstimatedCost, params.HoldAmount, params.ActualCost, params.BalanceHoldAmount, string(subscriptionHoldAllocations),
@@ -831,7 +836,7 @@ type rowScanner interface {
 }
 
 const batchImageJobColumns = `
-id, batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, group_id, provider, model, requested_model, task_name, parent_batch_id, status,
+id, batch_id, user_id, billing_user_id, team_id, api_key_id, account_id, group_id, provider, model, requested_model, internal_model, task_name, parent_batch_id, status,
 provider_job_name, provider_input_ref, provider_output_ref, gcs_input_uri, gcs_output_uri,
 item_count, success_count, fail_count, cancelled_count,
 estimated_cost, hold_amount, actual_cost, allowance_reserved,
@@ -862,7 +867,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var submittedAt, startedAt, finishedAt, settledAt sql.NullTime
 
 	err := row.Scan(
-		&job.ID, &job.BatchID, &job.UserID, &job.BillingUserID, &teamID, &apiKeyID, &accountID, &groupID, &job.Provider, &job.Model, &job.RequestedModel, &job.TaskName, &parentBatchID, &job.Status,
+		&job.ID, &job.BatchID, &job.UserID, &job.BillingUserID, &teamID, &apiKeyID, &accountID, &groupID, &job.Provider, &job.Model, &job.RequestedModel, &job.InternalModel, &job.TaskName, &parentBatchID, &job.Status,
 		&providerJobName, &providerInputRef, &providerOutputRef, &gcsInputURI, &gcsOutputURI,
 		&job.ItemCount, &job.SuccessCount, &job.FailCount, &job.CancelledCount,
 		&job.EstimatedCost, &holdAmount, &actualCost, &job.AllowanceReserved,

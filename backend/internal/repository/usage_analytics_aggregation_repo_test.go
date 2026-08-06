@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"regexp"
 	"testing"
 	"time"
 
@@ -20,7 +21,8 @@ func expectUsageAnalyticsRangeRebuild(mock sqlmock.Sqlmock, hourStart, hourEnd, 
 	mock.ExpectExec("DELETE FROM usage_analytics_hourly").
 		WithArgs(hourStart, hourEnd).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("INSERT INTO usage_analytics_hourly").
+	modelExpr := regexp.QuoteMeta("COALESCE(NULLIF(TRIM(ul.model), ''), NULLIF(TRIM(ul.requested_model), ''), '')")
+	mock.ExpectExec("(?s)INSERT INTO usage_analytics_hourly.*"+modelExpr).
 		WithArgs(hourStart, scanEnd).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("DELETE FROM usage_analytics_daily").
@@ -58,7 +60,8 @@ func TestAggregateUsageAnalyticsHourlyRangeSkipsDailyRebuild(t *testing.T) {
 	mock.ExpectExec("DELETE FROM usage_analytics_hourly").
 		WithArgs(hourStart, hourEnd).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("INSERT INTO usage_analytics_hourly").
+	modelExpr := regexp.QuoteMeta("COALESCE(NULLIF(TRIM(ul.model), ''), NULLIF(TRIM(ul.requested_model), ''), '')")
+	mock.ExpectExec("(?s)INSERT INTO usage_analytics_hourly.*"+modelExpr).
 		WithArgs(hourStart, end).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()

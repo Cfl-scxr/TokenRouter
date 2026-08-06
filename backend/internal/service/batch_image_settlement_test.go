@@ -20,6 +20,7 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	job.FailCount = 2
 	job.ItemCount = 5
 	job.RequestedModel = "batch-image-alias"
+	job.InternalModel = "gemini-internal-image"
 	job.SessionID = batchImageStringPtr("batch-settlement-session")
 	repo.jobs[job.BatchID] = job
 	billing := &fakeBatchImageBillingRepo{}
@@ -40,12 +41,12 @@ func TestBatchImageSettlementService_SettlesAndChargesSuccessfulImagesOnly(t *te
 	require.NotEmpty(t, batchImageDerefString(repo.jobs[job.BatchID].ManifestHash))
 	require.NotNil(t, repo.jobs[job.BatchID].SettledAt)
 	require.Equal(t, "batch-settlement-session", batchImageDerefString(usageLogs.lastLog.SessionID))
-	require.Equal(t, "gemini-image", usageLogs.lastLog.Model)
+	require.Equal(t, "gemini-internal-image", usageLogs.lastLog.Model)
 	require.Equal(t, "batch-image-alias", usageLogs.lastLog.RequestedModel)
 	require.NotNil(t, usageLogs.lastLog.UpstreamModel)
 	require.Equal(t, "gemini-image", *usageLogs.lastLog.UpstreamModel)
 	require.NotNil(t, usageLogs.lastLog.ModelMappingChain)
-	require.Equal(t, "batch-image-alias→gemini-image", *usageLogs.lastLog.ModelMappingChain)
+	require.Equal(t, "batch-image-alias→gemini-internal-image→gemini-image", *usageLogs.lastLog.ModelMappingChain)
 	require.Len(t, billing.captures, 1)
 	require.Equal(t, int64(321), billing.captures[0].APIKeyID)
 	require.Equal(t, job.UserID, billing.captures[0].UserID)

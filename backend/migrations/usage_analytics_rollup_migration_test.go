@@ -36,3 +36,18 @@ func TestManualBackfillStateMigrationAvoidsUsageLogs(t *testing.T) {
 	require.NotContains(t, sql, "UPDATE USAGE_LOGS")
 	require.NotContains(t, sql, "FROM USAGE_LOGS")
 }
+
+// TestUsageAnalyticsModelDimensionResetInvalidatesOldBuckets 验证旧前缀维度只清理可重建聚合，不扫描或改写原始记录。
+func TestUsageAnalyticsModelDimensionResetInvalidatesOldBuckets(t *testing.T) {
+	content, err := FS.ReadFile("232_reset_usage_analytics_model_dimension.sql")
+	require.NoError(t, err)
+
+	sql := strings.ToUpper(string(content))
+	require.Contains(t, sql, "TRUNCATE TABLE USAGE_ANALYTICS_HOURLY, USAGE_ANALYTICS_DAILY")
+	require.Contains(t, sql, "UPDATE USAGE_ANALYTICS_AGGREGATION_STATE")
+	require.Contains(t, sql, "LIVE_WATERMARK = TIMESTAMPTZ '1970-01-01 00:00:00+00'")
+	require.Contains(t, sql, "COVERAGE_START = NULL")
+	require.Contains(t, sql, "BACKFILL_CURSOR = NULL")
+	require.NotContains(t, sql, "UPDATE USAGE_LOGS")
+	require.NotContains(t, sql, "FROM USAGE_LOGS")
+}

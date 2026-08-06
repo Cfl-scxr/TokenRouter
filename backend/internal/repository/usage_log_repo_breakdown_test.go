@@ -39,11 +39,11 @@ func TestResolveModelDimensionExpression(t *testing.T) {
 		modelType string
 		want      string
 	}{
-		{usagestats.ModelSourceRequested, "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
+		{usagestats.ModelSourceRequested, "COALESCE(NULLIF(TRIM(model), ''), NULLIF(TRIM(requested_model), ''), '')"},
 		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), model)"},
-		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(requested_model), ''), model) || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), model))"},
-		{"", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
-		{"invalid", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
+		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(model), ''), NULLIF(TRIM(requested_model), ''), '') || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), model))"},
+		{"", "COALESCE(NULLIF(TRIM(model), ''), NULLIF(TRIM(requested_model), ''), '')"},
+		{"invalid", "COALESCE(NULLIF(TRIM(model), ''), NULLIF(TRIM(requested_model), ''), '')"},
 	}
 
 	for _, tc := range tests {

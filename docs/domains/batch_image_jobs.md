@@ -150,6 +150,8 @@ output_deleted             -> output_deleted
 
 手工删除输出或 TTL 清理后，状态从 `completed` 变为 `output_deleted`。
 
+任务提交时必须同时快照三种模型身份：`requested_model` 保存客户端提交值（复合 Key 场景包含自定义分组前缀），`internal_model` 保存复合 Key 选组和 API Key 模型重定向完成后、渠道与账号映射前的内部模型，`model` 保存最终提交给提供商的上游模型。异步结算写使用记录时以 `internal_model` 作为 `usage_logs.model`，并把 `model` 写入 `upstream_model`；迁移前任务没有内部模型快照时，才兼容回退到上游模型。
+
 ## Redis
 
 Redis 用于唤醒、重试、worker 协调、单作业锁和下载限制。PostgreSQL 始终是权威数据源。

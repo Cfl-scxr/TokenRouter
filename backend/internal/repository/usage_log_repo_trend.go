@@ -802,7 +802,13 @@ func resolveModelDimensionExpressionWithAlias(modelType, alias string) string {
 		}
 		return alias + "." + name
 	}
-	requestedExpr := fmt.Sprintf("COALESCE(NULLIF(TRIM(%s), ''), %s)", column("requested_model"), column("model"))
+	// 模型分布使用内部请求模型，避免复合 Key 的展示前缀把同一模型拆成多项；
+	// requested_model 仍保留在明细中，用于展示客户端实际提交的模型名。
+	requestedExpr := fmt.Sprintf(
+		"COALESCE(NULLIF(TRIM(%s), ''), NULLIF(TRIM(%s), ''), '')",
+		column("model"),
+		column("requested_model"),
+	)
 	upstreamExpr := fmt.Sprintf("COALESCE(NULLIF(TRIM(%s), ''), %s)", column("upstream_model"), column("model"))
 	switch usagestats.NormalizeModelSource(modelType) {
 	case usagestats.ModelSourceUpstream:
