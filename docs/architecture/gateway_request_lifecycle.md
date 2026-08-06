@@ -149,4 +149,4 @@ client_model
 - 用量能否得到稳定 request ID、请求指纹、requested/upstream model 和正确平台归属。
 - handler、service、repository、前端调用方与 API contract/协议测试是否一起更新。
 
-相关文档：[系统架构](system_architecture.md)、[领域目录](../domains/index.md)、[接口目录](../interfaces/index.md)。
+相关文档：[系统架构](system_architecture.md)、[账号调度与缓存一致性](account_scheduling_and_cache.md)、[网关策略控制](../domains/gateway_policy_controls.md)、[上游账号能力矩阵](../interfaces/upstream_account_matrix.md)、[网关错误响应策略](../interfaces/gateway_error_policy.md)、[领域目录](../domains/index.md)、[接口目录](../interfaces/index.md)。

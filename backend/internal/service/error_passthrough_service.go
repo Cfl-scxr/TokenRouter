@@ -154,6 +154,7 @@ func (s *ErrorPassthroughService) Delete(ctx context.Context, id int64) error {
 
 // MatchRule 匹配透传规则
 // 返回第一个匹配的规则，如果没有匹配则返回 nil
+// @project-doc docs/interfaces/gateway_error_policy.md#error_passthrough_rule_matching
 func (s *ErrorPassthroughService) MatchRule(platform string, statusCode int, body []byte) *model.ErrorPassthroughRule {
 	rules := s.getCachedRules()
 	if len(rules) == 0 {

@@ -14,9 +14,11 @@ TokenRouter 通过 Qoder COSY 网关路径支持 Qoder 原生上游账号。面�
 - [上游账号用量](#上游账号用量)：修改配额探测或调度冷却时读取。
 - [运维](#运维)：修改故障转移、错误分类或导入导出时读取。
 
+<a id="qoder_account_contract"></a>
 ## 账号类型
 
 - `cosy` 账号可以在国际站（`global`）或中国站（`cn`）使用 PAT 引导或设备 OAuth 凭据。
+- Qoder 创建和导入校验要求 `platform=qoder` 与 `type=cosy` 双向同时成立；OAuth、API Key、Upstream、Bedrock 和 Service Account 不能作为 Qoder 账号保存。
 - `credentials.site` 选择站点。缺失时为兼容已有账号而解析为 `global`。
 - `credentials.refresh_mode` 记录令牌来源。缺失时解析为 `cosy`；中国站标准 OAuth 使用 `qodercn20`。
 - 手工导入可以只提供 `pat`，也可以提供一组现有 COSY 令牌。
@@ -150,4 +152,4 @@ Qoder 以 `qoder` 平台键参与调度快照、错误透传、故障转移和�
 
 管理端账号数据导出和导入会保留用于备份迁移的 `qoder`、`cosy` 账号及其凭据。
 
-相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)和[接口目录](index.md)。
+相关文档：[上游账号能力矩阵](upstream_account_matrix.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)和[接口目录](index.md)。

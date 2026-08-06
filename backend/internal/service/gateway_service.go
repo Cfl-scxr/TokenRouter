@@ -1135,6 +1135,7 @@ func (s *GatewayService) hashContent(content string) string {
 }
 
 // GetAccessToken 获取账号凭证
+// @project-doc docs/interfaces/anthropic_upstream.md#anthropic_account_and_transport
 func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	switch account.Type {
 	case AccountTypeOAuth, AccountTypeSetupToken:
@@ -1648,6 +1649,7 @@ func finalizeAnthropicStreamContentBlock(block map[string]any) map[string]any {
 	return out
 }
 
+// @project-doc docs/domains/platform_quotas.md#platform_quota_settlement_and_flush
 func finalizeUsageBilling(p *usageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
 	if p == nil || p.Cost == nil || deps == nil {
 		return

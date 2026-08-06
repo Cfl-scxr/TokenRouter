@@ -244,6 +244,7 @@ func (s *TokenRefreshService) notifyAccountSchedulingBlockCleared(accountID int6
 }
 
 // Start 启动后台刷新服务
+// @project-doc docs/operations/account_maintenance.md#account_credential_refresh
 func (s *TokenRefreshService) Start() {
 	if s.cfg == nil || !s.cfg.Enabled {
 		slog.Info("token_refresh.service_disabled")

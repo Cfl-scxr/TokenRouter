@@ -13,6 +13,7 @@ import (
 
 // RegisterGatewayRoutes 注册 API 网关路由（Claude/OpenAI/Gemini 兼容）
 // @project-doc docs/architecture/gateway_request_lifecycle.md#gateway_pipeline
+// @project-doc docs/interfaces/upstream_account_matrix.md#public_gateway_protocols
 func RegisterGatewayRoutes(
 	r *gin.Engine,
 	h *handler.Handlers,

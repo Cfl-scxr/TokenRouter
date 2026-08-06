@@ -65,6 +65,7 @@ func (p *AntigravityTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 }
 
 // GetAccessToken returns a valid access_token.
+// @project-doc docs/interfaces/antigravity_upstream.md#antigravity_account_contract
 func (p *AntigravityTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
 	if account == nil {
 		return "", errors.New("account is nil")

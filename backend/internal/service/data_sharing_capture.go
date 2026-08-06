@@ -15,6 +15,7 @@ import (
 )
 
 // CaptureClaudeRequest 采集 Claude/Gemini 兼容协议成功请求。
+// @project-doc docs/operations/data_sharing.md#data_sharing_capture_pipeline
 func (s *DataSharingService) CaptureClaudeRequest(ctx context.Context, input DataShareCaptureInput) error {
 	session := s.buildBufferedCaptureSession(ctx, input)
 	if session == nil {

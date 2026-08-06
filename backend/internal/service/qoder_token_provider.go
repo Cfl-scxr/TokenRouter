@@ -76,6 +76,7 @@ func (p *QoderTokenProvider) SetHTTPUpstream(httpUpstream HTTPUpstream, tlsFPPro
 	p.tlsFPProfileService = tlsFPProfileService
 }
 
+// @project-doc docs/interfaces/qoder_upstream.md#qoder_account_contract
 func (p *QoderTokenProvider) GetSession(ctx context.Context, account *Account) (*qoder.SessionContext, error) {
 	if p == nil {
 		return nil, errors.New("qoder token provider is nil")

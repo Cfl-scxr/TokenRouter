@@ -102,7 +102,7 @@ npx --yes pnpm@9 --dir frontend run build
 
 提交信息遵循 Conventional Commits，例如 `feat(gateway): ...`、`fix(billing): ...`、`docs(project): ...`。一次提交应围绕一个可验证目的，生成文件、迁移和契约测试与其源变更一起提交。
 
-`SYNC.md` 是本地同步进度，受 `.gitignore` 保护，永远不要提交。使用 Codex 计划模式时，实施前把计划保存到 `.agent/plans/`。不要覆盖工作区中来源不明的修改；提交前按文件核对 staging 范围。
+`SYNC.md` 是本地同步进度，受 `.gitignore` 保护，永远不要提交。使用 Codex 计划模式时，实施前把计划保存到 `.agents/plans/`。不要覆盖工作区中来源不明的修改；提交前按文件核对 staging 范围。
 
 每次代码变更都从 [工程文档目录](../index.md) 路由到相关专题：如果持久架构、领域不变量、外部契约或运维流程变化，同步正文、分类目录和代码锚点；局部实现细节不应无条件扩写成新文档。README 保持项目入口简洁，工程细节放入 `docs/`。
 

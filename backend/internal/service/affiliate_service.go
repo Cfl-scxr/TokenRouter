@@ -318,6 +318,7 @@ func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID
 }
 
 // AccrueInviteRebateForOrder 按订单购买积分计提返利，并关联来源订单保证幂等。
+// @project-doc docs/domains/promotions_and_affiliates.md#affiliate_rebate_lifecycle
 func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, purchasedPoints float64, sourceOrderID *int64) (float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil

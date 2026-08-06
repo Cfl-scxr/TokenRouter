@@ -152,6 +152,7 @@ func (s *TLSFingerprintRouterService) Delete(ctx context.Context, id int64) erro
 }
 
 // MatchUserAgent 按路由器 ID 匹配入站 User-Agent，命中第一条可用规则。
+// @project-doc docs/operations/upstream_transport_security.md#upstream_tls_routing
 func (s *TLSFingerprintRouterService) MatchUserAgent(routerID int64, userAgent string) TLSFingerprintRouterMatchResult {
 	if s == nil || routerID <= 0 {
 		return TLSFingerprintRouterMatchResult{}

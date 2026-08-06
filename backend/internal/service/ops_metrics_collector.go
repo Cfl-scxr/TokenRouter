@@ -89,6 +89,7 @@ func NewOpsMetricsCollector(
 	}
 }
 
+// @project-doc docs/operations/ops_monitoring_and_alerting.md#ops_signal_pipeline
 func (c *OpsMetricsCollector) Start() {
 	if c == nil {
 		return

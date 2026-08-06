@@ -268,6 +268,7 @@ func NewOpenAIGatewayHandler(
 
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
+// @project-doc docs/interfaces/openai_upstream.md#openai_protocol_dispatch
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 局部兜底：确保该 handler 内部任何 panic 都不会击穿到进程级。
 	streamStarted := false

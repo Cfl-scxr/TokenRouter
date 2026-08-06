@@ -228,6 +228,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 // GeminiV1BetaModels proxies Gemini native REST endpoints like:
 // POST /v1beta/models/{model}:generateContent
 // POST /v1beta/models/{model}:streamGenerateContent?alt=sse
+// @project-doc docs/interfaces/gemini_upstream.md#gemini_protocol_dispatch
 func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {

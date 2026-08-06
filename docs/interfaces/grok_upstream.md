@@ -1,4 +1,4 @@
-# Grok / xAI 使用说明
+# Grok / xAI 上游
 
 TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通过 OpenAI 兼容的 Responses、Chat Completions、Messages 和 WebSocket 入口转发请求。Grok 分组还支持图片生成/编辑、视频生成/编辑/扩展以及视频状态查询。
 
@@ -22,9 +22,12 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 - 主要网关入口：`/v1/responses`、`/responses`、Chat Completions、Messages 和 Responses WebSocket
 - API Key 账号默认上游地址：`https://api.x.ai/v1`
 
+<a id="grok_account_contract"></a>
 ## 账号配置
 
 管理员可在控制台选择 OAuth 或 API Key 创建账号。OAuth 账号可通过控制台创建或重新授权；创建 Grok 分组并绑定账号后，用户即可生成分组 API Key。
+
+其它通用账号类型即使可由兼容导入层保存，也没有 Grok 正式凭据和转发契约；`cosy` 明确只属于 Qoder。完整分类见[上游账号能力矩阵](upstream_account_matrix.md)。
 
 ## 媒体请求格式
 
@@ -80,4 +83,4 @@ Grok Build CLI 的模型配置必须指向 TokenRouter 对外地址（以 `/v1` 
 
 自定义 base URL 和媒体/billing 子路径都必须通过同一 URL allowlist/SSRF 校验。环境变量中的 client secret、token 和上游 URL 不得进入前端配置或错误响应。
 
-相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)、[接口目录](index.md)。
+相关文档：[上游账号能力矩阵](upstream_account_matrix.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)、[接口目录](index.md)。

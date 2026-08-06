@@ -84,6 +84,7 @@ func NewModelMarketplaceService(
 	}
 }
 
+// @project-doc docs/interfaces/model_catalog_and_marketplace.md#model_catalog_resolution
 func (s *ModelMarketplaceService) ListPublic(ctx context.Context) ([]ModelMarketplaceGroup, error) {
 	groups, err := s.groupRepo.ListActive(ctx)
 	if err != nil {

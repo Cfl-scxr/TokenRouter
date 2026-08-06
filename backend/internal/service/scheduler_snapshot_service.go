@@ -206,6 +206,7 @@ func (s *SchedulerSnapshotService) Stop() {
 	s.wg.Wait()
 }
 
+// @project-doc docs/architecture/account_scheduling_and_cache.md#scheduler_snapshot_consistency
 func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	mode := s.resolveMode(platform, hasForcePlatform)

@@ -103,4 +103,4 @@ Usage Log 应保存付款用户、行为用户/团队、Key、账号、分组、
 - Usage Log 不是扣费事务的提交标志；对账必须以去重记录和账户/权益效果为准。
 - 新增计费类型时，要覆盖订阅与余额混合分配、团队归属、重复提交、死锁重试和日志失败测试。
 
-相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[身份与租户](identity_and_tenancy.md)、[领域目录](index.md)。
+相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[账号调度与缓存一致性](../architecture/account_scheduling_and_cache.md)、[网关策略控制](gateway_policy_controls.md)、[用户平台额度](platform_quotas.md)、[身份与租户](identity_and_tenancy.md)、[领域目录](index.md)。

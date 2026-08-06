@@ -9,6 +9,9 @@
 - [会话生命周期](#会话生命周期)：修改签发、刷新、撤销和绑定时读取。
 - [强认证与敏感操作](#强认证与敏感操作)：修改 TOTP、Passkey 或管理员 step-up 时读取。
 - [外部身份接入](#外部身份接入)：修改 OAuth 登录、绑定或账号接纳时读取。
+- [登录提供方差异](#登录提供方差异)：核对各 provider 的主体、邮箱和完成流程。
+- [身份绑定与解绑](#身份绑定与解绑)：修改当前用户绑定、首次绑定权益或会话撤销时读取。
+- [用户属性与来源](#用户属性与来源)：修改自定义字段或外部资料同步时读取。
 - [团队租户](#团队租户)：修改成员、所有权或团队 Key 时读取。
 - [领域不变量](#领域不变量)：实现变更前后的检查清单。
 
@@ -71,6 +74,40 @@ LinuxDo、微信和邮件等外部身份最终都映射到 `AuthIdentity`，而�
 
 邮箱可作为注册或接纳决策的输入，但 provider subject 的唯一关系才是外部登录归属的持久证据。增加提供方时，应复用待处理会话和身份唯一性边界，不要在 handler 中直接按未经验证的 profile 字段合并用户。
 
+## 登录提供方差异
+
+`AuthIdentity.provider_type` 当前允许 `email`、`github`、`google`、`linuxdo`、`oidc`、`wechat` 和 `dingtalk`。`provider_key` 区分同类型的发行方或兼容渠道，`provider_subject` 保存该 key 下稳定的外部主体；三元组全局唯一。
+
+| 提供方 | 持久主体与验证要求 | 当前流程差异 |
+| --- | --- | --- |
+| Email | 规范化且已验证的邮箱；本地密码仍由用户安全状态管理 | 注册/登录、找回和当前用户的验证码绑定；邮箱身份不能通过通用第三方解绑入口删除 |
+| LinuxDo | LinuxDo subject；profile 邮箱/用户名只是已验证资料输入 | 有 start/callback、pending exchange、创建/绑定既有登录和当前用户 bind 流程 |
+| WeChat | 优先稳定 union/open identity，并兼容历史 provider key/openid channel | 登录与当前用户绑定使用 pending 流程；支付 OAuth 是支付授权，不等同于登录身份 |
+| OIDC | `provider_key` 为 issuer，`provider_subject` 为 issuer 下 subject | 支持创建、接纳、绑定既有登录和当前用户 bind；不能跨 issuer 合并同名 subject |
+| GitHub | GitHub user ID；注册必须取得 verified email | 有登录/注册完成流程；当前个人资料绑定面不提供 GitHub 自助 bind/unbind |
+| Google | Google subject；注册必须取得 verified email | 有登录/注册完成流程；当前个人资料绑定面不提供 Google 自助 bind/unbind |
+| DingTalk | unionID 作为稳定 subject，企业/部门资料保存为 claims/属性 | 支持组织策略、创建/绑定既有登录和当前用户 bind；跨组织降级不能用企业内 user ID 替代 unionID |
+
+GitHub/Google 与 LinuxDo/OIDC 等共享 `AuthIdentity` 唯一性，但 HTTP 流程并不完全相同。新增 bind 路由或前端入口前应先补齐服务端意图、CSRF/state、pending session、解绑安全和契约测试，不能只复用 OAuth callback。
+
+认证来源可以配置注册默认权益。注册时把全局默认与来源默认解析为一次性创建计划；第三方身份第一次绑定还可幂等应用该来源允许的余额、并发或订阅默认值，使用 `(user, provider, first_bind)` 事实防止重复赠送。身份重绑、callback 重放和 provider profile 更新不得再次触发首次绑定权益。
+
+## 身份绑定与解绑
+
+当前用户绑定第三方身份时，先通过受保护入口生成 provider 的后端 authorize URL，start 路由记录 `bind_current_user` 意图，callback 再验证当前会话和外部主体。Email 绑定使用独立验证码与密码设置流程；用户已有本地邮箱身份时还要验证现有密码，不能把修改 profile email 当作绑定。
+
+绑定必须在事务中确认：目标外部三元组尚未属于其他用户、当前用户和会话仍有效、pending intent 与 provider 一致，并原子写入 identity/channel/接纳决定。管理员直接绑定仍要遵守相同唯一约束和 canonical provider key 规则，不得制造两个用户共享主体。
+
+解绑前至少保留一个可登录身份。Email 不走第三方解绑；LinuxDo、OIDC、WeChat 和 DingTalk 的自助解绑根据当前身份集合决定是否允许。成功解绑后撤销用户全部 token，会话必须重新登录，避免旧 JWT 继续代表已改变的安全身份。外部 provider 的远端授权是否同时撤销由相应实现决定，不能只凭本地删除宣称远端 token 已失效。
+
+## 用户属性与来源
+
+自定义用户属性由 definition 和 value 分离：definition 拥有唯一 key、展示名、类型、options、required、validation、排序和 enabled；每个用户与 definition 最多一个 value。支持 `text`、`textarea`、`number`、`email`、`url`、`date`、`select` 和 `multi_select`，值持久化为字符串，multi-select 使用 JSON 数组字符串。
+
+写值必须通过 definition 的类型、选项和 min/max/length/pattern 规则。`required` 约束编辑/收集流程，不意味着历史用户天然已有值；definition disabled 后不再作为活跃输入，但已有值不会因此成为授权依据。删除 definition 时要协调其 values，不能留下前端仍可提交的孤立 key。
+
+OAuth claims 可提供用户名、头像、企业邮箱、显示名或部门等建议资料；DingTalk 等 provider 还可把字段同步到管理员配置的属性 key。外部资料需要记录 provider/source，上游缺失字段不能静默清空用户显式资料，保留域合成邮箱也不能冒充真实 verified email。自定义属性默认只是资料，不参与角色、团队、余额或网关授权；若未来用于策略，必须新增显式规则、审计和缓存失效。
+
 ## 团队租户
 
 团队是单层租户，不存在嵌套团队。owner 既是管理者，也是团队 Key 的付款主体；普通成员可以按权限创建或使用团队资源，但消费必须同时保存团队、付款 owner 和实际成员归属。成员的日/周/月限额及累计用量属于 `TeamMember`，团队切换 owner 不能把历史行为错误归到新 owner 名下。
@@ -83,9 +120,11 @@ LinuxDo、微信和邮件等外部身份最终都映射到 `AuthIdentity`，而�
 
 - 授权使用数据库当前状态；JWT、缓存和外部 profile 都只是带时效的输入。
 - 外部主体只能归属一个用户，账号接纳必须有显式、可审计且不可重放的决定。
+- Provider type、key 和 subject 共同构成身份；邮箱、用户名、头像和组织资料不能替代稳定 subject。
 - access token、refresh token、OAuth pending session、TOTP/Passkey challenge 各有独立用途和有效期，不能互相替代。
 - 管理员全局角色和团队内角色分离；API Key 的付款主体与行为主体分开记录。
 - 会话撤销、token version、团队生命周期与 Key 缓存失效必须在所有认证入口保持一致。
+- 首次绑定默认权益必须幂等；自定义属性和外部 profile 默认不参与授权。
 - 新增认证方式时，应同时更新公开入口限流、审计、会话撤销、前端 token 处理和相关安全测试。
 
 相关文档：[项目总览](../project_overview.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[领域目录](index.md)。

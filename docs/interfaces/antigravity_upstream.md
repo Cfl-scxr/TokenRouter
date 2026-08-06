@@ -11,11 +11,14 @@
 - [模型与额度](#模型与额度)：修改可见模型、配额或价格归属时读取。
 - [失败与恢复](#失败与恢复)：修改限流、重试、切换或凭据错误时读取。
 
+<a id="antigravity_account_contract"></a>
 ## 账号与凭据
 
 Antigravity 账号的 `platform` 为 `antigravity`。管理端通过 `/api/v1/admin/antigravity/oauth/*` 生成授权 URL、交换 code 或验证/刷新 refresh token，再使用通用账号创建/更新路径保存凭据。OAuth access token 由 token provider 在使用前刷新；project ID、subscription/tier、privacy mode、额度和上游 user agent 等属于账号/运行时元数据。
 
-原生兼容转发要求 `type=oauth` 的 Antigravity 账号。setup token、upstream 或 API-key 类型不能被当成原生 OAuth 兼容账号；服务应返回可操作错误而不是把不匹配凭据发送给上游。standard-tier 账号缺少必要 project ID 时也要显式拒绝。
+管理端还提供“静态上游”表单，但当前把它保存为 `type=apikey`；Antigravity Claude 直连和 token provider 的历史静态分支只识别 `type=upstream`。这两种类型目前不能视为等价，新的静态账号不构成完整正式支持。历史 `upstream` 账号仅用于 Claude 直连兼容。
+
+原生兼容转发要求 `type=oauth` 的 Antigravity 账号。setup token、upstream 或 API-key 类型不能被当成原生 OAuth 兼容账号；服务应返回可操作错误而不是把不匹配凭据发送给上游。standard-tier 账号缺少必要 project ID 时也要显式拒绝。完整平台/账号分类和已知冲突见[上游账号能力矩阵](upstream_account_matrix.md)。
 
 账号导入、凭据刷新和批量导入后会检查/设置适用的隐私状态。凭据、refresh token、project ID 和上游响应中的内部标识不得出现在客户端错误或模型列表中。
 
@@ -27,7 +30,7 @@ Antigravity 账号的 `platform` 为 `antigravity`。管理端通过 `/api/v1/ad
 | --- | --- | --- |
 | `GET /antigravity/models` | Claude 风格模型列表 | 返回当前 Key/分组可请求的 Antigravity 模型 |
 | `POST /antigravity/v1/messages` | Anthropic Messages | 转换并转发 Claude 请求 |
-| `POST /antigravity/v1/messages/count_tokens` | Anthropic token count | 使用兼容 token 统计路径 |
+| `POST /antigravity/v1/messages/count_tokens` | Anthropic token count | 路由入口保留；当前明确返回 `404`，客户端应回退本地估算 |
 | `GET /antigravity/v1/models`、`/usage` | Claude 风格自省 | 模型与 Key 用量 |
 | `/antigravity/v1beta/models/*` | Gemini v1beta | list/get/generate/stream/countTokens 等 Gemini 形状 |
 
@@ -82,4 +85,4 @@ Antigravity 同时提供 Claude 与 Gemini 模型族。可见模型来自默认�
 
 修改适配器时应覆盖非流/流、Claude/Gemini/OpenAI 三种客户端形状、工具/thinking、单/多账号限流、混合调度关闭后的快照失效和用量归属测试。
 
-相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)、[接口目录](index.md)。
+相关文档：[上游账号能力矩阵](upstream_account_matrix.md)、[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[路由与结算](../domains/routing_and_billing.md)、[HTTP 接口边界](http_api.md)、[接口目录](index.md)。

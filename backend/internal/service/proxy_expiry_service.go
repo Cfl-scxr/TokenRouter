@@ -20,6 +20,7 @@ func NewProxyExpiryService(proxyRepo ProxyRepository, interval time.Duration) *P
 	return &ProxyExpiryService{proxyRepo: proxyRepo, interval: interval, stopCh: make(chan struct{})}
 }
 
+// @project-doc docs/operations/upstream_transport_security.md#upstream_proxy_lifecycle
 func (s *ProxyExpiryService) Start() {
 	if s == nil || s.proxyRepo == nil || s.interval <= 0 {
 		return

@@ -832,6 +832,7 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 	return ids
 }
 
+// @project-doc docs/domains/gateway_policy_controls.md#gateway_policy_layers
 func (s *GatewayService) resolveGatewayGroup(ctx context.Context, groupID *int64) (*Group, *int64, error) {
 	if groupID == nil {
 		return nil, nil, nil

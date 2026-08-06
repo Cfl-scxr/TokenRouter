@@ -59,6 +59,7 @@ func (p *GrokTokenProvider) SetTempUnschedCache(cache TempUnschedCache) {
 	p.tempUnschedCache = cache
 }
 
+// @project-doc docs/interfaces/grok_upstream.md#grok_account_contract
 func (p *GrokTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
 	if account == nil {
 		return "", errors.New("account is nil")
