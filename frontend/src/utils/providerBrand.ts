@@ -73,7 +73,8 @@ const providerBrands: Record<ProviderBrandKey, ProviderBrand> = {
     key: 'moonshot',
     label: 'Moonshot',
     iconKey: 'moonshot',
-    iconColor: '#16191E',
+    // Moonshot 是单色标识，继承徽标文字色以适配深浅主题。
+    iconColor: 'currentColor',
     badgeClass: 'bg-zinc-100 text-zinc-900 ring-zinc-200 dark:bg-zinc-500/20 dark:text-zinc-50 dark:ring-zinc-400/30',
     iconWrapClass: 'bg-zinc-50 text-zinc-700 ring-zinc-200 dark:bg-zinc-500/15 dark:text-zinc-200 dark:ring-zinc-400/30',
   },

@@ -33,7 +33,8 @@ const iconKey = computed(() => {
   const modelLower = props.model.toLowerCase()
 
   // OpenAI 模型
-  if (modelLower.startsWith('gpt') || modelLower.startsWith('o1') ||
+  if (modelLower.startsWith('gpt') || modelLower.startsWith('codex') ||
+      modelLower.startsWith('o1') ||
       modelLower.startsWith('o3') || modelLower.startsWith('o4') ||
       modelLower.includes('chatgpt') || modelLower.includes('dall-e') ||
       modelLower.includes('whisper') || modelLower.includes('tts-1') ||
