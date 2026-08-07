@@ -573,7 +573,7 @@ export interface MarketplaceModel {
   pricing: MarketplaceModelPricing
 }
 
-// 模型广场公开展示的分组容量快照，仅包含聚合后的负载数字。
+// 用户与市场接口可携带的分组容量快照，仅包含聚合后的负载数字。
 export interface MarketplaceGroupCapacity {
   concurrency_used: number
   concurrency_max: number

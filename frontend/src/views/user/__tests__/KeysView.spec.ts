@@ -309,6 +309,13 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const GroupOptionItemStub = {
+  name: 'GroupOptionItem',
+  inheritAttrs: false,
+  props: ['name', 'capacity'],
+  template: '<span data-test="group-option-item" :data-has-capacity="capacity ? \'true\' : \'false\'">{{ name }}</span>',
+}
+
 const mountView = async (settle = true) => {
   const wrapper = mount(KeysView, {
     global: {
@@ -327,7 +334,7 @@ const mountView = async (settle = true) => {
         UseKeyModal: true,
         EndpointPopover: true,
         GroupBadge: true,
-        GroupOptionItem: true,
+        GroupOptionItem: GroupOptionItemStub,
         Teleport: true,
       },
     },
@@ -627,6 +634,42 @@ describe('user KeysView column settings', () => {
 
     expect(dialog.props('width')).toBe('normal')
     expect(form.classes()).toEqual(expect.arrayContaining(['min-w-0', 'max-w-full']))
+  })
+
+  it('用户侧分组选择器不展示或投影容量数据', async () => {
+    getAvailableGroups.mockResolvedValueOnce([{
+      id: 42,
+      name: 'OpenAI',
+      description: 'OpenAI group',
+      display_brand: 'OpenAI',
+      rate_multiplier: 1,
+      peak_rate_enabled: false,
+      peak_start: '',
+      peak_end: '',
+      peak_rate_multiplier: 1,
+      platform: 'openai',
+      data_sharing_enabled: false,
+      capacity: {
+        concurrency_used: 25,
+        concurrency_max: 144,
+        sessions_used: 0,
+        sessions_max: 0,
+        rpm_used: 0,
+        rpm_max: 0,
+      },
+    }])
+    const wrapper = await mountView()
+
+    await wrapper.get('[title="keys.clickToChangeGroup"]').trigger('click')
+    await nextTick()
+    expect(wrapper.get('[data-test="group-option-item"]').attributes('data-has-capacity')).toBe('false')
+
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await nextTick()
+    const groupSelect = wrapper.findAllComponents({ name: 'Select' }).find(
+      (select) => select.attributes('data-tour') === 'key-form-group'
+    )
+    expect(groupSelect?.props('options')[0]).not.toHaveProperty('capacity')
   })
 
   it('keeps filters and selected page size when sorting by current concurrency', async () => {

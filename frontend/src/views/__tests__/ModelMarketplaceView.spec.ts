@@ -206,7 +206,7 @@ async function mountMarketplace() {
         LoadingSpinner: { template: '<span />' },
         LocaleSwitcher: { template: '<span />' },
         ProviderIcon: { template: '<span />' },
-        GroupCapacityBadge: { template: '<span />' },
+        GroupCapacityBadge: { template: '<span data-testid="group-capacity" />' },
         BaseDialog: BaseDialogStub,
         SearchInput: SearchInputStub,
         Select: SelectStub,
@@ -239,6 +239,32 @@ describe('ModelMarketplaceView', () => {
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]')).toHaveLength(4)
     expect(modelCards(wrapper)).toHaveLength(0)
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]').map((section) => section.text()).join('\n')).toContain('marketplace.dataSharingTag')
+  })
+
+  it('用户侧两个显示模式均不展示分组容量，并将可用率状态条靠右放置', async () => {
+    const fixture = marketplaceFixture()
+    fixture[0] = {
+      ...fixture[0],
+      availability: {
+        window_days: 7,
+        bucket_minutes: 1440,
+        success_count: 6,
+        total_count: 7,
+        availability_rate: 6 / 7,
+        days: [],
+      },
+    }
+    getMarketplaceModels.mockResolvedValue(fixture)
+
+    const wrapper = await mountMarketplace()
+
+    expect(wrapper.findAll('[data-testid="group-capacity"]')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="marketplace-group-availability"]').classes()).toContain('xl:w-[560px]')
+
+    await wrapper.get('[data-testid="select-option-model-group"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.findAll('[data-testid="group-capacity"]')).toHaveLength(0)
   })
 
   it('可以切换到模型-分组模式并保存本地偏好', async () => {

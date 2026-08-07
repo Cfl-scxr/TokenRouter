@@ -531,7 +531,6 @@
                 :peak-end="(option as unknown as GroupOption).peakEnd"
                 :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
                 :description="(option as unknown as GroupOption).description"
-                :capacity="(option as unknown as GroupOption).capacity"
                 :selected="selected"
               />
             </template>
@@ -1334,7 +1333,6 @@
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
-              :capacity="option.capacity"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
@@ -1410,7 +1408,6 @@ interface GroupOption {
   peakEnd: string
   peakRateMultiplier: number
   platform: GroupPlatform
-  capacity?: Group['capacity']
   dataSharingEnabled?: boolean
 }
 
@@ -1791,7 +1788,7 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
   onFilterChange()
 }
 
-// 将分组转换为带倍率信息的下拉选项。
+// 用户侧分组选项只投影选择所需信息，不传递管理员使用的容量数据。
 const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
@@ -1805,7 +1802,6 @@ const groupOptions = computed(() =>
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
     platform: group.platform,
-    capacity: group.capacity,
     dataSharingEnabled: group.data_sharing_enabled
   }))
 )
