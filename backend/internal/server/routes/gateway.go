@@ -142,8 +142,32 @@ func RegisterGatewayRoutes(
 			return false
 		}
 	}
+	// count_tokens 需要识别强制平台别名，避免把 Antigravity 当成分组原平台处理。
+	countTokensPlatform := func(c *gin.Context) string {
+		if platform, ok := middleware.GetForcePlatformFromContext(c); ok && strings.TrimSpace(platform) != "" {
+			return platform
+		}
+		return getGroupPlatform(c)
+	}
+	// 只有实际支持 count_tokens 的平台才受 Messages 协议门禁控制。
+	countTokensProtocolGate := func(c *gin.Context) {
+		switch countTokensPlatform(c) {
+		case service.PlatformAntigravity, service.PlatformQoder:
+			c.Next()
+		default:
+			messagesProtocolGate(c)
+		}
+	}
 	countTokensHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
+		switch countTokensPlatform(c) {
+		case service.PlatformAntigravity, service.PlatformQoder:
+			c.JSON(http.StatusNotFound, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "count_tokens endpoint is not supported for this platform",
+				},
+			})
 		case service.PlatformOpenAI:
 			h.OpenAIGateway.CountTokens(c)
 		case service.PlatformGrok:
@@ -316,7 +340,7 @@ func RegisterGatewayRoutes(
 		})
 		// /v1/messages/count_tokens：OpenAI 桥接上游，Grok 本地估算，其余 Anthropic
 		// 兼容平台保留原处理路径。
-		gateway.POST("/messages/count_tokens", messagesProtocolGate, countTokensHandler)
+		gateway.POST("/messages/count_tokens", countTokensProtocolGate, countTokensHandler)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
 		gateway.POST("/live", h.OpenAIGateway.Live)
@@ -427,7 +451,7 @@ func RegisterGatewayRoutes(
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesWebSocketHandler)
 	// Codex 客户端会访问不带 v1 前缀的模型列表，保持与 /v1/models 相同的本地模型语义。
 	r.GET("/models", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.Models)
-	r.POST("/messages/count_tokens", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, messagesProtocolGate, countTokensHandler)
+	r.POST("/messages/count_tokens", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, countTokensProtocolGate, countTokensHandler)
 	r.GET(
 		"/backend-api/codex/:call_id",
 		rejectRemovedCodexRoute,
@@ -495,7 +519,7 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(requireGroupAnthropic)
 	{
 		antigravityV1.POST("/messages", messagesProtocolGate, h.Gateway.Messages)
-		antigravityV1.POST("/messages/count_tokens", messagesProtocolGate, h.Gateway.CountTokens)
+		antigravityV1.POST("/messages/count_tokens", countTokensProtocolGate, countTokensHandler)
 		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
 	}

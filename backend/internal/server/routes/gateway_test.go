@@ -109,7 +109,7 @@ func TestGatewayRoutesClientProtocolGateRejectsAliasesBeforeReadingBody(t *testi
 			name:      "messages",
 			platform:  service.PlatformOpenAI,
 			protocols: []service.GroupClientProtocol{service.GroupClientProtocolOpenAIResponses, service.GroupClientProtocolOpenAIChatCompletions},
-			paths:     []string{"/v1/messages", "/v1/messages/count_tokens", "/messages/count_tokens", "/antigravity/v1/messages", "/antigravity/v1/messages/count_tokens"},
+			paths:     []string{"/v1/messages", "/v1/messages/count_tokens", "/messages/count_tokens", "/antigravity/v1/messages"},
 			code:      "permission_error",
 		},
 		{
@@ -148,6 +148,43 @@ func TestGatewayRoutesClientProtocolGateRejectsAliasesBeforeReadingBody(t *testi
 				require.Contains(t, w.Body.String(), tt.code, "path=%s", path)
 				require.False(t, reader.read, "path=%s must be rejected before reading body", path)
 			}
+		})
+	}
+}
+
+// 不支持 count_tokens 的平台固定返回 404，不受 Messages 协议开关影响。
+func TestGatewayRoutesUnsupportedCountTokensBypassesProtocolGate(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		path     string
+	}{
+		{name: "qoder_v1", platform: service.PlatformQoder, path: "/v1/messages/count_tokens"},
+		{name: "qoder_alias", platform: service.PlatformQoder, path: "/messages/count_tokens"},
+		{name: "antigravity_v1", platform: service.PlatformAntigravity, path: "/v1/messages/count_tokens"},
+		{name: "antigravity_alias", platform: service.PlatformAntigravity, path: "/messages/count_tokens"},
+		{name: "forced_antigravity", platform: service.PlatformOpenAI, path: "/antigravity/v1/messages/count_tokens"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(1)
+			router := newGatewayRoutesTestRouterWithGroup(&config.Config{}, nil, &service.Group{
+				ID:                     groupID,
+				Platform:               tt.platform,
+				AllowedClientProtocols: []service.GroupClientProtocol{},
+			})
+			reader := &protocolGateTrackingReader{}
+			req := httptest.NewRequest(http.MethodPost, tt.path, reader)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusNotFound, w.Code)
+			require.Contains(t, w.Body.String(), "not_found_error")
+			require.NotContains(t, w.Body.String(), "protocol_not_allowed")
+			require.False(t, reader.read, "unsupported count_tokens must not read request body")
 		})
 	}
 }

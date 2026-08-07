@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import type { GroupClientProtocol, GroupPlatform } from '@/types'
 
 const { copyToClipboardMock } = vi.hoisted(() => ({
   copyToClipboardMock: vi.fn().mockResolvedValue(true)
@@ -671,6 +672,164 @@ describe('UseKeyModal', () => {
     expect(qoderProvider.models['deepseek-v4-pro'].name).toBe('DeepSeek-V4-Pro')
     expect(qoderProvider.models['glm-5.2'].name).toBe('GLM-5.2')
     expect(qoderProvider.models['kimi-k3'].name).toBe('Kimi-K3')
+  })
+
+  const compatibilityProtocolCases: Array<{
+    name: string
+    platform: GroupPlatform
+    protocols: GroupClientProtocol[]
+    provider: string
+    npm: string
+  }> = [
+    {
+      name: 'Anthropic Chat',
+      platform: 'anthropic',
+      protocols: ['openai_chat_completions'],
+      provider: 'anthropic',
+      npm: '@ai-sdk/openai-compatible'
+    },
+    {
+      name: 'OpenAI Messages',
+      platform: 'openai',
+      protocols: ['anthropic_messages'],
+      provider: 'openai',
+      npm: '@ai-sdk/anthropic'
+    },
+    {
+      name: 'Gemini Responses',
+      platform: 'gemini',
+      protocols: ['openai_responses'],
+      provider: 'gemini',
+      npm: '@ai-sdk/openai'
+    },
+    {
+      name: 'Qoder Responses',
+      platform: 'qoder',
+      protocols: ['openai_responses'],
+      provider: 'qoder',
+      npm: '@ai-sdk/openai'
+    },
+    {
+      name: 'Grok Messages',
+      platform: 'grok',
+      protocols: ['anthropic_messages'],
+      provider: 'grok',
+      npm: '@ai-sdk/anthropic'
+    }
+  ]
+
+  it.each(compatibilityProtocolCases)(
+    'generates OpenCode transport from the enabled protocol: $name',
+    async ({ platform, protocols, provider, npm }) => {
+      const wrapper = mount(UseKeyModal, {
+        props: {
+          show: true,
+          apiKey: 'sk-protocol-test',
+          baseUrl: 'https://example.com/v1',
+          platform,
+          allowedClientProtocols: protocols
+        },
+        global: {
+          stubs: {
+            BaseDialog: {
+              template: '<div><slot /><slot name="footer" /></div>'
+            },
+            Icon: {
+              template: '<span />'
+            }
+          }
+        }
+      })
+
+      const opencodeTab = wrapper.findAll('button').find((button) =>
+        button.text().includes('keys.useKeyModal.cliTabs.opencode')
+      )
+      expect(opencodeTab).toBeDefined()
+      await opencodeTab!.trigger('click')
+      await nextTick()
+
+      // provider 包和 base URL 必须对应当前唯一启用的客户端协议。
+      const parsed = JSON.parse(wrapper.find('pre code').text())
+      expect(parsed.provider[provider].npm).toBe(npm)
+      expect(parsed.provider[provider].options.baseURL).toBe('https://example.com/v1')
+    }
+  )
+
+  it('filters Antigravity OpenCode configs by enabled native protocols', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-antigravity-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'antigravity',
+        allowedClientProtocols: ['gemini_generate_content']
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const codeBlocks = wrapper.findAll('pre code')
+    expect(codeBlocks).toHaveLength(1)
+    const parsed = JSON.parse(codeBlocks[0]!.text())
+    expect(parsed.provider['antigravity-gemini'].npm).toBe('@ai-sdk/google')
+    expect(parsed.provider['antigravity-gemini'].options.baseURL).toBe('https://example.com/antigravity/v1beta')
+    expect(parsed.provider['antigravity-claude']).toBeUndefined()
+  })
+
+  it('uses an enabled Responses transport when Antigravity native protocols are disabled', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-antigravity-responses-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'antigravity',
+        allowedClientProtocols: ['openai_responses']
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const configs = wrapper.findAll('pre code').map((code) => JSON.parse(code.text()))
+    expect(configs).toHaveLength(2)
+    for (const config of configs) {
+      const provider = Object.values(config.provider)[0] as {
+        npm: string
+        options: { baseURL: string }
+      } | undefined
+      expect(provider).toBeDefined()
+      expect(provider!.npm).toBe('@ai-sdk/openai')
+      expect(provider!.options.baseURL).toBe('https://example.com/v1')
+    }
   })
 
   it('derives client tabs from the explicit protocol collection', () => {

@@ -324,6 +324,8 @@ interface FileConfig {
   highlighted?: string
 }
 
+type OpenCodeProfile = GroupPlatform | 'antigravity-claude' | 'antigravity-gemini'
+
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
@@ -364,6 +366,23 @@ const allowedProtocols = computed(() => {
 
 const allowsProtocol = (protocol: GroupClientProtocol) =>
   hasGroupClientProtocol(allowedProtocols.value, protocol)
+
+// 保留各平台原有 OpenCode 体验，同时保证最终选择的传输协议已经显式启用。
+const openCodeProtocolPriority: Record<GroupPlatform, readonly GroupClientProtocol[]> = {
+  anthropic: ['anthropic_messages', 'openai_responses', 'openai_chat_completions'],
+  openai: ['openai_responses', 'openai_chat_completions', 'anthropic_messages'],
+  gemini: ['gemini_generate_content', 'openai_responses', 'openai_chat_completions', 'anthropic_messages'],
+  antigravity: ['openai_responses', 'openai_chat_completions', 'anthropic_messages', 'gemini_generate_content'],
+  qoder: ['openai_chat_completions', 'openai_responses', 'anthropic_messages'],
+  grok: ['openai_responses', 'openai_chat_completions', 'anthropic_messages']
+}
+
+function preferredOpenCodeProtocol(
+  platform: GroupPlatform,
+  protocols: readonly GroupClientProtocol[]
+): GroupClientProtocol | null {
+  return openCodeProtocolPriority[platform].find((protocol) => protocols.includes(protocol)) ?? null
+}
 
 // Icon components
 const AppleIcon = {
@@ -734,27 +753,41 @@ const currentFiles = computed((): FileConfig[] => {
   })()
 
   if (activeClientTab.value === 'opencode') {
-    switch (props.platform) {
-      case 'anthropic':
-        return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
-      case 'openai':
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
-      case 'gemini':
-        return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
-      case 'antigravity':
-        return [
-          generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude)'),
-          generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
-        ]
-      case 'qoder':
-        return allowsProtocol('openai_responses') || allowsProtocol('openai_chat_completions')
-          ? [generateOpenCodeConfig('qoder', apiBase, apiKey)]
-          : [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
-      case 'grok':
-        return [generateOpenCodeConfig('grok', apiBase, apiKey)]
-      default:
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+    if (props.platform === 'antigravity') {
+      const nativeConfigs: FileConfig[] = []
+      if (allowsProtocol('anthropic_messages')) {
+        nativeConfigs.push(generateOpenCodeConfig(
+          'antigravity-claude',
+          'anthropic_messages',
+          antigravityBase,
+          apiKey,
+          'opencode.json (Claude)'
+        ))
+      }
+      if (allowsProtocol('gemini_generate_content')) {
+        nativeConfigs.push(generateOpenCodeConfig(
+          'antigravity-gemini',
+          'gemini_generate_content',
+          antigravityGeminiBase,
+          apiKey,
+          'opencode.json (Gemini)'
+        ))
+      }
+      if (nativeConfigs.length > 0) return nativeConfigs
+
+      // 原生协议全部关闭时，两类模型都通过同一个已启用的 OpenAI 兼容入口访问。
+      const protocol = preferredOpenCodeProtocol(props.platform, allowedProtocols.value)
+      if (!protocol) return []
+      return [
+        generateOpenCodeConfig('antigravity-claude', protocol, apiBase, apiKey, 'opencode.json (Claude)'),
+        generateOpenCodeConfig('antigravity-gemini', protocol, apiBase, apiKey, 'opencode.json (Gemini)')
+      ]
     }
+
+    const protocol = preferredOpenCodeProtocol(props.platform, allowedProtocols.value)
+    if (!protocol) return []
+    const providerBase = protocol === 'gemini_generate_content' ? geminiBase : apiBase
+    return [generateOpenCodeConfig(props.platform, protocol, providerBase, apiKey)]
   }
 
   if (activeClientTab.value === 'claude') {
@@ -1146,9 +1179,15 @@ responses_websockets_v2 = true`
   ]
 }
 
-function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+function generateOpenCodeConfig(
+  profile: OpenCodeProfile,
+  protocol: GroupClientProtocol,
+  baseUrl: string,
+  apiKey: string,
+  pathLabel?: string
+): FileConfig {
   const provider: Record<string, any> = {
-    [platform]: {
+    [profile]: {
       options: {
         baseURL: baseUrl,
         apiKey
@@ -1643,33 +1682,42 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     }
   }
 
-  if (platform === 'gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].models = withOpenCodeToolCalling(geminiModels)
-  } else if (platform === 'anthropic') {
-    provider[platform].npm = '@ai-sdk/anthropic'
-  } else if (platform === 'qoder') {
-    provider[platform].npm = '@ai-sdk/openai-compatible'
-    provider[platform].name = 'Qoder'
-    provider[platform].models = buildQoderOpenCodeModels()
-  } else if (platform === 'antigravity-claude') {
-    provider[platform].npm = '@ai-sdk/anthropic'
-    provider[platform].name = 'Antigravity (Claude)'
-    provider[platform].models = withOpenCodeToolCalling(claudeModels)
-  } else if (platform === 'antigravity-gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].name = 'Antigravity (Gemini)'
-    provider[platform].models = withOpenCodeToolCalling(antigravityGeminiModels)
-  } else if (platform === 'openai') {
-    provider[platform].models = withOpenCodeToolCalling(openaiModels)
-  } else if (platform === 'grok') {
-    provider[platform].npm = '@ai-sdk/openai'
-    provider[platform].name = 'Grok'
-    provider[platform].models = withOpenCodeToolCalling(grokModels)
+  // 协议决定实际 wire provider，平台 profile 只负责展示模型与平台元数据。
+  switch (protocol) {
+    case 'anthropic_messages':
+      provider[profile].npm = '@ai-sdk/anthropic'
+      break
+    case 'openai_responses':
+      provider[profile].npm = '@ai-sdk/openai'
+      break
+    case 'openai_chat_completions':
+      provider[profile].npm = '@ai-sdk/openai-compatible'
+      break
+    case 'gemini_generate_content':
+      provider[profile].npm = '@ai-sdk/google'
+      break
+  }
+
+  if (profile === 'gemini') {
+    provider[profile].models = withOpenCodeToolCalling(geminiModels)
+  } else if (profile === 'qoder') {
+    provider[profile].name = 'Qoder'
+    provider[profile].models = buildQoderOpenCodeModels()
+  } else if (profile === 'antigravity-claude') {
+    provider[profile].name = 'Antigravity (Claude)'
+    provider[profile].models = withOpenCodeToolCalling(claudeModels)
+  } else if (profile === 'antigravity-gemini') {
+    provider[profile].name = 'Antigravity (Gemini)'
+    provider[profile].models = withOpenCodeToolCalling(antigravityGeminiModels)
+  } else if (profile === 'openai') {
+    provider[profile].models = withOpenCodeToolCalling(openaiModels)
+  } else if (profile === 'grok') {
+    provider[profile].name = 'Grok'
+    provider[profile].models = withOpenCodeToolCalling(grokModels)
   }
 
   const agent =
-    platform === 'openai'
+    profile === 'openai' && protocol === 'openai_responses'
       ? {
           build: {
             options: {
