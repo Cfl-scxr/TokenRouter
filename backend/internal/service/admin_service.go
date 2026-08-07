@@ -256,7 +256,7 @@ type CreateGroupInput struct {
 	MCPXMLInject        *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string
-	// AllowedClientProtocols 为 nil 时使用平台基础协议；显式空数组仅 Qoder 合法。
+	// AllowedClientProtocols 为 nil 时使用平台默认值；显式空数组对所有平台都合法。
 	AllowedClientProtocols []GroupClientProtocol
 	// AllowMessagesDispatch 仅在 OpenAI 分组且新字段缺省时作为兼容输入。
 	AllowMessagesDispatch       bool

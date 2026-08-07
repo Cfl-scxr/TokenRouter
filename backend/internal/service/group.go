@@ -84,9 +84,9 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
-	// AllowedClientProtocols 是分组允许的完整客户端文本协议集合；nil 仅表示旧缓存快照。
+	// AllowedClientProtocols 是分组允许的完整客户端文本协议集合，空集合表示全部关闭。
 	AllowedClientProtocols []GroupClientProtocol
-	// AllowMessagesDispatch 是滚动升级期间保留的 OpenAI 兼容镜像。
+	// AllowMessagesDispatch 是从协议集合派生并持久化的弃用兼容镜像。
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）

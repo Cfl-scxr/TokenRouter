@@ -25,7 +25,7 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 
 ## 客户端协议
 
-Grok 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions。Responses 与 Chat 是不可关闭的基础协议和新建默认值；迁移前已有分组启用三项。文本协议禁用时会在账号选择、计费、重试和 fallback 前返回协议原生 `403`。
+Grok 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions，新建时默认启用 Responses 与 Chat；三项都可关闭，迁移前已有分组启用三项。文本协议禁用时会在账号选择、计费、重试和 fallback 前返回协议原生 `403`。
 
 Responses WebSocket 是 Grok/OpenAI 的原生传输能力，不由兼容 Responses 开关扩展到其它平台。图片和视频继续使用独立媒体资格与分组策略，不受文本协议集合直接控制。
 

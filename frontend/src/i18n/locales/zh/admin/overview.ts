@@ -1097,9 +1097,7 @@ affiliates: {
       },
       clientProtocols: {
         title: '客户端协议',
-        hint: '选择此分组的 API Key 可以使用哪些文本生成协议。',
-        required: '基础协议',
-        requiredHint: '这是所选上游平台的基础协议，不能关闭。',
+        hint: '选择此分组的 API Key 可以使用哪些文本生成协议；允许全部关闭。',
         labels: {
           anthropic_messages: 'Anthropic Messages',
           openai_responses: 'OpenAI Responses',

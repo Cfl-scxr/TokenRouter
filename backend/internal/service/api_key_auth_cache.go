@@ -137,10 +137,8 @@ type APIKeyAuthGroupSnapshot struct {
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 
-	// AllowedClientProtocols 不使用 omitempty，以区分旧快照缺字段和 Qoder 显式空数组。
-	AllowedClientProtocols []GroupClientProtocol `json:"allowed_client_protocols"`
-	// OpenAI Messages 旧兼容镜像。
-	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
+	// AllowedClientProtocols 不使用 omitempty，确保空集合按 [] 写入快照。
+	AllowedClientProtocols      []GroupClientProtocol             `json:"allowed_client_protocols"`
 	AllowLive                   bool                              `json:"allow_live"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`

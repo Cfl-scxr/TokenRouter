@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 27 // v27：认证快照包含 API Key 模型重定向规则
+const apiKeyAuthSnapshotVersion = 28 // v28：认证快照包含分组客户端协议集合
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -470,7 +470,6 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
 			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
 			AllowedClientProtocols:          cloneGroupClientProtocols(apiKey.Group.AllowedClientProtocols),
-			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
 			AllowLive:                       apiKey.Group.AllowLive,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
@@ -597,7 +596,6 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MCPXMLInject:                    snapshot.Group.MCPXMLInject,
 			SupportedModelScopes:            snapshot.Group.SupportedModelScopes,
 			AllowedClientProtocols:          cloneGroupClientProtocols(snapshot.Group.AllowedClientProtocols),
-			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			AllowLive:                       snapshot.Group.AllowLive,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
@@ -651,8 +649,7 @@ func authGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		UnavailableFallbackGroupID: group.UnavailableFallbackGroupID, ModelRouting: group.ModelRouting,
 		ModelRoutingEnabled: group.ModelRoutingEnabled, MCPXMLInject: group.MCPXMLInject,
 		SupportedModelScopes: group.SupportedModelScopes, AllowedClientProtocols: cloneGroupClientProtocols(group.AllowedClientProtocols),
-		AllowMessagesDispatch: group.AllowMessagesDispatch,
-		AllowLive:             group.AllowLive, DefaultMappedModel: group.DefaultMappedModel,
+		AllowLive: group.AllowLive, DefaultMappedModel: group.DefaultMappedModel,
 		MessagesDispatchModelConfig: group.MessagesDispatchModelConfig, ModelsListConfig: group.ModelsListConfig,
 		RPMLimit: group.RPMLimit, MaxReasoningEffort: group.MaxReasoningEffort,
 		ReasoningEffortMappings: group.ReasoningEffortMappings, PeakRateEnabled: group.PeakRateEnabled,
@@ -680,8 +677,7 @@ func groupFromAuthSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		UnavailableFallbackGroupID:      snapshot.UnavailableFallbackGroupID, ModelRouting: snapshot.ModelRouting,
 		ModelRoutingEnabled: snapshot.ModelRoutingEnabled, MCPXMLInject: snapshot.MCPXMLInject,
 		SupportedModelScopes: snapshot.SupportedModelScopes, AllowedClientProtocols: cloneGroupClientProtocols(snapshot.AllowedClientProtocols),
-		AllowMessagesDispatch: snapshot.AllowMessagesDispatch,
-		AllowLive:             snapshot.AllowLive, DefaultMappedModel: snapshot.DefaultMappedModel,
+		AllowLive: snapshot.AllowLive, DefaultMappedModel: snapshot.DefaultMappedModel,
 		MessagesDispatchModelConfig: snapshot.MessagesDispatchModelConfig, ModelsListConfig: snapshot.ModelsListConfig,
 		RPMLimit: snapshot.RPMLimit, MaxReasoningEffort: snapshot.MaxReasoningEffort,
 		ReasoningEffortMappings: snapshot.ReasoningEffortMappings, PeakRateEnabled: snapshot.PeakRateEnabled,

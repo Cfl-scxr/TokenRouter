@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/ent/group"
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -22,17 +23,18 @@ func TestEnsureSimpleModeDefaultGroups_CreatesMissingDefaults(t *testing.T) {
 
 	require.NoError(t, ensureSimpleModeDefaultGroups(seedCtx, client))
 
-	assertGroupExists := func(name string) {
-		exists, err := client.Group.Query().Where(group.NameEQ(name), group.DeletedAtIsNil()).Exist(seedCtx)
+	assertGroupExists := func(name, platform string) {
+		created, err := client.Group.Query().Where(group.NameEQ(name), group.DeletedAtIsNil()).Only(seedCtx)
 		require.NoError(t, err)
-		require.True(t, exists, "expected group %s to exist", name)
+		require.Equal(t, domain.DefaultGroupClientProtocols(platform), created.AllowedClientProtocols)
 	}
 
-	assertGroupExists(service.PlatformAnthropic + "-default")
-	assertGroupExists(service.PlatformOpenAI + "-default")
-	assertGroupExists(service.PlatformGemini + "-default")
-	assertGroupExists(service.PlatformAntigravity + "-default-1")
-	assertGroupExists(service.PlatformAntigravity + "-default-2")
+	assertGroupExists(service.PlatformAnthropic+"-default", service.PlatformAnthropic)
+	assertGroupExists(service.PlatformOpenAI+"-default", service.PlatformOpenAI)
+	assertGroupExists(service.PlatformGemini+"-default", service.PlatformGemini)
+	assertGroupExists(service.PlatformAntigravity+"-default-1", service.PlatformAntigravity)
+	assertGroupExists(service.PlatformAntigravity+"-default-2", service.PlatformAntigravity)
+	assertGroupExists(service.PlatformGrok+"-default", service.PlatformGrok)
 
 	grokDefault, err := client.Group.Query().
 		Where(group.NameEQ(service.PlatformGrok+"-default"), group.DeletedAtIsNil()).

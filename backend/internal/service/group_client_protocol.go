@@ -10,15 +10,10 @@ const (
 )
 
 // EffectiveAllowedClientProtocols 返回可用于热路径判定的协议集合。
-// nil 来自旧认证缓存；必选协议平台的空数组可能由滚动升级中的旧进程写入，
-// 两种情况都按升级前的隐式行为恢复。Qoder 的显式空数组保持为空。
+// 返回独立副本，并把 nil 统一表达为合法的空集合。
 func (g *Group) EffectiveAllowedClientProtocols() []GroupClientProtocol {
 	if g == nil {
 		return []GroupClientProtocol{}
-	}
-	if g.AllowedClientProtocols == nil ||
-		(len(g.AllowedClientProtocols) == 0 && len(domain.RequiredGroupClientProtocols(g.Platform)) > 0) {
-		return domain.LegacyGroupClientProtocols(g.Platform, g.AllowMessagesDispatch)
 	}
 	return append([]GroupClientProtocol{}, g.AllowedClientProtocols...)
 }
@@ -36,21 +31,11 @@ func normalizeExplicitGroupClientProtocols(platform string, protocols []GroupCli
 	return domain.ValidateGroupClientProtocols(platform, protocols)
 }
 
-// coerceGroupClientProtocolsForPlatform 在平台切换时保留仍受支持的协议并补齐基础协议。
-// 仅用于省略新字段的平台切换兼容，不接受外部显式输入。
-func coerceGroupClientProtocolsForPlatform(platform string, protocols []GroupClientProtocol) []GroupClientProtocol {
+// filterGroupClientProtocolsForPlatform 在平台切换时只保留新平台支持的协议。
+func filterGroupClientProtocolsForPlatform(platform string, protocols []GroupClientProtocol) []GroupClientProtocol {
 	supportedProtocols := domain.SupportedGroupClientProtocols(platform)
-	supported := make(map[GroupClientProtocol]struct{}, len(supportedProtocols))
-	for _, protocol := range supportedProtocols {
-		supported[protocol] = struct{}{}
-	}
-	selectedSet := make(map[GroupClientProtocol]struct{}, len(protocols)+len(domain.RequiredGroupClientProtocols(platform)))
+	selectedSet := make(map[GroupClientProtocol]struct{}, len(protocols))
 	for _, protocol := range protocols {
-		if _, ok := supported[protocol]; ok {
-			selectedSet[protocol] = struct{}{}
-		}
-	}
-	for _, protocol := range domain.RequiredGroupClientProtocols(platform) {
 		selectedSet[protocol] = struct{}{}
 	}
 	selected := make([]GroupClientProtocol, 0, len(selectedSet))
@@ -59,14 +44,10 @@ func coerceGroupClientProtocolsForPlatform(platform string, protocols []GroupCli
 			selected = append(selected, protocol)
 		}
 	}
-	normalized, err := domain.ValidateGroupClientProtocols(platform, selected)
-	if err != nil {
-		return domain.DefaultGroupClientProtocols(platform)
-	}
-	return normalized
+	return selected
 }
 
-// defaultGroupClientProtocols 返回新建分组的基础协议集合。
+// defaultGroupClientProtocols 返回新建分组的默认协议集合。
 func defaultGroupClientProtocols(platform string) []GroupClientProtocol {
 	return domain.DefaultGroupClientProtocols(platform)
 }

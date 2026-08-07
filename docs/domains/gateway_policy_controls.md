@@ -28,7 +28,7 @@
 
 Group 的 `platform` 表示上游平台，不再隐含客户端必须使用同形协议。文本生成准入由独立的 `allowed_client_protocols` 完整集合控制，固定顺序为 `anthropic_messages`、`openai_responses`、`openai_chat_completions`、`gemini_generate_content`。各平台策略如下：
 
-| 上游平台 | 支持协议 | 不可关闭的基础协议 / 新建默认 |
+| 上游平台 | 支持协议 | 新建默认 |
 | --- | --- | --- |
 | Anthropic | Messages、Responses、Chat | Messages |
 | OpenAI | Messages、Responses、Chat | Responses、Chat |
@@ -37,7 +37,7 @@ Group 的 `platform` 表示上游平台，不再隐含客户端必须使用同�
 | Qoder | Messages、Responses、Chat | 空集合 |
 | Grok | Messages、Responses、Chat | Responses、Chat |
 
-显式保存时，未知、重复、不受平台支持或缺少基础协议的集合都是 `400`。创建缺省使用上表基础集合；更新缺省保持原值。若更新同时切换平台且旧集合与新平台不兼容，则保留支持交集并补齐新平台基础协议。`allow_messages_dispatch` 仅作为弃用兼容字段：响应从新集合派生，新字段缺省时只有 OpenAI 分组继续接受它作为 Messages 输入，新字段与旧字段同时存在时新字段优先。`messages_dispatch_model_config` 只负责 OpenAI 的 Claude 到 GPT 模型映射，不再承担协议准入。
+上表默认值只决定新建分组的初始选择，不构成必选项；所有平台都允许保存空集合。显式保存时，未知、重复或不受平台支持的集合返回 `400`。创建缺省使用平台默认集合，更新缺省保持原值；更新同时切换平台时，只移除新平台不支持的协议，不自动启用任何协议。`allow_messages_dispatch` 仅作为弃用兼容字段：响应从新集合派生，新字段缺省时只有 OpenAI 分组继续接受它作为 Messages 输入，新字段与旧字段同时存在时新字段优先。`messages_dispatch_model_config` 只负责 OpenAI 的 Claude 到 GPT 模型映射，不再承担协议准入。
 
 协议门禁覆盖 Messages 及 token-count 别名、Responses HTTP/SSE 根路径和允许子路径、两个 Chat Completions 别名，以及 Gemini/Antigravity GenerateContent、StreamGenerateContent、CountTokens POST 动作；模型列表 GET 不受影响。门禁使用复合 Key 最终选中的分组，并在 handler 解析正文、账号选择、计费、重试和 fallback 之前拒绝。Responses WebSocket 仍只属于 OpenAI/Grok 原生传输能力，兼容 Responses 开关不会为其它平台开放它。
 

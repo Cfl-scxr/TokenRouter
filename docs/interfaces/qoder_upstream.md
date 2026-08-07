@@ -29,7 +29,7 @@ TokenRouter 通过 Qoder COSY 网关路径支持 Qoder 原生上游账号。面�
 
 ## 客户端协议
 
-Qoder 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions，但没有不可关闭的基础协议，新建默认值是空集合。迁移前已有分组按旧行为启用三项；管理员可显式关闭全部文本协议，此时用户“使用 Key”界面显示无可用文本协议，网关在账号选择和计费前返回协议原生 `403`。
+Qoder 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions，新建默认值是空集合。迁移前已有分组按旧行为启用三项；与其它平台相同，管理员可关闭全部文本协议，此时用户“使用 Key”界面显示无可用文本协议，网关在账号选择和计费前返回协议原生 `403`。
 
 协议开关不改变 Qoder 站点、模型路由、思考控制或账号资格。Responses 子路径和 WebSocket 仍不属于 Qoder 能力，即使 Responses 协议已启用也不会开放。
 

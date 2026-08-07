@@ -154,7 +154,7 @@ type UpdateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
-	// nil 表示不修改，空数组表示显式清空（仅 Qoder 合法）。
+	// nil 表示不修改，空数组表示显式关闭全部文本协议（所有平台均合法）。
 	AllowedClientProtocols *[]service.GroupClientProtocol `json:"allowed_client_protocols"`
 	// OpenAI Messages 旧兼容开关。
 	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`

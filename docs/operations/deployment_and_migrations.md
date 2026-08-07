@@ -73,11 +73,11 @@
 
 ### 分组客户端协议迁移
 
-迁移 `235_add_group_allowed_client_protocols.sql` 为 Group 增加非空 JSONB `allowed_client_protocols`，按六个平台在升级前的实际路由行为回填。OpenAI 是否加入 Messages 取自旧 `allow_messages_dispatch`；其它已有平台按各自迁移矩阵回填。旧列在兼容窗口内保留，新代码只把它作为 OpenAI Messages 的数据库镜像，使新旧二进制可以滚动共存和回退。
+迁移 `235_add_group_allowed_client_protocols.sql` 为 Group 增加非空 JSONB `allowed_client_protocols`，按六个平台在升级前的实际路由行为回填。OpenAI 是否加入 Messages 取自旧 `allow_messages_dispatch`；其它已有平台按各自迁移矩阵回填。旧列作为弃用管理 API 字段的数据库镜像保留，不用于支持新旧二进制共存。
 
-迁移完成后的数据库默认值是空数组，供尚不了解新列的旧进程继续插入。新代码读取必选基础协议平台的空数组时按旧矩阵即时恢复；Qoder 的空数组则是有效的新建默认值，必须原样保留。认证缓存同样区分“旧快照缺少字段”和“显式空数组”：缺少字段按迁移矩阵推导，Qoder 空数组不能被误判为旧快照。
+数据库默认值是空数组，作为绕过管理服务直接写 Group 时的 fail-closed 默认值。空数组对所有平台都是明确且有效的策略，新代码不会按旧矩阵恢复或自动补协议；管理 API 创建字段缺省时仍使用各平台的新建默认值。
 
-滚动升级时应先确认迁移回填数量和各平台集合，再逐步替换实例。回退旧二进制不会丢失旧开关列，但旧版本无法管理新集合；兼容窗口内不要手工删除旧列。完成升级后至少抽样验证 OpenAI 旧开关 true/false、Qoder 空集合以及 Gemini Responses 的非流和 SSE 请求。
+本变更按一次性升级发布，不支持新旧后端或前后端混合运行。认证快照版本随字段增加而升级，部署前遗留的 Redis 快照会因版本不匹配失效并从已回填数据库重建。完成升级后至少抽样验证 OpenAI 旧开关 true/false、任意平台空集合以及 Gemini Responses 的非流和 SSE 请求。
 
 ### 自研异步图片任务下线
 

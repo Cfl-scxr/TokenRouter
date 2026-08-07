@@ -119,7 +119,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		SupportedModelScopes:            append([]string(nil), source.SupportedModelScopes...),
 		SortOrder:                       source.SortOrder,
 		AllowedClientProtocols:          cloneGroupClientProtocols(source.AllowedClientProtocols),
-		AllowMessagesDispatch:           source.AllowMessagesDispatch,
+		AllowMessagesDispatch:           source.Platform == PlatformOpenAI && source.AllowsClientProtocol(GroupClientProtocolAnthropicMessages),
 		AllowLive:                       source.AllowLive,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
@@ -136,11 +136,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	}
 }
 
-// cloneGroupClientProtocols 保留 nil 与显式空数组的区别，避免旧快照兼容语义丢失。
+// cloneGroupClientProtocols 返回独立且非 nil 的协议集合副本。
 func cloneGroupClientProtocols(protocols []GroupClientProtocol) []GroupClientProtocol {
-	if protocols == nil {
-		return nil
-	}
 	return append([]GroupClientProtocol{}, protocols...)
 }
 

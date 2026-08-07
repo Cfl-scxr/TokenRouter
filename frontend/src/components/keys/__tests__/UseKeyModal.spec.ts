@@ -63,7 +63,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-grok-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'grok'
+        platform: 'grok',
+        allowedClientProtocols: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -125,7 +126,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-grok-claude-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'grok'
+        platform: 'grok',
+        allowedClientProtocols: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -214,7 +216,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-grok-codex-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'grok'
+        platform: 'grok',
+        allowedClientProtocols: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -272,7 +275,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -316,7 +320,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -366,7 +371,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -411,7 +417,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -450,7 +457,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -493,7 +501,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -528,7 +537,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -565,7 +575,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'antigravity'
+        platform: 'antigravity',
+        allowedClientProtocols: ['anthropic_messages', 'openai_responses', 'openai_chat_completions', 'gemini_generate_content']
       },
       global: {
         stubs: {
@@ -608,7 +619,8 @@ describe('UseKeyModal', () => {
         show: true,
         apiKey: 'sk-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'qoder'
+        platform: 'qoder',
+        allowedClientProtocols: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -688,15 +700,14 @@ describe('UseKeyModal', () => {
     expect(wrapper.text()).not.toContain('keys.useKeyModal.cliTabs.claudeCode')
   })
 
-  it('prefers the new protocol collection over the legacy OpenAI Messages field', () => {
+  it('does not infer Claude Code access outside the protocol collection', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
         apiKey: 'sk-openai-test',
         baseUrl: 'https://example.com/v1',
         platform: 'openai',
-        allowedClientProtocols: ['openai_responses', 'openai_chat_completions'],
-        allowMessagesDispatch: true
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions']
       },
       global: {
         stubs: {
@@ -714,13 +725,13 @@ describe('UseKeyModal', () => {
     expect(wrapper.text()).not.toContain('keys.useKeyModal.cliTabs.claudeCode')
   })
 
-  it('shows an empty state for a Qoder group with an explicit empty collection', () => {
+  it('shows an empty state for any group with an explicit empty collection', () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
-        apiKey: 'sk-qoder-test',
+        apiKey: 'sk-openai-empty-test',
         baseUrl: 'https://example.com/v1',
-        platform: 'qoder',
+        platform: 'openai',
         allowedClientProtocols: []
       },
       global: {

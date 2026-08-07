@@ -4374,8 +4374,7 @@ const createForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // 分组不可用时优先使用的指定回退分组。
   unavailable_fallback_group_id: null as number | null,
-  // OpenAI Messages 调度配置（仅 openai 平台使用）
-  allow_messages_dispatch: false,
+  // OpenAI Messages 模型映射（仅 openai 平台使用）
   allow_live: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
@@ -4797,8 +4796,7 @@ const editForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // 分组不可用时优先使用的指定回退分组。
   unavailable_fallback_group_id: null as number | null,
-  // OpenAI Messages 调度配置（仅 openai 平台使用）
-  allow_messages_dispatch: false,
+  // OpenAI Messages 模型映射（仅 openai 平台使用）
   allow_live: false,
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
@@ -5305,9 +5303,6 @@ const handleCreateGroup = async () => {
     const requestData = {
       ...createForm,
       allowed_client_protocols: [...createForm.allowed_client_protocols],
-      // 旧字段仅作为 OpenAI Messages 的滚动升级兼容镜像。
-      allow_messages_dispatch:
-        createForm.platform === "openai" && createMessagesDispatchEnabled.value,
       display_brand: normalizeDisplayBrand(createForm.display_brand),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
@@ -5321,7 +5316,6 @@ const handleCreateGroup = async () => {
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
-              allow_messages_dispatch: createMessagesDispatchEnabled.value,
               opus_mapped_model: createForm.opus_mapped_model,
               sonnet_mapped_model: createForm.sonnet_mapped_model,
               haiku_mapped_model: createForm.haiku_mapped_model,
@@ -5434,10 +5428,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allowed_client_protocols = effectiveGroupClientProtocols(
     group.platform,
     group.allowed_client_protocols,
-    group.allow_messages_dispatch,
   );
-  editForm.allow_messages_dispatch =
-    group.platform === "openai" && editMessagesDispatchEnabled.value;
   editForm.allow_live = group.allow_live ?? false;
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
@@ -5526,9 +5517,6 @@ const handleUpdateGroup = async () => {
     const payload = {
       ...editForm,
       allowed_client_protocols: [...editForm.allowed_client_protocols],
-      // 旧字段仅作为 OpenAI Messages 的滚动升级兼容镜像。
-      allow_messages_dispatch:
-        editForm.platform === "openai" && editMessagesDispatchEnabled.value,
       display_brand: normalizeDisplayBrand(editForm.display_brand),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
@@ -5552,7 +5540,6 @@ const handleUpdateGroup = async () => {
       messages_dispatch_model_config:
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
-              allow_messages_dispatch: editMessagesDispatchEnabled.value,
               opus_mapped_model: editForm.opus_mapped_model,
               sonnet_mapped_model: editForm.sonnet_mapped_model,
               haiku_mapped_model: editForm.haiku_mapped_model,
@@ -5846,7 +5833,6 @@ watch(
       editForm.fallback_group_id_on_invalid_request = null
     }
     if (newVal !== 'openai') {
-      editForm.allow_messages_dispatch = false
       editForm.allow_live = false
       editForm.default_mapped_model = ''
     }

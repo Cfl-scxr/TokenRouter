@@ -518,19 +518,17 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", err)
 		}
 	} else {
-		// 字段缺省必须保留原集合；平台变更且集合不兼容时仅调整为新平台的有效交集。
+		// 字段缺省时保留原集合；切换平台只移除新平台不支持的协议。
 		group.AllowedClientProtocols = previousAllowedClientProtocols
+		if input.Platform != "" && group.Platform != previousPlatform {
+			group.AllowedClientProtocols = filterGroupClientProtocolsForPlatform(group.Platform, group.AllowedClientProtocols)
+		}
 		if group.Platform == PlatformOpenAI && input.AllowMessagesDispatch != nil {
 			group.AllowedClientProtocols = setGroupClientProtocol(group.AllowedClientProtocols, GroupClientProtocolAnthropicMessages, *input.AllowMessagesDispatch)
 		}
 		group.AllowedClientProtocols, err = normalizeExplicitGroupClientProtocols(group.Platform, group.AllowedClientProtocols)
 		if err != nil {
-			if input.Platform != "" && group.Platform != previousPlatform {
-				// 旧平台的可选协议可能在新平台不存在，此时保留交集并补齐新基础协议。
-				group.AllowedClientProtocols = coerceGroupClientProtocolsForPlatform(group.Platform, previousAllowedClientProtocols)
-			} else {
-				return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", err)
-			}
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", err)
 		}
 	}
 	if input.DisplayBrand != nil {

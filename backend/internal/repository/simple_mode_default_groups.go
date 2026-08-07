@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
 	"github.com/TokenFlux/TokenRouter/ent/group"
+	"github.com/TokenFlux/TokenRouter/internal/domain"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
@@ -78,6 +79,7 @@ func createGroupIfNotExists(ctx context.Context, client *dbent.Client, name, pla
 		SetRateMultiplier(1.0).
 		SetIsExclusive(false).
 		SetAllowImageGeneration(platform == service.PlatformGrok).
+		SetAllowedClientProtocols(domain.DefaultGroupClientProtocols(platform)).
 		Save(ctx)
 	if err != nil {
 		if dbent.IsConstraintError(err) {

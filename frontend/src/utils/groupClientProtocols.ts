@@ -9,47 +9,33 @@ export const GROUP_CLIENT_PROTOCOL_ORDER: readonly GroupClientProtocol[] = [
 
 interface GroupClientProtocolPolicy {
   supported: readonly GroupClientProtocol[]
-  required: readonly GroupClientProtocol[]
   defaults: readonly GroupClientProtocol[]
-  legacy: readonly GroupClientProtocol[]
 }
 
 const GROUP_CLIENT_PROTOCOL_POLICIES: Record<GroupPlatform, GroupClientProtocolPolicy> = {
   anthropic: {
     supported: ['anthropic_messages', 'openai_responses', 'openai_chat_completions'],
-    required: ['anthropic_messages'],
-    defaults: ['anthropic_messages'],
-    legacy: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
+    defaults: ['anthropic_messages']
   },
   openai: {
     supported: ['anthropic_messages', 'openai_responses', 'openai_chat_completions'],
-    required: ['openai_responses', 'openai_chat_completions'],
-    defaults: ['openai_responses', 'openai_chat_completions'],
-    legacy: ['openai_responses', 'openai_chat_completions']
+    defaults: ['openai_responses', 'openai_chat_completions']
   },
   gemini: {
     supported: GROUP_CLIENT_PROTOCOL_ORDER,
-    required: ['gemini_generate_content'],
-    defaults: ['gemini_generate_content'],
-    legacy: GROUP_CLIENT_PROTOCOL_ORDER
+    defaults: ['gemini_generate_content']
   },
   antigravity: {
     supported: GROUP_CLIENT_PROTOCOL_ORDER,
-    required: ['anthropic_messages', 'gemini_generate_content'],
-    defaults: ['anthropic_messages', 'gemini_generate_content'],
-    legacy: GROUP_CLIENT_PROTOCOL_ORDER
+    defaults: ['anthropic_messages', 'gemini_generate_content']
   },
   qoder: {
     supported: ['anthropic_messages', 'openai_responses', 'openai_chat_completions'],
-    required: [],
-    defaults: [],
-    legacy: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
+    defaults: []
   },
   grok: {
     supported: ['anthropic_messages', 'openai_responses', 'openai_chat_completions'],
-    required: ['openai_responses', 'openai_chat_completions'],
-    defaults: ['openai_responses', 'openai_chat_completions'],
-    legacy: ['anthropic_messages', 'openai_responses', 'openai_chat_completions']
+    defaults: ['openai_responses', 'openai_chat_completions']
   }
 }
 
@@ -62,41 +48,17 @@ export function supportedGroupClientProtocols(platform: GroupPlatform): GroupCli
   return orderedProtocols(GROUP_CLIENT_PROTOCOL_POLICIES[platform].supported)
 }
 
-export function requiredGroupClientProtocols(platform: GroupPlatform): GroupClientProtocol[] {
-  return orderedProtocols(GROUP_CLIENT_PROTOCOL_POLICIES[platform].required)
-}
-
 export function defaultGroupClientProtocols(platform: GroupPlatform): GroupClientProtocol[] {
   return orderedProtocols(GROUP_CLIENT_PROTOCOL_POLICIES[platform].defaults)
 }
 
-export function legacyGroupClientProtocols(
-  platform: GroupPlatform,
-  allowMessagesDispatch = false
-): GroupClientProtocol[] {
-  const protocols = [...GROUP_CLIENT_PROTOCOL_POLICIES[platform].legacy]
-  if (platform === 'openai' && allowMessagesDispatch) {
-    protocols.push('anthropic_messages')
-  }
-  return orderedProtocols(protocols)
-}
-
-// 旧快照缺少字段时按迁移矩阵恢复；显式空数组必须原样保留。
+// 过滤不受平台支持的值，并保持公共契约规定的固定顺序。
 export function effectiveGroupClientProtocols(
   platform: GroupPlatform,
-  protocols: GroupClientProtocol[] | null | undefined,
-  allowMessagesDispatch = false
+  protocols: readonly GroupClientProtocol[] | null | undefined
 ): GroupClientProtocol[] {
-  if (protocols == null) {
-    return legacyGroupClientProtocols(platform, allowMessagesDispatch)
-  }
-
   const supported = new Set(GROUP_CLIENT_PROTOCOL_POLICIES[platform].supported)
-  const required = GROUP_CLIENT_PROTOCOL_POLICIES[platform].required
-  return orderedProtocols([
-    ...protocols.filter((protocol) => supported.has(protocol)),
-    ...required
-  ])
+  return orderedProtocols((protocols ?? []).filter((protocol) => supported.has(protocol)))
 }
 
 export function hasGroupClientProtocol(
@@ -113,7 +75,7 @@ export function setGroupClientProtocol(
   enabled: boolean
 ): GroupClientProtocol[] {
   const policy = GROUP_CLIENT_PROTOCOL_POLICIES[platform]
-  if (!policy.supported.includes(protocol) || (!enabled && policy.required.includes(protocol))) {
+  if (!policy.supported.includes(protocol)) {
     return effectiveGroupClientProtocols(platform, [...protocols])
   }
 

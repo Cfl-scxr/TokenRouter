@@ -220,6 +220,11 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesSelectedGroupFields() {
 		SetStatus(service.StatusActive).
 		SetRateMultiplier(1).
 		SetWebSearchPricePerCall(0.008).
+		SetAllowedClientProtocols([]service.GroupClientProtocol{
+			service.GroupClientProtocolAnthropicMessages,
+			service.GroupClientProtocolOpenAIResponses,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		}).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -247,7 +252,11 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesSelectedGroupFields() {
 	s.Require().NotNil(got.Group)
 	s.Require().NotNil(got.Group.WebSearchPricePerCall)
 	s.Require().InDelta(0.008, *got.Group.WebSearchPricePerCall, 1e-12)
-	s.Require().True(got.Group.AllowMessagesDispatch)
+	s.Require().Equal([]service.GroupClientProtocol{
+		service.GroupClientProtocolAnthropicMessages,
+		service.GroupClientProtocolOpenAIResponses,
+		service.GroupClientProtocolOpenAIChatCompletions,
+	}, got.Group.AllowedClientProtocols)
 	s.Require().Equal("gpt-5.4", got.Group.DefaultMappedModel)
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.OpusMappedModel)
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.ExactModelMappings["claude-sonnet-4.5"])

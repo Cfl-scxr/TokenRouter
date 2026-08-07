@@ -365,12 +365,17 @@ func TestAPIContracts(t *testing.T) {
 				// 普通用户可见的分组列表不应包含内部字段，同时保留公开的会话隔离开关。
 				deps.groupRepo.SetActive([]service.Group{
 					{
-						ID:                  10,
-						Name:                "Group One",
-						Description:         "desc",
-						Platform:            service.PlatformAnthropic,
-						RateMultiplier:      1.5,
-						PeakRateMultiplier:  1.0,
+						ID:                 10,
+						Name:               "Group One",
+						Description:        "desc",
+						Platform:           service.PlatformAnthropic,
+						RateMultiplier:     1.5,
+						PeakRateMultiplier: 1.0,
+						AllowedClientProtocols: []service.GroupClientProtocol{
+							service.GroupClientProtocolAnthropicMessages,
+							service.GroupClientProtocolOpenAIResponses,
+							service.GroupClientProtocolOpenAIChatCompletions,
+						},
 						IsExclusive:         false,
 						Status:              service.StatusActive,
 						ModelRoutingEnabled: true,

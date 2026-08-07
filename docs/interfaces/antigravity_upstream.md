@@ -40,7 +40,7 @@ Claude Code 可把 base URL 指向部署地址的 `/antigravity`，认证值仍�
 
 ## 协议适配
 
-Antigravity 分组支持 Messages、Responses、Chat 和 Gemini GenerateContent。Messages 与 Gemini GenerateContent 是不可关闭的基础协议和新建默认值；迁移前已有分组启用四项。通用入口和 `/antigravity/*` 别名都按最终分组执行对应协议门禁；Gemini 模型列表 GET 不受生成协议开关影响。
+Antigravity 分组支持 Messages、Responses、Chat 和 Gemini GenerateContent，新建时默认启用 Messages 与 Gemini GenerateContent；四项都可关闭，迁移前已有分组启用四项。通用入口和 `/antigravity/*` 别名都按最终分组执行对应协议门禁；Gemini 模型列表 GET 不受生成协议开关影响。
 
 Anthropic Messages 经过 Antigravity request transformer 生成上游 Gemini/内部请求形状，响应和 SSE 再恢复为 Anthropic 协议。工具定义、tool choice、thinking、缓存断点、图片输入、token 用量和停止原因都需要双向转换；schema cleaner 会移除上游不接受的 JSON Schema 表达。
 

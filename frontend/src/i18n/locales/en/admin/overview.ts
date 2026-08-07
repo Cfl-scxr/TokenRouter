@@ -1099,9 +1099,7 @@ affiliates: {
       },
       clientProtocols: {
         title: 'Client Protocols',
-        hint: 'Choose which text generation protocols API keys in this group may use.',
-        required: 'Required',
-        requiredHint: 'This is a base protocol for the selected upstream platform and cannot be disabled.',
+        hint: 'Choose which text generation protocols API keys in this group may use. All may be disabled.',
         labels: {
           anthropic_messages: 'Anthropic Messages',
           openai_responses: 'OpenAI Responses',

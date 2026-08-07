@@ -6,7 +6,6 @@ export interface MessagesDispatchMappingRow {
 }
 
 export interface MessagesDispatchFormState {
-  allow_messages_dispatch: boolean;
   opus_mapped_model: string;
   sonnet_mapped_model: string;
   haiku_mapped_model: string;
@@ -15,7 +14,6 @@ export interface MessagesDispatchFormState {
 
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
-    allow_messages_dispatch: false,
     opus_mapped_model: "gpt-5.4",
     sonnet_mapped_model: "gpt-5.3-codex",
     haiku_mapped_model: "gpt-5.4-mini",
@@ -32,7 +30,6 @@ export function messagesDispatchConfigToFormState(
     .map(([claude_model, target_model]) => ({ claude_model, target_model }));
 
   return {
-    allow_messages_dispatch: false,
     opus_mapped_model:
       config?.opus_mapped_model?.trim() || defaults.opus_mapped_model,
     sonnet_mapped_model:
@@ -64,7 +61,6 @@ export function resetMessagesDispatchFormState(
   target: MessagesDispatchFormState,
 ): void {
   const defaults = createDefaultMessagesDispatchFormState();
-  target.allow_messages_dispatch = defaults.allow_messages_dispatch;
   target.opus_mapped_model = defaults.opus_mapped_model;
   target.sonnet_mapped_model = defaults.sonnet_mapped_model;
   target.haiku_mapped_model = defaults.haiku_mapped_model;

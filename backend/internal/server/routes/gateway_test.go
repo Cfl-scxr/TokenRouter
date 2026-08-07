@@ -36,7 +36,20 @@ func newGatewayRoutesTestRouterWithOptions(cfg *config.Config, gatewayHandler *h
 		groupPlatform = platform[0]
 	}
 	groupID := int64(1)
-	return newGatewayRoutesTestRouterWithGroup(cfg, gatewayHandler, &service.Group{ID: groupID, Platform: groupPlatform})
+	// 普通路由测试模拟已开启全部受支持协议；空集合由专门的门禁测试覆盖。
+	protocols := []service.GroupClientProtocol{
+		service.GroupClientProtocolAnthropicMessages,
+		service.GroupClientProtocolOpenAIResponses,
+		service.GroupClientProtocolOpenAIChatCompletions,
+	}
+	if groupPlatform == service.PlatformGemini || groupPlatform == service.PlatformAntigravity {
+		protocols = append(protocols, service.GroupClientProtocolGeminiGenerateContent)
+	}
+	return newGatewayRoutesTestRouterWithGroup(cfg, gatewayHandler, &service.Group{
+		ID:                     groupID,
+		Platform:               groupPlatform,
+		AllowedClientProtocols: protocols,
+	})
 }
 
 // newGatewayRoutesTestRouterWithGroup 允许测试显式控制 nil 与空协议集合。

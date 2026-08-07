@@ -7,36 +7,62 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('GroupClientProtocolSelector', () => {
-  it('locks required protocols and toggles optional protocols', async () => {
+  it('renders the protocol rows without an outer frame', () => {
     const wrapper = mount(GroupClientProtocolSelector, {
       props: {
         platform: 'openai',
         modelValue: ['openai_responses', 'openai_chat_completions']
-      },
-      global: {
-        stubs: { Icon: { template: '<span />' } }
       }
     })
 
-    expect(wrapper.get('[data-protocol="openai_responses"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-protocol="openai_chat_completions"]').attributes('disabled')).toBeDefined()
+    const list = wrapper.get('[data-testid="client-protocol-list"]')
+    expect(list.classes()).toContain('divide-y')
+    expect(list.classes()).not.toContain('border')
+    expect(list.classes()).not.toContain('rounded-md')
+  })
 
-    await wrapper.get('[data-protocol="anthropic_messages"]').trigger('click')
+  it('shows the canonical endpoint for each supported protocol', () => {
+    const wrapper = mount(GroupClientProtocolSelector, {
+      props: {
+        platform: 'gemini',
+        modelValue: []
+      }
+    })
+
+    expect(wrapper.get('[data-protocol-endpoint="anthropic_messages"]').text()).toBe(
+      '/v1/messages'
+    )
+    expect(wrapper.get('[data-protocol-endpoint="openai_responses"]').text()).toBe(
+      '/v1/responses'
+    )
+    expect(wrapper.get('[data-protocol-endpoint="openai_chat_completions"]').text()).toBe(
+      '/v1/chat/completions'
+    )
+    expect(wrapper.get('[data-protocol-endpoint="gemini_generate_content"]').text()).toBe(
+      '/v1beta/models/{model}:generateContent'
+    )
+  })
+
+  it('allows default protocols to be disabled', async () => {
+    const wrapper = mount(GroupClientProtocolSelector, {
+      props: {
+        platform: 'openai',
+        modelValue: ['openai_responses', 'openai_chat_completions']
+      }
+    })
+
+    expect(wrapper.get('[data-protocol="openai_responses"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-protocol="openai_responses"]').trigger('click')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual([
-      'anthropic_messages',
-      'openai_responses',
       'openai_chat_completions'
     ])
   })
 
-  it('allows Qoder to disable every supported protocol', async () => {
+  it('allows any platform to disable its final protocol', async () => {
     const wrapper = mount(GroupClientProtocolSelector, {
       props: {
-        platform: 'qoder',
+        platform: 'anthropic',
         modelValue: ['anthropic_messages']
-      },
-      global: {
-        stubs: { Icon: { template: '<span />' } }
       }
     })
 

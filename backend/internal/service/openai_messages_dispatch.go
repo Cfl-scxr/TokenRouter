@@ -105,7 +105,7 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	if g == nil {
 		return
 	}
-	// 旧列只镜像 OpenAI 分组的 Messages 准入，供滚动升级期间旧二进制读取。
+	// 弃用列只镜像 OpenAI 分组的 Messages 准入，供旧管理 API 字段保持一致。
 	g.AllowMessagesDispatch = g.Platform == PlatformOpenAI && g.AllowsClientProtocol(GroupClientProtocolAnthropicMessages)
 	if g.Platform == PlatformOpenAI {
 		return

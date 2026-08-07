@@ -35,8 +35,9 @@ func SupportedGroupClientProtocols(platform string) []GroupClientProtocol {
 	}
 }
 
-// RequiredGroupClientProtocols 返回平台不能关闭的基础协议集合。
-func RequiredGroupClientProtocols(platform string) []GroupClientProtocol {
+// DefaultGroupClientProtocols 返回新建分组的协议默认值。
+// 默认值只决定初始选择，管理员可以在保存时关闭任意协议。
+func DefaultGroupClientProtocols(platform string) []GroupClientProtocol {
 	switch platform {
 	case PlatformAnthropic:
 		return []GroupClientProtocol{GroupClientProtocolAnthropicMessages}
@@ -51,40 +52,6 @@ func RequiredGroupClientProtocols(platform string) []GroupClientProtocol {
 		return []GroupClientProtocol{
 			GroupClientProtocolAnthropicMessages,
 			GroupClientProtocolGeminiGenerateContent,
-		}
-	default:
-		return []GroupClientProtocol{}
-	}
-}
-
-// DefaultGroupClientProtocols 返回新建分组的协议默认值。
-func DefaultGroupClientProtocols(platform string) []GroupClientProtocol {
-	return RequiredGroupClientProtocols(platform)
-}
-
-// LegacyGroupClientProtocols 按旧版本的隐式路由规则还原协议集合。
-// 它只用于迁移前缓存快照和旧数据兼容，不能作为新建分组默认值。
-func LegacyGroupClientProtocols(platform string, allowMessagesDispatch bool) []GroupClientProtocol {
-	switch platform {
-	case PlatformAnthropic:
-		return []GroupClientProtocol{
-			GroupClientProtocolAnthropicMessages,
-			GroupClientProtocolOpenAIResponses,
-			GroupClientProtocolOpenAIChatCompletions,
-		}
-	case PlatformOpenAI:
-		protocols := []GroupClientProtocol{
-			GroupClientProtocolOpenAIResponses,
-			GroupClientProtocolOpenAIChatCompletions,
-		}
-		return SetGroupClientProtocol(protocols, GroupClientProtocolAnthropicMessages, allowMessagesDispatch)
-	case PlatformGemini, PlatformAntigravity:
-		return append([]GroupClientProtocol{}, canonicalGroupClientProtocols...)
-	case PlatformQoder, PlatformGrok:
-		return []GroupClientProtocol{
-			GroupClientProtocolAnthropicMessages,
-			GroupClientProtocolOpenAIResponses,
-			GroupClientProtocolOpenAIChatCompletions,
 		}
 	default:
 		return []GroupClientProtocol{}
@@ -115,12 +82,6 @@ func ValidateGroupClientProtocols(platform string, protocols []GroupClientProtoc
 		}
 		seen[protocol] = struct{}{}
 	}
-	for _, protocol := range RequiredGroupClientProtocols(platform) {
-		if _, ok := seen[protocol]; !ok {
-			return nil, fmt.Errorf("required protocol %q cannot be disabled for platform %q", protocol, platform)
-		}
-	}
-
 	out := make([]GroupClientProtocol, 0, len(seen))
 	for _, protocol := range canonicalGroupClientProtocols {
 		if _, ok := seen[protocol]; ok {

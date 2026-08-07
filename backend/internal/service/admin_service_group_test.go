@@ -95,7 +95,6 @@ func TestAdminServiceRejectsInvalidGroupClientProtocols(t *testing.T) {
 		{"unknown", PlatformQoder, []GroupClientProtocol{"unknown"}},
 		{"duplicate", PlatformQoder, []GroupClientProtocol{GroupClientProtocolAnthropicMessages, GroupClientProtocolAnthropicMessages}},
 		{"unsupported", PlatformOpenAI, []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions, GroupClientProtocolGeminiGenerateContent}},
-		{"missing required", PlatformAnthropic, []GroupClientProtocol{GroupClientProtocolOpenAIResponses}},
 	}
 
 	for _, tt := range tests {
@@ -112,8 +111,32 @@ func TestAdminServiceRejectsInvalidGroupClientProtocols(t *testing.T) {
 	}
 }
 
+func TestAdminServiceAllowsEmptyGroupClientProtocolsForEveryPlatform(t *testing.T) {
+	platforms := []string{
+		PlatformAnthropic,
+		PlatformOpenAI,
+		PlatformGemini,
+		PlatformAntigravity,
+		PlatformQoder,
+		PlatformGrok,
+	}
+	for _, platform := range platforms {
+		t.Run(platform, func(t *testing.T) {
+			svc := &adminServiceImpl{groupRepo: &groupRepoStubForAdmin{}}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name: platform, Platform: platform, RateMultiplier: 1, AllowedClientProtocols: []GroupClientProtocol{},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, group.AllowedClientProtocols)
+			require.Empty(t, group.AllowedClientProtocols)
+		})
+	}
+}
+
 func TestAdminServiceUpdateGroupPreservesExplicitEmptyClientProtocols(t *testing.T) {
-	existing := &Group{ID: 1, Name: "qoder", Platform: PlatformQoder, Status: StatusActive, AllowedClientProtocols: []GroupClientProtocol{}}
+	existing := &Group{ID: 1, Name: "openai", Platform: PlatformOpenAI, Status: StatusActive, AllowedClientProtocols: []GroupClientProtocol{}}
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{groupRepo: repo}
 
@@ -124,7 +147,7 @@ func TestAdminServiceUpdateGroupPreservesExplicitEmptyClientProtocols(t *testing
 	require.Empty(t, group.AllowedClientProtocols)
 }
 
-func TestAdminServiceUpdateGroupCoercesProtocolsWhenPlatformChanges(t *testing.T) {
+func TestAdminServiceUpdateGroupFiltersUnsupportedProtocolsWhenPlatformChanges(t *testing.T) {
 	tests := []struct {
 		name     string
 		from     string
@@ -154,7 +177,6 @@ func TestAdminServiceUpdateGroupCoercesProtocolsWhenPlatformChanges(t *testing.T
 			to:      PlatformAnthropic,
 			initial: []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions},
 			expected: []GroupClientProtocol{
-				GroupClientProtocolAnthropicMessages,
 				GroupClientProtocolOpenAIResponses,
 				GroupClientProtocolOpenAIChatCompletions,
 			},
@@ -164,7 +186,7 @@ func TestAdminServiceUpdateGroupCoercesProtocolsWhenPlatformChanges(t *testing.T
 			from:     PlatformQoder,
 			to:       PlatformGrok,
 			initial:  []GroupClientProtocol{},
-			expected: []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions},
+			expected: []GroupClientProtocol{},
 		},
 	}
 

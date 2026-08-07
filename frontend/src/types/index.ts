@@ -692,8 +692,8 @@ export interface Group {
   fallback_group_id_on_invalid_request: number | null
   unavailable_fallback_group_id: number | null
   // 分组允许客户端使用的文本生成协议，顺序由服务端固定。
-  allowed_client_protocols?: GroupClientProtocol[]
-  // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
+  allowed_client_protocols: GroupClientProtocol[]
+  // OpenAI Messages 调度开关（弃用兼容字段，新代码读取 allowed_client_protocols）
   allow_messages_dispatch?: boolean
   // OpenAI Live 接口开关
   allow_live: boolean

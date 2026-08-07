@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAPIKeyAuthGroupSnapshotDistinguishesMissingAndExplicitEmptyClientProtocols(t *testing.T) {
+func TestAPIKeyAuthGroupSnapshotPreservesExplicitEmptyClientProtocols(t *testing.T) {
 	emptySnapshot := authGroupSnapshotFromGroup(&Group{
 		ID:                     1,
-		Platform:               PlatformQoder,
+		Platform:               PlatformOpenAI,
 		AllowedClientProtocols: []GroupClientProtocol{},
 	})
 	payload, err := json.Marshal(emptySnapshot)
@@ -33,24 +33,6 @@ func TestAPIKeyAuthGroupSnapshotDistinguishesMissingAndExplicitEmptyClientProtoc
 	require.NotNil(t, decodedEmpty.AllowedClientProtocols)
 	require.Empty(t, decodedEmpty.AllowedClientProtocols)
 	require.False(t, groupFromAuthSnapshot(&decodedEmpty).AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
-
-	var decodedLegacy APIKeyAuthGroupSnapshot
-	require.NoError(t, json.Unmarshal([]byte(`{"id":2,"platform":"openai","allow_messages_dispatch":true}`), &decodedLegacy))
-	require.Nil(t, decodedLegacy.AllowedClientProtocols)
-	legacyGroup := groupFromAuthSnapshot(&decodedLegacy)
-	require.True(t, legacyGroup.AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
-	require.True(t, legacyGroup.AllowsClientProtocol(GroupClientProtocolOpenAIResponses))
-
-	// 滚动升级期间旧进程使用数据库默认值写入空数组时，必选协议平台按旧矩阵恢复。
-	legacyDatabaseGroup := &Group{
-		ID:                     3,
-		Platform:               PlatformOpenAI,
-		AllowedClientProtocols: []GroupClientProtocol{},
-		AllowMessagesDispatch:  false,
-	}
-	require.False(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
-	require.True(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolOpenAIResponses))
-	require.True(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolOpenAIChatCompletions))
 }
 
 type authRepoStub struct {
@@ -753,13 +735,12 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 			Concurrency: 3,
 		},
 		Group: &Group{
-			ID:                    groupID,
-			Name:                  "openai",
-			Platform:              PlatformOpenAI,
-			Status:                StatusActive,
-			RateMultiplier:        1,
-			AllowMessagesDispatch: true,
-			DefaultMappedModel:    "gpt-5.4",
+			ID:                 groupID,
+			Name:               "openai",
+			Platform:           PlatformOpenAI,
+			Status:             StatusActive,
+			RateMultiplier:     1,
+			DefaultMappedModel: "gpt-5.4",
 			MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 				OpusMappedModel:   "gpt-5.4-nano",
 				SonnetMappedModel: "gpt-5.3-codex",
@@ -897,13 +878,12 @@ func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDis
 					Concurrency: 3,
 				},
 				Group: &APIKeyAuthGroupSnapshot{
-					ID:                    groupID,
-					Name:                  "openai",
-					Platform:              PlatformOpenAI,
-					Status:                StatusActive,
-					RateMultiplier:        1,
-					AllowMessagesDispatch: true,
-					DefaultMappedModel:    "gpt-5.4",
+					ID:                 groupID,
+					Name:               "openai",
+					Platform:           PlatformOpenAI,
+					Status:             StatusActive,
+					RateMultiplier:     1,
+					DefaultMappedModel: "gpt-5.4",
 				},
 			},
 		}, nil

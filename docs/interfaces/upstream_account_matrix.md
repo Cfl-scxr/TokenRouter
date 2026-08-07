@@ -44,18 +44,18 @@
 <a id="public_gateway_protocols"></a>
 ## 公开网关协议
 
-文本生成协议是否可进入处理器由分组的 `allowed_client_protocols` 控制。支持集合、不可关闭的基础协议、新建默认值和迁移值如下：
+文本生成协议是否可进入处理器由分组的 `allowed_client_protocols` 控制。支持集合、新建默认值和迁移值如下；默认值只决定初始选择，所有协议都可关闭：
 
-| 上游平台 | 支持协议 | 基础协议 / 新建默认 | 已有分组迁移值 |
+| 上游平台 | 支持协议 | 新建默认 | 已有分组迁移值 |
 | --- | --- | --- | --- |
 | Anthropic | Messages、Responses、Chat | Messages | 三项全部启用 |
-| OpenAI | Messages、Responses、Chat | Responses、Chat | 基础项，加上旧开关允许的 Messages |
+| OpenAI | Messages、Responses、Chat | Responses、Chat | Responses、Chat，加上旧开关允许的 Messages |
 | Gemini | Messages、Responses、Chat、Gemini GenerateContent | Gemini GenerateContent | 四项全部启用 |
 | Antigravity | Messages、Responses、Chat、Gemini GenerateContent | Messages、Gemini GenerateContent | 四项全部启用 |
 | Qoder | Messages、Responses、Chat | 空集合 | 三项全部启用 |
 | Grok | Messages、Responses、Chat | Responses、Chat | 三项全部启用 |
 
-集合顺序固定为 Messages、Responses、Chat、Gemini。准入只控制文本生成协议；Live、WebSocket、Embedding、图片和视频继续使用独立能力规则。
+集合顺序固定为 Messages、Responses、Chat、Gemini，空集合对所有平台都合法。准入只控制文本生成协议；Live、WebSocket、Embedding、图片和视频继续使用独立能力规则。
 
 | 协议族或入口 | 当前平台边界 | 专题路由 |
 | --- | --- | --- |

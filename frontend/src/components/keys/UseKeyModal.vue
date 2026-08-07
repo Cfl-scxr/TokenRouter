@@ -304,7 +304,6 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowedClientProtocols?: GroupClientProtocol[] | null
-  allowMessagesDispatch?: boolean
   compositeGroups?: ApiKeyCompositeGroup[]
 }
 
@@ -360,11 +359,7 @@ const codexWebSocketEnabled = ref(false)
 
 const allowedProtocols = computed(() => {
   if (!props.platform) return []
-  return effectiveGroupClientProtocols(
-    props.platform,
-    props.allowedClientProtocols,
-    props.allowMessagesDispatch
-  )
+  return effectiveGroupClientProtocols(props.platform, props.allowedClientProtocols)
 })
 
 const allowsProtocol = (protocol: GroupClientProtocol) =>
@@ -472,8 +467,7 @@ const defaultClientTab = computed(() => {
 watch(
   [
     () => props.platform,
-    () => props.allowedClientProtocols,
-    () => props.allowMessagesDispatch
+    () => props.allowedClientProtocols
   ],
   () => {
     activeTab.value = 'unix'
