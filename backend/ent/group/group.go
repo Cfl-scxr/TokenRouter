@@ -98,6 +98,8 @@ const (
 	FieldSortOrder = "sort_order"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
+	// FieldAllowedClientProtocols holds the string denoting the allowed_client_protocols field in the database.
+	FieldAllowedClientProtocols = "allowed_client_protocols"
 	// FieldAllowLive holds the string denoting the allow_live field in the database.
 	FieldAllowLive = "allow_live"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
@@ -245,6 +247,7 @@ var Columns = []string{
 	FieldSupportedModelScopes,
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
+	FieldAllowedClientProtocols,
 	FieldAllowLive,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
@@ -357,6 +360,8 @@ var (
 	DefaultSortOrder int
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
+	// DefaultAllowedClientProtocols holds the default value on creation for the "allowed_client_protocols" field.
+	DefaultAllowedClientProtocols []domain.GroupClientProtocol
 	// DefaultAllowLive holds the default value on creation for the "allow_live" field.
 	DefaultAllowLive bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.

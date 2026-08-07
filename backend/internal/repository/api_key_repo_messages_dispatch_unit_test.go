@@ -11,11 +11,16 @@ import (
 
 func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T) {
 	group := &dbent.Group{
-		ID:                    1,
-		Name:                  "openai-dispatch",
-		Platform:              service.PlatformOpenAI,
-		Status:                service.StatusActive,
-		RateMultiplier:        1,
+		ID:             1,
+		Name:           "openai-dispatch",
+		Platform:       service.PlatformOpenAI,
+		Status:         service.StatusActive,
+		RateMultiplier: 1,
+		AllowedClientProtocols: []service.GroupClientProtocol{
+			service.GroupClientProtocolAnthropicMessages,
+			service.GroupClientProtocolOpenAIResponses,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		},
 		AllowMessagesDispatch: true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
@@ -30,6 +35,7 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 
 	got := groupEntityToService(group)
 	require.NotNil(t, got)
+	require.Equal(t, group.AllowedClientProtocols, got.AllowedClientProtocols)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 }
 
@@ -62,6 +68,11 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 		SetPlatform(service.PlatformOpenAI).
 		SetStatus(service.StatusActive).
 		SetRateMultiplier(1).
+		SetAllowedClientProtocols([]service.GroupClientProtocol{
+			service.GroupClientProtocolAnthropicMessages,
+			service.GroupClientProtocolOpenAIResponses,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		}).
 		SetAllowMessagesDispatch(true).
 		SetDefaultMappedModel("gpt-5.4").
 		SetMessagesDispatchModelConfig(service.OpenAIMessagesDispatchModelConfig{
@@ -88,6 +99,7 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NoError(t, err)
 	require.Equal(t, key.Name, got.Name)
 	require.NotNil(t, got.Group)
+	require.Equal(t, group.AllowedClientProtocols, got.Group.AllowedClientProtocols)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
 }
 

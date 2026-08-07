@@ -578,6 +578,12 @@ func (_c *GroupCreate) SetNillableAllowMessagesDispatch(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (_c *GroupCreate) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupCreate {
+	_c.mutation.SetAllowedClientProtocols(v)
+	return _c
+}
+
 // SetAllowLive sets the "allow_live" field.
 func (_c *GroupCreate) SetAllowLive(v bool) *GroupCreate {
 	_c.mutation.SetAllowLive(v)
@@ -975,6 +981,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowMessagesDispatch
 		_c.mutation.SetAllowMessagesDispatch(v)
 	}
+	if _, ok := _c.mutation.AllowedClientProtocols(); !ok {
+		v := group.DefaultAllowedClientProtocols
+		_c.mutation.SetAllowedClientProtocols(v)
+	}
 	if _, ok := _c.mutation.AllowLive(); !ok {
 		v := group.DefaultAllowLive
 		_c.mutation.SetAllowLive(v)
@@ -1143,6 +1153,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)}
+	}
+	if _, ok := _c.mutation.AllowedClientProtocols(); !ok {
+		return &ValidationError{Name: "allowed_client_protocols", err: errors.New(`ent: missing required field "Group.allowed_client_protocols"`)}
 	}
 	if _, ok := _c.mutation.AllowLive(); !ok {
 		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
@@ -1380,6 +1393,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowMessagesDispatch(); ok {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
 		_node.AllowMessagesDispatch = value
+	}
+	if value, ok := _c.mutation.AllowedClientProtocols(); ok {
+		_spec.SetField(group.FieldAllowedClientProtocols, field.TypeJSON, value)
+		_node.AllowedClientProtocols = value
 	}
 	if value, ok := _c.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
@@ -2234,6 +2251,18 @@ func (u *GroupUpsert) SetAllowMessagesDispatch(v bool) *GroupUpsert {
 // UpdateAllowMessagesDispatch sets the "allow_messages_dispatch" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowMessagesDispatch)
+	return u
+}
+
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (u *GroupUpsert) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpsert {
+	u.Set(group.FieldAllowedClientProtocols, v)
+	return u
+}
+
+// UpdateAllowedClientProtocols sets the "allowed_client_protocols" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowedClientProtocols() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowedClientProtocols)
 	return u
 }
 
@@ -3188,6 +3217,20 @@ func (u *GroupUpsertOne) SetAllowMessagesDispatch(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowMessagesDispatch()
+	})
+}
+
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (u *GroupUpsertOne) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowedClientProtocols(v)
+	})
+}
+
+// UpdateAllowedClientProtocols sets the "allowed_client_protocols" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowedClientProtocols() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowedClientProtocols()
 	})
 }
 
@@ -4333,6 +4376,20 @@ func (u *GroupUpsertBulk) SetAllowMessagesDispatch(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowMessagesDispatch()
+	})
+}
+
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (u *GroupUpsertBulk) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowedClientProtocols(v)
+	})
+}
+
+// UpdateAllowedClientProtocols sets the "allowed_client_protocols" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowedClientProtocols() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowedClientProtocols()
 	})
 }
 

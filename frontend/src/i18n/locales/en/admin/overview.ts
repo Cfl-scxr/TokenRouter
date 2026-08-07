@@ -830,7 +830,7 @@ affiliates: {
       columns: {
         name: 'Name',
         id: 'ID',
-        platform: 'API Format',
+        platform: 'Upstream Platform',
         displayBrand: 'Brand Type',
         rateMultiplier: 'Rate Multiplier',
         dataSharing: 'Data Sharing',
@@ -865,7 +865,7 @@ affiliates: {
       form: {
         name: 'Name',
         description: 'Description',
-        platform: 'API Format',
+        platform: 'Upstream Platform',
         displayBrand: 'Brand Type',
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
@@ -914,7 +914,7 @@ affiliates: {
       displayBrandCreatablePrefix: 'Use brand',
       displayBrandHint: 'Only used in the model marketplace. It does not affect routing protocol, account scheduling, or format conversion. Empty uses the group name.',
       platformHint: 'Select the upstream account and gateway routing format for this group. This is not the model brand.',
-      platformNotEditable: 'API format cannot be changed after creation; it only affects routing and account scheduling, not the model brand.',
+      platformNotEditable: 'The upstream platform cannot be changed after creation; it only affects routing and account scheduling, not the model brand.',
       saving: 'Saving...',
       noGroups: 'No groups yet',
       noGroupsDescription: 'Create a group to better manage API keys and rates.',
@@ -1097,8 +1097,20 @@ affiliates: {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      clientProtocols: {
+        title: 'Client Protocols',
+        hint: 'Choose which text generation protocols API keys in this group may use.',
+        required: 'Required',
+        requiredHint: 'This is a base protocol for the selected upstream platform and cannot be disabled.',
+        labels: {
+          anthropic_messages: 'Anthropic Messages',
+          openai_responses: 'OpenAI Responses',
+          openai_chat_completions: 'OpenAI Chat Completions',
+          gemini_generate_content: 'Gemini GenerateContent'
+        }
+      },
       openaiMessages: {
-        title: 'OpenAI Messages Dispatch',
+        title: 'OpenAI Messages Model Mapping',
         allowDispatch: 'Allow /v1/messages dispatch',
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
         familyMappingTitle: 'Family Default Mapping',

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/handler"
@@ -10,6 +11,102 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+type groupClientProtocolErrorFormat string
+
+const (
+	groupClientProtocolErrorAnthropic groupClientProtocolErrorFormat = "anthropic"
+	groupClientProtocolErrorOpenAI    groupClientProtocolErrorFormat = "openai"
+	groupClientProtocolErrorGoogle    groupClientProtocolErrorFormat = "google"
+)
+
+// requireGroupClientProtocol 在进入业务处理器前执行分组协议准入检查。
+func requireGroupClientProtocol(protocol service.GroupClientProtocol, format groupClientProtocolErrorFormat) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if enforceGroupClientProtocol(c, protocol, format) {
+			c.Next()
+		}
+	}
+}
+
+// withGroupClientProtocol 把协议门禁包在已完成路径校验的终端处理器外层。
+func withGroupClientProtocol(protocol service.GroupClientProtocol, format groupClientProtocolErrorFormat, next gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if enforceGroupClientProtocol(c, protocol, format) {
+			next(c)
+		}
+	}
+}
+
+// enforceGroupClientProtocol 执行检查并在拒绝时写入协议原生错误。
+func enforceGroupClientProtocol(c *gin.Context, protocol service.GroupClientProtocol, format groupClientProtocolErrorFormat) bool {
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.Group == nil || apiKey.Group.AllowsClientProtocol(protocol) {
+		return true
+	}
+
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+	message := groupClientProtocolDeniedMessage(protocol)
+	switch format {
+	case groupClientProtocolErrorGoogle:
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"code":    http.StatusForbidden,
+				"message": message,
+				"status":  "PERMISSION_DENIED",
+			},
+		})
+	case groupClientProtocolErrorOpenAI:
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"message": message,
+				"type":    "permission_error",
+				"param":   nil,
+				"code":    "protocol_not_allowed",
+			},
+		})
+	default:
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "permission_error",
+				"message": message,
+			},
+		})
+	}
+	return false
+}
+
+func groupClientProtocolDeniedMessage(protocol service.GroupClientProtocol) string {
+	switch protocol {
+	case service.GroupClientProtocolAnthropicMessages:
+		return "This group does not allow Anthropic Messages requests"
+	case service.GroupClientProtocolOpenAIResponses:
+		return "This group does not allow OpenAI Responses requests"
+	case service.GroupClientProtocolOpenAIChatCompletions:
+		return "This group does not allow OpenAI Chat Completions requests"
+	case service.GroupClientProtocolGeminiGenerateContent:
+		return "This group does not allow Gemini GenerateContent requests"
+	default:
+		return "This group does not allow the requested client protocol"
+	}
+}
+
+// requireGeminiGenerateContentProtocol 只门禁 Gemini 的三个文本生成 POST 动作。
+func requireGeminiGenerateContentProtocol(c *gin.Context) {
+	rest := strings.TrimSpace(strings.TrimPrefix(c.Param("modelAction"), "/"))
+	separator := strings.LastIndexAny(rest, ":/")
+	if separator <= 0 || separator == len(rest)-1 {
+		c.Next()
+		return
+	}
+	switch rest[separator+1:] {
+	case "generateContent", "streamGenerateContent", "countTokens":
+		requireGroupClientProtocol(service.GroupClientProtocolGeminiGenerateContent, groupClientProtocolErrorGoogle)(c)
+	default:
+		c.Next()
+	}
+}
 
 // RegisterGatewayRoutes 注册 API 网关路由（Claude/OpenAI/Gemini 兼容）
 // @project-doc docs/architecture/gateway_request_lifecycle.md#gateway_pipeline
@@ -29,6 +126,9 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
+	messagesProtocolGate := requireGroupClientProtocol(service.GroupClientProtocolAnthropicMessages, groupClientProtocolErrorAnthropic)
+	responsesProtocolGate := requireGroupClientProtocol(service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI)
+	chatCompletionsProtocolGate := requireGroupClientProtocol(service.GroupClientProtocolOpenAIChatCompletions, groupClientProtocolErrorOpenAI)
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
@@ -144,21 +244,26 @@ func RegisterGatewayRoutes(
 			},
 		})
 	}
-	qoderResponsesWebSocketUnsupported := func(c *gin.Context) {
+	responsesWebSocketUnsupported := func(c *gin.Context) {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		message := "Responses WebSocket is not supported for this upstream platform"
+		if getGroupPlatform(c) == service.PlatformQoder {
+			message = "Qoder Responses WebSocket is not supported"
+		}
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
 				"type":    "not_found_error",
-				"message": "Qoder Responses WebSocket is not supported",
+				"message": message,
 			},
 		})
 	}
 	responsesWebSocketHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformQoder {
-			qoderResponsesWebSocketUnsupported(c)
-			return
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI, service.PlatformGrok:
+			h.OpenAIGateway.ResponsesWebSocket(c)
+		default:
+			responsesWebSocketUnsupported(c)
 		}
-		h.OpenAIGateway.ResponsesWebSocket(c)
 	}
 	// Sideband 动态段不能吞掉 fork 已明确移除的旧 Codex models 路由。
 	rejectRemovedCodexRoute := func(c *gin.Context) {
@@ -198,7 +303,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform
-		gateway.POST("/messages", func(c *gin.Context) {
+		gateway.POST("/messages", messagesProtocolGate, func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Messages(c)
 				return
@@ -211,13 +316,13 @@ func RegisterGatewayRoutes(
 		})
 		// /v1/messages/count_tokens：OpenAI 桥接上游，Grok 本地估算，其余 Anthropic
 		// 兼容平台保留原处理路径。
-		gateway.POST("/messages/count_tokens", countTokensHandler)
+		gateway.POST("/messages/count_tokens", messagesProtocolGate, countTokensHandler)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
 		gateway.POST("/live", h.OpenAIGateway.Live)
 		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
-		gateway.POST("/responses", func(c *gin.Context) {
+		gateway.POST("/responses", responsesProtocolGate, func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -228,7 +333,7 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.Responses(c)
 		})
-		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
+		gateway.POST("/responses/*subpath", guardResponsesSubpath(withGroupClientProtocol(service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI, func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -238,11 +343,11 @@ func RegisterGatewayRoutes(
 				return
 			}
 			h.Gateway.Responses(c)
-		}))
+		})))
 		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		gateway.GET("/responses", responsesWebSocketHandler)
 		// OpenAI Chat Completions API: auto-route based on group platform
-		gateway.POST("/chat/completions", func(c *gin.Context) {
+		gateway.POST("/chat/completions", chatCompletionsProtocolGate, func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
@@ -297,7 +402,7 @@ func RegisterGatewayRoutes(
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		gemini.GET("/models/*model", h.Gateway.GeminiV1BetaGetModel)
 		// Gin treats ":" as a param marker, but Gemini uses "{model}:{action}" in the same segment.
-		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		gemini.POST("/models/*modelAction", requireGeminiGenerateContentProtocol, h.Gateway.GeminiV1BetaModels)
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
@@ -316,13 +421,13 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.Responses(c)
 	}
-	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
-	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, guardResponsesSubpath(responsesHandler))
+	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesProtocolGate, responsesHandler)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, guardResponsesSubpath(withGroupClientProtocol(service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI, responsesHandler)))
 	r.POST("/alpha/search", textBodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.AlphaSearch)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesWebSocketHandler)
 	// Codex 客户端会访问不带 v1 前缀的模型列表，保持与 /v1/models 相同的本地模型语义。
 	r.GET("/models", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.Models)
-	r.POST("/messages/count_tokens", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, countTokensHandler)
+	r.POST("/messages/count_tokens", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, messagesProtocolGate, countTokensHandler)
 	r.GET(
 		"/backend-api/codex/:call_id",
 		rejectRemovedCodexRoute,
@@ -338,13 +443,13 @@ func RegisterGatewayRoutes(
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
-		codexDirect.POST("/responses", responsesHandler)
-		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
+		codexDirect.POST("/responses", responsesProtocolGate, responsesHandler)
+		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(withGroupClientProtocol(service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI, responsesHandler)))
 		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		codexDirect.GET("/responses", responsesWebSocketHandler)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
-	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, chatCompletionsProtocolGate, func(c *gin.Context) {
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.ChatCompletions(c)
 			return
@@ -389,8 +494,8 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	antigravityV1.Use(requireGroupAnthropic)
 	{
-		antigravityV1.POST("/messages", h.Gateway.Messages)
-		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		antigravityV1.POST("/messages", messagesProtocolGate, h.Gateway.Messages)
+		antigravityV1.POST("/messages/count_tokens", messagesProtocolGate, h.Gateway.CountTokens)
 		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
 	}
@@ -406,7 +511,7 @@ func RegisterGatewayRoutes(
 	{
 		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		antigravityV1Beta.GET("/models/*model", h.Gateway.GeminiV1BetaGetModel)
-		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+		antigravityV1Beta.POST("/models/*modelAction", requireGeminiGenerateContentProtocol, h.Gateway.GeminiV1BetaModels)
 	}
 
 }

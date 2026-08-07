@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,13 +31,19 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 
 // newGatewayRoutesTestRouterWithOptions 同时支持注入配置和网关 handler。
 func newGatewayRoutesTestRouterWithOptions(cfg *config.Config, gatewayHandler *handler.GatewayHandler, platform ...string) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-
 	groupPlatform := service.PlatformOpenAI
 	if len(platform) > 0 && platform[0] != "" {
 		groupPlatform = platform[0]
 	}
+	groupID := int64(1)
+	return newGatewayRoutesTestRouterWithGroup(cfg, gatewayHandler, &service.Group{ID: groupID, Platform: groupPlatform})
+}
+
+// newGatewayRoutesTestRouterWithGroup 允许测试显式控制 nil 与空协议集合。
+func newGatewayRoutesTestRouterWithGroup(cfg *config.Config, gatewayHandler *handler.GatewayHandler, group *service.Group) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
 	if gatewayHandler == nil {
 		gatewayHandler = &handler.GatewayHandler{}
 	}
@@ -49,11 +56,11 @@ func newGatewayRoutesTestRouterWithOptions(cfg *config.Config, gatewayHandler *h
 			QoderGateway:  &handler.QoderGatewayHandler{},
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
-			groupID := int64(1)
+			groupID := group.ID
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				User:    &service.User{ID: 1, Status: service.StatusActive, Concurrency: 1},
 				GroupID: &groupID,
-				Group:   &service.Group{ID: groupID, Platform: groupPlatform},
+				Group:   group,
 			})
 			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
 			c.Next()
@@ -66,6 +73,154 @@ func newGatewayRoutesTestRouterWithOptions(cfg *config.Config, gatewayHandler *h
 	)
 
 	return router
+}
+
+type protocolGateTrackingReader struct {
+	read bool
+}
+
+func (r *protocolGateTrackingReader) Read(_ []byte) (int, error) {
+	r.read = true
+	return 0, io.EOF
+}
+
+func TestGatewayRoutesClientProtocolGateRejectsAliasesBeforeReadingBody(t *testing.T) {
+	tests := []struct {
+		name      string
+		platform  string
+		protocols []service.GroupClientProtocol
+		paths     []string
+		code      string
+	}{
+		{
+			name:      "messages",
+			platform:  service.PlatformOpenAI,
+			protocols: []service.GroupClientProtocol{service.GroupClientProtocolOpenAIResponses, service.GroupClientProtocolOpenAIChatCompletions},
+			paths:     []string{"/v1/messages", "/v1/messages/count_tokens", "/messages/count_tokens", "/antigravity/v1/messages", "/antigravity/v1/messages/count_tokens"},
+			code:      "permission_error",
+		},
+		{
+			name:      "responses",
+			platform:  service.PlatformQoder,
+			protocols: []service.GroupClientProtocol{service.GroupClientProtocolAnthropicMessages, service.GroupClientProtocolOpenAIChatCompletions},
+			paths:     []string{"/v1/responses", "/v1/responses/compact", "/responses", "/responses/compact", "/backend-api/codex/responses", "/backend-api/codex/responses/compact"},
+			code:      "protocol_not_allowed",
+		},
+		{
+			name:      "chat_completions",
+			platform:  service.PlatformQoder,
+			protocols: []service.GroupClientProtocol{service.GroupClientProtocolAnthropicMessages, service.GroupClientProtocolOpenAIResponses},
+			paths:     []string{"/v1/chat/completions", "/chat/completions"},
+			code:      "protocol_not_allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(1)
+			router := newGatewayRoutesTestRouterWithGroup(&config.Config{}, nil, &service.Group{
+				ID:                     groupID,
+				Platform:               tt.platform,
+				AllowedClientProtocols: tt.protocols,
+			})
+			for _, path := range tt.paths {
+				reader := &protocolGateTrackingReader{}
+				req := httptest.NewRequest(http.MethodPost, path, reader)
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+
+				router.ServeHTTP(w, req)
+
+				require.Equal(t, http.StatusForbidden, w.Code, "path=%s", path)
+				require.Contains(t, w.Body.String(), tt.code, "path=%s", path)
+				require.False(t, reader.read, "path=%s must be rejected before reading body", path)
+			}
+		})
+	}
+}
+
+func TestGatewayRoutesResponsesSubpathGuardRunsBeforeProtocolGate(t *testing.T) {
+	groupID := int64(1)
+	router := newGatewayRoutesTestRouterWithGroup(&config.Config{}, nil, &service.Group{
+		ID:       groupID,
+		Platform: service.PlatformQoder,
+		AllowedClientProtocols: []service.GroupClientProtocol{
+			service.GroupClientProtocolAnthropicMessages,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		},
+	})
+
+	for _, path := range []string{"/v1/responses/%3fa=b", "/responses/%3fa=b", "/backend-api/codex/responses/%3fa=b"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, nil))
+
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s", path)
+		require.Contains(t, w.Body.String(), "Unsupported responses subpath", "path=%s", path)
+		require.NotContains(t, w.Body.String(), "protocol_not_allowed", "path=%s", path)
+	}
+}
+
+func TestRequireGroupClientProtocolUsesNativeErrorEnvelopes(t *testing.T) {
+	tests := []struct {
+		name     string
+		protocol service.GroupClientProtocol
+		format   groupClientProtocolErrorFormat
+		contains []string
+	}{
+		{"anthropic", service.GroupClientProtocolAnthropicMessages, groupClientProtocolErrorAnthropic, []string{"permission_error", "Anthropic Messages"}},
+		{"openai", service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI, []string{"protocol_not_allowed", "OpenAI Responses"}},
+		{"google", service.GroupClientProtocolGeminiGenerateContent, groupClientProtocolErrorGoogle, []string{"PERMISSION_DENIED", "Gemini GenerateContent"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := gin.New()
+			var deniedReason string
+			router.Use(func(c *gin.Context) {
+				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{Group: &service.Group{AllowedClientProtocols: []service.GroupClientProtocol{}}})
+				c.Next()
+				deniedReason = c.GetString(service.OpsClientBusinessLimitedReasonKey)
+			})
+			router.POST("/", requireGroupClientProtocol(tt.protocol, tt.format), func(c *gin.Context) {
+				c.Status(http.StatusNoContent)
+			})
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", nil))
+
+			require.Equal(t, http.StatusForbidden, w.Code)
+			for _, value := range tt.contains {
+				require.Contains(t, w.Body.String(), value)
+			}
+			require.Equal(t, service.OpsClientBusinessLimitedReasonLocalPolicyDenied, deniedReason)
+		})
+	}
+}
+
+func TestRequireGeminiGenerateContentProtocolOnlyGatesTextActions(t *testing.T) {
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{Platform: service.PlatformQoder, AllowedClientProtocols: []service.GroupClientProtocol{}},
+		})
+		c.Next()
+	})
+	router.POST("/v1beta/models/*modelAction", requireGeminiGenerateContentProtocol, func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	for _, action := range []string{"generateContent", "streamGenerateContent", "countTokens"} {
+		w := httptest.NewRecorder()
+		path := "/v1beta/models/gemini-2.5-pro:" + action
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, nil))
+
+		require.Equal(t, http.StatusForbidden, w.Code, "action=%s", action)
+		require.Contains(t, w.Body.String(), "PERMISSION_DENIED", "action=%s", action)
+	}
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:customAction", nil))
+	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
@@ -138,6 +293,15 @@ func TestGatewayRoutesQoderResponsesWebSocketIsRejected(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, w.Code, "path=%s should reject Qoder Responses websocket", path)
 		require.Contains(t, w.Body.String(), "Qoder Responses WebSocket is not supported")
 	}
+}
+
+func TestGatewayRoutesNonNativeResponsesWebSocketIsRejected(t *testing.T) {
+	router := newGatewayRoutesTestRouterWithOptions(&config.Config{}, nil, service.PlatformAnthropic)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/responses", nil))
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Contains(t, w.Body.String(), "not supported for this upstream platform")
 }
 
 // Alpha Search 的三种公开路径都必须注册到 OpenAI 专用 handler。

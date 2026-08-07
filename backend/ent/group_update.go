@@ -760,6 +760,18 @@ func (_u *GroupUpdate) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (_u *GroupUpdate) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpdate {
+	_u.mutation.SetAllowedClientProtocols(v)
+	return _u
+}
+
+// AppendAllowedClientProtocols appends value to the "allowed_client_protocols" field.
+func (_u *GroupUpdate) AppendAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpdate {
+	_u.mutation.AppendAllowedClientProtocols(v)
+	return _u
+}
+
 // SetAllowLive sets the "allow_live" field.
 func (_u *GroupUpdate) SetAllowLive(v bool) *GroupUpdate {
 	_u.mutation.SetAllowLive(v)
@@ -1467,6 +1479,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowMessagesDispatch(); ok {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowedClientProtocols(); ok {
+		_spec.SetField(group.FieldAllowedClientProtocols, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedClientProtocols(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldAllowedClientProtocols, value)
+		})
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
@@ -2563,6 +2583,18 @@ func (_u *GroupUpdateOne) SetNillableAllowMessagesDispatch(v *bool) *GroupUpdate
 	return _u
 }
 
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (_u *GroupUpdateOne) SetAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpdateOne {
+	_u.mutation.SetAllowedClientProtocols(v)
+	return _u
+}
+
+// AppendAllowedClientProtocols appends value to the "allowed_client_protocols" field.
+func (_u *GroupUpdateOne) AppendAllowedClientProtocols(v []domain.GroupClientProtocol) *GroupUpdateOne {
+	_u.mutation.AppendAllowedClientProtocols(v)
+	return _u
+}
+
 // SetAllowLive sets the "allow_live" field.
 func (_u *GroupUpdateOne) SetAllowLive(v bool) *GroupUpdateOne {
 	_u.mutation.SetAllowLive(v)
@@ -3300,6 +3332,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowMessagesDispatch(); ok {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowedClientProtocols(); ok {
+		_spec.SetField(group.FieldAllowedClientProtocols, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedClientProtocols(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldAllowedClientProtocols, value)
+		})
 	}
 	if value, ok := _u.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)

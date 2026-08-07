@@ -29,6 +29,8 @@ Anthropic 管理端正式支持以下账号：
 
 Anthropic 原生入口是 `POST /v1/messages` 和 `POST /v1/messages/count_tokens`。同一 Anthropic 分组还可从 OpenAI Chat Completions 和 Responses 入口进入：处理器先把客户端形状归一化为 Anthropic 请求，按 attempt 选账号并转发，再把非流或 SSE 结果恢复成原协议。
 
+Anthropic 分组支持 Messages、Responses 和 Chat。Messages 是不可关闭的基础协议和新建默认值；迁移前已有分组按旧行为启用三项。被关闭的兼容协议会在读取正文和账号调度前返回对应客户端形状的 `403`，不会产生上游 attempt 或结算。
+
 API Key 和 OAuth/Setup Token 使用 Anthropic HTTP 路径；Bedrock 走独立签名与响应适配；Service Account 走 Vertex Claude 路径。协议转换不能抹平这些传输差异，尤其是 beta header、模型名称、错误结构和 token usage 的来源。
 
 流式请求只在首个客户端分块写出前允许重试或换账号。每次 attempt 都从原始请求重建转换状态，工具名、停止原因、thinking block、usage 和错误事件必须与客户端协议一致。

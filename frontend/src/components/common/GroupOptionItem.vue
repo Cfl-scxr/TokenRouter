@@ -133,7 +133,7 @@ const peakRateTitle = computed(() => {
   return t('common.peakRateTooltip', { window: peakRateText.value })
 })
 
-// 倍率标签跟随展示品牌；没有品牌时回退到接入格式配色。
+// 倍率标签跟随展示品牌；没有品牌时回退到上游平台配色。
 const ratePillClass = computed(() => {
   if (brandName.value) {
     return `ring-1 ring-inset ${resolveProviderBrand(brandName.value).badgeClass}`

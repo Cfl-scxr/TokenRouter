@@ -823,7 +823,7 @@ affiliates: {
       columns: {
         name: '名称',
         id: 'ID',
-        platform: '接入格式',
+        platform: '上游平台',
         displayBrand: '品牌类型',
         rateMultiplier: '费率倍数',
         dataSharing: '数据共享',
@@ -856,7 +856,7 @@ affiliates: {
       form: {
         name: '名称',
         description: '描述',
-        platform: '接入格式',
+        platform: '上游平台',
         displayBrand: '品牌类型',
         rateMultiplier: '费率倍数',
         status: '状态',
@@ -970,7 +970,7 @@ affiliates: {
       displayBrandCreatablePrefix: '使用品牌',
       displayBrandHint: '仅用于模型广场展示，不影响路由协议、账号调度或格式转换；留空时使用分组名称。',
       platformHint: '选择此分组使用的上游账号和网关路由格式，不代表模型品牌。',
-      platformNotEditable: '创建后不可更改接入格式；它只影响路由和账号调度，不代表模型品牌。',
+      platformNotEditable: '创建后不可更改上游平台；它只影响路由和账号调度，不代表模型品牌。',
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',
@@ -1095,8 +1095,20 @@ affiliates: {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      clientProtocols: {
+        title: '客户端协议',
+        hint: '选择此分组的 API Key 可以使用哪些文本生成协议。',
+        required: '基础协议',
+        requiredHint: '这是所选上游平台的基础协议，不能关闭。',
+        labels: {
+          anthropic_messages: 'Anthropic Messages',
+          openai_responses: 'OpenAI Responses',
+          openai_chat_completions: 'OpenAI Chat Completions',
+          gemini_generate_content: 'Gemini GenerateContent'
+        }
+      },
       openaiMessages: {
-        title: 'OpenAI Messages 调度配置',
+        title: 'OpenAI Messages 模型映射',
         allowDispatch: '允许 /v1/messages 调度',
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
         familyMappingTitle: '系列默认映射',

@@ -5,7 +5,7 @@
       badgeClass
     ]"
   >
-    <!-- 分组 platform 是接入格式；有展示品牌时优先按品牌渲染图标和配色。 -->
+    <!-- 分组 platform 是上游平台；有展示品牌时优先按品牌渲染图标和配色。 -->
     <ProviderIcon v-if="brandName" :brand="brandName" size="14px" />
     <PlatformIcon v-else-if="platform" :platform="platform" size="sm" />
     <!-- Group name -->

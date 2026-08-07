@@ -660,4 +660,83 @@ describe('UseKeyModal', () => {
     expect(qoderProvider.models['glm-5.2'].name).toBe('GLM-5.2')
     expect(qoderProvider.models['kimi-k3'].name).toBe('Kimi-K3')
   })
+
+  it('derives client tabs from the explicit protocol collection', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-gemini-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini',
+        allowedClientProtocols: ['openai_responses', 'gemini_generate_content']
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('keys.useKeyModal.cliTabs.codexCli')
+    expect(wrapper.text()).toContain('keys.useKeyModal.cliTabs.geminiCli')
+    expect(wrapper.text()).toContain('keys.useKeyModal.cliTabs.opencode')
+    expect(wrapper.text()).not.toContain('keys.useKeyModal.cliTabs.claudeCode')
+  })
+
+  it('prefers the new protocol collection over the legacy OpenAI Messages field', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-openai-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai',
+        allowedClientProtocols: ['openai_responses', 'openai_chat_completions'],
+        allowMessagesDispatch: true
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('keys.useKeyModal.cliTabs.codexCli')
+    expect(wrapper.text()).not.toContain('keys.useKeyModal.cliTabs.claudeCode')
+  })
+
+  it('shows an empty state for a Qoder group with an explicit empty collection', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-qoder-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'qoder',
+        allowedClientProtocols: []
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-testid="no-text-protocols"]').exists()).toBe(true)
+    expect(wrapper.find('nav[aria-label="Client"]').exists()).toBe(false)
+    expect(wrapper.findAll('pre code')).toHaveLength(0)
+  })
 })

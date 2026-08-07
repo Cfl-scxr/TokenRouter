@@ -7,6 +7,7 @@ TokenRouter 通过 Qoder COSY 网关路径支持 Qoder 原生上游账号。面�
 ## 章节导航
 
 - [账号类型](#账号类型)：修改凭据导入、OAuth、刷新或站点选择时读取。
+- [客户端协议](#客户端协议)：修改 Messages、Responses 或 Chat 准入时读取。
 - [模型别名与映射](#模型别名与映射)：修改模型目录、路由键或限制时读取。
 - [站点思考控制](#站点思考控制)：修改协议原生推理控制时读取。
 - [上下文窗口](#上下文窗口)：修改各站点上下文能力或请求载荷时读取。
@@ -25,6 +26,12 @@ TokenRouter 通过 Qoder COSY 网关路径支持 Qoder 原生上游账号。面�
 - 现有 COSY 令牌凭据包括 `security_oauth_token`、`refresh_token`、`machine_id`、`machine_token`、`machine_type`、`uid` 或 `aid`，以及可选的组织元数据。
 - 国际站 OAuth 和手工 COSY 凭据通过国际站 Center 流程刷新。中国站标准 OAuth 先刷新 OpenAPI 令牌，再完成 `userinfo -> status`；中国站手工 COSY 凭据使用 Gateway 旧刷新路径。PAT 会话根据原始 PAT 重建。
 - 中国站集成覆盖标准 QODER_PAT 和 QoderCN20 登录。不支持企业专属域名 `PERSONAL_TOKEN`、组织选择、AK/SK 和区域发现。
+
+## 客户端协议
+
+Qoder 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions，但没有不可关闭的基础协议，新建默认值是空集合。迁移前已有分组按旧行为启用三项；管理员可显式关闭全部文本协议，此时用户“使用 Key”界面显示无可用文本协议，网关在账号选择和计费前返回协议原生 `403`。
+
+协议开关不改变 Qoder 站点、模型路由、思考控制或账号资格。Responses 子路径和 WebSocket 仍不属于 Qoder 能力，即使 Responses 协议已启用也不会开放。
 
 ## 模型别名与映射
 

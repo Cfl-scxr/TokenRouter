@@ -15,7 +15,13 @@ import (
 )
 
 func compositeMiddlewareTestKey() *service.APIKey {
-	group := &service.Group{ID: 7, Name: "OpenAI", Platform: service.PlatformOpenAI, Status: service.StatusActive, IsExclusive: true}
+	group := &service.Group{
+		ID: 7, Name: "OpenAI", Platform: service.PlatformOpenAI, Status: service.StatusActive, IsExclusive: true,
+		AllowedClientProtocols: []service.GroupClientProtocol{
+			service.GroupClientProtocolOpenAIResponses,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		},
+	}
 	return &service.APIKey{
 		ID: 1, UserID: 2, IsComposite: true, User: &service.User{ID: 2, Status: service.StatusActive},
 		CompositeGroups: []service.APIKeyCompositeGroup{{GroupID: 7, Prefix: "GPT", NormalizedPrefix: "gpt", Group: group}},
@@ -43,6 +49,10 @@ func TestResolveCompositeAPIKeyRequestJSON(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, selected.GroupID)
 	require.Equal(t, int64(7), *selected.GroupID)
+	// 后续路由门禁必须读取复合 Key 最终选中分组的协议策略。
+	require.NotNil(t, selected.Group)
+	require.True(t, selected.Group.AllowsClientProtocol(service.GroupClientProtocolOpenAIResponses))
+	require.False(t, selected.Group.AllowsClientProtocol(service.GroupClientProtocolAnthropicMessages))
 	body, err := io.ReadAll(c.Request.Body)
 	require.NoError(t, err)
 	require.Equal(t, "vendor/model", gjson.GetBytes(body, "model").String())

@@ -181,6 +181,8 @@ export default {
       claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
+      noTextProtocolsTitle: 'No text protocol is available',
+      noTextProtocolsDescription: 'This group does not currently allow any text generation protocol.',
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         authModeTitle: 'Codex authentication mode',

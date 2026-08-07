@@ -102,10 +102,14 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 }
 
 func sanitizeGroupMessagesDispatchFields(g *Group) {
-	if g == nil || g.Platform == PlatformOpenAI {
+	if g == nil {
 		return
 	}
-	g.AllowMessagesDispatch = false
+	// 旧列只镜像 OpenAI 分组的 Messages 准入，供滚动升级期间旧二进制读取。
+	g.AllowMessagesDispatch = g.Platform == PlatformOpenAI && g.AllowsClientProtocol(GroupClientProtocolAnthropicMessages)
+	if g.Platform == PlatformOpenAI {
+		return
+	}
 	g.DefaultMappedModel = ""
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{}
 }

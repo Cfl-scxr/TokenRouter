@@ -44,22 +44,35 @@
 <a id="public_gateway_protocols"></a>
 ## 公开网关协议
 
+文本生成协议是否可进入处理器由分组的 `allowed_client_protocols` 控制。支持集合、不可关闭的基础协议、新建默认值和迁移值如下：
+
+| 上游平台 | 支持协议 | 基础协议 / 新建默认 | 已有分组迁移值 |
+| --- | --- | --- | --- |
+| Anthropic | Messages、Responses、Chat | Messages | 三项全部启用 |
+| OpenAI | Messages、Responses、Chat | Responses、Chat | 基础项，加上旧开关允许的 Messages |
+| Gemini | Messages、Responses、Chat、Gemini GenerateContent | Gemini GenerateContent | 四项全部启用 |
+| Antigravity | Messages、Responses、Chat、Gemini GenerateContent | Messages、Gemini GenerateContent | 四项全部启用 |
+| Qoder | Messages、Responses、Chat | 空集合 | 三项全部启用 |
+| Grok | Messages、Responses、Chat | Responses、Chat | 三项全部启用 |
+
+集合顺序固定为 Messages、Responses、Chat、Gemini。准入只控制文本生成协议；Live、WebSocket、Embedding、图片和视频继续使用独立能力规则。
+
 | 协议族或入口 | 当前平台边界 | 专题路由 |
 | --- | --- | --- |
-| Anthropic Messages：`/v1/messages` | 六个平台均有平台分派，按分组平台转换或原生转发 | 六个平台专题；共同链路见[网关请求生命周期](../architecture/gateway_request_lifecycle.md) |
+| Anthropic Messages：`/v1/messages` | 六个平台均有平台分派；最终分组允许 Messages 时按平台转换或原生转发 | 六个平台专题；共同链路见[网关请求生命周期](../architecture/gateway_request_lifecycle.md) |
 | Anthropic token count：`/v1/messages/count_tokens`、`/messages/count_tokens` | Anthropic、OpenAI、Gemini 进入各自统计路径，Grok 使用本地估算；Antigravity、Qoder 明确返回 `404`，Anthropic Bedrock 账号也不支持 | 六个平台专题；客户端应保留本地估算回退 |
-| OpenAI Responses：`/v1/responses`、`/responses` 及允许的子路径 | 六个平台均可进入平台适配；Qoder 不支持 Responses 子路径和 WebSocket | 六个平台专题；WebSocket/Realtime 重点见 [OpenAI 上游](openai_upstream.md) |
-| OpenAI Chat Completions：`/v1/chat/completions`、`/chat/completions` | 六个平台均按分组平台转换或原生转发 | 六个平台专题 |
+| OpenAI Responses：`/v1/responses`、`/responses` 及允许的子路径 | 六个平台在最终分组允许 Responses 时进入平台适配；Qoder 不支持 Responses 子路径和 WebSocket | 六个平台专题；WebSocket/Realtime 重点见 [OpenAI 上游](openai_upstream.md) |
+| OpenAI Chat Completions：`/v1/chat/completions`、`/chat/completions` | 最终分组允许 Chat 时，六个平台均按平台转换或原生转发 | 六个平台专题 |
 | 模型、用量与 Key 账单：`/v1/models`、`/models`、`/v1/usage`、`/v1/sub2api/billing` | 按 Key、分组、账号和渠道解析可请求模型与本地额度；不是上游模型列表或账单的原样代理 | [模型目录与市场](model_catalog_and_marketplace.md)及各平台专题 |
 | Embeddings：`/v1/embeddings`、`/embeddings` | 仅 OpenAI 分组 | [OpenAI 上游](openai_upstream.md) |
 | Realtime、Live 与 Alpha Search | Live/sideband、Codex realtime 和 alpha search 仅 OpenAI 平台；是否可用还受分组和账号能力限制 | [OpenAI 上游](openai_upstream.md) |
 | 同步图片生成/编辑 | 仅 OpenAI 与 Grok；分组图片开关和账号能力继续收窄范围 | [OpenAI 上游](openai_upstream.md)、[Grok / xAI 上游](grok_upstream.md) |
 | 批量图片作业 | Gemini/Vertex 使用独立任务生命周期；供应商范围由批量图片领域契约定义 | [批量图片作业](../domains/batch_image_jobs.md) |
 | 视频生成、编辑、扩展、查询和下载 | 新任务仅 Grok；复合 Key 可凭持久任务绑定查询既有任务 | [Grok / xAI 上游](grok_upstream.md) |
-| Gemini v1beta：`/v1beta/models/*` | Gemini 原生兼容；Antigravity 有强制平台的 `/antigravity/v1beta/*` 入口 | [Gemini 上游](gemini_upstream.md)、[Antigravity 上游](antigravity_upstream.md) |
+| Gemini v1beta：`/v1beta/models/*` | Gemini/Antigravity 分组允许 Gemini 协议时承接生成、流式生成和 token 统计；模型列表 GET 不受开关影响 | [Gemini 上游](gemini_upstream.md)、[Antigravity 上游](antigravity_upstream.md) |
 | Antigravity 专用入口：`/antigravity/*` | 强制只选择 Antigravity 账号，不参与混合调度 | [Antigravity 上游](antigravity_upstream.md) |
 
-路由存在不代表任意账号类型都能承接。协议处理器会在选账号前继续校验平台、模型、transport、endpoint capability、媒体资格和分组策略；不满足时返回本地不支持或无可用账号错误。
+路由存在不代表任意分组或账号类型都能承接。协议门禁在账号选择前按最终分组执行；通过后，处理器仍会校验平台、模型、transport、endpoint capability、媒体资格和其它分组策略。Gemini Responses 已有正式非流和 SSE 转换，保留 reasoning、工具调用、usage、结束原因与首次 Token 指标；首个客户端字节写出后不再 failover。
 
 ## 跨层约束
 

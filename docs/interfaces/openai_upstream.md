@@ -31,6 +31,8 @@ OpenAI 平台拥有以下正式协议族：
 | Images | OpenAI 图片生成/编辑；当前网关保留同步生命周期，批量图片由 Gemini/Vertex 专题定义 |
 | Realtime/Live/sideband、Alpha Search | 仅 OpenAI 分组，并受分组开关、账号类型和 transport capability 限制 |
 
+OpenAI 分组支持 Messages、Responses 和 Chat。Responses 与 Chat 是不可关闭的基础协议和新建默认值；已有分组迁移时仅在旧 `allow_messages_dispatch` 开启时加入 Messages。该旧字段只作为 Messages 的兼容镜像，专用 `messages_dispatch_model_config` 仍只负责 Claude 到 GPT 模型映射。Responses WebSocket 是 OpenAI/Grok 的原生传输能力，不因其它平台启用兼容 Responses 而开放。
+
 `/backend-api/codex` 和无 `/v1` 别名服务特定客户端兼容，但仍经过 TokenRouter Key 鉴权、分组准入、调度和结算。Responses WebSocket 不支持 Qoder；其它平台是否可进入 OpenAI 兼容处理器由路由和平台专题共同决定，不能仅凭 URL 推断。
 
 ## 模型与能力

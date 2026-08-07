@@ -20965,6 +20965,8 @@ type GroupMutation struct {
 	sort_order                              *int
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
+	allowed_client_protocols                *[]domain.GroupClientProtocol
+	appendallowed_client_protocols          []domain.GroupClientProtocol
 	allow_live                              *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
@@ -23124,6 +23126,57 @@ func (m *GroupMutation) ResetAllowMessagesDispatch() {
 	m.allow_messages_dispatch = nil
 }
 
+// SetAllowedClientProtocols sets the "allowed_client_protocols" field.
+func (m *GroupMutation) SetAllowedClientProtocols(dcp []domain.GroupClientProtocol) {
+	m.allowed_client_protocols = &dcp
+	m.appendallowed_client_protocols = nil
+}
+
+// AllowedClientProtocols returns the value of the "allowed_client_protocols" field in the mutation.
+func (m *GroupMutation) AllowedClientProtocols() (r []domain.GroupClientProtocol, exists bool) {
+	v := m.allowed_client_protocols
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowedClientProtocols returns the old "allowed_client_protocols" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowedClientProtocols(ctx context.Context) (v []domain.GroupClientProtocol, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowedClientProtocols is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowedClientProtocols requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowedClientProtocols: %w", err)
+	}
+	return oldValue.AllowedClientProtocols, nil
+}
+
+// AppendAllowedClientProtocols adds dcp to the "allowed_client_protocols" field.
+func (m *GroupMutation) AppendAllowedClientProtocols(dcp []domain.GroupClientProtocol) {
+	m.appendallowed_client_protocols = append(m.appendallowed_client_protocols, dcp...)
+}
+
+// AppendedAllowedClientProtocols returns the list of values that were appended to the "allowed_client_protocols" field in this mutation.
+func (m *GroupMutation) AppendedAllowedClientProtocols() ([]domain.GroupClientProtocol, bool) {
+	if len(m.appendallowed_client_protocols) == 0 {
+		return nil, false
+	}
+	return m.appendallowed_client_protocols, true
+}
+
+// ResetAllowedClientProtocols resets all changes to the "allowed_client_protocols" field.
+func (m *GroupMutation) ResetAllowedClientProtocols() {
+	m.allowed_client_protocols = nil
+	m.appendallowed_client_protocols = nil
+}
+
 // SetAllowLive sets the "allow_live" field.
 func (m *GroupMutation) SetAllowLive(b bool) {
 	m.allow_live = &b
@@ -23949,7 +24002,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 53)
+	fields := make([]string, 0, 54)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -24072,6 +24125,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.allow_messages_dispatch != nil {
 		fields = append(fields, group.FieldAllowMessagesDispatch)
+	}
+	if m.allowed_client_protocols != nil {
+		fields = append(fields, group.FieldAllowedClientProtocols)
 	}
 	if m.allow_live != nil {
 		fields = append(fields, group.FieldAllowLive)
@@ -24199,6 +24255,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case group.FieldAllowMessagesDispatch:
 		return m.AllowMessagesDispatch()
+	case group.FieldAllowedClientProtocols:
+		return m.AllowedClientProtocols()
 	case group.FieldAllowLive:
 		return m.AllowLive()
 	case group.FieldRequireOauthOnly:
@@ -24314,6 +24372,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSortOrder(ctx)
 	case group.FieldAllowMessagesDispatch:
 		return m.OldAllowMessagesDispatch(ctx)
+	case group.FieldAllowedClientProtocols:
+		return m.OldAllowedClientProtocols(ctx)
 	case group.FieldAllowLive:
 		return m.OldAllowLive(ctx)
 	case group.FieldRequireOauthOnly:
@@ -24633,6 +24693,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowMessagesDispatch(v)
+		return nil
+	case group.FieldAllowedClientProtocols:
+		v, ok := value.([]domain.GroupClientProtocol)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowedClientProtocols(v)
 		return nil
 	case group.FieldAllowLive:
 		v, ok := value.(bool)
@@ -25195,6 +25262,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowMessagesDispatch:
 		m.ResetAllowMessagesDispatch()
+		return nil
+	case group.FieldAllowedClientProtocols:
+		m.ResetAllowedClientProtocols()
 		return nil
 	case group.FieldAllowLive:
 		m.ResetAllowLive()

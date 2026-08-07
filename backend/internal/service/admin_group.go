@@ -130,6 +130,19 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if platform == "" {
 		platform = PlatformAnthropic
 	}
+	allowedClientProtocols := input.AllowedClientProtocols
+	if allowedClientProtocols == nil {
+		allowedClientProtocols = defaultGroupClientProtocols(platform)
+		if platform == PlatformOpenAI {
+			allowedClientProtocols = setGroupClientProtocol(allowedClientProtocols, GroupClientProtocolAnthropicMessages, input.AllowMessagesDispatch)
+		}
+	} else {
+		normalizedProtocols, validationErr := normalizeExplicitGroupClientProtocols(platform, allowedClientProtocols)
+		if validationErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", validationErr)
+		}
+		allowedClientProtocols = normalizedProtocols
+	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -304,7 +317,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
-		AllowMessagesDispatch:           input.AllowMessagesDispatch,
+		AllowedClientProtocols:          allowedClientProtocols,
 		AllowLive:                       input.AllowLive,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
@@ -487,6 +500,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+	previousPlatform := group.Platform
+	previousAllowedClientProtocols := group.EffectiveAllowedClientProtocols()
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -496,6 +511,27 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
+	}
+	if input.AllowedClientProtocols != nil {
+		group.AllowedClientProtocols, err = normalizeExplicitGroupClientProtocols(group.Platform, *input.AllowedClientProtocols)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", err)
+		}
+	} else {
+		// 字段缺省必须保留原集合；平台变更且集合不兼容时仅调整为新平台的有效交集。
+		group.AllowedClientProtocols = previousAllowedClientProtocols
+		if group.Platform == PlatformOpenAI && input.AllowMessagesDispatch != nil {
+			group.AllowedClientProtocols = setGroupClientProtocol(group.AllowedClientProtocols, GroupClientProtocolAnthropicMessages, *input.AllowMessagesDispatch)
+		}
+		group.AllowedClientProtocols, err = normalizeExplicitGroupClientProtocols(group.Platform, group.AllowedClientProtocols)
+		if err != nil {
+			if input.Platform != "" && group.Platform != previousPlatform {
+				// 旧平台的可选协议可能在新平台不存在，此时保留交集并补齐新基础协议。
+				group.AllowedClientProtocols = coerceGroupClientProtocolsForPlatform(group.Platform, previousAllowedClientProtocols)
+			} else {
+				return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ALLOWED_CLIENT_PROTOCOLS", "%v", err)
+			}
+		}
 	}
 	if input.DisplayBrand != nil {
 		group.DisplayBrand = strings.TrimSpace(*input.DisplayBrand)
@@ -672,10 +708,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.SupportedModelScopes = *input.SupportedModelScopes
 	}
 
-	// OpenAI Messages 调度配置
-	if input.AllowMessagesDispatch != nil {
-		group.AllowMessagesDispatch = *input.AllowMessagesDispatch
-	}
+	// 旧开关已在协议集合归一化阶段处理，此处只保留其它 OpenAI 专用配置。
 	if input.AllowLive != nil {
 		group.AllowLive = *input.AllowLive
 	}

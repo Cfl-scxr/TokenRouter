@@ -200,11 +200,16 @@ func (s *GroupRepoSuite) TestUpdate() {
 
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 	group := &service.Group{
-		Name:                  "openai-dispatch",
-		Platform:              service.PlatformOpenAI,
-		RateMultiplier:        1.0,
-		IsExclusive:           false,
-		Status:                service.StatusActive,
+		Name:           "openai-dispatch",
+		Platform:       service.PlatformOpenAI,
+		RateMultiplier: 1.0,
+		IsExclusive:    false,
+		Status:         service.StatusActive,
+		AllowedClientProtocols: []service.GroupClientProtocol{
+			service.GroupClientProtocolAnthropicMessages,
+			service.GroupClientProtocolOpenAIResponses,
+			service.GroupClientProtocolOpenAIChatCompletions,
+		},
 		AllowMessagesDispatch: true,
 		DefaultMappedModel:    "gpt-5.4",
 		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
@@ -221,6 +226,7 @@ func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err)
+	s.Require().Equal(group.AllowedClientProtocols, got.AllowedClientProtocols)
 	s.Require().Equal(group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
 }
 

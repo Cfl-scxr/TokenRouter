@@ -118,6 +118,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		MCPXMLInject:                    source.MCPXMLInject,
 		SupportedModelScopes:            append([]string(nil), source.SupportedModelScopes...),
 		SortOrder:                       source.SortOrder,
+		AllowedClientProtocols:          cloneGroupClientProtocols(source.AllowedClientProtocols),
 		AllowMessagesDispatch:           source.AllowMessagesDispatch,
 		AllowLive:                       source.AllowLive,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
@@ -133,6 +134,14 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		MaxReasoningEffort:      source.MaxReasoningEffort,
 		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 	}
+}
+
+// cloneGroupClientProtocols 保留 nil 与显式空数组的区别，避免旧快照兼容语义丢失。
+func cloneGroupClientProtocols(protocols []GroupClientProtocol) []GroupClientProtocol {
+	if protocols == nil {
+		return nil
+	}
+	return append([]GroupClientProtocol{}, protocols...)
 }
 
 // RecoverDuplicateGroup 只读查找同一操作者、源分组和幂等键已提交的副本。

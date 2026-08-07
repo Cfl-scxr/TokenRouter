@@ -87,7 +87,9 @@ type CreateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// 客户端文本协议完整准入集合；nil 表示创建时采用平台默认值。
+	AllowedClientProtocols []service.GroupClientProtocol `json:"allowed_client_protocols"`
+	// OpenAI Messages 旧兼容开关。
 	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   bool                                      `json:"allow_live"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
@@ -152,7 +154,9 @@ type UpdateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// nil 表示不修改，空数组表示显式清空（仅 Qoder 合法）。
+	AllowedClientProtocols *[]service.GroupClientProtocol `json:"allowed_client_protocols"`
+	// OpenAI Messages 旧兼容开关。
 	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   *bool                                      `json:"allow_live"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
@@ -329,6 +333,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
+		AllowedClientProtocols:          req.AllowedClientProtocols,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
@@ -451,6 +456,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
+		AllowedClientProtocols:          req.AllowedClientProtocols,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
 		RequireOAuthOnly:                req.RequireOAuthOnly,

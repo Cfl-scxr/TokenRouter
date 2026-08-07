@@ -2252,7 +2252,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedTextParts []string // 收集文本分片用于聚合完整响应。
+	var collectedParts []any
 	usage := &ClaudeUsage{}
 
 	for {
@@ -2264,7 +2264,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 				switch payload {
 				case "", "[DONE]":
 					if payload == "[DONE]" {
-						return mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts), usage, nil
+						return mergeCollectedGeminiParts(pickGeminiCollectResult(last, lastWithParts), collectedParts), usage, nil
 					}
 				default:
 					var parsed map[string]any
@@ -2286,12 +2286,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 						}
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
 							lastWithParts = parsed
-							// 收集每个 part 的文本用于聚合。
-							for _, part := range parts {
-								if text, ok := part["text"].(string); ok && text != "" {
-									collectedTextParts = append(collectedTextParts, text)
-								}
-							}
+							collectedParts = appendCollectedGeminiParts(collectedParts, parts)
 						}
 					}
 				}
@@ -2306,7 +2301,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 		}
 	}
 
-	return mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts), usage, nil
+	return mergeCollectedGeminiParts(pickGeminiCollectResult(last, lastWithParts), collectedParts), usage, nil
 }
 
 func pickGeminiCollectResult(last map[string]any, lastWithParts map[string]any) map[string]any {
@@ -2319,15 +2314,42 @@ func pickGeminiCollectResult(last map[string]any, lastWithParts map[string]any) 
 	return map[string]any{}
 }
 
-// mergeCollectedTextParts 将收集到的文本分片合并回最终 Gemini 响应。
-// 这样可以避免非流式转换只保留最后一个分片而丢失完整输出。
-func mergeCollectedTextParts(response map[string]any, textParts []string) map[string]any {
-	if len(textParts) == 0 {
+// appendCollectedGeminiParts 聚合 SSE 增量，同时保持 reasoning 与普通文本的边界。
+func appendCollectedGeminiParts(collected []any, parts []map[string]any) []any {
+	for _, part := range parts {
+		partCopy := make(map[string]any, len(part))
+		for key, value := range part {
+			partCopy[key] = value
+		}
+
+		text, hasText := partCopy["text"].(string)
+		if hasText && text != "" && len(collected) > 0 {
+			if previous, ok := collected[len(collected)-1].(map[string]any); ok {
+				previousText, previousHasText := previous["text"].(string)
+				previousThought, _ := previous["thought"].(bool)
+				currentThought, _ := partCopy["thought"].(bool)
+				if previousHasText && previousThought == currentThought {
+					previousCopy := make(map[string]any, len(previous))
+					for key, value := range previous {
+						previousCopy[key] = value
+					}
+					previousCopy["text"] = previousText + text
+					collected[len(collected)-1] = previousCopy
+					continue
+				}
+			}
+		}
+
+		collected = append(collected, partCopy)
+	}
+	return collected
+}
+
+// mergeCollectedGeminiParts 将完整 SSE part 序列写回最终 Gemini 响应。
+func mergeCollectedGeminiParts(response map[string]any, collectedParts []any) map[string]any {
+	if len(collectedParts) == 0 {
 		return response
 	}
-
-	// 合并所有文本分片。
-	mergedText := strings.Join(textParts, "")
 
 	// 浅拷贝外层响应，避免直接改动调用方保留的 map。
 	result := make(map[string]any)
@@ -2339,12 +2361,21 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 	candidates, ok := result["candidates"].([]any)
 	if !ok || len(candidates) == 0 {
 		candidates = []any{map[string]any{}}
+	} else {
+		candidates = append([]any(nil), candidates...)
 	}
 
 	// 取出第一个 candidate。
 	candidate, ok := candidates[0].(map[string]any)
 	if !ok {
 		candidate = make(map[string]any)
+		candidates[0] = candidate
+	} else {
+		candidateCopy := make(map[string]any, len(candidate))
+		for key, value := range candidate {
+			candidateCopy[key] = value
+		}
+		candidate = candidateCopy
 		candidates[0] = candidate
 	}
 
@@ -2353,43 +2384,16 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 	if !ok {
 		content = map[string]any{"role": "model"}
 		candidate["content"] = content
-	}
-
-	// 取出现有 parts。
-	existingParts, ok := content["parts"].([]any)
-	if !ok {
-		existingParts = []any{}
-	}
-
-	// 更新第一个文本 part；没有文本 part 时在前面补一个。
-	newParts := make([]any, 0, len(existingParts)+1)
-	textUpdated := false
-
-	for _, p := range existingParts {
-		pm, ok := p.(map[string]any)
-		if !ok {
-			newParts = append(newParts, p)
-			continue
+	} else {
+		contentCopy := make(map[string]any, len(content))
+		for key, value := range content {
+			contentCopy[key] = value
 		}
-		if _, hasText := pm["text"]; hasText && !textUpdated {
-			// 用完整文本替换第一个文本 part。
-			newPart := make(map[string]any)
-			for k, v := range pm {
-				newPart[k] = v
-			}
-			newPart["text"] = mergedText
-			newParts = append(newParts, newPart)
-			textUpdated = true
-		} else {
-			newParts = append(newParts, pm)
-		}
+		content = contentCopy
+		candidate["content"] = content
 	}
 
-	if !textUpdated {
-		newParts = append([]any{map[string]any{"text": mergedText}}, newParts...)
-	}
-
-	content["parts"] = newParts
+	content["parts"] = append([]any(nil), collectedParts...)
 	result["candidates"] = candidates
 
 	return result
@@ -2540,7 +2544,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
-	var collectedTextParts []string
+	var collectedParts []any
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -2575,11 +2579,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 						last = parsed
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
 							lastWithParts = parsed
-							for _, part := range parts {
-								if text, ok := part["text"].(string); ok && text != "" {
-									collectedTextParts = append(collectedTextParts, text)
-								}
-							}
+							collectedParts = appendCollectedGeminiParts(collectedParts, parts)
 						}
 					}
 
@@ -2613,7 +2613,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 	var responseBody []byte
 	if last != nil || lastWithParts != nil {
-		collected := mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts)
+		collected := mergeCollectedGeminiParts(pickGeminiCollectResult(last, lastWithParts), collectedParts)
 		responseBody, _ = json.Marshal(collected)
 	}
 	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, responseBody: cloneDataSharingRequestBody(responseBody)}, nil
@@ -2719,10 +2719,17 @@ func convertGeminiToClaudeMessage(geminiResp map[string]any, originalModel strin
 							continue
 						}
 						if text, ok := pm["text"].(string); ok && text != "" {
-							contentBlocks = append(contentBlocks, map[string]any{
-								"type": "text",
-								"text": text,
-							})
+							if thought, _ := pm["thought"].(bool); thought {
+								contentBlocks = append(contentBlocks, map[string]any{
+									"type":     "thinking",
+									"thinking": text,
+								})
+							} else {
+								contentBlocks = append(contentBlocks, map[string]any{
+									"type": "text",
+									"text": text,
+								})
+							}
 						}
 						if inlineData, ok := pm["inlineData"].(map[string]any); includeInlineData && ok {
 							mimeType, _ := inlineData["mimeType"].(string)

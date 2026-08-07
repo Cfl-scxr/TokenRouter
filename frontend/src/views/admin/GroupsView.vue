@@ -1471,48 +1471,18 @@
           </p>
         </div>
 
-        <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
+        <GroupClientProtocolSelector
+          v-model="createForm.allowed_client_protocols"
+          :platform="createForm.platform"
+          class="mt-4"
+        />
+
+        <!-- OpenAI Messages 模型映射（仅在协议启用时展示） -->
         <div
-          v-if="createForm.platform === 'openai'"
+          v-if="createForm.platform === 'openai' && createMessagesDispatchEnabled"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
-          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            {{ t("admin.groups.openaiMessages.title") }}
-          </h4>
-
-          <!-- 允许 Messages 调度开关 -->
-          <div class="flex items-center justify-between">
-            <label class="text-sm text-gray-600 dark:text-gray-400">{{
-              t("admin.groups.openaiMessages.allowDispatch")
-            }}</label>
-            <button
-              type="button"
-              @click="
-                createForm.allow_messages_dispatch =
-                  !createForm.allow_messages_dispatch
-              "
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                createForm.allow_messages_dispatch
-                  ? 'bg-primary-500'
-                  : 'bg-gray-300 dark:bg-dark-600'
-              "
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  createForm.allow_messages_dispatch
-                    ? 'translate-x-6'
-                    : 'translate-x-1'
-                "
-              />
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
-          </p>
-
-          <div v-if="createForm.allow_messages_dispatch" class="mt-3">
+          <div>
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
             >
@@ -3146,48 +3116,18 @@
           </p>
         </div>
 
-        <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
+        <GroupClientProtocolSelector
+          v-model="editForm.allowed_client_protocols"
+          :platform="editForm.platform"
+          class="mt-4"
+        />
+
+        <!-- OpenAI Messages 模型映射（仅在协议启用时展示） -->
         <div
-          v-if="editForm.platform === 'openai'"
+          v-if="editForm.platform === 'openai' && editMessagesDispatchEnabled"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
-          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            {{ t("admin.groups.openaiMessages.title") }}
-          </h4>
-
-          <!-- 允许 Messages 调度开关 -->
-          <div class="flex items-center justify-between">
-            <label class="text-sm text-gray-600 dark:text-gray-400">{{
-              t("admin.groups.openaiMessages.allowDispatch")
-            }}</label>
-            <button
-              type="button"
-              @click="
-                editForm.allow_messages_dispatch =
-                  !editForm.allow_messages_dispatch
-              "
-              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-              :class="
-                editForm.allow_messages_dispatch
-                  ? 'bg-primary-500'
-                  : 'bg-gray-300 dark:bg-dark-600'
-              "
-            >
-              <span
-                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                :class="
-                  editForm.allow_messages_dispatch
-                    ? 'translate-x-6'
-                    : 'translate-x-1'
-                "
-              />
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
-          </p>
-
-          <div v-if="editForm.allow_messages_dispatch" class="mt-3">
+          <div>
             <div
               class="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-800"
             >
@@ -3857,7 +3797,12 @@ import { useAppStore } from "@/stores/app";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import { useBalanceDisplay } from "@/composables/useBalanceDisplay";
-import type { AdminGroup, GroupAvailabilityProbeConfig, GroupPlatform } from "@/types";
+import type {
+  AdminGroup,
+  GroupAvailabilityProbeConfig,
+  GroupClientProtocol,
+  GroupPlatform,
+} from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import TablePageLayout from "@/components/layout/TablePageLayout.vue";
@@ -3874,6 +3819,7 @@ import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipl
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
+import GroupClientProtocolSelector from "@/components/admin/group/GroupClientProtocolSelector.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import {
@@ -3882,6 +3828,11 @@ import {
   resolveProviderBrand,
 } from "@/utils/providerBrand";
 import { extractApiErrorMessage } from "@/utils/apiError";
+import {
+  defaultGroupClientProtocols,
+  effectiveGroupClientProtocols,
+  hasGroupClientProtocol,
+} from "@/utils/groupClientProtocols";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
 import {
@@ -4386,6 +4337,7 @@ const createForm = reactive({
   description: "",
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
+  allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
@@ -4807,6 +4759,7 @@ const editForm = reactive({
   description: "",
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
+  allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
@@ -4875,6 +4828,19 @@ const editForm = reactive({
   availability_probe_timeout_seconds: 30,
   availability_probe_user_agent: "",
 });
+
+const createMessagesDispatchEnabled = computed(() =>
+  hasGroupClientProtocol(
+    createForm.allowed_client_protocols,
+    "anthropic_messages",
+  ),
+);
+const editMessagesDispatchEnabled = computed(() =>
+  hasGroupClientProtocol(
+    editForm.allowed_client_protocols,
+    "anthropic_messages",
+  ),
+);
 
 type ImagePricingFormState = {
   platform: GroupPlatform;
@@ -5261,6 +5227,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.display_brand = "";
   createForm.platform = "anthropic";
+  createForm.allowed_client_protocols = defaultGroupClientProtocols("anthropic");
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.is_default = false;
@@ -5337,6 +5304,10 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
+      allowed_client_protocols: [...createForm.allowed_client_protocols],
+      // 旧字段仅作为 OpenAI Messages 的滚动升级兼容镜像。
+      allow_messages_dispatch:
+        createForm.platform === "openai" && createMessagesDispatchEnabled.value,
       display_brand: normalizeDisplayBrand(createForm.display_brand),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
@@ -5350,7 +5321,7 @@ const handleCreateGroup = async () => {
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
-              allow_messages_dispatch: createForm.allow_messages_dispatch,
+              allow_messages_dispatch: createMessagesDispatchEnabled.value,
               opus_mapped_model: createForm.opus_mapped_model,
               sonnet_mapped_model: createForm.sonnet_mapped_model,
               haiku_mapped_model: createForm.haiku_mapped_model,
@@ -5460,9 +5431,13 @@ const handleEdit = async (group: AdminGroup) => {
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );
+  editForm.allowed_client_protocols = effectiveGroupClientProtocols(
+    group.platform,
+    group.allowed_client_protocols,
+    group.allow_messages_dispatch,
+  );
   editForm.allow_messages_dispatch =
-    group.allow_messages_dispatch ||
-    messagesDispatchFormState.allow_messages_dispatch;
+    group.platform === "openai" && editMessagesDispatchEnabled.value;
   editForm.allow_live = group.allow_live ?? false;
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
@@ -5550,6 +5525,10 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      allowed_client_protocols: [...editForm.allowed_client_protocols],
+      // 旧字段仅作为 OpenAI Messages 的滚动升级兼容镜像。
+      allow_messages_dispatch:
+        editForm.platform === "openai" && editMessagesDispatchEnabled.value,
       display_brand: normalizeDisplayBrand(editForm.display_brand),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
@@ -5573,7 +5552,7 @@ const handleUpdateGroup = async () => {
       messages_dispatch_model_config:
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
-              allow_messages_dispatch: editForm.allow_messages_dispatch,
+              allow_messages_dispatch: editMessagesDispatchEnabled.value,
               opus_mapped_model: editForm.opus_mapped_model,
               sonnet_mapped_model: editForm.sonnet_mapped_model,
               haiku_mapped_model: editForm.haiku_mapped_model,
@@ -5725,6 +5704,7 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    createForm.allowed_client_protocols = defaultGroupClientProtocols(newVal);
     createForm.unavailable_fallback_group_id = null;
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
@@ -5750,6 +5730,15 @@ watch(
     resetModelsListState(createModelsListState);
     loadModelsListCandidates("create", 0, newVal);
   },
+);
+
+// 编辑加载会在设置平台后覆盖服务端值；用户切换平台时先使用新平台默认协议。
+watch(
+  () => editForm.platform,
+  (newVal) => {
+    editForm.allowed_client_protocols = defaultGroupClientProtocols(newVal);
+  },
+  { flush: "sync" },
 );
 
 watch(createAvailabilityProbeModelOptions, (options) => {

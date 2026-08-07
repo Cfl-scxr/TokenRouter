@@ -116,6 +116,10 @@ func TestCompositeAPIKeyAuthSnapshotRoundTrip(t *testing.T) {
 				Group: &Group{
 					ID: 40, Name: "OpenAI", Platform: PlatformOpenAI, Status: StatusActive, IsExclusive: true,
 					RateMultiplier: 1.25, AllowImageGeneration: true, RPMLimit: 80,
+					AllowedClientProtocols: []GroupClientProtocol{
+						GroupClientProtocolOpenAIResponses,
+						GroupClientProtocolOpenAIChatCompletions,
+					},
 				},
 			},
 		},
@@ -138,6 +142,10 @@ func TestCompositeAPIKeyAuthSnapshotRoundTrip(t *testing.T) {
 	require.True(t, restored.CompositeGroups[0].Group.Hydrated)
 	require.Equal(t, 1.25, restored.CompositeGroups[0].Group.RateMultiplier)
 	require.True(t, restored.CompositeGroups[0].Group.AllowImageGeneration)
+	require.Equal(t, []GroupClientProtocol{
+		GroupClientProtocolOpenAIResponses,
+		GroupClientProtocolOpenAIChatCompletions,
+	}, restored.CompositeGroups[0].Group.AllowedClientProtocols)
 
 	binding, model, err := restored.ResolveCompositeModel("gpt/gpt-5")
 	require.NoError(t, err)

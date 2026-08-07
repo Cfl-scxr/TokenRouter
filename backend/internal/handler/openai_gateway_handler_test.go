@@ -827,10 +827,10 @@ func TestResolveOpenAIMessagesAccountLayerModel_ChannelMappingPrecedesGroupDispa
 	require.Equal(t, "gpt-5.4", resolveOpenAIMessagesAccountLayerModel(apiKey, "gpt-5.4-high"))
 }
 
-func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
+func TestOpenAIGatewayMessagesProtocolPolicyAllowsGrokGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("openai_group_without_dispatch_flag_is_rejected", func(t *testing.T) {
+	t.Run("openai_group_without_messages_protocol_is_rejected", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
@@ -840,9 +840,12 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 			GroupID: &groupID,
 			User:    &service.User{ID: 6101},
 			Group: &service.Group{
-				ID:                    groupID,
-				Platform:              service.PlatformOpenAI,
-				AllowMessagesDispatch: false,
+				ID:       groupID,
+				Platform: service.PlatformOpenAI,
+				AllowedClientProtocols: []service.GroupClientProtocol{
+					service.GroupClientProtocolOpenAIResponses,
+					service.GroupClientProtocolOpenAIChatCompletions,
+				},
 			},
 		})
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6101, Concurrency: 1})
@@ -852,10 +855,10 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 
 		require.Equal(t, http.StatusForbidden, rec.Code)
 		require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+		require.Contains(t, rec.Body.String(), "This group does not allow Anthropic Messages requests")
 	})
 
-	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
+	t.Run("grok_group_with_messages_protocol_reaches_gateway_dependencies", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
@@ -865,9 +868,13 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 			GroupID: &groupID,
 			User:    &service.User{ID: 6102},
 			Group: &service.Group{
-				ID:                    groupID,
-				Platform:              service.PlatformGrok,
-				AllowMessagesDispatch: false,
+				ID:       groupID,
+				Platform: service.PlatformGrok,
+				AllowedClientProtocols: []service.GroupClientProtocol{
+					service.GroupClientProtocolAnthropicMessages,
+					service.GroupClientProtocolOpenAIResponses,
+					service.GroupClientProtocolOpenAIChatCompletions,
+				},
 			},
 		})
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
@@ -877,7 +884,7 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+		require.NotContains(t, rec.Body.String(), "This group does not allow Anthropic Messages requests")
 	})
 }
 

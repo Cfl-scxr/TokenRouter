@@ -191,6 +191,10 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_messages_dispatch").
 			Default(false).
 			Comment("是否允许 /v1/messages 调度到此 OpenAI 分组"),
+		field.JSON("allowed_client_protocols", []domain.GroupClientProtocol{}).
+			Default([]domain.GroupClientProtocol{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("允许客户端调用分组的文本协议完整集合"),
 		field.Bool("allow_live").
 			Default(false).
 			Comment("是否允许此 OpenAI 分组访问 Live 接口"),

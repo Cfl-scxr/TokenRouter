@@ -17,7 +17,7 @@
 | 层级 | 拥有的策略 | 不应承担的责任 |
 | --- | --- | --- |
 | API Key | 分组选择、复合前缀、Key 级模型重定向、Key 限额 | 不能改变上游账号凭据或平台 |
-| Group | 产品平台、协议/媒体准入、fallback、OAuth/privacy、推理上限、模型可见性、RPM 和数据共享 | 不保存真实上游 token |
+| Group | 上游平台、客户端协议/媒体准入、fallback、OAuth/privacy、推理上限、模型可见性、RPM 和数据共享 | 不保存真实上游 token |
 | Channel | 一个分组的模型映射、定价和功能配置 | 不能把不存在的账号能力变成可调度能力 |
 | Account | 凭据、代理、模型映射/白名单、重试状态码、临时不可调度、Header override 和 capability | 不能绕过分组对用户公开的能力 |
 | Setting/config | 跨分组运行策略、兼容开关、默认 Header/UA、缓存和安全策略 | 不能替代每个账号的权威运行状态 |
@@ -26,7 +26,22 @@
 
 ## 协议与能力准入
 
-Group 可限制 Messages dispatch、Live、图片、批量图片和视频等能力，并可表达 Claude Code-only、受支持模型 scope 或自定义模型列表。公开路由先存在，具体分组仍可能在本地 feature gate 拒绝；这种拒绝应记录为本地业务限制，不伪装成上游故障。
+Group 的 `platform` 表示上游平台，不再隐含客户端必须使用同形协议。文本生成准入由独立的 `allowed_client_protocols` 完整集合控制，固定顺序为 `anthropic_messages`、`openai_responses`、`openai_chat_completions`、`gemini_generate_content`。各平台策略如下：
+
+| 上游平台 | 支持协议 | 不可关闭的基础协议 / 新建默认 |
+| --- | --- | --- |
+| Anthropic | Messages、Responses、Chat | Messages |
+| OpenAI | Messages、Responses、Chat | Responses、Chat |
+| Gemini | 四项全部 | Gemini GenerateContent |
+| Antigravity | 四项全部 | Messages、Gemini GenerateContent |
+| Qoder | Messages、Responses、Chat | 空集合 |
+| Grok | Messages、Responses、Chat | Responses、Chat |
+
+显式保存时，未知、重复、不受平台支持或缺少基础协议的集合都是 `400`。创建缺省使用上表基础集合；更新缺省保持原值。若更新同时切换平台且旧集合与新平台不兼容，则保留支持交集并补齐新平台基础协议。`allow_messages_dispatch` 仅作为弃用兼容字段：响应从新集合派生，新字段缺省时只有 OpenAI 分组继续接受它作为 Messages 输入，新字段与旧字段同时存在时新字段优先。`messages_dispatch_model_config` 只负责 OpenAI 的 Claude 到 GPT 模型映射，不再承担协议准入。
+
+协议门禁覆盖 Messages 及 token-count 别名、Responses HTTP/SSE 根路径和允许子路径、两个 Chat Completions 别名，以及 Gemini/Antigravity GenerateContent、StreamGenerateContent、CountTokens POST 动作；模型列表 GET 不受影响。门禁使用复合 Key 最终选中的分组，并在 handler 解析正文、账号选择、计费、重试和 fallback 之前拒绝。Responses WebSocket 仍只属于 OpenAI/Grok 原生传输能力，兼容 Responses 开关不会为其它平台开放它。
+
+Group 还可独立限制 Live、图片、批量图片和视频等能力，并可表达 Claude Code-only、受支持模型 scope 或自定义模型列表。公开路由先存在，具体分组仍可能在本地 feature gate 拒绝；协议拒绝记录 `LocalPolicyDenied`，其它能力拒绝沿用各自本地业务限制，二者都不能伪装成上游故障。
 
 endpoint capability 还会由账号类型和探测结果继续收窄。例如 Embeddings 只允许 OpenAI，Grok OAuth 媒体需要明确资格，Realtime 需要 OpenAI 分组与支持的 transport。策略检查应在昂贵调度或上游调用前尽早执行，但不能绕过 Key、团队和计费准入。
 
@@ -34,7 +49,7 @@ endpoint capability 还会由账号类型和探测结果继续收窄。例如 Em
 
 共同模型链为：复合 Key 前缀解析、Key 级精确重定向、Group/Channel 路由、Account 映射与白名单。每层只执行自己的单步规则；不要依赖隐式多跳别名链。请求模型、上游模型和计费模型分别记录，响应中的模型恢复以客户端契约为准。
 
-Group 可以启用模型路由、默认映射和按 Messages dispatch 的模型配置。Channel 决定分组内的映射、价格和功能；Account 则处理供应商或站点差异。可见模型只包含当前可请求结果，未知或歧义定价以未定价表达，不使用猜测价格。
+Group 可以启用模型路由、默认映射和 OpenAI Messages 专用模型配置。Channel 决定分组内的映射、价格和功能；Account 则处理供应商或站点差异。可见模型只包含当前可请求结果，未知或歧义定价以未定价表达，不使用猜测价格。
 
 Group 的 fallback 包括普通 fallback、invalid-request fallback 和 unavailable fallback。它们是显式的跨分组策略：目标分组仍要重新执行平台、Key、模型、权限和计费约束，不能只把原账号列表替换掉。循环、目标失效或策略不匹配必须终止。
 

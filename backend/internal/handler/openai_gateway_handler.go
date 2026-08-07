@@ -220,15 +220,12 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
-// allowOpenAICompatibleMessagesDispatch 保留 OpenAI 分组的显式开关，同时让 Grok CLI 兼容入口默认可用。
+// allowOpenAICompatibleMessagesDispatch 兼容直接调用 handler 的测试与内部入口。
 func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
 	}
-	if apiKey.Group.Platform == service.PlatformGrok {
-		return true
-	}
-	return apiKey.Group.AllowMessagesDispatch
+	return apiKey.Group.AllowsClientProtocol(service.GroupClientProtocolAnthropicMessages)
 }
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -949,8 +946,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 检查分组是否允许 /v1/messages 调度
 	if !allowOpenAICompatibleMessagesDispatch(apiKey) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
-			"This group does not allow /v1/messages dispatch")
+			"This group does not allow Anthropic Messages requests")
 		return
 	}
 

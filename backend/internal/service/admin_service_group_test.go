@@ -4,11 +4,209 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
+
+func ptrGroupClientProtocols(value []GroupClientProtocol) *[]GroupClientProtocol {
+	return &value
+}
+
+func TestAdminServiceCreateGroupUsesPlatformClientProtocolDefaults(t *testing.T) {
+	tests := []struct {
+		platform string
+		want     []GroupClientProtocol
+	}{
+		{PlatformAnthropic, []GroupClientProtocol{GroupClientProtocolAnthropicMessages}},
+		{PlatformOpenAI, []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions}},
+		{PlatformGemini, []GroupClientProtocol{GroupClientProtocolGeminiGenerateContent}},
+		{PlatformAntigravity, []GroupClientProtocol{GroupClientProtocolAnthropicMessages, GroupClientProtocolGeminiGenerateContent}},
+		{PlatformQoder, []GroupClientProtocol{}},
+		{PlatformGrok, []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Name: tt.platform, Platform: tt.platform, RateMultiplier: 1})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, group.AllowedClientProtocols)
+			require.NotNil(t, group.AllowedClientProtocols)
+			require.False(t, group.AllowMessagesDispatch)
+		})
+	}
+}
+
+func TestAdminServiceCreateGroupClientProtocolCompatibilityPrecedence(t *testing.T) {
+	t.Run("legacy OpenAI switch is accepted when new field is omitted", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "legacy", Platform: PlatformOpenAI, RateMultiplier: 1, AllowMessagesDispatch: true,
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, []GroupClientProtocol{
+			GroupClientProtocolAnthropicMessages,
+			GroupClientProtocolOpenAIResponses,
+			GroupClientProtocolOpenAIChatCompletions,
+		}, group.AllowedClientProtocols)
+		require.True(t, group.AllowMessagesDispatch)
+	})
+
+	t.Run("new field wins over legacy OpenAI switch", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name:                  "new-field",
+			Platform:              PlatformOpenAI,
+			RateMultiplier:        1,
+			AllowMessagesDispatch: true,
+			AllowedClientProtocols: []GroupClientProtocol{
+				GroupClientProtocolOpenAIChatCompletions,
+				GroupClientProtocolOpenAIResponses,
+			},
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, []GroupClientProtocol{
+			GroupClientProtocolOpenAIResponses,
+			GroupClientProtocolOpenAIChatCompletions,
+		}, group.AllowedClientProtocols)
+		require.False(t, group.AllowMessagesDispatch)
+	})
+}
+
+func TestAdminServiceRejectsInvalidGroupClientProtocols(t *testing.T) {
+	tests := []struct {
+		name      string
+		platform  string
+		protocols []GroupClientProtocol
+	}{
+		{"unknown", PlatformQoder, []GroupClientProtocol{"unknown"}},
+		{"duplicate", PlatformQoder, []GroupClientProtocol{GroupClientProtocolAnthropicMessages, GroupClientProtocolAnthropicMessages}},
+		{"unsupported", PlatformOpenAI, []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions, GroupClientProtocolGeminiGenerateContent}},
+		{"missing required", PlatformAnthropic, []GroupClientProtocol{GroupClientProtocolOpenAIResponses}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &adminServiceImpl{groupRepo: &groupRepoStubForAdmin{}}
+			_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name: tt.name, Platform: tt.platform, RateMultiplier: 1, AllowedClientProtocols: tt.protocols,
+			})
+
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, "INVALID_ALLOWED_CLIENT_PROTOCOLS", infraerrors.Reason(err))
+		})
+	}
+}
+
+func TestAdminServiceUpdateGroupPreservesExplicitEmptyClientProtocols(t *testing.T) {
+	existing := &Group{ID: 1, Name: "qoder", Platform: PlatformQoder, Status: StatusActive, AllowedClientProtocols: []GroupClientProtocol{}}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{})
+
+	require.NoError(t, err)
+	require.NotNil(t, group.AllowedClientProtocols)
+	require.Empty(t, group.AllowedClientProtocols)
+}
+
+func TestAdminServiceUpdateGroupCoercesProtocolsWhenPlatformChanges(t *testing.T) {
+	tests := []struct {
+		name     string
+		from     string
+		to       string
+		initial  []GroupClientProtocol
+		expected []GroupClientProtocol
+	}{
+		{
+			name: "Gemini to OpenAI",
+			from: PlatformGemini,
+			to:   PlatformOpenAI,
+			initial: []GroupClientProtocol{
+				GroupClientProtocolAnthropicMessages,
+				GroupClientProtocolOpenAIResponses,
+				GroupClientProtocolOpenAIChatCompletions,
+				GroupClientProtocolGeminiGenerateContent,
+			},
+			expected: []GroupClientProtocol{
+				GroupClientProtocolAnthropicMessages,
+				GroupClientProtocolOpenAIResponses,
+				GroupClientProtocolOpenAIChatCompletions,
+			},
+		},
+		{
+			name:    "OpenAI to Anthropic",
+			from:    PlatformOpenAI,
+			to:      PlatformAnthropic,
+			initial: []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions},
+			expected: []GroupClientProtocol{
+				GroupClientProtocolAnthropicMessages,
+				GroupClientProtocolOpenAIResponses,
+				GroupClientProtocolOpenAIChatCompletions,
+			},
+		},
+		{
+			name:     "Qoder empty to Grok",
+			from:     PlatformQoder,
+			to:       PlatformGrok,
+			initial:  []GroupClientProtocol{},
+			expected: []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &Group{
+				ID: 1, Name: tt.name, Platform: tt.from, Status: StatusActive,
+				AllowedClientProtocols: tt.initial,
+			}
+			repo := &groupRepoStubForAdmin{getByID: existing}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: tt.to})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, group.AllowedClientProtocols)
+		})
+	}
+}
+
+func TestAdminServiceUpdateGroupNewClientProtocolsOverrideLegacySwitch(t *testing.T) {
+	existing := &Group{
+		ID: 1, Name: "openai", Platform: PlatformOpenAI, Status: StatusActive,
+		AllowedClientProtocols: []GroupClientProtocol{GroupClientProtocolOpenAIResponses, GroupClientProtocolOpenAIChatCompletions},
+	}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{groupRepo: repo}
+	legacyEnabled := false
+
+	group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+		AllowedClientProtocols: ptrGroupClientProtocols([]GroupClientProtocol{
+			GroupClientProtocolAnthropicMessages,
+			GroupClientProtocolOpenAIResponses,
+			GroupClientProtocolOpenAIChatCompletions,
+		}),
+		AllowMessagesDispatch: &legacyEnabled,
+	})
+
+	require.NoError(t, err)
+	require.True(t, group.AllowMessagesDispatch)
+	require.True(t, group.AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
+}
 
 func ptrString[T ~string](v T) *string {
 	s := string(v)
@@ -215,7 +413,7 @@ func TestAdminService_GetGroupModelsListCandidates_UsesConfiguredRequestModels(t
 	require.Equal(t, []string{"deepseek-v4-flash", "deepseek-v4-pro"}, models)
 }
 
-// TestAdminService_GetGroupModelsListCandidates_UsesCustomModelsList 确保已有分组不会因为 OpenAI 接入格式回退出 GPT 默认模型。
+// TestAdminService_GetGroupModelsListCandidates_UsesCustomModelsList 确保已有分组不会因为 OpenAI 上游平台回退出 GPT 默认模型。
 func TestAdminService_GetGroupModelsListCandidates_UsesCustomModelsList(t *testing.T) {
 	groupID := int64(12)
 	groupRepo := &groupRepoStubForAdmin{

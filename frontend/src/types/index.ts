@@ -521,6 +521,11 @@ export interface PaginationConfig {
 // ==================== API Key & Group Types ====================
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
+export type GroupClientProtocol =
+  | 'anthropic_messages'
+  | 'openai_responses'
+  | 'openai_chat_completions'
+  | 'gemini_generate_content'
 export type MarketplacePricingMode = 'token' | 'image' | 'unknown'
 export type MarketplacePriceStatus = 'priced' | 'unpriced'
 
@@ -686,6 +691,8 @@ export interface Group {
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
   unavailable_fallback_group_id: number | null
+  // 分组允许客户端使用的文本生成协议，顺序由服务端固定。
+  allowed_client_protocols?: GroupClientProtocol[]
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
   // OpenAI Live 接口开关
@@ -863,6 +870,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   availability_probe_config?: GroupAvailabilityProbeConfig
+  allowed_client_protocols?: GroupClientProtocol[]
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string
@@ -917,6 +925,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   availability_probe_config?: GroupAvailabilityProbeConfig
+  allowed_client_protocols?: GroupClientProtocol[]
   allow_messages_dispatch?: boolean
   allow_live?: boolean
   default_mapped_model?: string

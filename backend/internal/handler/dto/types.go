@@ -159,7 +159,9 @@ type Group struct {
 	// 当前分组不可用时 API Key 优先回退到的分组。
 	UnavailableFallbackGroupID *int64 `json:"unavailable_fallback_group_id"`
 
-	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
+	// AllowedClientProtocols 是分组允许的完整客户端文本协议集合。
+	AllowedClientProtocols []domain.GroupClientProtocol `json:"allowed_client_protocols"`
+	// AllowMessagesDispatch 是从协议集合派生的弃用兼容字段。
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
 	// OpenAI Live 接口开关
 	AllowLive bool `json:"allow_live"`

@@ -6,6 +6,7 @@
 
 - [全局入口](#全局入口)：理解所有请求共享的处理顺序。
 - [路由族](#路由族)：选择 URL、认证和拥有者。
+- [分组客户端协议](#分组客户端协议)：理解上游平台与客户端准入的独立契约。
 - [认证方式](#认证方式)：区分 JWT、管理密钥、API Key 和签名票据。
 - [外部支付管理集成](#外部支付管理集成)：服务间充值和嵌入页对接边界。
 - [响应与错误](#响应与错误)：保持面板与协议兼容形状。
@@ -52,6 +53,23 @@ RequestLogger
 
 路由前缀不独自决定协议处理器。例如 `/v1/messages` 会根据分组平台分派到 Anthropic、OpenAI/Grok 或 Qoder handler；路由层拥有分派，handler/service 不能通过字符串猜测调用方已经具备某个平台能力。
 
+## 分组客户端协议
+
+Group 的 `platform` 表示上游平台，客户端文本协议由 `allowed_client_protocols` 独立准入。管理接口和公开 Group DTO 返回完整有效集合，并固定按以下顺序排列：
+
+```text
+anthropic_messages
+openai_responses
+openai_chat_completions
+gemini_generate_content
+```
+
+创建分组时省略字段会使用平台基础协议；更新时省略字段保持原集合。若同一次更新切换了上游平台且旧集合不再有效，服务端保留两平台都支持的协议并补齐新平台基础协议。显式输入会拒绝未知值、重复值、平台不支持的值以及缺少平台基础协议的集合，并返回 `400`。Qoder 没有基础协议，因此显式空数组和创建默认空数组都有效。
+
+`allow_messages_dispatch` 是弃用兼容字段，响应值由新集合是否包含 `anthropic_messages` 派生。只有 OpenAI 分组在新字段缺省时继续接受旧字段输入；两者同时提交时以 `allowed_client_protocols` 为准。`messages_dispatch_model_config` 仅保存 OpenAI Messages 到 GPT 的模型映射，不参与协议准入。
+
+准入使用认证后最终选中的分组。普通 Key 在读取正文和调度前检查；复合 Key 需要先读取并恢复正文以解析目标分组，再按该最终分组检查。文本协议开关不扩展 Live、WebSocket、Embedding、图片或视频能力，也不会绕过账号 endpoint capability 等更窄限制。
+
 ## 认证方式
 
 | 凭据 | 接收位置 | 权限边界 |
@@ -87,6 +105,8 @@ RequestLogger
 业务错误由 `ApplicationError` 映射为 HTTP status，并可返回 `reason` 和字符串 `metadata`。未知错误按 500 处理并只在服务端记录脱敏详情。分页数据使用 `items`、`total`、`page`、`page_size` 和 `pages`；创建与异步接受分别可以返回 201/202。
 
 网关错误必须保持调用协议形状：OpenAI 入口使用 `error` 对象，Anthropic 使用 `type: error` 与嵌套错误，Google 使用 HTTP code/message/status。认证、未分组、复合 Key 和本地能力拒绝都选择当前协议 writer；不能为了复用面板 helper 把一个 Google/Anthropic 客户端错误改成面板 envelope。
+
+客户端协议被分组禁用时返回 `403`，并在账号选择、计费、重试和 fallback 前记录 `LocalPolicyDenied`。Anthropic 入口使用 `permission_error`，OpenAI 入口使用 `protocol_not_allowed`，Gemini 入口使用 Google `PERMISSION_DENIED`。模型列表 GET 不经过生成协议开关。
 
 错误响应不得包含上游凭据、代理 URL、原始 service account、数据库错误或未经脱敏的请求正文。流式响应开始后不能再写普通 JSON 错误；只能按当前 SSE/流协议结束或发送允许的错误事件。
 

@@ -181,6 +181,8 @@ export default {
       noGroupTitle: '请先分配分组',
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
+      noTextProtocolsTitle: '暂无可用文本协议',
+      noTextProtocolsDescription: '此分组当前未开放任何文本生成协议。',
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         authModeTitle: 'Codex 认证模式',

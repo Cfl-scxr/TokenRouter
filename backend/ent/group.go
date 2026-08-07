@@ -101,6 +101,8 @@ type Group struct {
 	SortOrder int `json:"sort_order,omitempty"`
 	// 是否允许 /v1/messages 调度到此 OpenAI 分组
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`
+	// 允许客户端调用分组的文本协议完整集合
+	AllowedClientProtocols []domain.GroupClientProtocol `json:"allowed_client_protocols,omitempty"`
 	// 是否允许此 OpenAI 分组访问 Live 接口
 	AllowLive bool `json:"allow_live,omitempty"`
 	// 仅允许非 apikey 类型账号关联到此分组
@@ -242,7 +244,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldAvailabilityProbeConfig, group.FieldReasoningEffortMappings:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldAllowedClientProtocols, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldAvailabilityProbeConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldIsDefault, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldDataSharingEnabled, group.FieldSessionIsolationEnabled:
 			values[i] = new(sql.NullBool)
@@ -537,6 +539,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_messages_dispatch", values[i])
 			} else if value.Valid {
 				_m.AllowMessagesDispatch = value.Bool
+			}
+		case group.FieldAllowedClientProtocols:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_client_protocols", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedClientProtocols); err != nil {
+					return fmt.Errorf("unmarshal field allowed_client_protocols: %w", err)
+				}
 			}
 		case group.FieldAllowLive:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -847,6 +857,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_messages_dispatch=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowMessagesDispatch))
+	builder.WriteString(", ")
+	builder.WriteString("allowed_client_protocols=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedClientProtocols))
 	builder.WriteString(", ")
 	builder.WriteString("allow_live=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowLive))

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -17,6 +18,40 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAPIKeyAuthGroupSnapshotDistinguishesMissingAndExplicitEmptyClientProtocols(t *testing.T) {
+	emptySnapshot := authGroupSnapshotFromGroup(&Group{
+		ID:                     1,
+		Platform:               PlatformQoder,
+		AllowedClientProtocols: []GroupClientProtocol{},
+	})
+	payload, err := json.Marshal(emptySnapshot)
+	require.NoError(t, err)
+
+	var decodedEmpty APIKeyAuthGroupSnapshot
+	require.NoError(t, json.Unmarshal(payload, &decodedEmpty))
+	require.NotNil(t, decodedEmpty.AllowedClientProtocols)
+	require.Empty(t, decodedEmpty.AllowedClientProtocols)
+	require.False(t, groupFromAuthSnapshot(&decodedEmpty).AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
+
+	var decodedLegacy APIKeyAuthGroupSnapshot
+	require.NoError(t, json.Unmarshal([]byte(`{"id":2,"platform":"openai","allow_messages_dispatch":true}`), &decodedLegacy))
+	require.Nil(t, decodedLegacy.AllowedClientProtocols)
+	legacyGroup := groupFromAuthSnapshot(&decodedLegacy)
+	require.True(t, legacyGroup.AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
+	require.True(t, legacyGroup.AllowsClientProtocol(GroupClientProtocolOpenAIResponses))
+
+	// 滚动升级期间旧进程使用数据库默认值写入空数组时，必选协议平台按旧矩阵恢复。
+	legacyDatabaseGroup := &Group{
+		ID:                     3,
+		Platform:               PlatformOpenAI,
+		AllowedClientProtocols: []GroupClientProtocol{},
+		AllowMessagesDispatch:  false,
+	}
+	require.False(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolAnthropicMessages))
+	require.True(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolOpenAIResponses))
+	require.True(t, legacyDatabaseGroup.AllowsClientProtocol(GroupClientProtocolOpenAIChatCompletions))
+}
 
 type authRepoStub struct {
 	getByKeyForAuth   func(ctx context.Context, key string) (*APIKey, error)

@@ -14,6 +14,7 @@ type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfi
 type GroupModelsListConfig = domain.GroupModelsListConfig
 type GroupAvailabilityProbeConfig = domain.GroupAvailabilityProbeConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
+type GroupClientProtocol = domain.GroupClientProtocol
 
 type Group struct {
 	ID             int64
@@ -83,7 +84,9 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// AllowedClientProtocols 是分组允许的完整客户端文本协议集合；nil 仅表示旧缓存快照。
+	AllowedClientProtocols []GroupClientProtocol
+	// AllowMessagesDispatch 是滚动升级期间保留的 OpenAI 兼容镜像。
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）

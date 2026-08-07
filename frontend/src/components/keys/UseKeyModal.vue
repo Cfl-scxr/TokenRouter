@@ -48,9 +48,24 @@
       <!-- Platform-specific content -->
       <template v-else>
         <!-- Description -->
-        <p class="text-sm text-gray-600 dark:text-gray-400">
+        <p v-if="clientTabs.length" class="text-sm text-gray-600 dark:text-gray-400">
           {{ platformDescription }}
         </p>
+        <div
+          v-else
+          data-testid="no-text-protocols"
+          class="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800"
+        >
+          <Icon name="ban" size="md" class="mt-0.5 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+          <div>
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+              {{ t('keys.useKeyModal.noTextProtocolsTitle') }}
+            </p>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              {{ t('keys.useKeyModal.noTextProtocolsDescription') }}
+            </p>
+          </div>
+        </div>
 
         <!-- Client Tabs -->
         <div v-if="clientTabs.length" class="overflow-x-auto border-b border-gray-200 dark:border-dark-700">
@@ -209,7 +224,7 @@
         </div>
 
         <!-- Code Blocks (Stacked for multi-file platforms) -->
-        <div class="space-y-4">
+        <div v-if="clientTabs.length" class="space-y-4">
           <div
             v-for="(file, index) in currentFiles"
             :key="index"
@@ -277,13 +292,18 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { OPENAI_CODEX_DEFAULT_MODEL } from '@/constants/openai'
-import type { ApiKeyCompositeGroup, GroupPlatform } from '@/types'
+import type { ApiKeyCompositeGroup, GroupClientProtocol, GroupPlatform } from '@/types'
+import {
+  effectiveGroupClientProtocols,
+  hasGroupClientProtocol
+} from '@/utils/groupClientProtocols'
 
 interface Props {
   show: boolean
   apiKey: string
   baseUrl: string
   platform: GroupPlatform | null
+  allowedClientProtocols?: GroupClientProtocol[] | null
   allowMessagesDispatch?: boolean
   compositeGroups?: ApiKeyCompositeGroup[]
 }
@@ -338,41 +358,17 @@ type CodexAuthMode = 'legacy' | 'api-key'
 const codexAuthMode = ref<CodexAuthMode>('legacy')
 const codexWebSocketEnabled = ref(false)
 
-// Reset tabs when platform changes
-const defaultClientTab = computed(() => {
-  switch (props.platform) {
-    case 'openai':
-      return 'codex'
-    case 'grok':
-      return 'grok'
-    case 'gemini':
-      return 'gemini'
-    case 'antigravity':
-      return 'claude'
-    default:
-      return 'claude'
-  }
+const allowedProtocols = computed(() => {
+  if (!props.platform) return []
+  return effectiveGroupClientProtocols(
+    props.platform,
+    props.allowedClientProtocols,
+    props.allowMessagesDispatch
+  )
 })
 
-watch(() => props.platform, () => {
-  activeTab.value = 'unix'
-  activeClientTab.value = defaultClientTab.value
-  codexAuthMode.value = 'legacy'
-  codexWebSocketEnabled.value = false
-}, { immediate: true })
-
-// 每次重新打开弹窗都恢复默认配置，避免沿用上一次密钥的临时选择。
-watch(() => props.show, (show) => {
-  if (show) {
-    codexAuthMode.value = 'legacy'
-    codexWebSocketEnabled.value = false
-  }
-})
-
-// Reset shell tab when client changes
-watch(activeClientTab, () => {
-  activeTab.value = 'unix'
-})
+const allowsProtocol = (protocol: GroupClientProtocol) =>
+  hasGroupClientProtocol(allowedProtocols.value, protocol)
 
 // Icon components
 const AppleIcon = {
@@ -439,41 +435,67 @@ const SparkleIcon = {
 
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
-  switch (props.platform) {
-    case 'openai': {
-      const tabs: TabConfig[] = [
-        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-      ]
-      if (props.allowMessagesDispatch) {
-        tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
-      }
-      tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
-      return tabs
-    }
-    case 'gemini':
-      return [
-        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-    case 'antigravity':
-      return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-    case 'grok':
-      return [
-        { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon },
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-    default:
-      return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+  const tabs = new Map<string, TabConfig>()
+  if (props.platform === 'grok' && allowsProtocol('openai_responses')) {
+    tabs.set('grok', { id: 'grok', label: t('keys.useKeyModal.cliTabs.grokCli'), icon: TerminalIcon })
   }
+  if (allowsProtocol('anthropic_messages')) {
+    tabs.set('claude', { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
+  }
+  if (allowsProtocol('openai_responses')) {
+    tabs.set('codex', { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon })
+  }
+  if (allowsProtocol('gemini_generate_content')) {
+    tabs.set('gemini', { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon })
+  }
+  if (allowedProtocols.value.length > 0) {
+    tabs.set('opencode', { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
+  }
+  return [...tabs.values()]
+})
+
+const defaultClientTab = computed(() => {
+  const ids = new Set(clientTabs.value.map((tab) => tab.id))
+  const preferred = props.platform === 'openai'
+    ? ['codex', 'claude', 'opencode']
+    : props.platform === 'grok'
+      ? ['grok', 'codex', 'claude', 'opencode']
+      : props.platform === 'gemini'
+        ? ['gemini', 'claude', 'codex', 'opencode']
+        : props.platform === 'antigravity'
+          ? ['claude', 'gemini', 'codex', 'opencode']
+          : ['claude', 'codex', 'gemini', 'opencode']
+  return preferred.find((id) => ids.has(id)) || clientTabs.value[0]?.id || ''
+})
+
+// 平台或协议集合变化后回到首选的可用客户端，避免保留已禁用标签。
+watch(
+  [
+    () => props.platform,
+    () => props.allowedClientProtocols,
+    () => props.allowMessagesDispatch
+  ],
+  () => {
+    activeTab.value = 'unix'
+    activeClientTab.value = defaultClientTab.value
+    codexAuthMode.value = 'legacy'
+    codexWebSocketEnabled.value = false
+  },
+  { immediate: true, deep: true }
+)
+
+// 每次重新打开弹窗都恢复默认配置，避免沿用上一次密钥的临时选择。
+watch(() => props.show, (show) => {
+  if (show) {
+    activeClientTab.value = defaultClientTab.value
+    codexAuthMode.value = 'legacy'
+    codexWebSocketEnabled.value = false
+  }
+})
+
+// 客户端变化时统一回到该客户端的首个系统标签。
+watch(activeClientTab, () => {
+  activeTab.value = 'unix'
 })
 
 // Shell tabs (3 types for environment variable based configs)
@@ -598,7 +620,9 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() =>
+  clientTabs.value.length > 0 && activeClientTab.value !== 'opencode'
+)
 
 const showCodexAuthMode = computed(() =>
   props.platform === 'openai' &&
@@ -673,7 +697,9 @@ const platformNote = computed(() => {
   }
 })
 
-const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+const showPlatformNote = computed(() =>
+  clientTabs.value.length > 0 && activeClientTab.value !== 'opencode'
+)
 
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -694,6 +720,7 @@ const comment = (value: string) => wrapToken('text-slate-500', value)
 // Syntax highlighting helpers
 // Generate file configs based on platform and active tab
 const currentFiles = computed((): FileConfig[] => {
+  if (!props.platform) return []
   const baseUrl = props.baseUrl || window.location.origin
   const apiKey = props.apiKey
   const baseRoot = baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
@@ -726,7 +753,9 @@ const currentFiles = computed((): FileConfig[] => {
           generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
         ]
       case 'qoder':
-        return [generateOpenCodeConfig('qoder', apiBase, apiKey)]
+        return allowsProtocol('openai_responses') || allowsProtocol('openai_chat_completions')
+          ? [generateOpenCodeConfig('qoder', apiBase, apiKey)]
+          : [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'grok':
         return [generateOpenCodeConfig('grok', apiBase, apiKey)]
       default:
@@ -734,30 +763,36 @@ const currentFiles = computed((): FileConfig[] => {
     }
   }
 
-  switch (props.platform) {
-    case 'openai':
-      if (activeClientTab.value === 'claude') {
-        return generateAnthropicFiles(baseUrl, apiKey)
-      }
-      return generateOpenAIFiles(baseUrl, apiKey)
-    case 'gemini':
-      return [generateGeminiCliContent(baseUrl, apiKey)]
-    case 'antigravity':
-      if (activeClientTab.value === 'gemini') {
-        return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
-      }
-      return generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
-    case 'grok':
-      if (activeClientTab.value === 'claude') {
-        return generateGrokClaudeFiles(baseRoot, apiKey)
-      }
-      if (activeClientTab.value === 'codex') {
-        return generateGrokCodexFiles(apiBase, apiKey)
-      }
-      return generateGrokFiles(apiBase, apiKey)
-    default:
-      return generateAnthropicFiles(baseUrl, apiKey)
+  if (activeClientTab.value === 'claude') {
+    if (props.platform === 'grok') {
+      return generateGrokClaudeFiles(baseRoot, apiKey)
+    }
+    return props.platform === 'antigravity'
+      ? generateAnthropicFiles(`${baseRoot}/antigravity`, apiKey)
+      : generateAnthropicFiles(baseRoot, apiKey)
   }
+
+  if (activeClientTab.value === 'codex') {
+    if (props.platform === 'openai') {
+      return generateOpenAIFiles(baseUrl, apiKey)
+    }
+    if (props.platform === 'grok') {
+      return generateGrokCodexFiles(apiBase, apiKey)
+    }
+    return generateCompatibleCodexFiles(apiBase, apiKey, props.platform)
+  }
+
+  if (activeClientTab.value === 'gemini') {
+    return props.platform === 'antigravity'
+      ? [generateGeminiCliContent(`${baseRoot}/antigravity`, apiKey)]
+      : [generateGeminiCliContent(baseRoot, apiKey)]
+  }
+
+  if (activeClientTab.value === 'grok') {
+    return generateGrokFiles(apiBase, apiKey)
+  }
+
+  return []
 })
 
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -959,6 +994,89 @@ ${websocketFeatureConfig}goals = true`
     {
       path: `${configDir}/auth.json`,
       content: authContent
+    }
+  ]
+}
+
+// 兼容 Responses 的非 OpenAI 平台使用独立 provider，避免触发 OpenAI 官方登录流程。
+function generateCompatibleCodexFiles(
+  baseUrl: string,
+  apiKey: string,
+  platform: GroupPlatform
+): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
+  const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+  const platformConfig: Record<GroupPlatform, {
+    provider: string
+    name: string
+    model: string
+    contextWindow: number
+  }> = {
+    anthropic: {
+      provider: 'tokenrouter_anthropic',
+      name: 'TokenRouter Anthropic',
+      model: 'claude-sonnet-4-6',
+      contextWindow: 200000
+    },
+    openai: {
+      provider: 'tokenrouter_openai',
+      name: 'TokenRouter OpenAI',
+      model: OPENAI_CODEX_DEFAULT_MODEL,
+      contextWindow: 1050000
+    },
+    gemini: {
+      provider: 'tokenrouter_gemini',
+      name: 'TokenRouter Gemini',
+      model: 'gemini-2.5-pro',
+      contextWindow: 2097152
+    },
+    antigravity: {
+      provider: 'tokenrouter_antigravity',
+      name: 'TokenRouter Antigravity',
+      model: 'claude-sonnet-4-6',
+      contextWindow: 200000
+    },
+    qoder: {
+      provider: 'tokenrouter_qoder',
+      name: 'TokenRouter Qoder',
+      model: 'auto',
+      contextWindow: 400000
+    },
+    grok: {
+      provider: 'tokenrouter_grok',
+      name: 'TokenRouter Grok',
+      model: 'grok-4.5',
+      contextWindow: 1000000
+    }
+  }
+  const config = platformConfig[platform]
+  const configContent = `model_provider = "${config.provider}"
+model = "${config.model}"
+model_context_window = ${config.contextWindow}
+disable_response_storage = true
+
+[model_providers.${config.provider}]
+name = "${config.name}"
+base_url = "${baseUrl}"
+env_key = "TOKENROUTER_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+
+[features]
+goals = true`
+  const environmentContent = isWindows
+    ? `$env:TOKENROUTER_API_KEY="${apiKey}"`
+    : `export TOKENROUTER_API_KEY="${apiKey}"`
+
+  return [
+    {
+      path: `${configDir}/config.toml`,
+      content: configContent,
+      hint: t('keys.useKeyModal.openai.configTomlHint')
+    },
+    {
+      path: isWindows ? 'PowerShell' : 'Terminal',
+      content: environmentContent
     }
   ]
 }

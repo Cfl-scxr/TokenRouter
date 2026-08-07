@@ -118,7 +118,7 @@ export const getAvailabilityProbeCandidateModels = (state: ModelsListState): str
     return [...state.savedModels]
   }
 
-  // 自定义列表关闭时只信任后端本次返回的分组候选，避免历史保存模型或接入格式默认模型混入。
+  // 自定义列表关闭时只信任后端本次返回的分组候选，避免历史保存模型或上游平台默认模型混入。
   return [...state.candidateModels]
 }
 

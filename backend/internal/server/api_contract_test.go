@@ -421,7 +421,12 @@ func TestAPIContracts(t *testing.T) {
 						"video_rate_independent": false,
 						"video_rate_multiplier": 0,
 						"claude_code_only": false,
-						"allow_messages_dispatch": false,
+						"allowed_client_protocols": [
+							"anthropic_messages",
+							"openai_responses",
+							"openai_chat_completions"
+						],
+						"allow_messages_dispatch": true,
 						"allow_live": false,
 						"data_sharing_enabled": false,
 						"session_isolation_enabled": false,

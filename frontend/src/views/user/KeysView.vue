@@ -1179,6 +1179,7 @@
       :api-key="selectedKey?.key || ''"
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
+      :allowed-client-protocols="selectedKey?.group?.allowed_client_protocols"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
       :composite-groups="selectedKey?.composite_groups || []"
       @close="closeUseKeyModal"

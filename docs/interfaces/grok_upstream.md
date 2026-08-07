@@ -8,6 +8,7 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 
 - [基本信息](#基本信息)：修改路由或默认上游时读取。
 - [账号配置](#账号配置)：修改 OAuth/API Key 导入与刷新时读取。
+- [客户端协议](#客户端协议)：修改 Responses、Chat 或 Messages 准入时读取。
 - [媒体请求格式](#媒体请求格式)：修改图片/视频 body 转换时读取。
 - [媒体账号资格](#媒体账号资格)：修改付费探测和调度隔离时读取。
 - [任务归属与结算](#任务归属与结算)：修改视频查询、下载或用量记录时读取。
@@ -21,6 +22,12 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 - 账号类型：OAuth 订阅账号、API Key 账号
 - 主要网关入口：`/v1/responses`、`/responses`、Chat Completions、Messages 和 Responses WebSocket
 - API Key 账号默认上游地址：`https://api.x.ai/v1`
+
+## 客户端协议
+
+Grok 分组支持 Anthropic Messages、OpenAI Responses 和 Chat Completions。Responses 与 Chat 是不可关闭的基础协议和新建默认值；迁移前已有分组启用三项。文本协议禁用时会在账号选择、计费、重试和 fallback 前返回协议原生 `403`。
+
+Responses WebSocket 是 Grok/OpenAI 的原生传输能力，不由兼容 Responses 开关扩展到其它平台。图片和视频继续使用独立媒体资格与分组策略，不受文本协议集合直接控制。
 
 <a id="grok_account_contract"></a>
 ## 账号配置
