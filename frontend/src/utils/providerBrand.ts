@@ -105,7 +105,8 @@ const providerBrands: Record<ProviderBrandKey, ProviderBrand> = {
     key: 'xai',
     label: 'xAI',
     iconKey: 'xai',
-    iconColor: '#111827',
+    // xAI 是单色标识，继承徽标文字色以适配深浅主题。
+    iconColor: 'currentColor',
     badgeClass: 'bg-neutral-100 text-neutral-900 ring-neutral-200 dark:bg-neutral-500/20 dark:text-neutral-50 dark:ring-neutral-400/30',
     iconWrapClass: 'bg-neutral-50 text-neutral-800 ring-neutral-200 dark:bg-neutral-500/15 dark:text-neutral-200 dark:ring-neutral-400/30',
   },
