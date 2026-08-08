@@ -826,16 +826,21 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 }
 
 func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *UserSubscription) error {
-	windowStart := startOfDay(time.Now())
-	if sub.NeedsDailyReset() {
+	return s.checkAndResetWindowsAt(ctx, sub, time.Now())
+}
+
+// checkAndResetWindowsAt 使用同一时刻判断并推进所有额度窗口，避免跨零点时前后判断不一致。
+func (s *SubscriptionService) checkAndResetWindowsAt(ctx context.Context, sub *UserSubscription, now time.Time) error {
+	windowStart := startOfDay(now)
+	if dailyWindowStart, ok := sub.automaticDailyWindowStartAt(now); ok {
 		expectedWindowStart := sub.DailyWindowStart
-		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, expectedWindowStart, windowStart); err != nil {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, expectedWindowStart, dailyWindowStart); err != nil {
 			return err
 		}
-		sub.DailyWindowStart = &windowStart
+		sub.DailyWindowStart = &dailyWindowStart
 		sub.DailyUsageUSD = 0
 	}
-	if sub.NeedsWeeklyReset() {
+	if sub.NeedsWeeklyResetAt(now) {
 		expectedWindowStart := sub.WeeklyWindowStart
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, expectedWindowStart, windowStart); err != nil {
 			return err
@@ -843,7 +848,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		sub.WeeklyWindowStart = &windowStart
 		sub.WeeklyUsageUSD = 0
 	}
-	if sub.NeedsMonthlyReset() {
+	if sub.NeedsMonthlyResetAt(now) {
 		expectedWindowStart := sub.MonthlyWindowStart
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, expectedWindowStart, windowStart); err != nil {
 			return err

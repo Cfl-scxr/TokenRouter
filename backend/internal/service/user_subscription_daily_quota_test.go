@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,6 +18,7 @@ type dailyResetTrackingUserSubRepo struct {
 	resetMonthlyCalled bool
 	activateCalled     bool
 	lastActivation     SubscriptionWindowActivation
+	lastDailyStart     time.Time
 }
 
 func (r *dailyResetTrackingUserSubRepo) ActivateWindows(_ context.Context, _ int64, _ time.Time, activation SubscriptionWindowActivation) error {
@@ -25,8 +27,9 @@ func (r *dailyResetTrackingUserSubRepo) ActivateWindows(_ context.Context, _ int
 	return nil
 }
 
-func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
+func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(_ context.Context, _ int64, _ *time.Time, windowStart time.Time) error {
 	r.resetDailyCalled = true
+	r.lastDailyStart = windowStart
 	return nil
 }
 
@@ -109,7 +112,20 @@ func TestUserSubscriptionNeedsDailyReset_MultiDaySubscriptionStillRefreshes(t *t
 	}
 
 	require.False(t, sub.HasOneTimeDailyQuota())
-	require.True(t, sub.NeedsDailyResetAt(dailyWindowStart.Add(24*time.Hour)), "多日订阅仍应按 24 小时日窗口刷新")
+	require.True(t, sub.NeedsDailyResetAt(dailyWindowStart.Add(24*time.Hour)), "多日订阅仍应在次日零点刷新")
+}
+
+func TestUserSubscriptionNeedsDailyReset_LegacyAnchorHealsAtNextMidnight(t *testing.T) {
+	base := timezone.StartOfDay(time.Now())
+	legacyWindowStart := base.Add(16*time.Hour + 49*time.Minute)
+	sub := &UserSubscription{
+		StartsAt:         base.AddDate(0, 0, -3),
+		ExpiresAt:        base.AddDate(0, 0, 10),
+		DailyWindowStart: &legacyWindowStart,
+	}
+
+	require.False(t, sub.NeedsDailyResetAt(base.Add(23*time.Hour+59*time.Minute)), "同一日历日内不应重置日额度")
+	require.True(t, sub.NeedsDailyResetAt(base.AddDate(0, 0, 1).Add(time.Minute)), "旧的非零点锚点应在下一个零点后自愈")
 }
 
 func TestUserSubscriptionNeedsDailyReset_SkipsExpiryTailWindow(t *testing.T) {
@@ -228,6 +244,20 @@ func TestUserSubscriptionDailyResetTime_DailyCardReturnsExpiry(t *testing.T) {
 	require.Equal(t, expiresAt, *resetAt, "日卡展示的日额度结束时间应为订阅过期时间")
 }
 
+func TestUserSubscriptionDailyResetTime_LegacyAnchorReturnsNextMidnight(t *testing.T) {
+	base := timezone.StartOfDay(time.Now())
+	legacyWindowStart := base.Add(16*time.Hour + 49*time.Minute)
+	sub := &UserSubscription{
+		StartsAt:         base.AddDate(0, 0, -3),
+		ExpiresAt:        base.AddDate(0, 0, 10),
+		DailyWindowStart: &legacyWindowStart,
+	}
+
+	resetAt := sub.DailyResetTime()
+	require.NotNil(t, resetAt)
+	require.Equal(t, base.AddDate(0, 0, 1), *resetAt, "旧的非零点锚点应展示其所在日的下一个零点")
+}
+
 func TestUserSubscriptionMonthlyResetTime_TailWindowReturnsExpiry(t *testing.T) {
 	start := time.Date(2026, 4, 30, 8, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
@@ -304,6 +334,31 @@ func TestCheckAndResetWindows_MultiDaySubscriptionStillResetsDailyUsage(t *testi
 	require.NoError(t, err)
 	require.True(t, repo.resetDailyCalled, "多日订阅仍应重置过期 daily window")
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
+}
+
+func TestCheckAndResetWindows_LegacyDailyAnchorHealsToMidnight(t *testing.T) {
+	base := timezone.StartOfDay(time.Now())
+	legacyWindowStart := base.AddDate(0, 0, -1).Add(16*time.Hour + 49*time.Minute)
+	now := base.Add(5 * time.Minute)
+	repo := &dailyResetTrackingUserSubRepo{}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	sub := &UserSubscription{
+		ID:               1,
+		UserID:           10,
+		PlanID:           20,
+		StartsAt:         base.AddDate(0, 0, -3),
+		ExpiresAt:        base.AddDate(0, 0, 10),
+		DailyUsageUSD:    10,
+		DailyWindowStart: &legacyWindowStart,
+	}
+
+	err := svc.checkAndResetWindowsAt(context.Background(), sub, now)
+
+	require.NoError(t, err)
+	require.True(t, repo.resetDailyCalled, "跨零点后应重置旧的非零点日窗口")
+	require.Equal(t, base, repo.lastDailyStart, "写回的日窗口起点应为当天零点")
+	require.Equal(t, base, *sub.DailyWindowStart)
+	require.Zero(t, sub.DailyUsageUSD)
 }
 
 func TestCheckAndResetWindows_ExpiryTailDoesNotResetMonthlyUsage(t *testing.T) {

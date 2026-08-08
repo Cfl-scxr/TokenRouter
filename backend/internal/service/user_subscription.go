@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/TokenFlux/TokenRouter/internal/pkg/timezone"
+)
 
 const (
 	subscriptionDailyWindow   = 24 * time.Hour
@@ -163,16 +167,27 @@ func (s *UserSubscription) NeedsDailyReset() bool {
 }
 
 func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
+	_, ok := s.automaticDailyWindowStartAt(now)
+	return ok
+}
+
+// automaticDailyWindowStartAt 计算按项目时区日历日对齐的日窗口起点。
+// 历史非零点锚点会在下一个零点自愈，1 日卡和到期尾段规则仍保持原语义。
+func (s *UserSubscription) automaticDailyWindowStartAt(now time.Time) (time.Time, bool) {
 	if s == nil || s.DailyWindowStart == nil || s.ExpiresAt.IsZero() || !now.Before(s.ExpiresAt) {
-		return false
+		return time.Time{}, false
 	}
 	if s.HasOneTimeDailyQuota() {
-		return false
+		return time.Time{}, false
 	}
-	if now.Before(s.DailyWindowStart.Add(subscriptionDailyWindow)) {
-		return false
+	today := timezone.StartOfDay(now)
+	if !today.After(timezone.StartOfDay(*s.DailyWindowStart)) {
+		return time.Time{}, false
 	}
-	return s.canStartQuotaWindow(startOfDay(now), subscriptionDailyWindow)
+	if !s.canStartQuotaWindow(today, subscriptionDailyWindow) {
+		return time.Time{}, false
+	}
+	return today, true
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
@@ -243,7 +258,8 @@ func (s *UserSubscription) DailyResetTime() *time.Time {
 		t := s.ExpiresAt
 		return &t
 	}
-	t := s.DailyWindowStart.Add(subscriptionDailyWindow)
+	// 日额度按日历日刷新，旧的非零点锚点也应展示其所在日的下一个零点。
+	t := timezone.StartOfDay(*s.DailyWindowStart).AddDate(0, 0, 1)
 	if !s.canStartQuotaWindow(t, subscriptionDailyWindow) {
 		t = s.ExpiresAt
 	}
