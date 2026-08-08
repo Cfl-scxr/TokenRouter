@@ -415,6 +415,105 @@ func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelIgnoresAPIKeyAc
 	require.Empty(t, repo.modelRateLimitCalls)
 }
 
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedImageModelSkipsCooldown(t *testing.T) {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2"} {
+		t.Run(model, func(t *testing.T) {
+			repo := &modelNotFoundAccountRepoStub{}
+			svc := &RateLimitService{accountRepo: repo}
+			account := openAICodexPlanGatedOAuthAccount()
+
+			handled := svc.HandleUpstreamError(
+				context.Background(),
+				account,
+				http.StatusBadRequest,
+				http.Header{},
+				[]byte(`{"detail":"The '`+model+`' model is not supported when using Codex with a ChatGPT account."}`),
+				model,
+			)
+
+			require.True(t, handled, "当前文本端点尝试仍应切换账号")
+			require.Empty(t, repo.modelRateLimitCalls, "文本端点错配不应冷却账号的图片模型")
+			require.Zero(t, repo.tempCalls)
+		})
+	}
+}
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedTextModelStillCoolsDown(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{},
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}`),
+		"gpt-5.6-sol",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1, "非图片套餐门控模型应保留原有冷却")
+	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
+}
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedImageModelKeepsCooldownOnImagesEndpoint(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		WithOpenAIImagesEndpoint(context.Background()),
+		account,
+		http.StatusBadRequest,
+		http.Header{},
+		[]byte(`{"detail":"The 'gpt-image-2' model is not supported when using Codex with a ChatGPT account."}`),
+		"gpt-image-2",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1, "专用 Images 端点上的能力拒绝必须保留冷却")
+	require.Equal(t, "gpt-image-2", repo.modelRateLimitCalls[0].scope)
+	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
+}
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedImageModelSkipsCooldownOnIntentOnly(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		WithOpenAIImageGenerationIntent(context.Background()),
+		account,
+		http.StatusBadRequest,
+		http.Header{},
+		[]byte(`{"detail":"The 'gpt-image-2' model is not supported when using Codex with a ChatGPT account."}`),
+		"gpt-image-2",
+	)
+
+	require.True(t, handled)
+	require.Empty(t, repo.modelRateLimitCalls, "生图意图不等于专用 Images 入口")
+}
+
+func TestRateLimitService_HandleUpstreamError_ModelNotFoundImageModelStillCoolsDown(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &RateLimitService{accountRepo: repo}
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{},
+		[]byte(`{"error":{"message":"The model 'gpt-image-2' does not exist","code":"model_not_found"}}`),
+		"gpt-image-2",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1, "图片模型的 404 model_not_found 仍应冷却")
+	require.Equal(t, upstreamModelNotFoundReason, repo.modelRateLimitCalls[0].reason)
+}
+
 func openAICodexPlanGatedOAuthAccount() *Account {
 	return &Account{
 		ID:          202,

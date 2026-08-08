@@ -2213,6 +2213,9 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	if modelKey == "" {
 		return false
 	}
+	if shouldSkipCodexPlanGatedImageModelCooldown(ctx, reason, upstreamModel, modelKey) {
+		return true
+	}
 	resetAt := time.Now().Add(cooldown)
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, reason); err != nil {
 		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "reason", reason, "error", err)
@@ -2220,6 +2223,16 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	}
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+// shouldSkipCodexPlanGatedImageModelCooldown 判断图片模型是否只是被 Codex 文本端点拒绝。
+// 文本端点错配仍需切号，但不能让这次错误影响同一账号通过专用 Images 端点提供服务；
+// 专用 Images 端点上的拒绝则代表真实能力缺失，必须保留模型冷却。
+func shouldSkipCodexPlanGatedImageModelCooldown(ctx context.Context, reason, upstreamModel, modelKey string) bool {
+	if reason != upstreamCodexPlanGatedModelReason || OpenAIImagesEndpointFromContext(ctx) {
+		return false
+	}
+	return IsGPTImageGenerationModel(upstreamModel) || IsGPTImageGenerationModel(modelKey)
 }
 
 func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, upstreamModel string) string {
