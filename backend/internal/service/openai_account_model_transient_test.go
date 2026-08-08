@@ -80,10 +80,48 @@ func TestOpenAIModelTransient_StaleStreakExpires(t *testing.T) {
 	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
 	state.recordFailure(35, "gpt-5.5", now)
 
-	decision := state.recordFailure(35, "gpt-5.5", now.Add(openAIModelTransientFailureWindow+time.Second))
+	decision := state.recordFailure(35, "gpt-5.5", now.Add(openAIModelTransientStreakTTL+time.Second))
 
 	assert.Equal(t, 1, decision.FailureStreak)
 	assert.Zero(t, decision.Cooldown)
+}
+
+// 连续失败不能依赖网关调用频率。旧逻辑会在稀疏请求之间清零计数，
+// 导致故障账号与模型组合永不冷却，每次请求都额外承担失败尝试和故障转移。
+func TestOpenAIModelTransient_StreakSurvivesSparseTraffic(t *testing.T) {
+	state := newOpenAIAccountModelTransientState(128)
+	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
+	gap := 5 * time.Minute
+	require.Greater(t, gap, openAIModelTransientLongCooldown,
+		"请求间隔必须超过所有冷却时间，避免用例因错误原因通过")
+
+	first := state.recordFailure(35, "gpt-5.5", now)
+	second := state.recordFailure(35, "gpt-5.5", now.Add(gap))
+	third := state.recordFailure(35, "gpt-5.5", now.Add(2*gap))
+
+	assert.Equal(t, 1, first.FailureStreak)
+	assert.Zero(t, first.Cooldown)
+	assert.Equal(t, 2, second.FailureStreak)
+	assert.Equal(t, openAIModelTransientShortCooldown, second.Cooldown)
+	assert.Equal(t, 3, third.FailureStreak)
+	assert.Equal(t, openAIModelTransientLongCooldown, third.Cooldown)
+	assert.True(t, state.isBlocked(35, "gpt-5.5", now.Add(2*gap+time.Second)))
+}
+
+// 两次稀疏失败之间的成功结果仍会清零计数，间歇恢复的账号不会被推进长冷却。
+func TestOpenAIModelTransient_SuccessResetsStreakAcrossSparseTraffic(t *testing.T) {
+	state := newOpenAIAccountModelTransientState(128)
+	now := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
+	gap := 5 * time.Minute
+
+	state.recordFailure(35, "gpt-5.5", now)
+	state.recordSuccess(35, "gpt-5.5")
+
+	decision := state.recordFailure(35, "gpt-5.5", now.Add(gap))
+
+	assert.Equal(t, 1, decision.FailureStreak)
+	assert.Zero(t, decision.Cooldown)
+	assert.False(t, state.isBlocked(35, "gpt-5.5", now.Add(gap+time.Second)))
 }
 
 func TestOpenAIModelTransient_IgnoresInvalidKeys(t *testing.T) {

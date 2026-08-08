@@ -7,7 +7,13 @@ import (
 )
 
 const (
-	openAIModelTransientFailureWindow = time.Minute
+	// openAIModelTransientStreakTTL 限制连续失败状态在没有新失败时的保留时间，
+	// 只用于避免长期不用的账号与模型组合永久占用内存；正常情况下仅由成功结果清零。
+	//
+	// 该值必须明显长于所有冷却时间。若按较短的自然时间窗口重置连续失败，熔断灵敏度
+	// 会错误依赖请求频率：低于窗口频率的调用永远到不了第二次失败，故障上游也就不会
+	// 进入冷却，每个请求都要先承担一次失败尝试和故障转移，低流量部署反而受影响最大。
+	openAIModelTransientStreakTTL     = 30 * time.Minute
 	openAIModelTransientShortCooldown = 10 * time.Second
 	openAIModelTransientLongCooldown  = 45 * time.Second
 	openAIModelTransientDefaultMax    = 4096
@@ -88,7 +94,8 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 	if !exists {
 		s.evictOldestLocked()
 	}
-	if !exists || entry.lastFailure.IsZero() || now.Sub(entry.lastFailure) > openAIModelTransientFailureWindow || now.Before(entry.lastFailure) {
+	// 成功结果负责清零连续失败；此处只在条目超过 TTL 或时钟回拨时丢弃旧状态。
+	if !exists || entry.lastFailure.IsZero() || now.Sub(entry.lastFailure) > openAIModelTransientStreakTTL || now.Before(entry.lastFailure) {
 		entry.failureStreak = 0
 		entry.blockUntil = time.Time{}
 	}
@@ -142,7 +149,7 @@ func (s *openAIAccountModelTransientState) isBlocked(accountID int64, model stri
 	if !exists {
 		return false
 	}
-	if !entry.lastFailure.IsZero() && now.Sub(entry.lastFailure) > openAIModelTransientFailureWindow {
+	if !entry.lastFailure.IsZero() && now.Sub(entry.lastFailure) > openAIModelTransientStreakTTL {
 		delete(s.entries, key)
 		return false
 	}
