@@ -77,6 +77,10 @@ type openAIWSAcquireRequest struct {
 	ForcePreferredConn bool
 }
 
+type openAIWSHandshakeCompatibilityKey struct {
+	betaFeatures string
+}
+
 type openAIWSConnLease struct {
 	pool      *openAIWSConnPool
 	accountID int64
@@ -241,9 +245,10 @@ type openAIWSConn struct {
 	id string
 	ws openAIWSClientConn
 
-	handshakeHeaders http.Header
-	tlsProfileKey    string
-	betaFeatures     string
+	handshakeHeaders       http.Header
+	handshakeCompatibility openAIWSHandshakeCompatibilityKey
+	tlsProfileKey          string
+	routingAffinity        string
 
 	leaseCh   chan struct{}
 	closedCh  chan struct{}
@@ -308,6 +313,12 @@ func (c *openAIWSConn) acquire(ctx context.Context) error {
 		case <-c.closedCh:
 			return errOpenAIWSConnClosed
 		case <-c.leaseCh:
+			// 取消信号与租约可能同时就绪；消费信号量后再次检查上下文，并在
+			// 返回取消错误前归还租约，避免已取消的等待者占死池化连接。
+			if err := ctx.Err(); err != nil {
+				c.release()
+				return err
+			}
 			select {
 			case <-c.closedCh:
 				c.release()
@@ -527,9 +538,13 @@ func (c *openAIWSConn) handshakeHeader(name string) string {
 	return strings.TrimSpace(c.handshakeHeaders.Get(strings.TrimSpace(name)))
 }
 
-// matchesBetaFeatures 保证只复用握手阶段启用了相同 beta feature 集合的连接。
-func (c *openAIWSConn) matchesBetaFeatures(betaFeatures string) bool {
-	return c != nil && c.betaFeatures == betaFeatures
+// matchesHandshakeCompatibility 保证只复用握手阶段启用了相同硬兼容特征的连接。
+func (c *openAIWSConn) matchesHandshakeCompatibility(compatibility openAIWSHandshakeCompatibilityKey) bool {
+	return c != nil && c.handshakeCompatibility == compatibility
+}
+
+func (c *openAIWSConn) matchesRoutingAffinity(routingAffinity string) bool {
+	return c != nil && c.routingAffinity == routingAffinity
 }
 
 func (c *openAIWSConn) isPrewarmed() bool {
@@ -857,7 +872,8 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 
 retryAcquire:
 	accountID := req.Account.ID
-	betaFeatures := normalizeOpenAIWSBetaFeatures(req.Headers)
+	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Headers)
+	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
 		return nil, errOpenAIWSConnQueueFull
@@ -865,7 +881,7 @@ retryAcquire:
 	var evicted []*openAIWSConn
 	ap := p.getOrCreateAccountPool(accountID)
 	ap.mu.Lock()
-	ap.lastAcquire = cloneOpenAIWSAcquireRequestPtr(&req)
+	acquireGeneration := ap.generation
 	now := time.Now()
 	if ap.lastCleanupAt.IsZero() || now.Sub(ap.lastCleanupAt) >= openAIWSAcquireCleanupInterval {
 		evicted = p.cleanupAccountLocked(ap, now, effectiveMaxConns)
@@ -885,7 +901,7 @@ retryAcquire:
 				return nil, errOpenAIWSPreferredConnUnavailable
 			}
 			preferredConn, ok := ap.conns[preferredConnID]
-			if !ok || !preferredConn.matchesBetaFeatures(betaFeatures) {
+			if !ok || !preferredConn.matchesHandshakeCompatibility(compatibility) {
 				p.recordConnPickDuration(time.Since(pickStartedAt))
 				ap.mu.Unlock()
 				closeOpenAIWSConns(evicted)
@@ -920,6 +936,7 @@ retryAcquire:
 					reused:    true,
 				}
 				p.metrics.acquireReuseTotal.Add(1)
+				p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 				p.ensureTargetIdleAsync(accountID)
 				return lease, nil
 			}
@@ -967,6 +984,7 @@ retryAcquire:
 				reused:    true,
 			}
 			p.metrics.acquireReuseTotal.Add(1)
+			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 			p.ensureTargetIdleAsync(accountID)
 			return lease, nil
 		}
@@ -974,7 +992,7 @@ retryAcquire:
 		if preferredConnID != "" {
 			if conn, ok := ap.conns[preferredConnID]; ok &&
 				conn.matchesTLSProfile(req.TLSProfile, req.TLSProfileKey) &&
-				conn.matchesBetaFeatures(betaFeatures) &&
+				conn.matchesHandshakeCompatibility(compatibility) &&
 				conn.tryAcquire() {
 				connPick := time.Since(pickStartedAt)
 				p.recordConnPickDuration(connPick)
@@ -992,12 +1010,17 @@ retryAcquire:
 				}
 				lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick, reused: true}
 				p.metrics.acquireReuseTotal.Add(1)
+				p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 				p.ensureTargetIdleAsync(accountID)
 				return lease, nil
 			}
 		}
 
-		best := p.pickLeastBusyConnLocked(ap, "", req.TLSProfile, req.TLSProfileKey, betaFeatures)
+		// routing hint 只在拨号和普通复用时提供软亲和；连接的硬兼容性仍由
+		// beta feature 与 TLS 指纹共同决定。
+		best := p.pickLeastBusyConnWithRoutingAffinityLocked(
+			ap, req.TLSProfile, req.TLSProfileKey, compatibility, routingAffinity,
+		)
 		if best != nil && best.tryAcquire() {
 			connPick := time.Since(pickStartedAt)
 			p.recordConnPickDuration(connPick)
@@ -1015,11 +1038,12 @@ retryAcquire:
 			}
 			lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: best, connPick: connPick, reused: true}
 			p.metrics.acquireReuseTotal.Add(1)
+			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 			p.ensureTargetIdleAsync(accountID)
 			return lease, nil
 		}
 		for _, conn := range ap.conns {
-			if conn == nil || conn == best || !conn.matchesBetaFeatures(betaFeatures) {
+			if conn == nil || conn == best || !conn.matchesHandshakeCompatibility(compatibility) || !conn.matchesRoutingAffinity(routingAffinity) {
 				continue
 			}
 			if !conn.matchesTLSProfile(req.TLSProfile, req.TLSProfileKey) {
@@ -1042,6 +1066,7 @@ retryAcquire:
 				}
 				lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick, reused: true}
 				p.metrics.acquireReuseTotal.Add(1)
+				p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 				p.ensureTargetIdleAsync(accountID)
 				return lease, nil
 			}
@@ -1049,20 +1074,23 @@ retryAcquire:
 	}
 
 	if !req.ForceNewConn && len(ap.conns)+ap.creating >= effectiveMaxConns {
-		// beta feature 是 WS 握手属性；池已满且没有同类连接时，必须等待忙连接释放，
-		// 不能把请求排到握手配置不同的连接上。TLS 兼容性由后续 fork 逻辑单独处理。
-		hasMatchingBetaFeatures := false
-		for _, conn := range ap.conns {
-			if conn != nil && conn.matchesBetaFeatures(betaFeatures) {
-				hasMatchingBetaFeatures = true
-				break
-			}
-		}
-		if idle := p.pickOldestIdleConnWithDifferentBetaFeaturesLocked(ap, betaFeatures); idle != nil {
+		affine := p.pickLeastBusyConnWithRoutingAffinityLocked(
+			ap, req.TLSProfile, req.TLSProfileKey, compatibility, routingAffinity,
+		)
+		if idle := p.pickOldestIdleConnWithoutHandshakeCompatibilityOrRoutingAffinityLocked(
+			ap, req.TLSProfile, req.TLSProfileKey, compatibility, routingAffinity,
+		); idle != nil {
 			delete(ap.conns, idle.id)
 			evicted = append(evicted, idle)
 			p.metrics.scaleDownTotal.Add(1)
-		} else if !hasMatchingBetaFeatures {
+		} else if affine == nil {
+			compatible := p.pickLeastBusyConnLocked(
+				ap, "", req.TLSProfile, req.TLSProfileKey, compatibility,
+			)
+			if compatible != nil {
+				// 池已满且硬兼容连接都在忙时，hint 保持软约束，转到下方排队。
+				goto acquireAtCapacity
+			}
 			hasConnection := false
 			for _, conn := range ap.conns {
 				if conn != nil {
@@ -1114,6 +1142,17 @@ retryAcquire:
 		ap = p.getOrCreateAccountPool(accountID)
 		ap.mu.Lock()
 		ap.creating--
+		if ap.generation != acquireGeneration {
+			ap.signalChangedLocked()
+			ap.mu.Unlock()
+			if conn != nil {
+				conn.close()
+			}
+			if retry < 1 {
+				return p.acquire(ctx, req, retry+1)
+			}
+			return nil, errOpenAIWSConnClosed
+		}
 		if dialErr != nil {
 			ap.prewarmFails++
 			ap.prewarmFailAt = time.Now()
@@ -1121,20 +1160,24 @@ retryAcquire:
 			ap.mu.Unlock()
 			return nil, dialErr
 		}
+		// 新连接发布到池前先领取租约，避免下方唤醒的拓扑等待者抢先获取，
+		// 导致发起拨号的请求反而排在其后。
+		if !conn.tryAcquire() {
+			ap.signalChangedLocked()
+			ap.mu.Unlock()
+			conn.close()
+			return nil, errOpenAIWSConnClosed
+		}
 		ap.conns[conn.id] = conn
 		ap.prewarmFails = 0
 		ap.prewarmFailAt = time.Time{}
+		// 唤醒曾观察到正在创建连接但池内无兼容连接的请求；否则即使拓扑已
+		// 变化，它们仍可能一直等待到新租约释放。
+		ap.signalChangedLocked()
 		ap.mu.Unlock()
 		p.metrics.acquireCreateTotal.Add(1)
-
-		if !conn.tryAcquire() {
-			if err := conn.acquire(ctx); err != nil {
-				conn.close()
-				p.evictConn(accountID, conn.id)
-				return nil, err
-			}
-		}
 		lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick}
+		p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 		p.ensureTargetIdleAsync(accountID)
 		return lease, nil
 	}
@@ -1146,7 +1189,10 @@ retryAcquire:
 		return nil, errOpenAIWSConnQueueFull
 	}
 
-	target := p.pickLeastBusyConnLocked(ap, req.PreferredConnID, req.TLSProfile, req.TLSProfileKey, betaFeatures)
+acquireAtCapacity:
+	target := p.pickLeastBusyConnLocked(
+		ap, req.PreferredConnID, req.TLSProfile, req.TLSProfileKey, compatibility,
+	)
 	connPick := time.Since(pickStartedAt)
 	p.recordConnPickDuration(connPick)
 	if target == nil {
@@ -1188,6 +1234,7 @@ retryAcquire:
 	p.metrics.acquireQueueWaitMs.Add(queueWait.Milliseconds())
 	lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: target, queueWait: queueWait, connPick: connPick, reused: true}
 	p.metrics.acquireReuseTotal.Add(1)
+	p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 	p.ensureTargetIdleAsync(accountID)
 	return lease, nil
 }
@@ -1201,6 +1248,23 @@ func (p *openAIWSConnPool) recordConnPickDuration(duration time.Duration) {
 	}
 	p.metrics.connPickTotal.Add(1)
 	p.metrics.connPickMs.Add(duration.Milliseconds())
+}
+
+func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generation uint64, req openAIWSAcquireRequest) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	ap, ok := p.getAccountPool(accountID)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	if ap.generation != generation {
+		ap.mu.Unlock()
+		return
+	}
+	ap.lastAcquire = cloneOpenAIWSAcquireRequestPtr(&req)
+	ap.mu.Unlock()
 }
 
 func (p *openAIWSConnPool) pickOldestIdleConnLocked(ap *openAIWSAccountPool) *openAIWSConn {
@@ -1236,14 +1300,25 @@ func (p *openAIWSConnPool) pickOldestIdleMismatchedTLSConnLocked(ap *openAIWSAcc
 	return oldest
 }
 
-// pickOldestIdleConnWithDifferentBetaFeaturesLocked 选取可淘汰的 beta 配置不兼容空闲连接。
-func (p *openAIWSConnPool) pickOldestIdleConnWithDifferentBetaFeaturesLocked(ap *openAIWSAccountPool, betaFeatures string) *openAIWSConn {
+// pickOldestIdleConnWithoutHandshakeCompatibilityOrRoutingAffinityLocked 选取可淘汰的
+// 硬兼容特征或 routing hint 不匹配空闲连接，为新拨号腾出容量。
+func (p *openAIWSConnPool) pickOldestIdleConnWithoutHandshakeCompatibilityOrRoutingAffinityLocked(
+	ap *openAIWSAccountPool,
+	profile *tlsfingerprint.Profile,
+	profileKey string,
+	compatibility openAIWSHandshakeCompatibilityKey,
+	routingAffinity string,
+) *openAIWSConn {
 	if ap == nil || len(ap.conns) == 0 {
 		return nil
 	}
 	var oldest *openAIWSConn
 	for _, conn := range ap.conns {
-		if conn == nil || conn.matchesBetaFeatures(betaFeatures) || conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) {
+		if conn == nil ||
+			(conn.matchesTLSProfile(profile, profileKey) &&
+				conn.matchesHandshakeCompatibility(compatibility) &&
+				conn.matchesRoutingAffinity(routingAffinity)) ||
+			conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) {
 			continue
 		}
 		if oldest == nil || conn.lastUsedAt().Before(oldest.lastUsedAt()) {
@@ -1400,7 +1475,7 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 	preferredConnID string,
 	profile *tlsfingerprint.Profile,
 	profileKey string,
-	betaFeatures string,
+	compatibility openAIWSHandshakeCompatibilityKey,
 ) *openAIWSConn {
 	if ap == nil || len(ap.conns) == 0 {
 		return nil
@@ -1408,7 +1483,7 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 	preferredConnID = stringsTrim(preferredConnID)
 	if preferredConnID != "" {
 		if conn, ok := ap.conns[preferredConnID]; ok {
-			if conn.matchesTLSProfile(profile, profileKey) && conn.matchesBetaFeatures(betaFeatures) {
+			if conn.matchesTLSProfile(profile, profileKey) && conn.matchesHandshakeCompatibility(compatibility) {
 				return conn
 			}
 			return nil
@@ -1418,10 +1493,43 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 	var bestWaiters int32
 	var bestLastUsed time.Time
 	for _, conn := range ap.conns {
-		if conn == nil || !conn.matchesBetaFeatures(betaFeatures) {
+		if conn == nil || !conn.matchesHandshakeCompatibility(compatibility) {
 			continue
 		}
 		if !conn.matchesTLSProfile(profile, profileKey) {
+			continue
+		}
+		waiters := conn.waiters.Load()
+		lastUsed := conn.lastUsedAt()
+		if best == nil ||
+			waiters < bestWaiters ||
+			(waiters == bestWaiters && lastUsed.Before(bestLastUsed)) {
+			best = conn
+			bestWaiters = waiters
+			bestLastUsed = lastUsed
+		}
+	}
+	return best
+}
+
+func (p *openAIWSConnPool) pickLeastBusyConnWithRoutingAffinityLocked(
+	ap *openAIWSAccountPool,
+	profile *tlsfingerprint.Profile,
+	profileKey string,
+	compatibility openAIWSHandshakeCompatibilityKey,
+	routingAffinity string,
+) *openAIWSConn {
+	if ap == nil || len(ap.conns) == 0 {
+		return nil
+	}
+	var best *openAIWSConn
+	var bestWaiters int32
+	var bestLastUsed time.Time
+	for _, conn := range ap.conns {
+		if conn == nil ||
+			!conn.matchesTLSProfile(profile, profileKey) ||
+			!conn.matchesHandshakeCompatibility(compatibility) ||
+			!conn.matchesRoutingAffinity(routingAffinity) {
 			continue
 		}
 		waiters := conn.waiters.Load()
@@ -1565,11 +1673,18 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 	if len(generations) > 0 {
 		generation = generations[0]
 	}
+	staleTarget := false
 	defer func() {
 		if ap, ok := p.getAccountPool(accountID); ok && ap != nil {
 			ap.mu.Lock()
 			ap.prewarmActive = false
+			ap.signalChangedLocked()
 			ap.mu.Unlock()
+		}
+		if staleTarget {
+			// 旧拨号尚未结束时出现了更新的获取请求；先清除 prewarmActive，
+			// 再按最新 beta/hint 目标重新计算空闲连接需求。
+			p.ensureTargetIdleAsync(accountID)
 		}
 	}()
 
@@ -1597,6 +1712,13 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 			continue
 		}
 		if ap.generation != generation || ap.lastAcquire == nil {
+			ap.mu.Unlock()
+			conn.close()
+			continue
+		}
+		if !sameOpenAIWSPrewarmTarget(req, *ap.lastAcquire) {
+			staleTarget = true
+			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			conn.close()
 			continue
@@ -1638,6 +1760,7 @@ func (p *openAIWSConnPool) ClearAccount(accountID int64) {
 	ap.prewarmUntil = time.Time{}
 	ap.prewarmFails = 0
 	ap.prewarmFailAt = time.Time{}
+	ap.signalChangedLocked()
 	ap.mu.Unlock()
 	closeOpenAIWSConns(conns)
 }
@@ -1751,7 +1874,8 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders, req.TLSProfile, req.TLSProfileKey)
-	pooledConn.betaFeatures = normalizeOpenAIWSBetaFeatures(req.Headers)
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Headers)
+	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
 
@@ -1930,6 +2054,15 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 	return &copied
 }
 
+// sameOpenAIWSPrewarmTarget 判断预热拨号的硬兼容目标是否仍然有效。
+// routing hint 仅用于软亲和，变化时无需丢弃已经建立的兼容连接。
+func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
+	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
+		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
+		normalizeOpenAIWSHandshakeCompatibility(a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Headers) &&
+		openAIWSTLSProfileKey(a.TLSProfile, a.TLSProfileKey) == openAIWSTLSProfileKey(b.TLSProfile, b.TLSProfileKey)
+}
+
 // normalizeOpenAIWSBetaFeatures 将握手 beta feature 去重排序，生成稳定的连接兼容键。
 func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	features := make(map[string]struct{})
@@ -1954,6 +2087,39 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	}
 	sort.Strings(normalized)
 	return strings.Join(normalized, ",")
+}
+
+func normalizeOpenAIWSHandshakeCompatibility(headers http.Header) openAIWSHandshakeCompatibilityKey {
+	return openAIWSHandshakeCompatibilityKey{
+		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
+	}
+}
+
+func normalizeOpenAIWSRoutingAffinity(headers http.Header) string {
+	canonicalName := http.CanonicalHeaderKey(openAICodexRoutingHintHeader)
+	if values, ok := headers[canonicalName]; ok {
+		for _, value := range values {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+
+	variantNames := make([]string, 0)
+	for name := range headers {
+		if name != canonicalName && strings.EqualFold(strings.TrimSpace(name), openAICodexRoutingHintHeader) {
+			variantNames = append(variantNames, name)
+		}
+	}
+	sort.Strings(variantNames)
+	for _, name := range variantNames {
+		for _, value := range headers[name] {
+			if value = strings.TrimSpace(value); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
 }
 
 func cloneHeader(src http.Header) http.Header {

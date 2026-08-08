@@ -49,7 +49,7 @@ TLS collector 可采集受控会话以建立或检查 profile。采集入口是�
 
 ## Header 与凭据边界
 
-Header override 只对 Anthropic/OpenAI 的 API Key 账号，以及 Grok 的 API Key/OAuth 账号生效。保存时会规范化名称和值并拒绝重复或非法条目，读取旧数据时还会再次过滤。Authorization、API Key、Proxy-Authorization、Host、Cookie、会话隔离头、hop-by-hop 和 transport 控制头都在禁止名单中，不能通过账号字段覆盖。
+Header override 只对 Anthropic/OpenAI 的 API Key 账号，以及 Grok 的 API Key/OAuth 账号生效。保存时会规范化名称和值并拒绝重复或非法条目，读取旧数据时还会再次过滤。Authorization、API Key、Proxy-Authorization、Host、Cookie、会话隔离头、hop-by-hop 和 transport 控制头都在禁止名单中，不能通过账号字段覆盖。OpenAI 的 `x-codex-routing-hint` 也属于网关自有控制头：出站构造会先删除调用方与账号覆盖提供的所有大小写变体，再仅为 OAuth 请求按最终模型和有效服务层级生成，API Key 路径不得透传。
 
 构建器通常先写入平台认证、客户端身份和会话头，再在末尾应用允许的 override；因此允许项可以有意覆盖 User-Agent 等内置头，而禁止项不会遮蔽真实凭据或固定会话身份。新增转发路径时必须复用同一套过滤与应用函数，不能直接遍历原始 credentials。
 

@@ -75,6 +75,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	turnState string,
 	turnMetadata string,
 	promptCacheKey string,
+	routingModel string,
+	routingServiceTier string,
 	routerMatch ...TLSFingerprintRouterMatchResult,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
@@ -91,6 +93,12 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		for _, value := range c.Request.Header.Values("x-codex-beta-features") {
 			if value = strings.TrimSpace(value); value != "" {
 				headers.Add("x-codex-beta-features", value)
+			}
+		}
+		// 仅转发 Codex 明确使用的窗口与安装身份提示，不开放任意客户端头透传。
+		for _, name := range [...]string{"x-codex-window-id", "x-codex-installation-id"} {
+			if value := strings.TrimSpace(c.Request.Header.Get(name)); value != "" {
+				headers.Set(name, value)
 			}
 		}
 	}
@@ -151,6 +159,16 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 覆盖所有 WS 模式（ctx_pool/dedicated/passthrough）的握手头。
 	account.ApplyHeaderOverrides(headers)
+	setOpenAICodexRoutingHint(headers, account, routingModel, routingServiceTier)
+	logOpenAIRoutingDiagnostics(
+		ctx,
+		account,
+		string(decision.Transport),
+		routingModel,
+		routingServiceTier,
+		strings.TrimSpace(headers.Get(openAICodexRoutingHintHeader)) != "",
+		"soft_routing_hint",
+	)
 
 	return headers, sessionResolution, nil
 }
