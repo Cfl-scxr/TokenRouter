@@ -1856,6 +1856,17 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
+// IsOpenAIResponsesFlattenNamespacesEnabled 返回账号级 Codex namespace 工具摊平开关。
+// 字段 accounts.extra.openai_responses_flatten_namespaces 缺省为 false，即原样保留。
+// 该兼容开关仅对 OpenAI OAuth 账号生效，用于仍不支持 namespace 的中转上游。
+func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_responses_flatten_namespaces"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：

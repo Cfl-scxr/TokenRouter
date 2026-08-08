@@ -82,6 +82,58 @@
         </div>
       </div>
 
+      <!-- OpenAI Codex namespace 工具摊平兼容开关，仅 OAuth 可用 -->
+      <div
+        v-if="allOpenAIOAuth"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-flatten-namespaces-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-flatten-namespaces-enabled"
+            >
+              {{ t('admin.accounts.openai.flattenNamespaces') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.flattenNamespacesDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIFlattenNamespaces"
+            id="bulk-edit-openai-flatten-namespaces-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-flatten-namespaces-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-flatten-namespaces-body"
+          :class="!enableOpenAIFlattenNamespaces && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-flatten-namespaces-label"
+        >
+          <button
+            id="bulk-edit-openai-flatten-namespaces-toggle"
+            type="button"
+            :aria-pressed="openaiFlattenNamespacesEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiFlattenNamespacesEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="openaiFlattenNamespacesEnabled = !openaiFlattenNamespacesEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiFlattenNamespacesEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI Codex 图片工具策略 -->
       <div
         v-if="allOpenAIPassthroughCapable"
@@ -1664,6 +1716,7 @@ const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
+const enableOpenAIFlattenNamespaces = ref(false)
 const enableCodexImageToolMode = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
@@ -1700,6 +1753,8 @@ const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
+// OpenAI OAuth namespace 工具摊平兼容开关，缺省关闭即原样保留。
+const openaiFlattenNamespacesEnabled = ref(false)
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -2095,6 +2150,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     }
   }
 
+  // 可见性也参与校验，防止目标筛选变更后把 OAuth 专属字段写到其他账号。
+  if (enableOpenAIFlattenNamespaces.value && allOpenAIOAuth.value) {
+    const extra = ensureExtra()
+    extra.openai_responses_flatten_namespaces = openaiFlattenNamespacesEnabled.value
+  }
+
   if (enableCodexImageToolMode.value) {
     const extra = ensureExtra()
     applyCodexImageToolMode(extra, codexImageToolMode.value, 'null')
@@ -2295,6 +2356,7 @@ const handleSubmit = async () => {
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
     enableOpenAIPassthrough.value ||
+    enableOpenAIFlattenNamespaces.value ||
     enableCodexImageToolMode.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
@@ -2441,6 +2503,7 @@ const resetBulkEditFormState = () => {
   enableStatus.value = false
   enableGroups.value = false
   enableOpenAIPassthrough.value = false
+  enableOpenAIFlattenNamespaces.value = false
   enableCodexImageToolMode.value = false
   enableOpenAIWSMode.value = false
   enableOpenAIAPIKeyWSMode.value = false
@@ -2457,6 +2520,7 @@ const resetBulkEditFormState = () => {
 
   baseUrl.value = ''
   openaiPassthroughEnabled.value = false
+  openaiFlattenNamespacesEnabled.value = false
   codexImageToolMode.value = 'inherit'
   resetModelRestrictionDraft()
   selectedErrorCodes.value = []
