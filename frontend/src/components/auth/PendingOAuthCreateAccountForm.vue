@@ -75,7 +75,7 @@
       :data-testid="`${testIdPrefix}-create-account-submit`"
       type="button"
       class="btn btn-primary w-full"
-      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim())"
+      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim()) || (turnstileEnabled && !turnstileToken)"
       @click="handleSubmit"
     >
       {{ isSubmitting ? t('common.processing') : t('auth.createAccount') }}
@@ -281,6 +281,13 @@ async function handleSendCode() {
 async function handleSubmit() {
   const trimmedEmail = email.value.trim()
   if (!trimmedEmail || password.value.length < 6) {
+    return
+  }
+
+  // Turnstile 票据只能使用一次，发送验证码后必须等待组件回调新的票据。
+  // 隐式表单提交会绕过按钮的禁用状态，因此这里仍需拦截空票据。
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    sendCodeError.value = t('auth.completeVerification')
     return
   }
 
