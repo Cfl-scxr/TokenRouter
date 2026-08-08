@@ -1225,6 +1225,8 @@ func startOfDay(t time.Time) time.Time {
 // usage billing 必须完整记录本次请求成本，余额不足时扣成负数作为欠费。
 // 此处不能升级为 FOR UPDATE，否则取得订阅锁后会再次与 usage_logs 的用户外键锁形成锁环。
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, float64, error) {
+	// 余额列是 NUMERIC(20,8)，必须在执行减法前固定刻度，避免与配额加法向相反方向舍入。
+	amount = service.QuantizeUsageBillingAmount(amount)
 	const query = `
 		WITH locked_user AS (
 			SELECT id, balance
@@ -1639,6 +1641,8 @@ func userExistsForBilling(ctx context.Context, tx *sql.Tx, userID int64) (bool, 
 }
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
+	// 配额列与余额列共享 8 位金额刻度，派生金额也必须在 SQL 前量化。
+	amount = service.QuantizeUsageBillingAmount(amount)
 	var exhausted bool
 	err := tx.QueryRowContext(ctx, `
 		UPDATE api_keys
@@ -1665,6 +1669,7 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 }
 
 func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKeyID int64, cost float64) error {
+	cost = service.QuantizeUsageBillingAmount(cost)
 	res, err := tx.ExecContext(ctx, `
 		UPDATE api_keys SET
 			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,

@@ -16,6 +16,7 @@ const (
 	usageBillingArchiveSQL       = `(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`
 	usageBillingUserLockSQL      = `(?s)SELECT id\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL\s+FOR NO KEY UPDATE`
 	usageBillingBalanceDeductSQL = `(?s)WITH locked_user AS.*FOR NO KEY UPDATE.*UPDATE users.*RETURNING users.balance`
+	usageBillingAPIKeyQuotaSQL   = `(?s)UPDATE api_keys.*quota_used = quota_used \+ \$1.*RETURNING quota > 0`
 )
 
 func TestUsageBillingRepositoryApply_DeadlockRestartsWholeTransaction(t *testing.T) {
@@ -92,6 +93,34 @@ func TestDeductUsageBillingBalance_KeepsForeignKeyCompatibleUserLock(t *testing.
 	require.NoError(t, err)
 	require.InDelta(t, 8.75, newBalance, 0.000001)
 	require.InDelta(t, 1.25, deductedAmount, 0.000001)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageBillingMonetaryEffectsQuantizeBeforeSQL(t *testing.T) {
+	const rawAmount = 0.000078125
+	wantAmount := service.QuantizeUsageBillingAmount(rawAmount)
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(usageBillingBalanceDeductSQL).
+		WithArgs(wantAmount, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "deducted_amount"}).AddRow(9999.99992187, wantAmount))
+	mock.ExpectQuery(usageBillingAPIKeyQuotaSQL).
+		WithArgs(wantAmount, int64(7), service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).
+		WillReturnRows(sqlmock.NewRows([]string{"exhausted"}).AddRow(false))
+	mock.ExpectRollback()
+
+	_, deductedAmount, err := deductUsageBillingBalance(context.Background(), tx, 42, rawAmount)
+	require.NoError(t, err)
+	_, err = incrementUsageBillingAPIKeyQuota(context.Background(), tx, 7, rawAmount)
+	require.NoError(t, err)
+	require.Equal(t, wantAmount, deductedAmount)
 	require.NoError(t, tx.Rollback())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
