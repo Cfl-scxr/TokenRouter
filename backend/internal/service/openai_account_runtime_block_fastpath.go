@@ -103,6 +103,24 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 // applyOpenAIAccountUpstreamError 返回完整策略决策，供调用方区分池模式绕过、
 // 自定义错误码未命中和真正停止调度的显式策略。
 func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) UpstreamErrorDecision {
+	return s.applyOpenAIAccountUpstreamErrorInternal(ctx, account, statusCode, headers, responseBody, false, canonicalModel...)
+}
+
+// applyOpenAIAccountStreamRateLimitError 对 HTTP 200 流内限流仅应用显式策略，
+// 不使用正常配额快照响应头写入默认的账号级冷却状态。
+func (s *OpenAIGatewayService) applyOpenAIAccountStreamRateLimitError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) UpstreamErrorDecision {
+	return s.applyOpenAIAccountUpstreamErrorInternal(ctx, account, statusCode, headers, responseBody, true, canonicalModel...)
+}
+
+func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamErrorInternal(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	headers http.Header,
+	responseBody []byte,
+	suppressDefaultRateLimitState bool,
+	canonicalModel ...string,
+) UpstreamErrorDecision {
 	if isOpenAIAccountPolicyRequestScopedError(account, statusCode, responseBody) {
 		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
@@ -138,7 +156,7 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamError(ctx context.Conte
 		return decision
 	}
 
-	if isOpenAIImageRateLimitError(statusCode, responseBody) {
+	if !suppressDefaultRateLimitState && isOpenAIImageRateLimitError(statusCode, responseBody) {
 		if s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageRateLimit(stateCtx, account, statusCode, headers, responseBody)
 		}
@@ -158,6 +176,9 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamError(ctx context.Conte
 		if len(canonicalModel) == 0 || strings.TrimSpace(canonicalModel[0]) == "" {
 			s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 		}
+		return decision
+	}
+	if suppressDefaultRateLimitState && statusCode == http.StatusTooManyRequests {
 		return decision
 	}
 	if statusCode == http.StatusTooManyRequests {
