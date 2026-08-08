@@ -28,6 +28,8 @@ fallback 链循环、全部过期或目标缺失时保留可诊断失败，不�
 
 HTTP client 池可按 `proxy`、`account` 或 `account_proxy` 隔离，并有最大条目、空闲过期和逐出策略。隔离键还包含 TLS profile 等传输身份，防止不同账号或指纹错误复用连接。池配置变化要关闭/逐出旧 transport，不能只修改后续 key。
 
+普通与 TLS 指纹上游传输都显式限制 DNS/TCP 建连和 TLS 握手阶段，当前默认各为 10 秒；TCP keepalive 探测间隔为 30 秒。HTTP 代理保留调用方的建连拨号器，SOCKS5/SOCKS5H 因会覆盖 `Transport.DialContext`，其 forward dialer 必须自行携带同等上限并响应请求 context。`ResponseHeaderTimeout` 只约束建连后的响应头等待，不能替代这些阶段超时。
+
 直连、HTTP 和 SOCKS 可以使用 TLS profile。HTTPS 代理存在单独 transport 限制；OpenAI 等路径可在代理不支持 HTTP/2 时使用受控的 HTTP/1 回退。任何回退都只改变传输协商，不改变目标 allowlist、认证和账号归属。
 
 <a id="upstream_tls_routing"></a>

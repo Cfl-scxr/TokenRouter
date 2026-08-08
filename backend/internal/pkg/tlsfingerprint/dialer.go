@@ -14,10 +14,25 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
+
+const (
+	// TLS 指纹传输也必须限制建连与握手阶段，避免绕过 http.Transport 的超时配置。
+	defaultTLSFingerprintDialTimeout      = 10 * time.Second
+	defaultTLSFingerprintDialKeepAlive    = 30 * time.Second
+	defaultTLSFingerprintHandshakeTimeout = 10 * time.Second
+)
+
+func newTLSFingerprintNetworkDialer() *net.Dialer {
+	return &net.Dialer{
+		Timeout:   defaultTLSFingerprintDialTimeout,
+		KeepAlive: defaultTLSFingerprintDialKeepAlive,
+	}
+}
 
 // Profile contains TLS fingerprint configuration.
 // All slice fields use built-in defaults when empty.
@@ -125,7 +140,7 @@ var (
 // If baseDialer is nil, direct TCP dial is used.
 func NewDialer(profile *Profile, baseDialer func(ctx context.Context, network, addr string) (net.Conn, error)) *Dialer {
 	if baseDialer == nil {
-		baseDialer = (&net.Dialer{}).DialContext
+		baseDialer = newTLSFingerprintNetworkDialer().DialContext
 	}
 	return &Dialer{profile: profile, baseDialer: baseDialer}
 }
@@ -164,7 +179,7 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080") // Default SOCKS5 port
 	}
 
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, newTLSFingerprintNetworkDialer())
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
@@ -172,7 +187,12 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 
 	// Step 2: Establish SOCKS5 tunnel to target
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	conn, err := socksDialer.Dial("tcp", addr)
+	var conn net.Conn
+	if contextDialer, ok := socksDialer.(proxy.ContextDialer); ok {
+		conn, err = contextDialer.DialContext(ctx, network, addr)
+	} else {
+		conn, err = socksDialer.Dial(network, addr)
+	}
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -204,7 +224,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		}
 	}
 
-	dialer := &net.Dialer{}
+	dialer := newTLSFingerprintNetworkDialer()
 	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_http_proxy_connect_failed", "error", err)
@@ -311,7 +331,9 @@ func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, a
 		return nil, fmt.Errorf("apply TLS preset: %w", err)
 	}
 
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
+	handshakeCtx, cancel := context.WithTimeout(ctx, defaultTLSFingerprintHandshakeTimeout)
+	defer cancel()
+	if err := tlsConn.HandshakeContext(handshakeCtx); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
