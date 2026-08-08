@@ -7,7 +7,7 @@ const loginMock = vi.fn()
 const loginWithPasskeyMock = vi.fn()
 const getPublicSettingsMock = vi.fn()
 const startOAuthLoginMock = vi.fn()
-const verifyTencentMock = vi.fn()
+const verifyActionMock = vi.fn()
 const captchaResetMock = vi.fn()
 const locationState = { href: 'http://localhost/login' }
 
@@ -54,7 +54,7 @@ vi.mock('@/api/auth', async () => {
 const CaptchaChallengeStub = defineComponent({
   setup(_, { expose }) {
     expose({
-      verifyTencent: verifyTencentMock,
+      verifyAction: verifyActionMock,
       reset: captchaResetMock
     })
     return () => h('div')
@@ -95,13 +95,32 @@ function mountLogin() {
   })
 }
 
-describe('Tencent captcha action gate', () => {
+function enableAliyunCaptcha(): void {
+  getPublicSettingsMock.mockResolvedValue({
+    turnstile_enabled: false,
+    turnstile_site_key: '',
+    tencent_captcha_enabled: false,
+    tencent_captcha_app_id: '',
+    aliyun_captcha_enabled: true,
+    aliyun_captcha_scene_id: 'scene-1',
+    aliyun_captcha_prefix: 'prefix-1',
+    aliyun_captcha_region: 'cn',
+    backend_mode_enabled: false,
+    password_reset_enabled: false,
+    passkey_enabled: true,
+    github_oauth_enabled: true,
+    google_oauth_enabled: false
+  })
+  verifyActionMock.mockResolvedValue({ token: 'aliyun-param-1', randstr: '' })
+}
+
+describe('Action captcha gate', () => {
   beforeEach(() => {
     loginMock.mockReset()
     loginWithPasskeyMock.mockReset()
     getPublicSettingsMock.mockReset()
     startOAuthLoginMock.mockReset()
-    verifyTencentMock.mockReset()
+    verifyActionMock.mockReset()
     captchaResetMock.mockReset()
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
@@ -117,7 +136,7 @@ describe('Tencent captcha action gate', () => {
     loginMock.mockResolvedValue({})
     loginWithPasskeyMock.mockResolvedValue({})
     startOAuthLoginMock.mockResolvedValue({ authorize_url: 'https://github.example/authorize' })
-    verifyTencentMock.mockResolvedValue({ ticket: 'ticket-1', randstr: '@rand-1' })
+    verifyActionMock.mockResolvedValue({ token: 'ticket-1', randstr: '@rand-1' })
     Object.defineProperty(window, 'PublicKeyCredential', {
       configurable: true,
       value: class PublicKeyCredential {}
@@ -138,7 +157,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginMock).toHaveBeenCalledWith(expect.objectContaining({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
@@ -146,7 +165,7 @@ describe('Tencent captcha action gate', () => {
   })
 
   it('does not call login when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
     await wrapper.get('#email').setValue('user@example.com')
@@ -155,7 +174,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginMock).not.toHaveBeenCalled()
   })
 
@@ -166,7 +185,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    expect(verifyTencentMock).not.toHaveBeenCalled()
+    expect(verifyActionMock).not.toHaveBeenCalled()
     expect(loginMock).not.toHaveBeenCalled()
   })
 
@@ -177,7 +196,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('[data-testid="oauth-start"]').trigger('click')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(startOAuthLoginMock).toHaveBeenCalledWith(
       { provider: 'github', params: { redirect: '/dashboard' } },
       {
@@ -190,7 +209,7 @@ describe('Tencent captcha action gate', () => {
   })
 
   it('does not start OAuth when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
 
@@ -208,7 +227,7 @@ describe('Tencent captcha action gate', () => {
     await wrapper.get('button.btn-secondary.w-full').trigger('click')
     await flushPromises()
 
-    expect(verifyTencentMock).toHaveBeenCalledOnce()
+    expect(verifyActionMock).toHaveBeenCalledOnce()
     expect(loginWithPasskeyMock).toHaveBeenCalledWith({
       tencent_captcha_ticket: 'ticket-1',
       tencent_captcha_randstr: '@rand-1'
@@ -217,7 +236,7 @@ describe('Tencent captcha action gate', () => {
   })
 
   it('does not invoke Passkey when Tencent captcha is closed', async () => {
-    verifyTencentMock.mockResolvedValue(null)
+    verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()
     await flushPromises()
 
@@ -225,5 +244,52 @@ describe('Tencent captcha action gate', () => {
     await flushPromises()
 
     expect(loginWithPasskeyMock).not.toHaveBeenCalled()
+  })
+
+  it('passes the Aliyun verification parameter to password login', async () => {
+    enableAliyunCaptcha()
+    const wrapper = mountLogin()
+    await flushPromises()
+    await wrapper.get('#email').setValue('user@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(verifyActionMock).toHaveBeenCalledOnce()
+    expect(loginMock).toHaveBeenCalledWith(expect.objectContaining({
+      turnstile_token: 'aliyun-param-1',
+      tencent_captcha_ticket: undefined,
+      tencent_captcha_randstr: undefined
+    }))
+  })
+
+  it('passes the Aliyun verification parameter to OAuth start', async () => {
+    enableAliyunCaptcha()
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="oauth-start"]').trigger('click')
+    await flushPromises()
+
+    expect(verifyActionMock).toHaveBeenCalledOnce()
+    expect(startOAuthLoginMock).toHaveBeenCalledWith(
+      { provider: 'github', params: { redirect: '/dashboard' } },
+      { turnstile_token: 'aliyun-param-1' }
+    )
+  })
+
+  it('passes the Aliyun verification parameter to Passkey login', async () => {
+    enableAliyunCaptcha()
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    await wrapper.get('button.btn-secondary.w-full').trigger('click')
+    await flushPromises()
+
+    expect(verifyActionMock).toHaveBeenCalledOnce()
+    expect(loginWithPasskeyMock).toHaveBeenCalledWith({
+      turnstile_token: 'aliyun-param-1'
+    })
   })
 })

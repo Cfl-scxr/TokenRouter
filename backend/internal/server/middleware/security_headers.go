@@ -22,6 +22,8 @@ const (
 	TencentCaptchaDomain = "https://turing.captcha.qcloud.com"
 	// TencentCaptchaStaticDomain 是腾讯验证码静态资源域名。
 	TencentCaptchaStaticDomain = "https://*.captcha.gtimg.com"
+	// AliyunCaptchaStaticDomain 是阿里云验证码 Web SDK 与样式资源域名。
+	AliyunCaptchaStaticDomain = "https://*.alicdn.com"
 	// StripeDomain is the domain for Stripe.js SDK
 	StripeDomain = "https://*.stripe.com"
 	// AirwallexStaticDomain 是 Airwallex 生产环境 SDK 脚本域名。
@@ -42,6 +44,8 @@ var requiredCSPDirectiveValues = []struct {
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
 	{"style-src", TencentCaptchaStaticDomain},
+	{"script-src", AliyunCaptchaStaticDomain},
+	{"style-src", AliyunCaptchaStaticDomain},
 	{"script-src", StripeDomain},
 	{"frame-src", StripeDomain},
 	{"script-src", AirwallexStaticDomain},

@@ -173,6 +173,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTurnstileSiteKey,
 		SettingKeyTencentCaptchaEnabled,
 		SettingKeyTencentCaptchaAppID,
+		SettingKeyAliyunCaptchaEnabled,
+		SettingKeyAliyunCaptchaSceneID,
+		SettingKeyAliyunCaptchaPrefix,
+		SettingKeyAliyunCaptchaRegion,
 		SettingKeyAPIKeyACLTrustForwardedIP,
 		SettingKeySiteName,
 		SettingKeySiteLogo,
@@ -330,6 +334,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TencentCaptchaEnabled:            settings[SettingKeyTencentCaptchaEnabled] == "true",
 		TencentCaptchaAppID:              settings[SettingKeyTencentCaptchaAppID],
+		AliyunCaptchaEnabled:             settings[SettingKeyAliyunCaptchaEnabled] == "true",
+		AliyunCaptchaSceneID:             settings[SettingKeyAliyunCaptchaSceneID],
+		AliyunCaptchaPrefix:              settings[SettingKeyAliyunCaptchaPrefix],
+		AliyunCaptchaRegion:              normalizeAliyunCaptchaRegion(settings[SettingKeyAliyunCaptchaRegion]),
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:                         settings[SettingKeySiteLogo],
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
@@ -416,6 +424,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TurnstileSiteKey                 string                   `json:"turnstile_site_key,omitempty"`
 		TencentCaptchaEnabled            bool                     `json:"tencent_captcha_enabled"`
 		TencentCaptchaAppID              string                   `json:"tencent_captcha_app_id,omitempty"`
+		AliyunCaptchaEnabled             bool                     `json:"aliyun_captcha_enabled"`
+		AliyunCaptchaSceneID             string                   `json:"aliyun_captcha_scene_id,omitempty"`
+		AliyunCaptchaPrefix              string                   `json:"aliyun_captcha_prefix,omitempty"`
+		AliyunCaptchaRegion              string                   `json:"aliyun_captcha_region,omitempty"`
 		SiteName                         string                   `json:"site_name"`
 		SiteLogo                         string                   `json:"site_logo,omitempty"`
 		SiteSubtitle                     string                   `json:"site_subtitle,omitempty"`
@@ -487,6 +499,10 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		TencentCaptchaEnabled:            settings.TencentCaptchaEnabled,
 		TencentCaptchaAppID:              settings.TencentCaptchaAppID,
+		AliyunCaptchaEnabled:             settings.AliyunCaptchaEnabled,
+		AliyunCaptchaSceneID:             settings.AliyunCaptchaSceneID,
+		AliyunCaptchaPrefix:              settings.AliyunCaptchaPrefix,
+		AliyunCaptchaRegion:              settings.AliyunCaptchaRegion,
 		SiteName:                         settings.SiteName,
 		SiteLogo:                         settings.SiteLogo,
 		SiteSubtitle:                     settings.SiteSubtitle,

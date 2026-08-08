@@ -11,7 +11,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
-  TencentCaptchaRequestProof
+  ActionCaptchaRequestProof
 } from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -281,8 +281,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Passkey 登录可携带腾讯验证码凭证，并复用密码登录的状态落库流程。
-  async function loginWithPasskey(proof?: TencentCaptchaRequestProof): Promise<User> {
+  // Passkey 登录可携带动作验证码凭证，并复用密码登录的状态落库流程。
+  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
     try {
       const response = await passkeyAPI.login(proof)
       setAuthFromResponse(response)
