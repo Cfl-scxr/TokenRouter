@@ -622,6 +622,7 @@ type UpstreamFailoverError struct {
 	ResponseHeaders          http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling        bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount   bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	RequestScopedTransient   bool        // 请求级瞬时故障与账号健康无关：可同账号重试，但不得据此临时封禁账号
 	SafeToFailoverAfterWrite bool        // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
 	Stage                    GatewayFailureStage
 	Scope                    GatewayFailureScope
@@ -667,6 +668,10 @@ func (e *sseStreamErrorEventError) Error() string { return "have error in stream
 // 由 handler 层在同账号重试全部用尽、切换账号时调用；池模式只切号不写状态。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
 	if s == nil || s.accountRepo == nil || failoverErr == nil || !failoverErr.RetryableOnSameAccount {
+		return
+	}
+	// 请求级瞬时故障在切换账号后仍会复现，不能把无关账号逐个摘出调度池。
+	if failoverErr.RequestScopedTransient {
 		return
 	}
 	// 池模式重试只控制当前请求的原地重试预算，耗尽后必须直接切号，

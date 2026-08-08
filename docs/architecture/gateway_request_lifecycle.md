@@ -126,7 +126,7 @@ client_model
 
 每次 attempt 都以原始/规范化请求和本次账号重新构造供应商请求，注入凭据、代理、TLS 指纹、客户端标识、Thinking/工具配置及上游模型。平台适配器负责协议转换、上游响应限制和供应商错误解析，handler 负责在客户端协议中返回最终结果。
 
-流式响应有不可逆边界：在调用上游前记录 `ResponseWriter` 已写字节数；如果 attempt 已向客户端写出任何 SSE/流内容，就不能再选择账号，否则会把两个上游响应拼接为损坏的单流。此时错误只能按当前协议追加允许的流错误事件或结束连接。非流式且尚未写响应时，才可以安全地进入下一次 failover。
+流式响应有不可逆边界：在调用上游前记录 `ResponseWriter` 已写字节数；如果 attempt 已向客户端写出真实业务输出，就不能再选择账号，否则会把两个上游响应拼接为损坏的单流。Compact 心跳、Responses 的 `response.created` / `response.in_progress` 前导事件，以及等待终态判定的可重试 `error` 帧不算业务输出，可以留在 attempt 缓冲中为 pre-output failover 保留空间；不可重试错误仍按事件边界及时转发。真实输出开始后，错误只能按当前协议追加允许的流错误事件或结束连接。非流式且尚未写响应时，才可以安全地进入下一次 failover。
 
 错误分为本地准入、业务能力不足、调度容量不足、上游可切换错误和不可切换转发错误。协议准入拒绝分别使用 Anthropic `permission_error`、OpenAI `protocol_not_allowed` 和 Google `PERMISSION_DENIED`，且没有所选账号。Ops 采集会记录归属、endpoint、平台、模型和所选账号，但返回客户端的错误不能泄露凭据、内部代理或数据库错误。
 
