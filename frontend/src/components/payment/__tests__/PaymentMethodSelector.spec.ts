@@ -9,6 +9,44 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('PaymentMethodSelector', () => {
+  it('wraps large custom method collections without letting labels widen the selector', () => {
+    const methods = Array.from({ length: 12 }, (_, index) => ({
+      type: `custom_${index}`,
+      display_name: `CUSTOM_PAYMENT_METHOD_${index}`,
+      fee_fixed: 0,
+      fee_rate: 0,
+      available: true,
+    }))
+
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'custom_0',
+        methods,
+      },
+    })
+
+    const grid = wrapper.get('[data-testid="payment-method-grid"]')
+    expect(grid.classes()).toEqual(expect.arrayContaining(['grid', 'sm:grid-cols-3', 'lg:grid-cols-4']))
+    expect(grid.classes()).not.toContain('sm:flex')
+
+    const buttons = wrapper.findAll('button')
+    expect(buttons).toHaveLength(methods.length)
+    expect(buttons.every(button => button.classes().includes('min-w-0'))).toBe(true)
+    expect(buttons.every((button, index) => button.attributes('title') === methods[index].display_name)).toBe(true)
+    expect(wrapper.findAll('[data-testid="payment-method-label"]').every(label => label.classes().includes('truncate'))).toBe(true)
+  })
+
+  it('keeps fixed and percentage fee labels in the wrapped grid', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'custom_fee',
+        methods: [{ type: 'custom_fee', display_name: 'Custom Pay', fee_fixed: 1.5, fee_rate: 2, available: true }],
+      },
+    })
+
+    expect(wrapper.text()).toContain('payment.fee ¥1.50 + 2%')
+  })
+
   it('shows the configured display name for custom EasyPay methods', () => {
     const wrapper = mount(PaymentMethodSelector, {
       props: {
