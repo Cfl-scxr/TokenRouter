@@ -72,6 +72,12 @@ const antigravityModels = [
   'gemini-3-flash',
   'gemini-3-pro-high',
   'gemini-3-pro-low',
+  // Gemini 3.6 Flash 系列
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-high',
+  'gemini-3.6-flash-low',
+  'gemini-3.6-flash-medium',
+  'gemini-3.6-flash-tiered',
   // Gemini 3.1 系列
   'gemini-3.1-pro',
   'gemini-3.1-pro-high',

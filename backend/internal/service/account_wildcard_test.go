@@ -754,6 +754,12 @@ func TestAccountGetModelMapping_AntigravityEnsuresGeminiDefaultPassthroughs(t *t
 	if mapping["gemini-3.1-pro-low"] != "gemini-3.1-pro-low" {
 		t.Fatalf("expected gemini-3.1-pro-low passthrough to be auto-filled, got: %q", mapping["gemini-3.1-pro-low"])
 	}
+	// 自定义映射不能屏蔽新发布的 Gemini 3.6 Flash 直通模型。
+	for _, model := range []string{"gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-low", "gemini-3.6-flash-medium", "gemini-3.6-flash-tiered"} {
+		if mapping[model] != model {
+			t.Fatalf("expected %s passthrough to be auto-filled, got: %q", model, mapping[model])
+		}
+	}
 }
 
 func TestAccountGetModelMapping_AntigravityRespectsWildcardOverride(t *testing.T) {
