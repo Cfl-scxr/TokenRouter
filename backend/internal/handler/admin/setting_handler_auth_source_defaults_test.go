@@ -289,7 +289,8 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	paymentConfigService := service.NewPaymentConfigService(nil, repo, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, paymentConfigService, nil, nil)
 
 	body := map[string]any{
 		"promo_code_enabled":                                      true,

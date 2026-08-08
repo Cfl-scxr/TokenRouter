@@ -499,10 +499,8 @@ func (cfg *PaymentConfig) EffectiveMethodFee(method string) payment.FeeConfig {
 	return payment.FeeConfig{FeeRate: cfg.RechargeFeeRate}
 }
 
-// UpdatePaymentConfig updates the payment configuration settings.
-// NOTE: This function exceeds 30 lines because each field requires an independent
-// nil-check before serialisation — this is inherent to patch-style update patterns
-// and cannot be meaningfully decomposed without introducing unnecessary abstraction.
+// UpdatePaymentConfig 按 PATCH 语义更新支付配置。
+// 每个字段都要独立判空后再序列化，因此函数天然较长；拆分只会掩盖字段与设置键的对应关系。
 func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
 	if req.BalanceRechargeMultiplier != nil {
 		if math.IsNaN(*req.BalanceRechargeMultiplier) || math.IsInf(*req.BalanceRechargeMultiplier, 0) || *req.BalanceRechargeMultiplier <= 0 {
@@ -520,7 +518,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate must be between 0 and 100")
 		}
-		// Enforce max 2 decimal places
+		// 充值手续费率最多保留两位小数。
 		if math.Round(v*100) != v*100 {
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
@@ -530,39 +528,90 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return err
 		}
 	}
-	m := map[string]string{
-		SettingPaymentEnabled:                    formatBoolOrEmpty(req.Enabled),
-		SettingMinRechargeAmount:                 formatPositiveFloat(req.MinAmount),
-		SettingMaxRechargeAmount:                 formatPositiveFloat(req.MaxAmount),
-		SettingDailyRechargeLimit:                formatPositiveFloat(req.DailyLimit),
-		SettingOrderTimeoutMinutes:               formatPositiveInt(req.OrderTimeoutMin),
-		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
-		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
-		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
-		SettingSubscriptionUSDToCNYRate:          formatPositiveFloatExact(req.SubscriptionUSDToCNYRate),
-		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),
-		SettingPaymentMethodFees:                 formatMethodFeeSettings(req.MethodFees),
-		SettingLoadBalanceStrategy:               derefStr(req.LoadBalanceStrategy),
-		SettingProductNamePrefix:                 derefStr(req.ProductNamePrefix),
-		SettingProductNameSuffix:                 derefStr(req.ProductNameSuffix),
-		SettingHelpImageURL:                      derefStr(req.HelpImageURL),
-		SettingHelpText:                          derefStr(req.HelpText),
-		SettingCancelRateLimitOn:                 formatBoolOrEmpty(req.CancelRateLimitEnabled),
-		SettingCancelRateLimitMax:                formatPositiveInt(req.CancelRateLimitMax),
-		SettingCancelWindowSize:                  formatPositiveInt(req.CancelRateLimitWindow),
-		SettingCancelWindowUnit:                  derefStr(req.CancelRateLimitUnit),
-		SettingCancelWindowMode:                  derefStr(req.CancelRateLimitMode),
-		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
-		SettingAlipayMobilePrecreateDeepLink:     formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink),
-		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),
-		SettingPaymentVisibleMethodWxpaySource:   derefStr(req.VisibleMethodWxpaySource),
-		SettingPaymentVisibleMethodAlipayEnabled: formatBoolOrEmpty(req.VisibleMethodAlipayEnabled),
-		SettingPaymentVisibleMethodWxpayEnabled:  formatBoolOrEmpty(req.VisibleMethodWxpayEnabled),
+	m := make(map[string]string)
+	if req.Enabled != nil {
+		m[SettingPaymentEnabled] = formatBoolOrEmpty(req.Enabled)
+	}
+	if req.MinAmount != nil {
+		m[SettingMinRechargeAmount] = formatPositiveFloat(req.MinAmount)
+	}
+	if req.MaxAmount != nil {
+		m[SettingMaxRechargeAmount] = formatPositiveFloat(req.MaxAmount)
+	}
+	if req.DailyLimit != nil {
+		m[SettingDailyRechargeLimit] = formatPositiveFloat(req.DailyLimit)
+	}
+	if req.OrderTimeoutMin != nil {
+		m[SettingOrderTimeoutMinutes] = formatPositiveInt(req.OrderTimeoutMin)
+	}
+	if req.MaxPendingOrders != nil {
+		m[SettingMaxPendingOrders] = formatPositiveInt(req.MaxPendingOrders)
 	}
 	if req.EnabledTypes != nil {
 		m[SettingEnabledPaymentTypes] = strings.Join(req.EnabledTypes, ",")
-	} else {
-		m[SettingEnabledPaymentTypes] = ""
+	}
+	if req.BalanceDisabled != nil {
+		m[SettingBalancePayDisabled] = formatBoolOrEmpty(req.BalanceDisabled)
+	}
+	if req.BalanceRechargeMultiplier != nil {
+		m[SettingBalanceRechargeMult] = formatPositiveFloat(req.BalanceRechargeMultiplier)
+	}
+	if req.SubscriptionUSDToCNYRate != nil {
+		m[SettingSubscriptionUSDToCNYRate] = formatPositiveFloatExact(req.SubscriptionUSDToCNYRate)
+	}
+	if req.RechargeFeeRate != nil {
+		m[SettingRechargeFeeRate] = formatNonNegativeFloat(req.RechargeFeeRate)
+	}
+	if req.MethodFees != nil {
+		m[SettingPaymentMethodFees] = formatMethodFeeSettings(req.MethodFees)
+	}
+	if req.LoadBalanceStrategy != nil {
+		m[SettingLoadBalanceStrategy] = derefStr(req.LoadBalanceStrategy)
+	}
+	if req.ProductNamePrefix != nil {
+		m[SettingProductNamePrefix] = derefStr(req.ProductNamePrefix)
+	}
+	if req.ProductNameSuffix != nil {
+		m[SettingProductNameSuffix] = derefStr(req.ProductNameSuffix)
+	}
+	if req.HelpImageURL != nil {
+		m[SettingHelpImageURL] = derefStr(req.HelpImageURL)
+	}
+	if req.HelpText != nil {
+		m[SettingHelpText] = derefStr(req.HelpText)
+	}
+	if req.CancelRateLimitEnabled != nil {
+		m[SettingCancelRateLimitOn] = formatBoolOrEmpty(req.CancelRateLimitEnabled)
+	}
+	if req.CancelRateLimitMax != nil {
+		m[SettingCancelRateLimitMax] = formatPositiveInt(req.CancelRateLimitMax)
+	}
+	if req.CancelRateLimitWindow != nil {
+		m[SettingCancelWindowSize] = formatPositiveInt(req.CancelRateLimitWindow)
+	}
+	if req.CancelRateLimitUnit != nil {
+		m[SettingCancelWindowUnit] = derefStr(req.CancelRateLimitUnit)
+	}
+	if req.CancelRateLimitMode != nil {
+		m[SettingCancelWindowMode] = derefStr(req.CancelRateLimitMode)
+	}
+	if req.AlipayForceQRCode != nil {
+		m[SettingAlipayForceQRCode] = formatBoolOrEmpty(req.AlipayForceQRCode)
+	}
+	if req.AlipayMobilePrecreateDeepLink != nil {
+		m[SettingAlipayMobilePrecreateDeepLink] = formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink)
+	}
+	if req.VisibleMethodAlipaySource != nil {
+		m[SettingPaymentVisibleMethodAlipaySource] = derefStr(req.VisibleMethodAlipaySource)
+	}
+	if req.VisibleMethodWxpaySource != nil {
+		m[SettingPaymentVisibleMethodWxpaySource] = derefStr(req.VisibleMethodWxpaySource)
+	}
+	if req.VisibleMethodAlipayEnabled != nil {
+		m[SettingPaymentVisibleMethodAlipayEnabled] = formatBoolOrEmpty(req.VisibleMethodAlipayEnabled)
+	}
+	if req.VisibleMethodWxpayEnabled != nil {
+		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
 }
