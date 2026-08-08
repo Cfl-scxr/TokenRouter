@@ -451,6 +451,19 @@ func TestGatewayRoutesAsyncImagesPathsAreRemoved(t *testing.T) {
 	}
 }
 
+// TestGatewayRoutesBillingIntrospectionIsRemoved 锁定旧版公开账单自省接口不再注册。
+func TestGatewayRoutesBillingIntrospectionIsRemoved(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+	for _, route := range router.Routes() {
+		require.False(t, route.Method == http.MethodGet && route.Path == "/v1/sub2api/billing")
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 

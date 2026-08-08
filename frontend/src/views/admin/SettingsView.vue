@@ -4047,92 +4047,6 @@
             </div>
           </div>
 
-          <!-- 上游计费倍率探测设置 -->
-          <div class="card" data-testid="upstream-billing-probe-settings">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.upstreamBillingProbe.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.upstreamBillingProbe.description") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
-              <div
-                v-if="upstreamBillingProbeLoading"
-                class="flex items-center gap-2 text-gray-500"
-              >
-                <div
-                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
-                ></div>
-                {{ t("common.loading") }}
-              </div>
-
-              <template v-else>
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t("admin.settings.upstreamBillingProbe.enabled") }}
-                    </label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.upstreamBillingProbe.enabledHint") }}
-                    </p>
-                  </div>
-                  <Toggle
-                    v-model="upstreamBillingProbeForm.enabled"
-                    :aria-label="t('admin.settings.upstreamBillingProbe.enabled')"
-                    data-testid="upstream-billing-probe-enabled"
-                  />
-                </div>
-
-                <div
-                  v-if="upstreamBillingProbeForm.enabled"
-                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
-                >
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    for="upstream-billing-probe-interval"
-                  >
-                    {{ t("admin.settings.upstreamBillingProbe.intervalMinutes") }}
-                  </label>
-                  <input
-                    id="upstream-billing-probe-interval"
-                    v-model.number="upstreamBillingProbeForm.interval_minutes"
-                    type="number"
-                    min="5"
-                    max="1440"
-                    class="input w-32"
-                    data-testid="upstream-billing-probe-interval"
-                    @keydown.enter.prevent="saveUpstreamBillingProbeSettings"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.upstreamBillingProbe.intervalHint") }}
-                  </p>
-                </div>
-
-                <div
-                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
-                >
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-sm"
-                    :disabled="upstreamBillingProbeSaving"
-                    data-testid="upstream-billing-probe-save"
-                    @click="saveUpstreamBillingProbeSettings"
-                  >
-                    {{
-                      upstreamBillingProbeSaving
-                        ? t("common.saving")
-                        : t("common.save")
-                    }}
-                  </button>
-                </div>
-              </template>
-            </div>
-          </div>
-
           <!-- Ollama Cloud 用量设置 -->
           <div class="card" data-testid="ollama-cloud-usage-global-settings">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -4244,60 +4158,6 @@
                 <Toggle v-model="form.allow_ungrouped_key_scheduling" />
               </div>
 
-              <div
-                v-if="!form.openai_advanced_scheduler_enabled"
-                class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700"
-              >
-                <div>
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      t("admin.settings.openaiExperimentalScheduler.lowRatePriorityDescription")
-                    }}
-                  </p>
-                </div>
-                <Toggle
-                  v-model="form.openai_low_upstream_rate_priority_enabled"
-                  data-testid="openai-low-rate-priority-toggle"
-                />
-              </div>
-
-              <div
-                v-if="!form.openai_advanced_scheduler_enabled && form.openai_low_upstream_rate_priority_enabled"
-                class="flex flex-col items-stretch gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 dark:border-dark-700"
-              >
-                <div class="min-w-0">
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                    for="openai-oauth-scheduling-rate-multiplier"
-                  >
-                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateTitle") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRatePriorityDescription") }}
-                  </p>
-                </div>
-                <div class="relative w-full shrink-0 sm:w-32">
-                  <input
-                    id="openai-oauth-scheduling-rate-multiplier"
-                    v-model.number="form.openai_oauth_scheduling_rate_multiplier"
-                    class="input pr-8"
-                    data-testid="openai-oauth-scheduling-rate-multiplier"
-                    min="0"
-                    required
-                    step="0.01"
-                    type="number"
-                  />
-                  <span
-                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"
-                  >x</span>
-                </div>
-              </div>
-
               <div class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700">
                 <div>
                   <label
@@ -4353,38 +4213,6 @@
                   </p>
                 </div>
                 <Toggle v-model="form.openai_advanced_scheduler_subscription_priority_enabled" />
-              </div>
-
-              <div
-                v-if="form.openai_advanced_scheduler_enabled"
-                class="flex flex-col items-stretch gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 dark:border-dark-700"
-              >
-                <div class="min-w-0">
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                    for="openai-oauth-scheduling-rate-multiplier"
-                  >
-                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateTitle") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.openaiExperimentalScheduler.oauthRateWeightedDescription") }}
-                  </p>
-                </div>
-                <div class="relative w-full shrink-0 sm:w-32">
-                  <input
-                    id="openai-oauth-scheduling-rate-multiplier"
-                    v-model.number="form.openai_oauth_scheduling_rate_multiplier"
-                    class="input pr-8"
-                    data-testid="openai-oauth-scheduling-rate-multiplier"
-                    min="0"
-                    required
-                    step="0.01"
-                    type="number"
-                  />
-                  <span
-                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400"
-                  >x</span>
-                </div>
               </div>
 
               <div
@@ -8137,14 +7965,6 @@ const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionPlans = ref<SubscriptionPlan[]>([]);
 
-// 上游计费倍率探测状态
-const upstreamBillingProbeLoading = ref(true);
-const upstreamBillingProbeSaving = ref(false);
-const upstreamBillingProbeForm = reactive({
-  enabled: true,
-  interval_minutes: 30,
-});
-
 const ollamaCloudUsageLoading = ref(true);
 const ollamaCloudUsageSaving = ref(false);
 const ollamaCloudUsageForm = reactive({
@@ -8416,8 +8236,6 @@ type SettingsForm = Omit<
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
-  openai_low_upstream_rate_priority_enabled: boolean;
-  openai_oauth_scheduling_rate_multiplier: number;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
@@ -8429,7 +8247,6 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_ttft: string;
   openai_advanced_scheduler_weight_reset: string;
   openai_advanced_scheduler_weight_quota_headroom: string;
-  openai_advanced_scheduler_weight_upstream_cost: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
   openai_account_quota_auto_pause: OpenAIQuotaAutoPauseSettings;
@@ -8651,8 +8468,6 @@ const form = reactive<SettingsForm>({
   max_claude_code_version: "",
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
-  openai_low_upstream_rate_priority_enabled: false,
-  openai_oauth_scheduling_rate_multiplier: 1,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
@@ -8664,7 +8479,6 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_ttft: "",
   openai_advanced_scheduler_weight_reset: "",
   openai_advanced_scheduler_weight_quota_headroom: "",
-  openai_advanced_scheduler_weight_upstream_cost: "",
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   openai_account_quota_auto_pause: {
@@ -8844,7 +8658,6 @@ type OpenAIAdvancedSchedulerOverrideKey =
   | "openai_advanced_scheduler_weight_ttft"
   | "openai_advanced_scheduler_weight_reset"
   | "openai_advanced_scheduler_weight_quota_headroom"
-  | "openai_advanced_scheduler_weight_upstream_cost"
   | "openai_advanced_scheduler_weight_previous_response"
   | "openai_advanced_scheduler_weight_session_sticky";
 
@@ -8857,7 +8670,6 @@ type OpenAIAdvancedSchedulerEffectiveKey =
   | "openai_advanced_scheduler_effective_weight_ttft"
   | "openai_advanced_scheduler_effective_weight_reset"
   | "openai_advanced_scheduler_effective_weight_quota_headroom"
-  | "openai_advanced_scheduler_effective_weight_upstream_cost"
   | "openai_advanced_scheduler_effective_weight_previous_response"
   | "openai_advanced_scheduler_effective_weight_session_sticky";
 
@@ -8920,11 +8732,6 @@ const openAIAdvancedSchedulerWeightFields = computed<
       key: "openai_advanced_scheduler_weight_quota_headroom",
       label: t("admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight"),
       placeholder: placeholder("openai_advanced_scheduler_effective_weight_quota_headroom", "0"),
-    },
-    {
-      key: "openai_advanced_scheduler_weight_upstream_cost",
-      label: t("admin.settings.openaiExperimentalScheduler.upstreamCostWeight"),
-      placeholder: placeholder("openai_advanced_scheduler_effective_weight_upstream_cost", "0"),
     },
     {
       key: "openai_advanced_scheduler_weight_previous_response",
@@ -10407,10 +10214,6 @@ async function saveSettings() {
       payment_alipay_force_qrcode: form.payment_alipay_force_qrcode,
       payment_alipay_mobile_precreate_deep_link:
         form.payment_alipay_mobile_precreate_deep_link,
-      openai_low_upstream_rate_priority_enabled:
-        form.openai_low_upstream_rate_priority_enabled,
-      openai_oauth_scheduling_rate_multiplier:
-        form.openai_oauth_scheduling_rate_multiplier,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
@@ -10432,8 +10235,6 @@ async function saveSettings() {
         form.openai_advanced_scheduler_weight_reset.trim(),
       openai_advanced_scheduler_weight_quota_headroom:
         form.openai_advanced_scheduler_weight_quota_headroom.trim(),
-      openai_advanced_scheduler_weight_upstream_cost:
-        form.openai_advanced_scheduler_weight_upstream_cost.trim(),
       openai_advanced_scheduler_weight_previous_response:
         form.openai_advanced_scheduler_weight_previous_response.trim(),
       openai_advanced_scheduler_weight_session_sticky:
@@ -10725,40 +10526,6 @@ function copyNewKey() {
     .catch(() => {
       appStore.showError(t("common.copyFailed"));
     });
-}
-
-async function loadUpstreamBillingProbeSettings() {
-  upstreamBillingProbeLoading.value = true;
-  try {
-    Object.assign(
-      upstreamBillingProbeForm,
-      await adminAPI.accounts.getUpstreamBillingProbeSettings(),
-    );
-  } catch (_error: unknown) {
-    // 可选设置加载失败时保留默认值。
-  } finally {
-    upstreamBillingProbeLoading.value = false;
-  }
-}
-
-async function saveUpstreamBillingProbeSettings() {
-  upstreamBillingProbeSaving.value = true;
-  try {
-    const updated = await adminAPI.accounts.updateUpstreamBillingProbeSettings({
-      ...upstreamBillingProbeForm,
-    });
-    Object.assign(upstreamBillingProbeForm, updated);
-    appStore.showSuccess(t("admin.settings.upstreamBillingProbe.saved"));
-  } catch (error: unknown) {
-    appStore.showError(
-      extractApiErrorMessage(
-        error,
-        t("admin.settings.upstreamBillingProbe.saveFailed"),
-      ),
-    );
-  } finally {
-    upstreamBillingProbeSaving.value = false;
-  }
 }
 
 async function loadOllamaCloudUsageSettings() {
@@ -11608,7 +11375,6 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionPlans();
   loadAdminApiKey();
-  loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
   loadOverloadCooldownSettings();
   loadOpenAI403CooldownSettings();

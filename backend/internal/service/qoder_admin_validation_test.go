@@ -31,7 +31,7 @@ func TestValidateQoderCosyCredentialsAcceptsDirectToken(t *testing.T) {
 }
 
 func TestCreateQoderDirectTokenAccountPersistsStableMachineIdentity(t *testing.T) {
-	repo := &upstreamBillingProbeAccountRepo{}
+	repo := &accountServiceTestRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 
 	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
@@ -53,7 +53,7 @@ func TestCreateQoderDirectTokenAccountPersistsStableMachineIdentity(t *testing.T
 }
 
 func TestCreateQoderDirectTokenAccountRejectsMissingMachineID(t *testing.T) {
-	repo := &upstreamBillingProbeAccountRepo{}
+	repo := &accountServiceTestRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 	credentials := map[string]any{
 		"security_oauth_token": "dt-token",
@@ -83,7 +83,7 @@ func TestCreateQoderPATAccountPersistsStableMachineIdentity(t *testing.T) {
 		require.NotEmpty(t, machine.MachineType)
 		return &qoder.AuthIdentity{UID: "uid-1", SecurityOauthToken: "dt-token"}, nil
 	}
-	repo := &upstreamBillingProbeAccountRepo{}
+	repo := &accountServiceTestRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 
 	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
@@ -111,7 +111,7 @@ func TestCreateQoderCNPATAccountUsesOfficialMachineIdentity(t *testing.T) {
 		require.Empty(t, machine.MachineType)
 		return &qoder.AuthIdentity{UID: "uid-cn", SecurityOauthToken: "dt-cn"}, nil
 	}
-	repo := &upstreamBillingProbeAccountRepo{}
+	repo := &accountServiceTestRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
 
 	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
@@ -149,7 +149,7 @@ func TestEnsureQoderCNMachineCredentialsRemovesLegacyFields(t *testing.T) {
 
 func TestUpdateQoderDirectTokenAccountPreservesLegacyMachineFallback(t *testing.T) {
 	const accountID int64 = 1202
-	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+	repo := &accountServiceTestRepo{accounts: map[int64]*Account{
 		accountID: {
 			ID:       accountID,
 			Name:     "legacy-qoder",
@@ -312,7 +312,7 @@ func TestUpdateQoderPATAccountDefersCompatibilityCheckWhenSiteChanges(t *testing
 		return nil, nil
 	}
 	const accountID int64 = 1201
-	baseRepo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+	baseRepo := &accountServiceTestRepo{accounts: map[int64]*Account{
 		accountID: {
 			ID:       accountID,
 			Platform: PlatformQoder,
@@ -324,7 +324,7 @@ func TestUpdateQoderPATAccountDefersCompatibilityCheckWhenSiteChanges(t *testing
 			},
 		},
 	}}
-	svc := &adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}}
+	svc := &adminServiceImpl{accountRepo: &accountServiceAdminTestRepo{baseRepo}}
 
 	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
 		Credentials: map[string]any{"site": "cn"},

@@ -16,7 +16,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 )
 
-func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t *testing.T) {
+func TestProxyUpdateInvalidatesOllamaSnapshotAndEnqueuesOutboxAtomically(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -33,7 +33,7 @@ func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t 
 		WithArgs(int64(9)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	expectProxyUpdateReload(mock, 9, "new.example", "user", "pass")
-	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'upstream_billing_probe'.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*platform = 'openai'.*extra \? 'upstream_billing_probe'.*platform IN \('openai', 'anthropic'\).*extra \? 'ollama_cloud_usage_snapshot'.*RETURNING id`).
+	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*platform IN \('openai', 'anthropic'\).*extra \? 'ollama_cloud_usage_snapshot'.*RETURNING id`).
 		WithArgs(int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(17)).AddRow(int64(18)))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)")).
@@ -43,14 +43,8 @@ func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t 
 
 	repo := newProxyRepositoryWithSQL(client, db)
 	proxy := &service.Proxy{
-		ID:       9,
-		Name:     "proxy",
-		Protocol: "http",
-		Host:     "new.example",
-		Port:     8080,
-		Username: "user",
-		Password: "pass",
-		Status:   service.StatusActive,
+		ID: 9, Name: "proxy", Protocol: "http", Host: "new.example", Port: 8080,
+		Username: "user", Password: "pass", Status: service.StatusActive,
 	}
 
 	err = repo.Update(context.Background(), proxy)
@@ -59,7 +53,7 @@ func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
+func TestProxyUpdateRollsBackWhenOllamaOutboxFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -76,7 +70,7 @@ func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
 		WithArgs(int64(9)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	expectProxyUpdateReload(mock, 9, "new.example", "", "")
-	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'upstream_billing_probe'.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*platform = 'openai'.*extra \? 'upstream_billing_probe'.*platform IN \('openai', 'anthropic'\).*extra \? 'ollama_cloud_usage_snapshot'.*RETURNING id`).
+	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*platform IN \('openai', 'anthropic'\).*RETURNING id`).
 		WithArgs(int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(17)))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)")).
@@ -92,7 +86,7 @@ func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestProxyUpdateSkipsProbeInvalidationForNonIdentityChange(t *testing.T) {
+func TestProxyUpdateSkipsOllamaInvalidationForNonIdentityChange(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -141,8 +135,8 @@ func TestEnqueueProxyAccountChangesChunksLargePayloads(t *testing.T) {
 	for i := range accountIDs {
 		accountIDs[i] = int64(i + 1)
 	}
-	for start := 0; start < len(accountIDs); start += proxyProbeOutboxAccountChunkSize {
-		end := start + proxyProbeOutboxAccountChunkSize
+	for start := 0; start < len(accountIDs); start += proxyAccountOutboxChunkSize {
+		end := start + proxyAccountOutboxChunkSize
 		if end > len(accountIDs) {
 			end = len(accountIDs)
 		}
@@ -151,7 +145,7 @@ func TestEnqueueProxyAccountChangesChunksLargePayloads(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(1, 1))
 	}
 
-	err = enqueueProxyProbeAccountChanges(context.Background(), db, accountIDs)
+	err = enqueueProxyAccountChanges(context.Background(), db, accountIDs)
 
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())

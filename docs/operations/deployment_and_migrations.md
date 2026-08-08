@@ -34,7 +34,7 @@
 
 进程入口先判断是否需要 setup。未安装时可使用 Web setup、`--setup` CLI 或容器的 `AUTO_SETUP`；setup 测试 PostgreSQL/Redis，执行迁移，创建首个管理员，写入配置，最后创建只读安装锁。安装锁用于阻止重新初始化攻击，不能用删除它的方式修复普通配置问题。
 
-正常启动在依赖注入创建 Ent 客户端时再次运行同一套嵌入迁移，因此每个新版本在监听 HTTP 前完成 schema 对齐。迁移或安全密钥初始化失败会使应用初始化失败，不允许带着部分 schema 提供流量。多实例滚动发布时，各实例可同时启动，但迁移锁只允许一个实例执行 SQL。
+正常启动在依赖注入创建 Ent 客户端时再次运行同一套嵌入迁移，因此每个新版本在监听 HTTP 前完成 schema 对齐。迁移或安全密钥初始化失败会使应用初始化失败，不允许带着部分 schema 提供流量。默认的兼容迁移允许多实例滚动启动，并由迁移锁保证只有一个实例执行 SQL；“升级与恢复”中标记为一次性或破坏性的变更优先于该默认规则，必须按专题停机顺序执行。
 
 `GET /health` 是容器健康检查入口。健康响应只能说明当前进程可服务，不能替代升级后的业务抽样、账本核对或后台任务检查。
 
@@ -52,7 +52,7 @@
 - 已进入任何环境的文件不得修改、删除或改名；修正必须使用新迁移。
 - 文件内不能放可执行的 Down 段；runner 不解析 Goose/Up/Down 标记。
 - 普通迁移应尽量幂等并在 SQL 中写中文注释解释变更原因和兼容窗口。
-- schema、数据回填、Repository 查询和 Ent schema 变化必须在同一兼容序列中设计，支持滚动发布期间的新旧二进制共存。
+- schema、数据回填、Repository 查询和 Ent schema 变化应在同一兼容序列中设计；若明确无法支持新旧二进制共存，必须在本页记录停机升级、备份与回滚步骤。
 
 ## 新增与同步迁移
 
@@ -78,6 +78,16 @@
 数据库默认值是空数组，作为绕过管理服务直接写 Group 时的 fail-closed 默认值。空数组对所有平台都是明确且有效的策略，新代码不会按旧矩阵恢复或自动补协议；管理 API 创建字段缺省时仍使用各平台的新建默认值。
 
 本变更按一次性升级发布，不支持新旧后端或前后端混合运行。认证快照版本随字段增加而升级，部署前遗留的 Redis 快照会因版本不匹配失效并从已回填数据库重建。完成升级后至少抽样验证 OpenAI 旧开关 true/false、任意平台空集合以及 Gemini Responses 的非流和 SSE 请求。
+
+### 上游声明倍率探测下线
+
+迁移 `236_remove_upstream_billing_probe.sql` 幂等删除账号 JSONB 中的 `upstream_billing_probe`、`upstream_billing_probe_enabled`，并删除设置 `upstream_billing_probe_settings`、`openai_low_upstream_rate_priority_enabled`、`openai_oauth_scheduling_rate_multiplier`、`openai_advanced_scheduler_weight_upstream_cost`。迁移不改动其它账号 extra 或设置。旧配置项 `gateway.openai_ws.scheduler_score_weights.upstream_cost` 已失去行为，升级前应从配置文件、Secret 和环境模板中移除。
+
+这是无兼容路由和弃用期的破坏性升级。发布时先停止并确认全部旧实例退出，再备份 PostgreSQL 和旧配置，然后启动一个新实例完成迁移，最后扩容其余新实例；禁止新旧二进制混跑，否则旧进程可能重新写回已删除数据。`GET /v1/sub2api/billing` 和全部 `/api/v1/admin/accounts/*upstream-billing-probe*` 路由在新版本上返回普通 `404`。
+
+不扫描或清理 Redis。遗留探测 leader lock 按原有 2 分钟 TTL 自然过期；这不会恢复任何探测任务。升级后应确认迁移可重复执行、无关账号 extra 和设置保持不变、Ollama Cloud/额度/endpoint capability 探测正常，以及声明倍率不再影响账号排序或评分。
+
+只回退二进制无法恢复已删除的快照与设置。需要回滚时，先停止全部新实例，恢复升级前 PostgreSQL 备份和旧配置，再启动旧版本；不得通过手工删除迁移记录或让旧实例在已迁移数据库上重建历史数据。
 
 ### 自研异步图片任务下线
 

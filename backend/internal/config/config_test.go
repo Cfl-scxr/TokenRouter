@@ -485,9 +485,6 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom != 0 {
 		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom)
 	}
-	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost != 0 {
-		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost)
-	}
 	if !cfg.Gateway.OpenAIWS.StoreDisabledForceNewConn {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledForceNewConn = false, want true")
 	}
@@ -2275,11 +2272,6 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
 		},
 		{
-			name:    "scheduler_score_weights upstream_cost 不能为负数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = -0.1 },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
-		},
-		{
 			name:    "scheduler_score_weights reset 不能为负数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = -0.1 },
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
@@ -2291,7 +2283,7 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		},
 		{
 			name:    "scheduler_score_weights 不能为 Inf",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = math.Inf(1) },
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = math.Inf(1) },
 			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
 		},
 		{
@@ -2359,18 +2351,6 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0
 		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = 0.1
-
-		require.NoError(t, cfg.Validate())
-	})
-
-	t.Run("upstream_cost 可作为唯一有效调度权重", func(t *testing.T) {
-		cfg := buildValid(t)
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.UpstreamCost = 0.1
 
 		require.NoError(t, cfg.Validate())
 	})

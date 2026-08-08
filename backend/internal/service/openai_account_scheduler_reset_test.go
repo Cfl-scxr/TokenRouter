@@ -71,6 +71,40 @@ func TestBuildOpenAIAccountLoadPlan_ResetWeightZeroNoEffect(t *testing.T) {
 	require.Equal(t, scores[1], scores[2], "Reset 权重为 0 时两账号得分相同")
 }
 
+// 账户本地倍率和遗留声明倍率都只属于结算/清理边界，不得影响候选打分与排序。
+func TestBuildOpenAIAccountLoadPlan_BillingRatesDoNotAffectScoreOrOrder(t *testing.T) {
+	expensiveRate := 100.0
+	cheapRate := 0.01
+	filtered := []*Account{
+		{
+			ID: 1, Priority: 0, RateMultiplier: &expensiveRate,
+			Extra: map[string]any{
+				"upstream_billing_probe": map[string]any{
+					"status": "ok",
+					"data":   map[string]any{"effective_rate_multiplier": expensiveRate},
+				},
+			},
+		},
+		{
+			ID: 2, Priority: 0, RateMultiplier: &cheapRate,
+			Extra: map[string]any{
+				"upstream_billing_probe": map[string]any{
+					"status": "ok",
+					"data":   map[string]any{"effective_rate_multiplier": cheapRate},
+				},
+			},
+		},
+	}
+	sched := openAIResetTestScheduler(0)
+
+	plan := sched.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{}, filtered, map[int64]*AccountLoadInfo{})
+	scores := openAIPlanScores(plan)
+	require.Equal(t, scores[1], scores[2])
+
+	ranked := selectTopKOpenAICandidates(plan.candidates, len(plan.candidates))
+	require.Equal(t, []int64{1, 2}, []int64{ranked[0].account.ID, ranked[1].account.ID})
+}
+
 // 无活跃窗口的账号 reset 因子为 0，应低于拥有未来窗口的账号。
 func TestBuildOpenAIAccountLoadPlan_ResetWeightIgnoresNilWindow(t *testing.T) {
 	now := time.Now()

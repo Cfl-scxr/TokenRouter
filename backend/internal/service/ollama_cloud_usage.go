@@ -891,13 +891,13 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_host_mismatch", 0, false)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "redirect_blocked", retryAfter(resp.Header, now), false)
+		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "redirect_blocked", ollamaCloudUsageRetryAfter(resp.Header, now), false)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "unauthorized", retryAfter(resp.Header, now), true)
+		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "unauthorized", ollamaCloudUsageRetryAfter(resp.Header, now), true)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now), false)
+		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", ollamaCloudUsageRetryAfter(resp.Header, now), false)
 	}
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, ollamaCloudUsageMaxBodyBytes+1))
 	if readErr != nil {
@@ -1168,6 +1168,23 @@ func decodeOllamaCloudUsageSnapshot(extra map[string]any) *OllamaCloudUsageSnaps
 		return nil
 	}
 	return &snapshot
+}
+
+// ollamaCloudUsageRetryAfter 解析上游限流响应要求的最短重试间隔。
+func ollamaCloudUsageRetryAfter(header http.Header, now time.Time) time.Duration {
+	value := strings.TrimSpace(header.Get("Retry-After"))
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		if delay := at.Sub(now); delay > 0 {
+			return delay
+		}
+	}
+	return 0
 }
 
 func nextOllamaCloudUsageDelay(intervalMinutes, failureCount int, retryAfterDuration time.Duration) time.Duration {

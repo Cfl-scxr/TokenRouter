@@ -119,7 +119,6 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			service.OpenAIEndpointCapabilityEmbeddings,
 			false,
 			false,
-			true,
 		)
 		if err != nil {
 			if failoverClientGone(c) {

@@ -23,5 +23,6 @@ describe('AccountBulkActionsBar', () => {
     await wrapper.findAll('button').find((button) => button.text() === 'admin.accounts.bulkActions.refreshToken')?.trigger('click')
 
     expect(wrapper.emitted('refresh-token')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('admin.accounts.bulkActions.probeUpstreamBilling')
   })
 })

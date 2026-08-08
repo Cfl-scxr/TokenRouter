@@ -47,7 +47,7 @@
 4. OAuth-only、privacy、客户端类型、站点/区域、媒体资格和所需 transport。
 5. 当前并发槽和等待策略。
 
-通过硬过滤后才比较优先级、近期使用、账号负载、错误/延迟或成本信号。共同调度器和 OpenAI 专用调度器不共享一套固定公式：OpenAI 还会考虑 Responses transport、WebSocket、compact、previous response 等能力。新增评分项不能绕过硬资格，也不能因缺少观测把账号永久降为不可用。
+通过硬过滤后才比较优先级、近期使用、账号负载、排队、错误率、延迟、重置窗口或配额余量。共同调度器和 OpenAI 专用调度器不共享一套固定公式：OpenAI 还会考虑 Responses transport、WebSocket、compact、previous response 等能力。上游声明倍率、OAuth 参考倍率和 `upstream_cost` 权重不再参与候选排序或评分；账户本地 `rate_multiplier` 与渠道上游计费模型来源只属于结算。新增评分项不能绕过硬资格，也不能因缺少观测把账号永久降为不可用。
 
 ## 粘性与等待
 
@@ -62,6 +62,8 @@
 以下变化必须使相关账号投影或 bucket 失效：账号启停/删除、凭据刷新、分组关系、优先级、模型映射/白名单、代理可用性、限流与临时不可调度、mixed scheduling、privacy 和可调度资格。影响多个平台 bucket 的 Antigravity 混合账号要同时更新原生目标平台与 Antigravity bucket。
 
 写数据库成功但失效广播失败时，应记录可操作告警并依赖周期重建收敛。仅清本实例缓存不能保证多实例一致；仅发通知而不保存权威状态也会在重建后回退。
+
+账号 extra 的原子合并只保留仍有效的系统状态语义，例如 Ollama Cloud 管理会话和用量快照。凭据或代理变化仍按各自规则保存或失效 Ollama 状态；历史 `upstream_billing_probe` 与 `upstream_billing_probe_enabled` 在所有写入边界直接丢弃，不再触发专用 CAS、outbox 或调度快照失效。
 
 ## 诊断不变量
 

@@ -111,6 +111,43 @@ func TestAdminImageStorageRoutesAreRemoved(t *testing.T) {
 	}
 }
 
+// TestAdminUpstreamBillingProbeRoutesAreRemoved 锁定声明倍率探测管理接口全部返回普通 404。
+func TestAdminUpstreamBillingProbeRoutesAreRemoved(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	admin := router.Group("/api/v1/admin")
+	h := &handler.Handlers{Admin: &handler.AdminHandlers{
+		Account:          &adminhandler.AccountHandler{},
+		OAuth:            &adminhandler.OAuthHandler{},
+		OpenAIOAuth:      &adminhandler.OpenAIOAuthHandler{},
+		CodexInviteReset: &adminhandler.CodexInviteResetHandler{},
+	}}
+	registerAccountRoutes(admin, h, func(c *gin.Context) { c.Next() })
+
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	removed := []struct {
+		method      string
+		routePath   string
+		requestPath string
+	}{
+		{method: http.MethodGet, routePath: "/api/v1/admin/accounts/upstream-billing-probe/settings", requestPath: "/api/v1/admin/accounts/upstream-billing-probe/settings"},
+		{method: http.MethodPut, routePath: "/api/v1/admin/accounts/upstream-billing-probe/settings", requestPath: "/api/v1/admin/accounts/upstream-billing-probe/settings"},
+		{method: http.MethodPost, routePath: "/api/v1/admin/accounts/upstream-billing-probe/batch", requestPath: "/api/v1/admin/accounts/upstream-billing-probe/batch"},
+		{method: http.MethodPut, routePath: "/api/v1/admin/accounts/:id/upstream-billing-probe", requestPath: "/api/v1/admin/accounts/42/upstream-billing-probe"},
+		{method: http.MethodPost, routePath: "/api/v1/admin/accounts/:id/upstream-billing-probe", requestPath: "/api/v1/admin/accounts/42/upstream-billing-probe"},
+	}
+	for _, route := range removed {
+		require.False(t, registered[route.method+" "+route.routePath])
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(route.method, route.requestPath, nil)
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", route.method, route.requestPath)
+	}
+}
+
 // TestCanonicalBackupIDRouteGuard 验证备份通配路由只接受服务实际生成的 ID 格式。
 func TestCanonicalBackupIDRouteGuard(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -57,8 +57,18 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"passive_usage_",
-	"upstream_billing_probe",
 	"ollama_cloud_usage",
+}
+
+const (
+	// 旧版倍率探测键仅用于写入边界清理，仓储不得再赋予它们业务语义。
+	deprecatedUpstreamBillingProbeExtraKey        = "upstream_billing_probe"
+	deprecatedUpstreamBillingProbeEnabledExtraKey = "upstream_billing_probe_enabled"
+)
+
+func discardDeprecatedUpstreamBillingProbeExtra(extra map[string]any) {
+	delete(extra, deprecatedUpstreamBillingProbeExtraKey)
+	delete(extra, deprecatedUpstreamBillingProbeEnabledExtraKey)
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -102,6 +112,7 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
+	discardDeprecatedUpstreamBillingProbeExtra(account.Extra)
 
 	builder := client.Account.Create().
 		SetName(account.Name).
@@ -398,15 +409,10 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
-	return r.updateAccount(ctx, account, nil)
+	return r.updateAccount(ctx, account)
 }
 
-// UpdateWithUpstreamBillingProbeEnabled 在管理员编辑账号的同一行锁事务中更新探测开关。
-func (r *accountRepository) UpdateWithUpstreamBillingProbeEnabled(ctx context.Context, account *service.Account, enabled bool) error {
-	return r.updateAccount(ctx, account, &enabled)
-}
-
-func (r *accountRepository) updateAccount(ctx context.Context, account *service.Account, explicitProbeEnabled *bool) error {
+func (r *accountRepository) updateAccount(ctx context.Context, account *service.Account) error {
 	if account == nil {
 		return nil
 	}
@@ -430,7 +436,7 @@ func (r *accountRepository) updateAccount(ctx context.Context, account *service.
 		}
 	}
 
-	updated, err := r.updateLockedAccount(ctx, client, account, explicitProbeEnabled)
+	updated, err := r.updateLockedAccount(ctx, client, account)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
@@ -452,8 +458,8 @@ func (r *accountRepository) updateAccount(ctx context.Context, account *service.
 	return nil
 }
 
-func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (*dbent.Account, error) {
-	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled)
+func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account) (*dbent.Account, error) {
+	extra, err := lockAndMergeAccountManagedExtra(ctx, client, account)
 	if err != nil {
 		return nil, err
 	}
@@ -543,7 +549,7 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 	return builder.Save(ctx)
 }
 
-func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
+func lockAndMergeAccountManagedExtra(ctx context.Context, client *dbent.Client, account *service.Account) (map[string]any, error) {
 	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
 	if err != nil {
 		return nil, err
@@ -554,10 +560,6 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 	rows, err := client.QueryContext(ctx, `
 		SELECT
-			platform = $2
-			AND type = $3
-			AND credentials = $4::jsonb
-			AND proxy_id IS NOT DISTINCT FROM $5,
 			COALESCE(
 				platform IN ('openai', 'anthropic')
 				AND $2 IN ('openai', 'anthropic')
@@ -569,8 +571,6 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 				false
 			),
 			proxy_id IS NOT DISTINCT FROM $5,
-			extra -> 'upstream_billing_probe_enabled',
-			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot'
@@ -590,21 +590,15 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 
 	var (
-		identityUnchanged            bool
 		ollamaGroupIdentityUnchanged bool
 		ollamaProxyIdentityUnchanged bool
-		currentEnabled               []byte
-		currentSnapshot              []byte
 		currentOllamaSession         []byte
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
 	)
 	if err := rows.Scan(
-		&identityUnchanged,
 		&ollamaGroupIdentityUnchanged,
 		&ollamaProxyIdentityUnchanged,
-		&currentEnabled,
-		&currentSnapshot,
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
@@ -616,38 +610,14 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	discardDeprecatedUpstreamBillingProbeExtra(extra)
 	for _, key := range []string{
-		service.UpstreamBillingProbeEnabledExtraKey,
-		service.UpstreamBillingProbeExtraKey,
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
 	} {
 		delete(extra, key)
 	}
-	probeExplicitlyDisabled := false
-	probeAccount := account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeAPIKey
-	if probeAccount && explicitProbeEnabled != nil {
-		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
-		probeExplicitlyDisabled = !*explicitProbeEnabled
-	} else if probeAccount {
-		if enabled, ok, err := decodeAccountExtraJSON(currentEnabled); err != nil {
-			return nil, err
-		} else if ok {
-			extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
-			if value, isBool := enabled.(bool); isBool && !value {
-				probeExplicitlyDisabled = true
-			}
-		}
-	}
-	if identityUnchanged && !probeExplicitlyDisabled {
-		if snapshot, ok, err := decodeAccountExtraJSON(currentSnapshot); err != nil {
-			return nil, err
-		} else if ok {
-			extra[service.UpstreamBillingProbeExtraKey] = snapshot
-		}
-	}
-
 	if service.IsOllamaCloudUsageAccount(account) && ollamaGroupIdentityUnchanged {
 		for key, raw := range map[string][]byte{
 			service.OllamaCloudUsageSessionExtraKey:     currentOllamaSession,
@@ -709,8 +679,7 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
-				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
-				-- 非 Ollama 账号的无变化持久化误清 openai 探测快照或重写 NULL extra。
+				-- 凭证整体未变化时不清理 Ollama 状态；旧版倍率探测键始终从写入结果剔除。
 				WHEN platform IN ('openai', 'anthropic')
 					AND type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
@@ -721,18 +690,15 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 							AND `+ollamaCloudBaseURLMatchesSQL("$1::jsonb ->> 'base_url'")+`
 						)
 					)
-				THEN (CASE
-						WHEN platform = 'openai' THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
-						ELSE COALESCE(extra, '{}'::jsonb)
-					END)
+				THEN (COALESCE(extra, '{}'::jsonb)
+						- 'upstream_billing_probe'
+						- 'upstream_billing_probe_enabled')
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
-				WHEN platform = 'openai'
-					AND type = 'apikey'
-					AND credentials IS DISTINCT FROM $1::jsonb
-				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
-				ELSE extra
+				ELSE COALESCE(extra, '{}'::jsonb)
+					- 'upstream_billing_probe'
+					- 'upstream_billing_probe_enabled'
 			END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
@@ -984,20 +950,6 @@ func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platfor
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
-	if sortBy == "upstream_billing_rate" {
-		direction := "ASC"
-		tieOrder := entsql.Asc
-		if sortOrder == pagination.SortOrderDesc {
-			direction = "DESC"
-			tieOrder = entsql.Desc
-		}
-		return []func(*entsql.Selector){func(s *entsql.Selector) {
-			extra := s.C(dbaccount.FieldExtra)
-			expression := upstreamBillingRateSortExpression(extra)
-			s.OrderExpr(entsql.Expr(expression + " " + direction + " NULLS LAST"))
-			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
-		}}
-	}
 
 	field := dbaccount.FieldName
 	defaultOrder := true
@@ -1037,40 +989,6 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		return []func(*entsql.Selector){dbent.Asc(dbaccount.FieldName), dbent.Asc(dbaccount.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
-}
-
-func upstreamBillingRateSortExpression(extra string) string {
-	status := extra + " #>> '{upstream_billing_probe,status}'"
-	effectiveJSON := extra + " #> '{upstream_billing_probe,data,effective_rate_multiplier}'"
-	effective := extra + " #>> '{upstream_billing_probe,data,effective_rate_multiplier}'"
-	resolvedJSON := extra + " #> '{upstream_billing_probe,data,resolved_rate_multiplier}'"
-	resolved := extra + " #>> '{upstream_billing_probe,data,resolved_rate_multiplier}'"
-	peakEnabledJSON := extra + " #> '{upstream_billing_probe,data,peak_rate_enabled}'"
-	peakEnabled := extra + " #>> '{upstream_billing_probe,data,peak_rate_enabled}'"
-	peakStart := extra + " #>> '{upstream_billing_probe,data,peak_start}'"
-	peakEnd := extra + " #>> '{upstream_billing_probe,data,peak_end}'"
-	peakMultiplierJSON := extra + " #> '{upstream_billing_probe,data,peak_rate_multiplier}'"
-	peakMultiplier := extra + " #>> '{upstream_billing_probe,data,peak_rate_multiplier}'"
-	peakMultiplierValue := "(CASE WHEN jsonb_typeof(" + peakMultiplierJSON + ") = 'number' THEN (" + peakMultiplier + ")::numeric END)"
-	billingScope := extra + " #>> '{upstream_billing_probe,data,billing_scope}'"
-	timezone := extra + " #>> '{upstream_billing_probe,data,timezone}'"
-	validClock := "'^([01][0-9]|2[0-3]):[0-5][0-9]$'"
-	startMinute := "(CASE WHEN " + peakStart + " ~ " + validClock + " THEN split_part(" + peakStart + ", ':', 1)::numeric * 60 + split_part(" + peakStart + ", ':', 2)::numeric END)"
-	endMinute := "(CASE WHEN " + peakEnd + " ~ " + validClock + " THEN split_part(" + peakEnd + ", ':', 1)::numeric * 60 + split_part(" + peakEnd + ", ':', 2)::numeric END)"
-	localMinute := "(EXTRACT(HOUR FROM (CURRENT_TIMESTAMP AT TIME ZONE (" + timezone + "))) * 60 + EXTRACT(MINUTE FROM (CURRENT_TIMESTAMP AT TIME ZONE (" + timezone + "))))"
-	validPeakWindow := peakStart + " ~ " + validClock + " AND " +
-		peakEnd + " ~ " + validClock + " AND " +
-		startMinute + " < " + endMinute
-	validPeakConfig := validPeakWindow + " AND " + peakMultiplierValue + " >= 0 AND " +
-		"EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = " + timezone + ")"
-	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN (" + resolved + ")::numeric WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig +
-		" THEN (" + resolved + ")::numeric * CASE WHEN " + localMinute + " >= " + startMinute + " AND " + localMinute + " < " + endMinute +
-		" THEN " + peakMultiplierValue + " ELSE 1 END ELSE NULL END"
-	legacySnapshot := "jsonb_typeof(" + resolvedJSON + ") IS NULL AND jsonb_typeof(" + peakEnabledJSON + ") IS NULL"
-
-	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +
-		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' THEN " + dynamicRate + " ELSE NULL END WHEN " + legacySnapshot +
-		" AND jsonb_typeof(" + effectiveJSON + ") = 'number' THEN (" + effective + ")::numeric END END"
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -2453,6 +2371,7 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	discardDeprecatedUpstreamBillingProbeExtra(updates)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -2463,8 +2382,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return err
 	}
 
-	clearProbeSnapshot := upstreamBillingProbeExplicitlyDisabled(updates) || upstreamBillingProbeSnapshotClearRequested(updates)
-	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot
+	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates)
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
 	client := clientFromContext(ctx, r.client)
@@ -2481,10 +2399,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 			client = tx.Client()
 		}
 	}
-	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
-	if clearProbeSnapshot {
-		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
-	}
+	extraExpression := "(COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled') || $1::jsonb"
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
@@ -2525,105 +2440,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	return nil
 }
 
-// UpdateUpstreamBillingProbeSnapshot 仅在探测使用的网络身份仍有效时保存结果。
-func (r *accountRepository) UpdateUpstreamBillingProbeSnapshot(
-	ctx context.Context,
-	account *service.Account,
-	snapshot *service.UpstreamBillingProbeSnapshot,
-) error {
-	if account == nil || snapshot == nil {
-		return service.ErrAccountNilInput
-	}
-	if dbent.TxFromContext(ctx) == nil {
-		tx, err := r.client.Tx(ctx)
-		if errors.Is(err, dbent.ErrTxStarted) {
-			return r.updateUpstreamBillingProbeSnapshotInTx(ctx, account, snapshot)
-		}
-		if err != nil {
-			return err
-		}
-		defer func() { _ = tx.Rollback() }()
-
-		if err := r.updateUpstreamBillingProbeSnapshotInTx(dbent.NewTxContext(ctx, tx), account, snapshot); err != nil {
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-		// 持久化 outbox 事件与快照一并提交；这里直接写缓存仅用于降低当前实例的可见延迟。
-		r.syncSchedulerAccountSnapshot(ctx, account.ID)
-		return nil
-	}
-	return r.updateUpstreamBillingProbeSnapshotInTx(ctx, account, snapshot)
-}
-
-func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
-	ctx context.Context,
-	account *service.Account,
-	snapshot *service.UpstreamBillingProbeSnapshot,
-) error {
-	payload, err := json.Marshal(map[string]any{service.UpstreamBillingProbeExtraKey: snapshot})
-	if err != nil {
-		return err
-	}
-	credentials, err := json.Marshal(account.Credentials)
-	if err != nil {
-		return err
-	}
-	var expectedSnapshot any
-	if account.Extra != nil {
-		expectedSnapshot = account.Extra[service.UpstreamBillingProbeExtraKey]
-	}
-	expectedSnapshotJSON, err := json.Marshal(expectedSnapshot)
-	if err != nil {
-		return err
-	}
-	var expectedEnabled any
-	if account.Extra != nil {
-		expectedEnabled = account.Extra[service.UpstreamBillingProbeEnabledExtraKey]
-	}
-	expectedEnabledJSON, err := json.Marshal(expectedEnabled)
-	if err != nil {
-		return err
-	}
-	client := clientFromContext(ctx, r.client)
-	proxyMatches, err := lockAndMatchProbeProxyIdentity(ctx, client, account)
-	if err != nil {
-		return err
-	}
-	if !proxyMatches {
-		return service.ErrUpstreamBillingProbeIdentityChanged
-	}
-	var proxyID any
-	if account.ProxyID != nil {
-		proxyID = *account.ProxyID
-	}
-	result, err := client.ExecContext(ctx, `
-		UPDATE accounts
-		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW()
-		WHERE id = $2
-			AND platform = $3
-			AND type = $4
-			AND credentials = $5::jsonb
-			AND proxy_id IS NOT DISTINCT FROM $6
-			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
-			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
-			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return service.ErrUpstreamBillingProbeIdentityChanged
-	}
-	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
-}
-
-func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
+func lockAndMatchAccountProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
 	if account.ProxyID == nil {
 		return true, nil
 	}
@@ -2646,11 +2463,11 @@ func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, a
 	if account.Proxy == nil || account.Proxy.ID != *account.ProxyID {
 		return false, nil
 	}
-	var current proxyProbeIdentity
+	var current proxyConnectionIdentity
 	if err := rows.Scan(&current.protocol, &current.host, &current.port, &current.username, &current.password, &current.status); err != nil {
 		return false, err
 	}
-	return current == proxyProbeIdentityFromService(account.Proxy), rows.Err()
+	return current == proxyConnectionIdentityFromService(account.Proxy), rows.Err()
 }
 
 func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
@@ -2682,16 +2499,6 @@ func isSchedulerNeutralExtraKey(key string) bool {
 	return false
 }
 
-func upstreamBillingProbeExplicitlyDisabled(extra map[string]any) bool {
-	enabled, ok := extra[service.UpstreamBillingProbeEnabledExtraKey].(bool)
-	return ok && !enabled
-}
-
-func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
-	value, ok := extra[service.UpstreamBillingProbeExtraKey]
-	return ok && value == nil
-}
-
 func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 	value, ok := extra[service.OllamaCloudUsageSnapshotExtraKey]
 	return ok && value == nil
@@ -2701,6 +2508,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	if len(ids) == 0 {
 		return 0, nil
 	}
+	discardDeprecatedUpstreamBillingProbeExtra(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
@@ -2759,12 +2567,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
-	if updates.ProbeEnabled != nil {
-		if updates.Extra == nil {
-			updates.Extra = make(map[string]any)
-		}
-		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
-	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	credentialPlaceholder := ""
 	if len(updates.Credentials) > 0 {
@@ -2789,7 +2591,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	}
 
 	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
-		extraExpression := "COALESCE(extra, '{}'::jsonb)"
+		extraExpression := "COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled'"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
 			if err != nil {
@@ -2798,9 +2600,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			extraExpression += " || $" + itoa(idx) + "::jsonb"
 			args = append(args, payload)
 			idx++
-			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
-				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
-			}
 			if ollamaCloudUsageSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"
 			}
@@ -2839,10 +2638,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
 	args = append(args, pq.Array(ids))
 	idx++
-	if updates.ProbeEnabled != nil {
-		whereClause += " AND platform = $" + itoa(idx) + " AND type = $" + itoa(idx+1)
-		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
-	}
 	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + whereClause
 
 	baseCtx := ctx
@@ -2871,20 +2666,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, err
-	}
-	if updates.ProbeEnabled != nil {
-		expectedRows := int64(0)
-		seenIDs := make(map[int64]struct{}, len(ids))
-		for _, id := range ids {
-			if _, seen := seenIDs[id]; seen {
-				continue
-			}
-			seenIDs[id] = struct{}{}
-			expectedRows++
-		}
-		if rows != expectedRows {
-			return 0, service.ErrUpstreamBillingProbeAccountInvalid
-		}
 	}
 	if rows > 0 {
 		payload := map[string]any{"account_ids": ids}
@@ -3356,114 +3137,6 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 	}
 
 	return r.accountsToService(ctx, accounts)
-}
-
-// ListDueUpstreamBillingProbeAccounts 将结果加载和网络探测数量限制在 limit 内。
-// PostgreSQL 仍需筛选并排序全部启用账号；MATERIALIZED 可避免重复执行防御性时间解析表达式。
-// Go 使用 RFC3339Nano 写入 next_probe_at（小数秒最多 9 位），而 jsonpath datetime()
-// 最多只能解析到微秒，因此先把超过 6 位的小数截断；该处理与
-// ListDueOllamaCloudUsageAccounts 保持一致。若不截断，纳秒时间戳都会被视为非法，
-// 开放式失败排序会让每轮固定选择 ID 最小的账号，导致号池中其余账号得不到探测。
-func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
-	if limit <= 0 {
-		return []service.Account{}, nil
-	}
-	if r.sql == nil {
-		return nil, errors.New("account repository SQL executor not configured")
-	}
-
-	rows, err := r.sql.QueryContext(ctx, `
-		WITH candidates AS (
-			SELECT
-				id,
-				extra #>> '{upstream_billing_probe,status}' AS probe_status,
-				extra #>> '{upstream_billing_probe,next_probe_at}' AS next_probe_at
-			FROM accounts
-			WHERE deleted_at IS NULL
-				AND status = 'active'
-				AND platform = 'openai'
-				AND type = 'apikey'
-				AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
-		), parsed AS MATERIALIZED (
-			SELECT
-				id,
-				probe_status,
-				next_probe_at,
-				next_probe_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' AS rfc3339_shape,
-				jsonb_path_query_first_tz(
-					jsonb_build_object(
-						'value',
-						replace(regexp_replace(regexp_replace(
-							next_probe_at,
-							'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
-							'\1\2'
-						), 'Z$', '+00:00'), 'T', ' ')
-					),
-					'$.value.datetime()',
-					'{}'::jsonb,
-					true
-				) #>> '{}' AS parsed_next_probe_at
-			FROM candidates
-		), normalized AS (
-			SELECT
-				id,
-				probe_status,
-				next_probe_at,
-				parsed_next_probe_at,
-				rfc3339_shape AND parsed_next_probe_at IS NOT NULL AS valid_next_probe_at
-			FROM parsed
-		)
-		SELECT id
-		FROM normalized
-		WHERE probe_status NOT IN ('ok', 'unsupported', 'failed')
-			OR probe_status IS NULL
-			OR next_probe_at IS NULL
-			OR NOT valid_next_probe_at
-			OR CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz <= $1 ELSE FALSE END
-		ORDER BY
-			CASE
-				WHEN probe_status NOT IN ('ok', 'unsupported', 'failed')
-					OR probe_status IS NULL
-					OR next_probe_at IS NULL
-					OR NOT valid_next_probe_at
-				THEN 0
-				ELSE 1
-			END ASC,
-			CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz END ASC NULLS FIRST,
-			id ASC
-		LIMIT $2
-	`, now.UTC(), limit)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := make([]int64, 0, limit)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		return []service.Account{}, nil
-	}
-
-	accounts, err := r.GetByIDs(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]service.Account, 0, len(accounts))
-	for _, account := range accounts {
-		if account != nil {
-			out = append(out, *account)
-		}
-	}
-	return out, nil
 }
 
 // nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.

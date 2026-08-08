@@ -182,7 +182,7 @@ func (r *accountRepository) updateOllamaCloudUsageGroup(
 		return service.ErrOllamaCloudUsageAccountInvalid
 	}
 	apply := func(txCtx context.Context, client *dbent.Client) error {
-		matchesProxy, err := lockAndMatchProbeProxyIdentity(txCtx, client, account)
+		matchesProxy, err := lockAndMatchAccountProxyIdentity(txCtx, client, account)
 		if err != nil {
 			return err
 		}

@@ -419,7 +419,6 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRouti
 		OpenAIEndpointCapabilityChatCompletions,
 		false,
 		false,
-		false,
 	)
 
 	require.NoError(t, err)

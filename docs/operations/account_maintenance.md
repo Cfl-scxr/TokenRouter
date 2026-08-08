@@ -1,13 +1,13 @@
 # 账号维护
 
-本文描述上游账号凭据刷新、健康测试、配额探测、临时不可调度和自动恢复的后台流程。它不定义创建表单字段或请求内调度评分；这些由平台专题与调度架构拥有。
+本文描述上游账号凭据刷新、健康测试、配额与能力探测、临时不可调度和自动恢复的后台流程。它不定义创建表单字段或请求内调度评分；这些由平台专题与调度架构拥有。
 
 ## 章节导航
 
 - [凭据刷新](#凭据刷新)：修改 refresh 候选、并发、重试或状态同步时读取。
 - [状态与临时不可调度](#状态与临时不可调度)：修改错误、限流或恢复时间时读取。
 - [账号测试与自动恢复](#账号测试与自动恢复)：修改定时测试或恢复条件时读取。
-- [额度与能力探测](#额度与能力探测)：修改上游 usage、billing 或 endpoint capability 时读取。
+- [额度与能力探测](#额度与能力探测)：修改上游 usage、quota 或 endpoint capability 时读取。
 - [运维诊断](#运维诊断)：排查刷新堆积、误封禁或账号抖动时读取。
 
 <a id="account_credential_refresh"></a>
@@ -40,7 +40,9 @@
 
 平台可维护独立的上游额度快照：OpenAI/Codex 窗口、Gemini tier/model quota、Antigravity credits、Grok 计费/媒体资格、Qoder Credits 等。快照用于调度、容量展示和诊断，不是 TokenRouter 用户余额或订阅账本。
 
-OpenAI/Anthropic API Key 可执行上游 billing probe；OpenAI API Key 还可探测 Responses、Chat、Embeddings 等 endpoint capability。Ollama Cloud 等兼容 API Key 上游可以保存其管理会话和用量快照，但只有明确匹配的账号才进入探测，不能把探测协议推广到所有 `apikey`。
+OpenAI API Key 可探测 Responses、Chat、Embeddings 等 endpoint capability。Ollama Cloud 等兼容 API Key 上游可以保存其管理会话和用量快照，但只有明确匹配的账号才进入探测，不能把探测协议推广到所有 `apikey`。Grok 计费与媒体资格、各平台额度探测也继续使用各自独立协议。
+
+通用的上游声明倍率探测已移除，不再有定时任务、手动操作、快照或公开账单自省接口。账号创建、编辑、批量更新、复制、CRS 同步和仓储写入都会丢弃历史 `upstream_billing_probe` 与 `upstream_billing_probe_enabled` 键；这项清理不得影响 Ollama Cloud 会话/用量、endpoint capability 或其它额度状态。
 
 实时探测失败时保留最近成功快照并同时暴露当前错误，不把旧数据标为实时。任何配额耗尽或 capability 变化都要触发相关调度投影失效。
 

@@ -63,7 +63,7 @@
 | Anthropic token count：`/v1/messages/count_tokens`、`/messages/count_tokens` | Anthropic、OpenAI、Gemini 进入各自统计路径，Grok 使用本地估算；Antigravity、Qoder 明确返回 `404`，Anthropic Bedrock 账号也不支持 | 六个平台专题；客户端应保留本地估算回退 |
 | OpenAI Responses：`/v1/responses`、`/responses` 及允许的子路径 | 六个平台在最终分组允许 Responses 时进入平台适配；Qoder 不支持 Responses 子路径和 WebSocket | 六个平台专题；WebSocket/Realtime 重点见 [OpenAI 上游](openai_upstream.md) |
 | OpenAI Chat Completions：`/v1/chat/completions`、`/chat/completions` | 最终分组允许 Chat 时，六个平台均按平台转换或原生转发 | 六个平台专题 |
-| 模型、用量与 Key 账单：`/v1/models`、`/models`、`/v1/usage`、`/v1/sub2api/billing` | 按 Key、分组、账号和渠道解析可请求模型与本地额度；不是上游模型列表或账单的原样代理 | [模型目录与市场](model_catalog_and_marketplace.md)及各平台专题 |
+| 模型与用量：`/v1/models`、`/models`、`/v1/usage` | 按 Key、分组、账号和渠道解析可请求模型与本地额度；不是上游模型列表或账单的原样代理 | [模型目录与市场](model_catalog_and_marketplace.md)及各平台专题 |
 | Embeddings：`/v1/embeddings`、`/embeddings` | 仅 OpenAI 分组 | [OpenAI 上游](openai_upstream.md) |
 | Realtime、Live 与 Alpha Search | Live/sideband、Codex realtime 和 alpha search 仅 OpenAI 平台；是否可用还受分组和账号能力限制 | [OpenAI 上游](openai_upstream.md) |
 | 同步图片生成/编辑 | 仅 OpenAI 与 Grok；分组图片开关和账号能力继续收窄范围 | [OpenAI 上游](openai_upstream.md)、[Grok / xAI 上游](grok_upstream.md) |
@@ -73,6 +73,8 @@
 | Antigravity 专用入口：`/antigravity/*` | 强制只选择 Antigravity 账号，不参与混合调度 | [Antigravity 上游](antigravity_upstream.md) |
 
 路由存在不代表任意分组或账号类型都能承接。协议门禁在账号选择前按最终分组执行；通过后，处理器仍会校验平台、模型、transport、endpoint capability、媒体资格和其它分组策略。Gemini Responses 已有正式非流和 SSE 转换，保留 reasoning、工具调用、usage、结束原因与首次 Token 指标；首个客户端字节写出后不再 failover。
+
+公开协议不再包含 Key 账单自省或上游声明倍率入口。`GET /v1/sub2api/billing` 未注册并返回普通 `404`；账户本地 `rate_multiplier` 和渠道的上游计费模型来源仍属于结算配置，不代表从上游探测到的声明倍率。
 
 ## 跨层约束
 

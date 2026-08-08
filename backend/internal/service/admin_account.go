@@ -68,6 +68,17 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 const maxAccountNameRunes = 100
 const duplicateAccountOperationIDExtraKey = "duplicate_operation_id"
 
+const (
+	// 旧版倍率探测键只用于阻止历史客户端重新写入，业务代码不得再读取这些值。
+	deprecatedUpstreamBillingProbeExtraKey        = "upstream_billing_probe"
+	deprecatedUpstreamBillingProbeEnabledExtraKey = "upstream_billing_probe_enabled"
+)
+
+func discardDeprecatedUpstreamBillingProbeExtra(extra map[string]any) {
+	delete(extra, deprecatedUpstreamBillingProbeExtraKey)
+	delete(extra, deprecatedUpstreamBillingProbeEnabledExtraKey)
+}
+
 func duplicateAccountName(sourceName string) string {
 	const suffix = " (Copy)"
 	nameRunes := []rune(strings.TrimSpace(sourceName))
@@ -109,45 +120,47 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"quota_daily_reset_at":  {},
 	"quota_weekly_reset_at": {},
 	// 上游观测、能力探测与临时调度状态不属于可复制配置。
-	"model_rate_limits":                      {},
-	"session_window_utilization":             {},
-	"passive_usage_7d_utilization":           {},
-	"passive_usage_7d_reset":                 {},
-	"passive_usage_7d_oi_utilization":        {},
-	"passive_usage_7d_oi_reset":              {},
-	"passive_usage_sampled_at":               {},
-	"grok_usage_snapshot":                    {},
-	"grok_billing_snapshot":                  {},
-	"openai_responses_supported":             {},
-	"openai_compact_supported":               {},
-	"openai_compact_checked_at":              {},
-	"openai_compact_last_status":             {},
-	"openai_compact_last_error":              {},
-	"qoder_quota_snapshot":                   {},
-	"qoder_quota_updated_at":                 {},
-	"antigravity_credits_overages":           {},
-	"antigravity_force_token_refresh":        {},
-	"antigravity_force_token_refresh_at":     {},
-	"antigravity_force_token_refresh_reason": {},
-	"drive_storage_limit":                    {},
-	"drive_storage_usage":                    {},
-	"drive_tier_updated_at":                  {},
-	"codex_primary_used_percent":             {},
-	"codex_primary_reset_after_seconds":      {},
-	"codex_primary_window_minutes":           {},
-	"codex_secondary_used_percent":           {},
-	"codex_secondary_reset_after_seconds":    {},
-	"codex_secondary_window_minutes":         {},
-	"codex_primary_over_secondary_percent":   {},
-	"codex_usage_updated_at":                 {},
-	"codex_5h_used_percent":                  {},
-	"codex_5h_reset_after_seconds":           {},
-	"codex_5h_window_minutes":                {},
-	"codex_5h_reset_at":                      {},
-	"codex_7d_used_percent":                  {},
-	"codex_7d_reset_after_seconds":           {},
-	"codex_7d_window_minutes":                {},
-	"codex_7d_reset_at":                      {},
+	"model_rate_limits":                           {},
+	"session_window_utilization":                  {},
+	"passive_usage_7d_utilization":                {},
+	"passive_usage_7d_reset":                      {},
+	"passive_usage_7d_oi_utilization":             {},
+	"passive_usage_7d_oi_reset":                   {},
+	"passive_usage_sampled_at":                    {},
+	"grok_usage_snapshot":                         {},
+	"grok_billing_snapshot":                       {},
+	"openai_responses_supported":                  {},
+	"openai_compact_supported":                    {},
+	"openai_compact_checked_at":                   {},
+	"openai_compact_last_status":                  {},
+	"openai_compact_last_error":                   {},
+	"qoder_quota_snapshot":                        {},
+	"qoder_quota_updated_at":                      {},
+	"antigravity_credits_overages":                {},
+	"antigravity_force_token_refresh":             {},
+	"antigravity_force_token_refresh_at":          {},
+	"antigravity_force_token_refresh_reason":      {},
+	"drive_storage_limit":                         {},
+	"drive_storage_usage":                         {},
+	"drive_tier_updated_at":                       {},
+	"codex_primary_used_percent":                  {},
+	"codex_primary_reset_after_seconds":           {},
+	"codex_primary_window_minutes":                {},
+	"codex_secondary_used_percent":                {},
+	"codex_secondary_reset_after_seconds":         {},
+	"codex_secondary_window_minutes":              {},
+	"codex_primary_over_secondary_percent":        {},
+	"codex_usage_updated_at":                      {},
+	"codex_5h_used_percent":                       {},
+	"codex_5h_reset_after_seconds":                {},
+	"codex_5h_window_minutes":                     {},
+	"codex_5h_reset_at":                           {},
+	"codex_7d_used_percent":                       {},
+	"codex_7d_reset_after_seconds":                {},
+	"codex_7d_window_minutes":                     {},
+	"codex_7d_reset_at":                           {},
+	deprecatedUpstreamBillingProbeExtraKey:        {},
+	deprecatedUpstreamBillingProbeEnabledExtraKey: {},
 }
 
 func duplicateAccountExtra(value map[string]any) (map[string]any, error) {
@@ -454,9 +467,8 @@ func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAcc
 }
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
-	// 探测和会话状态由系统管理，新账号始终以关闭自动刷新的状态创建。
-	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
-	delete(accountExtra, UpstreamBillingProbeExtraKey)
+	// 受管会话状态由系统维护，旧版倍率探测字段不得通过通用账号接口写入。
+	discardDeprecatedUpstreamBillingProbeExtra(accountExtra)
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -472,15 +484,6 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
-	}
-	if input.ProbeEnabled != nil && *input.ProbeEnabled {
-		if !isUpstreamBillingProbeAccount(account) {
-			return nil, ErrUpstreamBillingProbeAccountInvalid
-		}
-		if account.Extra == nil {
-			account.Extra = make(map[string]any)
-		}
-		account.Extra[UpstreamBillingProbeEnabledExtraKey] = true
 	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
@@ -597,10 +600,6 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	return account, nil
 }
 
-type accountProbeEnabledAtomicUpdater interface {
-	UpdateWithUpstreamBillingProbeEnabled(context.Context, *Account, bool) error
-}
-
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -619,7 +618,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 	}
-	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
@@ -672,18 +670,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
-	var requestedProbeEnabledUpdate *bool
 	if input.Extra != nil {
-		requestedProbeEnabled, hasRequestedProbeEnabled := normalizedExtra[UpstreamBillingProbeEnabledExtraKey]
-		if hasRequestedProbeEnabled {
-			enabled, ok := requestedProbeEnabled.(bool)
-			if !ok {
-				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_BILLING_PROBE_ENABLED", "upstream_billing_probe_enabled must be a boolean")
-			}
-			requestedProbeEnabledUpdate = &enabled
-		}
-		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
-		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
+		discardDeprecatedUpstreamBillingProbeExtra(normalizedExtra)
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -695,21 +683,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			"quota_weekly_used",
 			"quota_weekly_start",
 			grokBillingExtraKey,
-			UpstreamBillingProbeEnabledExtraKey,
-			UpstreamBillingProbeExtraKey,
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
-			}
-		}
-		if hasRequestedProbeEnabled {
-			if isUpstreamBillingProbeAccount(account) {
-				normalizedExtra[UpstreamBillingProbeEnabledExtraKey] = requestedProbeEnabled
-			} else {
-				delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 			}
 		}
 		account.Extra = normalizedExtra
@@ -742,12 +721,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
-	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
-		delete(account.Extra, UpstreamBillingProbeExtraKey)
-		if !isUpstreamBillingProbeAccount(account) {
-			delete(account.Extra, UpstreamBillingProbeEnabledExtraKey)
-		}
-	}
+	discardDeprecatedUpstreamBillingProbeExtra(account.Extra)
 	if account.Extra != nil {
 		if !IsOllamaCloudUsageAccount(account) {
 			delete(account.Extra, OllamaCloudUsageSessionExtraKey)
@@ -821,26 +795,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err := validateQoderCosyCredentialsWithOptions(ctx, account, s.httpUpstream, s.tlsFPProfileService, deferQoderPATValidation); err != nil {
 		return nil, err
 	}
-	probeEnabledAppliedAtomically := false
-	if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
-		if updater, ok := s.accountRepo.(accountProbeEnabledAtomicUpdater); ok {
-			if err := updater.UpdateWithUpstreamBillingProbeEnabled(ctx, account, *requestedProbeEnabledUpdate); err != nil {
-				return nil, err
-			}
-			probeEnabledAppliedAtomically = true
-		}
-	}
-	if !probeEnabledAppliedAtomically {
-		if err := s.accountRepo.Update(ctx, account); err != nil {
-			return nil, err
-		}
-		if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-				UpstreamBillingProbeEnabledExtraKey: *requestedProbeEnabledUpdate,
-			}); err != nil {
-				return nil, err
-			}
-		}
+	if err := s.accountRepo.Update(ctx, account); err != nil {
+		return nil, err
 	}
 
 	// 将 proxy 变更传播到 spark 影子账号（同步；Update 内部已触发调度快照）。
@@ -868,6 +824,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 
 // UpdateAccountExtra 仅对账号 Extra JSONB 做 key 级合并，避免覆盖运行态或持久化配置键。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	discardDeprecatedUpstreamBillingProbeExtra(updates)
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
@@ -889,9 +846,8 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts 在单次请求中更新多个账号。
 // 凭据和 extra 使用键级合并，不覆盖整个对象。
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
-	// 受管探测和会话状态只能通过专用类型接口更新。
-	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
-	delete(input.Extra, UpstreamBillingProbeExtraKey)
+	// 受管会话状态只能通过专用类型接口更新，旧版倍率探测字段直接丢弃。
+	discardDeprecatedUpstreamBillingProbeExtra(input.Extra)
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
@@ -924,29 +880,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
-	}
-	if input.ProbeEnabled != nil {
-		targetsByID := make(map[int64]*Account, len(cachedTargets))
-		for _, account := range cachedTargets {
-			if account != nil {
-				targetsByID[account.ID] = account
-			}
-		}
-		for _, accountID := range input.AccountIDs {
-			account, ok := targetsByID[accountID]
-			if !ok {
-				return nil, ErrAccountNotFound
-			}
-			if !isUpstreamBillingProbeAccount(account) {
-				return nil, ErrUpstreamBillingProbeAccountInvalid
-			}
-		}
 	}
 	if hasLongContextBillingUpdate {
 		for _, account := range cachedTargets {
@@ -1019,22 +958,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials:  input.Credentials,
-		Extra:        input.Extra,
-		ProbeEnabled: input.ProbeEnabled,
-	}
-	if input.ProbeEnabled != nil {
-		if repoUpdates.Extra == nil {
-			repoUpdates.Extra = make(map[string]any)
-		}
-		repoUpdates.Extra[UpstreamBillingProbeEnabledExtraKey] = *input.ProbeEnabled
-	}
-	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
-		if repoUpdates.Extra == nil {
-			repoUpdates.Extra = make(map[string]any)
-		}
-		// JSON null 会让所有读取方把旧快照视为不存在，使下一轮启用的任务立即探测新上游身份。
-		repoUpdates.Extra[UpstreamBillingProbeExtraKey] = nil
+		Credentials: input.Credentials,
+		Extra:       input.Extra,
 	}
 	if input.Name != "" {
 		repoUpdates.Name = &input.Name
@@ -1107,31 +1032,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	return result, nil
-}
-
-func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
-		if _, ok := credentials[key]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func upstreamBillingProbeIdentity(account *Account) map[string]any {
-	if account == nil {
-		return nil
-	}
-	identity := map[string]any{"platform": account.Platform, "type": account.Type, "proxy_id": nil}
-	if account.ProxyID != nil {
-		identity["proxy_id"] = *account.ProxyID
-	}
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
-		if value, ok := account.Credentials[key]; ok {
-			identity[key] = value
-		}
-	}
-	return identity
 }
 
 func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {

@@ -1177,15 +1177,13 @@ type GatewayOpenAIWSSchedulerScoreWeights struct {
 	// QuotaHeadroom 倾向 Codex 7d 剩余额度更健康的账号。
 	// 默认 0（关闭，不改变原有行为）。
 	QuotaHeadroom float64 `mapstructure:"quota_headroom"`
-	// UpstreamCost 倾向上游声明倍率更低的账号；默认 0（关闭，不改变原有行为）。
-	UpstreamCost float64 `mapstructure:"upstream_cost"`
 	// PreviousResponse/SessionSticky 仅在开启 OpenAI 高级调度的粘性加权时生效。
 	PreviousResponse float64 `mapstructure:"previous_response"`
 	SessionSticky    float64 `mapstructure:"session_sticky"`
 }
 
 func (w GatewayOpenAIWSSchedulerScoreWeights) BaseWeightSum() float64 {
-	return w.Priority + w.Load + w.Queue + w.ErrorRate + w.TTFT + w.Reset + w.QuotaHeadroom + w.UpstreamCost
+	return w.Priority + w.Load + w.Queue + w.ErrorRate + w.TTFT + w.Reset + w.QuotaHeadroom
 }
 
 func (w GatewayOpenAIWSSchedulerScoreWeights) TotalWeightSum() float64 {
@@ -1195,7 +1193,7 @@ func (w GatewayOpenAIWSSchedulerScoreWeights) TotalWeightSum() float64 {
 func (w GatewayOpenAIWSSchedulerScoreWeights) IsValid() bool {
 	for _, weight := range []float64{
 		w.Priority, w.Load, w.Queue, w.ErrorRate, w.TTFT, w.Reset,
-		w.QuotaHeadroom, w.UpstreamCost, w.PreviousResponse, w.SessionSticky,
+		w.QuotaHeadroom, w.PreviousResponse, w.SessionSticky,
 	} {
 		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
 			return false
@@ -2271,7 +2269,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.ttft", 0.5)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.reset", 0.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.quota_headroom", 0.0)
-	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.upstream_cost", 0.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.previous_response", 5.0)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.session_sticky", 3.0)
 	// OpenAI HTTP 上游协议策略
@@ -3325,7 +3322,7 @@ func (c *Config) Validate() error {
 	weights := c.Gateway.OpenAIWS.SchedulerScoreWeights
 	for _, weight := range []float64{
 		weights.Priority, weights.Load, weights.Queue, weights.ErrorRate, weights.TTFT,
-		weights.Reset, weights.QuotaHeadroom, weights.UpstreamCost,
+		weights.Reset, weights.QuotaHeadroom,
 		weights.PreviousResponse, weights.SessionSticky,
 	} {
 		if weight < 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {

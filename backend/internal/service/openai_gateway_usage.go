@@ -98,8 +98,8 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 	}
 }
 
-// ResolveUserGroupRateMultiplier 解析 OpenAI 用量计费共用的用户/分组缓存倍率。
-func (s *OpenAIGatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+// resolveUserGroupRateMultiplier 解析 OpenAI 用量计费共用的用户/分组缓存倍率。
+func (s *OpenAIGatewayService) resolveUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
 	if s == nil {
 		return groupDefaultMultiplier
 	}
@@ -193,7 +193,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		subscriptionMultiplier = apiKey.Group.RateMultiplier
 		balanceMultiplier = apiKey.Group.RateMultiplier
 		if subscription == nil {
-			balanceMultiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+			balanceMultiplier = s.resolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 		}
 	}
 	if apiKey.GroupID != nil && apiKey.Group != nil && subscription == nil {

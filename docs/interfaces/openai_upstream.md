@@ -43,9 +43,9 @@ API Key endpoint capability 可通过探测或配置表达 `responses`、`chat_c
 
 ## 额度与调度
 
-OpenAI 使用专用账号调度器，在共同 active/schedulable、分组、模型、限流和并发筛选之外，还会考虑所需 transport/capability、账号优先级、近期延迟或成本信号和粘性上下文。previous response、WebSocket 会话和显式 session 可约束账号复用；只有策略允许时才能迁移。
+OpenAI 使用专用账号调度器，在共同 active/schedulable、分组、模型、限流和并发筛选之外，还会考虑所需 transport/capability、账号优先级、负载、排队、错误率、近期延迟、配额余量和粘性上下文。previous response、WebSocket 会话和显式 session 可约束账号复用；只有策略允许时才能迁移。
 
-OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运行状态中，可触发临时限流或自动暂停；API Key 上游账单探测是独立观测。它们都不是 TokenRouter 的用户余额、订阅、Key 限额或用户平台额度。
+OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运行状态中，可触发临时限流或自动暂停；API Key endpoint capability 仍可独立探测。OpenAI 不再采集上游站点声明倍率，也不按该值进行低倍率优先或高级评分。账户本地 `rate_multiplier` 和渠道上游计费模型来源继续用于 TokenRouter 结算，但都不是用户余额、订阅、Key 限额或用户平台额度。
 
 ## 失败与诊断
 

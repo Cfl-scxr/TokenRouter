@@ -7,7 +7,7 @@
 - [账号与认证](#账号与认证)：修改 OAuth、Setup Token、API Key、Bedrock 或 Vertex 凭据时读取。
 - [协议分派](#协议分派)：修改 Messages、Responses 或 Chat 转换时读取。
 - [模型与请求策略](#模型与请求策略)：修改模型映射、thinking、beta 或缓存行为时读取。
-- [配额与调度](#配额与调度)：修改账号资格、粘性、等待或成本信号时读取。
+- [配额与调度](#配额与调度)：修改账号资格、粘性、等待或配额信号时读取。
 - [错误与诊断](#错误与诊断)：修改刷新、重试、故障转移或错误响应时读取。
 
 <a id="anthropic_account_and_transport"></a>
@@ -19,7 +19,7 @@ Anthropic 管理端正式支持以下账号：
 | --- | --- |
 | `oauth` | 使用 access/refresh token；后台刷新服务和请求路径 token provider 都可刷新临近过期凭据 |
 | `setup-token` | 使用推理范围的 setup token；按保存的 access token 转发，不等同于可刷新完整 OAuth 账号 |
-| `apikey` | 使用 Anthropic API Key 或配置的 Bearer 方案，可配 base URL、Header override 和上游计费探测 |
+| `apikey` | 使用 Anthropic API Key 或配置的 Bearer 方案，可配 base URL 和 Header override |
 | `bedrock` | `sigv4` 使用 AWS 凭据和区域签名；`apikey` 使用 Bedrock API Key；可配置全局端点和模型映射 |
 | `service_account` | 使用 Google Service Account 换取 Vertex AI token，并携带 project/location 等 Vertex 上下文 |
 
@@ -52,7 +52,7 @@ Anthropic 请求策略包括：
 
 账号必须通过状态、分组、模型、endpoint、凭据、限流和并发筛选。粘性会话尽量复用同一账号；账号失效、模型限流或策略变化会丢弃旧绑定并重新选择。等待队列只等待可能恢复的并发/限流条件，不会把永久凭据错误变成无限等待。
 
-API Key/Bedrock 可配置本地账号配额和亲和策略。上游 OAuth/API Key 用量探测、账号成本、优先级与近期错误可以参与调度，但不替代用户余额、订阅和用户平台额度。Antigravity 账号只有显式启用 mixed scheduling 后才能加入 Anthropic 候选，并继续遵守 Anthropic 分组语义。
+API Key/Bedrock 可配置本地账号配额和亲和策略。可用的上游用量/配额状态、账号优先级与近期错误可以参与资格判断或调度，但不替代用户余额、订阅和用户平台额度。Anthropic 不再采集上游站点声明倍率，也不按该值排序或评分；账户本地 `rate_multiplier` 仅保留为结算输入。Antigravity 账号只有显式启用 mixed scheduling 后才能加入 Anthropic 候选，并继续遵守 Anthropic 分组语义。
 
 ## 错误与诊断
 

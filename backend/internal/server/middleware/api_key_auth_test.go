@@ -1491,87 +1491,22 @@ func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {
 	require.Equal(t, 1, touchCalls)
 }
 
-func TestAPIKeyAuthBillingInfoSkipsBillingAndSideEffects(t *testing.T) {
+func TestAPIKeyAuthRemovedBillingPathUsesNormalQuotaChecks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	group := &service.Group{
-		ID:       42,
-		Name:     "subscription",
-		Status:   service.StatusActive,
-		Hydrated: true,
-	}
-	user := &service.User{
-		ID:          7,
-		Role:        service.RoleUser,
-		Status:      service.StatusActive,
-		Balance:     0,
-		Concurrency: 3,
-	}
-	expiredAt := time.Now().Add(-time.Hour)
+	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
 	apiKey := &service.APIKey{
-		ID:        100,
-		UserID:    user.ID,
-		Key:       "billing-info-auth-only",
-		Status:    service.StatusAPIKeyQuotaExhausted,
-		User:      user,
-		GroupID:   &group.ID,
-		Group:     group,
-		Quota:     1,
-		QuotaUsed: 1,
-		ExpiresAt: &expiredAt,
+		ID: 100, UserID: user.ID, Key: "removed-billing-path", Status: service.StatusAPIKeyQuotaExhausted,
+		User: user, Quota: 1, QuotaUsed: 1,
 	}
 
-	touchCalls := 0
-	subscriptionCalls := 0
 	apiKeyRepo := &stubApiKeyRepo{
 		getByKey: func(context.Context, string) (*service.APIKey, error) {
 			clone := *apiKey
 			return &clone, nil
-		},
-		updateLastUsed: func(context.Context, int64, time.Time) error {
-			touchCalls++
-			return nil
-		},
-	}
-	subscriptionRepo := &stubUserSubscriptionRepo{
-		listActive: func(context.Context, int64) ([]service.UserSubscription, error) {
-			subscriptionCalls++
-			return nil, nil
 		},
 	}
 	cfg := &config.Config{RunMode: config.RunModeStandard}
-	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
-	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
-	t.Cleanup(subscriptionService.Stop)
-	router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
-	req.Header.Set("x-api-key", apiKey.Key)
-	router.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	require.Zero(t, subscriptionCalls)
-	require.Zero(t, touchCalls)
-}
-
-func TestAPIKeyAuthBillingInfoSkipsLastUsedInSimpleMode(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive}
-	apiKey := &service.APIKey{ID: 100, UserID: user.ID, Key: "billing-info-simple", Status: service.StatusActive, User: user}
-	touchCalls := 0
-	apiKeyRepo := &stubApiKeyRepo{
-		getByKey: func(context.Context, string) (*service.APIKey, error) {
-			clone := *apiKey
-			return &clone, nil
-		},
-		updateLastUsed: func(context.Context, int64, time.Time) error {
-			touchCalls++
-			return nil
-		},
-	}
-	cfg := &config.Config{RunMode: config.RunModeSimple}
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := newAuthTestRouter(apiKeyService, nil, cfg)
 
@@ -1580,8 +1515,8 @@ func TestAPIKeyAuthBillingInfoSkipsLastUsedInSimpleMode(t *testing.T) {
 	req.Header.Set("x-api-key", apiKey.Key)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
-	require.Zero(t, touchCalls)
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
 }
 
 func TestAPIKeyAuthUsageStillTouchesLastUsed(t *testing.T) {

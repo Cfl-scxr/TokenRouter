@@ -174,7 +174,6 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			OpenAIEndpointCapabilityLive,
 			false,
 			false,
-			false,
 		)
 		if selectErr != nil {
 			if lastErr != nil {

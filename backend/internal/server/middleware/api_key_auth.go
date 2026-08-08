@@ -28,8 +28,8 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 //   - 鉴权（Authentication）：验证 Key 有效性、用户状态、IP 限制 —— 始终执行
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
-// /v1/usage、/v1/sub2api/billing 与既有批任务管理只需鉴权，不需要计费执行。
-// usage 允许过期/配额耗尽的 Key 查询自身用量，billing 用于读取当前 Key 的倍率配置；
+// /v1/usage 与既有批任务管理只需鉴权，不需要计费执行。
+// usage 允许过期/配额耗尽的 Key 查询自身用量；
 // 批任务管理允许已耗尽额度的 Key 取回或清理自己的既有任务。
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -197,9 +197,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx = context.WithValue(ctx, ctxkey.APIKeyFastModePolicy, apiKey.FastModePolicy)
 		c.Request = c.Request.WithContext(ctx)
 		applyAPIKeyModelRedirect(c, apiKey)
-		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
 		// 批任务管理只读取已有数据或释放冻结；即使任务耗尽额度，结果仍应可取回或取消。
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest ||
+		skipBilling := c.Request.URL.Path == "/v1/usage" ||
 			isBatchImageBillingBypassRequest(c.Request.Method, c.Request.URL.Path) ||
 			(apiKey.IsComposite && isGrokVideoTaskRead(c.Request.Method, c.Request.URL.Path))
 
@@ -213,9 +212,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			})
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
-			if !billingInfoRequest {
-				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
-			}
+			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
 			return
 		}
@@ -223,8 +220,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// ── 5. 按端点需要加载订阅 ───────────────────────────────────
 
 		var subscription *service.UserSubscription
-		// 倍率自省不读取订阅；/v1/usage 与模型请求保持 fork 原有的可用订阅解析语义。
-		if subscriptionService != nil && !billingInfoRequest {
+		if subscriptionService != nil {
 			var groupID int64
 			if apiKey.GroupID != nil {
 				groupID = *apiKey.GroupID
@@ -306,9 +302,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		})
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
-		if !billingInfoRequest {
-			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
-		}
+		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 	}
@@ -384,7 +378,7 @@ func isBatchImageBillingBypassRequest(method, path string) bool {
 func isAPIKeyNonConsumingRequest(method, path string) bool {
 	path = strings.TrimRight(path, "/")
 	if method == http.MethodGet {
-		if path == "/v1/usage" || path == "/antigravity/v1/usage" || path == "/v1/sub2api/billing" {
+		if path == "/v1/usage" || path == "/antigravity/v1/usage" {
 			return true
 		}
 		if strings.HasSuffix(path, "/models") || isBatchImageManagementRequest(method, path) || isGrokVideoTaskRead(method, path) {

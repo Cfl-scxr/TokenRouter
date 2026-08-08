@@ -128,7 +128,7 @@ func isCompositeKeyNoModelEndpoint(method, path string) bool {
 	cleanPath := strings.TrimSuffix(path, "/")
 	switch cleanPath {
 	case "/v1/models", "/models", "/v1beta/models", "/antigravity/models", "/antigravity/v1/models", "/antigravity/v1beta/models", "/v1/images/batches/models",
-		"/v1/usage", "/antigravity/v1/usage", "/v1/sub2api/billing":
+		"/v1/usage", "/antigravity/v1/usage":
 		return true
 	}
 	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
@@ -139,7 +139,7 @@ func isCompositeKeyNoModelEndpoint(method, path string) bool {
 func isCompositeKeyBillingBypassEndpoint(method, path string) bool {
 	cleanPath := strings.TrimSuffix(path, "/")
 	switch cleanPath {
-	case "/v1/usage", "/antigravity/v1/usage", "/v1/sub2api/billing":
+	case "/v1/usage", "/antigravity/v1/usage":
 		return true
 	}
 	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)

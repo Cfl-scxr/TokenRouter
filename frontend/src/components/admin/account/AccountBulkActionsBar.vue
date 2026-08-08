@@ -35,7 +35,6 @@
         >
           {{ t('admin.accounts.bulkActions.queryUsage') }}
         </button>
-        <button @click="$emit('probe-upstream-billing')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}</button>
         <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') }}</button>
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
@@ -65,7 +64,6 @@ defineEmits<{
   'reset-status': []
   'refresh-token': []
   'query-usage': []
-  'probe-upstream-billing': []
 }>()
 
 const { t } = useI18n()
