@@ -50,7 +50,7 @@
 
 多数观测和维护能力在依赖注入时启动，在应用 cleanup 中停止。它们不是一个统一队列，故障和交付保证各不相同：
 
-- Usage record worker 使用有界队列；默认拥塞策略可同步降级，也支持 sample/drop。队列深度、成功、失败、丢弃和同步降级计数必须进入运行时诊断。
+- Usage record worker 使用有界队列；默认拥塞策略可同步降级，也支持 sample/drop。队列深度、成功、失败、丢弃和同步降级计数必须进入运行时诊断。显式 drop/sample 溢出仍按运维配置丢弃；池已停止的关停窗口则使用独立提交状态，计费任务在调用侧内联同步兜底。
 - Ops system log sink 只索引选定等级/组件，按批写 PostgreSQL；队列满时不阻塞主请求，而是增加 dropped counter。停止时会尽力排空。
 - 运维指标采集器、小时/日聚合器、告警评估器、计划报告和清理任务各自维护周期、开关、leader lock 与 job heartbeat。
 - Usage cleanup 任务持久化为 pending/running/succeeded/failed/canceled，分批删除；进程中断后 stale running 任务可以重新抢占继续执行。

@@ -43,8 +43,16 @@ type UsageRecordSubmitMode string
 const (
 	UsageRecordSubmitModeEnqueued UsageRecordSubmitMode = "enqueued"
 	UsageRecordSubmitModeDropped  UsageRecordSubmitMode = "dropped"
-	UsageRecordSubmitModeSync     UsageRecordSubmitMode = "sync_fallback"
+	// UsageRecordSubmitModeDroppedStopped 表示任务因池已停止而未执行。
+	// 它与运维显式配置的 drop/sample 溢出丢弃分开，便于计费任务在关停窗口同步兜底。
+	UsageRecordSubmitModeDroppedStopped UsageRecordSubmitMode = "dropped_stopped"
+	UsageRecordSubmitModeSync           UsageRecordSubmitMode = "sync_fallback"
 )
+
+// Dropped 报告任务是否未入队且未同步执行。
+func (m UsageRecordSubmitMode) Dropped() bool {
+	return m == UsageRecordSubmitModeDropped || m == UsageRecordSubmitModeDroppedStopped
+}
 
 // UsageRecordWorkerPoolOptions 使用量记录池配置。
 type UsageRecordWorkerPoolOptions struct {
@@ -150,7 +158,7 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 	if p.pool == nil || p.pool.Stopped() {
 		p.droppedPoolStopped.Add(1)
 		p.logDrop("stopped")
-		return UsageRecordSubmitModeDropped
+		return UsageRecordSubmitModeDroppedStopped
 	}
 
 	_, ok := p.pool.TrySubmit(func() {
@@ -163,7 +171,7 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 	if p.pool.Stopped() {
 		p.droppedPoolStopped.Add(1)
 		p.logDrop("stopped")
-		return UsageRecordSubmitModeDropped
+		return UsageRecordSubmitModeDroppedStopped
 	}
 
 	switch p.overflowPolicy {

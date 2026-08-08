@@ -2392,10 +2392,16 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(c *gin.Context, task servic
 	}
 	task = wrapUsageRecordTaskContext(c, task)
 	if h.usageRecordWorkerPool != nil {
-		h.usageRecordWorkerPool.Submit(task)
-		return
+		if mode := h.usageRecordWorkerPool.Submit(task); mode != service.UsageRecordSubmitModeDroppedStopped {
+			return
+		}
+		// 池已停止时处于进程关停窗口，计费任务不能静默丢失。
+		// 显式 drop/sample 溢出仍保持运维配置的取舍。
+		logger.L().With(
+			zap.String("component", "handler.openai_gateway.responses"),
+		).Warn("openai.usage_record_task_stopped_sync_fallback")
 	}
-	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	// 回退路径：worker 池未注入或已停止时同步执行，避免退回到无界 goroutine 模式。
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	defer func() {
@@ -2423,7 +2429,7 @@ func (h *OpenAIGatewayHandler) submitMandatoryUsageRecordTask(c *gin.Context, ta
 	}
 	task = wrapUsageRecordTaskContext(c, task)
 	if h.usageRecordWorkerPool != nil {
-		if mode := h.usageRecordWorkerPool.Submit(task); mode != service.UsageRecordSubmitModeDropped {
+		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
 			return
 		}
 		logger.L().With(

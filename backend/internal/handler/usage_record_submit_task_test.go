@@ -27,6 +27,17 @@ func newUsageRecordTestPool(t *testing.T) *service.UsageRecordWorkerPool {
 	return pool
 }
 
+func newStoppedUsageRecordPoolForTest() *service.UsageRecordWorkerPool {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:    1,
+		QueueSize:      1,
+		TaskTimeout:    time.Second,
+		OverflowPolicy: "sync",
+	})
+	pool.Stop()
+	return pool
+}
+
 func TestGatewayHandlerSubmitUsageRecordTask_WithPool(t *testing.T) {
 	pool := newUsageRecordTestPool(t)
 	h := &GatewayHandler{usageRecordWorkerPool: pool}
@@ -55,6 +66,46 @@ func TestGatewayHandlerSubmitUsageRecordTask_WithoutPoolSyncFallback(t *testing.
 	})
 
 	require.True(t, called.Load())
+}
+
+func TestGatewayHandlerSubmitUsageRecordTask_StoppedPoolFallsBackToSync(t *testing.T) {
+	h := &GatewayHandler{usageRecordWorkerPool: newStoppedUsageRecordPoolForTest()}
+
+	var executed atomic.Bool
+	h.submitUsageRecordTask(nil, func(ctx context.Context) {
+		executed.Store(true)
+	})
+	require.True(t, executed.Load(), "池已停止时计费任务必须内联同步执行")
+}
+
+func TestGatewayHandlerSubmitUsageRecordTask_DropPolicyOverflowStillDrops(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:    1,
+		QueueSize:      1,
+		TaskTimeout:    time.Minute,
+		OverflowPolicy: "drop",
+	})
+	t.Cleanup(pool.Stop)
+	h := &GatewayHandler{usageRecordWorkerPool: pool}
+
+	started := make(chan struct{})
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	require.Equal(t, service.UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+		close(started)
+		<-block
+	}))
+	<-started
+	require.Equal(t, service.UsageRecordSubmitModeEnqueued, pool.Submit(func(ctx context.Context) {
+		<-block
+	}))
+
+	var executed atomic.Bool
+	h.submitUsageRecordTask(nil, func(ctx context.Context) {
+		executed.Store(true)
+	})
+	time.Sleep(50 * time.Millisecond)
+	require.False(t, executed.Load(), "drop 溢出策略是运维显式配置，不应被同步兜底覆盖")
 }
 
 func TestGatewayHandlerSubmitUsageRecordTask_NilTask(t *testing.T) {
@@ -108,6 +159,16 @@ func TestOpenAIGatewayHandlerSubmitUsageRecordTask_WithoutPoolSyncFallback(t *te
 	})
 
 	require.True(t, called.Load())
+}
+
+func TestOpenAIGatewayHandlerSubmitUsageRecordTask_StoppedPoolFallsBackToSync(t *testing.T) {
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: newStoppedUsageRecordPoolForTest()}
+
+	var executed atomic.Bool
+	h.submitUsageRecordTask(nil, func(ctx context.Context) {
+		executed.Store(true)
+	})
+	require.True(t, executed.Load(), "池已停止时 OpenAI 计费任务必须内联同步执行")
 }
 
 func TestOpenAIGatewayHandlerSubmitUsageRecordTask_NilTask(t *testing.T) {

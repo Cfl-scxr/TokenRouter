@@ -684,6 +684,56 @@ type streamingResult struct {
 	responseBody     []byte
 }
 
+// hasObservedTokens 报告流式过程中是否已观测到任何上游计量 token。
+func (u *ClaudeUsage) hasObservedTokens() bool {
+	if u == nil {
+		return false
+	}
+	return u.InputTokens > 0 || u.OutputTokens > 0 ||
+		u.CacheCreationInputTokens > 0 || u.CacheReadInputTokens > 0 ||
+		u.CacheCreation5mTokens > 0 || u.CacheCreation1hTokens > 0 ||
+		u.ImageOutputTokens > 0
+}
+
+// partialStreamUsageResult 在流式转发中途出错时，将已观测的 usage 包装为部分结果。
+// 无已观测 token 时不生成记录；UpstreamFailoverError 也必须保持结果为 nil，
+// 避免重试成功后对同一请求重复计费。
+func partialStreamUsageResult(
+	resp *http.Response,
+	streamResult *streamingResult,
+	model string,
+	upstreamModel string,
+	startTime time.Time,
+	requestSpeed string,
+	err error,
+) *ForwardResult {
+	if streamResult == nil || !streamResult.usage.hasObservedTokens() {
+		return nil
+	}
+	var failoverErr *UpstreamFailoverError
+	if errors.As(err, &failoverErr) {
+		return nil
+	}
+	usage := *streamResult.usage
+	if strings.TrimSpace(usage.Speed) == "" && strings.EqualFold(strings.TrimSpace(requestSpeed), "fast") {
+		usage.Speed = "fast"
+	}
+	requestID := ""
+	if resp != nil {
+		requestID = resp.Header.Get("x-request-id")
+	}
+	return &ForwardResult{
+		RequestID:        requestID,
+		Usage:            usage,
+		Model:            model,
+		UpstreamModel:    upstreamModel,
+		Stream:           true,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     streamResult.firstTokenMs,
+		ClientDisconnect: streamResult.clientDisconnect,
+	}
+}
+
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
