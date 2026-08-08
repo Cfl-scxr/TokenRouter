@@ -223,6 +223,9 @@ func (e *OpenAIWSClientCloseError) Reason() string {
 
 // OpenAIWSIngressHooks 定义入站 WS 每个 turn 的生命周期回调。
 type OpenAIWSIngressHooks struct {
+	// ClientLifecycleContext 是叠加 ingress 租约取消信号前的客户端请求上下文。
+	// 下行写使用它保留客户端断连和服务关闭信号，同时避免租约丢失中断当前帧。
+	ClientLifecycleContext context.Context
 	// InitialRequestModel 是首帧渠道映射前的请求模型，只用于 usage metadata
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
