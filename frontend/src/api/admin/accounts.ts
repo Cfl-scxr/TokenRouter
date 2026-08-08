@@ -114,6 +114,34 @@ export interface OpenAIQuotaUsage {
   fetched_at: number
 }
 
+export interface OpenAIQuotaResetCredit {
+  id?: string
+  reset_type?: string
+  status?: string
+  granted_at?: string
+  expires_at?: string
+  redeem_started_at?: string
+  redeemed_at?: string
+}
+
+export interface OpenAIQuotaResetResult {
+  code: string
+  credit?: OpenAIQuotaResetCredit | null
+  windows_reset: number
+  quota?: OpenAIQuotaUsage | null
+  account?: Account | null
+  cache_refreshed: boolean
+  account_state_recovered: boolean
+  warning_code?:
+    | 'reset_credit_cache_refresh_failed'
+    | 'account_state_recovery_failed'
+    | 'account_state_refresh_failed'
+}
+
+export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
+  cache_persisted: boolean
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -925,12 +953,29 @@ export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
 }
 
 /**
+ * 查询 OpenAI OAuth 账号额度，并持久化可过期的重置次数快照。
+ * @param id - 账号 ID
+ * @returns 实时额度及快照是否成功持久化
+ */
+export async function refreshOpenAIQuota(id: number): Promise<OpenAIQuotaRefreshResult> {
+  const { data } = await apiClient.post<OpenAIQuotaRefreshResult>(
+    `/admin/openai/accounts/${id}/quota/refresh`
+  )
+  return data
+}
+
+/**
  * 重置 OpenAI OAuth 账号的上游额度。
  * @param id - 账号 ID
  * @returns OpenAI 上游限流状态
  */
-export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
-  const { data } = await apiClient.post<OpenAIQuotaUsage>(`/admin/openai/accounts/${id}/reset-quota`)
+export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResult> {
+  // 重置次数不可退还，扩大超时可避免客户端过早中断后误以为失败并重复消费。
+  const { data } = await apiClient.post<OpenAIQuotaResetResult>(
+    `/admin/openai/accounts/${id}/reset-quota`,
+    undefined,
+    { timeout: 90_000 }
+  )
   return data
 }
 
@@ -1038,6 +1083,7 @@ export const accountsAPI = {
   sendCodexInviteResetInvite,
   consumeCodexInviteReset,
   queryOpenAIQuota,
+  refreshOpenAIQuota,
   revertProxyFallback,
   resetOpenAIQuota,
   createSparkShadow,

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -107,6 +108,54 @@ func TestOpenAIQuotaServiceResetCreditReturnsUpstreamNoCreditResult(t *testing.T
 	require.Equal(t, 0, result.WindowsReset)
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, "/backend-api/wham/rate-limit-reset-credits/consume", upstream.requests[0].URL.Path)
+}
+
+func TestOpenAIQuotaServiceCacheResetCreditsSnapshot(t *testing.T) {
+	t.Run("保存带到期明细的快照", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+		credits := &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits: []OpenAIRateLimitResetCreditDetail{
+				{ExpiresAt: "2099-07-03T04:05:06Z"},
+			},
+		}
+
+		require.NoError(t, svc.CacheResetCreditsSnapshot(context.Background(), 42, credits))
+		require.Equal(t, credits, repo.extraUpdates[42][openaiQuotaResetCreditsKey])
+	})
+
+	t.Run("正数次数缺少到期明细时保留旧缓存", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+
+		err := svc.CacheResetCreditsSnapshot(context.Background(), 42, &OpenAIRateLimitResetCredits{AvailableCount: 1})
+
+		require.Error(t, err)
+		require.Empty(t, repo.extraUpdates)
+	})
+
+	t.Run("零次数允许空明细", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+		credits := &OpenAIRateLimitResetCredits{AvailableCount: 0}
+
+		require.NoError(t, svc.CacheResetCreditsSnapshot(context.Background(), 42, credits))
+		require.Equal(t, credits, repo.extraUpdates[42][openaiQuotaResetCreditsKey])
+	})
+
+	t.Run("仓储错误向调用方返回", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{extraUpdateErr: errors.New("database unavailable")}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+		credits := &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: "2099-07-03T04:05:06Z"}},
+		}
+
+		err := svc.CacheResetCreditsSnapshot(context.Background(), 42, credits)
+
+		require.ErrorContains(t, err, "database unavailable")
+	})
 }
 
 func TestOpenAIQuotaServiceUsesTLSRouterInviteResetSettings(t *testing.T) {

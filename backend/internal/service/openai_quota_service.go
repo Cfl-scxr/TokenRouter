@@ -34,6 +34,7 @@ const (
 	openaiQuotaSecFetchSite     = "none"
 	openaiQuotaSecFetchMode     = "no-cors"
 	openaiQuotaSecFetchDest     = "empty"
+	openaiQuotaResetCreditsKey  = "codex_reset_credit_snapshot"
 )
 
 // OpenAIRateLimitWindow 描述上游返回的单个限流窗口。
@@ -163,6 +164,31 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		}
 	}
 	return &usage, nil
+}
+
+// CacheResetCreditsSnapshot 保存显式查询得到的完整重置次数快照。
+// 正数次数必须附带到期明细，否则保留旧缓存，避免前端长期展示无法自然失效的次数。
+func (s *OpenAIQuotaService) CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits) error {
+	if credits == nil || (credits.AvailableCount > 0 && len(credits.Credits) == 0) {
+		return infraerrors.New(
+			http.StatusBadGateway,
+			"OPENAI_QUOTA_RESET_CREDITS_REFRESH_FAILED",
+			"failed to refresh reset-credit expiration details; cached data was preserved",
+		)
+	}
+	if s == nil || s.accountRepo == nil {
+		return infraerrors.InternalServer("OPENAI_QUOTA_NOT_CONFIGURED", "openai quota cache repository is not configured")
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+		openaiQuotaResetCreditsKey: credits,
+	}); err != nil {
+		return infraerrors.New(
+			http.StatusInternalServerError,
+			"OPENAI_QUOTA_CACHE_WRITE_FAILED",
+			"failed to cache reset-credit details",
+		).WithCause(err)
+	}
+	return nil
 }
 
 func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, accountCtx *openAIQuotaAccountContext) *openAIRateLimitResetCreditDetails {

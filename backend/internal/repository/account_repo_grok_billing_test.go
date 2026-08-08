@@ -14,3 +14,12 @@ func TestGrokBillingSnapshotIsSchedulerNeutral(t *testing.T) {
 		"grok_billing_snapshot": map[string]any{"usage_percent": 50},
 	}))
 }
+
+func TestOpenAIResetCreditSnapshotIsSchedulerNeutral(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isSchedulerNeutralExtraKey("codex_reset_credit_snapshot"))
+	require.False(t, shouldEnqueueSchedulerOutboxForExtraUpdates(map[string]any{
+		"codex_reset_credit_snapshot": map[string]any{"available_count": 1},
+	}))
+}
