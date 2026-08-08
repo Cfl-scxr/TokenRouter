@@ -443,6 +443,13 @@ func normalizeOpenAIWSPayloadWithoutInputAndPreviousResponseID(payload []byte) (
 	}
 	delete(decoded, "input")
 	delete(decoded, "previous_response_id")
+	// Codex 会在每次 response.create 时更新传输元数据，这些字段不改变 previous_response_id 引用的上下文。
+	delete(decoded, "client_metadata")
+	delete(decoded, "stream_options")
+	// 官方 Codex 使用 generate=false 预热连接，后续业务请求会省略该字段；只归一化 false，保留 true 的语义变化。
+	if generate, ok := decoded["generate"].(bool); ok && !generate {
+		delete(decoded, "generate")
+	}
 	return json.Marshal(decoded)
 }
 
