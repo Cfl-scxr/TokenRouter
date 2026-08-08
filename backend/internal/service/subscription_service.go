@@ -339,26 +339,17 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 
 	now := time.Now()
 	chainDelta := revokeChainDelta(sub, now)
-	tx, err := s.entClient.Tx(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	txCtx := dbent.NewTxContext(ctx, tx)
-
-	if err := s.userSubRepo.Delete(txCtx, sub.ID); err != nil {
-		return err
-	}
-	if chainDelta != 0 {
-		if err := s.shiftLaterChain(txCtx, chain, sub, chainDelta); err != nil {
+	return s.withSubscriptionMutationTx(ctx, func(txCtx context.Context) error {
+		if err := s.userSubRepo.Delete(txCtx, sub.ID); err != nil {
 			return err
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-	return nil
+		if chainDelta != 0 {
+			if err := s.shiftLaterChain(txCtx, chain, sub, chainDelta); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // RestoreSubscription 恢复已撤销订阅。
@@ -498,38 +489,51 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		return nil, err
 	}
 
+	err = s.withSubscriptionMutationTx(ctx, func(txCtx context.Context) error {
+		if err := s.userSubRepo.ExtendExpiry(txCtx, subscriptionID, newExpiresAt); err != nil {
+			return err
+		}
+		if delta != 0 {
+			if err := s.shiftLaterChain(txCtx, chain, sub, delta); err != nil {
+				return err
+			}
+		}
+
+		var status string
+		if !newExpiresAt.After(now) {
+			status = SubscriptionStatusExpired
+		} else if now.Before(sub.StartsAt) {
+			status = SubscriptionStatusPending
+		} else {
+			status = SubscriptionStatusActive
+		}
+		return s.userSubRepo.UpdateStatus(txCtx, subscriptionID, status)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+// withSubscriptionMutationTx 复用调用方事务；独立调用时自行维护事务边界。
+func (s *SubscriptionService) withSubscriptionMutationTx(ctx context.Context, mutate func(context.Context) error) error {
+	if dbent.TxFromContext(ctx) != nil {
+		return mutate(ctx)
+	}
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	txCtx := dbent.NewTxContext(ctx, tx)
 
-	if err := s.userSubRepo.ExtendExpiry(txCtx, subscriptionID, newExpiresAt); err != nil {
-		return nil, err
+	if err := mutate(txCtx); err != nil {
+		return err
 	}
-	if delta != 0 {
-		if err := s.shiftLaterChain(txCtx, chain, sub, delta); err != nil {
-			return nil, err
-		}
-	}
-
-	var status string
-	if !newExpiresAt.After(now) {
-		status = SubscriptionStatusExpired
-	} else if now.Before(sub.StartsAt) {
-		status = SubscriptionStatusPending
-	} else {
-		status = SubscriptionStatusActive
-	}
-	if err := s.userSubRepo.UpdateStatus(txCtx, subscriptionID, status); err != nil {
-		return nil, err
-	}
-
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit transaction: %w", err)
+		return fmt.Errorf("commit transaction: %w", err)
 	}
-	return s.userSubRepo.GetByID(ctx, subscriptionID)
+	return nil
 }
 
 func (s *SubscriptionService) SetSubscriptionValidityDays(ctx context.Context, subscriptionID int64, validityDays int) (*UserSubscription, error) {

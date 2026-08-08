@@ -26,6 +26,7 @@ type mockUserRepo struct {
 	updateBalanceErr        error
 	updateBalanceFn         func(ctx context.Context, id int64, amount float64) error
 	deductBalanceFn         func(ctx context.Context, id int64, amount float64) error
+	deductBalanceResultFn   func(ctx context.Context, id int64, amount float64) (float64, error)
 	getByIDUser             *User
 	getByIDErr              error
 	identities              []UserAuthIdentityRecord
@@ -171,10 +172,13 @@ func (m *mockUserRepo) UpdateBalance(ctx context.Context, id int64, amount float
 }
 func (m *mockUserRepo) AddBalance(context.Context, int64, float64) error { return nil }
 func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) (float64, error) {
+	if m.deductBalanceResultFn != nil {
+		return m.deductBalanceResultFn(ctx, id, amount)
+	}
 	if m.deductBalanceFn != nil {
 		return 0, m.deductBalanceFn(ctx, id, amount)
 	}
-	return 0, nil
+	return amount, nil
 }
 
 func (m *mockUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
