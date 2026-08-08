@@ -84,6 +84,9 @@ describe('ModelDistributionChart', () => {
     expect(chartData.labels).toEqual(['model-a', 'model-b'])
     expect(chartData.datasets[0].data).toEqual([1000, 500])
 
+    const chartTableLayout = wrapper.find('table').element.parentElement?.parentElement
+    expect(chartTableLayout?.className).toContain('sm:items-start')
+
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('model-a')
     expect(rows[1].text()).toContain('model-b')
@@ -179,6 +182,9 @@ describe('ModelDistributionChart', () => {
     expect(chartData.datasets[0].backgroundColor[0]).toBe('#3b82f6')
     expect(chartData.datasets[0].backgroundColor[2]).toBe('#94a3b8')
     expect(chartData.datasets[0].backgroundColor[2]).not.toBe(chartData.datasets[0].backgroundColor[0])
+
+    const chartTableLayout = wrapper.find('table').element.parentElement?.parentElement
+    expect(chartTableLayout?.className).toContain('sm:items-start')
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(3)

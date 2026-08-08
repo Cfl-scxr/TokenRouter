@@ -70,6 +70,9 @@ describe('GroupDistributionChart', () => {
     expect(chartData.labels).toEqual(['group-a', 'group-b'])
     expect(chartData.datasets[0].data).toEqual([1200, 600])
 
+    const chartTableLayout = wrapper.find('table').element.parentElement?.parentElement
+    expect(chartTableLayout?.className).toContain('sm:items-start')
+
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('group-a')
     expect(rows[1].text()).toContain('group-b')
