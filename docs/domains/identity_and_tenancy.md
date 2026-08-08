@@ -34,7 +34,7 @@
 
 `RegisterAuthRoutes` 拥有面板认证入口的路由边界。公开登录、注册、验证码、Passkey 登录、token 刷新、密码恢复和高风险校验分别使用服务端限流；这些入口依赖 Redis 的限流器时采用 fail-close，不能在缓存故障时自动放行。OAuth start/callback 负责建立外部身份流程，受保护的账户管理入口再叠加 JWT 中间件。
 
-公开认证动作通过统一验证码边界选择 Cloudflare Turnstile、腾讯天御或阿里云验证码 2.0，三个提供方不能同时启用。普通登录、注册、验证码发送和密码找回校验当前启用的提供方；腾讯天御与阿里云还保护 Passkey 登录 begin 与 OAuth 登录 start，票据只随触发动作提交且不能复用到 finish/callback。OAuth 当前用户绑定 start 保留既有已认证边界，不重复要求匿名登录验证码；动作验证码已启用但服务或必要凭据不完整时必须 fail-close。
+公开认证动作通过统一验证码边界选择 Cloudflare Turnstile、腾讯天御或阿里云验证码 2.0，三个提供方不能同时启用。普通登录、注册、验证码发送和密码找回校验当前启用的提供方；腾讯天御与阿里云还保护 Passkey 登录 begin 与 OAuth 登录 start，票据只随触发动作提交且不能复用到 finish/callback。腾讯天御的 `cn` 与 `intl` 站点必须在前端 SDK 和服务端校验 endpoint 上保持一致；国际站先在当前表单容器展示 checkbox，成功票据只缓存到一次动作消费，过期、动作失败或显式重置后立即销毁并重新初始化。OAuth 当前用户绑定 start 保留既有已认证边界，不重复要求匿名登录验证码；动作验证码已启用但服务或必要凭据不完整时必须 fail-close。
 
 普通面板请求使用 JWT 中间件，验证流程至少包括：
 
