@@ -17,7 +17,7 @@ Ops 面同时接收请求错误、独立上游 attempt 错误、入口准入拒�
 
 `OpsMetricsCollector` 在 Ops 和 monitoring 开关启用时周期采集数据库、Redis、主机/容器、账号负载和运行时指标。多实例通过 Redis leader lock，必要路径可用 PostgreSQL advisory lock，确保一个周期只持久化一次；运行结果写 job heartbeat、耗时和错误。
 
-系统日志 sink 与 request/error capture 使用有界队列。拥塞时按各自策略丢弃或降级，并累计 dropped/health 计数；它们不得反压网关核心转发。敏感字段在进入存储前清理，request ID、平台、Group、账号和 endpoint 用于关联。
+系统日志 sink 与 request/error capture 使用有界队列。拥塞时按各自策略丢弃或降级，并累计 dropped/health 计数；它们不得反压网关核心转发。系统日志落库失败会执行 2 秒起、60 秒封顶的指数退避，退避窗口内的批次计入 dropped 而不访问数据库，成功后立即清除失败状态。敏感字段在进入存储前清理，request ID、平台、Group、账号和 endpoint 用于关联。
 
 ## 实时与历史查询
 
