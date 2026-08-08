@@ -593,7 +593,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
 			return nil, s.newOpenAIStreamPolicyFailoverError(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
-				decision.RetryableOnSameAccount(account, policyStatus),
+				openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payload, message),
 			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -962,7 +962,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
 				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
-					decision.RetryableOnSameAccount(account, policyStatus),
+					openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payloadBytes, message),
 				)
 				return true
 			}

@@ -954,6 +954,22 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+// openAIStreamFailedEventRetryableOnSameAccount 在统一账号策略允许池模式绕过时，
+// 额外保留 OpenAI 流内瞬态处理错误的同账号重试语义。
+func openAIStreamFailedEventRetryableOnSameAccount(
+	decision UpstreamErrorDecision,
+	account *Account,
+	statusCode int,
+	payload []byte,
+	message string,
+) bool {
+	if decision.Policy != ErrorPolicyPoolBypassed || account == nil {
+		return false
+	}
+	return account.IsPoolModeRetryableStatus(statusCode) ||
+		isOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
+}
+
 func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	c *gin.Context,
 	account *Account,
@@ -1187,7 +1203,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				) {
 					return resultWithUsage(), s.newOpenAIStreamPolicyFailoverError(
 						c, account, true, upstreamRequestID, resp.Header, policyStatus, dataBytes, failedMessage,
-						decision.RetryableOnSameAccount(account, policyStatus),
+						openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, dataBytes, failedMessage),
 					)
 				}
 				if outputStarted && decision.ShouldReturnGenericError() {
@@ -1461,7 +1477,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(ctx context.Context, r
 			if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(terminalPayload, msg)) {
 				return nil, s.newOpenAIStreamPolicyFailoverError(
 					c, account, true, strings.TrimSpace(resp.Header.Get("x-request-id")), resp.Header,
-					policyStatus, terminalPayload, msg, decision.RetryableOnSameAccount(account, policyStatus),
+					policyStatus, terminalPayload, msg,
+					openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, terminalPayload, msg),
 				)
 			}
 			err := s.writeOpenAINonStreamingProtocolError(resp, c, msg)

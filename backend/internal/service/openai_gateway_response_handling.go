@@ -457,7 +457,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					sawFailedEvent = true
 					streamEarlyErr = s.newOpenAIStreamPolicyFailoverError(
 						c, account, false, upstreamRequestID, resp.Header, policyStatus, dataBytes, failedMessage,
-						decision.RetryableOnSameAccount(account, policyStatus),
+						openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, dataBytes, failedMessage),
 					)
 					return
 				}
@@ -1295,7 +1295,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 			if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(terminalPayload, msg)) {
 				return nil, s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, strings.TrimSpace(resp.Header.Get("x-request-id")), resp.Header,
-					policyStatus, terminalPayload, msg, decision.RetryableOnSameAccount(account, policyStatus),
+					policyStatus, terminalPayload, msg,
+					openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, terminalPayload, msg),
 				)
 			}
 			err := s.writeOpenAINonStreamingProtocolError(resp, c, msg)
