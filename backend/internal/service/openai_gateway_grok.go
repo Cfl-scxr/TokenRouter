@@ -25,7 +25,7 @@ const (
 	// Composer 图片桥接使用 Grok Build 生成简洁描述，限制输出长度以控制额外用量。
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
-	grokCLIVersion                         = "0.2.93"
+	grokCLIVersion                         = xai.CLIClientVersion
 	grokDefaultResponsesModel              = xai.DefaultResponsesModel
 	grokRateLimitFallbackCooldown          = 2 * time.Minute
 	grokRateLimitRepeatCooldown            = 10 * time.Minute

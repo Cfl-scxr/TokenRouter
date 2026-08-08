@@ -88,7 +88,7 @@ Grok Build CLI 的模型配置必须指向 TokenRouter 对外地址（以 `/v1` 
 - `XAI_OAUTH_AUTHORIZE_URL`
 - `XAI_OAUTH_TOKEN_URL`
 - `XAI_BASE_URL`
-- `XAI_GROK_CLI_VERSION`：覆盖 Grok CLI 客户端版本，配置值不得低于内置支持版本
+- `XAI_GROK_CLI_VERSION`：覆盖 Grok CLI 客户端版本；内置版本与最低允许版本均为 `0.2.114`，覆盖值必须是规范 SemVer 且不得低于该版本
 
 自定义 base URL 和媒体/billing 子路径都必须通过同一 URL allowlist/SSRF 校验。环境变量中的 client secret、token 和上游 URL 不得进入前端配置或错误响应。
 

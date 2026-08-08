@@ -30,6 +30,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/proxyutil"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/servertiming"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/TokenFlux/TokenRouter/internal/util/urlvalidator"
 	"golang.org/x/mod/semver"
@@ -75,7 +76,7 @@ const (
 	// 同时允许运维人员通过环境变量升级，无需等待 TokenRouter 发版。
 	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
 	grokOfficialAPIHost    = "api.x.ai"
-	grokCLIStableVersion   = "0.2.93"
+	grokCLIStableVersion   = xai.CLIClientVersion
 	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 	grokFallbackBodyLimit  = 64 << 10
 )
