@@ -191,6 +191,10 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// Grok 兼容上游可能只实现部分端点，405 应切换账号以解除会话粘性。
+	if statusCode == http.StatusMethodNotAllowed {
+		return true
+	}
 	return s.shouldFailoverUpstreamError(statusCode)
 }
 

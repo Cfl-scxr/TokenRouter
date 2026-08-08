@@ -1450,6 +1450,11 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 		s.tempUnscheduleGrok(stateCtx, account, 30*time.Minute, "grok access or entitlement denied")
 		decision.StopScheduling = true
 		return decision
+	case http.StatusMethodNotAllowed:
+		// 当前账号不支持所选 Grok 端点，临时排除可避免粘性会话反复命中同一账号。
+		s.tempUnscheduleGrok(stateCtx, account, 30*time.Minute, "grok endpoint not supported (405)")
+		decision.StopScheduling = true
+		return decision
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot 已同时写入运行时和持久化限流状态。
 		decision.StopScheduling = true

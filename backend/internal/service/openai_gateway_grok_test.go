@@ -3080,6 +3080,13 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			wantMaxCooldown: 30*time.Minute + time.Second,
 		},
 		{
+			name:            "method not allowed",
+			status:          http.StatusMethodNotAllowed,
+			wantReason:      "grok endpoint not supported (405)",
+			wantMinCooldown: 30*time.Minute - time.Second,
+			wantMaxCooldown: 30*time.Minute + time.Second,
+		},
+		{
 			name:            "upstream temporary error",
 			status:          http.StatusInternalServerError,
 			wantReason:      "grok upstream temporary error",
@@ -3143,6 +3150,25 @@ func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
 		require.Equal(t, "grok upstream temporary error", repo.lastTempUnschedReason)
 		require.WithinDuration(t, before.Add(2*time.Minute), repo.lastTempUnschedUntil, time.Second)
 	})
+}
+
+func TestHandleGrokAccountUpstreamError405RespectsPoolMode(t *testing.T) {
+	account := &Account{
+		ID:       613,
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusMethodNotAllowed, nil, nil)
+
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account), "公共池账号应跳过 405 默认冷却")
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Nil(t, account.TempUnschedulableUntil)
 }
 
 func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testing.T) {
