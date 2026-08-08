@@ -866,7 +866,8 @@ func extractGrokMediaVideoRequestID(body []byte) string {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return ""
 	}
-	for _, path := range []string{"request_id", "id", "data.request_id", "data.id", "video.request_id", "video.id"} {
+	// task_id 仅作为兼容兜底，不能改变历史字段的匹配优先级。
+	for _, path := range []string{"request_id", "id", "data.request_id", "data.id", "video.request_id", "video.id", "task_id", "data.task_id", "video.task_id"} {
 		if id := strings.TrimSpace(gjson.GetBytes(body, path).String()); id != "" {
 			return id
 		}
