@@ -23,6 +23,8 @@ Anthropic 管理端正式支持以下账号：
 | `bedrock` | `sigv4` 使用 AWS 凭据和区域签名；`apikey` 使用 Bedrock API Key；可配置全局端点和模型映射 |
 | `service_account` | 使用 Google Service Account 换取 Vertex AI token，并携带 project/location 等 Vertex 上下文 |
 
+Claude 浏览器 OAuth 固定从 `https://claude.com/cai/oauth/authorize` 发起授权，token 交换仍使用 `https://platform.claude.com/v1/oauth/token`，回调仍是 `https://platform.claude.com/oauth/code/callback`。三者分别承担授权、换取凭据和接收授权码，不能因域名相近而互相替换。
+
 `upstream` 和其它历史类型即使能被通用导入器保存，也没有 Anthropic 平台的正式 token provider 契约。完整分类见[上游账号能力矩阵](upstream_account_matrix.md)。所有 base URL、代理和自定义 Header 仍受[上游传输安全](../operations/upstream_transport_security.md)约束。
 
 ## 协议分派
