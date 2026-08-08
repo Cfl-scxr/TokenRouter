@@ -43,7 +43,7 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
-// ProvideAuthService creates AuthService and wires runtime cache invalidation hooks.
+// ProvideAuthService 注入验证码服务与运行时缓存失效依赖，同时保持测试使用的构造函数兼容。
 func ProvideAuthService(
 	entClient *dbent.Client,
 	userRepo UserRepository,
@@ -53,6 +53,7 @@ func ProvideAuthService(
 	settingService *SettingService,
 	emailService *EmailService,
 	turnstileService *TurnstileService,
+	tencentCaptchaService *TencentCaptchaService,
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
@@ -76,6 +77,7 @@ func ProvideAuthService(
 		affiliateService,
 		userPlatformQuotaRepo,
 	)
+	svc.SetTencentCaptchaService(tencentCaptchaService)
 	svc.SetRuntimeCaches(authCacheInvalidator, billingCache)
 	return svc
 }
@@ -854,6 +856,7 @@ var ProviderSet = wire.NewSet(
 	NewNotificationEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
+	NewTencentCaptchaService,
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,

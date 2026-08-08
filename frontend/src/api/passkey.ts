@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { AuthResponse } from '@/types'
+import type { AuthResponse, TencentCaptchaRequestProof } from '@/types'
 
 // 用户端只接收凭据摘要，不暴露 credential ID 字节和公钥材料。
 export interface PasskeyCredentialSummary {
@@ -107,11 +107,11 @@ function serializeAssertionCredential(credential: PublicKeyCredential): Record<s
   }
 }
 
-async function login(): Promise<AuthResponse> {
+async function login(proof?: TencentCaptchaRequestProof): Promise<AuthResponse> {
   requirePasskeySupport()
-  const { data: begin } = await apiClient.post<CeremonyOptionsResponse>(
-    '/auth/passkey/login/begin'
-  )
+  const { data: begin } = proof
+    ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof)
+    : await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin')
   const credential = await navigator.credentials.get({
     publicKey: requestOptionsFromJSON(begin.options.publicKey)
   })

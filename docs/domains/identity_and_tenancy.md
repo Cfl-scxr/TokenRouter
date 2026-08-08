@@ -34,6 +34,8 @@
 
 `RegisterAuthRoutes` 拥有面板认证入口的路由边界。公开登录、注册、验证码、Passkey 登录、token 刷新、密码恢复和高风险校验分别使用服务端限流；这些入口依赖 Redis 的限流器时采用 fail-close，不能在缓存故障时自动放行。OAuth start/callback 负责建立外部身份流程，受保护的账户管理入口再叠加 JWT 中间件。
 
+公开认证动作通过统一验证码边界选择 Cloudflare Turnstile 或腾讯天御，两个提供方不能同时启用。普通登录、注册、验证码发送和密码找回校验当前启用的提供方；腾讯天御还保护 Passkey 登录 begin 与 OAuth 登录 start，票据只随触发动作提交且不能复用到 finish/callback。OAuth 当前用户绑定 start 保留既有已认证边界，不重复要求匿名登录验证码；腾讯天御启用但服务或四项凭据不完整时必须 fail-close。
+
 普通面板请求使用 JWT 中间件，验证流程至少包括：
 
 1. 只接受配置的 HMAC 签名方法并限制 token 长度，解析签发与过期声明。
@@ -61,7 +63,7 @@
 
 TOTP 密钥以加密形式持久化，设置和登录挑战使用有过期时间的缓存状态。管理员敏感设置要求近期 TOTP step-up grant，grant 绑定 JWT 的 `sid`；TOTP 未启用、会话 ID 缺失、grant 过期或 grant 服务不可用都应拒绝操作。该检查开启后按 fail-close 工作。
 
-Passkey 使用 WebAuthn 的注册和登录 ceremony：持久凭据与短期 challenge/session 分离，finish 只能消费匹配的 ceremony 状态。注册入口必须先有已认证用户，登录 finish 最终仍签发标准 token 对并进入相同的用户状态、版本和会话约束，不能创建一条旁路授权体系。
+Passkey 使用 WebAuthn 的注册和登录 ceremony：持久凭据与短期 challenge/session 分离，finish 只能消费匹配的 ceremony 状态。启用腾讯天御时，匿名登录 begin 必须先消费验证码票据，finish 不再携带或重复校验该票据。注册入口必须先有已认证用户，登录 finish 最终仍签发标准 token 对并进入相同的用户状态、版本和会话约束，不能创建一条旁路授权体系。
 
 ## 外部身份接入
 

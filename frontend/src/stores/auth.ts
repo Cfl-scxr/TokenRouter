@@ -6,7 +6,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
-import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
+import type {
+  User,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  TencentCaptchaRequestProof
+} from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -275,10 +281,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Passkey 登录成功后复用密码登录的 token 与用户状态落库流程。
-  async function loginWithPasskey(): Promise<User> {
+  // Passkey 登录可携带腾讯验证码凭证，并复用密码登录的状态落库流程。
+  async function loginWithPasskey(proof?: TencentCaptchaRequestProof): Promise<User> {
     try {
-      const response = await passkeyAPI.login()
+      const response = await passkeyAPI.login(proof)
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/response"
 	middleware2 "github.com/TokenFlux/TokenRouter/internal/server/middleware"
 	"github.com/TokenFlux/TokenRouter/internal/service"
@@ -45,12 +46,26 @@ type passkeyFinishRequest struct {
 	Credential   json.RawMessage `json:"credential" binding:"required"`
 }
 
+type passkeyBeginLoginRequest struct {
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+}
+
 type passkeyRenameRequest struct {
 	Name string `json:"name" binding:"required"`
 }
 
 // BeginLogin 启动无需用户名的可发现凭据登录流程。
 func (h *PasskeyHandler) BeginLogin(c *gin.Context) {
+	var req passkeyBeginLoginRequest
+	_ = c.ShouldBindJSON(&req)
+	if err := h.authService.VerifyTencentCaptchaIfEnabled(c.Request.Context(), service.CaptchaProof{
+		TencentTicket:  req.TencentCaptchaTicket,
+		TencentRandstr: req.TencentCaptchaRandstr,
+	}, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	assertion, token, err := h.passkeys.BeginLogin(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
