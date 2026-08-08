@@ -96,6 +96,7 @@ marketplace: {
     expired: 'Expired',
     expiresToday: 'Expires today',
     expiresTomorrow: 'Expires tomorrow',
+    expiresAt: 'Expires {time}',
     viewAll: 'View all subscriptions',
     noSubscriptions: 'No active subscriptions',
     unlimited: 'Unlimited'

@@ -105,8 +105,8 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 		return nil, service.ErrSubscriptionNotFound
 	}
 
-	row := usageBillingSubscriptionRow{}
-	err := r.db.QueryRowContext(ctx, `
+	now := time.Now()
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			us.id,
 			us.plan_id,
@@ -136,8 +136,8 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 		JOIN subscription_plans sp ON sp.id = us.plan_id
 		WHERE us.user_id = $1
 			AND us.deleted_at IS NULL
-			AND us.starts_at <= NOW()
-			AND us.expires_at > NOW()
+			AND us.starts_at <= $5
+			AND us.expires_at > $5
 			AND us.status IN ($2, $3)
 			AND (
 				NOT EXISTS (
@@ -152,40 +152,57 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 						AND spg.group_id = $4
 				)
 			)
-			AND (us.daily_limit_usd IS NULL OR us.daily_limit_usd <= 0 OR us.daily_usage_usd < us.daily_limit_usd)
-			AND (us.weekly_limit_usd IS NULL OR us.weekly_limit_usd <= 0 OR us.weekly_usage_usd < us.weekly_limit_usd)
-			AND (us.monthly_limit_usd IS NULL OR us.monthly_limit_usd <= 0 OR us.monthly_usage_usd < us.monthly_limit_usd)
 		ORDER BY us.expires_at ASC, us.starts_at ASC, us.id ASC
-		LIMIT 1
 	`,
 		userID,
 		service.SubscriptionStatusActive,
 		service.SubscriptionStatusPending,
 		groupID,
-	).Scan(
-		&row.ID,
-		&row.PlanID,
-		&row.StartsAt,
-		&row.ExpiresAt,
-		&row.DailyWindowStart,
-		&row.WeeklyWindowStart,
-		&row.MonthlyWindowStart,
-		&row.DailyLimitUSD,
-		&row.WeeklyLimitUSD,
-		&row.MonthlyLimitUSD,
-		&row.DailyUsageUSD,
-		&row.WeeklyUsageUSD,
-		&row.MonthlyUsageUSD,
-		&row.PlanGroupIDsRaw,
-		&row.PlanGroupRateMultipliersRaw,
+		now,
 	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, service.ErrSubscriptionNotFound
-	}
 	if err != nil {
 		return nil, err
 	}
-	return usageBillingSubscriptionRowToService(userID, row), nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var row usageBillingSubscriptionRow
+		if err := rows.Scan(
+			&row.ID,
+			&row.PlanID,
+			&row.StartsAt,
+			&row.ExpiresAt,
+			&row.DailyWindowStart,
+			&row.WeeklyWindowStart,
+			&row.MonthlyWindowStart,
+			&row.DailyLimitUSD,
+			&row.WeeklyLimitUSD,
+			&row.MonthlyLimitUSD,
+			&row.DailyUsageUSD,
+			&row.WeeklyUsageUSD,
+			&row.MonthlyUsageUSD,
+			&row.PlanGroupIDsRaw,
+			&row.PlanGroupRateMultipliersRaw,
+		); err != nil {
+			return nil, err
+		}
+
+		// 订阅倍率解析必须与最终扣费使用相同的窗口状态，不能按数据库中的旧累计值提前过滤。
+		row = normalizeUsageBillingSubscriptionRow(row, now)
+		available := usageBillingSubscriptionAvailable(
+			1,
+			windowRemaining(row.DailyLimitUSD, row.DailyUsageUSD),
+			windowRemaining(row.WeeklyLimitUSD, row.WeeklyUsageUSD),
+			windowRemaining(row.MonthlyLimitUSD, row.MonthlyUsageUSD),
+		)
+		if available > 0 {
+			return usageBillingSubscriptionRowToService(userID, row), nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return nil, service.ErrSubscriptionNotFound
 }
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
@@ -926,7 +943,6 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 	}
 
 	now := time.Now()
-	windowStart := startOfDay(now)
 	remaining := amountUSD
 	subscriptionAmount := 0.0
 	allocations := make([]domain.BillingAllocation, 0, len(subscriptions))
@@ -936,9 +952,7 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 			break
 		}
 
-		dailyStart, dailyUsage := normalizeUsageBillingWindow(row.DailyWindowStart, row.DailyLimitUSD, row.DailyUsageUSD, windowStart, 24*time.Hour, now, row.StartsAt, row.ExpiresAt)
-		weeklyStart, weeklyUsage := normalizeUsageBillingWindow(row.WeeklyWindowStart, row.WeeklyLimitUSD, row.WeeklyUsageUSD, windowStart, 7*24*time.Hour, now, row.StartsAt, row.ExpiresAt)
-		monthlyStart, monthlyUsage := normalizeUsageBillingWindow(row.MonthlyWindowStart, row.MonthlyLimitUSD, row.MonthlyUsageUSD, windowStart, 30*24*time.Hour, now, row.StartsAt, row.ExpiresAt)
+		row = normalizeUsageBillingSubscriptionRow(row, now)
 
 		rateMultiplier := 1.0
 		if usageBillingUsesBaseAmount(cmd) {
@@ -959,9 +973,9 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 
 		available := usageBillingSubscriptionAvailable(
 			remainingBillable,
-			windowRemaining(row.DailyLimitUSD, dailyUsage),
-			windowRemaining(row.WeeklyLimitUSD, weeklyUsage),
-			windowRemaining(row.MonthlyLimitUSD, monthlyUsage),
+			windowRemaining(row.DailyLimitUSD, row.DailyUsageUSD),
+			windowRemaining(row.WeeklyLimitUSD, row.WeeklyUsageUSD),
+			windowRemaining(row.MonthlyLimitUSD, row.MonthlyUsageUSD),
 		)
 		if available <= 0 {
 			continue
@@ -977,16 +991,26 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 		}
 
 		if row.DailyLimitUSD.Valid && row.DailyLimitUSD.Float64 > 0 {
-			dailyUsage += allocated
+			row.DailyUsageUSD += allocated
 		}
 		if row.WeeklyLimitUSD.Valid && row.WeeklyLimitUSD.Float64 > 0 {
-			weeklyUsage += allocated
+			row.WeeklyUsageUSD += allocated
 		}
 		if row.MonthlyLimitUSD.Valid && row.MonthlyLimitUSD.Float64 > 0 {
-			monthlyUsage += allocated
+			row.MonthlyUsageUSD += allocated
 		}
 
-		if err := updateUsageBillingSubscription(ctx, tx, row.ID, dailyStart, weeklyStart, monthlyStart, dailyUsage, weeklyUsage, monthlyUsage); err != nil {
+		if err := updateUsageBillingSubscription(
+			ctx,
+			tx,
+			row.ID,
+			usageBillingNullableTimePtr(row.DailyWindowStart),
+			usageBillingNullableTimePtr(row.WeeklyWindowStart),
+			usageBillingNullableTimePtr(row.MonthlyWindowStart),
+			row.DailyUsageUSD,
+			row.WeeklyUsageUSD,
+			row.MonthlyUsageUSD,
+		); err != nil {
 			return 0, 0, nil, err
 		}
 
@@ -1034,7 +1058,44 @@ func usageBillingSubscriptionRateMultiplier(row usageBillingSubscriptionRow, gro
 	return usageBillingNonNegativeRate(rate)
 }
 
-func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64, used float64, resetStart time.Time, duration time.Duration, now, startsAt, expiresAt time.Time) (*time.Time, float64) {
+// @project-doc docs/domains/payments_and_entitlements.md#subscription_quota_windows
+// normalizeUsageBillingSubscriptionRow 统一解析倍率与事务扣费看到的额度窗口状态。
+func normalizeUsageBillingSubscriptionRow(row usageBillingSubscriptionRow, now time.Time) usageBillingSubscriptionRow {
+	windowStart := startOfDay(now)
+	dailyHasFiniteOuterLimit := hasFiniteUsageBillingLimit(row.WeeklyLimitUSD) || hasFiniteUsageBillingLimit(row.MonthlyLimitUSD)
+	weeklyHasFiniteOuterLimit := hasFiniteUsageBillingLimit(row.MonthlyLimitUSD)
+
+	dailyStart, dailyUsage := normalizeUsageBillingWindow(
+		row.DailyWindowStart, row.DailyLimitUSD, row.DailyUsageUSD,
+		windowStart, 24*time.Hour, now, row.StartsAt, row.ExpiresAt, dailyHasFiniteOuterLimit,
+	)
+	weeklyStart, weeklyUsage := normalizeUsageBillingWindow(
+		row.WeeklyWindowStart, row.WeeklyLimitUSD, row.WeeklyUsageUSD,
+		windowStart, 7*24*time.Hour, now, row.StartsAt, row.ExpiresAt, weeklyHasFiniteOuterLimit,
+	)
+	monthlyStart, monthlyUsage := normalizeUsageBillingWindow(
+		row.MonthlyWindowStart, row.MonthlyLimitUSD, row.MonthlyUsageUSD,
+		windowStart, 30*24*time.Hour, now, row.StartsAt, row.ExpiresAt, false,
+	)
+
+	row.DailyWindowStart = nullTimePtr(dailyStart)
+	row.WeeklyWindowStart = nullTimePtr(weeklyStart)
+	row.MonthlyWindowStart = nullTimePtr(monthlyStart)
+	row.DailyUsageUSD = dailyUsage
+	row.WeeklyUsageUSD = weeklyUsage
+	row.MonthlyUsageUSD = monthlyUsage
+	return row
+}
+
+func normalizeUsageBillingWindow(
+	windowStart sql.NullTime,
+	limit sql.NullFloat64,
+	used float64,
+	resetStart time.Time,
+	duration time.Duration,
+	now, startsAt, expiresAt time.Time,
+	hasFiniteOuterLimit bool,
+) (*time.Time, float64) {
 	if !limit.Valid || limit.Float64 <= 0 {
 		if !windowStart.Valid {
 			return nil, used
@@ -1053,8 +1114,8 @@ func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64
 		return &start, used
 	}
 
-	// 到期尾段不足一个完整窗口时，不补新窗口也不重置已用量，避免套餐结束前额外刷新额度。
-	if !canStartUsageBillingWindow(resetStart, duration, expiresAt) {
+	// 没有有限外层额度保护时，尾段仍须容纳完整窗口，避免最高层额度重复发放。
+	if !canStartUsageBillingWindow(resetStart, duration, expiresAt, hasFiniteOuterLimit) {
 		if !windowStart.Valid || windowStart.Time.IsZero() {
 			return nil, used
 		}
@@ -1070,8 +1131,15 @@ func normalizeUsageBillingWindow(windowStart sql.NullTime, limit sql.NullFloat64
 	return &start, used
 }
 
-func canStartUsageBillingWindow(windowStart time.Time, duration time.Duration, expiresAt time.Time) bool {
-	return !expiresAt.IsZero() && !windowStart.Add(duration).After(expiresAt)
+func canStartUsageBillingWindow(windowStart time.Time, duration time.Duration, expiresAt time.Time, hasFiniteOuterLimit bool) bool {
+	if expiresAt.IsZero() || duration <= 0 || !windowStart.Before(expiresAt) {
+		return false
+	}
+	return hasFiniteOuterLimit || !windowStart.Add(duration).After(expiresAt)
+}
+
+func hasFiniteUsageBillingLimit(limit sql.NullFloat64) bool {
+	return limit.Valid && limit.Float64 > 0
 }
 
 func windowRemaining(limit sql.NullFloat64, used float64) *float64 {

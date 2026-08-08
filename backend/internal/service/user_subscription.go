@@ -137,23 +137,23 @@ func (s *UserSubscription) NeedsWindowActivationAt(now time.Time) bool {
 	return s.WindowActivationAt(now).Any()
 }
 
-// WindowActivationAt 返回当前可首次激活的额度窗口；到期尾段不足完整周期的窗口保持未激活。
+// WindowActivationAt 返回当前可首次激活的额度窗口；有限外层额度允许低层窗口在到期尾段激活。
 func (s *UserSubscription) WindowActivationAt(now time.Time) SubscriptionWindowActivation {
 	var activation SubscriptionWindowActivation
-	if s == nil || !s.HasQuotaLimit() {
+	if s == nil || !s.HasQuotaLimit() || now.Before(s.StartsAt) || !now.Before(s.ExpiresAt) {
 		return activation
 	}
 
 	windowStart := startOfDay(now)
 	if positiveSubscriptionLimit(s.DailyLimitUSD) && s.DailyWindowStart == nil {
 		activation.Daily = s.HasOneTimeDailyQuota() ||
-			s.CanStartFullQuotaWindow(windowStart, subscriptionDailyWindow)
+			s.canStartQuotaWindow(windowStart, subscriptionDailyWindow)
 	}
 	if positiveSubscriptionLimit(s.WeeklyLimitUSD) && s.WeeklyWindowStart == nil {
-		activation.Weekly = s.CanStartFullQuotaWindow(windowStart, subscriptionWeeklyWindow)
+		activation.Weekly = s.canStartQuotaWindow(windowStart, subscriptionWeeklyWindow)
 	}
 	if positiveSubscriptionLimit(s.MonthlyLimitUSD) && s.MonthlyWindowStart == nil {
-		activation.Monthly = s.CanStartFullQuotaWindow(windowStart, subscriptionMonthlyWindow)
+		activation.Monthly = s.canStartQuotaWindow(windowStart, subscriptionMonthlyWindow)
 	}
 	return activation
 }
@@ -163,7 +163,7 @@ func (s *UserSubscription) NeedsDailyReset() bool {
 }
 
 func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
-	if s.DailyWindowStart == nil {
+	if s == nil || s.DailyWindowStart == nil || s.ExpiresAt.IsZero() || !now.Before(s.ExpiresAt) {
 		return false
 	}
 	if s.HasOneTimeDailyQuota() {
@@ -172,8 +172,7 @@ func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 	if now.Before(s.DailyWindowStart.Add(subscriptionDailyWindow)) {
 		return false
 	}
-	// 到期尾段不足一个完整日窗口时不再重置，避免套餐结束前额外刷新一次额度。
-	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionDailyWindow)
+	return s.canStartQuotaWindow(startOfDay(now), subscriptionDailyWindow)
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
@@ -181,14 +180,13 @@ func (s *UserSubscription) NeedsWeeklyReset() bool {
 }
 
 func (s *UserSubscription) NeedsWeeklyResetAt(now time.Time) bool {
-	if s.WeeklyWindowStart == nil {
+	if s == nil || s.WeeklyWindowStart == nil || s.ExpiresAt.IsZero() || !now.Before(s.ExpiresAt) {
 		return false
 	}
 	if now.Before(s.WeeklyWindowStart.Add(subscriptionWeeklyWindow)) {
 		return false
 	}
-	// 到期尾段不足一个完整周窗口时不再重置，避免最终几天额外刷新周额度。
-	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionWeeklyWindow)
+	return s.canStartQuotaWindow(startOfDay(now), subscriptionWeeklyWindow)
 }
 
 func (s *UserSubscription) NeedsMonthlyReset() bool {
@@ -196,22 +194,45 @@ func (s *UserSubscription) NeedsMonthlyReset() bool {
 }
 
 func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
-	if s.MonthlyWindowStart == nil {
+	if s == nil || s.MonthlyWindowStart == nil || s.ExpiresAt.IsZero() || !now.Before(s.ExpiresAt) {
 		return false
 	}
 	if now.Before(s.MonthlyWindowStart.Add(subscriptionMonthlyWindow)) {
 		return false
 	}
-	// 到期尾段不足一个完整月窗口时不再重置，避免 30 天套餐到期瞬间刷新月额度。
-	return s.CanStartFullQuotaWindow(startOfDay(now), subscriptionMonthlyWindow)
+	return s.canStartQuotaWindow(startOfDay(now), subscriptionMonthlyWindow)
 }
 
 // CanStartFullQuotaWindow 判断从指定起点开始是否还能覆盖一个完整额度窗口。
 func (s *UserSubscription) CanStartFullQuotaWindow(windowStart time.Time, duration time.Duration) bool {
-	if s == nil || s.ExpiresAt.IsZero() {
+	if s == nil || s.ExpiresAt.IsZero() || duration <= 0 || !windowStart.Before(s.ExpiresAt) {
 		return false
 	}
 	return !windowStart.Add(duration).After(s.ExpiresAt)
+}
+
+// @project-doc docs/domains/payments_and_entitlements.md#subscription_quota_windows
+// canStartQuotaWindow 判断窗口能否开始；更高层有限额度存在时，它负责约束低层尾段的总消耗。
+func (s *UserSubscription) canStartQuotaWindow(windowStart time.Time, duration time.Duration) bool {
+	if s == nil || s.ExpiresAt.IsZero() || !windowStart.Before(s.ExpiresAt) {
+		return false
+	}
+	return s.CanStartFullQuotaWindow(windowStart, duration) || s.hasFiniteOuterQuotaLimit(duration)
+}
+
+// hasFiniteOuterQuotaLimit 按“日 < 周 < 月”层级判断是否存在正数外层额度；无限额度不能充当尾段保护层。
+func (s *UserSubscription) hasFiniteOuterQuotaLimit(duration time.Duration) bool {
+	if s == nil {
+		return false
+	}
+	switch duration {
+	case subscriptionDailyWindow:
+		return positiveSubscriptionLimit(s.WeeklyLimitUSD) || positiveSubscriptionLimit(s.MonthlyLimitUSD)
+	case subscriptionWeeklyWindow:
+		return positiveSubscriptionLimit(s.MonthlyLimitUSD)
+	default:
+		return false
+	}
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
@@ -223,7 +244,7 @@ func (s *UserSubscription) DailyResetTime() *time.Time {
 		return &t
 	}
 	t := s.DailyWindowStart.Add(subscriptionDailyWindow)
-	if !s.CanStartFullQuotaWindow(t, subscriptionDailyWindow) {
+	if !s.canStartQuotaWindow(t, subscriptionDailyWindow) {
 		t = s.ExpiresAt
 	}
 	return &t
@@ -234,7 +255,7 @@ func (s *UserSubscription) WeeklyResetTime() *time.Time {
 		return nil
 	}
 	t := s.WeeklyWindowStart.Add(subscriptionWeeklyWindow)
-	if !s.CanStartFullQuotaWindow(t, subscriptionWeeklyWindow) {
+	if !s.canStartQuotaWindow(t, subscriptionWeeklyWindow) {
 		t = s.ExpiresAt
 	}
 	return &t
@@ -245,7 +266,7 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 		return nil
 	}
 	t := s.MonthlyWindowStart.Add(subscriptionMonthlyWindow)
-	if !s.CanStartFullQuotaWindow(t, subscriptionMonthlyWindow) {
+	if !s.canStartQuotaWindow(t, subscriptionMonthlyWindow) {
 		t = s.ExpiresAt
 	}
 	return &t

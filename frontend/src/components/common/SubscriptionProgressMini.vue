@@ -51,8 +51,8 @@
               <span class="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">
                 {{ subscription.plan?.name || `Plan #${subscription.plan_id}` }}
               </span>
-              <span class="text-xs" :class="getDaysRemainingClass(subscription.expires_at)">
-                {{ formatDaysRemaining(subscription.expires_at) }}
+              <span class="shrink-0 whitespace-nowrap text-xs" :class="getDaysRemainingClass(subscription.expires_at)">
+                {{ formatExpiration(subscription.expires_at) }}
               </span>
             </div>
 
@@ -113,6 +113,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { useSubscriptionStore } from '@/stores'
 import type { UserSubscription } from '@/types'
+import { formatDateTimeToMinute } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
   variant?: 'default' | 'status'
@@ -209,13 +210,9 @@ function formatUsage(used: number, limit: number | null): string {
   return `${usedValue}/${limitValue}`
 }
 
-function formatDaysRemaining(expiresAt: string): string {
-  const diff = new Date(expiresAt).getTime() - Date.now()
-  if (diff < 0) return t('subscriptionProgress.expired')
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  if (days === 0) return t('subscriptionProgress.expiresToday')
-  if (days === 1) return t('subscriptionProgress.expiresTomorrow')
-  return t('subscriptionProgress.daysRemaining', { days })
+function formatExpiration(expiresAt: string): string {
+  const time = formatDateTimeToMinute(expiresAt)
+  return time ? t('subscriptionProgress.expiresAt', { time }) : ''
 }
 
 function getDaysRemainingClass(expiresAt: string): string {

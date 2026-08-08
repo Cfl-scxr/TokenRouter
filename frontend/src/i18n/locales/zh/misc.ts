@@ -96,6 +96,7 @@ marketplace: {
     expired: '已过期',
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
+    expiresAt: '{time} 到期',
     viewAll: '查看全部订阅',
     noSubscriptions: '暂无有效订阅',
     unlimited: '无限制'

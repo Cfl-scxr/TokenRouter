@@ -938,6 +938,148 @@ func TestUsageBillingRepositoryResolveUsableSubscriptionForGroup(t *testing.T) {
 	require.Equal(t, plan.ID, got.PlanID)
 }
 
+func TestUsageBillingRepositoryResolveUsableSubscriptionForGroup_NormalizesTailWindows(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB).(*usageBillingRepository)
+	now := time.Now()
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-resolve-tail-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+	})
+	group := mustCreateGroup(t, client, &service.Group{
+		Name:     "usage-billing-resolve-tail-group-" + uuid.NewString(),
+		Platform: service.PlatformOpenAI,
+	})
+	blockedPlan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:            "usage-billing-resolve-blocked-plan-" + uuid.NewString(),
+		Description:     "usage billing blocked resolver candidate",
+		Price:           9.9,
+		ValidityDays:    30,
+		ValidityUnit:    "day",
+		GroupIDs:        []int64{group.ID},
+		ForSale:         true,
+		DailyLimitUSD:   float64Ptr(200),
+		MonthlyLimitUSD: float64Ptr(1000),
+	})
+	targetPlan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:                 "usage-billing-resolve-tail-plan-" + uuid.NewString(),
+		Description:          "usage billing tail resolver candidate",
+		Price:                19.9,
+		ValidityDays:         30,
+		ValidityUnit:         "day",
+		GroupIDs:             []int64{group.ID},
+		GroupRateMultipliers: map[int64]float64{group.ID: 0.5},
+		ForSale:              true,
+		DailyLimitUSD:        float64Ptr(200),
+		MonthlyLimitUSD:      float64Ptr(1000),
+	})
+
+	blockedDailyWindowStart := now.Add(-time.Hour)
+	blockedMonthlyWindowStart := now.AddDate(0, 0, -1)
+	mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             blockedPlan.ID,
+		StartsAt:           now.AddDate(0, 0, -1),
+		ExpiresAt:          now.Add(time.Hour),
+		DailyWindowStart:   &blockedDailyWindowStart,
+		MonthlyWindowStart: &blockedMonthlyWindowStart,
+		DailyLimitUSD:      float64Ptr(200),
+		MonthlyLimitUSD:    float64Ptr(1000),
+		DailyUsageUSD:      200,
+		MonthlyUsageUSD:    200,
+	})
+	targetDailyWindowStart := now.Add(-25 * time.Hour)
+	targetMonthlyWindowStart := now.AddDate(0, 0, -29)
+	target := mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             targetPlan.ID,
+		StartsAt:           now.AddDate(0, 0, -30),
+		ExpiresAt:          now.Add(2 * time.Hour),
+		DailyWindowStart:   &targetDailyWindowStart,
+		MonthlyWindowStart: &targetMonthlyWindowStart,
+		DailyLimitUSD:      float64Ptr(200),
+		MonthlyLimitUSD:    float64Ptr(1000),
+		DailyUsageUSD:      200,
+		MonthlyUsageUSD:    860,
+	})
+
+	got, err := repo.ResolveUsableSubscriptionForGroup(ctx, user.ID, group.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, target.ID, got.ID, "应跳过当前窗口已耗尽的候选并选择可刷新尾段窗口的订阅")
+	require.Zero(t, got.DailyUsageUSD, "倍率解析应看到与最终扣费一致的已刷新日窗口")
+	require.NotNil(t, got.DailyWindowStart)
+	require.InDelta(t, 860, got.MonthlyUsageUSD, 0.000001)
+	require.InDelta(t, 0.5, got.Plan.GroupRateMultipliers[group.ID], 0.000001)
+}
+
+func TestUsageBillingRepositoryApply_ResetsDailyTailWithinFiniteMonthlyLimit(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+	now := time.Now()
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-tail-window-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Balance:      100,
+	})
+	plan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:            "usage-billing-tail-window-plan-" + uuid.NewString(),
+		Description:     "usage billing tail window test plan",
+		Price:           19.9,
+		ValidityDays:    30,
+		ValidityUnit:    "day",
+		ForSale:         true,
+		DailyLimitUSD:   float64Ptr(200),
+		MonthlyLimitUSD: float64Ptr(1000),
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-usage-billing-tail-window-" + uuid.NewString(),
+		Name:   "billing-tail-window",
+	})
+	dailyWindowStart := now.Add(-25 * time.Hour)
+	monthlyWindowStart := now.AddDate(0, 0, -29)
+	subscription := mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             plan.ID,
+		StartsAt:           now.AddDate(0, 0, -30),
+		ExpiresAt:          now.Add(2 * time.Hour),
+		DailyWindowStart:   &dailyWindowStart,
+		MonthlyWindowStart: &monthlyWindowStart,
+		DailyLimitUSD:      float64Ptr(200),
+		MonthlyLimitUSD:    float64Ptr(1000),
+		DailyUsageUSD:      200,
+		MonthlyUsageUSD:    860,
+	})
+
+	// 模拟到期前最后两小时的一次大额消费，验证低层刷新和外层封顶同时生效。
+	result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:         uuid.NewString(),
+		APIKeyID:          apiKey.ID,
+		UserID:            user.ID,
+		BillableAmountUSD: 200,
+	})
+
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.InDelta(t, 140, result.SubscriptionAmountUSD, 0.000001, "日窗口刷新后仍受剩余月额度约束")
+	require.InDelta(t, 60, result.BalanceAmountUSD, 0.000001, "超过月额度的部分应继续走余额")
+
+	var dailyUsage, monthlyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT daily_usage_usd, monthly_usage_usd
+		FROM user_subscriptions
+		WHERE id = $1
+	`, subscription.ID).Scan(&dailyUsage, &monthlyUsage))
+	require.InDelta(t, 140, dailyUsage, 0.000001)
+	require.InDelta(t, 1000, monthlyUsage, 0.000001, "有限月额度必须保持订阅尾段的硬上限")
+}
+
 func TestUsageBillingRepositoryApply_DeductsBalanceDeficitAfterPartialSubscription(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
