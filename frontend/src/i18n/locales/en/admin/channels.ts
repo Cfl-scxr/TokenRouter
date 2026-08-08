@@ -108,6 +108,8 @@ riskControl: {
       timeoutMs: 'HTTP Timeout (ms)',
       retryCount: 'Retry Count',
       sampleRate: 'Sample Rate',
+      proxy: 'Proxy Server',
+      proxyHint: 'Route moderation requests through the selected proxy. Direct connection is used by default.',
       recordNonHits: 'Record Non-Hits',
       recordNonHitsHint: 'When enabled, sampled non-hit request summaries are redacted before storage.',
       preHashCheck: 'Enable Pre-Hash Check',

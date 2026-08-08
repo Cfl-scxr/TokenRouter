@@ -61,6 +61,8 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 运行时设置包括注册与邮件验证、第三方登录、SMTP、TOTP/session binding/step-up、登录协议、面板限流、部分冷却与流超时、数据共享、支付展示以及各类功能开关。不同 getter 的回退可能来自代码常量或 `config.Config`，不能假设所有缺失键都等价于 `false`。
 
+SMTP 的测试连接与实际发送共用同一建连路径和超时。`smtp_use_tls=true` 先按隐式 TLS 连接；仅当服务端以明文 SMTP 问候响应时改用强制 STARTTLS，服务端不支持升级时直接失败，不能明文发送认证。`smtp_use_tls=false` 保留机会式 STARTTLS，并在服务端不提供扩展时允许现有明文语义。两条路径都在认证成功后忽略非标准 QUIT 响应，因此后台连接测试与实际发信能力保持一致。
+
 热路径设置必须使用以下一种明确策略：
 
 - 原子 snapshot，更新成功后立即替换；安全客户端 IP 策略属于此类。
