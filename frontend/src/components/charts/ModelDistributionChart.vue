@@ -425,6 +425,7 @@ const otherRankingItem = computed<RankingDisplayItem | null>(() => {
   return {
     user_id: 0,
     email: '',
+    username: '',
     actual_cost: otherActualCost,
     requests: otherRequests,
     tokens: otherTokens,
@@ -498,7 +499,9 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
-  if (item.email) return item.email
+  // 排行标签优先使用用户名，并忽略仅包含空白字符的身份字段。
+  if (item.username?.trim()) return item.username.trim()
+  if (item.email?.trim()) return item.email.trim()
   return t('admin.redeem.userPrefix', { id: item.user_id })
 }
 

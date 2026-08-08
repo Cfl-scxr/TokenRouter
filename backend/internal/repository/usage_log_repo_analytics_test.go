@@ -247,6 +247,34 @@ func TestGetModelStatsFromAnalyticsRejectsUnsupportedGrouping(t *testing.T) {
 	}
 }
 
+// TestGetUserSpendingRankingFromAnalyticsReturnsCurrentUsername 验证预聚合排行会关联当前用户身份字段。
+func TestGetUserSpendingRankingFromAnalyticsReturnsCurrentUsername(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	start := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	end := start.Add(4 * time.Hour)
+
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(end, start))
+	mock.ExpectQuery("(?s)user_spend AS \\(.*COALESCE\\(u.username, ''\\)").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "email", "username", "actual_cost", "requests", "tokens",
+			"total_actual_cost", "total_requests", "total_tokens",
+		}).AddRow(int64(7), "rank@example.com", "rank-user", 12.5, int64(9), int64(900), 12.5, int64(9), int64(900)))
+
+	got, ok, err := repo.getUserSpendingRankingFromAnalytics(context.Background(), start, end, 12)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []usagestats.UserSpendingRankingItem{
+		{UserID: 7, Email: "rank@example.com", Username: "rank-user", ActualCost: 12.5, Requests: 9, Tokens: 900},
+	}, got.Ranking)
+	require.Equal(t, 12.5, got.TotalActualCost)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestGetUsageTrendFromAnalyticsUsesNamedTimezoneForDST 验证趋势分桶把命名时区交给 PostgreSQL 处理夏令时。
 func TestGetUsageTrendFromAnalyticsUsesNamedTimezoneForDST(t *testing.T) {
 	previousTimezone := timezone.Name()

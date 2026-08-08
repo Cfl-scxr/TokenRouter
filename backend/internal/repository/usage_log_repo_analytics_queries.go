@@ -441,7 +441,8 @@ func (r *usageLogRepository) getUserSpendingRankingFromAnalytics(ctx context.Con
 			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 			LIMIT $%d
 		)
-		SELECT r.user_id, COALESCE(u.email, ''), r.actual_cost, r.requests, r.tokens,
+		SELECT r.user_id, COALESCE(u.email, ''), COALESCE(u.username, ''),
+		       r.actual_cost, r.requests, r.tokens,
 		       r.total_actual_cost, r.total_requests, r.total_tokens
 		FROM ranked r
 		LEFT JOIN users u ON u.id = r.user_id
@@ -453,7 +454,7 @@ func (r *usageLogRepository) getUserSpendingRankingFromAnalytics(ctx context.Con
 	result := &UserSpendingRankingResponse{Ranking: make([]UserSpendingRankingItem, 0)}
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err := rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens,
+		if err := rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens,
 			&result.TotalActualCost, &result.TotalRequests, &result.TotalTokens); err != nil {
 			return nil, false, err
 		}
