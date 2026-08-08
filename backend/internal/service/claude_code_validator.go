@@ -204,39 +204,48 @@ func (v *ClaudeCodeValidator) hasClaudeCodeSystemPrompt(body map[string]any) boo
 	return false
 }
 
+// claudeCodeSecurityMonitorMarkers 与固定前缀、长度下限共同构成安全监视器提示词的判别条件。
+var claudeCodeSecurityMonitorMarkers = []string{
+	"## Threat Model",
+	"- `<transcript>`:",
+	"## HARD BLOCK",
+	"## SOFT BLOCK",
+	"## Classification Process",
+	"## Output Format",
+	"<block>yes</block><reason>",
+	"<block>no</block>",
+}
+
 // isClaudeCodeSecurityMonitorPrompt 识别不携带计费块的官方安全监视器提示词。
+// 真实 CLI 可能在提示词前后追加独立的会话上下文块，因此需要逐块查找而不能限制 system 块数量。
 func isClaudeCodeSecurityMonitorPrompt(systemEntries []any) bool {
-	if len(systemEntries) != 1 {
-		return false
+	for _, rawEntry := range systemEntries {
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		entryType, ok := entry["type"].(string)
+		if !ok || entryType != "text" {
+			continue
+		}
+
+		text, ok := entry["text"].(string)
+		if !ok || len(text) < claudeCodeSecurityMonitorPromptMinLen ||
+			!strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) {
+			continue
+		}
+
+		if hasAllClaudeCodeSecurityMonitorMarkers(text) {
+			return true
+		}
 	}
 
-	entry, ok := systemEntries[0].(map[string]any)
-	if !ok {
-		return false
-	}
+	return false
+}
 
-	entryType, ok := entry["type"].(string)
-	if !ok || entryType != "text" {
-		return false
-	}
-
-	text, ok := entry["text"].(string)
-	if !ok || len(text) < claudeCodeSecurityMonitorPromptMinLen ||
-		!strings.HasPrefix(text, claudeCodeSecurityMonitorPromptPrefix) {
-		return false
-	}
-
-	markers := []string{
-		"## Threat Model",
-		"- `<transcript>`:",
-		"## HARD BLOCK",
-		"## SOFT BLOCK",
-		"## Classification Process",
-		"## Output Format",
-		"<block>yes</block><reason>",
-		"<block>no</block>",
-	}
-	for _, marker := range markers {
+func hasAllClaudeCodeSecurityMonitorMarkers(text string) bool {
+	for _, marker := range claudeCodeSecurityMonitorMarkers {
 		if !strings.Contains(text, marker) {
 			return false
 		}

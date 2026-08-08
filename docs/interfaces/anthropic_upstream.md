@@ -46,6 +46,8 @@ Anthropic 请求策略包括：
 - prompt caching、cache TTL 注入和消息缓存重写；缓存读写 token 进入用量与定价，而不是仅作为诊断字段。
 - 可选 web search emulation、Claude Code 客户端约束、metadata/header 策略和长上下文计价。
 
+Claude Code-only 约束会在 CLI UA 之后校验必需 Header、metadata 与官方 system 特征。Auto mode 安全分类请求可在监视器提示词前后携带独立会话上下文块；校验器会遍历所有文本 system 块查找同时满足固定前缀、长度下限和全部结构标记的提示词，不会因附加上下文误拒，也不会仅凭上下文块放行。
+
 具体启用条件可能来自全局运行设置、分组/渠道和账号 extra。层级边界见[网关策略控制](../domains/gateway_policy_controls.md)。
 
 ## 配额与调度
