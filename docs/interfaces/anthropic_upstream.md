@@ -37,6 +37,8 @@ API Key 和 OAuth/Setup Token 使用 Anthropic HTTP 路径；Bedrock 走独立�
 
 流式请求只在首个客户端分块写出前允许重试或换账号。每次 attempt 都从原始请求重建转换状态，工具名、停止原因、thinking block、usage 和错误事件必须与客户端协议一致。
 
+Responses 请求转换为 Anthropic Messages 时，只发送 Anthropic 入站协议可识别的内容块。OpenAI `reasoning`、`reasoning_text`、未知专有分片、空内容消息和纯空白文本块会被过滤；空白文本与合法图片并存时仅删除坏文本，保留图片。`function_call` / `function_call_output` 仍按调用 ID 转为相邻的 `tool_use` / `tool_result`，过滤过程不能破坏工具配对、角色交替或历史顺序。
+
 ## 模型与请求策略
 
 模型依次经过 Key 重定向、渠道映射和账号映射；可请求列表是分组策略、渠道和当前账号能力的交集，不是默认模型常量的直接输出。Bedrock/Vertex 的供应商模型标识可与客户端 Anthropic 名称不同，计费模型也可以由渠道单独指定。
