@@ -3095,7 +3095,7 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 	gin.SetMode(gin.TestMode)
 
 	// 上游要求 originator 与最终 User-Agent 首段配套（issue #3901）：
-	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex CLI 身份。
+	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex TUI 身份。
 	tests := []struct {
 		name           string
 		userAgent      string
@@ -3111,8 +3111,8 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 			wantOriginator: "codex-tui",
 			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
 		},
-		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
-		{name: "third-party ua masked to default identity", userAgent: "luna/1.2.0", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
+		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: openai.CodexDefaultOriginator, wantUA: codexCLIUserAgent},
+		{name: "third-party ua masked to default identity", userAgent: "luna/1.2.0", wantOriginator: openai.CodexDefaultOriginator, wantUA: codexCLIUserAgent},
 	}
 
 	for _, tt := range tests {

@@ -36,10 +36,10 @@ const (
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
-	// 与真实 Codex CLI 的 User-Agent 结构对齐：
+	// 与真实 Codex TUI 的 User-Agent 结构对齐：
 	// {originator}/{version} ({OS} {OS_version}; {arch}) {terminal}
-	// 旧值 "codex_cli_rs/0.125.0" 缺少 OS/架构/终端后缀，易被上游指纹识别为非官方客户端。
-	codexCLIUserAgent = "codex_cli_rs/0.144.1 (Ubuntu 22.4.0; x86_64) xterm-256color"
+	// 缺少 OS/架构/终端后缀的形态易被上游指纹识别为非官方客户端。
+	codexCLIUserAgent = openai.CodexDefaultOriginator + "/" + codexCLIVersion + " (Ubuntu 22.4.0; x86_64) xterm-256color"
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
@@ -1329,7 +1329,7 @@ func (s *OpenAIGatewayService) applyOpenAIUpstreamUserAgent(
 	wasBrowserUA := account != nil && account.Type == AccountTypeOAuth && openai.IsBrowserUserAgent(req.Header.Get("user-agent"))
 	s.overrideBrowserUserAgent(ctx, account, req)
 	if passthrough && account != nil && account.Type == AccountTypeOAuth && !wasBrowserUA && !openai.IsCodexOfficialClientRequest(req.Header.Get("user-agent")) {
-		// OAuth 安全透传：非浏览器、非官方 Codex UA 继续使用历史 Codex CLI 兜底。
+		// OAuth 安全透传：非浏览器、非官方 Codex UA 使用标准 Codex TUI 兜底。
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
 }

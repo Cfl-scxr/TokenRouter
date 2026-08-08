@@ -231,6 +231,12 @@ func canonicalizeCodexOriginator(name string) string {
 	return name
 }
 
+// CodexCLIOriginator 是 codex-rs 客户端的历史 originator，保留用于兼容识别。
+const CodexCLIOriginator = "codex_cli_rs"
+
+// CodexDefaultOriginator 是网关默认使用的 Codex TUI originator。
+const CodexDefaultOriginator = "codex-tui"
+
 // codexEngineVersionPattern 提取版本段开头的三段数字 X.Y.Z（忽略 -alpha 等后缀）。
 var codexEngineVersionPattern = regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
 

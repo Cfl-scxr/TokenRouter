@@ -22,7 +22,7 @@ func ensureCodexIdentityHeaders(h http.Header) {
 		h.Set("user-agent", codexCLIUserAgent)
 	}
 	if strings.TrimSpace(h.Get("originator")) == "" {
-		h.Set("originator", "codex_cli_rs")
+		h.Set("originator", openai.CodexDefaultOriginator)
 	}
 	if strings.TrimSpace(h.Get("version")) == "" {
 		h.Set("version", codexCLIVersion)
@@ -33,7 +33,7 @@ func ensureCodexIdentityHeaders(h http.Header) {
 // enforceCodexIdentityHeaders 收口 OAuth（ChatGPT 内部接口）出站请求的客户端身份头。
 // 上游要求 originator 与 User-Agent 首段配套且为官方客户端标识，version 头（若携带）
 // 不低于 0.144.0，任一不满足即 404（issue #3901）。以最终 User-Agent 为准推导配套
-// originator；推导不出官方身份（第三方 UA / UA 缺失）时整体回退为默认 Codex CLI 身份。
+// originator；推导不出官方身份（第三方 UA / UA 缺失）时整体回退为默认 Codex TUI 身份。
 //
 // 仅对携带 originator 的请求生效；需要从缺失身份头恢复的调用方应先调用
 // ensureCodexIdentityHeaders。
@@ -44,7 +44,7 @@ func enforceCodexIdentityHeaders(h http.Header) {
 	}
 	originator, pairedUA, ok := openai.PairCodexClientIdentity(h.Get("user-agent"))
 	if !ok {
-		originator, pairedUA = "codex_cli_rs", codexCLIUserAgent
+		originator, pairedUA = openai.CodexDefaultOriginator, codexCLIUserAgent
 	}
 	h.Set("user-agent", pairedUA)
 	h.Set("originator", originator)

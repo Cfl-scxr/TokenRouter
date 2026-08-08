@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -1118,7 +1119,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 	gin.SetMode(gin.TestMode)
 
 	// 上游要求 originator 与最终 user-agent 首段配套（issue #3901）：
-	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex CLI 身份。
+	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex TUI 身份。
 	tests := []struct {
 		name           string
 		userAgent      string
@@ -1134,7 +1135,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 			wantOriginator: "codex-tui",
 			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
 		},
-		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
+		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: openai.CodexDefaultOriginator, wantUA: codexCLIUserAgent},
 	}
 
 	for _, tt := range tests {

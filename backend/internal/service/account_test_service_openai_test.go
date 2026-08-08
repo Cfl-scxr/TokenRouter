@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/tidwall/gjson"
@@ -134,7 +135,7 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 	req := upstream.requests[0]
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
 	require.Equal(t, "responses=experimental", req.Header.Get("OpenAI-Beta"))
-	require.Equal(t, "codex_cli_rs", req.Header.Get("Originator"))
+	require.Equal(t, openai.CodexDefaultOriginator, req.Header.Get("Originator"))
 	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
