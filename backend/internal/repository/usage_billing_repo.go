@@ -163,7 +163,7 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var row usageBillingSubscriptionRow
