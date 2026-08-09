@@ -78,7 +78,8 @@ func TestUsageUnrestrictedPreferredSubscriptionDoesNotExposeBalance(t *testing.T
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-	billing := response["billing"].(map[string]any)
+	billing, ok := response["billing"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "subscription", billing["source"])
 	require.Equal(t, false, billing["available"])
 	require.Equal(t, float64(preferredID), billing["preferred_subscription_id"])
@@ -109,7 +110,8 @@ func TestUsageUnrestrictedBalanceModeDoesNotExposeSubscription(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response map[string]any
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-	billing := response["billing"].(map[string]any)
+	billing, ok := response["billing"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "balance", billing["source"])
 	require.Equal(t, float64(12.5), response["balance"])
 	_, hasSubscription := response["subscription"]

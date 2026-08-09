@@ -1,15 +1,19 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // normalizeOpenAIResponsesLiteTools 应用 Responses Lite 请求契约：reasoning 必须覆盖所有轮次，
-// 私有 namespace 声明则移入 input.additional_tools 容器。其它顶层工具必须属于 Lite 接口支持的
-// 有限集合；拒绝不支持的 hosted 工具是有意为之，静默丢弃会改变客户端请求语义。
+// 顶层并行工具调用必须关闭，私有 namespace 声明则移入 input.additional_tools 容器。其它顶层
+// 工具必须属于 Lite 接口支持的有限集合；拒绝不支持的 hosted 工具是有意为之，静默丢弃会改变客户端请求语义。
 func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
@@ -21,7 +25,7 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	}
 	rawTools, exists := reqBody["tools"]
 	if !exists || rawTools == nil {
-		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		return ensureOpenAIResponsesLiteRequestFields(reqBody)
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
@@ -55,14 +59,14 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 		}
 	}
 	if len(namespaceTools) == 0 {
-		return ensureOpenAIResponsesLiteReasoningContext(reqBody)
+		return ensureOpenAIResponsesLiteRequestFields(reqBody)
 	}
 
 	input, err := appendOpenAIResponsesLiteAdditionalTools(reqBody["input"], namespaceTools)
 	if err != nil {
 		return false, err
 	}
-	if _, err := ensureOpenAIResponsesLiteReasoningContext(reqBody); err != nil {
+	if _, err := ensureOpenAIResponsesLiteRequestFields(reqBody); err != nil {
 		return false, err
 	}
 	reqBody["input"] = input
@@ -72,6 +76,16 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 		reqBody["tools"] = topLevelTools
 	}
 	return true, nil
+}
+
+// ensureOpenAIResponsesLiteRequestFields 统一补齐 Lite 请求的跨工具字段约束。
+func ensureOpenAIResponsesLiteRequestFields(reqBody map[string]any) (bool, error) {
+	reasoningChanged, err := ensureOpenAIResponsesLiteReasoningContext(reqBody)
+	if err != nil {
+		return false, err
+	}
+	parallelToolCallsChanged := ensureOpenAIResponsesLiteParallelToolCallsDisabled(reqBody)
+	return reasoningChanged || parallelToolCallsChanged, nil
 }
 
 // ensureOpenAIResponsesLiteReasoningContext 强制 Lite 请求携带全轮次推理上下文，同时保留其它推理参数。
@@ -90,6 +104,15 @@ func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, er
 	}
 	reasoning["context"] = "all_turns"
 	return true, nil
+}
+
+// ensureOpenAIResponsesLiteParallelToolCallsDisabled 强制 Lite 上游只串行发起顶层工具调用。
+func ensureOpenAIResponsesLiteParallelToolCallsDisabled(reqBody map[string]any) bool {
+	if parallelToolCalls, exists := reqBody["parallel_tool_calls"].(bool); exists && !parallelToolCalls {
+		return false
+	}
+	reqBody["parallel_tool_calls"] = false
+	return true
 }
 
 func appendOpenAIResponsesLiteAdditionalTools(input any, namespaceTools []any) ([]any, error) {
@@ -199,8 +222,13 @@ func openAIResponsesLiteToolIdentityForError(rawTool any) string {
 }
 
 func normalizeOpenAIResponsesLiteToolsPayload(body []byte) ([]byte, bool, error) {
+	if !json.Valid(body) {
+		return body, false, fmt.Errorf("decode responses Lite request body: invalid JSON")
+	}
 	var requestBody map[string]any
-	if err := json.Unmarshal(body, &requestBody); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&requestBody); err != nil {
 		return body, false, fmt.Errorf("decode responses Lite request body: %w", err)
 	}
 	changed, err := normalizeOpenAIResponsesLiteTools(requestBody)
@@ -208,6 +236,36 @@ func normalizeOpenAIResponsesLiteToolsPayload(body []byte) ([]byte, bool, error)
 		return body, false, err
 	}
 	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
+	if err != nil {
+		return body, false, fmt.Errorf("encode responses Lite request body: %w", err)
+	}
+	return rebuilt, true, nil
+}
+
+// normalizeOpenAIResponsesLitePayloadForAccount 在调用方确认 Lite 标记后按账号契约归一化请求。
+// OAuth 账号应用完整内部协议；API Key 账号只关闭并行工具调用，保留标准 Responses 请求语义。
+func normalizeOpenAIResponsesLitePayloadForAccount(account *Account, body []byte) ([]byte, bool, error) {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return body, false, nil
+	}
+	if account.IsOpenAIOAuth() {
+		return normalizeOpenAIResponsesLiteToolsPayload(body)
+	}
+	return normalizeOpenAIResponsesLiteParallelToolCallsPayload(body)
+}
+
+// normalizeOpenAIResponsesLiteParallelToolCallsPayload 只补齐所有 OpenAI Lite 出站共享的并行调用约束。
+func normalizeOpenAIResponsesLiteParallelToolCallsPayload(body []byte) ([]byte, bool, error) {
+	if !gjson.ValidBytes(body) {
+		return body, false, fmt.Errorf("decode responses Lite request body: invalid JSON")
+	}
+	if !gjson.ParseBytes(body).IsObject() {
+		return body, false, fmt.Errorf("responses Lite request body must be a JSON object")
+	}
+	if parallelToolCalls := gjson.GetBytes(body, "parallel_tool_calls"); parallelToolCalls.Type == gjson.False {
+		return body, false, nil
+	}
+	rebuilt, err := sjson.SetBytes(body, "parallel_tool_calls", false)
 	if err != nil {
 		return body, false, fmt.Errorf("encode responses Lite request body: %w", err)
 	}

@@ -210,6 +210,16 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
+	responsesLite := account.Platform == PlatformOpenAI && isOpenAIResponsesLiteWebSocketPayload(payload)
+	if responsesLite {
+		liteBody, changed, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, body)
+		if liteErr != nil {
+			return nil, fmt.Errorf("normalize http bridge Lite body: %w", liteErr)
+		}
+		if changed {
+			body = liteBody
+		}
+	}
 	billingModel := ""
 	mappedModel := ""
 	if account.Platform == PlatformGrok {
@@ -253,7 +263,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, err
 	}
-	if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+	if responsesLite {
 		upstreamReq.Header.Set(responsesLiteHeader, "true")
 	}
 
