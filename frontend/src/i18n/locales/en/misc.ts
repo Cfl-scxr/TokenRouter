@@ -221,7 +221,10 @@ marketplace: {
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
     pendingOnly: 'This plan will take effect after the current subscription ends',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    groupAccess: 'Accessible groups',
+    allGroups: 'All groups',
+    restrictedGroups: 'Restricted groups'
   },
 // Onboarding Tour
   onboarding: {

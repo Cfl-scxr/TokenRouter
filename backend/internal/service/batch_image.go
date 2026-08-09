@@ -108,7 +108,10 @@ type BatchImageJob struct {
 	APIKeyID      *int64
 	AccountID     *int64
 	GroupID       *int64
-	Provider      string
+	// BillingMode 与 PreferredSubscriptionID 冻结任务提交时的 API Key 资金来源。
+	BillingMode             string
+	PreferredSubscriptionID *int64
+	Provider                string
 	// Model、RequestedModel 和 InternalModel 分别记录上游模型、客户端模型和内部路由模型。
 	Model             string
 	RequestedModel    string
@@ -175,14 +178,16 @@ type BatchImageJob struct {
 }
 
 type CreateBatchImageJobParams struct {
-	BatchID       string
-	UserID        int64
-	BillingUserID int64
-	TeamID        *int64
-	APIKeyID      *int64
-	AccountID     *int64
-	GroupID       *int64
-	Provider      string
+	BatchID                 string
+	UserID                  int64
+	BillingUserID           int64
+	TeamID                  *int64
+	APIKeyID                *int64
+	AccountID               *int64
+	GroupID                 *int64
+	BillingMode             string
+	PreferredSubscriptionID *int64
+	Provider                string
 	// Model、RequestedModel 和 InternalModel 分别记录上游模型、客户端模型和内部路由模型。
 	Model             string
 	RequestedModel    string

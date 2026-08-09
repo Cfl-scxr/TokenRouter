@@ -117,6 +117,20 @@ export default {
       moveUp: '上移',
       moveDown: '下移'
     },
+    billing: {
+      modeLabel: '结算方式',
+      subscriptionLabel: '指定订阅',
+      selectSubscription: '选择订阅',
+      subscriptionRequired: '请选择要使用的订阅',
+      groupsRestricted: '此订阅限制可访问分组',
+      allGroups: '全部可访问分组',
+      unavailableSubscription: '订阅 #{id}（不可用）',
+      modes: {
+        auto: '自动选择',
+        subscription: '指定订阅',
+        balance: '仅使用余额'
+      }
+    },
     fastModePolicyLabel: 'Fast 模式策略',
     fastModePolicy: {
       followRequest: '跟随请求',

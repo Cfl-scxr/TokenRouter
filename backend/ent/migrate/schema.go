@@ -21,6 +21,8 @@ var (
 		{Name: "is_composite", Type: field.TypeBool, Default: false},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
 		{Name: "fast_mode_policy", Type: field.TypeString, Size: 32, Default: "follow_request"},
+		{Name: "billing_mode", Type: field.TypeString, Size: 32, Default: "auto"},
+		{Name: "preferred_subscription_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "model_mapping", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
 		{Name: "ip_whitelist", Type: field.TypeJSON, Nullable: true},
@@ -53,19 +55,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[30]},
+				Columns:    []*schema.Column{APIKeysColumns[32]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_teams_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[31]},
+				Columns:    []*schema.Column{APIKeysColumns[33]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[32]},
+				Columns:    []*schema.Column{APIKeysColumns[34]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -74,17 +76,17 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[32]},
+				Columns: []*schema.Column{APIKeysColumns[34]},
 			},
 			{
 				Name:    "apikey_team_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[31]},
+				Columns: []*schema.Column{APIKeysColumns[33]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[30]},
+				Columns: []*schema.Column{APIKeysColumns[32]},
 			},
 			{
 				Name:    "apikey_status",
@@ -99,22 +101,22 @@ var (
 			{
 				Name:    "apikey_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[11]},
+				Columns: []*schema.Column{APIKeysColumns[13]},
 			},
 			{
 				Name:    "apikey_quota_quota_used",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[14], APIKeysColumns[15]},
+				Columns: []*schema.Column{APIKeysColumns[16], APIKeysColumns[17]},
 			},
 			{
 				Name:    "apikey_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[16]},
+				Columns: []*schema.Column{APIKeysColumns[18]},
 			},
 			{
 				Name:    "apikey_data_sharing_confirmed_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[27]},
+				Columns: []*schema.Column{APIKeysColumns[29]},
 			},
 		},
 	}
@@ -603,6 +605,8 @@ var (
 		{Name: "team_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_key_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "billing_mode", Type: field.TypeString, Size: 32, Default: "auto"},
+		{Name: "preferred_subscription_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "provider", Type: field.TypeString, Size: 32},
 		{Name: "model", Type: field.TypeString, Size: 128},
 		{Name: "task_name", Type: field.TypeString, Size: 255, Default: ""},
@@ -660,32 +664,32 @@ var (
 			{
 				Name:    "batchimagejob_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[43]},
+				Columns: []*schema.Column{BatchImageJobsColumns[2], BatchImageJobsColumns[45]},
 			},
 			{
 				Name:    "batchimagejob_billing_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[43]},
+				Columns: []*schema.Column{BatchImageJobsColumns[3], BatchImageJobsColumns[45]},
 			},
 			{
 				Name:    "batchimagejob_team_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[43]},
+				Columns: []*schema.Column{BatchImageJobsColumns[4], BatchImageJobsColumns[45]},
 			},
 			{
 				Name:    "batchimagejob_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[10]},
+				Columns: []*schema.Column{BatchImageJobsColumns[12]},
 			},
 			{
 				Name:    "batchimagejob_provider_status",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[7], BatchImageJobsColumns[10]},
+				Columns: []*schema.Column{BatchImageJobsColumns[9], BatchImageJobsColumns[12]},
 			},
 			{
 				Name:    "batchimagejob_idempotency_key",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[31]},
+				Columns: []*schema.Column{BatchImageJobsColumns[33]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
@@ -693,7 +697,7 @@ var (
 			{
 				Name:    "batchimagejob_manifest_hash",
 				Unique:  true,
-				Columns: []*schema.Column{BatchImageJobsColumns[33]},
+				Columns: []*schema.Column{BatchImageJobsColumns[35]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "manifest_hash IS NOT NULL AND manifest_hash <> ''",
 				},
@@ -701,17 +705,17 @@ var (
 			{
 				Name:    "batchimagejob_output_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[36]},
+				Columns: []*schema.Column{BatchImageJobsColumns[38]},
 			},
 			{
 				Name:    "batchimagejob_downloaded_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[39]},
+				Columns: []*schema.Column{BatchImageJobsColumns[41]},
 			},
 			{
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{BatchImageJobsColumns[40]},
+				Columns: []*schema.Column{BatchImageJobsColumns[42]},
 			},
 		},
 	}

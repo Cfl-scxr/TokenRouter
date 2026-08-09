@@ -11,6 +11,7 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  getBillingOptions,
   showError,
   showSuccess,
   copyToClipboard,
@@ -28,6 +29,7 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  getBillingOptions: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -116,6 +118,7 @@ vi.mock('@/api', () => ({
     update: updateKey,
     delete: vi.fn(),
     toggleStatus,
+    getBillingOptions,
   },
   authAPI: {
     getPublicSettings,
@@ -275,7 +278,7 @@ const DataTableStub = {
 const SelectStub = {
   name: 'Select',
   props: ['modelValue', 'options', 'disabled'],
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'change'],
   template: '<button type="button" :disabled="disabled" @click="$emit(\'update:modelValue\', options?.[0]?.value ?? null)"></button>',
 }
 
@@ -369,6 +372,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    getBillingOptions.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -392,6 +396,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
+    getBillingOptions.mockResolvedValue([])
     isCurrentStep.mockReturnValue(false)
     createKey.mockResolvedValue(createApiKey())
     updateKey.mockResolvedValue(createApiKey())
@@ -670,6 +675,60 @@ describe('user KeysView column settings', () => {
       (select) => select.attributes('data-tour') === 'key-form-group'
     )
     expect(groupSelect?.props('options')[0]).not.toHaveProperty('capacity')
+  })
+
+  it('指定订阅后仅保留套餐允许的表单分组', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), group_id: 43 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    getAvailableGroups.mockImplementation((_scope, subscriptionID?: number) => Promise.resolve(
+      subscriptionID === 71
+        ? [{ id: 42, name: 'OpenAI', platform: 'openai', rate_multiplier: 1, data_sharing_enabled: false }]
+        : [
+            { id: 42, name: 'OpenAI', platform: 'openai', rate_multiplier: 1, data_sharing_enabled: false },
+            { id: 43, name: 'Claude', platform: 'anthropic', rate_multiplier: 1, data_sharing_enabled: false },
+          ]
+    ))
+    getBillingOptions.mockResolvedValue([{
+      id: 71,
+      plan_name: 'Restricted',
+      groups_restricted: true,
+      applicable_groups: [42],
+    }])
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Edit').trigger('click')
+    await flushPromises()
+
+    const billingMode = wrapper.findAllComponents({ name: 'Select' }).find(
+      (select) => select.attributes('data-test') === 'api-key-billing-mode'
+    )
+    await billingMode!.vm.$emit('update:modelValue', 'subscription')
+    await billingMode!.vm.$emit('change', 'subscription')
+    await nextTick()
+
+    const preferredSubscription = wrapper.findAllComponents({ name: 'Select' }).find(
+      (select) => select.attributes('data-test') === 'api-key-preferred-subscription'
+    )
+    await preferredSubscription!.vm.$emit('update:modelValue', 71)
+    await preferredSubscription!.vm.$emit('change', 71)
+    await flushPromises()
+
+    const groupSelect = wrapper.findAllComponents({ name: 'Select' }).find(
+      (select) => select.attributes('data-tour') === 'key-form-group'
+    )
+    expect(groupSelect?.props('modelValue')).toBeNull()
+    expect(groupSelect?.props('options')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 42 }),
+    ]))
+    expect(groupSelect?.props('options')).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 43 }),
+    ]))
+    expect(getAvailableGroups).toHaveBeenCalledWith('personal', 71)
   })
 
   it('keeps filters and selected page size when sorting by current concurrency', async () => {

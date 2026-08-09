@@ -93,9 +93,14 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 	}
 	apiKey, _ := middleware.GetAPIKeyFromContext(c)
 	if apiKey != nil && apiKey.IsComposite {
+		preferredSubscription, ready := compositePreferredSubscription(c, apiKey)
+		if !ready {
+			c.JSON(http.StatusOK, &service.BatchImagePublicModelsResponse{Object: "list", Data: make([]service.BatchImagePublicModel, 0)})
+			return
+		}
 		out := &service.BatchImagePublicModelsResponse{Object: "list", Data: make([]service.BatchImagePublicModel, 0)}
 		for _, binding := range apiKey.CompositeGroups {
-			if !compositeGroupAvailableToUser(apiKey, binding.Group) || !binding.Group.AllowBatchImageGeneration {
+			if !compositeGroupAvailableToUser(apiKey, preferredSubscription, binding.Group) || !binding.Group.AllowBatchImageGeneration {
 				continue
 			}
 			groupOwner := owner
@@ -286,11 +291,13 @@ func batchImageOwnerFromContext(c *gin.Context) (service.BatchImageOwner, bool) 
 		billingUserID = apiKey.User.ID
 	}
 	return service.BatchImageOwner{
-		UserID:        apiKey.UserID,
-		BillingUserID: billingUserID,
-		TeamID:        apiKey.TeamID,
-		APIKeyID:      apiKey.ID,
-		GroupID:       apiKey.GroupID,
+		UserID:                  apiKey.UserID,
+		BillingUserID:           billingUserID,
+		TeamID:                  apiKey.TeamID,
+		APIKeyID:                apiKey.ID,
+		GroupID:                 apiKey.GroupID,
+		BillingMode:             service.APIKeyEffectiveBillingMode(apiKey),
+		PreferredSubscriptionID: apiKey.PreferredSubscriptionID,
 	}, true
 }
 

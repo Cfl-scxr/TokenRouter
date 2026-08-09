@@ -45,6 +45,10 @@ type APIKey struct {
 	Status string `json:"status,omitempty"`
 	// API Key 的 Fast 模式策略：follow_request、force_on 或 force_off
 	FastModePolicy string `json:"fast_mode_policy,omitempty"`
+	// API Key 结算模式：auto、subscription 或 balance
+	BillingMode string `json:"billing_mode,omitempty"`
+	// billing_mode 为 subscription 时锁定使用的用户订阅 ID
+	PreferredSubscriptionID *int64 `json:"preferred_subscription_id,omitempty"`
 	// API Key 自定义模型重定向规则
 	ModelMapping map[string]string `json:"model_mapping,omitempty"`
 	// Last usage time of this API key
@@ -170,9 +174,9 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
-		case apikey.FieldID, apikey.FieldUserID, apikey.FieldTeamID, apikey.FieldGroupID, apikey.FieldDataSharingNoticeVersion, apikey.FieldDataSharingConfirmedGroupID:
+		case apikey.FieldID, apikey.FieldUserID, apikey.FieldTeamID, apikey.FieldGroupID, apikey.FieldPreferredSubscriptionID, apikey.FieldDataSharingNoticeVersion, apikey.FieldDataSharingConfirmedGroupID:
 			values[i] = new(sql.NullInt64)
-		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus, apikey.FieldFastModePolicy:
+		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus, apikey.FieldFastModePolicy, apikey.FieldBillingMode:
 			values[i] = new(sql.NullString)
 		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart, apikey.FieldDataSharingConfirmedAt:
 			values[i] = new(sql.NullTime)
@@ -271,6 +275,19 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field fast_mode_policy", values[i])
 			} else if value.Valid {
 				_m.FastModePolicy = value.String
+			}
+		case apikey.FieldBillingMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_mode", values[i])
+			} else if value.Valid {
+				_m.BillingMode = value.String
+			}
+		case apikey.FieldPreferredSubscriptionID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field preferred_subscription_id", values[i])
+			} else if value.Valid {
+				_m.PreferredSubscriptionID = new(int64)
+				*_m.PreferredSubscriptionID = value.Int64
 			}
 		case apikey.FieldModelMapping:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -507,6 +524,14 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("fast_mode_policy=")
 	builder.WriteString(_m.FastModePolicy)
+	builder.WriteString(", ")
+	builder.WriteString("billing_mode=")
+	builder.WriteString(_m.BillingMode)
+	builder.WriteString(", ")
+	if v := _m.PreferredSubscriptionID; v != nil {
+		builder.WriteString("preferred_subscription_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("model_mapping=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ModelMapping))

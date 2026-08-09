@@ -34,16 +34,45 @@ var (
 )
 
 type SubscriptionService struct {
+	groupRepo           GroupRepository
 	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 	entClient           *dbent.Client
 }
 
-func NewSubscriptionService(_ GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, _ *config.Config) *SubscriptionService {
+func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, _ *config.Config) *SubscriptionService {
 	return &SubscriptionService{
+		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
 		entClient:           entClient,
+	}
+}
+
+// EnrichSubscriptionPlanGroups 为用户订阅列表补充分组名称；套餐未限制分组时返回空列表表示全部分组。
+func (s *SubscriptionService) EnrichSubscriptionPlanGroups(ctx context.Context, subscriptions []UserSubscription) {
+	if s == nil {
+		return
+	}
+	for i := range subscriptions {
+		plan := subscriptions[i].Plan
+		if plan == nil {
+			continue
+		}
+		plan.GroupsRestricted = len(plan.GroupIDs) > 0
+		if len(plan.GroupIDs) == 0 || len(plan.ApplicableGroups) > 0 {
+			continue
+		}
+		plan.ApplicableGroups = make([]SubscriptionPlanGroup, 0, len(plan.GroupIDs))
+		for _, groupID := range plan.GroupIDs {
+			group := &SubscriptionPlanGroup{ID: groupID}
+			if s.groupRepo != nil {
+				if resolved, err := s.groupRepo.GetByIDLite(ctx, groupID); err == nil && resolved != nil {
+					group.Name = resolved.Name
+				}
+			}
+			plan.ApplicableGroups = append(plan.ApplicableGroups, *group)
+		}
 	}
 }
 
@@ -650,6 +679,19 @@ func (s *SubscriptionService) GetByID(ctx context.Context, id int64) (*UserSubsc
 	now := time.Now()
 	sub.Status = sub.EffectiveStatus(now)
 	return sub, nil
+}
+
+// GetSubscriptionForAPIKey 按付款主体读取指定订阅。
+// 归属不匹配时统一按不存在处理，避免通过 API Key 推测其它用户的订阅 ID。
+func (s *SubscriptionService) GetSubscriptionForAPIKey(ctx context.Context, userID, subscriptionID int64) (*UserSubscription, error) {
+	if s == nil || s.userSubRepo == nil || userID <= 0 || subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	subscription, err := s.GetByID(ctx, subscriptionID)
+	if err != nil || subscription == nil || subscription.UserID != userID {
+		return nil, ErrSubscriptionNotFound
+	}
+	return subscription, nil
 }
 
 func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID, planID int64) (*UserSubscription, error) {

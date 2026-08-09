@@ -600,6 +600,7 @@ function triggerRingAnimation(items: RingItem[]) {
 const statusInfo = computed(() => {
   const data = resultData.value
   if (!data) return null
+  const billingUnavailable = data.billing?.available === false
 
   if (data.mode === 'quota_limited') {
     const isValid = data.isValid !== false
@@ -616,17 +617,41 @@ const statusInfo = computed(() => {
   }
 
   return {
-    label: data.planName || t('keyUsage.walletBalance'),
-    statusText: 'Active',
-    isActive: true,
+    label: data.billing?.plan_name || data.planName || t('keyUsage.walletBalance'),
+    statusText: billingUnavailable ? t('keyUsage.billingUnavailable') : 'Active',
+    isActive: data.isValid !== false && !billingUnavailable,
   }
 })
+
+function billingModeLabel(mode: unknown): string {
+  switch (mode) {
+    case 'subscription':
+      return t('keyUsage.billingModes.subscription')
+    case 'balance':
+      return t('keyUsage.billingModes.balance')
+    default:
+      return t('keyUsage.billingModes.auto')
+  }
+}
+
+function billingSourceLabel(source: unknown): string {
+  return source === 'subscription'
+    ? t('keyUsage.billingSources.subscription')
+    : t('keyUsage.billingSources.balance')
+}
+
+function usesSubscriptionBilling(
+  data: { billing?: { source?: unknown }; subscription?: unknown } | null | undefined,
+): boolean {
+  return data?.billing?.source === 'subscription' || (!data?.billing && !!data?.subscription)
+}
 
 const ringItems = computed<RingItem[]>(() => {
   const data = resultData.value
   if (!data) return []
 
   const items: RingItem[] = []
+  const subscriptionSource = usesSubscriptionBilling(data)
 
   if (data.mode === 'quota_limited') {
     if (data.quota) {
@@ -648,7 +673,7 @@ const ringItems = computed<RingItem[]>(() => {
       }
     }
   } else {
-    if (data.subscription) {
+    if (subscriptionSource && data.subscription) {
       const sub = data.subscription
       const limits = [
         { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
@@ -662,7 +687,7 @@ const ringItems = computed<RingItem[]>(() => {
         }
       }
     }
-    if (!data.subscription && data.balance != null) {
+    if (!subscriptionSource && data.balance != null) {
       items.push({ title: t('keyUsage.walletBalance'), pct: 0, amount: formatUsageBalance(data.balance), isBalance: true, iconType: 'dollar' })
     }
   }
@@ -701,6 +726,18 @@ const detailRows = computed<DetailRow[]>(() => {
   const ICON_SHIELD = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
   const ICON_CALENDAR = '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'
   const ICON_CHECK = '<polyline points="20 6 9 17 4 12"/>'
+  const subscriptionSource = usesSubscriptionBilling(data)
+
+  if (data.billing) {
+    const sourceName = data.billing.plan_name || billingSourceLabel(data.billing.source)
+    const availability = data.billing.available === false ? ` (${t('keyUsage.billingUnavailable')})` : ''
+    rows.push({
+      iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_CHECK,
+      label: t('keyUsage.billingMode'),
+      value: `${billingModeLabel(data.billing.mode)} · ${sourceName}${availability}`,
+      valueClass: data.billing.available === false ? 'text-rose-500' : '',
+    })
+  }
 
   if (data.mode === 'quota_limited') {
     if (data.quota) {
@@ -742,12 +779,14 @@ const detailRows = computed<DetailRow[]>(() => {
       }
     }
   } else {
-    rows.push({
+    if (!data.billing) {
+      rows.push({
       iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_CHECK,
       label: t('keyUsage.subscriptionType'), value: data.planName || t('keyUsage.walletBalance'), valueClass: '',
-    })
+      })
+    }
 
-    if (data.subscription) {
+    if (subscriptionSource && data.subscription) {
       const sub = data.subscription
       if (sub.daily_limit_usd > 0) {
         const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
@@ -778,7 +817,7 @@ const detailRows = computed<DetailRow[]>(() => {
       }
     }
 
-    const hasUnlimitedSubscriptionRemaining = !!data.subscription && data.remaining != null && data.remaining < 0
+    const hasUnlimitedSubscriptionRemaining = subscriptionSource && !!data.subscription && data.remaining != null && data.remaining < 0
     const remainColor = hasUnlimitedSubscriptionRemaining
       ? 'text-emerald-500'
       : data.remaining != null

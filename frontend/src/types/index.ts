@@ -763,6 +763,19 @@ export interface ModelsListConfig {
 // 单个 API Key 的 Fast 模式策略，系统级策略拥有更高优先级。
 export type ApiKeyFastModePolicy = 'follow_request' | 'force_on' | 'force_off'
 
+// API Key 的资金来源策略；auto 保持订阅优先、余额兜底的历史行为。
+export type ApiKeyBillingMode = 'auto' | 'subscription' | 'balance'
+
+// 供 API Key 配置页选择指定订阅的安全摘要。
+export interface ApiKeyBillingSubscriptionOption {
+  id: number
+  plan_id: number
+  plan_name: string
+  expires_at: string
+  groups_restricted: boolean
+  applicable_groups: number[]
+}
+
 // ApiKeyCompositeGroup 表示一个复合 Key 的分组前缀映射。
 export interface ApiKeyCompositeGroup {
   group_id: number
@@ -783,6 +796,8 @@ export interface ApiKey {
   composite_groups?: ApiKeyCompositeGroup[]
   status: 'active' | 'inactive' | 'disabled' | 'quota_exhausted' | 'expired'
   fast_mode_policy: ApiKeyFastModePolicy
+  billing_mode?: ApiKeyBillingMode
+  preferred_subscription_id?: number | null
   model_mapping: Record<string, string>
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -820,6 +835,8 @@ export interface CreateApiKeyRequest {
   is_composite?: boolean
   composite_groups?: Array<{ group_id: number; prefix: string }>
   fast_mode_policy?: ApiKeyFastModePolicy
+  billing_mode?: ApiKeyBillingMode
+  preferred_subscription_id?: number | null
   model_mapping?: Record<string, string>
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
@@ -841,6 +858,8 @@ export interface UpdateApiKeyRequest {
   composite_groups?: Array<{ group_id: number; prefix: string }>
   status?: 'active' | 'inactive'
   fast_mode_policy?: ApiKeyFastModePolicy
+  billing_mode?: ApiKeyBillingMode
+  preferred_subscription_id?: number | null
   model_mapping?: Record<string, string>
   ip_whitelist?: string[]
   ip_blacklist?: string[]

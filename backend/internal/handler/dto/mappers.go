@@ -93,6 +93,8 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		IsComposite:                           k.IsComposite,
 		Status:                                k.Status,
 		FastModePolicy:                        k.FastModePolicy,
+		BillingMode:                           k.BillingMode,
+		PreferredSubscriptionID:               k.PreferredSubscriptionID,
 		ModelMapping:                          service.CloneModelMapping(k.ModelMapping),
 		IPWhitelist:                           k.IPWhitelist,
 		IPBlacklist:                           k.IPBlacklist,
@@ -181,7 +183,7 @@ func SubscriptionPlanFromServiceShallow(plan *service.SubscriptionPlan) *Subscri
 	if plan == nil {
 		return nil
 	}
-	return &SubscriptionPlan{
+	out := &SubscriptionPlan{
 		ID:                   plan.ID,
 		Name:                 plan.Name,
 		Description:          plan.Description,
@@ -192,6 +194,7 @@ func SubscriptionPlanFromServiceShallow(plan *service.SubscriptionPlan) *Subscri
 		ValidityUnit:         plan.ValidityUnit,
 		GroupIDs:             append([]int64(nil), plan.GroupIDs...),
 		GroupRateMultipliers: cloneInt64Float64Map(plan.GroupRateMultipliers),
+		GroupsRestricted:     plan.GroupsRestricted || len(plan.GroupIDs) > 0,
 		DailyLimitUSD:        plan.DailyLimitUSD,
 		WeeklyLimitUSD:       plan.WeeklyLimitUSD,
 		MonthlyLimitUSD:      plan.MonthlyLimitUSD,
@@ -202,6 +205,14 @@ func SubscriptionPlanFromServiceShallow(plan *service.SubscriptionPlan) *Subscri
 		CreatedAt:            plan.CreatedAt,
 		UpdatedAt:            plan.UpdatedAt,
 	}
+	out.ApplicableGroups = make([]SubscriptionPlanGroup, 0, len(plan.ApplicableGroups))
+	for _, group := range plan.ApplicableGroups {
+		out.ApplicableGroups = append(out.ApplicableGroups, SubscriptionPlanGroup{ID: group.ID, Name: group.Name})
+	}
+	if out.ApplicableGroups == nil {
+		out.ApplicableGroups = []SubscriptionPlanGroup{}
+	}
+	return out
 }
 
 func cloneInt64Float64Map(in map[int64]float64) map[int64]float64 {

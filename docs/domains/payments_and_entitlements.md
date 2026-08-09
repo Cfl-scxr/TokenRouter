@@ -90,6 +90,8 @@ Webhook 路由不依赖用户 JWT，因此提供商验签、订单绑定和金�
 
 用户订阅复制发放时的有效期和日/周/月额度。状态语义为：当前开始时间已到的有效记录为 `active`，未来排队记录为 `pending`，人工撤销为 `revoked`；软删除也按 revoked 处理。是否可消费还要求当前时间落在 `[starts_at, expires_at)`、所有已配置的有限额度窗口均未耗尽，并满足套餐分组范围。
 
+套餐分组为空表示该套餐不限制分组；非空时表示可消费的显式集合。用户的订阅列表响应以 `groups_restricted` 和带名称的 `applicable_groups` 展示这一区别。只有 API Key 显式选择该订阅时，才把 Key 的可选分组收窄到用户原有权限与该集合的交集；自动结算和仅余额 Key 不因用户持有受限套餐而被全局收窄。指定订阅的付款主体仍按 Key 归属解析，团队 Key 使用 Team Owner 的订阅权益。
+
 <a id="subscription_quota_windows"></a>
 ### 周期额度窗口
 

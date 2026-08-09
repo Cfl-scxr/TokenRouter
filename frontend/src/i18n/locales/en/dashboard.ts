@@ -117,6 +117,20 @@ export default {
       moveUp: 'Move up',
       moveDown: 'Move down'
     },
+    billing: {
+      modeLabel: 'Billing source',
+      subscriptionLabel: 'Selected subscription',
+      selectSubscription: 'Select a subscription',
+      subscriptionRequired: 'Select a subscription to use',
+      groupsRestricted: 'This subscription restricts accessible groups',
+      allGroups: 'All accessible groups',
+      unavailableSubscription: 'Subscription #{id} (unavailable)',
+      modes: {
+        auto: 'Automatic',
+        subscription: 'Selected subscription',
+        balance: 'Balance only'
+      }
+    },
     fastModePolicyLabel: 'Fast mode policy',
     fastModePolicy: {
       followRequest: 'Follow request',

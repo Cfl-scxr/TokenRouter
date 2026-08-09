@@ -80,7 +80,7 @@ func TestReserveUsageBillingBatchImageBilling_UsesBalanceRateAfterPartialSubscri
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	mock.ExpectQuery(`(?s)SELECT\s+id,\s+plan_id,.*FROM user_subscriptions.*FOR UPDATE`).
-		WithArgs(int64(42), service.SubscriptionStatusActive, service.SubscriptionStatusPending, int64(7)).
+		WithArgs(int64(42), service.SubscriptionStatusActive, service.SubscriptionStatusPending, nil, int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "plan_id", "starts_at", "expires_at",
 			"daily_window_start", "weekly_window_start", "monthly_window_start",
@@ -125,6 +125,39 @@ func TestReserveUsageBillingBatchImageBilling_UsesBalanceRateAfterPartialSubscri
 	require.InDelta(t, 0.4, result.BillingAllocations[0].BaseAmountUSD, 0.000001)
 	require.InDelta(t, 0.5, result.BillingAllocations[0].RateMultiplier, 0.000001)
 	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_StrictSubscriptionWithoutGroupFiltersRestrictedPlans(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	preferredID := int64(11)
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	// 无最终分组的指定订阅只能选择没有套餐分组限制的计划；查询不能把受限套餐当作全局套餐。
+	mock.ExpectQuery(`(?s)SELECT\s+id,\s+plan_id,.*FROM user_subscriptions.*AND NOT EXISTS\s*\(\s*SELECT 1\s+FROM subscription_plan_groups.*FOR UPDATE`).
+		WithArgs(int64(42), service.SubscriptionStatusActive, service.SubscriptionStatusPending, preferredID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "plan_id", "starts_at", "expires_at",
+			"daily_window_start", "weekly_window_start", "monthly_window_start",
+			"daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd",
+			"daily_usage_usd", "weekly_usage_usd", "monthly_usage_usd", "group_rates",
+		}))
+	mock.ExpectRollback()
+
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:                  42,
+		BillableAmountUSD:       1,
+		APIKeyBillingMode:       service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}, &service.UsageBillingApplyResult{})
+
+	require.ErrorIs(t, err, service.ErrPreferredSubscriptionInsufficient)
+	require.NoError(t, tx.Rollback())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

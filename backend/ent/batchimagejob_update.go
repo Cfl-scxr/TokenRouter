@@ -159,6 +159,47 @@ func (_u *BatchImageJobUpdate) ClearAccountID() *BatchImageJobUpdate {
 	return _u
 }
 
+// SetBillingMode sets the "billing_mode" field.
+func (_u *BatchImageJobUpdate) SetBillingMode(v string) *BatchImageJobUpdate {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillableBillingMode(v *string) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdate) SetPreferredSubscriptionID(v int64) *BatchImageJobUpdate {
+	_u.mutation.ResetPreferredSubscriptionID()
+	_u.mutation.SetPreferredSubscriptionID(v)
+	return _u
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdate) SetNillablePreferredSubscriptionID(v *int64) *BatchImageJobUpdate {
+	if v != nil {
+		_u.SetPreferredSubscriptionID(*v)
+	}
+	return _u
+}
+
+// AddPreferredSubscriptionID adds value to the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdate) AddPreferredSubscriptionID(v int64) *BatchImageJobUpdate {
+	_u.mutation.AddPreferredSubscriptionID(v)
+	return _u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdate) ClearPreferredSubscriptionID() *BatchImageJobUpdate {
+	_u.mutation.ClearPreferredSubscriptionID()
+	return _u
+}
+
 // SetProvider sets the "provider" field.
 func (_u *BatchImageJobUpdate) SetProvider(v string) *BatchImageJobUpdate {
 	_u.mutation.SetProvider(v)
@@ -982,6 +1023,11 @@ func (_u *BatchImageJobUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *BatchImageJobUpdate) check() error {
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := batchimagejob.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Provider(); ok {
 		if err := batchimagejob.ProviderValidator(v); err != nil {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.provider": %w`, err)}
@@ -1113,6 +1159,18 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.AccountIDCleared() {
 		_spec.ClearField(batchimagejob.FieldAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(batchimagejob.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredSubscriptionID(); ok {
+		_spec.AddField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredSubscriptionIDCleared() {
+		_spec.ClearField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Provider(); ok {
 		_spec.SetField(batchimagejob.FieldProvider, field.TypeString, value)
@@ -1490,6 +1548,47 @@ func (_u *BatchImageJobUpdateOne) AddAccountID(v int64) *BatchImageJobUpdateOne 
 // ClearAccountID clears the value of the "account_id" field.
 func (_u *BatchImageJobUpdateOne) ClearAccountID() *BatchImageJobUpdateOne {
 	_u.mutation.ClearAccountID()
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *BatchImageJobUpdateOne) SetBillingMode(v string) *BatchImageJobUpdateOne {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillableBillingMode(v *string) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdateOne) SetPreferredSubscriptionID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.ResetPreferredSubscriptionID()
+	_u.mutation.SetPreferredSubscriptionID(v)
+	return _u
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_u *BatchImageJobUpdateOne) SetNillablePreferredSubscriptionID(v *int64) *BatchImageJobUpdateOne {
+	if v != nil {
+		_u.SetPreferredSubscriptionID(*v)
+	}
+	return _u
+}
+
+// AddPreferredSubscriptionID adds value to the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdateOne) AddPreferredSubscriptionID(v int64) *BatchImageJobUpdateOne {
+	_u.mutation.AddPreferredSubscriptionID(v)
+	return _u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (_u *BatchImageJobUpdateOne) ClearPreferredSubscriptionID() *BatchImageJobUpdateOne {
+	_u.mutation.ClearPreferredSubscriptionID()
 	return _u
 }
 
@@ -2329,6 +2428,11 @@ func (_u *BatchImageJobUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *BatchImageJobUpdateOne) check() error {
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := batchimagejob.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Provider(); ok {
 		if err := batchimagejob.ProviderValidator(v); err != nil {
 			return &ValidationError{Name: "provider", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.provider": %w`, err)}
@@ -2477,6 +2581,18 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if _u.mutation.AccountIDCleared() {
 		_spec.ClearField(batchimagejob.FieldAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(batchimagejob.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredSubscriptionID(); ok {
+		_spec.AddField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredSubscriptionIDCleared() {
+		_spec.ClearField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Provider(); ok {
 		_spec.SetField(batchimagejob.FieldProvider, field.TypeString, value)

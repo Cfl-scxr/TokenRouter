@@ -67,6 +67,34 @@
           </div>
 
           <div class="space-y-4 p-4">
+            <div class="border-b border-gray-100 pb-3 dark:border-dark-700">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('userSubscriptions.groupAccess') }}
+                </span>
+                <span
+                  :class="chain.plan?.groups_restricted
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : 'text-emerald-700 dark:text-emerald-300'"
+                  class="text-xs font-medium"
+                >
+                  {{ chain.plan?.groups_restricted ? t('userSubscriptions.restrictedGroups') : t('userSubscriptions.allGroups') }}
+                </span>
+              </div>
+              <div
+                v-if="chain.plan?.groups_restricted && chain.plan.applicable_groups?.length"
+                class="mt-2 flex flex-wrap gap-1.5"
+              >
+                <span
+                  v-for="group in chain.plan.applicable_groups"
+                  :key="group.id"
+                  class="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-dark-200"
+                >
+                  {{ group.name || `#${group.id}` }}
+                </span>
+              </div>
+            </div>
+
             <div class="grid gap-3 text-sm sm:grid-cols-2">
               <div class="rounded-xl bg-gray-50 px-4 py-3 dark:bg-dark-700/50">
                 <div class="text-xs text-gray-400 dark:text-dark-500">

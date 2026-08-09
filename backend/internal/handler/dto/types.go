@@ -65,19 +65,21 @@ type APIKey struct {
 	GroupID           *int64 `json:"group_id"`
 	IsComposite       bool   `json:"is_composite"`
 	// CompositeGroups 按用户设置顺序返回复合 Key 的分组映射。
-	CompositeGroups []APIKeyCompositeGroup `json:"composite_groups"`
-	Status          string                 `json:"status"`
-	FastModePolicy  string                 `json:"fast_mode_policy"`
-	ModelMapping    map[string]string      `json:"model_mapping"`
-	IPWhitelist     []string               `json:"ip_whitelist"`
-	IPBlacklist     []string               `json:"ip_blacklist"`
-	LastUsedAt      *time.Time             `json:"last_used_at"`
-	LastUsedIP      *string                `json:"last_used_ip"` // 最近一条带 IP 的用量日志。
-	Quota           float64                `json:"quota"`        // Quota limit in USD (0 = unlimited)
-	QuotaUsed       float64                `json:"quota_used"`   // Used quota amount in USD
-	ExpiresAt       *time.Time             `json:"expires_at"`   // Expiration time (nil = never expires)
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	CompositeGroups         []APIKeyCompositeGroup `json:"composite_groups"`
+	Status                  string                 `json:"status"`
+	FastModePolicy          string                 `json:"fast_mode_policy"`
+	BillingMode             string                 `json:"billing_mode"`
+	PreferredSubscriptionID *int64                 `json:"preferred_subscription_id"`
+	ModelMapping            map[string]string      `json:"model_mapping"`
+	IPWhitelist             []string               `json:"ip_whitelist"`
+	IPBlacklist             []string               `json:"ip_blacklist"`
+	LastUsedAt              *time.Time             `json:"last_used_at"`
+	LastUsedIP              *string                `json:"last_used_ip"` // 最近一条带 IP 的用量日志。
+	Quota                   float64                `json:"quota"`        // Quota limit in USD (0 = unlimited)
+	QuotaUsed               float64                `json:"quota_used"`   // Used quota amount in USD
+	ExpiresAt               *time.Time             `json:"expires_at"`   // Expiration time (nil = never expires)
+	CreatedAt               time.Time              `json:"created_at"`
+	UpdatedAt               time.Time              `json:"updated_at"`
 	// 数据共享确认记录，用于前端判断切换分组时是否需要重新弹窗。
 	DataSharingNoticeVersion    int        `json:"data_sharing_notice_version"`
 	DataSharingConfirmedGroupID *int64     `json:"data_sharing_confirmed_group_id"`
@@ -191,25 +193,32 @@ type GroupCapacity struct {
 }
 
 type SubscriptionPlan struct {
-	ID                   int64             `json:"id"`
-	Name                 string            `json:"name"`
-	Description          string            `json:"description"`
-	Price                float64           `json:"price"`
-	OriginalPrice        *float64          `json:"original_price,omitempty"`
-	Currency             string            `json:"currency,omitempty"`
-	ValidityDays         int               `json:"validity_days"`
-	ValidityUnit         string            `json:"validity_unit"`
-	GroupIDs             []int64           `json:"group_ids"`
-	GroupRateMultipliers map[int64]float64 `json:"group_rate_multipliers"`
-	DailyLimitUSD        *float64          `json:"daily_limit_usd"`
-	WeeklyLimitUSD       *float64          `json:"weekly_limit_usd"`
-	MonthlyLimitUSD      *float64          `json:"monthly_limit_usd"`
-	Features             string            `json:"features"`
-	ProductName          string            `json:"product_name"`
-	ForSale              bool              `json:"for_sale"`
-	SortOrder            int               `json:"sort_order"`
-	CreatedAt            time.Time         `json:"created_at"`
-	UpdatedAt            time.Time         `json:"updated_at"`
+	ID                   int64                   `json:"id"`
+	Name                 string                  `json:"name"`
+	Description          string                  `json:"description"`
+	Price                float64                 `json:"price"`
+	OriginalPrice        *float64                `json:"original_price,omitempty"`
+	Currency             string                  `json:"currency,omitempty"`
+	ValidityDays         int                     `json:"validity_days"`
+	ValidityUnit         string                  `json:"validity_unit"`
+	GroupIDs             []int64                 `json:"group_ids"`
+	GroupRateMultipliers map[int64]float64       `json:"group_rate_multipliers"`
+	GroupsRestricted     bool                    `json:"groups_restricted"`
+	ApplicableGroups     []SubscriptionPlanGroup `json:"applicable_groups"`
+	DailyLimitUSD        *float64                `json:"daily_limit_usd"`
+	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd"`
+	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd"`
+	Features             string                  `json:"features"`
+	ProductName          string                  `json:"product_name"`
+	ForSale              bool                    `json:"for_sale"`
+	SortOrder            int                     `json:"sort_order"`
+	CreatedAt            time.Time               `json:"created_at"`
+	UpdatedAt            time.Time               `json:"updated_at"`
+}
+
+type SubscriptionPlanGroup struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。

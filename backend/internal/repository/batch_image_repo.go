@@ -46,6 +46,16 @@ func (r *batchImageRepository) CreateBatchImageJob(ctx context.Context, params s
 	if params.BillingUserID <= 0 {
 		params.BillingUserID = params.UserID
 	}
+	billingMode, ok := service.NormalizeAPIKeyBillingMode(params.BillingMode)
+	if !ok {
+		return nil, service.ErrInvalidAPIKeyBillingMode
+	}
+	params.BillingMode = billingMode
+	if billingMode != service.APIKeyBillingModeSubscription {
+		params.PreferredSubscriptionID = nil
+	} else if params.PreferredSubscriptionID == nil || *params.PreferredSubscriptionID <= 0 {
+		return nil, service.ErrPreferredSubscriptionRequired
+	}
 
 	job, err := createBatchImageJobWithSQL(ctx, r.sql, params)
 	if err != nil {
@@ -768,7 +778,8 @@ INSERT INTO batch_image_jobs (
     batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price,
     pricing_snapshot_version,
     currency, hold_id,
-    idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at
+    idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at,
+    billing_mode, preferred_subscription_id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
     $15, $16, $17, $18, $19,
@@ -779,7 +790,8 @@ INSERT INTO batch_image_jobs (
     $35, $36, $37, $38,
     $39,
     $40, $41,
-    $42, $43, $44, $45, $46, $47
+    $42, $43, $44, $45, $46, $47,
+    $48, $49
 )
 RETURNING `+batchImageJobColumns,
 		params.BatchID, params.UserID, params.BillingUserID, params.TeamID, params.APIKeyID, params.AccountID, params.GroupID, params.Provider, params.Model, requestedModel, internalModel, params.TaskName, params.ParentBatchID, params.Status,
@@ -792,6 +804,7 @@ RETURNING `+batchImageJobColumns,
 		params.PricingSnapshotVersion,
 		params.Currency, params.HoldID,
 		params.IdempotencyKey, params.RequestHash, params.ManifestHash, params.RetryCount, params.SessionID, params.OutputExpiresAt,
+		params.BillingMode, params.PreferredSubscriptionID,
 	))
 }
 
@@ -849,6 +862,7 @@ currency, hold_id,
 idempotency_key, request_hash, manifest_hash,
 retry_count, version, session_id, output_expires_at, input_deleted_at, output_deleted_at, downloaded_at, user_deleted_at,
 last_error_code, last_error_message,
+billing_mode, preferred_subscription_id,
 created_at, updated_at, submitted_at, started_at, finished_at, settled_at`
 
 const batchImageJobSelectSQL = `SELECT ` + batchImageJobColumns + ` FROM batch_image_jobs`
@@ -861,6 +875,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var holdAmount, actualCost sql.NullFloat64
 	var subscriptionHoldAllocationsRaw []byte
 	var holdID, idempotencyKey, requestHash, manifestHash sql.NullString
+	var preferredSubscriptionID sql.NullInt64
 	var sessionID sql.NullString
 	var outputExpiresAt, inputDeletedAt, outputDeletedAt, downloadedAt, userDeletedAt sql.NullTime
 	var lastErrorCode, lastErrorMessage sql.NullString
@@ -880,6 +895,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 		&idempotencyKey, &requestHash, &manifestHash,
 		&job.RetryCount, &job.Version, &sessionID, &outputExpiresAt, &inputDeletedAt, &outputDeletedAt, &downloadedAt, &userDeletedAt,
 		&lastErrorCode, &lastErrorMessage,
+		&job.BillingMode, &preferredSubscriptionID,
 		&job.CreatedAt, &job.UpdatedAt, &submittedAt, &startedAt, &finishedAt, &settledAt,
 	)
 	if err != nil {
@@ -890,6 +906,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	job.TeamID = batchImageNullInt64Ptr(teamID)
 	job.AccountID = batchImageNullInt64Ptr(accountID)
 	job.GroupID = batchImageNullInt64Ptr(groupID)
+	job.PreferredSubscriptionID = batchImageNullInt64Ptr(preferredSubscriptionID)
 	job.ProviderJobName = batchImageNullStringPtr(providerJobName)
 	job.ProviderInputRef = batchImageNullStringPtr(providerInputRef)
 	job.ProviderOutputRef = batchImageNullStringPtr(providerOutputRef)

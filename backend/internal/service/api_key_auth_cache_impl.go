@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28：认证快照包含分组客户端协议集合
+const apiKeyAuthSnapshotVersion = 29 // v29：认证快照包含 API Key 结算模式和指定订阅
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -394,6 +394,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		Name:                                  apiKey.Name,
 		Status:                                apiKey.Status,
 		FastModePolicy:                        apiKey.FastModePolicy,
+		BillingMode:                           apiKey.BillingMode,
+		PreferredSubscriptionID:               apiKey.PreferredSubscriptionID,
 		ModelMapping:                          CloneModelMapping(apiKey.ModelMapping),
 		IPWhitelist:                           apiKey.IPWhitelist,
 		IPBlacklist:                           apiKey.IPBlacklist,
@@ -524,6 +526,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		Name:                                  snapshot.Name,
 		Status:                                snapshot.Status,
 		FastModePolicy:                        snapshot.FastModePolicy,
+		BillingMode:                           snapshot.BillingMode,
+		PreferredSubscriptionID:               snapshot.PreferredSubscriptionID,
 		ModelMapping:                          CloneModelMapping(snapshot.ModelMapping),
 		IPWhitelist:                           snapshot.IPWhitelist,
 		IPBlacklist:                           snapshot.IPBlacklist,

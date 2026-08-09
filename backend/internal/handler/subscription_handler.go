@@ -56,6 +56,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.subscriptionService.EnrichSubscriptionPlanGroups(c.Request.Context(), subscriptions)
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
@@ -78,6 +79,7 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.subscriptionService.EnrichSubscriptionPlanGroups(c.Request.Context(), subscriptions)
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {

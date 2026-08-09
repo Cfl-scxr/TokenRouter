@@ -270,6 +270,290 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	})
 }
 
+func TestAPIKeyAuthPreferredSubscriptionRejectsPlanRestrictedGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	group := &service.Group{ID: 9, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "preferred-plan-group",
+		Status:                  service.StatusAPIKeyActive,
+		GroupID:                 &group.ID,
+		Group:                   group,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID: preferredID, UserID: user.ID, PlanID: 1, Status: service.SubscriptionStatusActive,
+		StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour),
+		Plan: &service.SubscriptionPlan{ID: 1, GroupIDs: []int64{8}},
+	}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copyKey := *apiKey
+		return &copyKey, nil
+	}}
+	subscriptionRepo := &stubUserSubscriptionRepo{getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+		if id != preferredID {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		copySubscription := *subscription
+		return &copySubscription, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	requireAPIKeyAuthError(t, w, "PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED", service.ErrPreferredSubscriptionGroup.Error())
+}
+
+func TestAPIKeyAuthPreferredSubscriptionDoesNotFallBackAfterQuotaExhaustion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	group := &service.Group{ID: 9, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	dailyLimit := 1.0
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "preferred-plan-exhausted",
+		Status:                  service.StatusAPIKeyActive,
+		GroupID:                 &group.ID,
+		Group:                   group,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID: preferredID, UserID: user.ID, PlanID: 1, Status: service.SubscriptionStatusActive,
+		StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour),
+		DailyWindowStart: &now, DailyLimitUSD: &dailyLimit, DailyUsageUSD: dailyLimit,
+		Plan: &service.SubscriptionPlan{ID: 1},
+	}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copyKey := *apiKey
+		return &copyKey, nil
+	}}
+	subscriptionRepo := &stubUserSubscriptionRepo{getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+		if id != preferredID {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		copySubscription := *subscription
+		return &copySubscription, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	requireAPIKeyAuthError(t, w, "USAGE_LIMIT_EXCEEDED", service.ErrDailyLimitExceeded.Error())
+}
+
+func TestAPIKeyAuthSimpleUsageKeepsPreferredSubscriptionSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	group := &service.Group{ID: 9, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "simple-usage-preferred-plan",
+		Status:                  service.StatusAPIKeyActive,
+		GroupID:                 &group.ID,
+		Group:                   group,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID: preferredID, UserID: user.ID, PlanID: 1, Status: service.SubscriptionStatusActive,
+		StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour),
+		Plan: &service.SubscriptionPlan{ID: 1, GroupIDs: []int64{group.ID}},
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copyKey := *apiKey
+		return &copyKey, nil
+	}}
+	subscriptionRepo := &stubUserSubscriptionRepo{getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+		if id != preferredID {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		copySubscription := *subscription
+		return &copySubscription, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
+	usage := func(c *gin.Context) {
+		billing, ok := GetAPIKeyBillingContext(c)
+		if !ok || billing == nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"source":          billing.Source,
+			"subscription_id": billing.Subscription.ID,
+			"available":       billing.Available,
+		})
+	}
+	router.GET("/v1/usage", usage)
+	router.GET("/antigravity/v1/usage", usage)
+
+	for _, path := range []string{"/v1/usage", "/antigravity/v1/usage"} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, path)
+		var response struct {
+			Source         string `json:"source"`
+			SubscriptionID int64  `json:"subscription_id"`
+			Available      bool   `json:"available"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response), path)
+		require.Equal(t, "subscription", response.Source, path)
+		require.Equal(t, preferredID, response.SubscriptionID, path)
+		require.True(t, response.Available, path)
+	}
+}
+
+func TestAPIKeyAuthAntigravityUsageKeepsUnavailablePreferredSubscription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	group := &service.Group{ID: 9, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "antigravity-usage-unavailable-preferred-plan",
+		Status:                  service.StatusAPIKeyActive,
+		GroupID:                 &group.ID,
+		Group:                   group,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID: preferredID, UserID: user.ID, PlanID: 1, Status: service.SubscriptionStatusActive,
+		StartsAt: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour),
+		Plan: &service.SubscriptionPlan{ID: 1, GroupIDs: []int64{group.ID}},
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copyKey := *apiKey
+		return &copyKey, nil
+	}}
+	subscriptionRepo := &stubUserSubscriptionRepo{getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+		if id != preferredID {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		copySubscription := *subscription
+		return &copySubscription, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
+	var got *APIKeyBillingContext
+	router.GET("/antigravity/v1/usage", func(c *gin.Context) {
+		got, _ = GetAPIKeyBillingContext(c)
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/antigravity/v1/usage", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, got)
+	require.Equal(t, "subscription", got.Source)
+	require.NotNil(t, got.Subscription)
+	require.Equal(t, preferredID, got.Subscription.ID)
+	require.False(t, got.Available)
+}
+
+func TestAPIKeyAuthPreferredSubscriptionRejectsRestrictedPlanWithoutBoundGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "preferred-plan-without-bound-group",
+		Status:                  service.StatusAPIKeyActive,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID: preferredID, UserID: user.ID, PlanID: 1, Status: service.SubscriptionStatusActive,
+		StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour),
+		Plan: &service.SubscriptionPlan{ID: 1, GroupIDs: []int64{9}},
+	}
+	apiKeyRepo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		copyKey := *apiKey
+		return &copyKey, nil
+	}}
+	subscriptionRepo := &stubUserSubscriptionRepo{getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+		if id != preferredID {
+			return nil, service.ErrSubscriptionNotFound
+		}
+		copySubscription := *subscription
+		return &copySubscription, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	requireAPIKeyAuthError(t, w, "PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED", service.ErrPreferredSubscriptionGroup.Error())
+}
+
 func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1784,6 +2068,7 @@ func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService
 	router.POST("/v1/responses", ok)
 	router.POST("/v1/messages", ok)
 	router.GET("/v1/usage", ok)
+	router.GET("/antigravity/v1/usage", ok)
 	router.GET("/v1/models", ok)
 	router.GET("/v1/images/batches/models", ok)
 	router.GET("/v1/sub2api/billing", ok)

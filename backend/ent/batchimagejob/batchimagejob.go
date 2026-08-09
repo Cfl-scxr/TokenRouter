@@ -26,6 +26,10 @@ const (
 	FieldAPIKeyID = "api_key_id"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
+	// FieldBillingMode holds the string denoting the billing_mode field in the database.
+	FieldBillingMode = "billing_mode"
+	// FieldPreferredSubscriptionID holds the string denoting the preferred_subscription_id field in the database.
+	FieldPreferredSubscriptionID = "preferred_subscription_id"
 	// FieldProvider holds the string denoting the provider field in the database.
 	FieldProvider = "provider"
 	// FieldModel holds the string denoting the model field in the database.
@@ -123,6 +127,8 @@ var Columns = []string{
 	FieldTeamID,
 	FieldAPIKeyID,
 	FieldAccountID,
+	FieldBillingMode,
+	FieldPreferredSubscriptionID,
 	FieldProvider,
 	FieldModel,
 	FieldTaskName,
@@ -180,6 +186,10 @@ func ValidColumn(column string) bool {
 var (
 	// BatchIDValidator is a validator for the "batch_id" field. It is called by the builders before save.
 	BatchIDValidator func(string) error
+	// DefaultBillingMode holds the default value on creation for the "billing_mode" field.
+	DefaultBillingMode string
+	// BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
+	BillingModeValidator func(string) error
 	// ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
 	ProviderValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
@@ -284,6 +294,16 @@ func ByAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountID orders the results by the account_id field.
 func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
+}
+
+// ByBillingMode orders the results by the billing_mode field.
+func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingMode, opts...).ToFunc()
+}
+
+// ByPreferredSubscriptionID orders the results by the preferred_subscription_id field.
+func ByPreferredSubscriptionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPreferredSubscriptionID, opts...).ToFunc()
 }
 
 // ByProvider orders the results by the provider field.

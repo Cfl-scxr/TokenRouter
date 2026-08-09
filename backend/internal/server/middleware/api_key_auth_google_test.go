@@ -106,6 +106,82 @@ func TestGoogleAPIKeyAuthCompositeModelListStillChecksQuota(t *testing.T) {
 	require.Equal(t, "API key 额度已用完", response.Error.Message)
 }
 
+func TestAPIKeyAuthWithSubscriptionGoogle_UsageKeepsUnavailablePreferredSubscription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now()
+	group := &service.Group{ID: 9, Platform: service.PlatformGemini, Status: service.StatusActive, Hydrated: true}
+	user := &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 100}
+	preferredID := int64(55)
+	apiKey := &service.APIKey{
+		ID:                      100,
+		UserID:                  user.ID,
+		Key:                     "google-usage-unavailable-preferred-plan",
+		Status:                  service.StatusAPIKeyActive,
+		GroupID:                 &group.ID,
+		Group:                   group,
+		User:                    user,
+		BillingMode:             service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	}
+	subscription := &service.UserSubscription{
+		ID:        preferredID,
+		UserID:    user.ID,
+		PlanID:    1,
+		Status:    service.SubscriptionStatusActive,
+		StartsAt:  now.Add(-2 * time.Hour),
+		ExpiresAt: now.Add(-time.Hour),
+		Plan:      &service.SubscriptionPlan{ID: 1, GroupIDs: []int64{group.ID}},
+	}
+	apiKeyService := service.NewAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	}, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+	subscriptionService := service.NewSubscriptionService(nil, fakeGoogleSubscriptionRepo{
+		getByID: func(_ context.Context, id int64) (*service.UserSubscription, error) {
+			if id != preferredID {
+				return nil, service.ErrSubscriptionNotFound
+			}
+			clone := *subscription
+			return &clone, nil
+		},
+	}, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+	router := gin.New()
+	router.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, &config.Config{RunMode: config.RunModeStandard}))
+	router.GET("/v1/usage", func(c *gin.Context) {
+		billing, ok := GetAPIKeyBillingContext(c)
+		if !ok || billing == nil || billing.Subscription == nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"source":          billing.Source,
+			"subscription_id": billing.Subscription.ID,
+			"available":       billing.Available,
+		})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/usage", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var response struct {
+		Source         string `json:"source"`
+		SubscriptionID int64  `json:"subscription_id"`
+		Available      bool   `json:"available"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, "subscription", response.Source)
+	require.Equal(t, preferredID, response.SubscriptionID)
+	require.False(t, response.Available)
+}
+
 type fakeAPIKeyRepo struct {
 	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
 	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error

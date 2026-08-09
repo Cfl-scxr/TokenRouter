@@ -56,7 +56,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, "files/gemini_api/output", batchImageDerefString(job.ProviderOutputRef))
 		require.NotNil(t, job.AccountID)
 		require.Equal(t, int64(202), *job.AccountID)
-		require.Equal(t, 2, job.PricingSnapshotVersion)
+		require.Equal(t, 3, job.PricingSnapshotVersion)
 		require.InDelta(t, 0.25, job.BaseUnitPrice, 1e-12)
 		require.InDelta(t, 1.0, job.GroupRateMultiplier, 1e-12)
 		require.InDelta(t, 1.0, job.AccountRateMultiplier, 1e-12)
@@ -491,6 +491,42 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 			require.Equal(t, BatchImageJobStatusFailed, job.Status)
 			require.Equal(t, "INSUFFICIENT_BALANCE", batchImageDerefString(job.LastErrorCode))
 			require.NotNil(t, job.UserDeletedAt)
+		}
+	})
+
+	t.Run("preferred subscription failure rejects before provider submit", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			err      error
+			wantCode string
+		}{
+			{name: "unavailable", err: ErrPreferredSubscriptionInvalid, wantCode: "PREFERRED_SUBSCRIPTION_INVALID"},
+			{name: "group not allowed", err: ErrPreferredSubscriptionGroup, wantCode: "PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED"},
+			{name: "quota exhausted", err: ErrPreferredSubscriptionInsufficient, wantCode: "PREFERRED_SUBSCRIPTION_EXHAUSTED"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
+				billing := &fakeBatchImageBillingRepo{err: test.err}
+				svc.BillingRepo = billing
+				preferredSubscriptionID := int64(301)
+				owner := testBatchImageOwner()
+				owner.BillingMode = APIKeyBillingModeSubscription
+				owner.PreferredSubscriptionID = &preferredSubscriptionID
+
+				_, err := svc.Submit(ctx, owner, validBatchImageSubmitRequest(), "")
+
+				require.ErrorIs(t, err, test.err)
+				require.Empty(t, queue.enqueued)
+				require.Empty(t, gemini.submits)
+				require.Len(t, billing.reserves, 1)
+				require.Len(t, repo.jobs, 1)
+				for _, job := range repo.jobs {
+					require.Equal(t, BatchImageJobStatusFailed, job.Status)
+					require.Equal(t, test.wantCode, batchImageDerefString(job.LastErrorCode))
+					require.NotNil(t, job.UserDeletedAt)
+				}
+			})
 		}
 	})
 

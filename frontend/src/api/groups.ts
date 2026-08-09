@@ -13,8 +13,15 @@ import type { Group } from '@/types'
  * - Subscription groups: user has active subscription
  * @returns List of available groups
  */
-export async function getAvailable(scope: 'personal' | 'team' = 'personal'): Promise<Group[]> {
-  const { data } = await apiClient.get<Group[]>('/groups/available', { params: { scope } })
+export async function getAvailable(
+  scope: 'personal' | 'team' = 'personal',
+  subscriptionId?: number
+): Promise<Group[]> {
+  const params: { scope: 'personal' | 'team'; subscription_id?: number } = { scope }
+  if (subscriptionId && subscriptionId > 0) {
+    params.subscription_id = subscriptionId
+  }
+  const { data } = await apiClient.get<Group[]>('/groups/available', { params })
   return data
 }
 

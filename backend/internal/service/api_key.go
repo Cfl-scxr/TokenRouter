@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
@@ -21,6 +22,13 @@ const (
 	APIKeyFastModePolicyForceOff      = "force_off"
 )
 
+// API Key 结算模式常量。auto 保持存量 Key 的订阅优先、余额补足行为。
+const (
+	APIKeyBillingModeAuto         = "auto"
+	APIKeyBillingModeSubscription = "subscription"
+	APIKeyBillingModeBalance      = "balance"
+)
+
 // NormalizeAPIKeyFastModePolicy 校验并规范化 API Key Fast 模式策略。
 // 空值用于兼容旧客户端，按跟随下游请求处理。
 func NormalizeAPIKeyFastModePolicy(value string) (string, bool) {
@@ -32,6 +40,33 @@ func NormalizeAPIKeyFastModePolicy(value string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// NormalizeAPIKeyBillingMode 校验并规范化 API Key 结算模式。
+// 空值兼容旧客户端，按自动选择处理。
+func NormalizeAPIKeyBillingMode(value string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "", APIKeyBillingModeAuto:
+		return APIKeyBillingModeAuto, true
+	case APIKeyBillingModeSubscription, APIKeyBillingModeBalance:
+		return normalized, true
+	default:
+		return "", false
+	}
+}
+
+// APIKeyEffectiveBillingMode 返回 Key 实际生效的结算模式。
+// 历史记录在迁移前没有该字段时按 auto 处理，避免滚动升级期间错误拒绝请求。
+func APIKeyEffectiveBillingMode(key *APIKey) string {
+	if key == nil {
+		return APIKeyBillingModeAuto
+	}
+	mode, ok := NormalizeAPIKeyBillingMode(key.BillingMode)
+	if !ok {
+		return APIKeyBillingModeAuto
+	}
+	return mode
 }
 
 // Rate limit window durations
@@ -63,6 +98,9 @@ type APIKey struct {
 	Status          string
 	// FastModePolicy 控制该 Key 的请求级 Fast 模式，系统策略仍拥有更高优先级。
 	FastModePolicy string
+	// BillingMode 控制该 Key 的资金来源；subscription 模式必须携带 PreferredSubscriptionID。
+	BillingMode             string
+	PreferredSubscriptionID *int64
 	// ModelMapping 在渠道和账号映射前把客户端模型重定向到内部目标模型。
 	ModelMapping map[string]string
 	IPWhitelist  []string

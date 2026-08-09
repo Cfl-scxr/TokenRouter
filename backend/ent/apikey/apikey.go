@@ -39,6 +39,10 @@ const (
 	FieldStatus = "status"
 	// FieldFastModePolicy holds the string denoting the fast_mode_policy field in the database.
 	FieldFastModePolicy = "fast_mode_policy"
+	// FieldBillingMode holds the string denoting the billing_mode field in the database.
+	FieldBillingMode = "billing_mode"
+	// FieldPreferredSubscriptionID holds the string denoting the preferred_subscription_id field in the database.
+	FieldPreferredSubscriptionID = "preferred_subscription_id"
 	// FieldModelMapping holds the string denoting the model_mapping field in the database.
 	FieldModelMapping = "model_mapping"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -143,6 +147,8 @@ var Columns = []string{
 	FieldIsComposite,
 	FieldStatus,
 	FieldFastModePolicy,
+	FieldBillingMode,
+	FieldPreferredSubscriptionID,
 	FieldModelMapping,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
@@ -205,6 +211,10 @@ var (
 	DefaultFastModePolicy string
 	// FastModePolicyValidator is a validator for the "fast_mode_policy" field. It is called by the builders before save.
 	FastModePolicyValidator func(string) error
+	// DefaultBillingMode holds the default value on creation for the "billing_mode" field.
+	DefaultBillingMode string
+	// BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
+	BillingModeValidator func(string) error
 	// DefaultModelMapping holds the default value on creation for the "model_mapping" field.
 	DefaultModelMapping func() map[string]string
 	// DefaultQuota holds the default value on creation for the "quota" field.
@@ -295,6 +305,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByFastModePolicy orders the results by the fast_mode_policy field.
 func ByFastModePolicy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFastModePolicy, opts...).ToFunc()
+}
+
+// ByBillingMode orders the results by the billing_mode field.
+func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingMode, opts...).ToFunc()
+}
+
+// ByPreferredSubscriptionID orders the results by the preferred_subscription_id field.
+func ByPreferredSubscriptionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPreferredSubscriptionID, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

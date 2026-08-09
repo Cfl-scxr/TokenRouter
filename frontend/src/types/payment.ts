@@ -134,6 +134,8 @@ export interface SubscriptionPlan {
   id: number
   group_id?: number
   group_ids?: number[]
+  groups_restricted?: boolean
+  applicable_groups?: Array<{ id: number; name: string }>
   group_rate_multipliers?: Record<string, number> | Record<number, number>
   group_platform?: string
   group_name?: string

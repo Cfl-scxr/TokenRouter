@@ -28,13 +28,55 @@ func resolveUsageSubscription(
 	return nil
 }
 
+// resolveUsageSubscriptionForAPIKey 防止后扣阶段绕过 API Key 已选择的资金来源。
+// 指定订阅仅信任鉴权阶段传入的同一订阅，余额模式不再尝试查找任何套餐。
+func resolveUsageSubscriptionForAPIKey(
+	ctx context.Context,
+	apiKey *APIKey,
+	current *UserSubscription,
+	repo UserSubscriptionRepository,
+	resolver usageSubscriptionResolver,
+	userID int64,
+	groupID *int64,
+) *UserSubscription {
+	switch APIKeyEffectiveBillingMode(apiKey) {
+	case APIKeyBillingModeBalance:
+		return nil
+	case APIKeyBillingModeSubscription:
+		return current
+	default:
+		return resolveUsageSubscription(ctx, current, repo, resolver, userID, groupID)
+	}
+}
+
 type usageSubscriptionResolver interface {
 	ResolveUsableSubscriptionForGroup(ctx context.Context, userID, groupID int64) (*UserSubscription, error)
+}
+
+type usagePreferredSubscriptionResolver interface {
+	ResolvePreferredSubscriptionForGroup(ctx context.Context, userID, subscriptionID, groupID int64) (*UserSubscription, error)
 }
 
 func usageSubscriptionResolverFrom(repo UsageBillingRepository) usageSubscriptionResolver {
 	resolver, _ := repo.(usageSubscriptionResolver)
 	return resolver
+}
+
+func usagePreferredSubscriptionResolverFrom(repo UsageBillingRepository) usagePreferredSubscriptionResolver {
+	resolver, _ := repo.(usagePreferredSubscriptionResolver)
+	return resolver
+}
+
+// resolvePreferredUsageSubscription 仅返回指定订阅；不存在、分组不匹配或额度耗尽均不回退到其它套餐。
+func resolvePreferredUsageSubscription(ctx context.Context, resolver usagePreferredSubscriptionResolver, userID, subscriptionID int64, groupID *int64) *UserSubscription {
+	if resolver == nil || userID <= 0 || subscriptionID <= 0 || groupID == nil || *groupID <= 0 {
+		return nil
+	}
+	subscription, err := resolver.ResolvePreferredSubscriptionForGroup(ctx, userID, subscriptionID, *groupID)
+	if err != nil {
+		return nil
+	}
+	return subscription
 }
 
 func subscriptionPlanIncludesGroup(plan *SubscriptionPlan, groupID int64) bool {
@@ -50,6 +92,15 @@ func subscriptionPlanIncludesGroup(plan *SubscriptionPlan, groupID int64) bool {
 		}
 	}
 	return false
+}
+
+// SubscriptionAllowsGroup 返回订阅套餐是否覆盖目标分组。
+// 未配置套餐分组代表套餐不限制分组；缺失套餐或未知分组不应被指定订阅模式放行。
+func SubscriptionAllowsGroup(subscription *UserSubscription, groupID int64) bool {
+	if subscription == nil || subscription.Plan == nil || groupID <= 0 {
+		return false
+	}
+	return subscriptionPlanIncludesGroup(subscription.Plan, groupID)
 }
 
 func subscriptionPlanGroupRateMultiplier(plan *SubscriptionPlan, groupID int64) (float64, bool) {

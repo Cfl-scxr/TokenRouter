@@ -79,6 +79,52 @@ func TestBillingEligibility_ExhaustedSubscriptionFallsBackToBalance(t *testing.T
 	require.NoError(t, err)
 }
 
+func TestBillingEligibility_PreferredSubscriptionDoesNotFallBackToBalance(t *testing.T) {
+	svc := newBillingEligibilityService(t, 1)
+	preferredID := int64(1)
+	err := svc.CheckBillingEligibility(
+		context.Background(),
+		&User{ID: 1},
+		&APIKey{BillingMode: APIKeyBillingModeSubscription, PreferredSubscriptionID: &preferredID},
+		nil,
+		activeBillingEligibilitySubscription(10, 10),
+		"",
+	)
+
+	require.ErrorIs(t, err, ErrPreferredSubscriptionInsufficient)
+}
+
+func TestBillingEligibility_PreferredSubscriptionRejectsFallbackGroupOutsidePlan(t *testing.T) {
+	svc := newBillingEligibilityService(t, 1)
+	preferredID := int64(1)
+	subscription := activeBillingEligibilitySubscription(10, 0)
+	subscription.Plan = &SubscriptionPlan{GroupIDs: []int64{10}}
+	err := svc.CheckBillingEligibility(
+		context.Background(),
+		&User{ID: 1},
+		&APIKey{BillingMode: APIKeyBillingModeSubscription, PreferredSubscriptionID: &preferredID},
+		&Group{ID: 11},
+		subscription,
+		"",
+	)
+
+	require.ErrorIs(t, err, ErrPreferredSubscriptionGroup)
+}
+
+func TestBillingEligibility_BalanceModeIgnoresProvidedSubscription(t *testing.T) {
+	svc := newBillingEligibilityService(t, 0)
+	err := svc.CheckBillingEligibility(
+		context.Background(),
+		&User{ID: 1},
+		&APIKey{BillingMode: APIKeyBillingModeBalance},
+		nil,
+		activeBillingEligibilitySubscription(10, 0),
+		"",
+	)
+
+	require.ErrorIs(t, err, ErrInsufficientBalance)
+}
+
 func TestBillingEligibility_UnlimitedSubscriptionDoesNotRequireBalance(t *testing.T) {
 	now := time.Now()
 	svc := NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard}, nil)

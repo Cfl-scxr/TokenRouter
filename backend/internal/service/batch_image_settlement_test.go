@@ -111,6 +111,31 @@ func TestBuildBatchImageHoldCommandKeepsTeamBillingSnapshot(t *testing.T) {
 	require.Equal(t, teamID, *cmd.TeamID)
 }
 
+func TestBatchImageBalanceHoldKeepsAPIKeyBillingSnapshot(t *testing.T) {
+	job := testSettlingBatchImageJob("imgbatch_api_key_billing_snapshot")
+	preferredSubscriptionID := int64(89)
+	job.BillingMode = APIKeyBillingModeSubscription
+	job.PreferredSubscriptionID = &preferredSubscriptionID
+	job.PricingSnapshotVersion = 3
+	billing := &fakeBatchImageBillingRepo{}
+
+	require.NoError(t, reserveBatchImageBalanceHold(context.Background(), billing, job, nil, "reserve-hash"))
+	_, err := captureBatchImageBalanceHold(context.Background(), billing, job, 0.5, "capture-hash")
+	require.NoError(t, err)
+	require.NoError(t, releaseBatchImageBalanceHold(context.Background(), billing, job, "release-hash"))
+
+	commands := []*BatchImageBalanceHoldCommand{
+		billing.reserves[0],
+		billing.captures[0],
+		billing.releases[0],
+	}
+	for _, command := range commands {
+		require.Equal(t, APIKeyBillingModeSubscription, command.APIKeyBillingMode)
+		require.NotNil(t, command.PreferredSubscriptionID)
+		require.Equal(t, preferredSubscriptionID, *command.PreferredSubscriptionID)
+	}
+}
+
 func TestBatchImageSettlementService_ZeroSuccessCanComplete(t *testing.T) {
 	repo := newFakeBatchImageRepository()
 	job := testSettlingBatchImageJob("imgbatch_zero")

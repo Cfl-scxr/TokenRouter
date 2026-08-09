@@ -65,6 +65,8 @@ func buildBatchImageHoldCommand(job *BatchImageJob, requestID string, actualAmou
 		ActorUserID:                 job.UserID,
 		TeamID:                      job.TeamID,
 		BatchID:                     job.BatchID,
+		APIKeyBillingMode:           job.BillingMode,
+		PreferredSubscriptionID:     batchImageCloneInt64Ptr(job.PreferredSubscriptionID),
 		HoldAmount:                  holdAmount,
 		ActualAmount:                actualAmount,
 		BalanceHoldAmount:           job.BalanceHoldAmount,
@@ -108,6 +110,10 @@ func reserveBatchImageBalanceHold(ctx context.Context, repo UsageBillingReposito
 	if err != nil {
 		if errors.Is(err, ErrBatchImageInsufficientBalance) {
 			return ErrBatchImageInsufficientBalance
+		}
+		// 指定订阅是严格资金来源，冻结阶段的状态变化需要原样返回给调用方。
+		if errors.Is(err, ErrPreferredSubscriptionInvalid) || errors.Is(err, ErrPreferredSubscriptionGroup) || errors.Is(err, ErrPreferredSubscriptionInsufficient) {
+			return err
 		}
 		if errors.Is(err, ErrAPIKeyQuotaExhausted) || errors.Is(err, ErrAPIKeyRateLimit5hExceeded) || errors.Is(err, ErrAPIKeyRateLimit1dExceeded) || errors.Is(err, ErrAPIKeyRateLimit7dExceeded) ||
 			errors.Is(err, ErrTeamMemberDailyExceeded) || errors.Is(err, ErrTeamMemberWeeklyExceeded) || errors.Is(err, ErrTeamMemberMonthlyExceeded) {

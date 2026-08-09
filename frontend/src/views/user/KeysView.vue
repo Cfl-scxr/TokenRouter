@@ -65,7 +65,7 @@
                   </button>
                 </div>
               </div>
-              <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
+              <button @click="openCreateModal" class="btn btn-primary" data-tour="keys-create-btn">
                 <Icon name="plus" size="md" class="mr-2" />
                 {{ t('keys.createKey') }}
               </button>
@@ -442,7 +442,7 @@
               :title="t('keys.noKeysYet')"
               :description="t('keys.createFirstKey')"
               :action-text="t('keys.createKey')"
-              @action="showCreateModal = true"
+              @action="openCreateModal"
             />
           </template>
         </DataTable>
@@ -494,14 +494,39 @@
           />
         </div>
 
+        <div class="space-y-3">
+          <label class="input-label">{{ t('keys.billing.modeLabel') }}</label>
+          <Select
+            v-model="formData.billing_mode"
+            :options="billingModeOptions"
+            :placeholder="t('keys.billing.modeLabel')"
+            data-test="api-key-billing-mode"
+            @change="onBillingModeChange"
+          />
+
+          <div v-if="formData.billing_mode === 'subscription'">
+            <label class="input-label">{{ t('keys.billing.subscriptionLabel') }}</label>
+            <Select
+              v-model="formData.preferred_subscription_id"
+              :options="billingSubscriptionOptions"
+              :placeholder="t('keys.billing.selectSubscription')"
+              :searchable="true"
+              :disabled="billingOptionsLoading"
+              data-test="api-key-preferred-subscription"
+              @change="onPreferredSubscriptionChange"
+            />
+          </div>
+        </div>
+
         <div v-if="!formData.is_composite">
           <label class="input-label">{{ t('keys.groupLabel') }}</label>
           <Select
             v-model="formData.group_id"
-            :options="groupOptions"
+            :options="formGroupOptions"
             :placeholder="t('keys.selectGroup')"
             :searchable="true"
             :search-placeholder="t('keys.searchGroup')"
+            :disabled="formGroupsLoading"
             data-tour="key-form-group"
           >
             <template #selected="{ option }">
@@ -545,9 +570,10 @@
           >
             <Select
               v-model="binding.group_id"
-              :options="groupOptions"
+              :options="formGroupOptions"
               :placeholder="t('keys.selectGroup')"
               :searchable="true"
+              :disabled="formGroupsLoading"
               class="min-w-0"
             />
             <div class="min-w-0">
@@ -1378,7 +1404,17 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 	import ScopeDropdown, { type DataScope } from '@/components/team/ScopeDropdown.vue'
-	import type { ApiKey, ApiKeyFastModePolicy, Group, PublicSettings, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type {
+	  ApiKey,
+	  ApiKeyBillingMode,
+	  ApiKeyBillingSubscriptionOption,
+	  ApiKeyFastModePolicy,
+	  CreateApiKeyRequest,
+	  Group,
+	  PublicSettings,
+	  GroupPlatform,
+	  UpdateApiKeyRequest
+	} from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import type { DataShareNotice } from '@/api/dataSharing'
@@ -1529,6 +1565,11 @@ const columns = computed<Column[]>(() =>
 
 const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
+// 表单分组独立于列表筛选分组，指定订阅时只收窄表单选择范围。
+const formGroups = ref<Group[]>([])
+const billingSubscriptions = ref<ApiKeyBillingSubscriptionOption[]>([])
+const billingOptionsLoading = ref(false)
+const formGroupsLoading = ref(false)
 // 首次 Key 请求开始前也保持加载态，避免公共设置请求期间误显示空列表。
 const loading = ref(true)
 const usageLoading = ref(false)
@@ -1578,6 +1619,7 @@ let abortController: AbortController | null = null
 let dataSharingCountdownTimer: number | null = null
 let compositeBindingSequence = 0
 let modelMappingSequence = 0
+let formGroupsRequestID = 0
 
 // 新建本地映射行时使用稳定 ID，排序不会导致输入框重建。
 const newCompositeBinding = (groupId: number | null = null, prefix = '') => ({
@@ -1632,6 +1674,8 @@ const formData = ref({
   composite_groups: [] as Array<ReturnType<typeof newCompositeBinding>>,
   status: 'active' as 'active' | 'inactive',
   fast_mode_policy: 'follow_request' as ApiKeyFastModePolicy,
+  billing_mode: 'auto' as ApiKeyBillingMode,
+  preferred_subscription_id: null as number | null,
   model_mapping_rows: [] as Array<ReturnType<typeof newModelMappingRow>>,
   use_custom_key: false,
   custom_key: '',
@@ -1748,6 +1792,42 @@ const fastModePolicyOptions = computed(() => [
   { value: 'force_off', label: t('keys.fastModePolicy.forceOff') }
 ])
 
+// 结算模式由服务端最终校验；这里保持存量 Key 的自动模式可见且可恢复。
+const billingModeOptions = computed(() => [
+  { value: 'auto', label: t('keys.billing.modes.auto') },
+  { value: 'subscription', label: t('keys.billing.modes.subscription') },
+  { value: 'balance', label: t('keys.billing.modes.balance') }
+])
+
+const billingSubscriptionOptions = computed<Array<{
+  value: number
+  label: string
+  description?: string
+  disabled?: boolean
+}>>(() => {
+  const options: Array<{
+    value: number
+    label: string
+    description?: string
+    disabled?: boolean
+  }> = billingSubscriptions.value.map((subscription) => ({
+    value: subscription.id,
+    label: `${subscription.plan_name} #${subscription.id}`,
+    description: subscription.groups_restricted
+      ? t('keys.billing.groupsRestricted')
+      : t('keys.billing.allGroups')
+  }))
+  const selectedID = formData.value.preferred_subscription_id
+  if (selectedID && !options.some((option) => option.value === selectedID)) {
+    options.unshift({
+      value: selectedID,
+      label: t('keys.billing.unavailableSubscription', { id: selectedID }),
+      disabled: true
+    })
+  }
+  return options
+})
+
 const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
   // Owner 锁定期间仍允许编辑其它字段，但不能通过普通更新接口触碰状态。
   if (key.team_owner_disabled) return false
@@ -1789,8 +1869,8 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
 }
 
 // 用户侧分组选项只投影选择所需信息，不传递管理员使用的容量数据。
-const groupOptions = computed(() =>
-  groups.value.map((group) => ({
+const buildGroupOptions = (source: Group[]) =>
+  source.map((group) => ({
     value: group.id,
     label: group.name,
     description: group.description,
@@ -1804,7 +1884,10 @@ const groupOptions = computed(() =>
     platform: group.platform,
     dataSharingEnabled: group.data_sharing_enabled
   }))
-)
+
+// 指定订阅时仅使用服务端返回的权限与套餐分组交集。
+const formGroupOptions = computed(() => buildGroupOptions(formGroups.value))
+const allGroupOptions = computed(() => buildGroupOptions(groups.value))
 
 // 切换复合模式时保留普通 Key 的原分组，前缀仍要求用户明确填写。
 const onCompositeModeChange = (enabled: boolean) => {
@@ -1873,13 +1956,47 @@ const compositeFormError = computed(() => {
 const groupSearchQuery = ref('')
 const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
-  if (!query) return groupOptions.value
-  return groupOptions.value.filter((opt) => {
+  if (!query) return allGroupOptions.value
+  return allGroupOptions.value.filter((opt) => {
     return opt.label.toLowerCase().includes(query) ||
       (opt.displayBrand && opt.displayBrand.toLowerCase().includes(query)) ||
       (opt.description && opt.description.toLowerCase().includes(query))
   })
 })
+
+// 指定订阅切换后，普通 Key 与复合 Key 都不能继续保留套餐未覆盖的分组。
+const pruneFormGroupBindings = (allowedGroupIDs: Set<number>) => {
+  if (formData.value.group_id !== null && !allowedGroupIDs.has(formData.value.group_id)) {
+    formData.value.group_id = null
+  }
+  formData.value.composite_groups = formData.value.composite_groups.filter((binding) =>
+    binding.group_id !== null && allowedGroupIDs.has(binding.group_id)
+  )
+}
+
+const onBillingModeChange = (value: string | number | boolean | null) => {
+  const mode: ApiKeyBillingMode = value === 'subscription' || value === 'balance' ? value : 'auto'
+  formData.value.billing_mode = mode
+  if (mode !== 'subscription') {
+    formData.value.preferred_subscription_id = null
+    void loadFormGroups()
+    return
+  }
+
+  // 选定订阅后再裁剪不兼容分组，避免丢失仍可用的现有映射。
+  formData.value.preferred_subscription_id = null
+  formGroups.value = []
+}
+
+const onPreferredSubscriptionChange = (value: string | number | boolean | null) => {
+  const subscriptionID = typeof value === 'number' && value > 0 ? value : null
+  formData.value.preferred_subscription_id = subscriptionID
+  const subscription = billingSubscriptions.value.find((item) => item.id === subscriptionID)
+  if (subscription?.groups_restricted) {
+    pruneFormGroupBindings(new Set(subscription.applicable_groups))
+  }
+  void loadFormGroups()
+}
 
 const maskKey = (key: string): string => {
   if (key.length <= 12) return key
@@ -1975,9 +2092,60 @@ const loadUsageStats = async (items: ApiKey[], controller: AbortController) => {
 
 const loadGroups = async () => {
   try {
-    groups.value = await userGroupsAPI.getAvailable(scope.value)
+    const available = await userGroupsAPI.getAvailable(scope.value)
+    groups.value = available
+    // 自动与余额模式沿用用户原有分组，避免表单打开时的重复请求清空已有选择。
+    if (formData.value.billing_mode !== 'subscription') {
+      formGroups.value = available
+    }
   } catch (error) {
     console.error('Failed to load groups:', error)
+  }
+}
+
+// 指定订阅时由服务端返回付款主体权限与套餐分组的交集，表格筛选不受影响。
+const loadFormGroups = async () => {
+  const requestID = ++formGroupsRequestID
+  if (formData.value.billing_mode !== 'subscription') {
+    formGroups.value = groups.value
+    formGroupsLoading.value = false
+    return
+  }
+
+  const subscriptionID = formData.value.preferred_subscription_id
+  if (!subscriptionID) {
+    formGroups.value = []
+    formGroupsLoading.value = false
+    return
+  }
+
+  formGroupsLoading.value = true
+  try {
+    const available = await userGroupsAPI.getAvailable(scope.value, subscriptionID)
+    if (requestID !== formGroupsRequestID) return
+    formGroups.value = available
+    pruneFormGroupBindings(new Set(available.map((group) => group.id)))
+  } catch (error) {
+    if (requestID === formGroupsRequestID) {
+      formGroups.value = []
+    }
+    console.error('Failed to load API key form groups:', error)
+  } finally {
+    if (requestID === formGroupsRequestID) {
+      formGroupsLoading.value = false
+    }
+  }
+}
+
+const loadBillingOptions = async () => {
+  billingOptionsLoading.value = true
+  try {
+    billingSubscriptions.value = await keysAPI.getBillingOptions(scope.value)
+  } catch (error) {
+    billingSubscriptions.value = []
+    console.error('Failed to load API key billing options:', error)
+  } finally {
+    billingOptionsLoading.value = false
   }
 }
 
@@ -2026,6 +2194,11 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadApiKeys()
 }
 
+const openCreateModal = () => {
+  showCreateModal.value = true
+  void Promise.all([loadBillingOptions(), loadFormGroups()])
+}
+
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
@@ -2040,6 +2213,8 @@ const editKey = (key: ApiKey) => {
     // 后端的终态统一映射为不可用，编辑表单只提交 active/inactive。
     status: key.status === 'active' ? 'active' : 'inactive',
     fast_mode_policy: key.fast_mode_policy ?? 'follow_request',
+    billing_mode: key.billing_mode ?? 'auto',
+    preferred_subscription_id: key.preferred_subscription_id ?? null,
     model_mapping_rows: Object.entries(key.model_mapping ?? {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([source, target]) => newModelMappingRow(source, target)),
@@ -2059,7 +2234,9 @@ const editKey = (key: ApiKey) => {
     expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : '',
     fallback_to_default_group_when_unavailable: key.fallback_to_default_group_when_unavailable ?? false
   }
+  formGroups.value = []
   showEditModal.value = true
+  void Promise.all([loadBillingOptions(), loadFormGroups()])
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
@@ -2105,7 +2282,7 @@ const closeKeyActionMenu = () => {
 }
 
 const openGroupSelector = (key: ApiKey) => {
-	if (key.is_composite) {
+	if (key.is_composite || key.billing_mode === 'subscription') {
 		editKey(key)
 		return
 	}
@@ -2354,6 +2531,17 @@ const submitKeyForm = async (
         fallback_to_default_group_when_unavailable: formData.value.fallback_to_default_group_when_unavailable,
         ...consent
       }
+      const originalBillingMode = selectedKey.value.billing_mode ?? 'auto'
+      const originalPreferredSubscriptionID = selectedKey.value.preferred_subscription_id ?? null
+      if (
+        formData.value.billing_mode !== originalBillingMode ||
+        formData.value.preferred_subscription_id !== originalPreferredSubscriptionID
+      ) {
+        updates.billing_mode = formData.value.billing_mode
+        updates.preferred_subscription_id = formData.value.billing_mode === 'subscription'
+          ? formData.value.preferred_subscription_id
+          : null
+      }
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
       }
@@ -2361,7 +2549,7 @@ const submitKeyForm = async (
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      const payload = {
+      const payload: CreateApiKeyRequest = {
         name: formData.value.name,
         scope: scope.value,
         group_id: formData.value.is_composite ? undefined : formData.value.group_id,
@@ -2373,6 +2561,10 @@ const submitKeyForm = async (
             }))
           : undefined,
         fast_mode_policy: formData.value.fast_mode_policy,
+        billing_mode: formData.value.billing_mode,
+        preferred_subscription_id: formData.value.billing_mode === 'subscription'
+          ? formData.value.preferred_subscription_id
+          : null,
         model_mapping: modelMapping,
         custom_key: customKey,
         ip_whitelist: ipWhitelist,
@@ -2412,7 +2604,7 @@ const submitKeyForm = async (
 const onScopeChange = () => {
   pagination.value.page = 1
   filterGroupId.value = ''
-  void Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates()])
+  void Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates(), loadBillingOptions(), loadFormGroups()])
 }
 
 const handleSubmit = async () => {
@@ -2425,6 +2617,11 @@ const handleSubmit = async () => {
 		appStore.showError(compositeFormError.value)
 		return
 	}
+
+  if (formData.value.billing_mode === 'subscription' && !formData.value.preferred_subscription_id) {
+    appStore.showError(t('keys.billing.subscriptionRequired'))
+    return
+  }
 
   // 普通模式必须显式选择单个分组，复合转普通时同样不沿用隐式值。
   if (!formData.value.is_composite && formData.value.group_id === null) {
@@ -2491,6 +2688,8 @@ const closeModals = () => {
   showCreateModal.value = false
   showEditModal.value = false
   selectedKey.value = null
+  formGroupsRequestID++
+  formGroups.value = []
   formData.value = {
     name: '',
     group_id: null,
@@ -2498,6 +2697,8 @@ const closeModals = () => {
     composite_groups: [],
     status: 'active',
     fast_mode_policy: 'follow_request',
+    billing_mode: 'auto',
+    preferred_subscription_id: null,
     model_mapping_rows: [],
     use_custom_key: false,
     custom_key: '',
@@ -2652,7 +2853,7 @@ onMounted(async () => {
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
   await loadPublicSettings()
-  await Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates()])
+  await Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates(), loadBillingOptions(), loadFormGroups()])
 })
 
 onUnmounted(() => {

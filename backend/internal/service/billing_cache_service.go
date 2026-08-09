@@ -585,7 +585,7 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // ============================================
 
 // CheckBillingEligibility 检查用户是否有资格发起请求。
-// 余额模式检查缓存余额；订阅模式检查订阅有效性，订阅额度耗尽后回退余额。
+// auto 模式保留订阅额度耗尽后回退余额的历史行为；指定订阅和仅余额模式严格遵循 Key 配置。
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	// 简易模式：跳过所有计费检查
@@ -594,6 +594,27 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
 		return ErrBillingServiceUnavailable
+	}
+
+	billingMode := APIKeyEffectiveBillingMode(apiKey)
+	if billingMode == APIKeyBillingModeSubscription {
+		// 请求期二次校验防止分组回退、套餐变更或异步路径绕过指定套餐的范围。
+		if subscription == nil {
+			return ErrPreferredSubscriptionInvalid
+		}
+		if group != nil && !SubscriptionAllowsGroup(subscription, group.ID) {
+			return ErrPreferredSubscriptionGroup
+		}
+		if err := checkEffectiveSubscriptionEligibility(subscription); err != nil {
+			if isSubscriptionQuotaExceeded(err) {
+				return ErrPreferredSubscriptionInsufficient
+			}
+			return ErrPreferredSubscriptionInvalid
+		}
+	}
+	if billingMode == APIKeyBillingModeBalance {
+		// 即使上游误传了订阅快照，余额模式也不能因此使用套餐额度。
+		subscription = nil
 	}
 
 	isSubscriptionMode := subscription != nil

@@ -84,6 +84,16 @@ func AccountID(v int64) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldAccountID, v))
 }
 
+// BillingMode applies equality check predicate on the "billing_mode" field. It's identical to BillingModeEQ.
+func BillingMode(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBillingMode, v))
+}
+
+// PreferredSubscriptionID applies equality check predicate on the "preferred_subscription_id" field. It's identical to PreferredSubscriptionIDEQ.
+func PreferredSubscriptionID(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldPreferredSubscriptionID, v))
+}
+
 // Provider applies equality check predicate on the "provider" field. It's identical to ProviderEQ.
 func Provider(v string) predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldEQ(FieldProvider, v))
@@ -592,6 +602,121 @@ func AccountIDIsNil() predicate.BatchImageJob {
 // AccountIDNotNil applies the NotNil predicate on the "account_id" field.
 func AccountIDNotNil() predicate.BatchImageJob {
 	return predicate.BatchImageJob(sql.FieldNotNull(FieldAccountID))
+}
+
+// BillingModeEQ applies the EQ predicate on the "billing_mode" field.
+func BillingModeEQ(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldBillingMode, v))
+}
+
+// BillingModeNEQ applies the NEQ predicate on the "billing_mode" field.
+func BillingModeNEQ(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldBillingMode, v))
+}
+
+// BillingModeIn applies the In predicate on the "billing_mode" field.
+func BillingModeIn(vs ...string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldBillingMode, vs...))
+}
+
+// BillingModeNotIn applies the NotIn predicate on the "billing_mode" field.
+func BillingModeNotIn(vs ...string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldBillingMode, vs...))
+}
+
+// BillingModeGT applies the GT predicate on the "billing_mode" field.
+func BillingModeGT(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldBillingMode, v))
+}
+
+// BillingModeGTE applies the GTE predicate on the "billing_mode" field.
+func BillingModeGTE(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldBillingMode, v))
+}
+
+// BillingModeLT applies the LT predicate on the "billing_mode" field.
+func BillingModeLT(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldBillingMode, v))
+}
+
+// BillingModeLTE applies the LTE predicate on the "billing_mode" field.
+func BillingModeLTE(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldBillingMode, v))
+}
+
+// BillingModeContains applies the Contains predicate on the "billing_mode" field.
+func BillingModeContains(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldContains(FieldBillingMode, v))
+}
+
+// BillingModeHasPrefix applies the HasPrefix predicate on the "billing_mode" field.
+func BillingModeHasPrefix(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldHasPrefix(FieldBillingMode, v))
+}
+
+// BillingModeHasSuffix applies the HasSuffix predicate on the "billing_mode" field.
+func BillingModeHasSuffix(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldHasSuffix(FieldBillingMode, v))
+}
+
+// BillingModeEqualFold applies the EqualFold predicate on the "billing_mode" field.
+func BillingModeEqualFold(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEqualFold(FieldBillingMode, v))
+}
+
+// BillingModeContainsFold applies the ContainsFold predicate on the "billing_mode" field.
+func BillingModeContainsFold(v string) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldContainsFold(FieldBillingMode, v))
+}
+
+// PreferredSubscriptionIDEQ applies the EQ predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDEQ(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldEQ(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDNEQ applies the NEQ predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDNEQ(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNEQ(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDIn applies the In predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDIn(vs ...int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIn(FieldPreferredSubscriptionID, vs...))
+}
+
+// PreferredSubscriptionIDNotIn applies the NotIn predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDNotIn(vs ...int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotIn(FieldPreferredSubscriptionID, vs...))
+}
+
+// PreferredSubscriptionIDGT applies the GT predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDGT(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGT(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDGTE applies the GTE predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDGTE(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldGTE(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDLT applies the LT predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDLT(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLT(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDLTE applies the LTE predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDLTE(v int64) predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldLTE(FieldPreferredSubscriptionID, v))
+}
+
+// PreferredSubscriptionIDIsNil applies the IsNil predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDIsNil() predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldIsNull(FieldPreferredSubscriptionID))
+}
+
+// PreferredSubscriptionIDNotNil applies the NotNil predicate on the "preferred_subscription_id" field.
+func PreferredSubscriptionIDNotNil() predicate.BatchImageJob {
+	return predicate.BatchImageJob(sql.FieldNotNull(FieldPreferredSubscriptionID))
 }
 
 // ProviderEQ applies the EQ predicate on the "provider" field.

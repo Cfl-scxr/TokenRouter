@@ -6,6 +6,7 @@
 
 - [全局入口](#全局入口)：理解所有请求共享的处理顺序。
 - [路由族](#路由族)：选择 URL、认证和拥有者。
+- [API Key 结算策略接口](#api-key-结算策略接口)：配置资金来源、查询订阅和收窄分组。
 - [分组客户端协议](#分组客户端协议)：理解上游平台与客户端准入的独立契约。
 - [认证方式](#认证方式)：区分 JWT、管理密钥、API Key 和签名票据。
 - [外部支付管理集成](#外部支付管理集成)：服务间充值和嵌入页对接边界。
@@ -58,6 +59,14 @@ OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC �
 账号批量删除使用 `POST /api/v1/admin/accounts/batch-delete`，请求体为 `account_ids`。服务端先去除非正数和重复 ID，再以最多 5 路并发执行删除；同批选择父账号及其影子账号时只删除根账号一次，并将级联影响映射回逐账号结果。响应返回稳定排序的 `success_ids`、`failed_ids` 和错误明细，单项失败不会取消其它账号。管理端“全选筛选结果”先以同一筛选快照分页读取轻量 ID，任何分页缺失或重复都保留原选择，不得提交部分集合。
 
 路由前缀不独自决定协议处理器。例如 `/v1/messages` 会根据分组平台分派到 Anthropic、OpenAI/Grok 或 Qoder handler；路由层拥有分派，handler/service 不能通过字符串猜测调用方已经具备某个平台能力。
+
+## API Key 结算策略接口
+
+`POST /api/v1/keys` 和 `PUT /api/v1/keys/{id}` 接受 `billing_mode`（`auto`、`subscription`、`balance`）及可空 `preferred_subscription_id`。省略模式或使用 `auto` 保持旧的订阅优先、余额兜底行为；`balance` 会清除指定订阅；`subscription` 必须指定当前付款主体的一份有效订阅。个人 Key 的付款主体是本人，团队 Key 的付款主体是 Team Owner。
+
+`GET /api/v1/keys/billing-options?scope=personal|team` 返回当前作用域可指定的有效订阅摘要，包括 `id`、`plan_id`、`plan_name`、`expires_at`、`groups_restricted` 和 `applicable_groups`。`GET /api/v1/groups/available?scope=personal|team&subscription_id={id}` 在带 `subscription_id` 时返回付款主体原有分组权限与该订阅套餐分组的交集；不带该参数时保持历史的可用分组结果。两个接口都不把成员自己的订阅泄露到团队作用域。
+
+网关 `GET /v1/usage` 在原有 Key 配额、订阅或余额字段之外始终返回 `billing` 对象，至少包含 `mode`、`source`、`preferred_subscription_id`、`available` 和 `unit`。`source=subscription` 时只返回实际选择的订阅额度/剩余值；指定订阅失效时仍使用该来源并标记 `available=false`，不返回余额。`source=balance` 时只返回付款主体余额，不加载或展示订阅额度。`auto` 的 `source` 随当前可用订阅动态变化；Key 自身的配额和滚动限额字段不受该展示规则影响。
 
 ## 分组客户端协议
 

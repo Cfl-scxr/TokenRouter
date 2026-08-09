@@ -59,6 +59,15 @@ func (APIKey) Fields() []ent.Field {
 			MaxLen(32).
 			Default("follow_request").
 			Comment("API Key 的 Fast 模式策略：follow_request、force_on 或 force_off"),
+		// API Key 可显式锁定订阅或余额；auto 保持历史的订阅优先行为。
+		field.String("billing_mode").
+			MaxLen(32).
+			Default("auto").
+			Comment("API Key 结算模式：auto、subscription 或 balance"),
+		field.Int64("preferred_subscription_id").
+			Optional().
+			Nillable().
+			Comment("billing_mode 为 subscription 时锁定使用的用户订阅 ID"),
 		// 每个 API Key 可在进入渠道与账号映射前覆盖客户端模型名。
 		field.JSON("model_mapping", map[string]string{}).
 			Default(func() map[string]string { return map[string]string{} }).

@@ -171,6 +171,34 @@ func (_c *APIKeyCreate) SetNillableFastModePolicy(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetBillingMode sets the "billing_mode" field.
+func (_c *APIKeyCreate) SetBillingMode(v string) *APIKeyCreate {
+	_c.mutation.SetBillingMode(v)
+	return _c
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableBillingMode(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetBillingMode(*v)
+	}
+	return _c
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_c *APIKeyCreate) SetPreferredSubscriptionID(v int64) *APIKeyCreate {
+	_c.mutation.SetPreferredSubscriptionID(v)
+	return _c
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillablePreferredSubscriptionID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetPreferredSubscriptionID(*v)
+	}
+	return _c
+}
+
 // SetModelMapping sets the "model_mapping" field.
 func (_c *APIKeyCreate) SetModelMapping(v map[string]string) *APIKeyCreate {
 	_c.mutation.SetModelMapping(v)
@@ -539,6 +567,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultFastModePolicy
 		_c.mutation.SetFastModePolicy(v)
 	}
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		v := apikey.DefaultBillingMode
+		_c.mutation.SetBillingMode(v)
+	}
 	if _, ok := _c.mutation.ModelMapping(); !ok {
 		if apikey.DefaultModelMapping == nil {
 			return fmt.Errorf("ent: uninitialized apikey.DefaultModelMapping (forgotten import ent/runtime?)")
@@ -636,6 +668,14 @@ func (_c *APIKeyCreate) check() error {
 	if v, ok := _c.mutation.FastModePolicy(); ok {
 		if err := apikey.FastModePolicyValidator(v); err != nil {
 			return &ValidationError{Name: "fast_mode_policy", err: fmt.Errorf(`ent: validator failed for field "APIKey.fast_mode_policy": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		return &ValidationError{Name: "billing_mode", err: errors.New(`ent: missing required field "APIKey.billing_mode"`)}
+	}
+	if v, ok := _c.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.ModelMapping(); !ok {
@@ -736,6 +776,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
 		_node.FastModePolicy = value
+	}
+	if value, ok := _c.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+		_node.BillingMode = value
+	}
+	if value, ok := _c.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(apikey.FieldPreferredSubscriptionID, field.TypeInt64, value)
+		_node.PreferredSubscriptionID = &value
 	}
 	if value, ok := _c.mutation.ModelMapping(); ok {
 		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)
@@ -1099,6 +1147,42 @@ func (u *APIKeyUpsert) SetFastModePolicy(v string) *APIKeyUpsert {
 // UpdateFastModePolicy sets the "fast_mode_policy" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateFastModePolicy() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldFastModePolicy)
+	return u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsert) SetBillingMode(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldBillingMode, v)
+	return u
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateBillingMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldBillingMode)
+	return u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *APIKeyUpsert) SetPreferredSubscriptionID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldPreferredSubscriptionID, v)
+	return u
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdatePreferredSubscriptionID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldPreferredSubscriptionID)
+	return u
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *APIKeyUpsert) AddPreferredSubscriptionID(v int64) *APIKeyUpsert {
+	u.Add(apikey.FieldPreferredSubscriptionID, v)
+	return u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *APIKeyUpsert) ClearPreferredSubscriptionID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldPreferredSubscriptionID)
 	return u
 }
 
@@ -1673,6 +1757,48 @@ func (u *APIKeyUpsertOne) SetFastModePolicy(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateFastModePolicy() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateFastModePolicy()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsertOne) SetBillingMode(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateBillingMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *APIKeyUpsertOne) SetPreferredSubscriptionID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetPreferredSubscriptionID(v)
+	})
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *APIKeyUpsertOne) AddPreferredSubscriptionID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddPreferredSubscriptionID(v)
+	})
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdatePreferredSubscriptionID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdatePreferredSubscriptionID()
+	})
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *APIKeyUpsertOne) ClearPreferredSubscriptionID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearPreferredSubscriptionID()
 	})
 }
 
@@ -2472,6 +2598,48 @@ func (u *APIKeyUpsertBulk) SetFastModePolicy(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateFastModePolicy() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateFastModePolicy()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsertBulk) SetBillingMode(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateBillingMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *APIKeyUpsertBulk) SetPreferredSubscriptionID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetPreferredSubscriptionID(v)
+	})
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *APIKeyUpsertBulk) AddPreferredSubscriptionID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddPreferredSubscriptionID(v)
+	})
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdatePreferredSubscriptionID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdatePreferredSubscriptionID()
+	})
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *APIKeyUpsertBulk) ClearPreferredSubscriptionID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearPreferredSubscriptionID()
 	})
 }
 

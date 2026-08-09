@@ -936,7 +936,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
+						fallbackSubscription := (*service.UserSubscription)(nil)
+						if service.APIKeyEffectiveBillingMode(fallbackAPIKey) == service.APIKeyBillingModeSubscription {
+							// 指定订阅的回退分组必须继续使用同一订阅，由资格检查再次验证套餐分组范围。
+							fallbackSubscription = currentSubscription
+						}
+						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, fallbackSubscription, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
 							status, code, message, retryAfter := billingErrorDetails(err)
 							if retryAfter > 0 {
 								c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -950,7 +955,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						ctx = context.WithValue(ctx, ctxkey.Group, fallbackGroup)
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
-						currentSubscription = nil
+						currentSubscription = fallbackSubscription
 						fallbackUsed = true
 						retryWithFallback = true
 						break
@@ -1040,7 +1045,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 	if apiKey != nil && apiKey.IsComposite {
-		writeCompositeModelsList(c, h.compositeRequestableModels(c.Request.Context(), apiKey, ""))
+		writeCompositeModelsList(c, h.compositeRequestableModels(c, apiKey, ""))
 		return
 	}
 
@@ -1097,15 +1102,21 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 }
 
 // compositeRequestableModels 按映射顺序聚合可请求模型，并在模型 ID 前添加展示前缀。
-func (h *GatewayHandler) compositeRequestableModels(ctx context.Context, apiKey *service.APIKey, requiredPlatform string) []string {
-	if h == nil || h.gatewayService == nil || apiKey == nil {
+// 严格指定订阅时，列表只能包含套餐覆盖的分组，避免将随后必然拒绝的模型暴露给客户端。
+func (h *GatewayHandler) compositeRequestableModels(c *gin.Context, apiKey *service.APIKey, requiredPlatform string) []string {
+	if h == nil || h.gatewayService == nil || c == nil || c.Request == nil || apiKey == nil {
 		return nil
 	}
+	preferredSubscription, ready := compositePreferredSubscription(c, apiKey)
+	if !ready {
+		return nil
+	}
+	ctx := c.Request.Context()
 	models := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, binding := range apiKey.CompositeGroups {
 		group := binding.Group
-		if !compositeGroupAvailableToUser(apiKey, group) || (requiredPlatform != "" && group.Platform != requiredPlatform) {
+		if !compositeGroupAvailableToUser(apiKey, preferredSubscription, group) || (requiredPlatform != "" && group.Platform != requiredPlatform) {
 			continue
 		}
 		groupID := group.ID
@@ -1127,9 +1138,25 @@ func (h *GatewayHandler) compositeRequestableModels(ctx context.Context, apiKey 
 	return models
 }
 
-// compositeGroupAvailableToUser 使用认证快照过滤已停用或已撤销授权的复合映射。
-func compositeGroupAvailableToUser(apiKey *service.APIKey, group *service.Group) bool {
+// compositePreferredSubscription 返回复合 Key 严格指定套餐的认证快照。
+// 快照缺失时采用拒绝展示的策略，避免任意模型列表入口泄露套餐外映射。
+func compositePreferredSubscription(c *gin.Context, apiKey *service.APIKey) (*service.UserSubscription, bool) {
+	if service.APIKeyEffectiveBillingMode(apiKey) != service.APIKeyBillingModeSubscription {
+		return nil, true
+	}
+	billingContext, ok := middleware2.GetAPIKeyBillingContext(c)
+	if !ok || billingContext == nil || billingContext.Mode != service.APIKeyBillingModeSubscription || billingContext.Subscription == nil {
+		return nil, false
+	}
+	return billingContext.Subscription, true
+}
+
+// compositeGroupAvailableToUser 使用认证快照过滤已停用、已撤销授权或套餐外的复合映射。
+func compositeGroupAvailableToUser(apiKey *service.APIKey, preferredSubscription *service.UserSubscription, group *service.Group) bool {
 	if apiKey == nil || apiKey.User == nil || group == nil || !group.IsActive() {
+		return false
+	}
+	if service.APIKeyEffectiveBillingMode(apiKey) == service.APIKeyBillingModeSubscription && !service.SubscriptionAllowsGroup(preferredSubscription, group.ID) {
 		return false
 	}
 	return apiKey.User.CanBindGroup(group.ID, group.IsExclusive)
@@ -1448,7 +1475,7 @@ func mergeModelIDs(primary, secondary []string) []string {
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 	if apiKey != nil && apiKey.IsComposite {
-		writeCompositeModelsList(c, h.compositeRequestableModels(c.Request.Context(), apiKey, service.PlatformAntigravity))
+		writeCompositeModelsList(c, h.compositeRequestableModels(c, apiKey, service.PlatformAntigravity))
 		return
 	}
 	var groupID *int64
@@ -1572,7 +1599,7 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits()
 
 	if isQuotaLimited {
-		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats, balanceUnitName)
+		h.usageQuotaLimited(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats, balanceUnitName)
 		return
 	}
 
@@ -1651,11 +1678,28 @@ func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, apiKeyID int64, d
 }
 
 // usageQuotaLimited 处理 quota_limited 模式的响应
-func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any, balanceUnitName string) {
+func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any, balanceUnitName string) {
 	resp := gin.H{
 		"mode":    "quota_limited",
 		"isValid": apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
 		"status":  apiKey.Status,
+	}
+	billing, subscription, balance, billingErr := h.buildAPIKeyUsageBilling(c, ctx, apiKey, subject, balanceUnitName)
+	if billingErr != nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to get billing source")
+		return
+	}
+	resp["billing"] = billing
+	if subscription != nil {
+		resp["subscription"] = apiKeyUsageSubscriptionPayload(subscription)
+	} else if billing["source"] == "subscription" {
+		resp["subscription"] = gin.H{
+			"id":        billing["preferred_subscription_id"],
+			"available": false,
+		}
+	}
+	if balance != nil {
+		resp["balance"] = *balance
 	}
 
 	// 总额度信息
@@ -1745,31 +1789,38 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
 func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any, balanceUnitName string) {
-	if subscription, ok := middleware2.GetSubscriptionFromContext(c); ok {
+	billing, subscription, balance, billingErr := h.buildAPIKeyUsageBilling(c, ctx, apiKey, subject, balanceUnitName)
+	if billingErr != nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to get billing source")
+		return
+	}
+	if billing["source"] == "subscription" {
 		planName := ""
-		if subscription.Plan != nil {
+		if subscription != nil && subscription.Plan != nil {
 			planName = subscription.Plan.Name
 		} else if apiKey.Group != nil {
 			planName = apiKey.Group.Name
 		}
 		resp := gin.H{
 			"mode":     "unrestricted",
-			"isValid":  true,
+			"isValid":  billing["available"],
 			"planName": planName,
 			"unit":     balanceUnitName,
+			"billing":  billing,
 		}
 
-		remaining := h.calculateSubscriptionRemaining(subscription)
+		remaining := 0.0
+		if subscription != nil {
+			remaining = h.calculateSubscriptionRemaining(subscription)
+		}
 		resp["remaining"] = remaining
-		resp["subscription"] = gin.H{
-			"daily_usage_usd":     subscription.DailyUsageUSD,
-			"weekly_usage_usd":    subscription.WeeklyUsageUSD,
-			"monthly_usage_usd":   subscription.MonthlyUsageUSD,
-			"daily_limit_usd":     subscription.DailyLimitUSD,
-			"weekly_limit_usd":    subscription.WeeklyLimitUSD,
-			"monthly_limit_usd":   subscription.MonthlyLimitUSD,
-			"weekly_window_start": subscription.WeeklyWindowStart,
-			"expires_at":          subscription.ExpiresAt,
+		if subscription != nil {
+			resp["subscription"] = apiKeyUsageSubscriptionPayload(subscription)
+		} else {
+			resp["subscription"] = gin.H{
+				"id":        billing["preferred_subscription_id"],
+				"available": false,
+			}
 		}
 
 		if usageData != nil {
@@ -1785,20 +1836,20 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		return
 	}
 
-	// 余额模式
-	latestUser, err := h.userService.GetByID(ctx, subject.UserID)
-	if err != nil {
-		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to get user info")
-		return
+	// 余额模式只返回付款主体余额，指定订阅失效时不会到达这个分支。
+	currentBalance := 0.0
+	if balance != nil {
+		currentBalance = *balance
 	}
 
 	resp := gin.H{
 		"mode":      "unrestricted",
-		"isValid":   true,
+		"isValid":   billing["available"],
 		"planName":  "钱包余额",
-		"remaining": latestUser.Balance,
+		"remaining": currentBalance,
 		"unit":      balanceUnitName,
-		"balance":   latestUser.Balance,
+		"balance":   currentBalance,
+		"billing":   billing,
 	}
 	if usageData != nil {
 		resp["usage"] = usageData
@@ -1810,6 +1861,80 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		resp["model_stats"] = modelStats
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// buildAPIKeyUsageBilling 生成 /v1/usage 的稳定资金来源视图。
+// 返回内容严格遵循 Key 的结算模式，不能因为查询时套餐失效而泄露或回退到余额。
+func (h *GatewayHandler) buildAPIKeyUsageBilling(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, balanceUnitName string) (gin.H, *service.UserSubscription, *float64, error) {
+	mode := service.APIKeyEffectiveBillingMode(apiKey)
+	billing := gin.H{
+		"mode":                      mode,
+		"source":                    "balance",
+		"preferred_subscription_id": nil,
+		"available":                 true,
+		"unit":                      balanceUnitName,
+	}
+	if apiKey != nil && apiKey.PreferredSubscriptionID != nil {
+		billing["preferred_subscription_id"] = *apiKey.PreferredSubscriptionID
+	}
+
+	var subscription *service.UserSubscription
+	if contextBilling, ok := middleware2.GetAPIKeyBillingContext(c); ok && contextBilling != nil {
+		billing["mode"] = contextBilling.Mode
+		billing["source"] = contextBilling.Source
+		billing["available"] = contextBilling.Available
+		subscription = contextBilling.Subscription
+	} else if contextSubscription, ok := middleware2.GetSubscriptionFromContext(c); ok {
+		billing["source"] = "subscription"
+		subscription = contextSubscription
+	}
+
+	if billing["source"] == "subscription" {
+		if subscription != nil {
+			billing["subscription_id"] = subscription.ID
+			billing["plan_id"] = subscription.PlanID
+			billing["remaining"] = h.calculateSubscriptionRemaining(subscription)
+			if subscription.Plan != nil {
+				billing["plan_name"] = subscription.Plan.Name
+			}
+		}
+		return billing, subscription, nil, nil
+	}
+
+	var balance float64
+	if h.userService != nil {
+		latestUser, err := h.userService.GetByID(ctx, subject.UserID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		balance = latestUser.Balance
+	} else if apiKey != nil && apiKey.User != nil {
+		balance = apiKey.User.Balance
+	}
+	billing["balance"] = balance
+	billing["remaining"] = balance
+	billing["available"] = balance > 0
+	return billing, nil, &balance, nil
+}
+
+// apiKeyUsageSubscriptionPayload 返回订阅资金来源的额度快照。
+func apiKeyUsageSubscriptionPayload(subscription *service.UserSubscription) gin.H {
+	if subscription == nil {
+		return nil
+	}
+	return gin.H{
+		"id":                  subscription.ID,
+		"plan_id":             subscription.PlanID,
+		"daily_usage_usd":     subscription.DailyUsageUSD,
+		"weekly_usage_usd":    subscription.WeeklyUsageUSD,
+		"monthly_usage_usd":   subscription.MonthlyUsageUSD,
+		"daily_limit_usd":     subscription.DailyLimitUSD,
+		"weekly_limit_usd":    subscription.WeeklyLimitUSD,
+		"monthly_limit_usd":   subscription.MonthlyLimitUSD,
+		"weekly_window_start": subscription.WeeklyWindowStart,
+		"expires_at":          subscription.ExpiresAt,
+		"status":              subscription.Status,
+	}
 }
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度

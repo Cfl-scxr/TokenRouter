@@ -188,7 +188,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	subscriptionMultiplier := multiplier
 	balanceMultiplier := multiplier
-	subscription = resolveUsageSubscription(ctx, subscription, s.userSubRepo, usageSubscriptionResolverFrom(s.usageBillingRepo), user.ID, apiKey.GroupID)
+	subscription = resolveUsageSubscriptionForAPIKey(ctx, apiKey, subscription, s.userSubRepo, usageSubscriptionResolverFrom(s.usageBillingRepo), user.ID, apiKey.GroupID)
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		subscriptionMultiplier = apiKey.Group.RateMultiplier
 		balanceMultiplier = apiKey.Group.RateMultiplier

@@ -77,11 +77,13 @@ type BatchImageReferenceInput struct {
 }
 
 type BatchImageOwner struct {
-	UserID        int64
-	BillingUserID int64
-	TeamID        *int64
-	APIKeyID      int64
-	GroupID       *int64
+	UserID                  int64
+	BillingUserID           int64
+	TeamID                  *int64
+	APIKeyID                int64
+	GroupID                 *int64
+	BillingMode             string
+	PreferredSubscriptionID *int64
 }
 
 // EffectiveBillingUserID 兼容个人 Key 和迁移前创建的批量任务调用参数。
@@ -302,6 +304,8 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		APIKeyID:                   &apiKeyID,
 		AccountID:                  &accountID,
 		GroupID:                    owner.GroupID,
+		BillingMode:                owner.BillingMode,
+		PreferredSubscriptionID:    batchImageCloneInt64Ptr(owner.PreferredSubscriptionID),
 		Provider:                   provider.Name(),
 		Model:                      upstreamModel,
 		RequestedModel:             requestedModel,
@@ -322,7 +326,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		HoldMultiplier:             pricingSnapshot.HoldMultiplier,
 		BillableUnitPrice:          pricingSnapshot.BillableUnitPrice,
 		HoldUnitPrice:              pricingSnapshot.HoldUnitPrice,
-		PricingSnapshotVersion:     2,
+		PricingSnapshotVersion:     3,
 		Currency:                   "USD",
 		HoldID:                     &holdID,
 		IdempotencyKey:             batchImageOptionalStringPtr(idempotencyKey),
@@ -333,10 +337,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	if err := reserveBatchImageBalanceHold(ctx, s.BillingRepo, job, owner.GroupID, requestHash); err != nil {
-		code := "BILLING_HOLD_FAILED"
-		if errors.Is(err, ErrBatchImageInsufficientBalance) {
-			code = "INSUFFICIENT_BALANCE"
-		}
+		code := batchImageBillingHoldFailureCode(err)
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, code, sanitizeBatchImagePublicMessage(err.Error()), true)
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, err
@@ -444,6 +445,22 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	return BatchImageJobToPublic(created), nil
+}
+
+// batchImageBillingHoldFailureCode 将冻结失败映射为可诊断且稳定的任务错误码。
+func batchImageBillingHoldFailureCode(err error) string {
+	switch {
+	case errors.Is(err, ErrBatchImageInsufficientBalance):
+		return "INSUFFICIENT_BALANCE"
+	case errors.Is(err, ErrPreferredSubscriptionInvalid):
+		return "PREFERRED_SUBSCRIPTION_INVALID"
+	case errors.Is(err, ErrPreferredSubscriptionGroup):
+		return "PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED"
+	case errors.Is(err, ErrPreferredSubscriptionInsufficient):
+		return "PREFERRED_SUBSCRIPTION_EXHAUSTED"
+	default:
+		return "BILLING_HOLD_FAILED"
+	}
 }
 
 func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, job *BatchImageJob, requestHash string) error {
@@ -1091,6 +1108,13 @@ func (s *BatchImagePublicService) ensureGroupAllowsBatchImage(ctx context.Contex
 }
 
 func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, owner BatchImageOwner, req BatchImageSubmitRequest, provider string, account *Account) (*BatchImagePricingSnapshot, error) {
+	billingMode, ok := NormalizeAPIKeyBillingMode(owner.BillingMode)
+	if !ok {
+		return nil, ErrInvalidAPIKeyBillingMode
+	}
+	if billingMode == APIKeyBillingModeSubscription && (owner.PreferredSubscriptionID == nil || *owner.PreferredSubscriptionID <= 0) {
+		return nil, ErrPreferredSubscriptionRequired
+	}
 	unit := -1.0
 	groupMultiplier := 1.0
 	subscriptionRateMultiplier := 1.0
@@ -1125,16 +1149,30 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 			}
 		}
 		effectiveGroupMultiplier := balanceRateMultiplier
-		// 与普通图片请求保持一致：存在可用订阅时优先采用套餐倍率；
-		// 订阅不足的剩余部分则使用已快照的用户按量倍率。
-		subscription := resolveUsageSubscription(
-			ctx,
-			nil,
-			nil,
-			usageSubscriptionResolverFrom(s.BillingRepo),
-			owner.EffectiveBillingUserID(),
-			owner.GroupID,
-		)
+		// 自动模式沿用套餐优先；指定订阅只读取该订阅，余额模式完全跳过套餐。
+		var subscription *UserSubscription
+		switch billingMode {
+		case APIKeyBillingModeSubscription:
+			subscription = resolvePreferredUsageSubscription(
+				ctx,
+				usagePreferredSubscriptionResolverFrom(s.BillingRepo),
+				owner.EffectiveBillingUserID(),
+				*owner.PreferredSubscriptionID,
+				owner.GroupID,
+			)
+			if subscription == nil {
+				return nil, ErrPreferredSubscriptionInvalid
+			}
+		case APIKeyBillingModeAuto:
+			subscription = resolveUsageSubscription(
+				ctx,
+				nil,
+				nil,
+				usageSubscriptionResolverFrom(s.BillingRepo),
+				owner.EffectiveBillingUserID(),
+				owner.GroupID,
+			)
+		}
 		if subscription != nil {
 			effectiveGroupMultiplier = resolveUsageRateMultiplier(
 				ctx,

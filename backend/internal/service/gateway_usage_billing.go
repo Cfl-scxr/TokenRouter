@@ -129,11 +129,16 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *usageBill
 	cmd := &UsageBillingCommand{
 		RequestID:          requestID,
 		APIKeyID:           p.APIKey.ID,
+		APIKeyBillingMode:  APIKeyEffectiveBillingMode(p.APIKey),
 		UserID:             p.User.ID,
 		ActorUserID:        p.User.ID,
 		AccountID:          p.Account.ID,
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+	}
+	if p.APIKey.PreferredSubscriptionID != nil {
+		preferredSubscriptionID := *p.APIKey.PreferredSubscriptionID
+		cmd.PreferredSubscriptionID = &preferredSubscriptionID
 	}
 	if p.APIKey.ActorUser != nil {
 		cmd.ActorUserID = p.APIKey.ActorUser.ID
@@ -559,7 +564,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	subscriptionMultiplier := multiplier
 	balanceMultiplier := multiplier
-	subscription = resolveUsageSubscription(ctx, subscription, s.userSubRepo, usageSubscriptionResolverFrom(s.usageBillingRepo), user.ID, apiKey.GroupID)
+	subscription = resolveUsageSubscriptionForAPIKey(ctx, apiKey, subscription, s.userSubRepo, usageSubscriptionResolverFrom(s.usageBillingRepo), user.ID, apiKey.GroupID)
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
 		subscriptionMultiplier = groupDefault

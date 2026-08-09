@@ -218,7 +218,10 @@ marketplace: {
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
     pendingOnly: '该订阅将在当前订阅结束后生效',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    groupAccess: '可访问分组',
+    allGroups: '全部分组',
+    restrictedGroups: '受限分组'
   },
 // Onboarding Tour
   onboarding: {

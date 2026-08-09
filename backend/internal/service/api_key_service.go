@@ -24,28 +24,33 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound              = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed             = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrGroupDisabledForUser        = infraerrors.Forbidden("GROUP_DISABLED_FOR_USER", "user is not allowed to use this public group")
-	ErrAPIKeyExists                = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyLimitReached          = infraerrors.Conflict("API_KEY_LIMIT_REACHED", "api key limit reached")
-	ErrAPIKeyTooShort              = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars          = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited           = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrAPIKeyAuthOverloaded        = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
-	ErrInvalidIPPattern            = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
-	ErrInvalidAPIKeyFastModePolicy = infraerrors.BadRequest("INVALID_API_KEY_FAST_MODE_POLICY", "invalid API key fast mode policy")
-	ErrDataSharingConsentRequired  = infraerrors.Forbidden("DATA_SHARING_CONSENT_REQUIRED", "switching to a data sharing group requires confirmation")
-	ErrCompositeKeyGroupsRequired  = infraerrors.BadRequest("COMPOSITE_KEY_GROUPS_REQUIRED", "composite api key requires at least one group")
-	ErrCompositeKeyTooManyGroups   = infraerrors.BadRequest("COMPOSITE_KEY_TOO_MANY_GROUPS", "composite api key supports at most 20 groups")
-	ErrCompositeKeyPrefixInvalid   = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_INVALID", "composite api key prefix is invalid")
-	ErrCompositeKeyPrefixDuplicate = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_DUPLICATE", "composite api key prefixes must be unique")
-	ErrCompositeKeyGroupDuplicate  = infraerrors.BadRequest("COMPOSITE_KEY_GROUP_DUPLICATE", "composite api key groups must be unique")
-	ErrCompositeKeyGroupConflict   = infraerrors.BadRequest("COMPOSITE_KEY_GROUP_CONFLICT", "composite api key cannot use group_id")
-	ErrCompositeKeyTargetRequired  = infraerrors.BadRequest("COMPOSITE_KEY_TARGET_GROUP_REQUIRED", "converting a composite api key requires a target group")
-	ErrCompositeKeyPrefixRequired  = infraerrors.BadRequest("COMPOSITE_KEY_MODEL_PREFIX_REQUIRED", "composite api key model must use prefix/model_id")
-	ErrCompositeKeyPrefixNotFound  = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_NOT_FOUND", "composite api key model prefix was not found")
-	ErrCompositeKeyUnsupported     = infraerrors.BadRequest("COMPOSITE_KEY_ENDPOINT_UNSUPPORTED", "composite api key is not supported for this endpoint")
+	ErrAPIKeyNotFound                    = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed                   = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrGroupDisabledForUser              = infraerrors.Forbidden("GROUP_DISABLED_FOR_USER", "user is not allowed to use this public group")
+	ErrAPIKeyExists                      = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyLimitReached                = infraerrors.Conflict("API_KEY_LIMIT_REACHED", "api key limit reached")
+	ErrAPIKeyTooShort                    = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars                = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited                 = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrAPIKeyAuthOverloaded              = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
+	ErrInvalidIPPattern                  = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrInvalidAPIKeyFastModePolicy       = infraerrors.BadRequest("INVALID_API_KEY_FAST_MODE_POLICY", "invalid API key fast mode policy")
+	ErrInvalidAPIKeyBillingMode          = infraerrors.BadRequest("INVALID_API_KEY_BILLING_MODE", "invalid API key billing mode")
+	ErrPreferredSubscriptionRequired     = infraerrors.BadRequest("PREFERRED_SUBSCRIPTION_REQUIRED", "subscription billing mode requires a subscription")
+	ErrPreferredSubscriptionInvalid      = infraerrors.Forbidden("PREFERRED_SUBSCRIPTION_INVALID", "preferred subscription is unavailable")
+	ErrPreferredSubscriptionGroup        = infraerrors.Forbidden("PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED", "preferred subscription does not allow this group")
+	ErrPreferredSubscriptionInsufficient = infraerrors.TooManyRequests("PREFERRED_SUBSCRIPTION_EXHAUSTED", "preferred subscription has insufficient remaining quota")
+	ErrDataSharingConsentRequired        = infraerrors.Forbidden("DATA_SHARING_CONSENT_REQUIRED", "switching to a data sharing group requires confirmation")
+	ErrCompositeKeyGroupsRequired        = infraerrors.BadRequest("COMPOSITE_KEY_GROUPS_REQUIRED", "composite api key requires at least one group")
+	ErrCompositeKeyTooManyGroups         = infraerrors.BadRequest("COMPOSITE_KEY_TOO_MANY_GROUPS", "composite api key supports at most 20 groups")
+	ErrCompositeKeyPrefixInvalid         = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_INVALID", "composite api key prefix is invalid")
+	ErrCompositeKeyPrefixDuplicate       = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_DUPLICATE", "composite api key prefixes must be unique")
+	ErrCompositeKeyGroupDuplicate        = infraerrors.BadRequest("COMPOSITE_KEY_GROUP_DUPLICATE", "composite api key groups must be unique")
+	ErrCompositeKeyGroupConflict         = infraerrors.BadRequest("COMPOSITE_KEY_GROUP_CONFLICT", "composite api key cannot use group_id")
+	ErrCompositeKeyTargetRequired        = infraerrors.BadRequest("COMPOSITE_KEY_TARGET_GROUP_REQUIRED", "converting a composite api key requires a target group")
+	ErrCompositeKeyPrefixRequired        = infraerrors.BadRequest("COMPOSITE_KEY_MODEL_PREFIX_REQUIRED", "composite api key model must use prefix/model_id")
+	ErrCompositeKeyPrefixNotFound        = infraerrors.BadRequest("COMPOSITE_KEY_PREFIX_NOT_FOUND", "composite api key model prefix was not found")
+	ErrCompositeKeyUnsupported           = infraerrors.BadRequest("COMPOSITE_KEY_ENDPOINT_UNSUPPORTED", "composite api key is not supported for this endpoint")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -94,6 +99,8 @@ type APIKeyUpdateFields struct {
 	CompositeConfiguration bool
 	// FastModePolicy 覆盖 fork 的快速模式策略。
 	FastModePolicy bool
+	// BillingConfiguration 覆盖结算模式和指定订阅，二者必须一起写入。
+	BillingConfiguration bool
 	// ModelMapping 覆盖当前 API Key 的整份模型重定向规则。
 	ModelMapping bool
 	// FallbackToDefaultGroupWhenUnavailable 覆盖绑定分组不可用时的回退策略。
@@ -252,6 +259,10 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist     []string                    `json:"ip_blacklist"` // IP 黑名单
 	// FastModePolicy 为空时默认跟随下游请求。
 	FastModePolicy string `json:"fast_mode_policy"`
+	// BillingMode 为空时兼容存量行为，按自动选择处理。
+	BillingMode string `json:"billing_mode"`
+	// PreferredSubscriptionID 仅在 BillingMode 为 subscription 时生效。
+	PreferredSubscriptionID *int64 `json:"preferred_subscription_id"`
 	// ModelMapping 是当前 Key 的完整模型重定向规则。
 	ModelMapping map[string]string `json:"model_mapping"`
 
@@ -272,6 +283,17 @@ type CreateAPIKeyRequest struct {
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
 }
 
+// APIKeyBillingSubscriptionOption 是配置 API Key 时可选择的有效订阅。
+// 分组信息仅用于前端提前收窄选项，服务端仍会在创建、鉴权和结算时重复校验。
+type APIKeyBillingSubscriptionOption struct {
+	ID               int64
+	PlanID           int64
+	PlanName         string
+	ExpiresAt        time.Time
+	GroupsRestricted bool
+	ApplicableGroups []int64
+}
+
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
 	Name        *string `json:"name"`
@@ -284,6 +306,9 @@ type UpdateAPIKeyRequest struct {
 	IPBlacklist     *[]string                    `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
 	// FastModePolicy 为 nil 时保持原值。
 	FastModePolicy *string `json:"fast_mode_policy"`
+	// BillingMode 为 nil 时保持原值；指定订阅模式必须同时传入订阅 ID。
+	BillingMode             *string `json:"billing_mode"`
+	PreferredSubscriptionID *int64  `json:"preferred_subscription_id"`
 	// ModelMapping 为 nil 时保持原值，空对象表示清空规则。
 	ModelMapping *map[string]string `json:"model_mapping"`
 
@@ -499,6 +524,101 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
+// resolveAPIKeyBillingConfiguration 解析并校验 API Key 的资金来源配置。
+// 指定订阅必须属于实际付款主体；团队 Key 的付款主体由调用方传入 Team Owner。
+func (s *APIKeyService) resolveAPIKeyBillingConfiguration(ctx context.Context, billingUserID int64, rawMode string, preferredSubscriptionID *int64) (string, *int64, *UserSubscription, error) {
+	mode, ok := NormalizeAPIKeyBillingMode(rawMode)
+	if !ok {
+		return "", nil, nil, ErrInvalidAPIKeyBillingMode
+	}
+	if mode != APIKeyBillingModeSubscription {
+		return mode, nil, nil, nil
+	}
+	if preferredSubscriptionID == nil || *preferredSubscriptionID <= 0 {
+		return "", nil, nil, ErrPreferredSubscriptionRequired
+	}
+	if s == nil || s.userSubRepo == nil || billingUserID <= 0 {
+		return "", nil, nil, ErrPreferredSubscriptionInvalid
+	}
+
+	subscription, err := s.userSubRepo.GetByID(ctx, *preferredSubscriptionID)
+	if err != nil || subscription == nil || subscription.UserID != billingUserID || !subscription.IsEffective() || subscription.Plan == nil {
+		return "", nil, nil, ErrPreferredSubscriptionInvalid
+	}
+	id := subscription.ID
+	return mode, &id, subscription, nil
+}
+
+// validatePreferredSubscriptionGroups 确保指定订阅没有被普通或复合 Key 的映射绕过。
+// 套餐未设置分组时代表所有分组可用，保留用户原有的分组授权范围。
+func validatePreferredSubscriptionGroups(subscription *UserSubscription, group *Group, compositeGroups []APIKeyCompositeGroup) error {
+	if subscription == nil || subscription.Plan == nil {
+		return ErrPreferredSubscriptionInvalid
+	}
+	// 受限套餐不能绑定到“无分组”普通 Key；否则该 Key 可被无分组调度路径使用。
+	if len(subscription.Plan.GroupIDs) > 0 && (group == nil || group.ID <= 0) && len(compositeGroups) == 0 {
+		return ErrPreferredSubscriptionGroup
+	}
+	if group != nil && group.ID > 0 && !subscriptionPlanIncludesGroup(subscription.Plan, group.ID) {
+		return ErrPreferredSubscriptionGroup
+	}
+	for _, binding := range compositeGroups {
+		if binding.GroupID > 0 && !subscriptionPlanIncludesGroup(subscription.Plan, binding.GroupID) {
+			return ErrPreferredSubscriptionGroup
+		}
+	}
+	return nil
+}
+
+// billingUserIDForScope 返回 API Key 的实际付款主体。
+func (s *APIKeyService) billingUserIDForScope(ctx context.Context, userID int64, scope string) (int64, error) {
+	if !strings.EqualFold(strings.TrimSpace(scope), "team") {
+		return userID, nil
+	}
+	if s.cfg != nil && !s.cfg.Team.Enabled {
+		return 0, ErrTeamFeatureDisabled
+	}
+	if s.teamRepo == nil {
+		return 0, ErrTeamFeatureDisabled
+	}
+	teamCtx, err := s.teamRepo.GetContextByUserID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return teamCtx.Owner.UserID, nil
+}
+
+// billingUserForAPIKey 独立解析已有 Key 的付款主体。
+// 停用或被 Owner 锁定的团队 Key 会跳过鉴权水合，因此更新结算配置时不能直接信任 apiKey.User。
+func (s *APIKeyService) billingUserForAPIKey(ctx context.Context, apiKey *APIKey) (*User, error) {
+	if apiKey == nil || apiKey.UserID <= 0 || s == nil || s.userRepo == nil {
+		return nil, ErrUserNotFound
+	}
+	if apiKey.TeamID == nil {
+		if apiKey.User != nil && apiKey.User.ID == apiKey.UserID {
+			return apiKey.User, nil
+		}
+		return s.userRepo.GetByID(ctx, apiKey.UserID)
+	}
+	if s.cfg != nil && !s.cfg.Team.Enabled {
+		return nil, ErrTeamFeatureDisabled
+	}
+	if s.teamRepo == nil {
+		return nil, ErrTeamFeatureDisabled
+	}
+	teamCtx, err := s.teamRepo.GetContextByUserID(ctx, apiKey.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if teamCtx == nil || teamCtx.Team == nil || teamCtx.Membership == nil || teamCtx.Owner == nil || teamCtx.Team.ID != *apiKey.TeamID {
+		return nil, ErrTeamMembershipRequired
+	}
+	if teamCtx.Membership.JoinedAt.After(apiKey.CreatedAt) {
+		return nil, ErrTeamMembershipRequired
+	}
+	return s.userRepo.GetByID(ctx, teamCtx.Owner.UserID)
+}
+
 // canUserUseBoundGroup 校验已有 API Key 当前绑定的公开分组是否仍被该用户允许。
 func (s *APIKeyService) canUserUseBoundGroup(ctx context.Context, apiKey *APIKey) bool {
 	if apiKey == nil || apiKey.GroupID == nil || apiKey.Group == nil || apiKey.Group.IsExclusive {
@@ -568,6 +688,17 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		teamID = &id
 	}
 
+	// 结算配置依赖实际付款人；团队 Key 必须校验 Team Owner 的订阅而不是创建成员的订阅。
+	billingMode, preferredSubscriptionID, preferredSubscription, err := s.resolveAPIKeyBillingConfiguration(
+		ctx,
+		user.ID,
+		req.BillingMode,
+		req.PreferredSubscriptionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	// 验证 IP 白名单格式
 	if len(req.IPWhitelist) > 0 {
 		if invalid := ip.ValidateIPPatterns(req.IPWhitelist); len(invalid) > 0 {
@@ -623,6 +754,18 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 			dataSharingConfirmedAt = &confirmedAt
 		}
 	}
+	if billingMode == APIKeyBillingModeSubscription {
+		var group *Group
+		if req.GroupID != nil {
+			group, err = s.groupRepo.GetByID(ctx, *req.GroupID)
+			if err != nil {
+				return nil, fmt.Errorf("get group: %w", err)
+			}
+		}
+		if err := validatePreferredSubscriptionGroups(preferredSubscription, group, compositeGroups); err != nil {
+			return nil, err
+		}
+	}
 
 	var key string
 
@@ -676,6 +819,8 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		CompositeGroups:                       compositeGroups,
 		Status:                                StatusActive,
 		FastModePolicy:                        fastModePolicy,
+		BillingMode:                           billingMode,
+		PreferredSubscriptionID:               preferredSubscriptionID,
 		ModelMapping:                          modelMapping,
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
@@ -1135,6 +1280,51 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	originalStatus := apiKey.Status
 	originalIsComposite := apiKey.IsComposite
 
+	// 更新指定订阅时先确定最终配置，后续普通分组和复合分组都要按它校验。
+	targetBillingMode := APIKeyEffectiveBillingMode(apiKey)
+	targetPreferredSubscriptionID := apiKey.PreferredSubscriptionID
+	billingConfigurationRequested := req.BillingMode != nil || req.PreferredSubscriptionID != nil
+	var billingUser *User
+	var preferredSubscription *UserSubscription
+	if billingConfigurationRequested {
+		billingUser, err = s.billingUserForAPIKey(ctx, apiKey)
+		if err != nil {
+			return nil, fmt.Errorf("get billing user: %w", err)
+		}
+		apiKey.User = billingUser
+		if req.BillingMode != nil {
+			normalizedMode, ok := NormalizeAPIKeyBillingMode(*req.BillingMode)
+			if !ok {
+				return nil, ErrInvalidAPIKeyBillingMode
+			}
+			targetBillingMode = normalizedMode
+		}
+		if req.PreferredSubscriptionID != nil {
+			targetPreferredSubscriptionID = req.PreferredSubscriptionID
+		}
+		if targetBillingMode != APIKeyBillingModeSubscription {
+			targetPreferredSubscriptionID = nil
+		} else if req.BillingMode != nil && req.PreferredSubscriptionID == nil && apiKey.PreferredSubscriptionID == nil {
+			return nil, ErrPreferredSubscriptionRequired
+		}
+
+		resolvedMode, resolvedSubscriptionID, resolvedSubscription, resolveErr := s.resolveAPIKeyBillingConfiguration(
+			ctx,
+			billingUser.ID,
+			targetBillingMode,
+			targetPreferredSubscriptionID,
+		)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		targetBillingMode = resolvedMode
+		targetPreferredSubscriptionID = resolvedSubscriptionID
+		preferredSubscription = resolvedSubscription
+		apiKey.BillingMode = targetBillingMode
+		apiKey.PreferredSubscriptionID = targetPreferredSubscriptionID
+		fields.BillingConfiguration = true
+	}
+
 	// 更新字段
 	if req.Name != nil {
 		apiKey.Name = html.EscapeString(*req.Name)
@@ -1254,6 +1444,30 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if !apiKey.IsComposite && !s.canUserUseBoundGroup(ctx, apiKey) {
 		return nil, ErrGroupDisabledForUser
+	}
+	// 切换套餐、普通分组或复合映射时，必须验证最终所有分组都在指定套餐范围内。
+	if targetBillingMode == APIKeyBillingModeSubscription && (billingConfigurationRequested || req.GroupID != nil || req.CompositeGroups != nil || req.IsComposite != nil) {
+		if billingUser == nil {
+			billingUser, err = s.billingUserForAPIKey(ctx, apiKey)
+			if err != nil {
+				return nil, fmt.Errorf("get billing user: %w", err)
+			}
+			apiKey.User = billingUser
+		}
+		if preferredSubscription == nil {
+			_, _, preferredSubscription, err = s.resolveAPIKeyBillingConfiguration(
+				ctx,
+				billingUser.ID,
+				targetBillingMode,
+				targetPreferredSubscriptionID,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if err := validatePreferredSubscriptionGroups(preferredSubscription, apiKey.Group, apiKey.CompositeGroups); err != nil {
+			return nil, err
+		}
 	}
 
 	if req.Status != nil {
@@ -1582,20 +1796,65 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 
 // GetAvailableGroupsForScope 让团队 Key 使用 Owner 的分组授权。
 func (s *APIKeyService) GetAvailableGroupsForScope(ctx context.Context, userID int64, scope string) ([]Group, error) {
-	if strings.EqualFold(strings.TrimSpace(scope), "team") {
-		if s.cfg != nil && !s.cfg.Team.Enabled {
-			return nil, ErrTeamFeatureDisabled
-		}
-		if s.teamRepo == nil {
-			return nil, ErrTeamFeatureDisabled
-		}
-		teamCtx, err := s.teamRepo.GetContextByUserID(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		return s.GetAvailableGroups(ctx, teamCtx.Owner.UserID)
+	return s.GetAvailableGroupsForScopeWithSubscription(ctx, userID, scope, nil)
+}
+
+// GetAvailableGroupsForScopeWithSubscription 返回付款主体原有权限与指定套餐分组的交集。
+// subscriptionID 为 nil 时严格保留历史行为，不会因为用户持有其它受限套餐而收窄分组。
+func (s *APIKeyService) GetAvailableGroupsForScopeWithSubscription(ctx context.Context, userID int64, scope string, subscriptionID *int64) ([]Group, error) {
+	billingUserID, err := s.billingUserIDForScope(ctx, userID, scope)
+	if err != nil {
+		return nil, err
 	}
-	return s.GetAvailableGroups(ctx, userID)
+	groups, err := s.GetAvailableGroups(ctx, billingUserID)
+	if err != nil || subscriptionID == nil {
+		return groups, err
+	}
+	_, _, subscription, err := s.resolveAPIKeyBillingConfiguration(ctx, billingUserID, APIKeyBillingModeSubscription, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if subscription.Plan == nil || len(subscription.Plan.GroupIDs) == 0 {
+		return groups, nil
+	}
+	filtered := make([]Group, 0, len(groups))
+	for i := range groups {
+		if subscriptionPlanIncludesGroup(subscription.Plan, groups[i].ID) {
+			filtered = append(filtered, groups[i])
+		}
+	}
+	return filtered, nil
+}
+
+// ListBillingSubscriptionsForScope 返回当前付款主体可指定的有效订阅。
+func (s *APIKeyService) ListBillingSubscriptionsForScope(ctx context.Context, userID int64, scope string) ([]APIKeyBillingSubscriptionOption, error) {
+	if s == nil || s.userSubRepo == nil {
+		return nil, ErrPreferredSubscriptionInvalid
+	}
+	billingUserID, err := s.billingUserIDForScope(ctx, userID, scope)
+	if err != nil {
+		return nil, err
+	}
+	subscriptions, err := s.userSubRepo.ListActiveByUserID(ctx, billingUserID)
+	if err != nil {
+		return nil, err
+	}
+	options := make([]APIKeyBillingSubscriptionOption, 0, len(subscriptions))
+	for i := range subscriptions {
+		subscription := &subscriptions[i]
+		if !subscription.IsEffective() || subscription.Plan == nil {
+			continue
+		}
+		options = append(options, APIKeyBillingSubscriptionOption{
+			ID:               subscription.ID,
+			PlanID:           subscription.PlanID,
+			PlanName:         subscription.Plan.Name,
+			ExpiresAt:        subscription.ExpiresAt,
+			GroupsRestricted: len(subscription.Plan.GroupIDs) > 0,
+			ApplicableGroups: append([]int64(nil), subscription.Plan.GroupIDs...),
+		})
+	}
+	return options, nil
 }
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组。

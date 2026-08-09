@@ -91,6 +91,34 @@ func (_c *BatchImageJobCreate) SetNillableAccountID(v *int64) *BatchImageJobCrea
 	return _c
 }
 
+// SetBillingMode sets the "billing_mode" field.
+func (_c *BatchImageJobCreate) SetBillingMode(v string) *BatchImageJobCreate {
+	_c.mutation.SetBillingMode(v)
+	return _c
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillableBillingMode(v *string) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetBillingMode(*v)
+	}
+	return _c
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_c *BatchImageJobCreate) SetPreferredSubscriptionID(v int64) *BatchImageJobCreate {
+	_c.mutation.SetPreferredSubscriptionID(v)
+	return _c
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_c *BatchImageJobCreate) SetNillablePreferredSubscriptionID(v *int64) *BatchImageJobCreate {
+	if v != nil {
+		_c.SetPreferredSubscriptionID(*v)
+	}
+	return _c
+}
+
 // SetProvider sets the "provider" field.
 func (_c *BatchImageJobCreate) SetProvider(v string) *BatchImageJobCreate {
 	_c.mutation.SetProvider(v)
@@ -682,6 +710,10 @@ func (_c *BatchImageJobCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *BatchImageJobCreate) defaults() {
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		v := batchimagejob.DefaultBillingMode
+		_c.mutation.SetBillingMode(v)
+	}
 	if _, ok := _c.mutation.TaskName(); !ok {
 		v := batchimagejob.DefaultTaskName
 		_c.mutation.SetTaskName(v)
@@ -764,6 +796,14 @@ func (_c *BatchImageJobCreate) check() error {
 	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "BatchImageJob.user_id"`)}
+	}
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		return &ValidationError{Name: "billing_mode", err: errors.New(`ent: missing required field "BatchImageJob.billing_mode"`)}
+	}
+	if v, ok := _c.mutation.BillingMode(); ok {
+		if err := batchimagejob.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.billing_mode": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Provider(); !ok {
 		return &ValidationError{Name: "provider", err: errors.New(`ent: missing required field "BatchImageJob.provider"`)}
@@ -950,6 +990,14 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.AccountID(); ok {
 		_spec.SetField(batchimagejob.FieldAccountID, field.TypeInt64, value)
 		_node.AccountID = &value
+	}
+	if value, ok := _c.mutation.BillingMode(); ok {
+		_spec.SetField(batchimagejob.FieldBillingMode, field.TypeString, value)
+		_node.BillingMode = value
+	}
+	if value, ok := _c.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(batchimagejob.FieldPreferredSubscriptionID, field.TypeInt64, value)
+		_node.PreferredSubscriptionID = &value
 	}
 	if value, ok := _c.mutation.Provider(); ok {
 		_spec.SetField(batchimagejob.FieldProvider, field.TypeString, value)
@@ -1282,6 +1330,42 @@ func (u *BatchImageJobUpsert) AddAccountID(v int64) *BatchImageJobUpsert {
 // ClearAccountID clears the value of the "account_id" field.
 func (u *BatchImageJobUpsert) ClearAccountID() *BatchImageJobUpsert {
 	u.SetNull(batchimagejob.FieldAccountID)
+	return u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *BatchImageJobUpsert) SetBillingMode(v string) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldBillingMode, v)
+	return u
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdateBillingMode() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldBillingMode)
+	return u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsert) SetPreferredSubscriptionID(v int64) *BatchImageJobUpsert {
+	u.Set(batchimagejob.FieldPreferredSubscriptionID, v)
+	return u
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsert) UpdatePreferredSubscriptionID() *BatchImageJobUpsert {
+	u.SetExcluded(batchimagejob.FieldPreferredSubscriptionID)
+	return u
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsert) AddPreferredSubscriptionID(v int64) *BatchImageJobUpsert {
+	u.Add(batchimagejob.FieldPreferredSubscriptionID, v)
+	return u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsert) ClearPreferredSubscriptionID() *BatchImageJobUpsert {
+	u.SetNull(batchimagejob.FieldPreferredSubscriptionID)
 	return u
 }
 
@@ -2159,6 +2243,48 @@ func (u *BatchImageJobUpsertOne) UpdateAccountID() *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) ClearAccountID() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearAccountID()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *BatchImageJobUpsertOne) SetBillingMode(v string) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdateBillingMode() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertOne) SetPreferredSubscriptionID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetPreferredSubscriptionID(v)
+	})
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertOne) AddPreferredSubscriptionID(v int64) *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddPreferredSubscriptionID(v)
+	})
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertOne) UpdatePreferredSubscriptionID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdatePreferredSubscriptionID()
+	})
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertOne) ClearPreferredSubscriptionID() *BatchImageJobUpsertOne {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearPreferredSubscriptionID()
 	})
 }
 
@@ -3318,6 +3444,48 @@ func (u *BatchImageJobUpsertBulk) UpdateAccountID() *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) ClearAccountID() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearAccountID()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *BatchImageJobUpsertBulk) SetBillingMode(v string) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdateBillingMode() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertBulk) SetPreferredSubscriptionID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.SetPreferredSubscriptionID(v)
+	})
+}
+
+// AddPreferredSubscriptionID adds v to the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertBulk) AddPreferredSubscriptionID(v int64) *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.AddPreferredSubscriptionID(v)
+	})
+}
+
+// UpdatePreferredSubscriptionID sets the "preferred_subscription_id" field to the value that was provided on create.
+func (u *BatchImageJobUpsertBulk) UpdatePreferredSubscriptionID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.UpdatePreferredSubscriptionID()
+	})
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (u *BatchImageJobUpsertBulk) ClearPreferredSubscriptionID() *BatchImageJobUpsertBulk {
+	return u.Update(func(s *BatchImageJobUpsert) {
+		s.ClearPreferredSubscriptionID()
 	})
 }
 

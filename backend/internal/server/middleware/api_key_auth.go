@@ -198,13 +198,22 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		c.Request = c.Request.WithContext(ctx)
 		applyAPIKeyModelRedirect(c, apiKey)
 		// 批任务管理只读取已有数据或释放冻结；即使任务耗尽额度，结果仍应可取回或取消。
-		skipBilling := c.Request.URL.Path == "/v1/usage" ||
+		skipBilling := isAPIKeyUsageRequest(c.Request.Method, c.Request.URL.Path) ||
 			isBatchImageBillingBypassRequest(c.Request.Method, c.Request.URL.Path) ||
 			(apiKey.IsComposite && isGrokVideoTaskRead(c.Request.Method, c.Request.URL.Path))
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
 		if cfg.RunMode == config.RunModeSimple {
+			// 简易模式不执行计费拦截，但用量查询和复合 Key 模型列表仍需读取指定套餐范围。
+			if shouldResolveAPIKeyBillingInSimpleMode(apiKey, c.Request.Method, c.Request.URL.Path) {
+				if billingContext, billingErr := resolveAPIKeyBillingContext(c.Request.Context(), apiKey, subscriptionService, false); billingErr == nil && billingContext != nil {
+					c.Set(string(ContextKeyAPIKeyBilling), billingContext)
+					if billingContext.Subscription != nil {
+						c.Set(string(ContextKeySubscription), billingContext.Subscription)
+					}
+				}
+			}
 			c.Set(string(ContextKeyAPIKey), apiKey)
 			c.Set(string(ContextKeyUser), AuthSubject{
 				UserID:      apiKey.User.ID,
@@ -217,22 +226,23 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 		}
 
-		// ── 5. 按端点需要加载订阅 ───────────────────────────────────
+		// ── 5. 解析 Key 的结算来源 ───────────────────────────────────
 
-		var subscription *service.UserSubscription
-		if subscriptionService != nil {
-			var groupID int64
-			if apiKey.GroupID != nil {
-				groupID = *apiKey.GroupID
-			}
-			sub, _, subErr := subscriptionService.GetUsableSubscription(c.Request.Context(), apiKey.User.ID, groupID)
-			if subErr != nil && !errors.Is(subErr, service.ErrSubscriptionNotFound) {
+		billingContext, billingErr := resolveAPIKeyBillingContext(c.Request.Context(), apiKey, subscriptionService, !skipBilling)
+		if billingErr != nil {
+			switch {
+			case errors.Is(billingErr, service.ErrPreferredSubscriptionGroup):
+				AbortWithError(c, 403, "PREFERRED_SUBSCRIPTION_GROUP_NOT_ALLOWED", billingErr.Error())
+			case errors.Is(billingErr, service.ErrPreferredSubscriptionInvalid):
+				AbortWithError(c, 403, "PREFERRED_SUBSCRIPTION_INVALID", billingErr.Error())
+			default:
 				AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to validate subscription")
-				return
 			}
-			if subErr == nil {
-				subscription = sub
-			}
+			return
+		}
+		var subscription *service.UserSubscription
+		if billingContext != nil {
+			subscription = billingContext.Subscription
 		}
 
 		// ── 6. 计费执行（skipBilling 时整块跳过） ────────────────────
@@ -281,8 +291,12 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 					AbortWithError(c, status, code, validateErr.Error())
 					return
 				}
+				if billingContext != nil {
+					billingContext.Subscription = subscription
+					billingContext.Available = true
+				}
 			} else {
-				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
+				// auto 与 balance 可使用余额；指定订阅在上方已严格解析，绝不回退。
 				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
@@ -292,6 +306,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 7. 设置上下文 → Next ─────────────────────────────────────
 
+		if billingContext != nil {
+			c.Set(string(ContextKeyAPIKeyBilling), billingContext)
+		}
 		if subscription != nil {
 			c.Set(string(ContextKeySubscription), subscription)
 		}
@@ -377,10 +394,10 @@ func isBatchImageBillingBypassRequest(method, path string) bool {
 // 未知路径默认视为会产生消费，避免新增路由自动绕过团队限额。
 func isAPIKeyNonConsumingRequest(method, path string) bool {
 	path = strings.TrimRight(path, "/")
+	if isAPIKeyUsageRequest(method, path) {
+		return true
+	}
 	if method == http.MethodGet {
-		if path == "/v1/usage" || path == "/antigravity/v1/usage" {
-			return true
-		}
 		if strings.HasSuffix(path, "/models") || isBatchImageManagementRequest(method, path) || isGrokVideoTaskRead(method, path) {
 			return true
 		}
@@ -392,6 +409,32 @@ func isAPIKeyNonConsumingRequest(method, path string) bool {
 		return true
 	}
 	return false
+}
+
+// isAPIKeyUsageRequest 统一识别两套 Claude 风格的 Key 用量查询入口。
+// 这类接口只读取 Key 自身状态，不能因为订阅或 Key 配额已耗尽而被消费准入拦截。
+func isAPIKeyUsageRequest(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	switch strings.TrimRight(path, "/") {
+	case "/v1/usage", "/antigravity/v1/usage":
+		return true
+	default:
+		return false
+	}
+}
+
+// shouldResolveAPIKeyBillingInSimpleMode 为不执行资金预检的简易模式保留必要的权益上下文。
+// 严格指定订阅的复合 Key 必须据此过滤模型列表，避免在简易模式泄露套餐外映射。
+func shouldResolveAPIKeyBillingInSimpleMode(apiKey *service.APIKey, method, path string) bool {
+	if isAPIKeyUsageRequest(method, path) {
+		return true
+	}
+	return apiKey != nil &&
+		apiKey.IsComposite &&
+		service.APIKeyEffectiveBillingMode(apiKey) == service.APIKeyBillingModeSubscription &&
+		isCompositeKeyModelListEndpoint(method, path)
 }
 
 // abortTeamAPIKeyError 将团队生命周期与成员限额错误映射为稳定的网关响应。

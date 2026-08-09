@@ -129,6 +129,9 @@ type APIKeyMutation struct {
 	is_composite                               *bool
 	status                                     *string
 	fast_mode_policy                           *string
+	billing_mode                               *string
+	preferred_subscription_id                  *int64
+	addpreferred_subscription_id               *int64
 	model_mapping                              *map[string]string
 	last_used_at                               *time.Time
 	ip_whitelist                               *[]string
@@ -746,6 +749,112 @@ func (m *APIKeyMutation) OldFastModePolicy(ctx context.Context) (v string, err e
 // ResetFastModePolicy resets all changes to the "fast_mode_policy" field.
 func (m *APIKeyMutation) ResetFastModePolicy() {
 	m.fast_mode_policy = nil
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (m *APIKeyMutation) SetBillingMode(s string) {
+	m.billing_mode = &s
+}
+
+// BillingMode returns the value of the "billing_mode" field in the mutation.
+func (m *APIKeyMutation) BillingMode() (r string, exists bool) {
+	v := m.billing_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingMode returns the old "billing_mode" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldBillingMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingMode: %w", err)
+	}
+	return oldValue.BillingMode, nil
+}
+
+// ResetBillingMode resets all changes to the "billing_mode" field.
+func (m *APIKeyMutation) ResetBillingMode() {
+	m.billing_mode = nil
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (m *APIKeyMutation) SetPreferredSubscriptionID(i int64) {
+	m.preferred_subscription_id = &i
+	m.addpreferred_subscription_id = nil
+}
+
+// PreferredSubscriptionID returns the value of the "preferred_subscription_id" field in the mutation.
+func (m *APIKeyMutation) PreferredSubscriptionID() (r int64, exists bool) {
+	v := m.preferred_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreferredSubscriptionID returns the old "preferred_subscription_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldPreferredSubscriptionID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreferredSubscriptionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreferredSubscriptionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreferredSubscriptionID: %w", err)
+	}
+	return oldValue.PreferredSubscriptionID, nil
+}
+
+// AddPreferredSubscriptionID adds i to the "preferred_subscription_id" field.
+func (m *APIKeyMutation) AddPreferredSubscriptionID(i int64) {
+	if m.addpreferred_subscription_id != nil {
+		*m.addpreferred_subscription_id += i
+	} else {
+		m.addpreferred_subscription_id = &i
+	}
+}
+
+// AddedPreferredSubscriptionID returns the value that was added to the "preferred_subscription_id" field in this mutation.
+func (m *APIKeyMutation) AddedPreferredSubscriptionID() (r int64, exists bool) {
+	v := m.addpreferred_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (m *APIKeyMutation) ClearPreferredSubscriptionID() {
+	m.preferred_subscription_id = nil
+	m.addpreferred_subscription_id = nil
+	m.clearedFields[apikey.FieldPreferredSubscriptionID] = struct{}{}
+}
+
+// PreferredSubscriptionIDCleared returns if the "preferred_subscription_id" field was cleared in this mutation.
+func (m *APIKeyMutation) PreferredSubscriptionIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldPreferredSubscriptionID]
+	return ok
+}
+
+// ResetPreferredSubscriptionID resets all changes to the "preferred_subscription_id" field.
+func (m *APIKeyMutation) ResetPreferredSubscriptionID() {
+	m.preferred_subscription_id = nil
+	m.addpreferred_subscription_id = nil
+	delete(m.clearedFields, apikey.FieldPreferredSubscriptionID)
 }
 
 // SetModelMapping sets the "model_mapping" field.
@@ -2041,7 +2150,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 32)
+	fields := make([]string, 0, 34)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -2077,6 +2186,12 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.fast_mode_policy != nil {
 		fields = append(fields, apikey.FieldFastModePolicy)
+	}
+	if m.billing_mode != nil {
+		fields = append(fields, apikey.FieldBillingMode)
+	}
+	if m.preferred_subscription_id != nil {
+		fields = append(fields, apikey.FieldPreferredSubscriptionID)
 	}
 	if m.model_mapping != nil {
 		fields = append(fields, apikey.FieldModelMapping)
@@ -2170,6 +2285,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case apikey.FieldFastModePolicy:
 		return m.FastModePolicy()
+	case apikey.FieldBillingMode:
+		return m.BillingMode()
+	case apikey.FieldPreferredSubscriptionID:
+		return m.PreferredSubscriptionID()
 	case apikey.FieldModelMapping:
 		return m.ModelMapping()
 	case apikey.FieldLastUsedAt:
@@ -2243,6 +2362,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldStatus(ctx)
 	case apikey.FieldFastModePolicy:
 		return m.OldFastModePolicy(ctx)
+	case apikey.FieldBillingMode:
+		return m.OldBillingMode(ctx)
+	case apikey.FieldPreferredSubscriptionID:
+		return m.OldPreferredSubscriptionID(ctx)
 	case apikey.FieldModelMapping:
 		return m.OldModelMapping(ctx)
 	case apikey.FieldLastUsedAt:
@@ -2375,6 +2498,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFastModePolicy(v)
+		return nil
+	case apikey.FieldBillingMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingMode(v)
+		return nil
+	case apikey.FieldPreferredSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreferredSubscriptionID(v)
 		return nil
 	case apikey.FieldModelMapping:
 		v, ok := value.(map[string]string)
@@ -2524,6 +2661,9 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *APIKeyMutation) AddedFields() []string {
 	var fields []string
+	if m.addpreferred_subscription_id != nil {
+		fields = append(fields, apikey.FieldPreferredSubscriptionID)
+	}
 	if m.addquota != nil {
 		fields = append(fields, apikey.FieldQuota)
 	}
@@ -2562,6 +2702,8 @@ func (m *APIKeyMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case apikey.FieldPreferredSubscriptionID:
+		return m.AddedPreferredSubscriptionID()
 	case apikey.FieldQuota:
 		return m.AddedQuota()
 	case apikey.FieldQuotaUsed:
@@ -2591,6 +2733,13 @@ func (m *APIKeyMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *APIKeyMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case apikey.FieldPreferredSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreferredSubscriptionID(v)
+		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
 		if !ok {
@@ -2678,6 +2827,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldPreferredSubscriptionID) {
+		fields = append(fields, apikey.FieldPreferredSubscriptionID)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2727,6 +2879,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldPreferredSubscriptionID:
+		m.ClearPreferredSubscriptionID()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2798,6 +2953,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldFastModePolicy:
 		m.ResetFastModePolicy()
+		return nil
+	case apikey.FieldBillingMode:
+		m.ResetBillingMode()
+		return nil
+	case apikey.FieldPreferredSubscriptionID:
+		m.ResetPreferredSubscriptionID()
 		return nil
 	case apikey.FieldModelMapping:
 		m.ResetModelMapping()
@@ -13018,6 +13179,9 @@ type BatchImageJobMutation struct {
 	addapi_key_id                       *int64
 	account_id                          *int64
 	addaccount_id                       *int64
+	billing_mode                        *string
+	preferred_subscription_id           *int64
+	addpreferred_subscription_id        *int64
 	provider                            *string
 	model                               *string
 	task_name                           *string
@@ -13547,6 +13711,112 @@ func (m *BatchImageJobMutation) ResetAccountID() {
 	m.account_id = nil
 	m.addaccount_id = nil
 	delete(m.clearedFields, batchimagejob.FieldAccountID)
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (m *BatchImageJobMutation) SetBillingMode(s string) {
+	m.billing_mode = &s
+}
+
+// BillingMode returns the value of the "billing_mode" field in the mutation.
+func (m *BatchImageJobMutation) BillingMode() (r string, exists bool) {
+	v := m.billing_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingMode returns the old "billing_mode" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldBillingMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingMode: %w", err)
+	}
+	return oldValue.BillingMode, nil
+}
+
+// ResetBillingMode resets all changes to the "billing_mode" field.
+func (m *BatchImageJobMutation) ResetBillingMode() {
+	m.billing_mode = nil
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (m *BatchImageJobMutation) SetPreferredSubscriptionID(i int64) {
+	m.preferred_subscription_id = &i
+	m.addpreferred_subscription_id = nil
+}
+
+// PreferredSubscriptionID returns the value of the "preferred_subscription_id" field in the mutation.
+func (m *BatchImageJobMutation) PreferredSubscriptionID() (r int64, exists bool) {
+	v := m.preferred_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreferredSubscriptionID returns the old "preferred_subscription_id" field's value of the BatchImageJob entity.
+// If the BatchImageJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BatchImageJobMutation) OldPreferredSubscriptionID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreferredSubscriptionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreferredSubscriptionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreferredSubscriptionID: %w", err)
+	}
+	return oldValue.PreferredSubscriptionID, nil
+}
+
+// AddPreferredSubscriptionID adds i to the "preferred_subscription_id" field.
+func (m *BatchImageJobMutation) AddPreferredSubscriptionID(i int64) {
+	if m.addpreferred_subscription_id != nil {
+		*m.addpreferred_subscription_id += i
+	} else {
+		m.addpreferred_subscription_id = &i
+	}
+}
+
+// AddedPreferredSubscriptionID returns the value that was added to the "preferred_subscription_id" field in this mutation.
+func (m *BatchImageJobMutation) AddedPreferredSubscriptionID() (r int64, exists bool) {
+	v := m.addpreferred_subscription_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (m *BatchImageJobMutation) ClearPreferredSubscriptionID() {
+	m.preferred_subscription_id = nil
+	m.addpreferred_subscription_id = nil
+	m.clearedFields[batchimagejob.FieldPreferredSubscriptionID] = struct{}{}
+}
+
+// PreferredSubscriptionIDCleared returns if the "preferred_subscription_id" field was cleared in this mutation.
+func (m *BatchImageJobMutation) PreferredSubscriptionIDCleared() bool {
+	_, ok := m.clearedFields[batchimagejob.FieldPreferredSubscriptionID]
+	return ok
+}
+
+// ResetPreferredSubscriptionID resets all changes to the "preferred_subscription_id" field.
+func (m *BatchImageJobMutation) ResetPreferredSubscriptionID() {
+	m.preferred_subscription_id = nil
+	m.addpreferred_subscription_id = nil
+	delete(m.clearedFields, batchimagejob.FieldPreferredSubscriptionID)
 }
 
 // SetProvider sets the "provider" field.
@@ -15638,7 +15908,7 @@ func (m *BatchImageJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BatchImageJobMutation) Fields() []string {
-	fields := make([]string, 0, 48)
+	fields := make([]string, 0, 50)
 	if m.batch_id != nil {
 		fields = append(fields, batchimagejob.FieldBatchID)
 	}
@@ -15656,6 +15926,12 @@ func (m *BatchImageJobMutation) Fields() []string {
 	}
 	if m.account_id != nil {
 		fields = append(fields, batchimagejob.FieldAccountID)
+	}
+	if m.billing_mode != nil {
+		fields = append(fields, batchimagejob.FieldBillingMode)
+	}
+	if m.preferred_subscription_id != nil {
+		fields = append(fields, batchimagejob.FieldPreferredSubscriptionID)
 	}
 	if m.provider != nil {
 		fields = append(fields, batchimagejob.FieldProvider)
@@ -15803,6 +16079,10 @@ func (m *BatchImageJobMutation) Field(name string) (ent.Value, bool) {
 		return m.APIKeyID()
 	case batchimagejob.FieldAccountID:
 		return m.AccountID()
+	case batchimagejob.FieldBillingMode:
+		return m.BillingMode()
+	case batchimagejob.FieldPreferredSubscriptionID:
+		return m.PreferredSubscriptionID()
 	case batchimagejob.FieldProvider:
 		return m.Provider()
 	case batchimagejob.FieldModel:
@@ -15908,6 +16188,10 @@ func (m *BatchImageJobMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldAPIKeyID(ctx)
 	case batchimagejob.FieldAccountID:
 		return m.OldAccountID(ctx)
+	case batchimagejob.FieldBillingMode:
+		return m.OldBillingMode(ctx)
+	case batchimagejob.FieldPreferredSubscriptionID:
+		return m.OldPreferredSubscriptionID(ctx)
 	case batchimagejob.FieldProvider:
 		return m.OldProvider(ctx)
 	case batchimagejob.FieldModel:
@@ -16042,6 +16326,20 @@ func (m *BatchImageJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAccountID(v)
+		return nil
+	case batchimagejob.FieldBillingMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingMode(v)
+		return nil
+	case batchimagejob.FieldPreferredSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreferredSubscriptionID(v)
 		return nil
 	case batchimagejob.FieldProvider:
 		v, ok := value.(string)
@@ -16360,6 +16658,9 @@ func (m *BatchImageJobMutation) AddedFields() []string {
 	if m.addaccount_id != nil {
 		fields = append(fields, batchimagejob.FieldAccountID)
 	}
+	if m.addpreferred_subscription_id != nil {
+		fields = append(fields, batchimagejob.FieldPreferredSubscriptionID)
+	}
 	if m.additem_count != nil {
 		fields = append(fields, batchimagejob.FieldItemCount)
 	}
@@ -16414,6 +16715,8 @@ func (m *BatchImageJobMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedAPIKeyID()
 	case batchimagejob.FieldAccountID:
 		return m.AddedAccountID()
+	case batchimagejob.FieldPreferredSubscriptionID:
+		return m.AddedPreferredSubscriptionID()
 	case batchimagejob.FieldItemCount:
 		return m.AddedItemCount()
 	case batchimagejob.FieldSuccessCount:
@@ -16481,6 +16784,13 @@ func (m *BatchImageJobMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddAccountID(v)
+		return nil
+	case batchimagejob.FieldPreferredSubscriptionID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreferredSubscriptionID(v)
 		return nil
 	case batchimagejob.FieldItemCount:
 		v, ok := value.(int)
@@ -16586,6 +16896,9 @@ func (m *BatchImageJobMutation) ClearedFields() []string {
 	if m.FieldCleared(batchimagejob.FieldAccountID) {
 		fields = append(fields, batchimagejob.FieldAccountID)
 	}
+	if m.FieldCleared(batchimagejob.FieldPreferredSubscriptionID) {
+		fields = append(fields, batchimagejob.FieldPreferredSubscriptionID)
+	}
 	if m.FieldCleared(batchimagejob.FieldProviderJobName) {
 		fields = append(fields, batchimagejob.FieldProviderJobName)
 	}
@@ -16678,6 +16991,9 @@ func (m *BatchImageJobMutation) ClearField(name string) error {
 	case batchimagejob.FieldAccountID:
 		m.ClearAccountID()
 		return nil
+	case batchimagejob.FieldPreferredSubscriptionID:
+		m.ClearPreferredSubscriptionID()
+		return nil
 	case batchimagejob.FieldProviderJobName:
 		m.ClearProviderJobName()
 		return nil
@@ -16769,6 +17085,12 @@ func (m *BatchImageJobMutation) ResetField(name string) error {
 		return nil
 	case batchimagejob.FieldAccountID:
 		m.ResetAccountID()
+		return nil
+	case batchimagejob.FieldBillingMode:
+		m.ResetBillingMode()
+		return nil
+	case batchimagejob.FieldPreferredSubscriptionID:
+		m.ResetPreferredSubscriptionID()
 		return nil
 	case batchimagejob.FieldProvider:
 		m.ResetProvider()

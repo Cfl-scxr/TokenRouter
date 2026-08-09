@@ -23,6 +23,9 @@ type UsageBillingCommand struct {
 	APIKeyID           int64
 	RequestFingerprint string
 	RequestPayloadHash string
+	// APIKeyBillingMode 与 PreferredSubscriptionID 固化请求进入网关时的资金来源选择。
+	APIKeyBillingMode       string
+	PreferredSubscriptionID *int64
 
 	UserID                          int64
 	ActorUserID                     int64
@@ -59,8 +62,27 @@ func (c *UsageBillingCommand) Normalize() {
 		return
 	}
 	c.RequestID = strings.TrimSpace(c.RequestID)
+	rawMode := strings.TrimSpace(c.APIKeyBillingMode)
+	mode, ok := NormalizeAPIKeyBillingMode(c.APIKeyBillingMode)
+	if !ok {
+		mode = APIKeyBillingModeAuto
+	}
 	if strings.TrimSpace(c.RequestFingerprint) == "" {
-		c.RequestFingerprint = buildUsageBillingFingerprint(c)
+		// 缺省模式代表升级前的命令，保留旧指纹格式；显式模式才写入新字段。
+		fingerprintCommand := *c
+		if rawMode == "" {
+			fingerprintCommand.APIKeyBillingMode = ""
+		} else {
+			fingerprintCommand.APIKeyBillingMode = mode
+		}
+		if mode != APIKeyBillingModeSubscription {
+			fingerprintCommand.PreferredSubscriptionID = nil
+		}
+		c.RequestFingerprint = buildUsageBillingFingerprint(&fingerprintCommand)
+	}
+	c.APIKeyBillingMode = mode
+	if mode != APIKeyBillingModeSubscription {
+		c.PreferredSubscriptionID = nil
 	}
 	// 量化必须在指纹计算之后：指纹是请求幂等键，保持由原始金额派生可以避免
 	// 升级前后同一 request_id 的重试算出不同指纹而被判为 fingerprint conflict。
@@ -120,6 +142,10 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if c.TeamID != nil {
 		teamID = *c.TeamID
 	}
+	preferredSubscriptionID := int64(0)
+	if c.PreferredSubscriptionID != nil {
+		preferredSubscriptionID = *c.PreferredSubscriptionID
+	}
 	raw := fmt.Sprintf(
 		"%d|%d|%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
@@ -147,6 +173,7 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		c.APIKeyRateLimitCost,
 		c.AccountQuotaCost,
 	)
+	raw += fmt.Sprintf("|%s|%d", c.APIKeyBillingMode, preferredSubscriptionID)
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
@@ -194,9 +221,12 @@ type BatchImageBalanceHoldCommand struct {
 	ActorUserID        int64
 	TeamID             *int64
 	GroupID            *int64
-	BatchID            string
-	HoldAmount         float64
-	ActualAmount       float64
+	// APIKeyBillingMode 与 PreferredSubscriptionID 冻结提交时的资金来源，避免任务执行期间切换 Key 配置改变结算对象。
+	APIKeyBillingMode       string
+	PreferredSubscriptionID *int64
+	BatchID                 string
+	HoldAmount              float64
+	ActualAmount            float64
 	// 第二版价格快照按基础金额分配，避免订阅与余额共担时沿用同一个倍率。
 	PricingSnapshotVersion          int
 	BaseAmountUSD                   float64
@@ -222,8 +252,27 @@ func (c *BatchImageBalanceHoldCommand) Normalize() {
 	}
 	c.RequestID = strings.TrimSpace(c.RequestID)
 	c.BatchID = strings.TrimSpace(c.BatchID)
+	rawMode := strings.TrimSpace(c.APIKeyBillingMode)
+	mode, ok := NormalizeAPIKeyBillingMode(c.APIKeyBillingMode)
+	if !ok {
+		mode = APIKeyBillingModeAuto
+	}
 	if strings.TrimSpace(c.RequestFingerprint) == "" {
-		c.RequestFingerprint = buildBatchImageBalanceHoldFingerprint(c)
+		// 缺省模式代表升级前的命令，保留旧指纹格式；显式模式才写入新字段。
+		fingerprintCommand := *c
+		if rawMode == "" {
+			fingerprintCommand.APIKeyBillingMode = ""
+		} else {
+			fingerprintCommand.APIKeyBillingMode = mode
+		}
+		if mode != APIKeyBillingModeSubscription {
+			fingerprintCommand.PreferredSubscriptionID = nil
+		}
+		c.RequestFingerprint = buildBatchImageBalanceHoldFingerprint(&fingerprintCommand)
+	}
+	c.APIKeyBillingMode = mode
+	if mode != APIKeyBillingModeSubscription {
+		c.PreferredSubscriptionID = nil
 	}
 }
 
@@ -266,6 +315,13 @@ func buildBatchImageBalanceHoldFingerprint(c *BatchImageBalanceHoldCommand) stri
 			c.ActualAmount,
 			c.ReservedAt.UTC().Format(time.RFC3339Nano),
 		)
+	}
+	if c.PricingSnapshotVersion >= 3 {
+		preferredSubscriptionID := int64(0)
+		if c.PreferredSubscriptionID != nil {
+			preferredSubscriptionID = *c.PreferredSubscriptionID
+		}
+		raw += fmt.Sprintf("|%s|%d", c.APIKeyBillingMode, preferredSubscriptionID)
 	}
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash

@@ -41,14 +41,16 @@ type CreateAPIKeyRequest struct {
 	GroupID     *int64 `json:"group_id"` // nullable
 	IsComposite bool   `json:"is_composite"`
 	// CompositeGroups 是复合 Key 的完整分组前缀映射。
-	CompositeGroups []service.APIKeyCompositeGroupInput `json:"composite_groups"`
-	CustomKey       *string                             `json:"custom_key"`       // 可选的自定义key
-	IPWhitelist     []string                            `json:"ip_whitelist"`     // IP 白名单
-	IPBlacklist     []string                            `json:"ip_blacklist"`     // IP 黑名单
-	FastModePolicy  string                              `json:"fast_mode_policy"` // Fast 模式策略，空值表示跟随请求
-	ModelMapping    map[string]string                   `json:"model_mapping"`    // 当前 Key 的完整模型重定向规则
-	Quota           *float64                            `json:"quota"`            // 配额限制 (USD)
-	ExpiresInDays   *int                                `json:"expires_in_days"`  // 过期天数
+	CompositeGroups         []service.APIKeyCompositeGroupInput `json:"composite_groups"`
+	CustomKey               *string                             `json:"custom_key"`       // 可选的自定义key
+	IPWhitelist             []string                            `json:"ip_whitelist"`     // IP 白名单
+	IPBlacklist             []string                            `json:"ip_blacklist"`     // IP 黑名单
+	FastModePolicy          string                              `json:"fast_mode_policy"` // Fast 模式策略，空值表示跟随请求
+	BillingMode             string                              `json:"billing_mode"`     // 结算模式，空值表示自动选择
+	PreferredSubscriptionID *int64                              `json:"preferred_subscription_id"`
+	ModelMapping            map[string]string                   `json:"model_mapping"`   // 当前 Key 的完整模型重定向规则
+	Quota                   *float64                            `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays           *int                                `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -67,15 +69,17 @@ type UpdateAPIKeyRequest struct {
 	GroupID     *int64 `json:"group_id"`
 	IsComposite *bool  `json:"is_composite"`
 	// CompositeGroups 非 nil 时完整替换复合映射。
-	CompositeGroups *[]service.APIKeyCompositeGroupInput `json:"composite_groups"`
-	Status          string                               `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist     *[]string                            `json:"ip_whitelist"`     // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist     *[]string                            `json:"ip_blacklist"`     // IP 黑名单（nil 不修改，空数组清空）
-	FastModePolicy  *string                              `json:"fast_mode_policy"` // nil 表示保持原配置
-	ModelMapping    *map[string]string                   `json:"model_mapping"`    // nil 不修改，空对象清空
-	Quota           *float64                             `json:"quota"`            // 配额限制 (USD), 0=无限制
-	ExpiresAt       *string                              `json:"expires_at"`       // 过期时间 (ISO 8601)
-	ResetQuota      *bool                                `json:"reset_quota"`      // 重置已用配额
+	CompositeGroups         *[]service.APIKeyCompositeGroupInput `json:"composite_groups"`
+	Status                  string                               `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist             *[]string                            `json:"ip_whitelist"`     // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist             *[]string                            `json:"ip_blacklist"`     // IP 黑名单（nil 不修改，空数组清空）
+	FastModePolicy          *string                              `json:"fast_mode_policy"` // nil 表示保持原配置
+	BillingMode             *string                              `json:"billing_mode"`     // nil 表示保持原配置
+	PreferredSubscriptionID *int64                               `json:"preferred_subscription_id"`
+	ModelMapping            *map[string]string                   `json:"model_mapping"` // nil 不修改，空对象清空
+	Quota                   *float64                             `json:"quota"`         // 配额限制 (USD), 0=无限制
+	ExpiresAt               *string                              `json:"expires_at"`    // 过期时间 (ISO 8601)
+	ResetQuota              *bool                                `json:"reset_quota"`   // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
@@ -87,6 +91,16 @@ type UpdateAPIKeyRequest struct {
 	// 数据共享确认字段：倒计时弹窗确认后由前端传入。
 	DataSharingConfirmed     bool `json:"data_sharing_confirmed"`
 	DataSharingNoticeVersion int  `json:"data_sharing_notice_version"`
+}
+
+// APIKeyBillingSubscriptionOptionResponse 是前端选择指定订阅时使用的安全摘要。
+type APIKeyBillingSubscriptionOptionResponse struct {
+	ID               int64     `json:"id"`
+	PlanID           int64     `json:"plan_id"`
+	PlanName         string    `json:"plan_name"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	GroupsRestricted bool      `json:"groups_restricted"`
+	ApplicableGroups []int64   `json:"applicable_groups"`
 }
 
 // List handles listing user's API keys with pagination
@@ -191,6 +205,8 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
 		FastModePolicy:                        req.FastModePolicy,
+		BillingMode:                           req.BillingMode,
+		PreferredSubscriptionID:               req.PreferredSubscriptionID,
 		ModelMapping:                          req.ModelMapping,
 		ExpiresInDays:                         req.ExpiresInDays,
 		FallbackToDefaultGroupWhenUnavailable: req.FallbackToDefaultGroupWhenUnavailable,
@@ -246,6 +262,8 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		IPWhitelist:                           req.IPWhitelist,
 		IPBlacklist:                           req.IPBlacklist,
 		FastModePolicy:                        req.FastModePolicy,
+		BillingMode:                           req.BillingMode,
+		PreferredSubscriptionID:               req.PreferredSubscriptionID,
 		ModelMapping:                          req.ModelMapping,
 		Quota:                                 req.Quota,
 		ResetQuota:                            req.ResetQuota,
@@ -322,7 +340,22 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 		return
 	}
 
-	groups, err := h.apiKeyService.GetAvailableGroupsForScope(c.Request.Context(), subject.UserID, c.DefaultQuery("scope", "personal"))
+	var subscriptionID *int64
+	if rawSubscriptionID := strings.TrimSpace(c.Query("subscription_id")); rawSubscriptionID != "" {
+		parsedID, err := strconv.ParseInt(rawSubscriptionID, 10, 64)
+		if err != nil || parsedID <= 0 {
+			response.BadRequest(c, "Invalid subscription ID")
+			return
+		}
+		subscriptionID = &parsedID
+	}
+
+	groups, err := h.apiKeyService.GetAvailableGroupsForScopeWithSubscription(
+		c.Request.Context(),
+		subject.UserID,
+		c.DefaultQuery("scope", "personal"),
+		subscriptionID,
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -336,6 +369,38 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 			groupDTO.Capacity = dto.GroupCapacityFromService(&capacity)
 		}
 		out = append(out, *groupDTO)
+	}
+	response.Success(c, out)
+}
+
+// GetBillingOptions 返回当前作用域可用于指定结算的订阅列表。
+// GET /api/v1/keys/billing-options?scope=personal|team
+func (h *APIKeyHandler) GetBillingOptions(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	options, err := h.apiKeyService.ListBillingSubscriptionsForScope(
+		c.Request.Context(),
+		subject.UserID,
+		c.DefaultQuery("scope", "personal"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]APIKeyBillingSubscriptionOptionResponse, 0, len(options))
+	for i := range options {
+		option := options[i]
+		out = append(out, APIKeyBillingSubscriptionOptionResponse{
+			ID:               option.ID,
+			PlanID:           option.PlanID,
+			PlanName:         option.PlanName,
+			ExpiresAt:        option.ExpiresAt,
+			GroupsRestricted: option.GroupsRestricted,
+			ApplicableGroups: append([]int64(nil), option.ApplicableGroups...),
+		})
 	}
 	response.Success(c, out)
 }

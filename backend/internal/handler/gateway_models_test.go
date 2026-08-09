@@ -270,6 +270,53 @@ func TestGatewayModelsCompositeKeyAggregatesMappingsInOrder(t *testing.T) {
 	require.Contains(t, ids, "Claude/claude-sonnet-4-6")
 }
 
+func TestGatewayModelsCompositeKeyFiltersPreferredSubscriptionMappings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	allowedGroupID := int64(52)
+	blockedGroupID := int64(53)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		allowedGroupID: {{ID: 1, Platform: service.PlatformOpenAI, Credentials: map[string]any{
+			"model_mapping": map[string]any{"allowed-model": "allowed-model"},
+		}}},
+		blockedGroupID: {{ID: 2, Platform: service.PlatformOpenAI, Credentials: map[string]any{
+			"model_mapping": map[string]any{"blocked-model": "blocked-model"},
+		}}},
+	}})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	context.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		IsComposite: true,
+		BillingMode: service.APIKeyBillingModeSubscription,
+		User: &service.User{
+			Status:        service.StatusActive,
+			AllowedGroups: []int64{allowedGroupID, blockedGroupID},
+		},
+		CompositeGroups: []service.APIKeyCompositeGroup{
+			{GroupID: allowedGroupID, Prefix: "Allowed", Group: &service.Group{ID: allowedGroupID, Platform: service.PlatformOpenAI, Status: service.StatusActive, IsExclusive: true}},
+			{GroupID: blockedGroupID, Prefix: "Blocked", Group: &service.Group{ID: blockedGroupID, Platform: service.PlatformOpenAI, Status: service.StatusActive, IsExclusive: true}},
+		},
+	})
+	context.Set(string(middleware2.ContextKeyAPIKeyBilling), &middleware2.APIKeyBillingContext{
+		Mode:      service.APIKeyBillingModeSubscription,
+		Source:    "subscription",
+		Available: true,
+		Subscription: &service.UserSubscription{Plan: &service.SubscriptionPlan{
+			GroupIDs: []int64{allowedGroupID},
+		}},
+	})
+
+	h.Models(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "Allowed/allowed-model")
+	require.NotContains(t, ids, "Blocked/blocked-model")
+}
+
 func TestGatewayModelsCompositeKeyFiltersRevokedMappings(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	publicGroupID := int64(60)

@@ -4,7 +4,13 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type {
+  ApiKey,
+  ApiKeyBillingSubscriptionOption,
+  CreateApiKeyRequest,
+  UpdateApiKeyRequest,
+  PaginatedResponse
+} from '@/types'
 
 /**
  * List all API keys for current user
@@ -43,6 +49,18 @@ export async function list(
  */
 export async function getById(id: number): Promise<ApiKey> {
   const { data } = await apiClient.get<ApiKey>(`/keys/${id}`)
+  return data
+}
+
+/**
+ * 获取当前作用域可锁定使用的有效订阅。
+ */
+export async function getBillingOptions(
+  scope: 'personal' | 'team' = 'personal'
+): Promise<ApiKeyBillingSubscriptionOption[]> {
+  const { data } = await apiClient.get<ApiKeyBillingSubscriptionOption[]>('/keys/billing-options', {
+    params: { scope }
+  })
   return data
 }
 
@@ -149,6 +167,7 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
 export const keysAPI = {
   list,
   getById,
+  getBillingOptions,
   create,
   createWithPayload,
   update,

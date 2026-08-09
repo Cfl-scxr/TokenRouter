@@ -98,6 +98,18 @@ func lockUsageBillingUser(ctx context.Context, tx *sql.Tx, userID int64) error {
 }
 
 func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+	return r.resolveUsableSubscriptionForGroup(ctx, userID, groupID, nil)
+}
+
+// ResolvePreferredSubscriptionForGroup 为批量任务定价读取指定订阅，避免把 API Key 锁定的套餐重新扩展为自动选择。
+func (r *usageBillingRepository) ResolvePreferredSubscriptionForGroup(ctx context.Context, userID, subscriptionID, groupID int64) (*service.UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, service.ErrSubscriptionNotFound
+	}
+	return r.resolveUsableSubscriptionForGroup(ctx, userID, groupID, &subscriptionID)
+}
+
+func (r *usageBillingRepository) resolveUsableSubscriptionForGroup(ctx context.Context, userID, groupID int64, preferredSubscriptionID *int64) (*service.UserSubscription, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("usage billing repository db is nil")
 	}
@@ -139,6 +151,7 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 			AND us.starts_at <= $5
 			AND us.expires_at > $5
 			AND us.status IN ($2, $3)
+			AND ($6::bigint IS NULL OR us.id = $6)
 			AND (
 				NOT EXISTS (
 					SELECT 1
@@ -159,6 +172,7 @@ func (r *usageBillingRepository) ResolveUsableSubscriptionForGroup(ctx context.C
 		service.SubscriptionStatusPending,
 		groupID,
 		now,
+		preferredSubscriptionID,
 	)
 	if err != nil {
 		return nil, err
@@ -660,6 +674,10 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	if err != nil {
 		return err
 	}
+	// 指定订阅必须完整覆盖本次用量；事务回滚后既不会扣余额，也不会留下部分套餐扣费。
+	if cmd.APIKeyBillingMode == service.APIKeyBillingModeSubscription && remainingAmount > 1e-10 {
+		return service.ErrPreferredSubscriptionInsufficient
+	}
 	result.BillingAllocations = allocations
 	result.SubscriptionAmountUSD = subscriptionAmount
 
@@ -849,6 +867,12 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 	if amountUSD <= 0 {
 		return 0, 0, nil, nil
 	}
+	if cmd.APIKeyBillingMode == service.APIKeyBillingModeBalance {
+		return amountUSD, 0, nil, nil
+	}
+	if cmd.APIKeyBillingMode == service.APIKeyBillingModeSubscription && (cmd.PreferredSubscriptionID == nil || *cmd.PreferredSubscriptionID <= 0) {
+		return 0, 0, nil, service.ErrPreferredSubscriptionInvalid
+	}
 
 	query := `
 		SELECT
@@ -877,8 +901,13 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 			AND starts_at <= NOW()
 			AND expires_at > NOW()
 			AND status IN ($2, $3)
+			AND ($4::bigint IS NULL OR id = $4)
 `
-	args := []any{cmd.UserID, service.SubscriptionStatusActive, service.SubscriptionStatusPending}
+	var preferredSubscriptionID any
+	if cmd.PreferredSubscriptionID != nil {
+		preferredSubscriptionID = *cmd.PreferredSubscriptionID
+	}
+	args := []any{cmd.UserID, service.SubscriptionStatusActive, service.SubscriptionStatusPending, preferredSubscriptionID}
 	if cmd.GroupID != nil && *cmd.GroupID > 0 {
 		query += `
 			AND EXISTS (
@@ -895,12 +924,21 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 							SELECT 1
 							FROM subscription_plan_groups spg
 							WHERE spg.plan_id = user_subscriptions.plan_id
-								AND spg.group_id = $4
+								AND spg.group_id = $5
 						)
 					)
-			)
+				)
 `
 		args = append(args, *cmd.GroupID)
+	} else if cmd.APIKeyBillingMode == service.APIKeyBillingModeSubscription {
+		// 指定订阅没有最终分组时，只允许套餐本身不限制分组；受限套餐不能由无分组路径扣费。
+		query += `
+			AND NOT EXISTS (
+				SELECT 1
+				FROM subscription_plan_groups spg
+				WHERE spg.plan_id = user_subscriptions.plan_id
+			)
+`
 	}
 	query += `
 		ORDER BY expires_at ASC, starts_at ASC, id ASC
@@ -1266,6 +1304,8 @@ func reserveUsageBillingBatchImageBilling(ctx context.Context, tx *sql.Tx, cmd *
 		return result, nil
 	}
 	allocationCommand := &service.UsageBillingCommand{
+		APIKeyBillingMode:               cmd.APIKeyBillingMode,
+		PreferredSubscriptionID:         cmd.PreferredSubscriptionID,
 		UserID:                          cmd.UserID,
 		GroupID:                         cmd.GroupID,
 		BillableAmountUSD:               cmd.HoldAmount,
@@ -1276,9 +1316,13 @@ func reserveUsageBillingBatchImageBilling(ctx context.Context, tx *sql.Tx, cmd *
 		DisablePlanGroupRateMultiplier:  cmd.DisablePlanGroupRateMultiplier,
 		IncludeAllocationPricing:        cmd.PricingSnapshotVersion >= 2,
 	}
+	allocationCommand.Normalize()
 	remainingBase, subscriptionAmount, allocations, err := allocateUsageBillingSubscriptions(ctx, tx, allocationCommand)
 	if err != nil {
 		return nil, err
+	}
+	if allocationCommand.APIKeyBillingMode == service.APIKeyBillingModeSubscription && remainingBase > 1e-10 {
+		return nil, service.ErrPreferredSubscriptionInsufficient
 	}
 	balanceAmount := remainingBase
 	if usageBillingUsesBaseAmount(allocationCommand) {

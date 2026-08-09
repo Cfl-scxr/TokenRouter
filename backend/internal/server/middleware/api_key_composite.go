@@ -125,21 +125,29 @@ func GetCompositeModelFromContext(c *gin.Context) (clientModel, actualModel stri
 
 // isCompositeKeyNoModelEndpoint 识别仅按 Key 身份工作或聚合全部映射的入口。
 func isCompositeKeyNoModelEndpoint(method, path string) bool {
-	cleanPath := strings.TrimSuffix(path, "/")
-	switch cleanPath {
-	case "/v1/models", "/models", "/v1beta/models", "/antigravity/models", "/antigravity/v1/models", "/antigravity/v1beta/models", "/v1/images/batches/models",
-		"/v1/usage", "/antigravity/v1/usage":
+	if isCompositeKeyModelListEndpoint(method, path) || isAPIKeyUsageRequest(method, path) {
 		return true
 	}
 	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)
 }
 
+// isCompositeKeyModelListEndpoint 识别复合 Key 需要聚合映射的模型列表入口。
+func isCompositeKeyModelListEndpoint(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	switch strings.TrimSuffix(path, "/") {
+	case "/v1/models", "/models", "/v1beta/models", "/antigravity/models", "/antigravity/v1/models", "/antigravity/v1beta/models", "/v1/images/batches/models":
+		return true
+	default:
+		return false
+	}
+}
+
 // isCompositeKeyBillingBypassEndpoint 仅识别按 Key 身份读取既有数据的入口。
 // 模型列表虽然不需要选择分组，但仍必须执行 Key 额度、余额和订阅校验。
 func isCompositeKeyBillingBypassEndpoint(method, path string) bool {
-	cleanPath := strings.TrimSuffix(path, "/")
-	switch cleanPath {
-	case "/v1/usage", "/antigravity/v1/usage":
+	if isAPIKeyUsageRequest(method, path) {
 		return true
 	}
 	return isBatchImageBillingBypassRequest(method, path) || isGrokVideoTaskRead(method, path)

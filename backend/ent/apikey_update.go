@@ -198,6 +198,47 @@ func (_u *APIKeyUpdate) SetNillableFastModePolicy(v *string) *APIKeyUpdate {
 	return _u
 }
 
+// SetBillingMode sets the "billing_mode" field.
+func (_u *APIKeyUpdate) SetBillingMode(v string) *APIKeyUpdate {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableBillingMode(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_u *APIKeyUpdate) SetPreferredSubscriptionID(v int64) *APIKeyUpdate {
+	_u.mutation.ResetPreferredSubscriptionID()
+	_u.mutation.SetPreferredSubscriptionID(v)
+	return _u
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillablePreferredSubscriptionID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetPreferredSubscriptionID(*v)
+	}
+	return _u
+}
+
+// AddPreferredSubscriptionID adds value to the "preferred_subscription_id" field.
+func (_u *APIKeyUpdate) AddPreferredSubscriptionID(v int64) *APIKeyUpdate {
+	_u.mutation.AddPreferredSubscriptionID(v)
+	return _u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (_u *APIKeyUpdate) ClearPreferredSubscriptionID() *APIKeyUpdate {
+	_u.mutation.ClearPreferredSubscriptionID()
+	return _u
+}
+
 // SetModelMapping sets the "model_mapping" field.
 func (_u *APIKeyUpdate) SetModelMapping(v map[string]string) *APIKeyUpdate {
 	_u.mutation.SetModelMapping(v)
@@ -764,6 +805,11 @@ func (_u *APIKeyUpdate) check() error {
 			return &ValidationError{Name: "fast_mode_policy", err: fmt.Errorf(`ent: validator failed for field "APIKey.fast_mode_policy": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -808,6 +854,18 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(apikey.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredSubscriptionID(); ok {
+		_spec.AddField(apikey.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredSubscriptionIDCleared() {
+		_spec.ClearField(apikey.FieldPreferredSubscriptionID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelMapping(); ok {
 		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)
@@ -1294,6 +1352,47 @@ func (_u *APIKeyUpdateOne) SetNillableFastModePolicy(v *string) *APIKeyUpdateOne
 	if v != nil {
 		_u.SetFastModePolicy(*v)
 	}
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *APIKeyUpdateOne) SetBillingMode(v string) *APIKeyUpdateOne {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableBillingMode(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetPreferredSubscriptionID sets the "preferred_subscription_id" field.
+func (_u *APIKeyUpdateOne) SetPreferredSubscriptionID(v int64) *APIKeyUpdateOne {
+	_u.mutation.ResetPreferredSubscriptionID()
+	_u.mutation.SetPreferredSubscriptionID(v)
+	return _u
+}
+
+// SetNillablePreferredSubscriptionID sets the "preferred_subscription_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillablePreferredSubscriptionID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetPreferredSubscriptionID(*v)
+	}
+	return _u
+}
+
+// AddPreferredSubscriptionID adds value to the "preferred_subscription_id" field.
+func (_u *APIKeyUpdateOne) AddPreferredSubscriptionID(v int64) *APIKeyUpdateOne {
+	_u.mutation.AddPreferredSubscriptionID(v)
+	return _u
+}
+
+// ClearPreferredSubscriptionID clears the value of the "preferred_subscription_id" field.
+func (_u *APIKeyUpdateOne) ClearPreferredSubscriptionID() *APIKeyUpdateOne {
+	_u.mutation.ClearPreferredSubscriptionID()
 	return _u
 }
 
@@ -1876,6 +1975,11 @@ func (_u *APIKeyUpdateOne) check() error {
 			return &ValidationError{Name: "fast_mode_policy", err: fmt.Errorf(`ent: validator failed for field "APIKey.fast_mode_policy": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -1937,6 +2041,18 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.FastModePolicy(); ok {
 		_spec.SetField(apikey.FieldFastModePolicy, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PreferredSubscriptionID(); ok {
+		_spec.SetField(apikey.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredSubscriptionID(); ok {
+		_spec.AddField(apikey.FieldPreferredSubscriptionID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredSubscriptionIDCleared() {
+		_spec.ClearField(apikey.FieldPreferredSubscriptionID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ModelMapping(); ok {
 		_spec.SetField(apikey.FieldModelMapping, field.TypeJSON, value)

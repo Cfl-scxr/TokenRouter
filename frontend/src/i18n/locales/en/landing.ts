@@ -191,6 +191,17 @@ batchImageGuide: {
     // Status
     quotaMode: 'Key Quota Mode',
     walletBalance: 'Wallet Balance',
+    billingMode: 'Billing mode',
+    billingUnavailable: 'Currently unavailable',
+    billingModes: {
+      auto: 'Automatic',
+      subscription: 'Selected subscription',
+      balance: 'Balance only'
+    },
+    billingSources: {
+      subscription: 'Subscription',
+      balance: 'Balance'
+    },
     // Ring card titles
     totalQuota: 'Total Quota',
     limit5h: '5-Hour Limit',

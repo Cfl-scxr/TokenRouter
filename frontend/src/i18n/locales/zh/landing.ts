@@ -191,6 +191,17 @@ batchImageGuide: {
     // Status
     quotaMode: 'Key 限额模式',
     walletBalance: '钱包余额',
+    billingMode: '结算方式',
+    billingUnavailable: '当前不可用',
+    billingModes: {
+      auto: '自动选择',
+      subscription: '指定订阅',
+      balance: '仅使用余额'
+    },
+    billingSources: {
+      subscription: '订阅',
+      balance: '余额'
+    },
     // Ring card titles
     totalQuota: '总额度',
     limit5h: '5 小时限额',

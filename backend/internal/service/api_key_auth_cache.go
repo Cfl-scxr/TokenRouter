@@ -18,6 +18,9 @@ type APIKeyAuthSnapshot struct {
 	Status            string                             `json:"status"`
 	// FastModePolicy 随鉴权快照下发，供网关热路径读取。
 	FastModePolicy string `json:"fast_mode_policy"`
+	// BillingMode 与指定订阅必须随鉴权快照下发，避免请求期回读 API Key。
+	BillingMode             string `json:"billing_mode"`
+	PreferredSubscriptionID *int64 `json:"preferred_subscription_id,omitempty"`
 	// ModelMapping 随鉴权快照下发，避免请求期查询数据库。
 	ModelMapping   map[string]string        `json:"model_mapping,omitempty"`
 	IPWhitelist    []string                 `json:"ip_whitelist,omitempty"`

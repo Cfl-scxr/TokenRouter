@@ -59,6 +59,15 @@ func apiKeyFastModePolicyForPersistence(value string) string {
 	return value
 }
 
+// apiKeyBillingModeForPersistence 兼容绕过服务层的旧夹具和内部调用。
+func apiKeyBillingModeForPersistence(value string) string {
+	mode, ok := service.NormalizeAPIKeyBillingMode(value)
+	if ok {
+		return mode
+	}
+	return value
+}
+
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
 	if key == nil {
 		return fmt.Errorf("api key is required")
@@ -150,6 +159,8 @@ func createAPIKeyRecord(ctx context.Context, client *dbent.Client, key *service.
 		SetStatus(key.Status).
 		SetIsComposite(key.IsComposite).
 		SetFastModePolicy(apiKeyFastModePolicyForPersistence(key.FastModePolicy)).
+		SetBillingMode(apiKeyBillingModeForPersistence(key.BillingMode)).
+		SetNillablePreferredSubscriptionID(key.PreferredSubscriptionID).
 		SetModelMapping(service.CloneModelMapping(key.ModelMapping)).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
@@ -281,6 +292,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldName,
 			apikey.FieldStatus,
 			apikey.FieldFastModePolicy,
+			apikey.FieldBillingMode,
+			apikey.FieldPreferredSubscriptionID,
 			apikey.FieldModelMapping,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
@@ -416,6 +429,14 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.FastModePolicy {
 		builder.SetFastModePolicy(apiKeyFastModePolicyForPersistence(key.FastModePolicy))
+	}
+	if fields.BillingConfiguration {
+		builder.SetBillingMode(apiKeyBillingModeForPersistence(key.BillingMode))
+		if key.PreferredSubscriptionID == nil {
+			builder.ClearPreferredSubscriptionID()
+		} else {
+			builder.SetPreferredSubscriptionID(*key.PreferredSubscriptionID)
+		}
 	}
 	if fields.ModelMapping {
 		builder.SetModelMapping(service.CloneModelMapping(key.ModelMapping))
@@ -1223,6 +1244,8 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Name:                                  m.Name,
 		Status:                                m.Status,
 		FastModePolicy:                        m.FastModePolicy,
+		BillingMode:                           m.BillingMode,
+		PreferredSubscriptionID:               m.PreferredSubscriptionID,
 		ModelMapping:                          service.CloneModelMapping(m.ModelMapping),
 		IPWhitelist:                           m.IPWhitelist,
 		IPBlacklist:                           m.IPBlacklist,

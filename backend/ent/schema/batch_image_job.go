@@ -37,6 +37,9 @@ func (BatchImageJob) Fields() []ent.Field {
 		field.Int64("team_id").Optional().Nillable(),
 		field.Int64("api_key_id").Optional().Nillable(),
 		field.Int64("account_id").Optional().Nillable(),
+		// 批任务会冻结 API Key 提交时的结算来源，避免异步结算读取到后续编辑后的配置。
+		field.String("billing_mode").MaxLen(32).Default("auto"),
+		field.Int64("preferred_subscription_id").Optional().Nillable(),
 		field.String("provider").MaxLen(32),
 		field.String("model").MaxLen(128),
 		field.String("task_name").MaxLen(255).Default(""),
