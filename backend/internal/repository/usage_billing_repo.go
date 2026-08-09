@@ -674,13 +674,10 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	if err != nil {
 		return err
 	}
-	// 指定订阅必须完整覆盖本次用量；事务回滚后既不会扣余额，也不会留下部分套餐扣费。
-	if cmd.APIKeyBillingMode == service.APIKeyBillingModeSubscription && remainingAmount > 1e-10 {
-		return service.ErrPreferredSubscriptionInsufficient
-	}
 	result.BillingAllocations = allocations
 	result.SubscriptionAmountUSD = subscriptionAmount
 
+	// 普通请求到这里已经完成上游调用；指定订阅只扣到额度上限，已放行请求的溢出部分记为余额欠费。
 	balanceAmount := remainingAmount
 	if usageBillingUsesBaseAmount(cmd) {
 		balanceAmount = remainingAmount * usageBillingNonNegativeRate(cmd.BalanceRateMultiplier)
@@ -978,6 +975,10 @@ func allocateUsageBillingSubscriptions(ctx context.Context, tx *sql.Tx, cmd *ser
 	}
 	if err := rows.Close(); err != nil {
 		return 0, 0, nil, err
+	}
+	// 指定订阅不存在、失效或不覆盖最终分组时不能把整笔请求伪装成余额回退。
+	if cmd.APIKeyBillingMode == service.APIKeyBillingModeSubscription && len(subscriptions) == 0 {
+		return 0, 0, nil, service.ErrPreferredSubscriptionInsufficient
 	}
 
 	now := time.Now()

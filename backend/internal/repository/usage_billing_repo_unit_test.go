@@ -128,6 +128,112 @@ func TestReserveUsageBillingBatchImageBilling_UsesBalanceRateAfterPartialSubscri
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestReserveUsageBillingBatchImageBilling_StrictSubscriptionRejectsPartialHold(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	windowStart := now.Add(-time.Hour)
+	preferredID := int64(11)
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(`(?s)SELECT\s+id,\s+plan_id,.*FROM user_subscriptions.*AND NOT EXISTS\s*\(\s*SELECT 1\s+FROM subscription_plan_groups.*FOR UPDATE`).
+		WithArgs(int64(42), service.SubscriptionStatusActive, service.SubscriptionStatusPending, preferredID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "plan_id", "starts_at", "expires_at",
+			"daily_window_start", "weekly_window_start", "monthly_window_start",
+			"daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd",
+			"daily_usage_usd", "weekly_usage_usd", "monthly_usage_usd", "group_rates",
+		}).AddRow(
+			preferredID, int64(22), now.Add(-24*time.Hour), now.Add(30*24*time.Hour),
+			windowStart, windowStart, windowStart,
+			1.0, 1.0, 1.0,
+			0.8, 0.8, 0.8, `{}`,
+		))
+	// 批量任务尚未提交上游，只能预占剩余额度，不能沿用普通请求的溢出欠费结算语义。
+	mock.ExpectExec(`(?s)UPDATE user_subscriptions\s+SET.*WHERE id = \$7`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1.0, 1.0, 1.0, preferredID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+
+	_, err = reserveUsageBillingBatchImageBilling(ctx, tx, &service.BatchImageBalanceHoldCommand{
+		UserID:                  42,
+		BatchID:                 "imgbatch_strict_subscription",
+		HoldAmount:              0.5,
+		APIKeyBillingMode:       service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID: &preferredID,
+	})
+
+	require.ErrorIs(t, err, service.ErrPreferredSubscriptionInsufficient)
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_StrictSubscriptionChargesOverflowToBalance(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Now().UTC()
+	windowStart := now.Add(-time.Hour)
+	preferredID := int64(11)
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(`(?s)SELECT\s+id,\s+plan_id,.*FROM user_subscriptions.*AND NOT EXISTS\s*\(\s*SELECT 1\s+FROM subscription_plan_groups.*FOR UPDATE`).
+		WithArgs(int64(42), service.SubscriptionStatusActive, service.SubscriptionStatusPending, preferredID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "plan_id", "starts_at", "expires_at",
+			"daily_window_start", "weekly_window_start", "monthly_window_start",
+			"daily_limit_usd", "weekly_limit_usd", "monthly_limit_usd",
+			"daily_usage_usd", "weekly_usage_usd", "monthly_usage_usd", "group_rates",
+		}).AddRow(
+			preferredID, int64(22), now.Add(-24*time.Hour), now.Add(30*24*time.Hour),
+			windowStart, windowStart, windowStart,
+			1.0, 1.0, 1.0,
+			0.8, 0.8, 0.8, `{}`,
+		))
+	// 指定订阅只扣到额度上限，剩余基础用量按余额倍率形成欠费。
+	mock.ExpectExec(`(?s)UPDATE user_subscriptions\s+SET.*WHERE id = \$7`).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1.0, 1.0, 1.0, preferredID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)WITH locked_user AS \(.*SELECT updated.balance, \$1::numeric AS deducted_amount`).
+		WithArgs(1.2, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "deducted_amount"}).AddRow(-1.2, 1.2))
+	mock.ExpectCommit()
+
+	result := &service.UsageBillingApplyResult{}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:                          42,
+		BillableAmountUSD:               0.5,
+		BaseAmountUSD:                   1,
+		SubscriptionRateMultiplier:      0.5,
+		SubscriptionRateMultiplierScale: 1,
+		BalanceRateMultiplier:           2,
+		APIKeyBillingMode:               service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID:         &preferredID,
+	}, result)
+
+	require.NoError(t, err)
+	require.InDelta(t, 0.2, result.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 1.2, result.BalanceAmountUSD, 0.000001)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, -1.2, *result.NewBalance, 0.000001)
+	require.Len(t, result.BillingAllocations, 2)
+	require.InDelta(t, 0.2, result.BillingAllocations[0].AmountUSD, 0.000001)
+	require.InDelta(t, 1.2, result.BillingAllocations[1].AmountUSD, 0.000001)
+	require.NotNil(t, result.EffectiveRateMultiplier)
+	require.InDelta(t, 1.4, *result.EffectiveRateMultiplier, 0.000001)
+	require.NotNil(t, result.BillingAllocations[0].SubscriptionID)
+	require.Equal(t, preferredID, *result.BillingAllocations[0].SubscriptionID)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyUsageBillingEffects_StrictSubscriptionWithoutGroupFiltersRestrictedPlans(t *testing.T) {
 	ctx := context.Background()
 	db, mock, err := sqlmock.New()

@@ -80,18 +80,29 @@ func TestBillingEligibility_ExhaustedSubscriptionFallsBackToBalance(t *testing.T
 }
 
 func TestBillingEligibility_PreferredSubscriptionDoesNotFallBackToBalance(t *testing.T) {
-	svc := newBillingEligibilityService(t, 1)
-	preferredID := int64(1)
-	err := svc.CheckBillingEligibility(
-		context.Background(),
-		&User{ID: 1},
-		&APIKey{BillingMode: APIKeyBillingModeSubscription, PreferredSubscriptionID: &preferredID},
-		nil,
-		activeBillingEligibilitySubscription(10, 10),
-		"",
-	)
+	for _, tt := range []struct {
+		name string
+		used float64
+	}{
+		{name: "exactly exhausted", used: 10},
+		{name: "already over limit", used: 12},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// 即使余额足够，锁定订阅的 Key 也不能在额度耗尽后自动切换成按量模式。
+			svc := newBillingEligibilityService(t, 100)
+			preferredID := int64(1)
+			err := svc.CheckBillingEligibility(
+				context.Background(),
+				&User{ID: 1},
+				&APIKey{BillingMode: APIKeyBillingModeSubscription, PreferredSubscriptionID: &preferredID},
+				nil,
+				activeBillingEligibilitySubscription(10, tt.used),
+				"",
+			)
 
-	require.ErrorIs(t, err, ErrPreferredSubscriptionInsufficient)
+			require.ErrorIs(t, err, ErrPreferredSubscriptionInsufficient)
+		})
+	}
 }
 
 func TestBillingEligibility_PreferredSubscriptionRejectsFallbackGroupOutsidePlan(t *testing.T) {

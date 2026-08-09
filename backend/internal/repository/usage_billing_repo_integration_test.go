@@ -1144,6 +1144,91 @@ func TestUsageBillingRepositoryApply_DeductsBalanceDeficitAfterPartialSubscripti
 	require.InDelta(t, 10.0, dailyUsage, 0.000001)
 }
 
+func TestUsageBillingRepositoryApply_PreferredSubscriptionChargesOverflowToBalance(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("usage-billing-sub-overage-user-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Balance:      0,
+	})
+	plan := mustCreatePlan(t, client, &service.SubscriptionPlan{
+		Name:            "usage-billing-overage-plan-" + uuid.NewString(),
+		Description:     "usage billing preferred subscription overage test plan",
+		Price:           19.9,
+		ValidityDays:    30,
+		ValidityUnit:    "day",
+		ForSale:         true,
+		DailyLimitUSD:   float64Ptr(10),
+		WeeklyLimitUSD:  float64Ptr(10),
+		MonthlyLimitUSD: float64Ptr(10),
+	})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{
+		UserID: user.ID,
+		Key:    "sk-usage-billing-sub-overage-" + uuid.NewString(),
+		Name:   "billing-sub-overage",
+	})
+	windowStart := time.Now().Add(-time.Hour)
+	subscription := mustCreateSubscription(t, client, &service.UserSubscription{
+		UserID:             user.ID,
+		PlanID:             plan.ID,
+		DailyWindowStart:   &windowStart,
+		WeeklyWindowStart:  &windowStart,
+		MonthlyWindowStart: &windowStart,
+		DailyLimitUSD:      float64Ptr(10),
+		WeeklyLimitUSD:     float64Ptr(10),
+		MonthlyLimitUSD:    float64Ptr(10),
+		DailyUsageUSD:      9.8,
+		WeeklyUsageUSD:     9.8,
+		MonthlyUsageUSD:    9.8,
+	})
+
+	preferredID := subscription.ID
+	result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		RequestID:                       uuid.NewString(),
+		APIKeyID:                        apiKey.ID,
+		UserID:                          user.ID,
+		BillableAmountUSD:               0.5,
+		BaseAmountUSD:                   1,
+		SubscriptionRateMultiplier:      0.5,
+		SubscriptionRateMultiplierScale: 1,
+		BalanceRateMultiplier:           2,
+		APIKeyBillingMode:               service.APIKeyBillingModeSubscription,
+		PreferredSubscriptionID:         &preferredID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	require.InDelta(t, 0.2, result.SubscriptionAmountUSD, 0.000001)
+	require.InDelta(t, 1.2, result.BalanceAmountUSD, 0.000001)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, -1.2, *result.NewBalance, 0.000001)
+	require.Len(t, result.BillingAllocations, 2)
+	require.Equal(t, domain.BillingAllocationTypeSubscription, result.BillingAllocations[0].Type)
+	require.InDelta(t, 0.2, result.BillingAllocations[0].AmountUSD, 0.000001)
+	require.Equal(t, domain.BillingAllocationTypeBalance, result.BillingAllocations[1].Type)
+	require.InDelta(t, 1.2, result.BillingAllocations[1].AmountUSD, 0.000001)
+	require.NotNil(t, result.EffectiveRateMultiplier)
+	require.InDelta(t, 1.4, *result.EffectiveRateMultiplier, 0.000001)
+
+	var balance float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = $1", user.ID).Scan(&balance))
+	require.InDelta(t, -1.2, balance, 0.000001, "超出指定订阅额度的部分必须形成余额欠费")
+
+	var dailyUsage, weeklyUsage, monthlyUsage float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT daily_usage_usd, weekly_usage_usd, monthly_usage_usd
+		FROM user_subscriptions
+		WHERE id = $1
+	`, subscription.ID).Scan(&dailyUsage, &weeklyUsage, &monthlyUsage))
+	// 订阅用量保持硬封顶，后续绑定该订阅的新请求会在预检阶段被拒绝。
+	require.InDelta(t, 10, dailyUsage, 0.000001)
+	require.InDelta(t, 10, weeklyUsage, 0.000001)
+	require.InDelta(t, 10, monthlyUsage, 0.000001)
+}
+
 func TestUsageBillingRepositoryApply_DeadlockLockOrderAllowsConcurrentPersonalUsageLogInsert(t *testing.T) {
 	runUsageBillingConcurrentUsageLogInsert(t, false)
 }
