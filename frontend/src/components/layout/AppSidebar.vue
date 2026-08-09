@@ -63,7 +63,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-primary-200 pl-2 dark:border-dark-600">
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-primary-900/10 pl-2 dark:border-dark-600">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"

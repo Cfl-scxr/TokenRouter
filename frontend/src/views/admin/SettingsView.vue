@@ -1579,7 +1579,7 @@
                     </span>
 
                     <div
-                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-900/10 focus-within:ring-2 focus-within:ring-black/10 dark:focus-within:border-primary-700 dark:focus-within:ring-0"
                     >
                       <input
                         v-model="registrationEmailSuffixWhitelistDraft"
@@ -1836,7 +1836,7 @@
                       </button>
                     </span>
                     <div
-                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                      class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-900/10 focus-within:ring-2 focus-within:ring-black/10 dark:focus-within:border-primary-700 dark:focus-within:ring-0"
                     >
                       <input
                         id="forwarded-client-ip-headers"
@@ -6661,7 +6661,7 @@
                         <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                           {{ localText("路由标识", "Route slug") }}
                         </label>
-                        <div class="flex overflow-hidden rounded-lg border border-gray-300 bg-white focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 dark:border-dark-600 dark:bg-dark-900">
+                        <div class="flex overflow-hidden rounded-lg border border-primary-900/10 bg-white focus-within:border-primary-900/10 focus-within:ring-2 focus-within:ring-black/10 dark:border-dark-600 dark:bg-dark-900 dark:focus-within:border-primary-500 dark:focus-within:ring-primary-500">
                           <span class="inline-flex flex-shrink-0 items-center border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-400">
                             /legal/
                           </span>
@@ -11830,7 +11830,7 @@ watch(
   @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl dark:border-dark-600/70 dark:bg-dark-900/90;
   top: 4.75rem;
   box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.07),
+    0 12px 28px rgb(0 0 0 / 0.07),
     0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
 
@@ -11885,7 +11885,7 @@ watch(
 .settings-tab-active {
   @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
   box-shadow:
-    0 8px 18px rgb(15 23 42 / 0.08),
+    0 8px 18px rgb(0 0 0 / 0.08),
     0 1px 0 rgb(255 255 255 / 0.92) inset;
 }
 

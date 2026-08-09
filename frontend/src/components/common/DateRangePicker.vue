@@ -428,19 +428,20 @@ onUnmounted(() => {
 
 <style scoped>
 .date-picker-trigger {
+  /* 日期控件的结构边框使用中性灰，选中的快捷日期仍保留品牌蓝。 */
   @apply flex items-center gap-2;
   @apply rounded-lg px-3 py-2 text-sm;
   @apply bg-white dark:bg-dark-950;
-  @apply border border-primary-200 dark:border-dark-600;
+  @apply border border-primary-900/10 dark:border-dark-600;
   @apply text-gray-700 dark:text-gray-300;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-primary-300 dark:hover:border-primary-500;
+  @apply focus:border-primary-900/10 focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:border-primary-500 dark:focus:ring-primary-500/30;
+  @apply hover:border-black/20 dark:hover:border-primary-500;
   @apply cursor-pointer;
 }
 
 .date-picker-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+  @apply border-primary-900/10 ring-2 ring-black/10 dark:border-primary-500 dark:ring-primary-500/30;
 }
 
 .date-picker-icon {
@@ -459,7 +460,7 @@ onUnmounted(() => {
   @apply fixed z-[100];
   @apply bg-white dark:bg-dark-900;
   @apply rounded-xl;
-  @apply border border-primary-200 dark:border-dark-600;
+  @apply border border-primary-900/10 dark:border-dark-600;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
   @apply max-w-[calc(100vw-1.5rem)];
@@ -482,7 +483,7 @@ onUnmounted(() => {
 }
 
 .date-picker-divider {
-  @apply border-t border-primary-100 dark:border-dark-600;
+  @apply border-t border-primary-900/10 dark:border-dark-600;
 }
 
 .date-picker-custom {
@@ -500,9 +501,9 @@ onUnmounted(() => {
 .date-picker-input {
   @apply w-full rounded-md px-2 py-1.5 text-sm;
   @apply bg-gray-50 dark:bg-dark-950;
-  @apply border border-gray-200 dark:border-dark-600;
+  @apply border border-primary-900/10 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+  @apply focus:border-primary-900/10 focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:border-primary-500 dark:focus:ring-primary-500/30;
 }
 
 .date-picker-input::-webkit-calendar-picker-indicator {

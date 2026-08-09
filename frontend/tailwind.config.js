@@ -94,12 +94,13 @@ export default {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
       },
       boxShadow: {
-        glass: '0 8px 32px rgba(13, 42, 63, 0.08)',
-        'glass-sm': '0 4px 16px rgba(13, 42, 63, 0.06)',
+        // 浅色结构表面统一使用中性黑色阴影，品牌发光效果继续单独保留。
+        glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
+        'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
         glow: '0 0 20px rgba(0, 210, 255, 0.28)',
         'glow-lg': '0 0 40px rgba(18, 167, 232, 0.35)',
-        card: '0 1px 3px rgba(13, 42, 63, 0.04), 0 1px 2px rgba(13, 42, 63, 0.06)',
-        'card-hover': '0 8px 24px rgba(13, 42, 63, 0.1)',
+        card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
+        'card-hover': '0 8px 24px rgba(0, 0, 0, 0.1)',
         'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
       },
       backgroundImage: {

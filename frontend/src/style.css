@@ -4,14 +4,14 @@
 
 @layer base {
   * {
-    @apply border-primary-200/80 dark:border-dark-600/70;
+    @apply border-primary-900/10 dark:border-dark-600/70;
   }
 
   html {
     @apply scroll-smooth antialiased;
     scrollbar-color: rgba(18, 167, 232, 0.26) transparent;
     scrollbar-width: thin;
-    background: linear-gradient(180deg, #D8F1FC 0%, #EAF7FD 40%, #FFFFFF 100%);
+    background: #FFFFFF;
     background-attachment: fixed;
   }
 
@@ -24,7 +24,7 @@
   body {
     @apply text-dark-950 dark:text-white;
     @apply min-h-screen;
-    background: linear-gradient(180deg, #D8F1FC 0%, #EAF7FD 40%, #FFFFFF 100%);
+    background: #FFFFFF;
     background-attachment: fixed;
   }
 
@@ -285,9 +285,10 @@
   .btn-secondary {
     @apply bg-white dark:bg-dark-950;
     @apply text-primary-900 dark:text-dark-50;
-    @apply border border-primary-200 dark:border-dark-600;
-    @apply shadow-sm hover:bg-primary-50 dark:hover:bg-dark-800;
-    @apply hover:border-primary-300 dark:hover:border-dark-400;
+    @apply border border-primary-900/10 dark:border-dark-600;
+    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-dark-800;
+    @apply hover:border-black/20 dark:hover:border-dark-400;
+    @apply focus:border-primary-900/10 focus:ring-black/10 dark:focus:border-dark-600 dark:focus:ring-primary-500/50;
   }
 
   .btn-ghost {
@@ -359,11 +360,11 @@
   .input {
     @apply w-full rounded-xl px-4 py-2.5 text-sm;
     @apply bg-white dark:bg-dark-950;
-    @apply border border-primary-200 dark:border-dark-600;
+    @apply border border-primary-900/10 dark:border-dark-600;
     @apply text-dark-950 dark:text-dark-50;
     @apply placeholder:text-primary-900/45 dark:placeholder:text-dark-200/70;
     @apply transition-all duration-200;
-    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/35;
+    @apply focus:border-primary-900/10 focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:border-primary-500 dark:focus:ring-primary-500/35;
     @apply disabled:cursor-not-allowed disabled:bg-primary-100 dark:disabled:bg-dark-950;
   }
 
@@ -403,7 +404,7 @@
     @apply bg-white/75 dark:bg-dark-900;
     @apply backdrop-blur-xl;
     @apply rounded-2xl;
-    @apply border border-white/80 dark:border-dark-600/80;
+    @apply border border-primary-900/10 dark:border-dark-600/80;
     @apply shadow-glass;
     @apply transition-all duration-300;
   }
@@ -412,25 +413,25 @@
   .card {
     @apply bg-white dark:bg-dark-900/95;
     @apply rounded-2xl;
-    @apply border border-primary-100 dark:border-dark-600/80;
+    @apply border border-primary-900/10 dark:border-dark-600/80;
     @apply shadow-card;
     @apply transition-all duration-300;
   }
 
   .card-hover {
     @apply hover:-translate-y-0.5 hover:shadow-card-hover;
-    @apply hover:border-primary-200 dark:hover:border-dark-500;
+    @apply hover:border-black/20 dark:hover:border-dark-500;
   }
 
   .card-glass {
     @apply bg-white/75 dark:bg-dark-900;
     @apply backdrop-blur-xl;
-    @apply border border-white/80 dark:border-dark-600/80;
+    @apply border border-primary-900/10 dark:border-dark-600/80;
     @apply shadow-glass;
   }
 
   .card-header {
-    @apply border-b border-primary-100 dark:border-dark-600/80;
+    @apply border-b border-primary-900/10 dark:border-dark-600/80;
     @apply px-6 py-4;
   }
 
@@ -439,7 +440,7 @@
   }
 
   .card-footer {
-    @apply border-t border-primary-100 dark:border-dark-600/80;
+    @apply border-t border-primary-900/10 dark:border-dark-600/80;
     @apply px-6 py-4;
   }
 
@@ -493,7 +494,7 @@
 
   /* ============ 表格样式 ============ */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-primary-200 dark:border-dark-600;
+    @apply overflow-x-auto rounded-xl border border-primary-900/10 dark:border-dark-600;
   }
 
   .table {
@@ -504,13 +505,13 @@
     @apply px-4 py-3 text-left font-medium;
     @apply text-primary-900 dark:text-dark-100;
     @apply bg-primary-100/70 dark:bg-dark-950;
-    @apply border-b border-primary-200 dark:border-dark-600;
+    @apply border-b border-primary-900/10 dark:border-dark-600;
   }
 
   .table td {
     @apply px-4 py-3;
     @apply text-dark-900 dark:text-dark-100;
-    @apply border-b border-primary-100 dark:border-dark-800;
+    @apply border-b border-primary-900/10 dark:border-dark-800;
   }
 
   .table tr:last-child td {
@@ -557,7 +558,7 @@
     @apply absolute z-50;
     @apply bg-white dark:bg-dark-900;
     @apply rounded-xl;
-    @apply border border-primary-200 dark:border-dark-600;
+    @apply border border-primary-900/10 dark:border-dark-600;
     @apply shadow-lg;
     @apply py-1;
     @apply origin-top-right animate-scale-in;
@@ -583,12 +584,12 @@
     @apply max-h-[95vh] sm:max-h-[90vh];
     @apply bg-white dark:bg-dark-900;
     @apply rounded-2xl shadow-2xl;
-    @apply border border-primary-200 dark:border-dark-600;
+    @apply border border-primary-900/10 dark:border-dark-600;
     @apply flex flex-col;
   }
 
   .modal-header {
-    @apply border-b border-primary-200 px-4 py-3 dark:border-dark-600;
+    @apply border-b border-primary-900/10 px-4 py-3 dark:border-dark-600;
     @apply sm:px-6 sm:py-4;
     @apply flex items-center justify-between;
     @apply flex-shrink-0;
@@ -605,7 +606,7 @@
   }
 
   .modal-footer {
-    @apply border-t border-primary-200 px-4 py-3 dark:border-dark-600;
+    @apply border-t border-primary-900/10 px-4 py-3 dark:border-dark-600;
     @apply sm:px-6 sm:py-4;
     @apply flex items-center justify-end gap-3;
     @apply flex-shrink-0;
@@ -675,12 +676,12 @@
     @apply flex w-full flex-col;
     @apply max-h-[90vh];
     @apply rounded-2xl bg-white dark:bg-dark-900;
-    @apply border border-primary-200 dark:border-dark-600;
+    @apply border border-primary-900/10 dark:border-dark-600;
     @apply shadow-xl;
   }
 
   .dialog-header {
-    @apply border-b border-primary-100 px-6 py-4 dark:border-dark-600;
+    @apply border-b border-primary-900/10 px-6 py-4 dark:border-dark-600;
     @apply flex items-center justify-between;
   }
 
@@ -689,7 +690,7 @@
   }
 
   .dialog-footer {
-    @apply border-t border-primary-100 px-6 py-4 dark:border-dark-600;
+    @apply border-t border-primary-900/10 px-6 py-4 dark:border-dark-600;
     @apply bg-primary-50/70 dark:bg-dark-950/70;
     @apply flex items-center justify-end gap-3;
   }
@@ -962,9 +963,9 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3) !important;
   }
 
-  /* 全局背景:浅色为蓝白纵向渐变,深色为微亮到纯黑,同一设计语言的镜像 */
+  /* 全局背景：浅色使用纯白，深色保留微亮到纯黑的纵向渐变。 */
   .ba-theme-shell {
-    background: linear-gradient(180deg, #D8F1FC 0%, #EAF7FD 40%, #FFFFFF 100%);
+    background: #FFFFFF;
   }
 
   .dark .ba-theme-shell {
@@ -973,7 +974,7 @@
 
   .ba-theme-backdrop {
     overflow: hidden;
-    background: linear-gradient(180deg, #D8F1FC 0%, #EAF7FD 40%, #FFFFFF 100%);
+    background: #FFFFFF;
   }
 
   .ba-theme-backdrop::before {

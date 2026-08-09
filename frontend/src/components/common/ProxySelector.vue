@@ -320,19 +320,20 @@ onUnmounted(() => {
 
 <style scoped>
 .select-trigger {
+  /* 普通选择器在浅色模式使用中性描边，暗色模式继续使用品牌强调。 */
   @apply flex w-full items-center justify-between gap-2;
   @apply rounded-xl px-4 py-2.5 text-sm;
   @apply bg-white dark:bg-dark-950;
-  @apply border border-primary-200 dark:border-dark-600;
+  @apply border border-primary-900/10 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-primary-300 dark:hover:border-primary-500;
+  @apply focus:border-primary-900/10 focus:outline-none focus:ring-2 focus:ring-black/10 dark:focus:border-primary-500 dark:focus:ring-primary-500/30;
+  @apply hover:border-black/20 dark:hover:border-primary-500;
   @apply cursor-pointer;
 }
 
 .select-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+  @apply border-primary-900/10 ring-2 ring-black/10 dark:border-primary-500 dark:ring-primary-500/30;
 }
 
 .select-trigger-disabled {
@@ -351,14 +352,14 @@ onUnmounted(() => {
   @apply absolute z-[100] mt-2 w-full;
   @apply bg-white dark:bg-dark-900;
   @apply rounded-xl;
-  @apply border border-primary-200 dark:border-dark-600;
+  @apply border border-primary-900/10 dark:border-dark-600;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
 }
 
 .select-header {
   @apply flex items-center gap-2 px-3 py-2;
-  @apply border-b border-primary-100 dark:border-dark-600;
+  @apply border-b border-primary-900/10 dark:border-dark-600;
 }
 
 .select-search {
@@ -392,7 +393,8 @@ onUnmounted(() => {
 }
 
 .select-option-selected {
-  @apply bg-primary-50 dark:bg-dark-700;
+  /* 选中项保留品牌文字和勾选，仅将浅色背景中性化。 */
+  @apply bg-gray-100 dark:bg-dark-700;
   @apply text-primary-700 dark:text-primary-300;
 }
 

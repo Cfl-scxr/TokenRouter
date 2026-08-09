@@ -6,10 +6,10 @@
     <template v-if="!isAuthenticated">
       <div class="ba-theme-backdrop pointer-events-none fixed inset-0"></div>
 
-      <header class="relative z-20 border-b border-primary-200/70 bg-white/75 backdrop-blur-xl dark:border-dark-600/70 dark:bg-dark-700/95">
+      <header class="relative z-20 border-b border-primary-900/10 bg-white/75 backdrop-blur-xl dark:border-dark-600/70 dark:bg-dark-700/95">
         <nav class="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <RouterLink to="/home" class="flex min-w-0 items-center gap-3">
-            <div class="h-11 w-11 overflow-hidden rounded-2xl border border-primary-200/70 bg-white shadow-md dark:border-dark-600 dark:bg-dark-900">
+            <div class="h-11 w-11 overflow-hidden rounded-2xl border border-primary-900/10 bg-white shadow-md dark:border-dark-600 dark:bg-dark-900">
               <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
             </div>
             <div class="min-w-0">
@@ -25,13 +25,13 @@
               :href="docUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-full border border-primary-200/80 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
+              class="rounded-full border border-primary-900/10 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-black/20 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
             >
               {{ t('home.docs') }}
             </a>
             <RouterLink
               to="/home"
-              class="rounded-full border border-primary-200/80 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-primary-300 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
+              class="rounded-full border border-primary-900/10 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-black/20 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
             >
               {{ t('marketplace.backHome') }}
             </RouterLink>
@@ -176,7 +176,7 @@
               <article
                 v-for="model in group.models"
                 :key="`${group.id}-${model.id}`"
-                class="group rounded-xl border border-gray-100 bg-gray-50/80 p-4 transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-card dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/50"
+                class="group rounded-xl border border-gray-100 bg-gray-50/80 p-4 transition hover:-translate-y-0.5 hover:border-black/20 hover:shadow-sm dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/50"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
@@ -209,7 +209,7 @@
                   <button
                     v-if="hasDisplayPricing(model.pricing)"
                     type="button"
-                    class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-100 dark:bg-primary-500/15 dark:text-primary-300 dark:hover:bg-primary-500/25"
+                    class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary-100 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-200 dark:bg-primary-500/15 dark:text-primary-300 dark:hover:bg-primary-500/25"
                     @click="openPricingDialog(group, model)"
                   >
                     <Icon name="eye" size="sm" />
@@ -251,7 +251,7 @@
                   :key="`${model.id}-${entry.group.id}`"
                   role="button"
                   tabindex="0"
-                  class="cursor-pointer rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-left transition hover:border-primary-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/40 dark:hover:bg-dark-900 dark:focus:ring-primary-500/30"
+                  class="cursor-pointer rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-left transition hover:border-black/20 hover:bg-white focus:outline-none focus:ring-2 focus:ring-black/10 dark:border-dark-700 dark:bg-dark-950/80 dark:hover:border-primary-500/40 dark:hover:bg-dark-900 dark:focus:ring-primary-500/30"
                   data-testid="marketplace-model-group-entry"
                   @click="openPricingDialog(entry.group, entry.model)"
                   @keydown.enter.prevent="openPricingDialog(entry.group, entry.model)"

@@ -72,7 +72,7 @@
             type="button"
             data-testid="announcement-timeline-item"
             :data-announcement-id="item.announcement.id"
-            class="group flex min-h-[88px] w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/70 dark:hover:bg-dark-800/60"
+            class="group flex min-h-[88px] w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:hover:bg-dark-800/60 dark:focus-visible:ring-primary-400/70"
             @click="openAnnouncement(item.announcement)"
           >
             <div class="min-w-0 flex-1">

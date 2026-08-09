@@ -63,7 +63,7 @@
                   type="button"
                   data-testid="announcement-list-mark-all-read"
                   :disabled="loading"
-                  class="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white"
+                  class="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white dark:focus-visible:ring-primary-500/50"
                   @click="markAllAsRead"
                 >
                   <Icon name="checkCircle" size="sm" :stroke-width="1.75" />
@@ -72,7 +72,7 @@
                 <button
                   type="button"
                   data-testid="announcement-list-close"
-                  class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 dark:text-dark-400 dark:hover:bg-dark-700 dark:hover:text-dark-100"
+                  class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/10 dark:text-dark-400 dark:hover:bg-dark-700 dark:hover:text-dark-100 dark:focus-visible:ring-primary-500/50"
                   :aria-label="t('common.close')"
                   @click="closeModal"
                 >
@@ -101,7 +101,7 @@
                     data-testid="announcement-list-item"
                     :data-announcement-id="item.id"
                     :data-unread="!item.read_at"
-                    class="group grid min-h-[72px] w-full grid-cols-[2.25rem_minmax(0,1fr)_1.25rem] items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500/50 dark:hover:bg-dark-800 sm:px-6"
+                    class="group grid min-h-[72px] w-full grid-cols-[2.25rem_minmax(0,1fr)_1.25rem] items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black/10 dark:hover:bg-dark-800 dark:focus-visible:ring-primary-500/50 sm:px-6"
                     @click="openDetail(item)"
                   >
                     <!-- 未读状态仅使用小圆点动效，降低列表的视觉重量。 -->

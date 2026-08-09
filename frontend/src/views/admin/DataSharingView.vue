@@ -321,7 +321,7 @@
               </div>
               <button
                 type="button"
-                class="rounded-lg bg-gray-50 p-4 text-left transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800/60 dark:hover:bg-gray-800"
+                class="rounded-lg bg-gray-50 p-4 text-left transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10 dark:bg-gray-800/60 dark:hover:bg-gray-800 dark:focus:ring-primary-500"
                 title="查看采集链路耗时分布"
                 @click="durationDetailOpen = true"
               >

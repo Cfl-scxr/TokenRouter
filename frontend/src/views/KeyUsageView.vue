@@ -106,19 +106,19 @@
               class="text-xs px-3 py-1.5 rounded-lg border transition-all"
               :class="currentRange === range.key
                 ? 'bg-primary-500 text-white border-primary-500'
-                : 'border-gray-200 bg-white text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200 hover:border-primary-300 dark:hover:border-dark-600'"
+                : 'border-gray-200 bg-white text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200 hover:border-black/20 dark:hover:border-dark-600'"
             >{{ range.label }}</button>
             <div v-if="currentRange === 'custom'" class="flex items-center gap-2 ml-1">
               <input
                 v-model="customStartDate"
                 type="date"
-                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
+                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-primary-900/10 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
               />
               <span class="text-xs text-gray-400">-</span>
               <input
                 v-model="customEndDate"
                 type="date"
-                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
+                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-primary-900/10 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
               />
               <button
                 @click="queryKey"
@@ -957,14 +957,19 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Input focus ring */
+/* 自定义日期输入在浅色模式使用中性焦点圈，暗色模式保留原品牌强调。 */
 .input-ring {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .input-ring:focus {
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  border-color: rgba(45, 79, 104, 0.1);
+  outline: none;
+}
+
+:global(.dark) .input-ring:focus {
   box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.22);
   border-color: #00D2FF;
-  outline: none;
 }
 
 /* Ring animation */

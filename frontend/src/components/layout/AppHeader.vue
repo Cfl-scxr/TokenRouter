@@ -84,7 +84,7 @@
           <transition name="dropdown">
             <div v-if="dropdownOpen" class="dropdown right-0 mt-2 w-64">
               <!-- User Info -->
-              <div class="border-b border-primary-100 px-4 py-3 dark:border-dark-600">
+              <div class="border-b border-primary-900/10 px-4 py-3 dark:border-dark-600">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ displayName }}
                 </div>
@@ -92,7 +92,7 @@
               </div>
 
               <!-- Balance (mobile only) -->
-              <div class="border-b border-primary-100 px-4 py-2 dark:border-dark-600 sm:hidden">
+              <div class="border-b border-primary-900/10 px-4 py-2 dark:border-dark-600 sm:hidden">
                 <div class="text-xs text-gray-500 dark:text-dark-400">
                   {{ t('common.balance') }}
                 </div>
@@ -138,7 +138,7 @@
               <!-- Contact Support (only show if configured) -->
               <div
                 v-if="contactInfo"
-                class="border-t border-primary-100 px-4 py-3 dark:border-dark-600"
+                class="border-t border-primary-900/10 px-4 py-3 dark:border-dark-600"
               >
                 <div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
                   <svg
@@ -178,7 +178,7 @@
                 </ul>
               </div>
 
-              <div v-if="showOnboardingButton" class="border-t border-primary-100 py-1 dark:border-dark-600">
+              <div v-if="showOnboardingButton" class="border-t border-primary-900/10 py-1 dark:border-dark-600">
                 <button @click="handleReplayGuide" class="dropdown-item w-full">
                   <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                     <path
@@ -189,7 +189,7 @@
                 </button>
               </div>
 
-              <div class="border-t border-primary-100 py-1 dark:border-dark-600">
+              <div class="border-t border-primary-900/10 py-1 dark:border-dark-600">
                 <button
                   @click="handleLogout"
                   class="dropdown-item w-full text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
@@ -391,7 +391,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-divider {
-  @apply h-9 w-px shrink-0 bg-primary-200/80 dark:bg-dark-600/90;
+  @apply h-9 w-px shrink-0 bg-primary-900/10 dark:bg-dark-600/90;
 }
 
 .header-status-icon-button {
