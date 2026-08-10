@@ -148,6 +148,26 @@ func TestAdminUpstreamBillingProbeRoutesAreRemoved(t *testing.T) {
 	}
 }
 
+func TestAdminAdvancedSchedulerScoreRoutesAreRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	admin := router.Group("/api/v1/admin")
+	h := &handler.Handlers{Admin: &handler.AdminHandlers{
+		Account:          &adminhandler.AccountHandler{},
+		OAuth:            &adminhandler.OAuthHandler{},
+		OpenAIOAuth:      &adminhandler.OpenAIOAuthHandler{},
+		CodexInviteReset: &adminhandler.CodexInviteResetHandler{},
+	}}
+	registerAccountRoutes(admin, h, func(c *gin.Context) { c.Next() })
+
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	require.True(t, registered["GET /api/v1/admin/accounts/:id/advanced-scheduler-score"])
+	require.True(t, registered["POST /api/v1/admin/accounts/:id/advanced-scheduler-score/preview"])
+}
+
 // TestCanonicalBackupIDRouteGuard 验证备份通配路由只接受服务实际生成的 ID 格式。
 func TestCanonicalBackupIDRouteGuard(t *testing.T) {
 	gin.SetMode(gin.TestMode)

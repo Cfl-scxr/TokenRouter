@@ -411,6 +411,11 @@ func (s *GeminiMessagesCompatService) advancedSchedulerStats() *advancedAccountR
 	if s == nil {
 		return nil
 	}
+	if s.rateLimitService != nil {
+		if stats := s.rateLimitService.AdvancedSchedulerRuntimeStats(); stats != nil {
+			return stats
+		}
+	}
 	if s.advancedAccountStats == nil {
 		s.advancedAccountStats = newAdvancedAccountRuntimeStats()
 	}

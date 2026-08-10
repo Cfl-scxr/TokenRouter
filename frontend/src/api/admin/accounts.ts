@@ -142,6 +142,131 @@ export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
   cache_persisted: boolean
 }
 
+export interface AdvancedSchedulerScoreDiagnosticAccount {
+  id: number
+  name: string
+  platform: string
+  type: string
+  status: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticGroup {
+  id: number
+  name: string
+  platform: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticGroupSummary extends AdvancedSchedulerScoreDiagnosticGroup {
+  eligible: boolean
+  final_score?: number
+  status: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticContext {
+  requested_model?: string
+  sticky_account_id?: number
+  previous_response_account_id?: number
+  baseline: boolean
+}
+
+export interface AdvancedSchedulerScoreDiagnosticRanges {
+  priority_min: number
+  priority_max: number
+  max_waiting_count: number
+  ttft_min_ms?: number
+  ttft_max_ms?: number
+  reset_min_seconds?: number
+  reset_max_seconds?: number
+}
+
+export interface AdvancedSchedulerScoreDiagnosticCandidate {
+  id: number
+  name: string
+  platform: string
+  priority: number
+  final_score: number
+  rank: number
+  in_top_k: boolean
+  selection_weight?: number
+  selection_probability?: number
+}
+
+export interface AdvancedSchedulerScoreDiagnosticCandidatePool {
+  total_candidates: number
+  eligible_candidates: number
+  excluded_candidates: number
+  exclusion_reasons: Record<string, number>
+  top_k: number
+  top_k_minimum_score?: number
+  top_k_weight_sum?: number
+  normalization_ranges: AdvancedSchedulerScoreDiagnosticRanges
+  candidates: AdvancedSchedulerScoreDiagnosticCandidate[]
+}
+
+export interface AdvancedSchedulerScoreDiagnosticScore {
+  base_score: number
+  sticky_bonus: number
+  final_score: number
+  rank: number
+  in_top_k: boolean
+  selection_weight?: number
+  selection_probability?: number
+  selection_mode: string
+  formula: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticMetric {
+  key: string
+  raw_value: string
+  normalization: string
+  normalized_value: number
+  weight: number
+  weighted_contribution: number
+  available: boolean
+  neutral: boolean
+  source: string
+  observed_at?: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticSetting {
+  key: string
+  value: string
+  source: 'group_override' | 'global_runtime' | 'process_default' | string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticPolicySignal {
+  key: string
+  state: string
+  detail: string
+}
+
+export interface AdvancedSchedulerScoreDiagnosticDetail {
+  group: AdvancedSchedulerScoreDiagnosticGroup
+  context: AdvancedSchedulerScoreDiagnosticContext
+  eligible: boolean
+  hard_filter_reasons?: string[]
+  candidate_pool: AdvancedSchedulerScoreDiagnosticCandidatePool
+  score?: AdvancedSchedulerScoreDiagnosticScore
+  metrics: AdvancedSchedulerScoreDiagnosticMetric[]
+  effective_settings: AdvancedSchedulerScoreDiagnosticSetting[]
+  policy_signals: AdvancedSchedulerScoreDiagnosticPolicySignal[]
+}
+
+export interface AdvancedSchedulerScoreDiagnosticResponse {
+  account: AdvancedSchedulerScoreDiagnosticAccount
+  generated_at: string
+  calculation_version: string
+  groups: AdvancedSchedulerScoreDiagnosticGroupSummary[]
+  detail?: AdvancedSchedulerScoreDiagnosticDetail
+}
+
+export interface AdvancedSchedulerScorePreviewRequest {
+  group_id: number
+  requested_model?: string
+  sticky_account_id?: number
+  previous_response_account_id?: number
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -244,6 +369,30 @@ export async function listWithEtag(
  */
 export async function getById(id: number): Promise<Account> {
   const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`)
+  return data
+}
+
+/** 获取账号在高级调度分组中的评分摘要或单个分组的完整诊断。 */
+export async function getAdvancedSchedulerScore(
+  id: number,
+  groupID?: number
+): Promise<AdvancedSchedulerScoreDiagnosticResponse> {
+  const { data } = await apiClient.get<AdvancedSchedulerScoreDiagnosticResponse>(
+    `/admin/accounts/${id}/advanced-scheduler-score`,
+    { params: groupID ? { group_id: groupID } : undefined }
+  )
+  return data
+}
+
+/** 用安全的请求场景字段重新计算账号高级调度评分。 */
+export async function previewAdvancedSchedulerScore(
+  id: number,
+  payload: AdvancedSchedulerScorePreviewRequest
+): Promise<AdvancedSchedulerScoreDiagnosticResponse> {
+  const { data } = await apiClient.post<AdvancedSchedulerScoreDiagnosticResponse>(
+    `/admin/accounts/${id}/advanced-scheduler-score/preview`,
+    payload
+  )
   return data
 }
 
@@ -1039,6 +1188,8 @@ export const accountsAPI = {
   list,
   listWithEtag,
   getById,
+  getAdvancedSchedulerScore,
+  previewAdvancedSchedulerScore,
   create,
   duplicate,
   update,

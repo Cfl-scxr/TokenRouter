@@ -49,6 +49,23 @@ const getBodyText = () => document.body.textContent ?? ''
 const getBodyButtons = () => Array.from(document.body.querySelectorAll('button'))
 
 describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+  it('点击高级调度评分入口会携带账号触发事件', async () => {
+    const account = makeAccount({ platform: 'gemini', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+
+    const scoreButton = getBodyButtons().find(button => button.textContent?.includes('admin.accounts.advancedSchedulerScore.action'))
+    expect(scoreButton).toBeDefined()
+
+    scoreButton!.click()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('advanced-scheduler-score')?.[0]?.[0]).toMatchObject({ id: account.id, name: account.name })
+    wrapper.unmount()
+  })
+
   it('普通账号显示「复制账号」按钮', () => {
     const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

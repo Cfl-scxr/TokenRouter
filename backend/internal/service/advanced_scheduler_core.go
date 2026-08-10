@@ -57,6 +57,11 @@ func (s *advancedAccountRuntimeStats) switches() int64 {
 type advancedAccountRuntimeStat struct {
 	errorRateEWMABits atomic.Uint64
 	ttftEWMABits      atomic.Uint64
+	// 诊断页需要区分“零错误率”和“尚无样本”，因此保留样本数与最近观测时间。
+	errorSamples          atomic.Int64
+	ttftSamples           atomic.Int64
+	lastObservedUnixNano  atomic.Int64
+	lastTTFTObservedNanos atomic.Int64
 }
 
 func newAdvancedAccountRuntimeStats() *advancedAccountRuntimeStats {
@@ -108,6 +113,8 @@ func (s *advancedAccountRuntimeStats) report(accountID int64, success bool, firs
 		errorSample = 0.0
 	}
 	updateAdvancedSchedulerEWMA(&stat.errorRateEWMABits, errorSample, alpha)
+	stat.errorSamples.Add(1)
+	stat.lastObservedUnixNano.Store(time.Now().UnixNano())
 
 	if firstTokenMs != nil && *firstTokenMs > 0 {
 		ttft := float64(*firstTokenMs)
@@ -117,16 +124,67 @@ func (s *advancedAccountRuntimeStats) report(accountID int64, success bool, firs
 			oldValue := math.Float64frombits(oldBits)
 			if math.IsNaN(oldValue) {
 				if stat.ttftEWMABits.CompareAndSwap(oldBits, ttftBits) {
+					stat.ttftSamples.Add(1)
+					stat.lastTTFTObservedNanos.Store(time.Now().UnixNano())
 					break
 				}
 				continue
 			}
 			newValue := alpha*ttft + (1-alpha)*oldValue
 			if stat.ttftEWMABits.CompareAndSwap(oldBits, math.Float64bits(newValue)) {
+				stat.ttftSamples.Add(1)
+				stat.lastTTFTObservedNanos.Store(time.Now().UnixNano())
 				break
 			}
 		}
 	}
+}
+
+// advancedAccountRuntimeFeedbackSnapshot 是诊断与评分共享的只读运行时反馈快照。
+// 不暴露任何请求内容，仅包含经 EWMA 聚合后的健康指标及其观测新鲜度。
+type advancedAccountRuntimeFeedbackSnapshot struct {
+	HasFeedback    bool
+	ErrorRate      float64
+	ErrorSamples   int64
+	TTFT           float64
+	HasTTFT        bool
+	TTFTSamples    int64
+	LastObservedAt *time.Time
+	LastTTFTAt     *time.Time
+}
+
+func (s *advancedAccountRuntimeStats) feedbackSnapshot(accountID int64) advancedAccountRuntimeFeedbackSnapshot {
+	if s == nil || accountID <= 0 {
+		return advancedAccountRuntimeFeedbackSnapshot{}
+	}
+	value, ok := s.accounts.Load(accountID)
+	if !ok {
+		return advancedAccountRuntimeFeedbackSnapshot{}
+	}
+	stat, _ := value.(*advancedAccountRuntimeStat)
+	if stat == nil {
+		return advancedAccountRuntimeFeedbackSnapshot{}
+	}
+
+	snapshot := advancedAccountRuntimeFeedbackSnapshot{
+		HasFeedback:  true,
+		ErrorRate:    clamp01(math.Float64frombits(stat.errorRateEWMABits.Load())),
+		ErrorSamples: stat.errorSamples.Load(),
+	}
+	if observedAt := stat.lastObservedUnixNano.Load(); observedAt > 0 {
+		value := time.Unix(0, observedAt).UTC()
+		snapshot.LastObservedAt = &value
+	}
+	if ttftValue := math.Float64frombits(stat.ttftEWMABits.Load()); !math.IsNaN(ttftValue) {
+		snapshot.TTFT = ttftValue
+		snapshot.HasTTFT = true
+		snapshot.TTFTSamples = stat.ttftSamples.Load()
+		if observedAt := stat.lastTTFTObservedNanos.Load(); observedAt > 0 {
+			value := time.Unix(0, observedAt).UTC()
+			snapshot.LastTTFTAt = &value
+		}
+	}
+	return snapshot
 }
 
 func (s *advancedAccountRuntimeStats) snapshot(accountID int64) (errorRate float64, ttft float64, hasTTFT bool) {
@@ -168,15 +226,46 @@ func (s *advancedAccountRuntimeStats) size() int {
 
 // advancedSchedulerCandidateScore 是完成平台硬过滤后的通用高级调度候选。
 type advancedSchedulerCandidateScore struct {
-	account     *Account
-	loadInfo    *AccountLoadInfo
-	loadKnown   bool
-	score       float64
-	priority    int
-	errorRate   float64
-	ttft        float64
-	hasTTFT     bool
-	hasFeedback bool
+	account            *Account
+	loadInfo           *AccountLoadInfo
+	loadKnown          bool
+	score              float64
+	baseScore          float64
+	stickyBonus        float64
+	previousBonus      float64
+	sessionStickyBonus float64
+	priority           int
+	errorRate          float64
+	ttft               float64
+	hasTTFT            bool
+	hasFeedback        bool
+	feedback           advancedAccountRuntimeFeedbackSnapshot
+	factors            advancedSchedulerCandidateFactors
+}
+
+// advancedSchedulerCandidateFactors 保留评分核心实际使用的归一化因子。
+// 它只服务于诊断，不参与候选排序之外的业务决策。
+type advancedSchedulerCandidateFactors struct {
+	Priority      float64
+	Load          float64
+	Queue         float64
+	ErrorRate     float64
+	TTFT          float64
+	Reset         float64
+	QuotaHeadroom float64
+}
+
+// advancedSchedulerScoreRanges 记录本次候选池的归一化范围，供诊断接口直接解释公式。
+type advancedSchedulerScoreRanges struct {
+	MinPriority       int
+	MaxPriority       int
+	MaxWaiting        int
+	MinTTFT           float64
+	MaxTTFT           float64
+	HasTTFTSample     bool
+	MinResetRemaining float64
+	MaxResetRemaining float64
+	HasResetSample    bool
 }
 
 type advancedSchedulerCandidateHeap []advancedSchedulerCandidateScore
@@ -295,6 +384,20 @@ func scoreAdvancedSchedulerCandidates(
 	input advancedSchedulerSelectionInput,
 	now time.Time,
 ) ([]advancedSchedulerCandidateScore, float64) {
+	candidates, skew, _ := scoreAdvancedSchedulerCandidatesWithRanges(accounts, loadMap, stats, weights, input, now)
+	return candidates, skew
+}
+
+// scoreAdvancedSchedulerCandidatesWithRanges 与实际评分共用同一条计算路径，
+// 额外返回归一化范围，供管理员诊断界面逐项解释结果。
+func scoreAdvancedSchedulerCandidatesWithRanges(
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+	stats *advancedAccountRuntimeStats,
+	weights GatewayAdvancedSchedulerScoreWeightsView,
+	input advancedSchedulerSelectionInput,
+	now time.Time,
+) ([]advancedSchedulerCandidateScore, float64, advancedSchedulerScoreRanges) {
 	candidates := make([]advancedSchedulerCandidateScore, 0, len(accounts))
 	for _, account := range accounts {
 		if account == nil {
@@ -305,25 +408,24 @@ func scoreAdvancedSchedulerCandidates(
 			loadInfo = &AccountLoadInfo{AccountID: account.ID}
 			loadKnown = false
 		}
-		errorRate, ttft, hasTTFT := 0.0, 0.0, false
-		hasFeedback := false
+		feedback := advancedAccountRuntimeFeedbackSnapshot{}
 		if stats != nil {
-			errorRate, ttft, hasTTFT = stats.snapshot(account.ID)
-			hasFeedback = stats.hasFeedback(account.ID)
+			feedback = stats.feedbackSnapshot(account.ID)
 		}
 		candidates = append(candidates, advancedSchedulerCandidateScore{
 			account:     account,
 			loadInfo:    loadInfo,
 			loadKnown:   loadKnown,
 			priority:    account.Priority,
-			errorRate:   errorRate,
-			ttft:        ttft,
-			hasTTFT:     hasTTFT,
-			hasFeedback: hasFeedback,
+			errorRate:   feedback.ErrorRate,
+			ttft:        feedback.TTFT,
+			hasTTFT:     feedback.HasTTFT,
+			hasFeedback: feedback.HasFeedback,
+			feedback:    feedback,
 		})
 	}
 	if len(candidates) == 0 {
-		return nil, 0
+		return nil, 0, advancedSchedulerScoreRanges{}
 	}
 
 	minPriority, maxPriority := candidates[0].priority, candidates[0].priority
@@ -386,6 +488,18 @@ func scoreAdvancedSchedulerCandidates(
 		}
 	}
 
+	ranges := advancedSchedulerScoreRanges{
+		MinPriority:       minPriority,
+		MaxPriority:       maxPriority,
+		MaxWaiting:        maxWaiting,
+		MinTTFT:           minTTFT,
+		MaxTTFT:           maxTTFT,
+		HasTTFTSample:     hasTTFTSample,
+		MinResetRemaining: minResetRemaining,
+		MaxResetRemaining: maxResetRemaining,
+		HasResetSample:    hasResetSample,
+	}
+
 	quotaFactor := input.QuotaHeadroomFactor
 	if quotaFactor == nil {
 		quotaFactor = func(*Account, time.Time) float64 { return 0.5 }
@@ -420,28 +534,41 @@ func scoreAdvancedSchedulerCandidates(
 				}
 			}
 		}
-		quotaHeadroomFactor := 0.0
+		quotaHeadroomFactor := 0.5
 		if weights.QuotaHeadroom > 0 {
 			quotaHeadroomFactor = clamp01(quotaFactor(item.account, now))
 		}
-		item.score = weights.Priority*priorityFactor +
+		item.factors = advancedSchedulerCandidateFactors{
+			Priority:      priorityFactor,
+			Load:          loadFactor,
+			Queue:         queueFactor,
+			ErrorRate:     errorFactor,
+			TTFT:          ttftFactor,
+			Reset:         resetFactor,
+			QuotaHeadroom: quotaHeadroomFactor,
+		}
+		item.baseScore = weights.Priority*priorityFactor +
 			weights.Load*loadFactor +
 			weights.Queue*queueFactor +
 			weights.ErrorRate*errorFactor +
 			weights.TTFT*ttftFactor +
 			weights.Reset*resetFactor +
 			weights.QuotaHeadroom*quotaHeadroomFactor
+		item.score = item.baseScore
 		if input.StickyWeighted {
 			if input.StickyPreviousAccountID > 0 && item.account.ID == input.StickyPreviousAccountID {
-				item.score += weights.Previous
+				item.previousBonus = weights.Previous
+				item.stickyBonus += item.previousBonus
 			}
 			if input.StickyAccountID > 0 && item.account.ID == input.StickyAccountID {
-				item.score += weights.SessionSticky
+				item.sessionStickyBonus = weights.SessionSticky
+				item.stickyBonus += item.sessionStickyBonus
 			}
 		}
+		item.score += item.stickyBonus
 	}
 
-	return candidates, calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, knownLoadCount)
+	return candidates, calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, knownLoadCount), ranges
 }
 
 type advancedSchedulerRNG struct {

@@ -1,20 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post } = vi.hoisted(() => ({
+const { get, post } = vi.hoisted(() => ({
+  get: vi.fn(),
   post: vi.fn()
 }))
 
 vi.mock('@/api/client', () => ({
   apiClient: {
+    get,
     post
   }
 }))
 
-import { consumeCodexInviteReset, syncFromCrs } from '@/api/admin/accounts'
+import { consumeCodexInviteReset, getAdvancedSchedulerScore, previewAdvancedSchedulerScore, syncFromCrs } from '@/api/admin/accounts'
 
 describe('admin accounts API', () => {
   beforeEach(() => {
+	get.mockReset()
     post.mockReset()
+  })
+
+  it('loads an overview or a single advanced scheduler score group through the dedicated endpoint', async () => {
+    const response = { groups: [] }
+    get.mockResolvedValue({ data: response })
+
+    await expect(getAdvancedSchedulerScore(42)).resolves.toEqual(response)
+    expect(get).toHaveBeenLastCalledWith('/admin/accounts/42/advanced-scheduler-score', { params: undefined })
+
+    await expect(getAdvancedSchedulerScore(42, 9)).resolves.toEqual(response)
+    expect(get).toHaveBeenLastCalledWith('/admin/accounts/42/advanced-scheduler-score', { params: { group_id: 9 } })
+  })
+
+  it('sends only the safe score-preview context fields', async () => {
+    const payload = {
+      group_id: 9,
+      requested_model: 'gpt-5',
+      sticky_account_id: 42,
+      previous_response_account_id: 43
+    }
+    post.mockResolvedValue({ data: { detail: {} } })
+
+    await previewAdvancedSchedulerScore(42, payload)
+
+    expect(post).toHaveBeenCalledWith('/admin/accounts/42/advanced-scheduler-score/preview', payload)
   })
 
   it('uses a dedicated 180 second timeout for CRS synchronization', async () => {

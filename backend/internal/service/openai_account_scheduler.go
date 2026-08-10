@@ -1527,6 +1527,9 @@ func (s *OpenAIGatewayService) getOpenAIAccountScheduler(ctx context.Context, gr
 		return nil
 	}
 	s.openaiSchedulerOnce.Do(func() {
+		if s.rateLimitService != nil {
+			s.openaiAccountStats = s.rateLimitService.AdvancedSchedulerRuntimeStats()
+		}
 		if s.openaiAccountStats == nil {
 			s.openaiAccountStats = newOpenAIAccountRuntimeStats()
 		}
@@ -1544,6 +1547,9 @@ func (s *OpenAIGatewayService) ensureOpenAIAccountScheduler() OpenAIAccountSched
 		return nil
 	}
 	s.openaiSchedulerOnce.Do(func() {
+		if s.rateLimitService != nil {
+			s.openaiAccountStats = s.rateLimitService.AdvancedSchedulerRuntimeStats()
+		}
 		if s.openaiAccountStats == nil {
 			s.openaiAccountStats = newOpenAIAccountRuntimeStats()
 		}

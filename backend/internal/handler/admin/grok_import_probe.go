@@ -201,5 +201,8 @@ func ProvideAccountHandler(
 		grokOAuthService,
 	)
 	handler.grokImportProber = grokQuotaService
+	handler.SetAdvancedSchedulerScoreDiagnosticService(
+		service.NewAdvancedSchedulerScoreDiagnosticService(adminService, concurrencyService, rateLimitService),
+	)
 	return handler
 }

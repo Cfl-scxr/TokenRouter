@@ -65,11 +65,17 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	grokImportProber        grokImportProber
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	advancedSchedulerScores *service.AdvancedSchedulerScoreDiagnosticService
 }
 
 // SetOllamaCloudUsageService 注入 Ollama Cloud 用量服务。
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetAdvancedSchedulerScoreDiagnosticService 注入账号高级调度评分诊断服务。
+func (h *AccountHandler) SetAdvancedSchedulerScoreDiagnosticService(diagnostics *service.AdvancedSchedulerScoreDiagnosticService) {
+	h.advancedSchedulerScores = diagnostics
 }
 
 type qoderAdminTokenRefresher interface {

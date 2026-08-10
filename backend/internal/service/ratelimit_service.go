@@ -20,18 +20,20 @@ import (
 
 // RateLimitService 处理限流和过载状态管理
 type RateLimitService struct {
-	accountRepo           AccountRepository
-	usageRepo             UsageLogRepository
-	cfg                   *config.Config
-	geminiQuotaService    *GeminiQuotaService
-	tempUnschedCache      TempUnschedCache
-	timeoutCounterCache   TimeoutCounterCache
-	openAI403CounterCache OpenAI403CounterCache
-	settingService        *SettingService
-	tokenCacheInvalidator TokenCacheInvalidator
-	runtimeBlocker        AccountRuntimeBlocker
-	usageCacheMu          sync.RWMutex
-	usageCache            map[int64]*geminiUsageCacheEntry
+	accountRepo            AccountRepository
+	usageRepo              UsageLogRepository
+	cfg                    *config.Config
+	geminiQuotaService     *GeminiQuotaService
+	tempUnschedCache       TempUnschedCache
+	timeoutCounterCache    TimeoutCounterCache
+	openAI403CounterCache  OpenAI403CounterCache
+	settingService         *SettingService
+	tokenCacheInvalidator  TokenCacheInvalidator
+	runtimeBlocker         AccountRuntimeBlocker
+	usageCacheMu           sync.RWMutex
+	usageCache             map[int64]*geminiUsageCacheEntry
+	advancedSchedulerMu    sync.Mutex
+	advancedSchedulerStats *advancedAccountRuntimeStats
 }
 
 type AccountRuntimeBlocker interface {
@@ -80,13 +82,28 @@ var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
-		accountRepo:        accountRepo,
-		usageRepo:          usageRepo,
-		cfg:                cfg,
-		geminiQuotaService: geminiQuotaService,
-		tempUnschedCache:   tempUnschedCache,
-		usageCache:         make(map[int64]*geminiUsageCacheEntry),
+		accountRepo:            accountRepo,
+		usageRepo:              usageRepo,
+		cfg:                    cfg,
+		geminiQuotaService:     geminiQuotaService,
+		tempUnschedCache:       tempUnschedCache,
+		usageCache:             make(map[int64]*geminiUsageCacheEntry),
+		advancedSchedulerStats: newAdvancedAccountRuntimeStats(),
 	}
+}
+
+// AdvancedSchedulerRuntimeStats 返回所有平台共享的高级调度运行时反馈。
+// 诊断与真实请求都从此处读取，避免不同网关实例形成彼此隔离的评分样本。
+func (s *RateLimitService) AdvancedSchedulerRuntimeStats() *advancedAccountRuntimeStats {
+	if s == nil {
+		return nil
+	}
+	s.advancedSchedulerMu.Lock()
+	defer s.advancedSchedulerMu.Unlock()
+	if s.advancedSchedulerStats == nil {
+		s.advancedSchedulerStats = newAdvancedAccountRuntimeStats()
+	}
+	return s.advancedSchedulerStats
 }
 
 // SetTimeoutCounterCache 设置超时计数器缓存（可选依赖）

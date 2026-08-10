@@ -65,6 +65,8 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 管理 Group API 还接受 `advanced_scheduler_overrides` 作为稀疏对象，仅在 `scheduler_type=advanced` 的实际调度中使用。创建缺省为 `{}`；更新时省略字段保持原对象，传 `{}` 清除全部覆盖，字段内未出现的值继续继承全局设置。`false` 与 `0` 不等于未设置，都会作为显式覆盖保存。该字段随认证快照缓存并提升快照版本；公开用户分组接口不会返回它或 `scheduler_type`。
 
+管理员账号高级调度评分诊断会逐项返回最终参数和来源：`group_override` 优先于 `global_runtime`，后者缺失时为 `process_default`。该返回只解释当前实时评分，不保存历史快照；它不会反向启用分组、高级调度器或任何平台专属策略。
+
 进程配置的默认参数位于 `gateway.advanced_scheduler`，包含 `lb_top_k`、`score_weights` 与粘性逃逸阈值。旧的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*` 和 `gateway.openai_scheduler.sticky_escape_*` 均不再兼容，启动校验会明确拒绝；管理设置请求中的 `openai_advanced_scheduler_*` 或旧全局开关也会返回弃用错误，而不是被静默忽略。OpenAI 配额自动暂停仍是 OpenAI 专属设置，不属于通用高级调度参数。
 
 验证码同样属于数据库运行时设置。Turnstile、腾讯天御与阿里云验证码 2.0 三者互斥。腾讯天御启用时必须同时具备正整数 `CaptchaAppId`、`AppSecretKey`、腾讯云 `SecretId` 和 `SecretKey`，并选择 `cn` 中国站或 `intl` 国际站；站点决定前端 SDK、构造函数形式、控制台入口和服务端票据校验 endpoint，`CaptchaAppId` 与云密钥必须来自同一站点，缺失或非法站点按 `cn` 回退。阿里云启用时必须具备 Scene ID、Prefix、AccessKey ID、AccessKey Secret 及 `cn` 或 `sgp` 地域。公开设置只返回各提供方的启用状态、站点和渲染所需的非敏感参数；管理响应只返回 secret 的“已配置”标记，空白更新保留原值，审计仅记录字段发生写入而不记录内容。腾讯与阿里云 Web SDK 所需的脚本、连接、iframe、worker 和样式来源由默认 CSP 与运行时 CSP 补全逻辑共同维护，覆盖自定义旧策略时也不能遗漏，其中阿里云静态资源允许 `https://*.alicdn.com`。
