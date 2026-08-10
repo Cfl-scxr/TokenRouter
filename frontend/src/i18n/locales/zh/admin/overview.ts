@@ -945,6 +945,37 @@ affiliates: {
         advanced: '高级调度器',
         hint: '基础调度器保留当前默认排序；高级调度器使用通用评分、Top-K 加权与运行时反馈。'
       },
+      advancedSchedulerOverrides: {
+        label: '分组高级调度参数',
+        configure: '配置',
+        allInherited: '全部继承网关通用设置',
+        overriddenCount: '已覆盖 {count} 项，其余继承',
+        title: '分组高级调度参数',
+        description: '仅当前分组使用这些覆盖值。未设置的项继续继承网关设置中的通用高级调度参数。',
+        inherit: '继承网关设置',
+        enabled: '启用',
+        disabled: '关闭',
+        stickyWeighted: '粘性加权',
+        subscriptionPriority: '订阅优先',
+        weightsTitle: '候选评分与 Top-K',
+        weightsHint: '权重越大，该信号对候选排序影响越大。留空表示继承。',
+        inheritPlaceholder: '继承',
+        inheritHint: '留空即继承',
+        reset: '全部恢复继承',
+        invalidValue: '请输入非负数；Top-K 必须是正整数。',
+        fields: {
+          lbTopK: 'Top-K',
+          weightPriority: '优先级',
+          weightLoad: '负载',
+          weightQueue: '排队',
+          weightErrorRate: '错误率',
+          weightTTFT: '首 token 延迟',
+          weightReset: '窗口重置',
+          weightQuotaHeadroom: '额度余量',
+          weightPreviousResponse: '上一响应粘性',
+          weightSessionSticky: '会话粘性'
+        }
+      },
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

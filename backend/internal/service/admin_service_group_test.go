@@ -95,6 +95,63 @@ func TestAdminServiceGroupSchedulerTypeDefaultsValidatesAndUpdates(t *testing.T)
 	})
 }
 
+func TestAdminServiceGroupAdvancedSchedulerOverrides(t *testing.T) {
+	t.Run("create deep copies sparse overrides", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+		overrides := GroupAdvancedSchedulerOverrides{
+			StickyWeightedEnabled: groupAdvancedSchedulerOverrideTestPointer(false),
+			LBTopK:                groupAdvancedSchedulerOverrideTestPointer(3),
+		}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "advanced-overrides", Platform: PlatformGemini, RateMultiplier: 1,
+			SchedulerType: string(GroupSchedulerTypeAdvanced), AdvancedSchedulerOverrides: overrides,
+		})
+
+		require.NoError(t, err)
+		require.False(t, *group.AdvancedSchedulerOverrides.StickyWeightedEnabled)
+		require.Equal(t, 3, *repo.created.AdvancedSchedulerOverrides.LBTopK)
+		*overrides.LBTopK = 99
+		require.Equal(t, 3, *repo.created.AdvancedSchedulerOverrides.LBTopK)
+	})
+
+	t.Run("update retains omission and clears explicit empty object", func(t *testing.T) {
+		existing := &Group{
+			ID: 7, Name: "advanced", Platform: PlatformOpenAI, Status: StatusActive,
+			SchedulerType: GroupSchedulerTypeAdvanced,
+			AdvancedSchedulerOverrides: GroupAdvancedSchedulerOverrides{
+				LBTopK: groupAdvancedSchedulerOverrideTestPointer(3),
+			},
+		}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		unchanged, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{})
+		require.NoError(t, err)
+		require.Equal(t, 3, *unchanged.AdvancedSchedulerOverrides.LBTopK)
+
+		empty := GroupAdvancedSchedulerOverrides{}
+		cleared, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{AdvancedSchedulerOverrides: &empty})
+		require.NoError(t, err)
+		require.Zero(t, cleared.AdvancedSchedulerOverrides)
+		require.Zero(t, repo.updated.AdvancedSchedulerOverrides)
+	})
+
+	t.Run("invalid overrides are rejected", func(t *testing.T) {
+		svc := &adminServiceImpl{groupRepo: &groupRepoStubForAdmin{}}
+		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "invalid-advanced-overrides", Platform: PlatformAnthropic, RateMultiplier: 1,
+			AdvancedSchedulerOverrides: GroupAdvancedSchedulerOverrides{
+				LBTopK: groupAdvancedSchedulerOverrideTestPointer(0),
+			},
+		})
+
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", infraerrors.Reason(err))
+	})
+}
+
 func TestAdminServiceCreateGroupClientProtocolCompatibilityPrecedence(t *testing.T) {
 	t.Run("legacy OpenAI switch is accepted when new field is omitted", func(t *testing.T) {
 		repo := &groupRepoStubForAdmin{}

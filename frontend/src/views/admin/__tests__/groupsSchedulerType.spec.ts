@@ -17,6 +17,8 @@ describe("groups scheduler type", () => {
     expect(groupsViewSource).toContain(':options="schedulerTypeOptions"');
     expect(groupsViewSource).toContain('scheduler_type: "basic" as GroupSchedulerType');
     expect(groupsViewSource).toContain('group.scheduler_type ?? "basic"');
+    expect(groupsViewSource).toContain('advanced_scheduler_overrides');
+    expect(groupsViewSource).toContain('GroupAdvancedSchedulerOverridesModal');
     expect(groupsViewSource).not.toMatch(/<select\b/);
   });
 });

@@ -44,15 +44,16 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
-	Name           string  `json:"name" binding:"required"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
-	SchedulerType  string  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
-	DisplayBrand   string  `json:"display_brand"`
-	SortOrder      *int    `json:"sort_order"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	IsDefault      bool    `json:"is_default"`
+	Name                       string                                  `json:"name" binding:"required"`
+	Description                string                                  `json:"description"`
+	Platform                   string                                  `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
+	SchedulerType              string                                  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
+	AdvancedSchedulerOverrides service.GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides"`
+	DisplayBrand               string                                  `json:"display_brand"`
+	SortOrder                  *int                                    `json:"sort_order"`
+	RateMultiplier             float64                                 `json:"rate_multiplier"`
+	IsExclusive                bool                                    `json:"is_exclusive"`
+	IsDefault                  bool                                    `json:"is_default"`
 	// 数据共享分组会采集符合规则的 Agent session。
 	DataSharingEnabled bool `json:"data_sharing_enabled"`
 	// 会话隔离开启后拒绝其它分组已归属的显式会话切入。
@@ -111,15 +112,16 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
-	Name           string   `json:"name"`
-	Description    *string  `json:"description"`
-	Platform       string   `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
-	SchedulerType  *string  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
-	DisplayBrand   *string  `json:"display_brand"`
-	SortOrder      *int     `json:"sort_order"`
-	RateMultiplier *float64 `json:"rate_multiplier"`
-	IsExclusive    *bool    `json:"is_exclusive"`
-	IsDefault      *bool    `json:"is_default"`
+	Name                       string                                   `json:"name"`
+	Description                *string                                  `json:"description"`
+	Platform                   string                                   `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
+	SchedulerType              *string                                  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
+	AdvancedSchedulerOverrides *service.GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides"`
+	DisplayBrand               *string                                  `json:"display_brand"`
+	SortOrder                  *int                                     `json:"sort_order"`
+	RateMultiplier             *float64                                 `json:"rate_multiplier"`
+	IsExclusive                *bool                                    `json:"is_exclusive"`
+	IsDefault                  *bool                                    `json:"is_default"`
 	// nil 表示不修改数据共享开关。
 	DataSharingEnabled *bool `json:"data_sharing_enabled"`
 	// nil 表示不修改会话隔离开关。
@@ -302,6 +304,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		SchedulerType:                   req.SchedulerType,
+		AdvancedSchedulerOverrides:      req.AdvancedSchedulerOverrides,
 		DisplayBrand:                    req.DisplayBrand,
 		SortOrder:                       req.SortOrder,
 		RateMultiplier:                  req.RateMultiplier,
@@ -425,6 +428,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Description:                     req.Description,
 		Platform:                        req.Platform,
 		SchedulerType:                   req.SchedulerType,
+		AdvancedSchedulerOverrides:      req.AdvancedSchedulerOverrides,
 		DisplayBrand:                    req.DisplayBrand,
 		SortOrder:                       req.SortOrder,
 		RateMultiplier:                  req.RateMultiplier,

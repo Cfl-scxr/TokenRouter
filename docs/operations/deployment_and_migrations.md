@@ -77,6 +77,8 @@
 
 迁移会把旧粘性、订阅优先、Top-K 和评分权重设置复制到 `advanced_scheduler_*`，随后删除全部 `openai_advanced_scheduler_*` 键，不保留数据库别名或读取回退。部署前必须把配置中的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*`、`gateway.openai_scheduler.sticky_escape_*` 替换为 `gateway.advanced_scheduler`；新版本会拒绝旧配置，管理设置 API 也会拒绝旧字段。
 
+迁移 `239_add_group_advanced_scheduler_overrides.sql` 为 `groups` 增加非空 JSONB `advanced_scheduler_overrides`，默认 `{}`，并约束顶层必须是对象。它不修改既有分组模式或全局权重；空对象让所有分组继续继承网关通用参数。升级后管理端可仅为高级分组保存需要偏离全局的字段，认证快照版本会再次提升以避免旧缓存缺失覆盖值。
+
 这是破坏性的一次性升级，不支持新旧二进制或新旧前端混跑。先停止全部旧实例、备份 PostgreSQL 与配置，再启动一个新实例完成迁移，确认认证快照因版本变化而重建、分组模式和通用设置符合预期后，再扩容其它新实例。仅回退二进制不能恢复已删除的旧设置；需要回滚时应停止新实例并恢复升级前的数据库备份和配置。
 
 ### 分组客户端协议迁移

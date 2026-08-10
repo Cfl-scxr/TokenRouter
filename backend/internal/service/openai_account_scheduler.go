@@ -589,11 +589,12 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	if !req.PreviousResponseCanMove {
 		previousStickyAccountID = 0
 	}
+	effectiveSettings := s.service.advancedSchedulerEffectiveSettingsForRequest(ctx, req.GroupID)
 	plan.candidates, plan.loadSkew = scoreAdvancedSchedulerCandidates(
 		accounts,
 		loadMap,
 		s.stats,
-		s.service.openAIWSSchedulerWeightsForRequest(ctx),
+		effectiveSettings.weights,
 		advancedSchedulerSelectionInput{
 			GroupID:                 req.GroupID,
 			SessionHash:             req.SessionHash,
@@ -607,7 +608,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 		time.Now(),
 	)
 
-	plan.topK = s.service.openAIWSLBTopKForRequest(ctx)
+	plan.topK = effectiveSettings.topK
 	if plan.topK > len(plan.candidates) {
 		plan.topK = len(plan.candidates)
 	}
@@ -1835,8 +1836,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerForRoutingOnce(
 			stickyAccountID = accountID
 		}
 	}
-	stickyWeighted := s.isAdvancedSchedulerStickyWeightedEnabled(ctx)
-	subscriptionPriority := s.isAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
+	effectiveSettings := s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
+	stickyWeighted := effectiveSettings.stickyWeightedEnabled
+	subscriptionPriority := effectiveSettings.subscriptionPriorityEnabled
 	stickyPreviousAccountID := int64(0)
 	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, routingModel, excludedIDs, requiredCapability, requireCompact)
@@ -2119,16 +2121,28 @@ func (s *RateLimitService) BuildAdvancedAccountSchedulerScoreSnapshot(
 	accounts []*Account,
 	loadMap map[int64]*AccountLoadInfo,
 ) map[int64]AdvancedAccountSchedulerScoreSnapshot {
+	return s.BuildAdvancedAccountSchedulerScoreSnapshotForGroup(ctx, nil, accounts, loadMap)
+}
+
+// BuildAdvancedAccountSchedulerScoreSnapshotForGroup 按指定高级分组的有效配置生成评分快照。
+// 该入口供管理端展示使用，必须与实际调度的分组覆盖优先级保持一致。
+func (s *RateLimitService) BuildAdvancedAccountSchedulerScoreSnapshotForGroup(
+	ctx context.Context,
+	group *Group,
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+) map[int64]AdvancedAccountSchedulerScoreSnapshot {
 	gateway := &OpenAIGatewayService{cfg: nil, rateLimitService: s}
 	if s != nil {
 		gateway.cfg = s.cfg
 	}
+	effectiveSettings := gateway.advancedSchedulerEffectiveSettingsForGroup(ctx, group)
 	return buildAdvancedAccountSchedulerScoreSnapshot(
 		accounts,
 		loadMap,
 		nil,
-		gateway.openAIWSSchedulerWeightsForRequest(ctx),
-		gateway.isAdvancedSchedulerStickyWeightedEnabled(ctx),
+		effectiveSettings.weights,
+		effectiveSettings.stickyWeightedEnabled,
 		openAIQuotaHeadroomFactor,
 	)
 }
@@ -2138,8 +2152,26 @@ func BuildAdvancedAccountSchedulerScoreSnapshot(
 	accounts []*Account,
 	loadMap map[int64]*AccountLoadInfo,
 ) map[int64]AdvancedAccountSchedulerScoreSnapshot {
+	return BuildAdvancedAccountSchedulerScoreSnapshotForGroup(nil, accounts, loadMap)
+}
+
+// BuildAdvancedAccountSchedulerScoreSnapshotForGroup 按静态默认值和分组覆盖生成评分。
+// 未注入设置服务的管理端测试路径使用该函数。
+func BuildAdvancedAccountSchedulerScoreSnapshotForGroup(
+	group *Group,
+	accounts []*Account,
+	loadMap map[int64]*AccountLoadInfo,
+) map[int64]AdvancedAccountSchedulerScoreSnapshot {
 	gateway := &OpenAIGatewayService{}
-	return buildAdvancedAccountSchedulerScoreSnapshot(accounts, loadMap, nil, gateway.openAIWSSchedulerWeights(), false, openAIQuotaHeadroomFactor)
+	effectiveSettings := gateway.advancedSchedulerEffectiveSettingsForGroup(context.Background(), group)
+	return buildAdvancedAccountSchedulerScoreSnapshot(
+		accounts,
+		loadMap,
+		nil,
+		effectiveSettings.weights,
+		effectiveSettings.stickyWeightedEnabled,
+		openAIQuotaHeadroomFactor,
+	)
 }
 
 // openAIQuotaHeadroomFactor 把 Codex quota 快照转换成 0..1 的调度因子。

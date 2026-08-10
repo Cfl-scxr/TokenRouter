@@ -244,6 +244,20 @@ func (_c *GroupCreate) SetNillableSchedulerType(v *string) *GroupCreate {
 	return _c
 }
 
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (_c *GroupCreate) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupCreate {
+	_c.mutation.SetAdvancedSchedulerOverrides(v)
+	return _c
+}
+
+// SetNillableAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAdvancedSchedulerOverrides(v *domain.GroupAdvancedSchedulerOverrides) *GroupCreate {
+	if v != nil {
+		_c.SetAdvancedSchedulerOverrides(*v)
+	}
+	return _c
+}
+
 // SetDisplayBrand sets the "display_brand" field.
 func (_c *GroupCreate) SetDisplayBrand(v string) *GroupCreate {
 	_c.mutation.SetDisplayBrand(v)
@@ -939,6 +953,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultSchedulerType
 		_c.mutation.SetSchedulerType(v)
 	}
+	if _, ok := _c.mutation.AdvancedSchedulerOverrides(); !ok {
+		v := group.DefaultAdvancedSchedulerOverrides
+		_c.mutation.SetAdvancedSchedulerOverrides(v)
+	}
 	if _, ok := _c.mutation.DisplayBrand(); !ok {
 		v := group.DefaultDisplayBrand
 		_c.mutation.SetDisplayBrand(v)
@@ -1130,6 +1148,9 @@ func (_c *GroupCreate) check() error {
 			return &ValidationError{Name: "scheduler_type", err: fmt.Errorf(`ent: validator failed for field "Group.scheduler_type": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.AdvancedSchedulerOverrides(); !ok {
+		return &ValidationError{Name: "advanced_scheduler_overrides", err: errors.New(`ent: missing required field "Group.advanced_scheduler_overrides"`)}
+	}
 	if _, ok := _c.mutation.DisplayBrand(); !ok {
 		return &ValidationError{Name: "display_brand", err: errors.New(`ent: missing required field "Group.display_brand"`)}
 	}
@@ -1319,6 +1340,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SchedulerType(); ok {
 		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
 		_node.SchedulerType = value
+	}
+	if value, ok := _c.mutation.AdvancedSchedulerOverrides(); ok {
+		_spec.SetField(group.FieldAdvancedSchedulerOverrides, field.TypeJSON, value)
+		_node.AdvancedSchedulerOverrides = value
 	}
 	if value, ok := _c.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)
@@ -1825,6 +1850,18 @@ func (u *GroupUpsert) SetSchedulerType(v string) *GroupUpsert {
 // UpdateSchedulerType sets the "scheduler_type" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateSchedulerType() *GroupUpsert {
 	u.SetExcluded(group.FieldSchedulerType)
+	return u
+}
+
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (u *GroupUpsert) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupUpsert {
+	u.Set(group.FieldAdvancedSchedulerOverrides, v)
+	return u
+}
+
+// UpdateAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAdvancedSchedulerOverrides() *GroupUpsert {
+	u.SetExcluded(group.FieldAdvancedSchedulerOverrides)
 	return u
 }
 
@@ -2727,6 +2764,20 @@ func (u *GroupUpsertOne) SetSchedulerType(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateSchedulerType() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSchedulerType()
+	})
+}
+
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (u *GroupUpsertOne) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAdvancedSchedulerOverrides(v)
+	})
+}
+
+// UpdateAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAdvancedSchedulerOverrides() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAdvancedSchedulerOverrides()
 	})
 }
 
@@ -3900,6 +3951,20 @@ func (u *GroupUpsertBulk) SetSchedulerType(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateSchedulerType() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSchedulerType()
+	})
+}
+
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (u *GroupUpsertBulk) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAdvancedSchedulerOverrides(v)
+	})
+}
+
+// UpdateAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAdvancedSchedulerOverrides() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAdvancedSchedulerOverrides()
 	})
 }
 

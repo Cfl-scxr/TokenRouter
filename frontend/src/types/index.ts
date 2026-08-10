@@ -546,6 +546,22 @@ export interface PaginationConfig {
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
 export type GroupSchedulerType = 'basic' | 'advanced'
+
+// 分组高级调度器的稀疏覆盖；未出现的字段继承网关通用设置。
+export interface GroupAdvancedSchedulerOverrides {
+  sticky_weighted_enabled?: boolean
+  subscription_priority_enabled?: boolean
+  lb_top_k?: number
+  weight_priority?: number
+  weight_load?: number
+  weight_queue?: number
+  weight_error_rate?: number
+  weight_ttft?: number
+  weight_reset?: number
+  weight_quota_headroom?: number
+  weight_previous_response?: number
+  weight_session_sticky?: number
+}
 export type GroupClientProtocol =
   | 'anthropic_messages'
   | 'openai_responses'
@@ -734,6 +750,7 @@ export interface Group {
 export interface AdminGroup extends Group {
   // 仅管理端可配置，公开分组接口不返回调度器模式。
   scheduler_type: GroupSchedulerType
+  advanced_scheduler_overrides?: GroupAdvancedSchedulerOverrides
 
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
@@ -884,6 +901,7 @@ export interface CreateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   scheduler_type?: GroupSchedulerType
+  advanced_scheduler_overrides?: GroupAdvancedSchedulerOverrides
   display_brand?: string
   sort_order?: number
   rate_multiplier?: number
@@ -939,6 +957,7 @@ export interface UpdateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   scheduler_type?: GroupSchedulerType
+  advanced_scheduler_overrides?: GroupAdvancedSchedulerOverrides
   display_brand?: string
   sort_order?: number
   rate_multiplier?: number

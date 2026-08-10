@@ -48,6 +48,8 @@ const (
 	FieldPlatform = "platform"
 	// FieldSchedulerType holds the string denoting the scheduler_type field in the database.
 	FieldSchedulerType = "scheduler_type"
+	// FieldAdvancedSchedulerOverrides holds the string denoting the advanced_scheduler_overrides field in the database.
+	FieldAdvancedSchedulerOverrides = "advanced_scheduler_overrides"
 	// FieldDisplayBrand holds the string denoting the display_brand field in the database.
 	FieldDisplayBrand = "display_brand"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
@@ -224,6 +226,7 @@ var Columns = []string{
 	FieldDuplicateOperationID,
 	FieldPlatform,
 	FieldSchedulerType,
+	FieldAdvancedSchedulerOverrides,
 	FieldDisplayBrand,
 	FieldAllowImageGeneration,
 	FieldAllowBatchImageGeneration,
@@ -335,6 +338,8 @@ var (
 	DefaultSchedulerType string
 	// SchedulerTypeValidator is a validator for the "scheduler_type" field. It is called by the builders before save.
 	SchedulerTypeValidator func(string) error
+	// DefaultAdvancedSchedulerOverrides holds the default value on creation for the "advanced_scheduler_overrides" field.
+	DefaultAdvancedSchedulerOverrides domain.GroupAdvancedSchedulerOverrides
 	// DefaultDisplayBrand holds the default value on creation for the "display_brand" field.
 	DefaultDisplayBrand string
 	// DisplayBrandValidator is a validator for the "display_brand" field. It is called by the builders before save.

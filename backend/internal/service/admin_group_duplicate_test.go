@@ -56,6 +56,7 @@ func cloneGroupForDuplicateTest(group *Group) *Group {
 	cloned.FallbackGroupID = cloneGroupValuePointer(group.FallbackGroupID)
 	cloned.FallbackGroupIDOnInvalidRequest = cloneGroupValuePointer(group.FallbackGroupIDOnInvalidRequest)
 	cloned.UnavailableFallbackGroupID = cloneGroupValuePointer(group.UnavailableFallbackGroupID)
+	cloned.AdvancedSchedulerOverrides = CloneGroupAdvancedSchedulerOverrides(group.AdvancedSchedulerOverrides)
 	cloned.ModelRouting = cloneGroupModelRouting(group.ModelRouting)
 	cloned.SupportedModelScopes = append([]string(nil), group.SupportedModelScopes...)
 	cloned.AllowedClientProtocols = cloneGroupClientProtocols(group.AllowedClientProtocols)
@@ -120,11 +121,16 @@ func groupDuplicateTestPointer[T any](value T) *T { return &value }
 func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 1, 2, 3, 4, 0, time.UTC)
 	source := &Group{
-		ID:                              41,
-		Name:                            "高级订阅",
-		Description:                     "configuration",
-		Platform:                        PlatformOpenAI,
-		SchedulerType:                   GroupSchedulerTypeAdvanced,
+		ID:            41,
+		Name:          "高级订阅",
+		Description:   "configuration",
+		Platform:      PlatformOpenAI,
+		SchedulerType: GroupSchedulerTypeAdvanced,
+		AdvancedSchedulerOverrides: GroupAdvancedSchedulerOverrides{
+			StickyWeightedEnabled: groupDuplicateTestPointer(true),
+			LBTopK:                groupDuplicateTestPointer(3),
+			WeightPriority:        groupDuplicateTestPointer(4.5),
+		},
 		DisplayBrand:                    "OpenAI",
 		RateMultiplier:                  1.75,
 		PeakRateEnabled:                 true,
@@ -207,6 +213,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.Description, duplicate.Description)
 	require.Equal(t, source.Platform, duplicate.Platform)
 	require.Equal(t, GroupSchedulerTypeAdvanced, duplicate.SchedulerType)
+	require.Equal(t, 3, *duplicate.AdvancedSchedulerOverrides.LBTopK)
+	require.NotSame(t, source.AdvancedSchedulerOverrides.LBTopK, duplicate.AdvancedSchedulerOverrides.LBTopK)
 	require.Equal(t, source.DisplayBrand, duplicate.DisplayBrand)
 	require.False(t, duplicate.IsDefault)
 	require.Equal(t, source.DataSharingEnabled, duplicate.DataSharingEnabled)
@@ -242,6 +250,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	duplicate.ReasoningEffortMappings[0].To = "changed"
 	*duplicate.ImagePrice1K = 999
 	*duplicate.UnavailableFallbackGroupID = 999
+	*duplicate.AdvancedSchedulerOverrides.LBTopK = 99
+	*duplicate.AdvancedSchedulerOverrides.WeightPriority = 99
 	require.Equal(t, int64(13), source.ModelRouting["gpt-*"][0])
 	require.Equal(t, "claude", source.SupportedModelScopes[0])
 	require.Equal(t, GroupClientProtocolAnthropicMessages, source.AllowedClientProtocols[0])
@@ -250,6 +260,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, "xhigh", source.ReasoningEffortMappings[0].To)
 	require.Equal(t, 0.01, *source.ImagePrice1K)
 	require.Equal(t, int64(9), *source.UnavailableFallbackGroupID)
+	require.Equal(t, 3, *source.AdvancedSchedulerOverrides.LBTopK)
+	require.Equal(t, 4.5, *source.AdvancedSchedulerOverrides.WeightPriority)
 }
 
 func TestDuplicateGroupRecoversSameOperationAndScopesByAdmin(t *testing.T) {

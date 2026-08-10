@@ -235,6 +235,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		SchedulerType:               string(g.SchedulerType),
+		AdvancedSchedulerOverrides:  service.CloneGroupAdvancedSchedulerOverrides(g.AdvancedSchedulerOverrides),
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,

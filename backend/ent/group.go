@@ -51,6 +51,8 @@ type Group struct {
 	Platform string `json:"platform,omitempty"`
 	// 分组调度器类型：basic 或 advanced
 	SchedulerType string `json:"scheduler_type,omitempty"`
+	// 分组高级调度器稀疏覆盖；未设置字段继承网关通用设置
+	AdvancedSchedulerOverrides domain.GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides,omitempty"`
 	// 模型广场展示品牌
 	DisplayBrand string `json:"display_brand,omitempty"`
 	// 是否允许该分组使用图片生成能力
@@ -246,7 +248,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldAllowedClientProtocols, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldAvailabilityProbeConfig, group.FieldReasoningEffortMappings:
+		case group.FieldAdvancedSchedulerOverrides, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldAllowedClientProtocols, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldAvailabilityProbeConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldIsDefault, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldDataSharingEnabled, group.FieldSessionIsolationEnabled:
 			values[i] = new(sql.NullBool)
@@ -377,6 +379,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field scheduler_type", values[i])
 			} else if value.Valid {
 				_m.SchedulerType = value.String
+			}
+		case group.FieldAdvancedSchedulerOverrides:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field advanced_scheduler_overrides", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AdvancedSchedulerOverrides); err != nil {
+					return fmt.Errorf("unmarshal field advanced_scheduler_overrides: %w", err)
+				}
 			}
 		case group.FieldDisplayBrand:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -770,6 +780,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("scheduler_type=")
 	builder.WriteString(_m.SchedulerType)
+	builder.WriteString(", ")
+	builder.WriteString("advanced_scheduler_overrides=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AdvancedSchedulerOverrides))
 	builder.WriteString(", ")
 	builder.WriteString("display_brand=")
 	builder.WriteString(_m.DisplayBrand)

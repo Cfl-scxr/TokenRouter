@@ -885,6 +885,7 @@ var (
 		{Name: "duplicate_operation_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: "anthropic"},
 		{Name: "scheduler_type", Type: field.TypeString, Size: 16, Default: "basic"},
+		{Name: "advanced_scheduler_overrides", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "display_brand", Type: field.TypeString, Size: 50, Default: ""},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
 		{Name: "allow_batch_image_generation", Type: field.TypeBool, Default: false},
@@ -959,17 +960,17 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[41]},
+				Columns: []*schema.Column{GroupsColumns[42]},
 			},
 			{
 				Name:    "group_data_sharing_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[54]},
+				Columns: []*schema.Column{GroupsColumns[55]},
 			},
 			{
 				Name:    "group_session_isolation_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[55]},
+				Columns: []*schema.Column{GroupsColumns[56]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",

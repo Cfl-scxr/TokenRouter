@@ -1041,122 +1041,126 @@ func init() {
 	group.DefaultSchedulerType = groupDescSchedulerType.Default.(string)
 	// group.SchedulerTypeValidator is a validator for the "scheduler_type" field. It is called by the builders before save.
 	group.SchedulerTypeValidator = groupDescSchedulerType.Validators[0].(func(string) error)
+	// groupDescAdvancedSchedulerOverrides is the schema descriptor for advanced_scheduler_overrides field.
+	groupDescAdvancedSchedulerOverrides := groupFields[13].Descriptor()
+	// group.DefaultAdvancedSchedulerOverrides holds the default value on creation for the advanced_scheduler_overrides field.
+	group.DefaultAdvancedSchedulerOverrides = groupDescAdvancedSchedulerOverrides.Default.(domain.GroupAdvancedSchedulerOverrides)
 	// groupDescDisplayBrand is the schema descriptor for display_brand field.
-	groupDescDisplayBrand := groupFields[13].Descriptor()
+	groupDescDisplayBrand := groupFields[14].Descriptor()
 	// group.DefaultDisplayBrand holds the default value on creation for the display_brand field.
 	group.DefaultDisplayBrand = groupDescDisplayBrand.Default.(string)
 	// group.DisplayBrandValidator is a validator for the "display_brand" field. It is called by the builders before save.
 	group.DisplayBrandValidator = groupDescDisplayBrand.Validators[0].(func(string) error)
 	// groupDescAllowImageGeneration is the schema descriptor for allow_image_generation field.
-	groupDescAllowImageGeneration := groupFields[14].Descriptor()
+	groupDescAllowImageGeneration := groupFields[15].Descriptor()
 	// group.DefaultAllowImageGeneration holds the default value on creation for the allow_image_generation field.
 	group.DefaultAllowImageGeneration = groupDescAllowImageGeneration.Default.(bool)
 	// groupDescAllowBatchImageGeneration is the schema descriptor for allow_batch_image_generation field.
-	groupDescAllowBatchImageGeneration := groupFields[15].Descriptor()
+	groupDescAllowBatchImageGeneration := groupFields[16].Descriptor()
 	// group.DefaultAllowBatchImageGeneration holds the default value on creation for the allow_batch_image_generation field.
 	group.DefaultAllowBatchImageGeneration = groupDescAllowBatchImageGeneration.Default.(bool)
 	// groupDescImageRateIndependent is the schema descriptor for image_rate_independent field.
-	groupDescImageRateIndependent := groupFields[16].Descriptor()
+	groupDescImageRateIndependent := groupFields[17].Descriptor()
 	// group.DefaultImageRateIndependent holds the default value on creation for the image_rate_independent field.
 	group.DefaultImageRateIndependent = groupDescImageRateIndependent.Default.(bool)
 	// groupDescImageRateMultiplier is the schema descriptor for image_rate_multiplier field.
-	groupDescImageRateMultiplier := groupFields[17].Descriptor()
+	groupDescImageRateMultiplier := groupFields[18].Descriptor()
 	// group.DefaultImageRateMultiplier holds the default value on creation for the image_rate_multiplier field.
 	group.DefaultImageRateMultiplier = groupDescImageRateMultiplier.Default.(float64)
 	// groupDescBatchImageDiscountMultiplier is the schema descriptor for batch_image_discount_multiplier field.
-	groupDescBatchImageDiscountMultiplier := groupFields[21].Descriptor()
+	groupDescBatchImageDiscountMultiplier := groupFields[22].Descriptor()
 	// group.DefaultBatchImageDiscountMultiplier holds the default value on creation for the batch_image_discount_multiplier field.
 	group.DefaultBatchImageDiscountMultiplier = groupDescBatchImageDiscountMultiplier.Default.(float64)
 	// groupDescBatchImageHoldMultiplier is the schema descriptor for batch_image_hold_multiplier field.
-	groupDescBatchImageHoldMultiplier := groupFields[22].Descriptor()
+	groupDescBatchImageHoldMultiplier := groupFields[23].Descriptor()
 	// group.DefaultBatchImageHoldMultiplier holds the default value on creation for the batch_image_hold_multiplier field.
 	group.DefaultBatchImageHoldMultiplier = groupDescBatchImageHoldMultiplier.Default.(float64)
 	// groupDescVideoRateIndependent is the schema descriptor for video_rate_independent field.
-	groupDescVideoRateIndependent := groupFields[23].Descriptor()
+	groupDescVideoRateIndependent := groupFields[24].Descriptor()
 	// group.DefaultVideoRateIndependent holds the default value on creation for the video_rate_independent field.
 	group.DefaultVideoRateIndependent = groupDescVideoRateIndependent.Default.(bool)
 	// groupDescVideoRateMultiplier is the schema descriptor for video_rate_multiplier field.
-	groupDescVideoRateMultiplier := groupFields[24].Descriptor()
+	groupDescVideoRateMultiplier := groupFields[25].Descriptor()
 	// group.DefaultVideoRateMultiplier holds the default value on creation for the video_rate_multiplier field.
 	group.DefaultVideoRateMultiplier = groupDescVideoRateMultiplier.Default.(float64)
 	// groupDescClaudeCodeOnly is the schema descriptor for claude_code_only field.
-	groupDescClaudeCodeOnly := groupFields[29].Descriptor()
+	groupDescClaudeCodeOnly := groupFields[30].Descriptor()
 	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
 	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
 	// groupDescModelRoutingEnabled is the schema descriptor for model_routing_enabled field.
-	groupDescModelRoutingEnabled := groupFields[34].Descriptor()
+	groupDescModelRoutingEnabled := groupFields[35].Descriptor()
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
 	// groupDescMcpXMLInject is the schema descriptor for mcp_xml_inject field.
-	groupDescMcpXMLInject := groupFields[35].Descriptor()
+	groupDescMcpXMLInject := groupFields[36].Descriptor()
 	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
 	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
 	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
-	groupDescSupportedModelScopes := groupFields[36].Descriptor()
+	groupDescSupportedModelScopes := groupFields[37].Descriptor()
 	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
 	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	// groupDescSortOrder is the schema descriptor for sort_order field.
-	groupDescSortOrder := groupFields[37].Descriptor()
+	groupDescSortOrder := groupFields[38].Descriptor()
 	// group.DefaultSortOrder holds the default value on creation for the sort_order field.
 	group.DefaultSortOrder = groupDescSortOrder.Default.(int)
 	// groupDescAllowMessagesDispatch is the schema descriptor for allow_messages_dispatch field.
-	groupDescAllowMessagesDispatch := groupFields[38].Descriptor()
+	groupDescAllowMessagesDispatch := groupFields[39].Descriptor()
 	// group.DefaultAllowMessagesDispatch holds the default value on creation for the allow_messages_dispatch field.
 	group.DefaultAllowMessagesDispatch = groupDescAllowMessagesDispatch.Default.(bool)
 	// groupDescAllowedClientProtocols is the schema descriptor for allowed_client_protocols field.
-	groupDescAllowedClientProtocols := groupFields[39].Descriptor()
+	groupDescAllowedClientProtocols := groupFields[40].Descriptor()
 	// group.DefaultAllowedClientProtocols holds the default value on creation for the allowed_client_protocols field.
 	group.DefaultAllowedClientProtocols = groupDescAllowedClientProtocols.Default.([]domain.GroupClientProtocol)
 	// groupDescAllowLive is the schema descriptor for allow_live field.
-	groupDescAllowLive := groupFields[40].Descriptor()
+	groupDescAllowLive := groupFields[41].Descriptor()
 	// group.DefaultAllowLive holds the default value on creation for the allow_live field.
 	group.DefaultAllowLive = groupDescAllowLive.Default.(bool)
 	// groupDescRequireOauthOnly is the schema descriptor for require_oauth_only field.
-	groupDescRequireOauthOnly := groupFields[41].Descriptor()
+	groupDescRequireOauthOnly := groupFields[42].Descriptor()
 	// group.DefaultRequireOauthOnly holds the default value on creation for the require_oauth_only field.
 	group.DefaultRequireOauthOnly = groupDescRequireOauthOnly.Default.(bool)
 	// groupDescRequirePrivacySet is the schema descriptor for require_privacy_set field.
-	groupDescRequirePrivacySet := groupFields[42].Descriptor()
+	groupDescRequirePrivacySet := groupFields[43].Descriptor()
 	// group.DefaultRequirePrivacySet holds the default value on creation for the require_privacy_set field.
 	group.DefaultRequirePrivacySet = groupDescRequirePrivacySet.Default.(bool)
 	// groupDescDefaultMappedModel is the schema descriptor for default_mapped_model field.
-	groupDescDefaultMappedModel := groupFields[43].Descriptor()
+	groupDescDefaultMappedModel := groupFields[44].Descriptor()
 	// group.DefaultDefaultMappedModel holds the default value on creation for the default_mapped_model field.
 	group.DefaultDefaultMappedModel = groupDescDefaultMappedModel.Default.(string)
 	// group.DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	group.DefaultMappedModelValidator = groupDescDefaultMappedModel.Validators[0].(func(string) error)
 	// groupDescMessagesDispatchModelConfig is the schema descriptor for messages_dispatch_model_config field.
-	groupDescMessagesDispatchModelConfig := groupFields[44].Descriptor()
+	groupDescMessagesDispatchModelConfig := groupFields[45].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
 	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
-	groupDescModelsListConfig := groupFields[45].Descriptor()
+	groupDescModelsListConfig := groupFields[46].Descriptor()
 	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
 	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
 	// groupDescAvailabilityProbeConfig is the schema descriptor for availability_probe_config field.
-	groupDescAvailabilityProbeConfig := groupFields[46].Descriptor()
+	groupDescAvailabilityProbeConfig := groupFields[47].Descriptor()
 	// group.DefaultAvailabilityProbeConfig holds the default value on creation for the availability_probe_config field.
 	group.DefaultAvailabilityProbeConfig = groupDescAvailabilityProbeConfig.Default.(domain.GroupAvailabilityProbeConfig)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[47].Descriptor()
+	groupDescRpmLimit := groupFields[48].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescMaxReasoningEffort is the schema descriptor for max_reasoning_effort field.
-	groupDescMaxReasoningEffort := groupFields[48].Descriptor()
+	groupDescMaxReasoningEffort := groupFields[49].Descriptor()
 	// group.DefaultMaxReasoningEffort holds the default value on creation for the max_reasoning_effort field.
 	group.DefaultMaxReasoningEffort = groupDescMaxReasoningEffort.Default.(string)
 	// group.MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
 	group.MaxReasoningEffortValidator = groupDescMaxReasoningEffort.Validators[0].(func(string) error)
 	// groupDescReasoningEffortMappings is the schema descriptor for reasoning_effort_mappings field.
-	groupDescReasoningEffortMappings := groupFields[49].Descriptor()
+	groupDescReasoningEffortMappings := groupFields[50].Descriptor()
 	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
 	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
 	// groupDescDataSharingEnabled is the schema descriptor for data_sharing_enabled field.
-	groupDescDataSharingEnabled := groupFields[50].Descriptor()
+	groupDescDataSharingEnabled := groupFields[51].Descriptor()
 	// group.DefaultDataSharingEnabled holds the default value on creation for the data_sharing_enabled field.
 	group.DefaultDataSharingEnabled = groupDescDataSharingEnabled.Default.(bool)
 	// groupDescSessionIsolationEnabled is the schema descriptor for session_isolation_enabled field.
-	groupDescSessionIsolationEnabled := groupFields[51].Descriptor()
+	groupDescSessionIsolationEnabled := groupFields[52].Descriptor()
 	// group.DefaultSessionIsolationEnabled holds the default value on creation for the session_isolation_enabled field.
 	group.DefaultSessionIsolationEnabled = groupDescSessionIsolationEnabled.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()

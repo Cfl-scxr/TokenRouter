@@ -249,6 +249,20 @@ func (_u *GroupUpdate) SetNillableSchedulerType(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (_u *GroupUpdate) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupUpdate {
+	_u.mutation.SetAdvancedSchedulerOverrides(v)
+	return _u
+}
+
+// SetNillableAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAdvancedSchedulerOverrides(v *domain.GroupAdvancedSchedulerOverrides) *GroupUpdate {
+	if v != nil {
+		_u.SetAdvancedSchedulerOverrides(*v)
+	}
+	return _u
+}
+
 // SetDisplayBrand sets the "display_brand" field.
 func (_u *GroupUpdate) SetDisplayBrand(v string) *GroupUpdate {
 	_u.mutation.SetDisplayBrand(v)
@@ -1341,6 +1355,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.SchedulerType(); ok {
 		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.AdvancedSchedulerOverrides(); ok {
+		_spec.SetField(group.FieldAdvancedSchedulerOverrides, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)
 	}
@@ -2090,6 +2107,20 @@ func (_u *GroupUpdateOne) SetSchedulerType(v string) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableSchedulerType(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetSchedulerType(*v)
+	}
+	return _u
+}
+
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (_u *GroupUpdateOne) SetAdvancedSchedulerOverrides(v domain.GroupAdvancedSchedulerOverrides) *GroupUpdateOne {
+	_u.mutation.SetAdvancedSchedulerOverrides(v)
+	return _u
+}
+
+// SetNillableAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAdvancedSchedulerOverrides(v *domain.GroupAdvancedSchedulerOverrides) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAdvancedSchedulerOverrides(*v)
 	}
 	return _u
 }
@@ -3215,6 +3246,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.SchedulerType(); ok {
 		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AdvancedSchedulerOverrides(); ok {
+		_spec.SetField(group.FieldAdvancedSchedulerOverrides, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)

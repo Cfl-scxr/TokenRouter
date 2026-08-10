@@ -957,6 +957,37 @@ affiliates: {
         advanced: 'Advanced scheduler',
         hint: 'The basic scheduler keeps the current default ordering. The advanced scheduler uses shared scoring, Top-K weighting, and runtime feedback.'
       },
+      advancedSchedulerOverrides: {
+        label: 'Group advanced scheduler settings',
+        configure: 'Configure',
+        allInherited: 'All values inherit gateway settings',
+        overriddenCount: '{count} overrides; the rest inherit',
+        title: 'Group advanced scheduler settings',
+        description: 'Only this group uses these overrides. Unset values continue to inherit the gateway-wide advanced scheduler settings.',
+        inherit: 'Inherit gateway settings',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
+        stickyWeighted: 'Sticky weighting',
+        subscriptionPriority: 'Subscription priority',
+        weightsTitle: 'Candidate scoring and Top-K',
+        weightsHint: 'Higher weights give that signal more influence. Leave a value blank to inherit it.',
+        inheritPlaceholder: 'Inherit',
+        inheritHint: 'Blank inherits',
+        reset: 'Restore all inheritance',
+        invalidValue: 'Enter a non-negative number; Top-K must be a positive integer.',
+        fields: {
+          lbTopK: 'Top-K',
+          weightPriority: 'Priority',
+          weightLoad: 'Load',
+          weightQueue: 'Queue',
+          weightErrorRate: 'Error rate',
+          weightTTFT: 'First token latency',
+          weightReset: 'Window reset',
+          weightQuotaHeadroom: 'Quota headroom',
+          weightPreviousResponse: 'Previous response affinity',
+          weightSessionSticky: 'Session affinity'
+        }
+      },
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',

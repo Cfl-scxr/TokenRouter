@@ -105,32 +105,34 @@ type APIKeyAuthUserSnapshot struct {
 
 // APIKeyAuthGroupSnapshot 分组快照
 type APIKeyAuthGroupSnapshot struct {
-	ID                              int64              `json:"id"`
-	Name                            string             `json:"name"`
-	Platform                        string             `json:"platform"`
-	SchedulerType                   GroupSchedulerType `json:"scheduler_type"`
-	IsExclusive                     bool               `json:"is_exclusive"`
-	Status                          string             `json:"status"`
-	RateMultiplier                  float64            `json:"rate_multiplier"`
-	DataSharingEnabled              bool               `json:"data_sharing_enabled"`
-	SessionIsolationEnabled         bool               `json:"session_isolation_enabled"`
-	AllowImageGeneration            bool               `json:"allow_image_generation"`
-	AllowBatchImageGeneration       bool               `json:"allow_batch_image_generation"`
-	ImageRateIndependent            bool               `json:"image_rate_independent"`
-	ImageRateMultiplier             float64            `json:"image_rate_multiplier"`
-	ImagePrice1K                    *float64           `json:"image_price_1k,omitempty"`
-	ImagePrice2K                    *float64           `json:"image_price_2k,omitempty"`
-	ImagePrice4K                    *float64           `json:"image_price_4k,omitempty"`
-	VideoRateIndependent            bool               `json:"video_rate_independent"`
-	VideoRateMultiplier             float64            `json:"video_rate_multiplier"`
-	VideoPrice480P                  *float64           `json:"video_price_480p,omitempty"`
-	VideoPrice720P                  *float64           `json:"video_price_720p,omitempty"`
-	VideoPrice1080P                 *float64           `json:"video_price_1080p,omitempty"`
-	WebSearchPricePerCall           *float64           `json:"web_search_price_per_call,omitempty"`
-	ClaudeCodeOnly                  bool               `json:"claude_code_only"`
-	FallbackGroupID                 *int64             `json:"fallback_group_id,omitempty"`
-	FallbackGroupIDOnInvalidRequest *int64             `json:"fallback_group_id_on_invalid_request,omitempty"`
-	UnavailableFallbackGroupID      *int64             `json:"unavailable_fallback_group_id,omitempty"`
+	ID            int64              `json:"id"`
+	Name          string             `json:"name"`
+	Platform      string             `json:"platform"`
+	SchedulerType GroupSchedulerType `json:"scheduler_type"`
+	// AdvancedSchedulerOverrides 随认证快照下发，避免请求期回读分组配置。
+	AdvancedSchedulerOverrides      GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides"`
+	IsExclusive                     bool                            `json:"is_exclusive"`
+	Status                          string                          `json:"status"`
+	RateMultiplier                  float64                         `json:"rate_multiplier"`
+	DataSharingEnabled              bool                            `json:"data_sharing_enabled"`
+	SessionIsolationEnabled         bool                            `json:"session_isolation_enabled"`
+	AllowImageGeneration            bool                            `json:"allow_image_generation"`
+	AllowBatchImageGeneration       bool                            `json:"allow_batch_image_generation"`
+	ImageRateIndependent            bool                            `json:"image_rate_independent"`
+	ImageRateMultiplier             float64                         `json:"image_rate_multiplier"`
+	ImagePrice1K                    *float64                        `json:"image_price_1k,omitempty"`
+	ImagePrice2K                    *float64                        `json:"image_price_2k,omitempty"`
+	ImagePrice4K                    *float64                        `json:"image_price_4k,omitempty"`
+	VideoRateIndependent            bool                            `json:"video_rate_independent"`
+	VideoRateMultiplier             float64                         `json:"video_rate_multiplier"`
+	VideoPrice480P                  *float64                        `json:"video_price_480p,omitempty"`
+	VideoPrice720P                  *float64                        `json:"video_price_720p,omitempty"`
+	VideoPrice1080P                 *float64                        `json:"video_price_1080p,omitempty"`
+	WebSearchPricePerCall           *float64                        `json:"web_search_price_per_call,omitempty"`
+	ClaudeCodeOnly                  bool                            `json:"claude_code_only"`
+	FallbackGroupID                 *int64                          `json:"fallback_group_id,omitempty"`
+	FallbackGroupIDOnInvalidRequest *int64                          `json:"fallback_group_id_on_invalid_request,omitempty"`
+	UnavailableFallbackGroupID      *int64                          `json:"unavailable_fallback_group_id,omitempty"`
 
 	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
 	// Only anthropic groups use these fields; others may leave them empty.

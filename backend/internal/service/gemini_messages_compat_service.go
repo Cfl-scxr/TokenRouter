@@ -113,10 +113,14 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	if err != nil {
 		return nil, err
 	}
+	if group != nil && !hasForcePlatform {
+		// 后续高级评分必须读取本次解析出的最终分组覆盖，而非再次走可能不同的缓存来源。
+		ctx = context.WithValue(ctx, ctxkey.Group, group)
+	}
 
 	cacheKey := "gemini:" + sessionHash
 	usesAdvancedScheduler := !hasForcePlatform && group != nil && group.UsesAdvancedScheduler()
-	advancedSettings := s.advancedSchedulerRuntimeSettings(ctx)
+	advancedSettings := s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
 
 	// 2. 尝试粘性会话命中
 	// 高级粘性加权会在全部硬过滤后的候选评分中处理缓存绑定，因此不允许旧硬粘性提前返回。
@@ -413,19 +417,10 @@ func (s *GeminiMessagesCompatService) advancedSchedulerStats() *advancedAccountR
 	return s.advancedAccountStats
 }
 
-func (s *GeminiMessagesCompatService) advancedSchedulerRuntimeSettings(ctx context.Context) advancedSchedulerRuntimeSettings {
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.advancedSchedulerRuntimeSettings(ctx)
-}
-
-func (s *GeminiMessagesCompatService) advancedSchedulerWeightsForRequest(ctx context.Context) GatewayAdvancedSchedulerScoreWeightsView {
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.openAIWSSchedulerWeightsForRequest(ctx)
-}
-
-func (s *GeminiMessagesCompatService) advancedSchedulerLBTopKForRequest(ctx context.Context) int {
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.openAIWSLBTopKForRequest(ctx)
+// advancedSchedulerEffectiveSettingsForRequest 返回最终分组的高级调度有效配置。
+func (s *GeminiMessagesCompatService) advancedSchedulerEffectiveSettingsForRequest(ctx context.Context, groupID *int64) advancedSchedulerEffectiveSettings {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService, schedulerSnapshot: s.schedulerSnapshot}
+	return gateway.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
 }
 
 // selectAdvancedGeminiAccount 在 Gemini 已完成硬过滤后复用通用高级评分与 Top-K 选择。
@@ -435,7 +430,7 @@ func (s *GeminiMessagesCompatService) selectAdvancedGeminiAccount(
 	sessionHash string,
 	cacheKey string,
 	eligible []*Account,
-	settings advancedSchedulerRuntimeSettings,
+	settings advancedSchedulerEffectiveSettings,
 ) *Account {
 	if len(eligible) == 0 {
 		return nil
@@ -449,13 +444,13 @@ func (s *GeminiMessagesCompatService) selectAdvancedGeminiAccount(
 		SessionHash:     cacheKey,
 		StickyAccountID: stickyAccountID,
 		StickyWeighted:  settings.stickyWeightedEnabled,
-		TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+		TopK:            settings.topK,
 	}
 	candidates, _ := scoreAdvancedSchedulerCandidates(
 		eligible,
 		nil,
 		s.advancedSchedulerStats(),
-		s.advancedSchedulerWeightsForRequest(ctx),
+		settings.weights,
 		input,
 		time.Now(),
 	)
@@ -638,6 +633,9 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 // 3) OAuth accounts explicitly marked as ai_studio
 // 4) Any remaining Gemini accounts (fallback)
 func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64) (*Account, error) {
+	if group, ok := s.resolveAdvancedSchedulerGroup(ctx, groupID); ok {
+		ctx = context.WithValue(ctx, ctxkey.Group, group)
+	}
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformGemini, true)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -733,13 +731,33 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 				"",
 				"",
 				eligible,
-				s.advancedSchedulerRuntimeSettings(ctx),
+				s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID),
 			); advanced != nil {
 				selected = advanced
 			}
 		}
 	}
 	return s.hydrateSelectedAccount(ctx, selected)
+}
+
+// resolveAdvancedSchedulerGroup 为不经过普通模型选择的 Gemini 入口补齐最终分组。
+func (s *GeminiMessagesCompatService) resolveAdvancedSchedulerGroup(ctx context.Context, groupID *int64) (*Group, bool) {
+	if s == nil || groupID == nil || *groupID <= 0 {
+		return nil, false
+	}
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == *groupID {
+		return group, true
+	}
+	if s.schedulerSnapshot != nil {
+		if group, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID); err == nil && group != nil {
+			return group, true
+		}
+	}
+	if s.groupRepo == nil {
+		return nil, false
+	}
+	group, err := s.groupRepo.GetByIDLite(ctx, *groupID)
+	return group, err == nil && group != nil
 }
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {

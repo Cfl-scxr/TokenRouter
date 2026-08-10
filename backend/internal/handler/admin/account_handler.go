@@ -292,7 +292,7 @@ func (h *AccountHandler) applyQuotaAutoPauseState(ctx context.Context, account *
 
 // scoreAdvancedSchedulerPool 对池内账号计算通用高级调度分数快照。
 // loadMap 为共享的账号负载数据（含池内全部账号即可，多余条目无害）；传 nil 时自行批查。
-func (h *AccountHandler) scoreAdvancedSchedulerPool(ctx context.Context, accounts []service.Account, loadMap map[int64]*service.AccountLoadInfo) map[int64]AccountSchedulerScore {
+func (h *AccountHandler) scoreAdvancedSchedulerPool(ctx context.Context, group *service.Group, accounts []service.Account, loadMap map[int64]*service.AccountLoadInfo) map[int64]AccountSchedulerScore {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -315,9 +315,9 @@ func (h *AccountHandler) scoreAdvancedSchedulerPool(ctx context.Context, account
 
 	var scores map[int64]service.AdvancedAccountSchedulerScoreSnapshot
 	if h.rateLimitService != nil {
-		scores = h.rateLimitService.BuildAdvancedAccountSchedulerScoreSnapshot(ctx, schedulableAccounts, loadMap)
+		scores = h.rateLimitService.BuildAdvancedAccountSchedulerScoreSnapshotForGroup(ctx, group, schedulableAccounts, loadMap)
 	} else {
-		scores = service.BuildAdvancedAccountSchedulerScoreSnapshot(schedulableAccounts, loadMap)
+		scores = service.BuildAdvancedAccountSchedulerScoreSnapshotForGroup(group, schedulableAccounts, loadMap)
 	}
 	result := make(map[int64]AccountSchedulerScore, len(scores))
 	for accountID, score := range scores {
@@ -374,7 +374,7 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 	}
 
 	pageAccountIDs := make(map[int64]struct{})
-	groupPlatforms := make(map[int64]string)
+	advancedGroups := make(map[int64]*service.Group)
 	for i := range accounts {
 		account := &accounts[i]
 		pageAccountIDs[account.ID] = struct{}{}
@@ -383,13 +383,13 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 		}
 		for _, accountGroup := range account.AccountGroups {
 			if accountGroup.GroupID > 0 && accountGroup.Group != nil && accountGroup.Group.UsesAdvancedScheduler() {
-				groupPlatforms[accountGroup.GroupID] = accountGroup.Group.Platform
+				advancedGroups[accountGroup.GroupID] = accountGroup.Group
 			}
 		}
 		for _, groupID := range account.GroupIDs {
 			if groupID > 0 && h.adminService != nil {
 				if group, err := h.adminService.GetGroup(ctx, groupID); err == nil && group != nil && group.UsesAdvancedScheduler() {
-					groupPlatforms[groupID] = group.Platform
+					advancedGroups[groupID] = group
 				}
 			}
 		}
@@ -400,8 +400,8 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 
 	// 先取各分组池，再对"过滤池 ∪ 分组池"的账号并集做一次负载批查，
 	// 避免每个池各查一次 Redis 的 N+1。
-	groupIDList := make([]int64, 0, len(groupPlatforms))
-	for groupID := range groupPlatforms {
+	groupIDList := make([]int64, 0, len(advancedGroups))
+	for groupID := range advancedGroups {
 		groupIDList = append(groupIDList, groupID)
 	}
 	sort.Slice(groupIDList, func(i, j int) bool { return groupIDList[i] < groupIDList[j] })
@@ -410,7 +410,11 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 	if h.adminService != nil {
 		for _, groupID := range groupIDList {
 			gid := groupID
-			pool, err := h.adminService.ListSchedulableAccountsForAdvancedSchedulerScore(ctx, &gid, groupPlatforms[gid])
+			group := advancedGroups[gid]
+			if group == nil {
+				continue
+			}
+			pool, err := h.adminService.ListSchedulableAccountsForAdvancedSchedulerScore(ctx, &gid, group.Platform)
 			if err != nil {
 				slog.Warn("advanced_scheduler_group_score_pool_failed", "group_id", gid, "error", err)
 				continue
@@ -432,17 +436,17 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 	loadMap := h.fetchAdvancedSchedulerLoadMap(ctx, loadUnion)
 
 	baseScores := make(map[int64]*AccountSchedulerScore)
-	for accountID, score := range h.scoreAdvancedSchedulerPool(ctx, filterPool, loadMap) {
+	for accountID, score := range h.scoreAdvancedSchedulerPool(ctx, nil, filterPool, loadMap) {
 		copiedScore := score
 		baseScores[accountID] = &copiedScore
 	}
 
 	groupScoresByAccount := make(map[int64][]AccountSchedulerGroupScore)
-	scoreGroupPool := func(groupID *int64, groupNameByID map[int64]string, groupPriorityByAccount map[int64]int, pool []service.Account) {
+	scoreGroupPool := func(groupID *int64, group *service.Group, groupNameByID map[int64]string, groupPriorityByAccount map[int64]int, pool []service.Account) {
 		if len(pool) == 0 {
 			return
 		}
-		scores := h.scoreAdvancedSchedulerPool(ctx, pool, loadMap)
+		scores := h.scoreAdvancedSchedulerPool(ctx, group, pool, loadMap)
 		for accountID, schedulerScore := range scores {
 			if _, ok := pageAccountIDs[accountID]; !ok {
 				continue
@@ -481,7 +485,7 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 				}
 			}
 		}
-		scoreGroupPool(&gid, groupNameByID, groupPriorityByAccount, pool)
+		scoreGroupPool(&gid, advancedGroups[gid], groupNameByID, groupPriorityByAccount, pool)
 	}
 	// 只返回至少属于一个高级调度分组的评分；基础分组和未分组账号不显示该管理配置。
 	for accountID := range baseScores {

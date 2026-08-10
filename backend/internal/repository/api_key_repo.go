@@ -1373,6 +1373,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Description:                     derefString(g.Description),
 		Platform:                        g.Platform,
 		SchedulerType:                   service.GroupSchedulerType(g.SchedulerType),
+		AdvancedSchedulerOverrides:      service.CloneGroupAdvancedSchedulerOverrides(g.AdvancedSchedulerOverrides),
 		DisplayBrand:                    g.DisplayBrand,
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,

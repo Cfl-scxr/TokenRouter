@@ -21246,6 +21246,7 @@ type GroupMutation struct {
 	duplicate_operation_id                  *string
 	platform                                *string
 	scheduler_type                          *string
+	advanced_scheduler_overrides            *domain.GroupAdvancedSchedulerOverrides
 	display_brand                           *string
 	allow_image_generation                  *bool
 	allow_batch_image_generation            *bool
@@ -22079,6 +22080,42 @@ func (m *GroupMutation) OldSchedulerType(ctx context.Context) (v string, err err
 // ResetSchedulerType resets all changes to the "scheduler_type" field.
 func (m *GroupMutation) ResetSchedulerType() {
 	m.scheduler_type = nil
+}
+
+// SetAdvancedSchedulerOverrides sets the "advanced_scheduler_overrides" field.
+func (m *GroupMutation) SetAdvancedSchedulerOverrides(daso domain.GroupAdvancedSchedulerOverrides) {
+	m.advanced_scheduler_overrides = &daso
+}
+
+// AdvancedSchedulerOverrides returns the value of the "advanced_scheduler_overrides" field in the mutation.
+func (m *GroupMutation) AdvancedSchedulerOverrides() (r domain.GroupAdvancedSchedulerOverrides, exists bool) {
+	v := m.advanced_scheduler_overrides
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdvancedSchedulerOverrides returns the old "advanced_scheduler_overrides" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAdvancedSchedulerOverrides(ctx context.Context) (v domain.GroupAdvancedSchedulerOverrides, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdvancedSchedulerOverrides is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdvancedSchedulerOverrides requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdvancedSchedulerOverrides: %w", err)
+	}
+	return oldValue.AdvancedSchedulerOverrides, nil
+}
+
+// ResetAdvancedSchedulerOverrides resets all changes to the "advanced_scheduler_overrides" field.
+func (m *GroupMutation) ResetAdvancedSchedulerOverrides() {
+	m.advanced_scheduler_overrides = nil
 }
 
 // SetDisplayBrand sets the "display_brand" field.
@@ -24361,7 +24398,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 55)
+	fields := make([]string, 0, 56)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -24409,6 +24446,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.scheduler_type != nil {
 		fields = append(fields, group.FieldSchedulerType)
+	}
+	if m.advanced_scheduler_overrides != nil {
+		fields = append(fields, group.FieldAdvancedSchedulerOverrides)
 	}
 	if m.display_brand != nil {
 		fields = append(fields, group.FieldDisplayBrand)
@@ -24567,6 +24607,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Platform()
 	case group.FieldSchedulerType:
 		return m.SchedulerType()
+	case group.FieldAdvancedSchedulerOverrides:
+		return m.AdvancedSchedulerOverrides()
 	case group.FieldDisplayBrand:
 		return m.DisplayBrand()
 	case group.FieldAllowImageGeneration:
@@ -24686,6 +24728,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPlatform(ctx)
 	case group.FieldSchedulerType:
 		return m.OldSchedulerType(ctx)
+	case group.FieldAdvancedSchedulerOverrides:
+		return m.OldAdvancedSchedulerOverrides(ctx)
 	case group.FieldDisplayBrand:
 		return m.OldDisplayBrand(ctx)
 	case group.FieldAllowImageGeneration:
@@ -24884,6 +24928,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSchedulerType(v)
+		return nil
+	case group.FieldAdvancedSchedulerOverrides:
+		v, ok := value.(domain.GroupAdvancedSchedulerOverrides)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdvancedSchedulerOverrides(v)
 		return nil
 	case group.FieldDisplayBrand:
 		v, ok := value.(string)
@@ -25560,6 +25611,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSchedulerType:
 		m.ResetSchedulerType()
+		return nil
+	case group.FieldAdvancedSchedulerOverrides:
+		m.ResetAdvancedSchedulerOverrides()
 		return nil
 	case group.FieldDisplayBrand:
 		m.ResetDisplayBrand()

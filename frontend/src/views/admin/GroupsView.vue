@@ -448,6 +448,23 @@
             :options="schedulerTypeOptions"
           />
           <p class="input-hint">{{ t("admin.groups.scheduler.hint") }}</p>
+          <div
+            v-if="createForm.scheduler_type === 'advanced'"
+            class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-900/10 bg-primary-50/60 px-3 py-2.5 dark:border-dark-600 dark:bg-dark-800/70"
+          >
+            <div class="min-w-0 text-xs text-primary-900/70 dark:text-dark-200/80">
+              <span class="font-medium text-primary-900 dark:text-dark-50">{{ t('admin.groups.advancedSchedulerOverrides.label') }}</span>
+              <span class="ml-2">{{ formatAdvancedSchedulerOverridesSummary(createForm.advanced_scheduler_overrides) }}</span>
+            </div>
+            <button
+              type="button"
+              class="btn btn-secondary shrink-0 px-3 py-1.5 text-xs"
+              @click="openAdvancedSchedulerOverrides('create')"
+            >
+              <Icon name="cog" size="sm" />
+              {{ t('admin.groups.advancedSchedulerOverrides.configure') }}
+            </button>
+          </div>
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
@@ -2092,6 +2109,23 @@
             :options="schedulerTypeOptions"
           />
           <p class="input-hint">{{ t("admin.groups.scheduler.hint") }}</p>
+          <div
+            v-if="editForm.scheduler_type === 'advanced'"
+            class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-900/10 bg-primary-50/60 px-3 py-2.5 dark:border-dark-600 dark:bg-dark-800/70"
+          >
+            <div class="min-w-0 text-xs text-primary-900/70 dark:text-dark-200/80">
+              <span class="font-medium text-primary-900 dark:text-dark-50">{{ t('admin.groups.advancedSchedulerOverrides.label') }}</span>
+              <span class="ml-2">{{ formatAdvancedSchedulerOverridesSummary(editForm.advanced_scheduler_overrides) }}</span>
+            </div>
+            <button
+              type="button"
+              class="btn btn-secondary shrink-0 px-3 py-1.5 text-xs"
+              @click="openAdvancedSchedulerOverrides('edit')"
+            >
+              <Icon name="cog" size="sm" />
+              {{ t('admin.groups.advancedSchedulerOverrides.configure') }}
+            </button>
+          </div>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -3807,6 +3841,13 @@
       @close="showRPMOverridesModal = false"
       @success="loadGroups"
     />
+
+    <GroupAdvancedSchedulerOverridesModal
+      :show="showAdvancedSchedulerOverridesModal"
+      :model-value="advancedSchedulerOverridesDraft"
+      @close="closeAdvancedSchedulerOverrides"
+      @save="saveAdvancedSchedulerOverrides"
+    />
   </AppLayout>
 </template>
 
@@ -3823,6 +3864,7 @@ import type {
   GroupClientProtocol,
   GroupPlatform,
   GroupSchedulerType,
+  GroupAdvancedSchedulerOverrides,
 } from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
@@ -3841,6 +3883,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import GroupClientProtocolSelector from "@/components/admin/group/GroupClientProtocolSelector.vue";
+import GroupAdvancedSchedulerOverridesModal from "@/components/admin/group/GroupAdvancedSchedulerOverridesModal.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import {
@@ -4096,6 +4139,43 @@ const schedulerTypeOptions = computed(() => [
   { value: "advanced", label: t("admin.groups.scheduler.advanced") },
 ]);
 
+const cloneAdvancedSchedulerOverrides = (
+  value?: GroupAdvancedSchedulerOverrides,
+): GroupAdvancedSchedulerOverrides => ({ ...(value || {}) });
+
+const formatAdvancedSchedulerOverridesSummary = (
+  value?: GroupAdvancedSchedulerOverrides,
+) => {
+  const count = Object.keys(value || {}).length;
+  return count === 0
+    ? t("admin.groups.advancedSchedulerOverrides.allInherited")
+    : t("admin.groups.advancedSchedulerOverrides.overriddenCount", { count });
+};
+
+const openAdvancedSchedulerOverrides = (target: "create" | "edit") => {
+  advancedSchedulerOverridesTarget.value = target;
+  advancedSchedulerOverridesDraft.value = cloneAdvancedSchedulerOverrides(
+    target === "create"
+      ? createForm.advanced_scheduler_overrides
+      : editForm.advanced_scheduler_overrides,
+  );
+  showAdvancedSchedulerOverridesModal.value = true;
+};
+
+const closeAdvancedSchedulerOverrides = () => {
+  showAdvancedSchedulerOverridesModal.value = false;
+  advancedSchedulerOverridesTarget.value = null;
+};
+
+const saveAdvancedSchedulerOverrides = (value: GroupAdvancedSchedulerOverrides) => {
+  if (advancedSchedulerOverridesTarget.value === "create") {
+    createForm.advanced_scheduler_overrides = cloneAdvancedSchedulerOverrides(value);
+  } else if (advancedSchedulerOverridesTarget.value === "edit") {
+    editForm.advanced_scheduler_overrides = cloneAdvancedSchedulerOverrides(value);
+  }
+  closeAdvancedSchedulerOverrides();
+};
+
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") },
   { value: "anthropic", label: "Anthropic" },
@@ -4331,6 +4411,9 @@ const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
+const showAdvancedSchedulerOverridesModal = ref(false);
+const advancedSchedulerOverridesTarget = ref<"create" | "edit" | null>(null);
+const advancedSchedulerOverridesDraft = ref<GroupAdvancedSchedulerOverrides>({});
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
@@ -4364,6 +4447,7 @@ const createForm = reactive({
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
   scheduler_type: "basic" as GroupSchedulerType,
+  advanced_scheduler_overrides: {} as GroupAdvancedSchedulerOverrides,
   allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
@@ -4786,6 +4870,7 @@ const editForm = reactive({
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
   scheduler_type: "basic" as GroupSchedulerType,
+  advanced_scheduler_overrides: {} as GroupAdvancedSchedulerOverrides,
   allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
@@ -5254,6 +5339,7 @@ const closeCreateModal = () => {
   createForm.display_brand = "";
   createForm.platform = "anthropic";
   createForm.scheduler_type = "basic";
+  createForm.advanced_scheduler_overrides = {};
   createForm.allowed_client_protocols = defaultGroupClientProtocols("anthropic");
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
@@ -5418,6 +5504,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.display_brand = group.display_brand || "";
   editForm.platform = group.platform;
   editForm.scheduler_type = group.scheduler_type ?? "basic";
+  editForm.advanced_scheduler_overrides = cloneAdvancedSchedulerOverrides(
+    group.advanced_scheduler_overrides,
+  );
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.is_default = group.is_default ?? false;
@@ -5507,6 +5596,7 @@ const closeEditModal = () => {
   editModelRoutingRules.value = [];
   editForm.is_default = false;
   editForm.scheduler_type = "basic";
+  editForm.advanced_scheduler_overrides = {};
   editForm.data_sharing_enabled = false;
   editForm.session_isolation_enabled = false;
   editForm.unavailable_fallback_group_id = null;

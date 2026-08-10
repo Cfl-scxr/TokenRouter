@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 30 // v30：认证快照包含分组调度器类型
+const apiKeyAuthSnapshotVersion = 31 // v31：认证快照包含分组高级调度覆盖
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -446,6 +446,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Name:                            apiKey.Group.Name,
 			Platform:                        apiKey.Group.Platform,
 			SchedulerType:                   apiKey.Group.SchedulerType,
+			AdvancedSchedulerOverrides:      CloneGroupAdvancedSchedulerOverrides(apiKey.Group.AdvancedSchedulerOverrides),
 			IsExclusive:                     apiKey.Group.IsExclusive,
 			Status:                          apiKey.Group.Status,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
@@ -574,6 +575,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Name:                            snapshot.Group.Name,
 			Platform:                        snapshot.Group.Platform,
 			SchedulerType:                   snapshot.Group.SchedulerType,
+			AdvancedSchedulerOverrides:      CloneGroupAdvancedSchedulerOverrides(snapshot.Group.AdvancedSchedulerOverrides),
 			IsExclusive:                     snapshot.Group.IsExclusive,
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
@@ -642,7 +644,8 @@ func authGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		return nil
 	}
 	return &APIKeyAuthGroupSnapshot{
-		ID: group.ID, Name: group.Name, Platform: group.Platform, SchedulerType: group.SchedulerType, IsExclusive: group.IsExclusive,
+		ID: group.ID, Name: group.Name, Platform: group.Platform, SchedulerType: group.SchedulerType,
+		AdvancedSchedulerOverrides: CloneGroupAdvancedSchedulerOverrides(group.AdvancedSchedulerOverrides), IsExclusive: group.IsExclusive,
 		Status: group.Status, RateMultiplier: group.RateMultiplier, DataSharingEnabled: group.DataSharingEnabled,
 		SessionIsolationEnabled: group.SessionIsolationEnabled, AllowImageGeneration: group.AllowImageGeneration,
 		AllowBatchImageGeneration: group.AllowBatchImageGeneration, ImageRateIndependent: group.ImageRateIndependent,
@@ -669,7 +672,8 @@ func groupFromAuthSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		return nil
 	}
 	return &Group{
-		ID: snapshot.ID, Name: snapshot.Name, Platform: snapshot.Platform, SchedulerType: snapshot.SchedulerType, IsExclusive: snapshot.IsExclusive,
+		ID: snapshot.ID, Name: snapshot.Name, Platform: snapshot.Platform, SchedulerType: snapshot.SchedulerType,
+		AdvancedSchedulerOverrides: CloneGroupAdvancedSchedulerOverrides(snapshot.AdvancedSchedulerOverrides), IsExclusive: snapshot.IsExclusive,
 		Status: snapshot.Status, Hydrated: true, RateMultiplier: snapshot.RateMultiplier,
 		DataSharingEnabled: snapshot.DataSharingEnabled, SessionIsolationEnabled: snapshot.SessionIsolationEnabled,
 		AllowImageGeneration: snapshot.AllowImageGeneration, AllowBatchImageGeneration: snapshot.AllowBatchImageGeneration,

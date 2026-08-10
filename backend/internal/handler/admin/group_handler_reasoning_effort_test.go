@@ -30,3 +30,34 @@ func TestUpdateGroupRequestReasoningEffortMappingsTriState(t *testing.T) {
 		require.Equal(t, "xhigh", (*req.ReasoningEffortMappings)[0].To)
 	})
 }
+
+func TestUpdateGroupRequestAdvancedSchedulerOverridesTriState(t *testing.T) {
+	t.Run("omitted means unchanged", func(t *testing.T) {
+		var req UpdateGroupRequest
+		require.NoError(t, json.Unmarshal([]byte(`{}`), &req))
+		require.Nil(t, req.AdvancedSchedulerOverrides)
+	})
+
+	t.Run("empty object means clear all overrides", func(t *testing.T) {
+		var req UpdateGroupRequest
+		require.NoError(t, json.Unmarshal([]byte(`{"advanced_scheduler_overrides":{}}`), &req))
+		require.NotNil(t, req.AdvancedSchedulerOverrides)
+		require.Zero(t, *req.AdvancedSchedulerOverrides)
+	})
+
+	t.Run("explicit false and zero are retained", func(t *testing.T) {
+		var req UpdateGroupRequest
+		require.NoError(t, json.Unmarshal([]byte(`{
+			"advanced_scheduler_overrides":{
+				"sticky_weighted_enabled":false,
+				"lb_top_k":3,
+				"weight_queue":0
+			}
+		}`), &req))
+		require.NotNil(t, req.AdvancedSchedulerOverrides)
+		require.NotNil(t, req.AdvancedSchedulerOverrides.StickyWeightedEnabled)
+		require.False(t, *req.AdvancedSchedulerOverrides.StickyWeightedEnabled)
+		require.Equal(t, 3, *req.AdvancedSchedulerOverrides.LBTopK)
+		require.Equal(t, 0.0, *req.AdvancedSchedulerOverrides.WeightQueue)
+	})
+}

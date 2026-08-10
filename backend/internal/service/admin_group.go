@@ -134,6 +134,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SCHEDULER_TYPE", "%v", err)
 	}
+	if err := ValidateGroupAdvancedSchedulerOverrides(input.AdvancedSchedulerOverrides); err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", "%v", err)
+	}
 	allowedClientProtocols := input.AllowedClientProtocols
 	if allowedClientProtocols == nil {
 		allowedClientProtocols = defaultGroupClientProtocols(platform)
@@ -288,6 +291,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Description:                     input.Description,
 		Platform:                        platform,
 		SchedulerType:                   schedulerType,
+		AdvancedSchedulerOverrides:      CloneGroupAdvancedSchedulerOverrides(input.AdvancedSchedulerOverrides),
 		DisplayBrand:                    strings.TrimSpace(input.DisplayBrand),
 		SortOrder:                       sortOrder,
 		RateMultiplier:                  input.RateMultiplier,
@@ -523,6 +527,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SCHEDULER_TYPE", "%v", normalizeErr)
 		}
 		group.SchedulerType = schedulerType
+	}
+	if input.AdvancedSchedulerOverrides != nil {
+		if validationErr := ValidateGroupAdvancedSchedulerOverrides(*input.AdvancedSchedulerOverrides); validationErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", "%v", validationErr)
+		}
+		group.AdvancedSchedulerOverrides = CloneGroupAdvancedSchedulerOverrides(*input.AdvancedSchedulerOverrides)
 	}
 	if input.AllowedClientProtocols != nil {
 		group.AllowedClientProtocols, err = normalizeExplicitGroupClientProtocols(group.Platform, *input.AllowedClientProtocols)

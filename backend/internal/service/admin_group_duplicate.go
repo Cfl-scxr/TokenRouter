@@ -84,6 +84,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		Description:                     source.Description,
 		Platform:                        source.Platform,
 		SchedulerType:                   source.SchedulerType,
+		AdvancedSchedulerOverrides:      CloneGroupAdvancedSchedulerOverrides(source.AdvancedSchedulerOverrides),
 		DisplayBrand:                    source.DisplayBrand,
 		RateMultiplier:                  source.RateMultiplier,
 		PeakRateEnabled:                 source.PeakRateEnabled,

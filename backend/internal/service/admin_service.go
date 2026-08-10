@@ -214,12 +214,14 @@ type CreateGroupInput struct {
 	Description string
 	Platform    string
 	// SchedulerType 为空时使用基础调度器，保持新分组的历史默认行为。
-	SchedulerType  string
-	DisplayBrand   string
-	SortOrder      *int
-	RateMultiplier float64
-	IsExclusive    bool
-	IsDefault      bool
+	SchedulerType string
+	// AdvancedSchedulerOverrides 未设置字段继承网关通用高级调度设置。
+	AdvancedSchedulerOverrides GroupAdvancedSchedulerOverrides
+	DisplayBrand               string
+	SortOrder                  *int
+	RateMultiplier             float64
+	IsExclusive                bool
+	IsDefault                  bool
 	// DataSharingEnabled 将新建分组标记为数据共享分组。
 	DataSharingEnabled bool
 	// SessionIsolationEnabled 开启后拒绝其它分组已归属的显式会话切入。
@@ -285,12 +287,14 @@ type UpdateGroupInput struct {
 	Description *string
 	Platform    string
 	// SchedulerType 为 nil 时保留原值。
-	SchedulerType  *string
-	DisplayBrand   *string
-	SortOrder      *int
-	RateMultiplier *float64 // 使用指针以支持设置为0
-	IsExclusive    *bool
-	IsDefault      *bool
+	SchedulerType *string
+	// AdvancedSchedulerOverrides 为 nil 时保留原值；空对象表示清除全部覆盖并恢复继承。
+	AdvancedSchedulerOverrides *GroupAdvancedSchedulerOverrides
+	DisplayBrand               *string
+	SortOrder                  *int
+	RateMultiplier             *float64 // 使用指针以支持设置为0
+	IsExclusive                *bool
+	IsDefault                  *bool
 	// DataSharingEnabled 控制分组是否进入数据共享采集流程。
 	DataSharingEnabled *bool
 	// SessionIsolationEnabled 控制目标分组是否开启会话隔离。

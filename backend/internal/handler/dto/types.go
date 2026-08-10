@@ -227,6 +227,8 @@ type AdminGroup struct {
 	Group
 	// SchedulerType 仅管理端可见，用于配置分组调度器。
 	SchedulerType string `json:"scheduler_type"`
+	// AdvancedSchedulerOverrides 仅管理端可见；空字段继承网关通用设置。
+	AdvancedSchedulerOverrides domain.GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`

@@ -129,7 +129,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	usesAdvancedScheduler := group != nil && group.UsesAdvancedScheduler()
 	// 高级调度开启粘性加权后，旧硬粘性不能抢在评分前返回；否则 session
 	// 粘性不会作为统一候选评分的一部分。关闭加权时保留原有硬粘性语义。
-	advancedStickyWeighted := usesAdvancedScheduler && s.advancedSchedulerRuntimeSettings(ctx).stickyWeightedEnabled
+	advancedStickyWeighted := usesAdvancedScheduler && s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID).stickyWeightedEnabled
 
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -892,19 +892,18 @@ func (s *GatewayService) tryAcquireByAdvancedScheduler(
 	if sessionHash != "" && s.cache != nil {
 		stickyAccountID, _ = s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 	}
-	settings := s.advancedSchedulerRuntimeSettings(ctx)
-	weights := s.advancedSchedulerWeightsForRequest(ctx)
+	effectiveSettings := s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
 	candidates, _ := scoreAdvancedSchedulerCandidates(
 		accounts,
 		loadMap,
 		s.advancedSchedulerStats(),
-		weights,
+		effectiveSettings.weights,
 		advancedSchedulerSelectionInput{
 			GroupID:         groupID,
 			SessionHash:     sessionHash,
 			StickyAccountID: stickyAccountID,
-			StickyWeighted:  settings.stickyWeightedEnabled,
-			TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+			StickyWeighted:  effectiveSettings.stickyWeightedEnabled,
+			TopK:            effectiveSettings.topK,
 		},
 		time.Now(),
 	)
@@ -912,8 +911,8 @@ func (s *GatewayService) tryAcquireByAdvancedScheduler(
 		GroupID:         groupID,
 		SessionHash:     sessionHash,
 		StickyAccountID: stickyAccountID,
-		StickyWeighted:  settings.stickyWeightedEnabled,
-		TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+		StickyWeighted:  effectiveSettings.stickyWeightedEnabled,
+		TopK:            effectiveSettings.topK,
 	})
 	for _, candidate := range selectionOrder {
 		if candidate.account == nil {
@@ -968,23 +967,10 @@ func (s *GatewayService) advancedSchedulerStats() *advancedAccountRuntimeStats {
 	return s.advancedAccountStats
 }
 
-// advancedSchedulerRuntimeSettings 复用统一的设置缓存，避免各平台读取不同键集合。
-func (s *GatewayService) advancedSchedulerRuntimeSettings(ctx context.Context) advancedSchedulerRuntimeSettings {
-	if s == nil {
-		return advancedSchedulerRuntimeSettings{}
-	}
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.advancedSchedulerRuntimeSettings(ctx)
-}
-
-func (s *GatewayService) advancedSchedulerWeightsForRequest(ctx context.Context) GatewayAdvancedSchedulerScoreWeightsView {
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.openAIWSSchedulerWeightsForRequest(ctx)
-}
-
-func (s *GatewayService) advancedSchedulerLBTopKForRequest(ctx context.Context) int {
-	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
-	return gateway.openAIWSLBTopKForRequest(ctx)
+// advancedSchedulerEffectiveSettingsForRequest 将最终分组覆盖应用到网关通用设置之上。
+func (s *GatewayService) advancedSchedulerEffectiveSettingsForRequest(ctx context.Context, groupID *int64) advancedSchedulerEffectiveSettings {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService, schedulerSnapshot: s.schedulerSnapshot}
+	return gateway.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {

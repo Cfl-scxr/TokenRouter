@@ -84,6 +84,10 @@ func (Group) Fields() []ent.Field {
 			MaxLen(16).
 			Default("basic").
 			Comment("分组调度器类型：basic 或 advanced"),
+		field.JSON("advanced_scheduler_overrides", domain.GroupAdvancedSchedulerOverrides{}).
+			Default(domain.GroupAdvancedSchedulerOverrides{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组高级调度器稀疏覆盖；未设置字段继承网关通用设置"),
 		field.String("display_brand").
 			MaxLen(50).
 			Default("").

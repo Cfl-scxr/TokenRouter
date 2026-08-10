@@ -88,3 +88,16 @@ func TestAPIKeyServiceRejectsV29AuthSnapshotWithoutSchedulerType(t *testing.T) {
 		t.Fatal("expected v29 auth snapshot to be rejected after scheduler_type was added")
 	}
 }
+
+func TestAPIKeyServiceRejectsV30AuthSnapshotWithoutAdvancedSchedulerOverrides(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-advanced-overrides", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 30},
+	})
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok || apiKey != nil {
+		t.Fatal("expected v30 auth snapshot to be rejected after advanced scheduler overrides were added")
+	}
+}

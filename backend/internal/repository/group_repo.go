@@ -91,6 +91,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetSchedulerType(string(groupIn.SchedulerType)).
+		SetAdvancedSchedulerOverrides(groupIn.AdvancedSchedulerOverrides).
 		SetDisplayBrand(groupIn.DisplayBrand).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetSortOrder(groupIn.SortOrder).
@@ -278,6 +279,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
 		SetSchedulerType(string(schedulerType)).
+		SetAdvancedSchedulerOverrides(groupIn.AdvancedSchedulerOverrides).
 		SetDisplayBrand(groupIn.DisplayBrand).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetSortOrder(groupIn.SortOrder).

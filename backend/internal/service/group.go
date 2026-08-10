@@ -15,6 +15,7 @@ type GroupModelsListConfig = domain.GroupModelsListConfig
 type GroupAvailabilityProbeConfig = domain.GroupAvailabilityProbeConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 type GroupClientProtocol = domain.GroupClientProtocol
+type GroupAdvancedSchedulerOverrides = domain.GroupAdvancedSchedulerOverrides
 
 // GroupSchedulerType 表示分组使用的账号调度器类型。
 type GroupSchedulerType string
@@ -45,9 +46,11 @@ type Group struct {
 	Description string
 	Platform    string
 	// SchedulerType 决定该分组使用基础或高级调度器。
-	SchedulerType  GroupSchedulerType
-	DisplayBrand   string
-	RateMultiplier float64
+	SchedulerType GroupSchedulerType
+	// AdvancedSchedulerOverrides 仅对高级调度分组生效，未设置字段继承网关通用设置。
+	AdvancedSchedulerOverrides GroupAdvancedSchedulerOverrides
+	DisplayBrand               string
+	RateMultiplier             float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
