@@ -183,7 +183,7 @@ describe('AccountTestModal', () => {
     })
   })
 
-  it('OpenAI Compact 探测会携带 compact 测试模式', async () => {
+  it('OpenAI 旧版 Compact 端点探测会携带 compact 测试模式', async () => {
     getAvailableModels.mockResolvedValue([
       { id: 'gpt-5.4', display_name: 'GPT-5.4' }
     ])

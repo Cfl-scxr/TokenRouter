@@ -1140,7 +1140,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact mode -->
+      <!-- OpenAI 旧版 Compact 端点模式 -->
       <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div class="flex-1 pr-4">
@@ -1176,7 +1176,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact model mapping -->
+      <!-- OpenAI 旧版 Compact 专属模型映射 -->
       <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div class="flex-1 pr-4">

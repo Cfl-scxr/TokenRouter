@@ -3278,7 +3278,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact 能力配置 -->
+      <!-- OpenAI 旧版 Compact 端点能力配置 -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"

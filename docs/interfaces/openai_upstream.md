@@ -6,6 +6,7 @@
 
 - [账号与凭据](#账号与凭据)：修改 OAuth、API Key、隐私或客户端限制时读取。
 - [协议与传输](#协议与传输)：修改 Responses、WebSocket、Realtime 或兼容转换时读取。
+- [远程压缩协议](#远程压缩协议)：区分原生 `remote_compaction_v2` 与旧版 `/responses/compact` 时读取。
 - [模型与能力](#模型与能力)：修改模型别名、endpoint capability 或推理参数时读取。
 - [额度与调度](#额度与调度)：修改窗口配额、评分、粘性或自动暂停时读取。
 - [失败与诊断](#失败与诊断)：修改错误分类、刷新、CAS 状态或 failover 时读取。
@@ -35,19 +36,32 @@ OpenAI 分组支持 Messages、Responses 和 Chat，新建时默认启用 Respon
 
 `/backend-api/codex` 和无 `/v1` 别名服务特定客户端兼容，但仍经过 TokenRouter Key 鉴权、分组准入、调度和结算。Responses WebSocket 不支持 Qoder；其它平台是否可进入 OpenAI 兼容处理器由路由和平台专题共同决定，不能仅凭 URL 推断。
 
+### 远程压缩协议
+
+TokenRouter 同时兼容原生 Remote Compaction V2 和旧版 Compact 端点。两者共享 compaction 输出语义，但请求路径、传输方式、账号能力设置和模型改写边界不同：
+
+| 边界 | 原生 `remote_compaction_v2` | 旧版 `/responses/compact` |
+| --- | --- | --- |
+| HTTP 识别 | 裸 `/responses` 请求同时携带 `stream=true`、`x-codex-beta-features: remote_compaction_v2`，且 `input` 含 `compaction_trigger` | 客户端显式请求 `/responses/compact`，或带 `compaction_trigger` 但不满足原生 V2 条件的裸 `/responses` 请求被网关提升 |
+| 上游传输 | 保持普通 Responses 流式链路，由上游直接返回包含 `compaction` item 的 SSE | 走独立 Compact 子路径；body-signal 流式客户端由网关把 unary JSON 结果合成为 Responses SSE，并在长时间等待时发送注释心跳 |
+| 模型处理 | 沿用普通 Responses 的模型处理，不应用 `compact_model_mapping`，也不会因此追加 `-openai-compact` | 仅此路径在常规模型处理基础上应用账号 `credentials.compact_model_mapping` |
+| 账号设置 | 不读取 `openai_compact_mode` 和旧端点探测结果来切换协议或筛选账号 | `extra.openai_compact_mode`、`openai_compact_supported`、能力探测和 Compact 专属模型映射都只控制此路径 |
+
+账号设置页中的“旧版 Compact 端点”是能力覆盖而不是协议开关：`force_on` 只把账号视为可承接旧端点并提高其 Compact 支持等级，`force_off` 只将账号排除在旧端点调度之外；两者都不会把普通 Responses 或原生 V2 改写成 `/responses/compact`，也不会启用或禁用原生 V2。旧端点的 OpenAI OAuth GPT-5.6 请求还会把 `reasoning.effort=max` 降为 `xhigh`，原生 V2 则保留常规 Responses 推理强度语义。
+
 官方 Codex WebSocket v2 会先发送 `generate=false` 的预热 `response.create`，再以预热响应 ID 作为业务请求的 `previous_response_id`。严格续接比较会忽略逐请求变化的 `client_metadata`、仅用于传输的 `stream_options`，并把 `generate=false` 与后续省略该字段视为等价；`generate=true` 以及 model、instructions、tools、reasoning、store 等上下文字段仍必须保持一致，避免把无关请求错误串接。
 
-OpenAI OAuth 的 HTTP、passthrough、Compact 与 WebSocket 出站会在模型映射和本地 fast 策略处理完成后，由网关生成 `x-codex-routing-hint`。提示至少包含最终上游模型；只有有效的 `priority` 或 `flex` 才附带 tier，`fast` 先规范化为 `priority`，`default`、未知值和空值均保持 model-only。Compact 规范化必须保留 `service_tier`，否则提示会丢失已经生效的路由层级。该头由网关独占控制：所有账号类型都会先删除调用方及账号覆盖提供的任意大小写变体，只有 OpenAI OAuth 路径会重新生成；API Key 路径不得透传伪造提示。OAuth HTTP 也不再自动注入或透传旧版 `responses=experimental` beta 标记，但同一头中的其它独立 beta 项仍保留。
+OpenAI OAuth 的 HTTP、passthrough、旧版 Compact 与 WebSocket 出站会在模型映射和本地 fast 策略处理完成后，由网关生成 `x-codex-routing-hint`。提示至少包含最终上游模型；只有有效的 `priority` 或 `flex` 才附带 tier，`fast` 先规范化为 `priority`，`default`、未知值和空值均保持 model-only。旧版 Compact 规范化必须保留 `service_tier`，否则提示会丢失已经生效的路由层级。该头由网关独占控制：所有账号类型都会先删除调用方及账号覆盖提供的任意大小写变体，只有 OpenAI OAuth 路径会重新生成；API Key 路径不得透传伪造提示。OAuth HTTP 也不再自动注入或透传旧版 `responses=experimental` beta 标记，但同一头中的其它独立 beta 项仍保留。
 
 WebSocket 连接池把 routing hint 视为拨号和普通复用的软亲和：优先复用相同提示建立的连接，池满时仍可在硬兼容连接上排队，显式 continuation 也不会仅因提示变化而断链。握手 beta feature 与本 fork 的 TLS fingerprint profile 仍是硬兼容键，任一变化都禁止复用，并会使尚未完成的旧目标预热拨号失效。路由诊断只记录网关推导的最终模型、规范化 tier、传输类型、账号 ID、是否生成提示和 WS 亲和决策，不记录提示头值、token 或凭据。
 
-OAuth passthrough 的 Codex 请求可以省略 `instructions`，网关会按请求模型补入内置 Codex 基础指令；显式提供的非空字符串保持不变，空白或非字符串值仍在本地拒绝。该规则同时适用于 Responses SSE 与 Compact 请求。
+OAuth passthrough 的 Codex 请求可以省略 `instructions`，网关会按请求模型补入内置 Codex 基础指令；显式提供的非空字符串保持不变，空白或非字符串值仍在本地拒绝。该规则同时适用于 Responses SSE 与旧版 Compact 请求。
 
-Responses Lite 通道由 HTTP `X-OpenAI-Internal-Codex-Responses-Lite: true` 或 WebSocket `client_metadata` 中的对应标记识别，不根据模型名称推断。任何向 OpenAI 上游转发该标记的 HTTP、passthrough、Compact 或 WebSocket 请求都必须强制顶层 `parallel_tool_calls=false`。OAuth 账号还会统一设置 `reasoning.context=all_turns`，并把私有 namespace 工具声明迁入 `input.additional_tools`；API Key 账号保留除此之外的标准 Responses 请求语义。未携带 Lite 标记的普通 Responses、Grok 和专用 Images 请求不应用这些约束。
+Responses Lite 通道由 HTTP `X-OpenAI-Internal-Codex-Responses-Lite: true` 或 WebSocket `client_metadata` 中的对应标记识别，不根据模型名称推断。任何向 OpenAI 上游转发该标记的 HTTP、passthrough、旧版 Compact 或 WebSocket 请求都必须强制顶层 `parallel_tool_calls=false`。OAuth 账号还会统一设置 `reasoning.context=all_turns`，并把私有 namespace 工具声明迁入 `input.additional_tools`；API Key 账号保留除此之外的标准 Responses 请求语义。未携带 Lite 标记的普通 Responses、Grok 和专用 Images 请求不应用这些约束。
 
 OpenAI OAuth 账号承接 Anthropic `count_tokens` 时会调用 Responses `input_tokens` 端点；缺少 scope、端点不存在，或上游代理在 API 前返回 HTML 格式的 `403` 时，网关改用本地 token 估算并返回成功结果。这类端点级失败不会冷却、临时踢出或标错账号；其它结构化鉴权与上游错误仍进入正常健康策略。
 
-OpenAI OAuth 的普通 Responses 请求默认原样保留 Codex namespace 工具声明，并保留 `function_call`、`tool_call`、`custom_tool_call`、`mcp_tool_call` 历史项上的 `namespace`；普通消息等非调用项上的残留字段仍会清理。Compact 请求始终摊平 namespace 并移除输入项字段，API Key 出口也按标准 Responses schema 清理。仅当 OAuth 账号的兼容中转不接受 namespace 时，才应启用账号 `extra.openai_responses_flatten_namespaces=true` 恢复平名行为。每次 failover attempt 都会清空上一账号登记的平名映射，避免响应还原状态串到下一账号。
+OpenAI OAuth 的普通 Responses 请求默认原样保留 Codex namespace 工具声明，并保留 `function_call`、`tool_call`、`custom_tool_call`、`mcp_tool_call` 历史项上的 `namespace`；普通消息等非调用项上的残留字段仍会清理。旧版 Compact 请求始终摊平 namespace 并移除输入项字段，API Key 出口也按标准 Responses schema 清理。仅当 OAuth 账号的兼容中转不接受 namespace 时，才应启用账号 `extra.openai_responses_flatten_namespaces=true` 恢复平名行为。每次 failover attempt 都会清空上一账号登记的平名映射，避免响应还原状态串到下一账号。
 
 Responses 工具定义在进入 OAuth passthrough、Codex transform、Grok 或 API Key Chat 分流前统一修正显式为 `null` 的 `parameters.type`，将其归一为 `object`；处理范围包括顶层 `tools[]` 和多轮历史 `input[].tools[]` 中的嵌套工具。缺失 `type` 的合法宽松 Schema 保持原样，不能为了兼容而补写并收窄客户端语义。
 
@@ -55,9 +69,9 @@ Responses 请求降级到 Chat Completions 时，工具结果中的 `input_image
 
 ## 模型与能力
 
-客户端模型先经过 Key、渠道和账号层映射。OpenAI 内置别名、reasoning effort 归一化、compact 支持、图像/embedding 能力和传输能力会影响候选账号；模型列表只公开当前分组可请求的结果。
+客户端模型先经过 Key、渠道和账号层映射。OpenAI 内置别名、reasoning effort 归一化、旧版 Compact 端点支持、图像/embedding 能力和传输能力会影响候选账号；模型列表只公开当前分组可请求的结果。
 
-API Key endpoint capability 可通过探测或配置表达 `responses`、`chat_completions`、`embeddings` 等能力。OAuth/Codex 账号还可能包含 Realtime、WebSocket、compact 和客户端身份限制。未知模型可以在管理员明确配置的兼容上游中透传，但没有定价或能力证据时不能虚构价格与功能。
+API Key endpoint capability 可通过探测或配置表达 `responses`、`chat_completions`、`embeddings` 等能力。OAuth/Codex 账号还可能包含 Realtime、WebSocket、旧版 Compact 端点状态和客户端身份限制。未知模型可以在管理员明确配置的兼容上游中透传，但没有定价或能力证据时不能虚构价格与功能。
 
 ## 额度与调度
 
@@ -73,6 +87,6 @@ OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运
 
 账号与模型组合的瞬时失败按连续结果累计：首次失败只记录，第二次短冷却，第三次及以后长冷却。请求间隔较长不能把持续故障误当成恢复，只要未超过状态回收 TTL，稀疏流量中的失败仍继续累计；任一成功结果立即清零该组合。TTL 只负责回收长期不再使用的条目，不能兼作短窗口的连续失败重置条件。
 
-流式错误要保持 SSE/WebSocket 协议完整；Responses 可产生 `response.failed`，非流接口返回相应 OpenAI envelope。入站 WebSocket 的下行写不得继承独立的 ingress 租约取消信号：旧 ingress 路径绑定客户端请求生命周期并叠加 write timeout，v2 relay 只受 write timeout 限制，退出路径再通过显式 Close/CloseNow 回收连接；这样租约丢失不会在终态事件写入期间抢先硬关 TCP，客户端可先收到终态事件，再收到 1013 关闭帧。上行写继续继承控制面取消，以便快速回收上游连接。HTTP 200 SSE 中的 `rate_limit_exceeded` 按语义状态 429 进入故障转移与池模式重试，但不使用该 200 响应的正常配额快照头写入默认账号冷却。上游容量降载通常先发 `error`、再以 `response.failed` 收尾；`server_is_overloaded` / `slow_down` 的前置错误帧在尚无业务输出时继续留在 attempt 缓冲中，触发有界同账号重试和 pre-output failover，并按请求级瞬时故障处理，不冷却当前账号。已有真实输出或重试耗尽后不能重放请求，SSE 与 WS HTTP bridge 会仅在客户端副本中把这两个致命码改为可重试的 `server_error`，原始事件仍用于账号策略与观测。客户端尚未收到业务输出时，池模式账号的其它瞬态流内处理错误也可在请求级预算内重试同一账号；compact 心跳注释不算业务输出。一旦真实输出开始，网关不得重放请求或切换账号。最终错误还可命中[网关错误响应策略](gateway_error_policy.md)，但规则不会把失败结算成成功。排障应同时检查账号类型、required transport/capability、客户端限制、privacy status、模型映射、quota reset、代理/TLS 和 attempt 记录。
+流式错误要保持 SSE/WebSocket 协议完整；Responses 可产生 `response.failed`，非流接口返回相应 OpenAI envelope。入站 WebSocket 的下行写不得继承独立的 ingress 租约取消信号：旧 ingress 路径绑定客户端请求生命周期并叠加 write timeout，v2 relay 只受 write timeout 限制，退出路径再通过显式 Close/CloseNow 回收连接；这样租约丢失不会在终态事件写入期间抢先硬关 TCP，客户端可先收到终态事件，再收到 1013 关闭帧。上行写继续继承控制面取消，以便快速回收上游连接。HTTP 200 SSE 中的 `rate_limit_exceeded` 按语义状态 429 进入故障转移与池模式重试，但不使用该 200 响应的正常配额快照头写入默认账号冷却。上游容量降载通常先发 `error`、再以 `response.failed` 收尾；`server_is_overloaded` / `slow_down` 的前置错误帧在尚无业务输出时继续留在 attempt 缓冲中，触发有界同账号重试和 pre-output failover，并按请求级瞬时故障处理，不冷却当前账号。已有真实输出或重试耗尽后不能重放请求，SSE 与 WS HTTP bridge 会仅在客户端副本中把这两个致命码改为可重试的 `server_error`，原始事件仍用于账号策略与观测。客户端尚未收到业务输出时，池模式账号的其它瞬态流内处理错误也可在请求级预算内重试同一账号；旧版 Compact 桥接心跳注释不算业务输出。一旦真实输出开始，网关不得重放请求或切换账号。最终错误还可命中[网关错误响应策略](gateway_error_policy.md)，但规则不会把失败结算成成功。排障应同时检查账号类型、required transport/capability、客户端限制、privacy status、模型映射、quota reset、代理/TLS 和 attempt 记录。
 
 相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[账号调度与缓存一致性](../architecture/account_scheduling_and_cache.md)、[模型目录与市场](model_catalog_and_marketplace.md)。

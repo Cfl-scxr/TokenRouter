@@ -1175,7 +1175,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
-  // Extra 包含 Codex 用量、OpenAI compact 能力和模型级限流状态等扩展字段。
+  // Extra 包含 Codex 用量、OpenAI 旧版 Compact 端点能力和模型级限流状态等扩展字段。
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>

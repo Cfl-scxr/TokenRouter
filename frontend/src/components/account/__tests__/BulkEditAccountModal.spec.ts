@@ -778,7 +778,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('[data-testid="bulk-edit-upstream-billing-auto-probe-select"]').exists()).toBe(false)
   })
 
-  it('筛选 OpenAI 账号批量编辑应提交 Compact 模式和专属模型映射', async () => {
+  it('筛选 OpenAI 账号批量编辑应提交旧版 Compact 端点模式和专属模型映射', async () => {
     const wrapper = mountModal({
       accountIds: [],
       selectedPlatforms: [],
