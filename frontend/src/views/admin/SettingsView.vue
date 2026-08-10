@@ -43,6 +43,47 @@
               </button>
             </div>
           </nav>
+
+          <nav
+            v-if="activeTab === 'gateway'"
+            ref="gatewaySectionsScrollRef"
+            class="gateway-section-tabs-scroll"
+            role="tablist"
+            :aria-label="t('admin.settings.gatewaySections.label')"
+          >
+            <div class="gateway-section-tabs">
+              <button
+                v-for="section in gatewaySections"
+                :id="`gateway-section-tab-${section.key}`"
+                :key="section.key"
+                type="button"
+                role="tab"
+                :aria-selected="activeGatewaySection === section.key"
+                :tabindex="activeGatewaySection === section.key ? 0 : -1"
+                :data-testid="`gateway-section-tab-${section.key}`"
+                :class="[
+                  'gateway-section-tab',
+                  activeGatewaySection === section.key &&
+                    'gateway-section-tab-active',
+                ]"
+                @click="selectGatewaySection(section.key)"
+                @keydown="handleGatewaySectionKeydown($event, section.key)"
+              >
+                <span class="gateway-section-tab-icon">
+                  <ProviderIcon
+                    v-if="section.providerBrand"
+                    :brand="section.providerBrand"
+                    size="18px"
+                    color="currentColor"
+                  />
+                  <Icon v-else name="cog" size="sm" />
+                </span>
+                <span class="gateway-section-tab-label">
+                  {{ t(`admin.settings.gatewaySections.${section.key}`) }}
+                </span>
+              </button>
+            </div>
+          </nav>
         </div>
 
         <!-- Tab: Security — Admin API Key -->
@@ -203,9 +244,17 @@
         <!-- /Tab: Security — Admin API Key -->
 
         <!-- Tab: Gateway -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <div
+          v-show="activeTab === 'gateway'"
+          ref="gatewayContentStartRef"
+          class="gateway-settings-content space-y-6"
+        >
           <!-- Overload Cooldown (529) Settings -->
-          <div class="card">
+          <div
+            v-show="activeGatewaySection === 'general'"
+            class="card"
+            data-testid="gateway-card-overload-cooldown"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -306,7 +355,11 @@
           </div>
 
           <!-- OpenAI OAuth 403 Cooldown Settings -->
-        <div class="card">
+        <div
+          v-show="activeGatewaySection === 'openai'"
+          class="card"
+          data-testid="gateway-card-openai-403-cooldown"
+        >
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.openAI403Cooldown.title') }}
@@ -438,10 +491,19 @@
           </div>
         </div>
 
-        <OpenAIOAuthImportDefaultsSettings />
+        <div
+          v-show="activeGatewaySection === 'openai'"
+          data-testid="gateway-card-openai-oauth-defaults"
+        >
+          <OpenAIOAuthImportDefaultsSettings />
+        </div>
 
         <!-- Rate Limit Cooldown (429) Settings -->
-        <div class="card">
+        <div
+          v-show="activeGatewaySection === 'general'"
+          class="card"
+          data-testid="gateway-card-rate-limit-cooldown"
+        >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -548,7 +610,11 @@
         </div>
 
         <!-- Stream Timeout Settings -->
-        <div class="card">
+        <div
+          v-show="activeGatewaySection === 'general'"
+          class="card"
+          data-testid="gateway-card-stream-timeout"
+        >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -716,8 +782,12 @@
             </div>
           </div>
 
-          <!-- Request Rectifier Settings -->
-          <div class="card">
+          <!-- 跨平台请求整流器 -->
+          <div
+            v-show="activeGatewaySection === 'general'"
+            class="card"
+            data-testid="gateway-card-request-rectifier"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -916,7 +986,11 @@
             </div>
           </div>
           <!-- Beta Policy Settings -->
-          <div class="card">
+          <div
+            v-show="activeGatewaySection === 'anthropic'"
+            class="card"
+            data-testid="gateway-card-beta-policy"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -1195,7 +1269,11 @@
             </div>
           </div>
           <!-- OpenAI Fast/Flex Policy Settings -->
-          <div class="card">
+          <div
+            v-show="activeGatewaySection === 'openai'"
+            class="card"
+            data-testid="gateway-card-openai-fast-policy"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -4317,7 +4395,11 @@
         <!-- Tab: Gateway — Claude Code, Scheduling -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
           <!-- Claude Code Settings -->
-          <div class="card">
+          <div
+            v-show="activeGatewaySection === 'anthropic'"
+            class="card"
+            data-testid="gateway-card-claude-code"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -4369,7 +4451,11 @@
           </div>
 
           <!-- Ollama Cloud 用量设置 -->
-          <div class="card" data-testid="ollama-cloud-usage-global-settings">
+          <div
+            v-show="activeGatewaySection === 'ollamaCloud'"
+            class="card"
+            data-testid="ollama-cloud-usage-global-settings"
+          >
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
                 {{ t("admin.settings.ollamaCloudUsage.title") }}
@@ -4453,19 +4539,42 @@
           </div>
 
           <!-- Gateway Scheduling Settings -->
-          <div class="card">
+          <div
+            v-show="
+              activeGatewaySection === 'general' ||
+              activeGatewaySection === 'openai'
+            "
+            class="card"
+            data-testid="gateway-card-scheduling"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.scheduling.title") }}
+                {{
+                  t(
+                    activeGatewaySection === "general"
+                      ? "admin.settings.scheduling.title"
+                      : "admin.settings.openaiScheduling.title",
+                  )
+                }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.scheduling.description") }}
+                {{
+                  t(
+                    activeGatewaySection === "general"
+                      ? "admin.settings.scheduling.description"
+                      : "admin.settings.openaiScheduling.description",
+                  )
+                }}
               </p>
             </div>
-            <div class="space-y-5 p-6">
-              <div class="flex items-center justify-between">
+            <div class="p-6">
+              <div
+                v-show="activeGatewaySection === 'general'"
+                data-testid="gateway-scheduling-general"
+              >
+                <div class="flex items-center justify-between">
                 <div>
                   <label
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -4476,10 +4585,19 @@
                     {{ t("admin.settings.scheduling.allowUngroupedKeyHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.allow_ungrouped_key_scheduling" />
+                  <Toggle
+                    v-model="form.allow_ungrouped_key_scheduling"
+                    data-testid="gateway-allow-ungrouped-key"
+                  />
+                </div>
               </div>
 
-              <div class="flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700">
+              <div
+                v-show="activeGatewaySection === 'openai'"
+                class="space-y-5"
+                data-testid="gateway-scheduling-openai"
+              >
+                <div class="flex items-center justify-between">
                 <div>
                   <label
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -4496,7 +4614,7 @@
                   v-model="form.openai_advanced_scheduler_enabled"
                   data-testid="openai-advanced-scheduler-toggle"
                 />
-              </div>
+                </div>
 
               <div
                 v-if="form.openai_advanced_scheduler_enabled"
@@ -4615,21 +4733,39 @@
                 </p>
               </div>
             </div>
+            </div>
           </div>
 
           <!-- Gateway Forwarding Behavior -->
-          <div class="card">
+          <div
+            v-show="
+              activeGatewaySection === 'anthropic' ||
+              activeGatewaySection === 'openai' ||
+              activeGatewaySection === 'antigravity'
+            "
+            class="card"
+            data-testid="gateway-card-forwarding"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.gatewayForwarding.title") }}
+                {{
+                  t(gatewayForwardingTitleKey)
+                }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.gatewayForwarding.description") }}
+                {{
+                  t(gatewayForwardingDescriptionKey)
+                }}
               </p>
             </div>
-            <div class="space-y-5 p-6">
+            <div class="p-6">
+              <div
+                v-show="activeGatewaySection === 'anthropic'"
+                class="space-y-5"
+                data-testid="gateway-forwarding-anthropic"
+              >
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
                 <div>
@@ -4672,21 +4808,6 @@
                   </p>
                 </div>
                 <Toggle v-model="form.enable_metadata_passthrough" />
-              </div>
-
-              <!-- CCH Signing -->
-              <div class="flex items-center justify-between">
-                <div>
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.cchSigning") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.cchSigningHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.enable_cch_signing" />
               </div>
 
               <!-- Claude OAuth System 注入 -->
@@ -4850,9 +4971,13 @@
                   v-model="form.enable_client_dateline_normalization"
                 />
               </div>
+              </div>
 
               <!-- Antigravity UA 版本 -->
-              <div>
+              <div
+                v-show="activeGatewaySection === 'antigravity'"
+                data-testid="gateway-forwarding-antigravity"
+              >
                 <label
                   class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
@@ -4881,8 +5006,13 @@
                 </p>
               </div>
 
-              <!-- OpenAI Codex UA 设置 -->
-              <div>
+              <div
+                v-show="activeGatewaySection === 'openai'"
+                class="space-y-5"
+                data-testid="gateway-forwarding-openai"
+              >
+                <!-- OpenAI Codex UA 设置 -->
+                <div>
                 <label
                   class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
@@ -4923,10 +5053,15 @@
                 </div>
                 <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
               </div>
+              </div>
             </div>
           </div>
-          <!-- 用户提示词替换 -->
-          <div class="card">
+          <!-- 跨平台用户提示词替换 -->
+          <div
+            v-show="activeGatewaySection === 'general'"
+            class="card"
+            data-testid="gateway-card-user-prompt-replacement"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -5076,7 +5211,11 @@
             </div>
           </div>
           <!-- Web Search Emulation -->
-          <div class="card">
+          <div
+            v-show="activeGatewaySection === 'anthropic'"
+            class="card"
+            data-testid="gateway-card-web-search-emulation"
+          >
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -5512,7 +5651,11 @@
           </div>
 
         <!-- 用量记录设置 -->
-        <div class="card">
+        <div
+          v-show="activeGatewaySection === 'general'"
+          class="card"
+          data-testid="gateway-card-usage-records"
+        >
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.usageRecords.title') }}
@@ -8106,6 +8249,7 @@ import type { LoginAgreementDocument, NotifyEmailEntry, Proxy } from "@/types";
 import type { ProviderInstance, SubscriptionPlan } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
+import ProviderIcon from "@/components/common/ProviderIcon.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
@@ -8188,6 +8332,42 @@ const initialSettingsTab = settingsTabKeys.has(route.query.tab as SettingsTab)
   : "general";
 const activeTab = ref<SettingsTab>(initialSettingsTab);
 const settingsTabsScrollRef = ref<HTMLElement | null>(null);
+
+type GatewaySection =
+  | "general"
+  | "anthropic"
+  | "openai"
+  | "antigravity"
+  | "ollamaCloud";
+const gatewaySections = [
+  { key: "general" as GatewaySection },
+  { key: "anthropic" as GatewaySection, providerBrand: "Anthropic" },
+  { key: "openai" as GatewaySection, providerBrand: "OpenAI" },
+  { key: "antigravity" as GatewaySection, providerBrand: "Google" },
+  { key: "ollamaCloud" as GatewaySection, providerBrand: "Ollama" },
+];
+const activeGatewaySection = ref<GatewaySection>("general");
+const gatewaySectionsScrollRef = ref<HTMLElement | null>(null);
+const gatewayContentStartRef = ref<HTMLElement | null>(null);
+const gatewayForwardingPlatform = computed(() => {
+  if (
+    activeGatewaySection.value === "openai" ||
+    activeGatewaySection.value === "antigravity"
+  ) {
+    return activeGatewaySection.value;
+  }
+
+  return "anthropic";
+});
+const gatewayForwardingTitleKey = computed(
+  () =>
+    `admin.settings.gatewayForwarding.${gatewayForwardingPlatform.value}Title`,
+);
+const gatewayForwardingDescriptionKey = computed(
+  () =>
+    `admin.settings.gatewayForwarding.${gatewayForwardingPlatform.value}Description`,
+);
+
 // 支持方向键和 Home / End 在标签之间快速切换。
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -8239,20 +8419,93 @@ function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void 
   focusSettingsTab(nextTab);
 }
 
+function selectGatewaySection(section: GatewaySection): void {
+  activeGatewaySection.value = section;
+  void nextTick(() => {
+    gatewayContentStartRef.value?.scrollIntoView?.({ block: "start" });
+  });
+}
+
+function focusGatewaySection(section: GatewaySection): void {
+  window.requestAnimationFrame(() => {
+    document.getElementById(`gateway-section-tab-${section}`)?.focus();
+  });
+}
+
+// 二级标签沿用顶层标签的键盘交互，方便在横向滚动区域内快速切换。
+function handleGatewaySectionKeydown(
+  event: KeyboardEvent,
+  section: GatewaySection,
+): void {
+  const action =
+    settingsTabKeyboardActions[
+      event.key as keyof typeof settingsTabKeyboardActions
+    ];
+  if (action === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  const currentIndex = gatewaySections.findIndex(
+    (item) => item.key === section,
+  );
+  let nextIndex = currentIndex < 0 ? 0 : currentIndex;
+
+  if (action === "first") {
+    nextIndex = 0;
+  } else if (action === "last") {
+    nextIndex = gatewaySections.length - 1;
+  } else {
+    nextIndex =
+      (nextIndex + action + gatewaySections.length) % gatewaySections.length;
+  }
+
+  const nextSection = gatewaySections[nextIndex]?.key;
+  if (!nextSection) {
+    return;
+  }
+
+  selectGatewaySection(nextSection);
+  focusGatewaySection(nextSection);
+}
+
 const { copyToClipboard } = useClipboard();
 
-// 切换标签后自动把选中项滚动到视口中央，避免横向滚动时贴边裁切。
+// 只滚动标签容器的横轴，避免 scrollIntoView 连带推动页面并让内容被吸顶导航遮挡。
+function scrollTabHorizontallyIntoView(
+  container: HTMLElement | null,
+  activeSelector: string,
+): void {
+  const tabElement = container?.querySelector<HTMLElement>(activeSelector);
+  if (!container || !tabElement) {
+    return;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const tabRect = tabElement.getBoundingClientRect();
+  const nextScrollLeft = Math.max(
+    0,
+    container.scrollLeft +
+      tabRect.left -
+      containerRect.left -
+      (container.clientWidth - tabElement.clientWidth) / 2,
+  );
+
+  if (typeof container.scrollTo === "function") {
+    container.scrollTo({ left: nextScrollLeft, behavior: "smooth" });
+    return;
+  }
+
+  container.scrollLeft = nextScrollLeft;
+}
+
+// 切换标签后自动把选中项滚动到容器中央，避免横向滚动时贴边裁切。
 function scrollActiveSettingsTabIntoView() {
   void nextTick(() => {
-    const tabElement =
-      settingsTabsScrollRef.value?.querySelector<HTMLElement>(
-        ".settings-tab-active",
-      );
-    tabElement?.scrollIntoView?.({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
+    scrollTabHorizontallyIntoView(
+      settingsTabsScrollRef.value,
+      ".settings-tab-active",
+    );
   });
 }
 
@@ -8260,6 +8513,26 @@ watch(activeTab, scrollActiveSettingsTabIntoView, {
   immediate: true,
   flush: "post",
 });
+
+// 平台切换后让选中项保持可见，窄屏下不需要手动寻找当前标签。
+function scrollActiveGatewaySectionIntoView(): void {
+  if (activeTab.value !== "gateway") {
+    return;
+  }
+
+  void nextTick(() => {
+    scrollTabHorizontallyIntoView(
+      gatewaySectionsScrollRef.value,
+      ".gateway-section-tab-active",
+    );
+  });
+}
+
+watch(
+  [activeTab, activeGatewaySection],
+  scrollActiveGatewaySectionIntoView,
+  { immediate: true, flush: "post" },
+);
 
 const loading = ref(true);
 const loadFailed = ref(false);
@@ -10078,6 +10351,9 @@ async function loadSettings() {
     );
   } finally {
     loading.value = false;
+    // 首次加载期间标签尚未挂载，渲染完成后补做一次横向定位。
+    scrollActiveSettingsTabIntoView();
+    scrollActiveGatewaySectionIntoView();
   }
 }
 
@@ -10567,7 +10843,6 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
-      enable_cch_signing: form.enable_cch_signing,
       enable_claude_oauth_system_prompt_injection:
         form.enable_claude_oauth_system_prompt_injection,
       claude_oauth_system_prompt:
@@ -11919,6 +12194,61 @@ watch(
 
 .settings-tab-label {
   @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
+}
+
+/* 网关二级标签与主标签共用吸顶容器，避免双层导航互相遮挡。 */
+.gateway-section-tabs-scroll {
+  @apply mt-1.5 overflow-x-auto border-t border-gray-100 pt-1.5 dark:border-dark-700;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  scroll-padding-inline: 0.5rem;
+}
+
+.gateway-section-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.gateway-section-tabs {
+  @apply flex min-w-max items-center gap-1;
+}
+
+.gateway-section-tab {
+  @apply flex h-9 min-w-[7.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 dark:text-gray-300;
+}
+
+.gateway-section-tab:hover,
+.gateway-section-tab:focus-visible {
+  @apply bg-gray-50 text-gray-900 dark:bg-dark-700 dark:text-white;
+}
+
+.gateway-section-tab:focus-visible {
+  @apply ring-2 ring-primary-500/40 ring-offset-1 ring-offset-white dark:ring-offset-dark-900;
+}
+
+.gateway-section-tab-active {
+  @apply border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-400/30 dark:bg-primary-400/10 dark:text-primary-200;
+}
+
+.gateway-section-tab-icon {
+  @apply flex h-5 w-5 shrink-0 items-center justify-center;
+}
+
+.gateway-section-tab-label {
+  @apply min-w-0 whitespace-nowrap leading-none;
+}
+
+.gateway-settings-content {
+  scroll-margin-top: 12.75rem;
+}
+
+@media (min-width: 768px) {
+  .gateway-section-tabs {
+    @apply min-w-full;
+  }
+
+  .gateway-section-tab {
+    @apply min-w-0 flex-1 basis-0;
+  }
 }
 </style>
 

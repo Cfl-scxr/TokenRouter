@@ -34,6 +34,14 @@ dataSharing: {
         backup: 'Backup',
         payment: 'Payment',
       },
+      gatewaySections: {
+        label: 'Gateway setting categories',
+        general: 'General',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        antigravity: 'Antigravity',
+        ollamaCloud: 'Ollama Cloud'
+      },
       preAggregation: {
         title: 'Pre-aggregation',
         description: 'Manage usage and operations aggregation jobs and coverage status.',
@@ -441,6 +449,10 @@ dataSharing: {
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       },
+      openaiScheduling: {
+        title: 'OpenAI Scheduling Settings',
+        description: 'Control the global defaults for OpenAI account selection, experimental scheduling, and automatic quota pausing'
+      },
       ollamaCloudUsage: {
         title: 'Ollama Cloud Usage Refresh',
         description: 'Refresh official Ollama settings-page usage driven by model requests for individually opted-in accounts. Disabled by default. Idle accounts are not polled.',
@@ -454,14 +466,16 @@ dataSharing: {
         saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
       },
       gatewayForwarding: {
-        title: 'Request Forwarding',
-        description: 'Control how requests are forwarded to upstream OAuth accounts',
+        anthropicTitle: 'Anthropic Request Forwarding',
+        anthropicDescription: 'Control identity, prompt, and cache handling for Anthropic OAuth and Setup Token requests',
+        openaiTitle: 'OpenAI / Codex Request Forwarding',
+        openaiDescription: 'Control OpenAI Codex upstream identity and client access compatibility',
+        antigravityTitle: 'Antigravity Request Forwarding',
+        antigravityDescription: 'Control the client identity used for Antigravity upstream requests',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
-        cchSigning: 'CCH Signing',
-        cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
         claudeOAuthSystemPromptInjection: 'Claude OAuth System Injection',
         claudeOAuthSystemPromptInjectionHint: 'Inject Claude Code system blocks when non-Claude-Code clients use Claude OAuth. When disabled, the client system is preserved.',
         claudeOAuthSystemPrompt: 'Expansion System Prompt',
@@ -488,7 +502,7 @@ dataSharing: {
       },
       userPromptReplacement: {
         title: 'User Prompt Replacement',
-        description: 'Match user message text with regex and replace it with a static value or a timezone-derived dynamic value.',
+        description: 'Globally match user message text in supported gateway requests with regex and replace it with a static value or a timezone-derived dynamic value. This includes OpenAI Responses WebSocket requests.',
         addRule: 'Add Rule',
         resetDefault: 'Restore Defaults',
         empty: 'No replacement rules configured',
@@ -1110,7 +1124,7 @@ dataSharing: {
       },
       rectifier: {
         title: 'Request Rectifier',
-        description: 'Automatically fix request parameters and retry when upstream returns specific errors',
+        description: 'Automatically fix request parameters and retry when supported upstreams return specific Thinking signature or budget errors. This global setting applies to eligible gateway retry flows.',
         enabled: 'Enable Request Rectifier',
         enabledHint: 'Master switch - disabling turns off all rectification features',
         thinkingSignature: 'Thinking Signature Rectifier',

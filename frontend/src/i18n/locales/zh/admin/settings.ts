@@ -34,6 +34,14 @@ dataSharing: {
         backup: '数据备份',
         payment: '支付设置',
       },
+      gatewaySections: {
+        label: '网关设置分类',
+        general: '通用',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        antigravity: 'Antigravity',
+        ollamaCloud: 'Ollama Cloud'
+      },
       preAggregation: {
         title: '预聚合',
         description: '管理使用记录和运维指标的聚合任务与覆盖状态。',
@@ -433,6 +441,10 @@ dataSharing: {
         allowUngroupedKey: '允许未分组 Key 调度',
         allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
       },
+      openaiScheduling: {
+        title: 'OpenAI 调度设置',
+        description: '控制 OpenAI 账号选择、实验调度与配额自动暂停的全局默认策略'
+      },
       ollamaCloudUsage: {
         title: 'Ollama Cloud 用量刷新',
         description: '在模型请求驱动下刷新账号在 Ollama 官方设置页展示的用量；默认关闭。无新请求时不会自动抓取。',
@@ -446,14 +458,16 @@ dataSharing: {
         saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
       },
       gatewayForwarding: {
-        title: '请求转发行为',
-        description: '控制请求转发到上游 OAuth 账号时的行为',
+        anthropicTitle: 'Anthropic 请求转发',
+        anthropicDescription: '控制 Anthropic OAuth 与 Setup Token 请求的身份、提示词和缓存处理行为',
+        openaiTitle: 'OpenAI / Codex 请求转发',
+        openaiDescription: '控制 OpenAI Codex 上游身份与客户端访问兼容策略',
+        antigravityTitle: 'Antigravity 请求转发',
+        antigravityDescription: '控制 Antigravity 上游请求使用的客户端身份',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
-        cchSigning: 'CCH 签名',
-        cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
         claudeOAuthSystemPromptInjection: 'Claude OAuth System 注入',
         claudeOAuthSystemPromptInjectionHint: '为非 Claude Code 客户端走 Claude OAuth 时注入 Claude Code system blocks。关闭后保留客户端原始 system。',
         claudeOAuthSystemPrompt: '扩展 System Prompt',
@@ -480,7 +494,7 @@ dataSharing: {
       },
       userPromptReplacement: {
         title: '用户提示词替换',
-        description: '按正则匹配用户消息文本，并替换为固定值或按时区动态计算的值。',
+        description: '全局按正则匹配受支持的网关入站请求中的用户消息文本，并替换为固定值或按时区动态计算的值；包括 OpenAI Responses WebSocket 请求。',
         addRule: '添加规则',
         resetDefault: '恢复默认规则',
         empty: '未配置替换规则',
@@ -1103,7 +1117,7 @@ dataSharing: {
       },
       rectifier: {
         title: '请求整流器',
-        description: '当上游返回特定错误时，自动修正请求参数并重试，提高请求成功率',
+        description: '当支持的上游返回特定 Thinking 签名或预算错误时，自动修正请求参数并重试。该全局设置会影响适用的网关重试链路。',
         enabled: '启用请求整流器',
         enabledHint: '总开关，关闭后所有整流功能均不生效',
         thinkingSignature: 'Thinking 签名整流',

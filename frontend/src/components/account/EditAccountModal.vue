@@ -1458,14 +1458,25 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
-            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+          <!-- 输入过程中允许先清空再录入新值，提交时由后端继续校验。 -->
+          <input
+            v-model.number="form.concurrency"
+            type="number"
+            min="1"
+            class="input"
+            data-testid="edit-account-concurrency"
+          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
-          <input v-model.number="form.load_factor" type="number" min="1"
-            class="input" :placeholder="String(form.concurrency || 1)"
-            @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
+          <input
+            v-model.number="form.load_factor"
+            type="number"
+            min="1"
+            class="input"
+            :placeholder="String(form.concurrency || 1)"
+            data-testid="edit-account-load-factor"
+          />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
         </div>
         <div>

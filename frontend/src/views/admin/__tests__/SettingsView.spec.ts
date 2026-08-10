@@ -242,6 +242,12 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.paymentVisibleMethods.sourceRequiredError": "{title} 已启用，请先选择支付来源。",
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
+    "admin.settings.gatewaySections.label": "网关设置分类",
+    "admin.settings.gatewaySections.general": "通用",
+    "admin.settings.gatewaySections.anthropic": "Anthropic",
+    "admin.settings.gatewaySections.openai": "OpenAI",
+    "admin.settings.gatewaySections.antigravity": "Antigravity",
+    "admin.settings.gatewaySections.ollamaCloud": "Ollama Cloud",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.openaiQuotaAutoPause.title": "OpenAI 账号配额自动暂停",
@@ -624,6 +630,7 @@ function mountView() {
         Select: SelectStub,
         Toggle: ToggleStub,
         Icon: true,
+        ProviderIcon: true,
         ConfirmDialog: true,
         PaymentProviderList: true,
         PaymentProviderDialog: true,
@@ -665,6 +672,16 @@ async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(gatewayTabButton).toBeDefined();
   await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
+async function openGatewaySection(
+  wrapper: ReturnType<typeof mountView>,
+  section: "general" | "anthropic" | "openai" | "antigravity" | "ollamaCloud",
+) {
+  await wrapper
+    .get(`[data-testid="gateway-section-tab-${section}"]`)
+    .trigger("click");
   await flushPromises();
 }
 
@@ -1557,6 +1574,203 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateProvider).not.toHaveBeenCalled();
   });
 
+  it("groups gateway settings into five platform sections with General selected by default", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const sectionTabs = wrapper.findAll('[data-testid^="gateway-section-tab-"]');
+    expect(sectionTabs).toHaveLength(5);
+    expect(sectionTabs.map((tab) => tab.text())).toEqual([
+      "通用",
+      "Anthropic",
+      "OpenAI",
+      "Antigravity",
+      "Ollama Cloud",
+    ]);
+    expect(
+      wrapper
+        .get('[data-testid="gateway-section-tab-general"]')
+        .attributes("aria-selected"),
+    ).toBe("true");
+    expect(
+      wrapper.get('[data-testid="gateway-card-overload-cooldown"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-request-rectifier"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-user-prompt-replacement"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-openai-403-cooldown"]').isVisible(),
+    ).toBe(false);
+    expect(
+      wrapper.get('[data-testid="ollama-cloud-usage-global-settings"]').isVisible(),
+    ).toBe(false);
+
+    const providerBrands = [
+      ["anthropic", "Anthropic"],
+      ["openai", "OpenAI"],
+      ["antigravity", "Google"],
+      ["ollamaCloud", "Ollama"],
+    ];
+    for (const [section, brand] of providerBrands) {
+      const icon = wrapper
+        .get(`[data-testid="gateway-section-tab-${section}"]`)
+        .get("provider-icon-stub");
+      expect(icon.attributes("brand")).toBe(brand);
+      expect(icon.attributes("color")).toBe("currentColor");
+    }
+  });
+
+  it("shows the representative cards for each gateway platform section", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await openGatewaySection(wrapper, "anthropic");
+    expect(
+      wrapper
+        .get('[data-testid="gateway-card-request-rectifier"]')
+        .attributes("style"),
+    ).toContain("display: none");
+    expect(
+      wrapper.get('[data-testid="gateway-card-claude-code"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-forwarding-anthropic"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-web-search-emulation"]').isVisible(),
+    ).toBe(true);
+
+    await openGatewaySection(wrapper, "openai");
+    expect(
+      wrapper.get('[data-testid="gateway-card-openai-403-cooldown"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-openai-oauth-defaults"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-scheduling-openai"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get('[data-testid="gateway-card-user-prompt-replacement"]')
+        .attributes("style"),
+    ).toContain("display: none");
+
+    await openGatewaySection(wrapper, "antigravity");
+    expect(
+      wrapper.get('[data-testid="gateway-forwarding-antigravity"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-forwarding-openai"]').isVisible(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .get('[data-testid="gateway-card-request-rectifier"]')
+        .attributes("style"),
+    ).toContain("display: none");
+    expect(
+      wrapper
+        .get('[data-testid="gateway-card-user-prompt-replacement"]')
+        .attributes("style"),
+    ).toContain("display: none");
+
+    await openGatewaySection(wrapper, "ollamaCloud");
+    expect(
+      wrapper.get('[data-testid="ollama-cloud-usage-global-settings"]').isVisible(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-testid="gateway-card-overload-cooldown"]').isVisible(),
+    ).toBe(false);
+  });
+
+  it("supports keyboard navigation between gateway platform sections", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    await wrapper
+      .get('[data-testid="gateway-section-tab-general"]')
+      .trigger("keydown", { key: "ArrowRight" });
+    expect(
+      wrapper
+        .get('[data-testid="gateway-section-tab-anthropic"]')
+        .attributes("aria-selected"),
+    ).toBe("true");
+
+    await wrapper
+      .get('[data-testid="gateway-section-tab-anthropic"]')
+      .trigger("keydown", { key: "End" });
+    expect(
+      wrapper
+        .get('[data-testid="gateway-section-tab-ollamaCloud"]')
+        .attributes("aria-selected"),
+    ).toBe("true");
+
+    await wrapper
+      .get('[data-testid="gateway-section-tab-ollamaCloud"]')
+      .trigger("keydown", { key: "Home" });
+    expect(
+      wrapper
+        .get('[data-testid="gateway-section-tab-general"]')
+        .attributes("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("preserves unsaved gateway form state while switching platform sections", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const ungroupedKeyToggle = wrapper.get(
+      '[data-testid="gateway-allow-ungrouped-key"]',
+    );
+    await ungroupedKeyToggle.setValue(true);
+    expect((ungroupedKeyToggle.element as HTMLInputElement).checked).toBe(true);
+
+    await openGatewaySection(wrapper, "openai");
+    await openGatewaySection(wrapper, "general");
+
+    expect(
+      (
+        wrapper.get('[data-testid="gateway-allow-ungrouped-key"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  it("omits the retired CCH signing setting from the UI and update payload", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_cch_signing: true,
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    await openGatewaySection(wrapper, "anthropic");
+
+    expect(wrapper.text()).not.toContain(
+      "admin.settings.gatewayForwarding.cchSigning",
+    );
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty(
+      "enable_cch_signing",
+    );
+  });
+
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {
     const wrapper = mountView();
 
@@ -1587,6 +1801,7 @@ describe("admin SettingsView payment visible method controls", () => {
 
     await flushPromises();
     await openGatewayTab(wrapper);
+    await openGatewaySection(wrapper, "ollamaCloud");
 
     const card = wrapper.get('[data-testid="ollama-cloud-usage-global-settings"]');
     expect(card.isVisible()).toBe(true);

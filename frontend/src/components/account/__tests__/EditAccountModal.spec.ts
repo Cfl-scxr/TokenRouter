@@ -376,6 +376,37 @@ describe('EditAccountModal', () => {
     expect(wrapper.text()).toContain('admin.accounts.mapRequestModels')
   })
 
+  it('allows concurrency and load factor to be cleared before entering replacement values', async () => {
+    const account = {
+      ...buildAccount(),
+      concurrency: 6,
+      load_factor: 6
+    }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const concurrencyInput = wrapper.get<HTMLInputElement>(
+      '[data-testid="edit-account-concurrency"]'
+    )
+    const loadFactorInput = wrapper.get<HTMLInputElement>(
+      '[data-testid="edit-account-load-factor"]'
+    )
+
+    await concurrencyInput.setValue('')
+    await loadFactorInput.setValue('')
+    expect(concurrencyInput.element.value).toBe('')
+    expect(loadFactorInput.element.value).toBe('')
+
+    await concurrencyInput.setValue('12')
+    await loadFactorInput.setValue('9')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]).toMatchObject({
+      concurrency: 12,
+      load_factor: 9
+    })
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockResolvedValue(account)
