@@ -66,17 +66,17 @@
               v-model="codexImageToolMode"
               test-id-prefix="openai-oauth-default-codex-image-tool"
             />
-            <div class="flex items-center justify-between gap-4">
-              <div>
+            <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="min-w-0">
                 <label class="input-label mb-0">{{ t('admin.accounts.openai.wsMode') }}</label>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.accounts.openai.wsModeDesc') }}
                 </p>
               </div>
-              <Select v-model="wsMode" :options="wsModeOptions" class="w-52" />
+              <Select v-model="wsMode" :options="wsModeOptions" class="w-full sm:w-52" />
             </div>
-            <div class="flex items-center justify-between gap-4">
-              <div>
+            <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="min-w-0">
                 <label class="input-label mb-0">{{ t('admin.accounts.openai.clientPolicy') }}</label>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.accounts.openai.clientPolicyDesc') }}
@@ -85,7 +85,7 @@
               <Select
                 v-model="openAIOAuthClientPolicy"
                 :options="openAIOAuthClientPolicyOptions"
-                class="w-64"
+                class="w-full sm:w-64"
                 data-testid="openai-oauth-default-client-policy"
               />
             </div>
@@ -156,14 +156,14 @@
                 <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
               </div>
             </div>
-            <div class="flex items-center justify-between gap-4">
-              <div>
+            <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="min-w-0">
                 <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.accounts.openai.compactModeDesc') }}
                 </p>
               </div>
-              <Select v-model="compactMode" :options="compactModeOptions" class="w-44" />
+              <Select v-model="compactMode" :options="compactModeOptions" class="w-full sm:w-44" />
             </div>
             <div class="space-y-3 border-t border-gray-100 pt-4 dark:border-dark-700">
               <div class="flex items-center justify-between gap-4">
