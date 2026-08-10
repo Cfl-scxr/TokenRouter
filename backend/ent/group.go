@@ -49,6 +49,8 @@ type Group struct {
 	DuplicateOperationID *string `json:"duplicate_operation_id,omitempty"`
 	// Platform holds the value of the "platform" field.
 	Platform string `json:"platform,omitempty"`
+	// 分组调度器类型：basic 或 advanced
+	SchedulerType string `json:"scheduler_type,omitempty"`
 	// 模型广场展示品牌
 	DisplayBrand string `json:"display_brand,omitempty"`
 	// 是否允许该分组使用图片生成能力
@@ -252,7 +254,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldUnavailableFallbackGroupID, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldDisplayBrand, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSchedulerType, group.FieldDisplayBrand, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -369,6 +371,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field platform", values[i])
 			} else if value.Valid {
 				_m.Platform = value.String
+			}
+		case group.FieldSchedulerType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field scheduler_type", values[i])
+			} else if value.Valid {
+				_m.SchedulerType = value.String
 			}
 		case group.FieldDisplayBrand:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -759,6 +767,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("platform=")
 	builder.WriteString(_m.Platform)
+	builder.WriteString(", ")
+	builder.WriteString("scheduler_type=")
+	builder.WriteString(_m.SchedulerType)
 	builder.WriteString(", ")
 	builder.WriteString("display_brand=")
 	builder.WriteString(_m.DisplayBrand)

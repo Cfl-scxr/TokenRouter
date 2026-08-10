@@ -44,6 +44,57 @@ func TestAdminServiceCreateGroupUsesPlatformClientProtocolDefaults(t *testing.T)
 	}
 }
 
+func TestAdminServiceGroupSchedulerTypeDefaultsValidatesAndUpdates(t *testing.T) {
+	t.Run("create defaults to basic", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "default-scheduler", Platform: PlatformGemini, RateMultiplier: 1,
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, GroupSchedulerTypeBasic, group.SchedulerType)
+		require.Equal(t, GroupSchedulerTypeBasic, repo.created.SchedulerType)
+	})
+
+	t.Run("create accepts advanced", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "advanced-scheduler", Platform: PlatformQoder, RateMultiplier: 1, SchedulerType: string(GroupSchedulerTypeAdvanced),
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, GroupSchedulerTypeAdvanced, group.SchedulerType)
+	})
+
+	t.Run("invalid value is rejected", func(t *testing.T) {
+		svc := &adminServiceImpl{groupRepo: &groupRepoStubForAdmin{}}
+
+		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "invalid-scheduler", Platform: PlatformAnthropic, RateMultiplier: 1, SchedulerType: "weighted",
+		})
+
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_SCHEDULER_TYPE", infraerrors.Reason(err))
+	})
+
+	t.Run("update preserves explicit advanced choice", func(t *testing.T) {
+		existing := &Group{ID: 7, Name: "basic", Platform: PlatformAnthropic, Status: StatusActive, SchedulerType: GroupSchedulerTypeBasic}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{groupRepo: repo}
+		advanced := string(GroupSchedulerTypeAdvanced)
+
+		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{SchedulerType: &advanced})
+
+		require.NoError(t, err)
+		require.Equal(t, GroupSchedulerTypeAdvanced, group.SchedulerType)
+		require.Equal(t, GroupSchedulerTypeAdvanced, repo.updated.SchedulerType)
+	})
+}
+
 func TestAdminServiceCreateGroupClientProtocolCompatibilityPrecedence(t *testing.T) {
 	t.Run("legacy OpenAI switch is accepted when new field is omitted", func(t *testing.T) {
 		repo := &groupRepoStubForAdmin{}

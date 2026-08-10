@@ -378,7 +378,7 @@ func (s *stubAdminService) ListAccountsForSchedulerScoreFilter(_ context.Context
 	return s.accounts, nil
 }
 
-func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ context.Context, groupID *int64) ([]service.Account, error) {
+func (s *stubAdminService) ListSchedulableAccountsForAdvancedSchedulerScore(_ context.Context, groupID *int64, platform string) ([]service.Account, error) {
 	s.openAISchedulerScorePoolCalls++
 	accounts := s.openAISchedulerScorePoolAccounts
 	if accounts == nil {
@@ -386,7 +386,7 @@ func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ cont
 	}
 	out := make([]service.Account, 0, len(accounts))
 	for _, account := range accounts {
-		if account.Platform != service.PlatformOpenAI || !account.IsSchedulable() {
+		if account.Platform != platform || !account.IsSchedulable() {
 			continue
 		}
 		if groupID == nil {

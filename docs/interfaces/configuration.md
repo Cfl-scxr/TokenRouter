@@ -61,6 +61,10 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 运行时设置包括注册与邮件验证、第三方登录、SMTP、TOTP/session binding/step-up、登录协议、面板限流、部分冷却与流超时、数据共享、支付展示以及各类功能开关。不同 getter 的回退可能来自代码常量或 `config.Config`，不能假设所有缺失键都等价于 `false`。
 
+高级调度器的归属分为两层：每个 Group 的 `scheduler_type` 是领域配置，明确选择 `basic` 或 `advanced`；网关通用设置只保存高级模式的运行参数，包括 `advanced_scheduler_sticky_weighted_enabled`、`advanced_scheduler_subscription_priority_enabled`、`advanced_scheduler_lb_top_k` 及各 `advanced_scheduler_weight_*`。它们在“网关设置 - 通用设置”编辑，使用短 TTL 的进程缓存读取。不存在 `advanced_scheduler_enabled` 全局开关，缺失参数只回退到进程配置默认值，不能改变任意分组的模式。
+
+进程配置的默认参数位于 `gateway.advanced_scheduler`，包含 `lb_top_k`、`score_weights` 与粘性逃逸阈值。旧的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*` 和 `gateway.openai_scheduler.sticky_escape_*` 均不再兼容，启动校验会明确拒绝；管理设置请求中的 `openai_advanced_scheduler_*` 或旧全局开关也会返回弃用错误，而不是被静默忽略。OpenAI 配额自动暂停仍是 OpenAI 专属设置，不属于通用高级调度参数。
+
 验证码同样属于数据库运行时设置。Turnstile、腾讯天御与阿里云验证码 2.0 三者互斥。腾讯天御启用时必须同时具备正整数 `CaptchaAppId`、`AppSecretKey`、腾讯云 `SecretId` 和 `SecretKey`，并选择 `cn` 中国站或 `intl` 国际站；站点决定前端 SDK、构造函数形式、控制台入口和服务端票据校验 endpoint，`CaptchaAppId` 与云密钥必须来自同一站点，缺失或非法站点按 `cn` 回退。阿里云启用时必须具备 Scene ID、Prefix、AccessKey ID、AccessKey Secret 及 `cn` 或 `sgp` 地域。公开设置只返回各提供方的启用状态、站点和渲染所需的非敏感参数；管理响应只返回 secret 的“已配置”标记，空白更新保留原值，审计仅记录字段发生写入而不记录内容。腾讯与阿里云 Web SDK 所需的脚本、连接、iframe、worker 和样式来源由默认 CSP 与运行时 CSP 补全逻辑共同维护，覆盖自定义旧策略时也不能遗漏，其中阿里云静态资源允许 `https://*.alicdn.com`。
 
 SMTP 的测试连接与实际发送共用同一建连路径和超时。`smtp_use_tls=true` 先按隐式 TLS 连接；仅当服务端以明文 SMTP 问候响应时改用强制 STARTTLS，服务端不支持升级时直接失败，不能明文发送认证。`smtp_use_tls=false` 保留机会式 STARTTLS，并在服务端不提供扩展时允许现有明文语义。两条路径都在认证成功后忽略非标准 QUIT 响应，因此后台连接测试与实际发信能力保持一致。

@@ -1,19 +1,31 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, nextTick } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
 
 const props = withDefaults(defineProps<{
   content?: string
-  trigger?: 'hover' | 'click'
+  trigger?: 'hover' | 'click' | 'both'
+  placement?: 'top' | 'bottom'
   widthClass?: string
 }>(), {
   trigger: 'hover',
+  placement: 'top',
   widthClass: 'w-64',
 })
 
 const show = ref(false)
+const clickPinned = ref(false)
+const resolvedPlacement = ref<'top' | 'bottom'>(props.placement)
 const triggerRef = useTemplateRef<HTMLElement>('trigger')
 const tooltipRef = useTemplateRef<HTMLElement>('tooltip')
 const tooltipStyle = ref({ top: '0px', left: '0px' })
+
+function hoverEnabled() {
+  return props.trigger === 'hover' || props.trigger === 'both'
+}
+
+function clickEnabled() {
+  return props.trigger === 'click' || props.trigger === 'both'
+}
 
 function openTooltip() {
   show.value = true
@@ -22,30 +34,32 @@ function openTooltip() {
 
 function closeTooltip() {
   show.value = false
+  clickPinned.value = false
 }
 
 function onEnter() {
-  if (props.trigger !== 'hover') return
+  if (!hoverEnabled() || clickPinned.value) return
   openTooltip()
 }
 
 function onLeave() {
-  if (props.trigger !== 'hover') return
+  if (!hoverEnabled() || clickPinned.value) return
   closeTooltip()
 }
 
 function onClick(event: MouseEvent) {
-  if (props.trigger !== 'click') return
+  if (!clickEnabled()) return
   event.stopPropagation()
-  if (show.value) {
+  if (clickPinned.value) {
     closeTooltip()
     return
   }
+  clickPinned.value = true
   openTooltip()
 }
 
 function onDocumentClick(event: MouseEvent) {
-  if (props.trigger !== 'click' || !show.value) return
+  if (!clickEnabled() || !show.value) return
   const target = event.target as Node | null
   if (!target) return
   if (triggerRef.value?.contains(target) || tooltipRef.value?.contains(target)) return
@@ -53,7 +67,7 @@ function onDocumentClick(event: MouseEvent) {
 }
 
 function onDocumentKeydown(event: KeyboardEvent) {
-  if (props.trigger !== 'click') return
+  if (!clickEnabled()) return
   if (event.key === 'Escape') {
     closeTooltip()
   }
@@ -68,9 +82,49 @@ function updatePosition() {
   const el = triggerRef.value
   if (!el) return
   const rect = el.getBoundingClientRect()
+  const tooltipRect = tooltipRef.value?.getBoundingClientRect()
+  const tooltipWidth = tooltipRect?.width ?? 0
+  const tooltipHeight = tooltipRect?.height ?? 0
+  const centeredLeft = rect.left + rect.width / 2
+  const viewportPadding = 12
+  const halfTooltipWidth = tooltipWidth / 2
+  const minLeft = halfTooltipWidth + viewportPadding
+  const maxLeft = Math.max(
+    minLeft,
+    window.innerWidth - halfTooltipWidth - viewportPadding,
+  )
+  const left = tooltipWidth > 0
+    ? Math.min(maxLeft, Math.max(minLeft, centeredLeft))
+    : centeredLeft
+  let placement = props.placement
+  let tooltipTop = rect.bottom + 8
+  if (tooltipHeight > 0) {
+    const topPosition = rect.top - 8 - tooltipHeight
+    const bottomPosition = rect.bottom + 8
+    const fitsAbove = topPosition >= viewportPadding
+    const fitsBelow = bottomPosition + tooltipHeight <= window.innerHeight - viewportPadding
+
+    if (placement === 'bottom' && !fitsBelow && fitsAbove) {
+      placement = 'top'
+      tooltipTop = topPosition
+    } else if (placement === 'top' && !fitsAbove && fitsBelow) {
+      placement = 'bottom'
+      tooltipTop = bottomPosition
+    } else if (!fitsAbove && !fitsBelow) {
+      tooltipTop = Math.max(
+        viewportPadding,
+        window.innerHeight - tooltipHeight - viewportPadding,
+      )
+    } else if (placement === 'top') {
+      tooltipTop = topPosition
+    }
+  } else if (placement === 'top') {
+    tooltipTop = rect.top - 8
+  }
+  resolvedPlacement.value = placement
   tooltipStyle.value = {
-    top: `${rect.top}px`,
-    left: `${rect.left + rect.width / 2}px`,
+    top: `${placement === 'top' ? tooltipTop + tooltipHeight + 8 : tooltipTop}px`,
+    left: `${left}px`,
   }
 }
 
@@ -121,13 +175,19 @@ onBeforeUnmount(() => {
         v-show="show"
         role="tooltip"
         :class="[
-          'fixed z-[99999] -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 dark:bg-gray-800',
+          'fixed z-[99999] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 overflow-y-auto rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-white shadow-xl ring-1 ring-white/10 dark:bg-gray-800',
+          resolvedPlacement === 'top' ? '-translate-y-full' : 'translate-y-0',
           props.widthClass,
         ]"
-        :style="{ top: `calc(${tooltipStyle.top} - 8px)`, left: tooltipStyle.left }"
+        :style="{
+          top: resolvedPlacement === 'top'
+            ? `calc(${tooltipStyle.top} - 8px)`
+            : tooltipStyle.top,
+          left: tooltipStyle.left,
+        }"
       >
         <button
-          v-if="props.trigger === 'click'"
+          v-if="clickEnabled()"
           type="button"
           class="absolute right-1.5 top-1.5 rounded p-1 text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
           aria-label="Close"
@@ -138,7 +198,10 @@ onBeforeUnmount(() => {
           </svg>
         </button>
         <slot>{{ content }}</slot>
-        <div class="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+        <div
+          class="absolute left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800"
+          :class="resolvedPlacement === 'top' ? '-bottom-1' : '-top-1'"
+        ></div>
       </div>
     </Teleport>
   </div>

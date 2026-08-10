@@ -545,6 +545,7 @@ export interface PaginationConfig {
 // ==================== API Key & Group Types ====================
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
+export type GroupSchedulerType = 'basic' | 'advanced'
 export type GroupClientProtocol =
   | 'anthropic_messages'
   | 'openai_responses'
@@ -731,6 +732,9 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  // 仅管理端可配置，公开分组接口不返回调度器模式。
+  scheduler_type: GroupSchedulerType
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -879,6 +883,7 @@ export interface CreateGroupRequest {
   name: string
   description?: string | null
   platform?: GroupPlatform
+  scheduler_type?: GroupSchedulerType
   display_brand?: string
   sort_order?: number
   rate_multiplier?: number
@@ -933,6 +938,7 @@ export interface UpdateGroupRequest {
   name?: string
   description?: string | null
   platform?: GroupPlatform
+  scheduler_type?: GroupSchedulerType
   display_brand?: string
   sort_order?: number
   rate_multiplier?: number

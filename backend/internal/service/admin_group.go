@@ -130,6 +130,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if platform == "" {
 		platform = PlatformAnthropic
 	}
+	schedulerType, err := NormalizeGroupSchedulerType(input.SchedulerType)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SCHEDULER_TYPE", "%v", err)
+	}
 	allowedClientProtocols := input.AllowedClientProtocols
 	if allowedClientProtocols == nil {
 		allowedClientProtocols = defaultGroupClientProtocols(platform)
@@ -283,6 +287,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Name:                            input.Name,
 		Description:                     input.Description,
 		Platform:                        platform,
+		SchedulerType:                   schedulerType,
 		DisplayBrand:                    strings.TrimSpace(input.DisplayBrand),
 		SortOrder:                       sortOrder,
 		RateMultiplier:                  input.RateMultiplier,
@@ -511,6 +516,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
+	}
+	if input.SchedulerType != nil {
+		schedulerType, normalizeErr := NormalizeGroupSchedulerType(*input.SchedulerType)
+		if normalizeErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SCHEDULER_TYPE", "%v", normalizeErr)
+		}
+		group.SchedulerType = schedulerType
 	}
 	if input.AllowedClientProtocols != nil {
 		group.AllowedClientProtocols, err = normalizeExplicitGroupClientProtocols(group.Platform, *input.AllowedClientProtocols)

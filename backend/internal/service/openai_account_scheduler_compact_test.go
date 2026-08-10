@@ -12,7 +12,7 @@ import (
 // TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupportedOverUnknown
 // 验证 compact 调度时显式支持 (tier=2) 优先于未探测 (tier=1)。
 func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupportedOverUnknown(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
 	groupID := int64(91001)
@@ -66,7 +66,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupported
 // TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitlyUnsupported
 // 验证 force_off / 已探测不支持 (tier=0) 的账号不会被 compact 请求选中。
 func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitlyUnsupported(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
 	groupID := int64(91002)
@@ -119,7 +119,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitl
 // TestOpenAIGatewayService_SelectAccountWithScheduler_CompactFallsBackToUnknown
 // 验证当没有"已知支持"账号时，compact 请求会回退到"未探测"账号。
 func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactFallsBackToUnknown(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
 	groupID := int64(91003)
@@ -172,7 +172,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactFallsBackToUnkno
 
 // TestOpenAIGatewayService_SelectAccountWithScheduler_CompactAllowsGrok 验证 compact 调度允许 Grok 账号参与。
 func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactAllowsGrok(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
 	groupID := int64(91004)

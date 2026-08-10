@@ -258,3 +258,22 @@ func TestUpdateSettingsRejectsInvalidForwardedClientIPHeader(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.JSONEq(t, `["X-Existing-IP"]`, repo.values[service.SettingKeyForwardedClientIPHeaders])
 }
+
+// 旧 OpenAI 实验调度字段不能静默忽略，否则升级后的面板会误以为设置已生效。
+func TestUpdateSettingsRejectsDeprecatedAdvancedSchedulerFields(t *testing.T) {
+	for _, field := range []string{
+		"advanced_scheduler_enabled",
+		"openai_advanced_scheduler_enabled",
+		"openai_advanced_scheduler_weight_priority",
+	} {
+		t.Run(field, func(t *testing.T) {
+			h, _ := newStepUpSwitchTestHandler(t, map[string]string{})
+
+			rec := doUpdateSettings(t, h, map[string]any{field: true}, nil)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Contains(t, rec.Body.String(), "DEPRECATED_ADVANCED_SCHEDULER_SETTING")
+			require.Contains(t, rec.Body.String(), field)
+		})
+	}
+}

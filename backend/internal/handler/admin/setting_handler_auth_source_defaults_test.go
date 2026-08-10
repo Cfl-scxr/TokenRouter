@@ -293,13 +293,12 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	handler := NewSettingHandler(svc, nil, nil, nil, paymentConfigService, nil, nil)
 
 	body := map[string]any{
-		"promo_code_enabled":                                      true,
-		"payment_visible_method_alipay_source":                    "easypay",
-		"payment_visible_method_wxpay_source":                     "wxpay",
-		"payment_visible_method_alipay_enabled":                   true,
-		"payment_visible_method_wxpay_enabled":                    false,
-		"openai_advanced_scheduler_enabled":                       true,
-		"openai_advanced_scheduler_subscription_priority_enabled": true,
+		"promo_code_enabled":                               true,
+		"payment_visible_method_alipay_source":             "easypay",
+		"payment_visible_method_wxpay_source":              "wxpay",
+		"payment_visible_method_alipay_enabled":            true,
+		"payment_visible_method_wxpay_enabled":             false,
+		"advanced_scheduler_subscription_priority_enabled": true,
 		"openai_account_quota_auto_pause": map[string]any{
 			"default_threshold_5h": 0.95,
 			"default_threshold_7d": 0.9,
@@ -320,8 +319,7 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, service.VisibleMethodSourceOfficialWechat, repo.values[service.SettingPaymentVisibleMethodWxpaySource])
 	require.Equal(t, "true", repo.values[service.SettingPaymentVisibleMethodAlipayEnabled])
 	require.Equal(t, "false", repo.values[service.SettingPaymentVisibleMethodWxpayEnabled])
-	require.Equal(t, "true", repo.values["openai_advanced_scheduler_enabled"])
-	require.Equal(t, "true", repo.values[service.SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled])
+	require.Equal(t, "true", repo.values[service.SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled])
 	var advanced service.OpsAdvancedSettings
 	require.NoError(t, json.Unmarshal([]byte(repo.values[service.SettingKeyOpsAdvancedSettings]), &advanced))
 	require.True(t, advanced.DataRetention.CleanupEnabled)
@@ -338,8 +336,7 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, service.VisibleMethodSourceOfficialWechat, data["payment_visible_method_wxpay_source"])
 	require.Equal(t, true, data["payment_visible_method_alipay_enabled"])
 	require.Equal(t, false, data["payment_visible_method_wxpay_enabled"])
-	require.Equal(t, true, data["openai_advanced_scheduler_enabled"])
-	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
+	require.Equal(t, true, data["advanced_scheduler_subscription_priority_enabled"])
 	quota, ok := data["openai_account_quota_auto_pause"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, 0.95, quota["default_threshold_5h"])

@@ -136,7 +136,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err != nil {
 		return nil, err
 	}
-	if err := s.normalizeOpenAIAdvancedSchedulerOverrides(settings); err != nil {
+	if err := s.normalizeAdvancedSchedulerOverrides(settings); err != nil {
 		return nil, err
 	}
 	settings.PaymentVisibleMethodAlipaySource = alipaySource
@@ -482,19 +482,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
-	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
-	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)
-	updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled)
-	updates[SettingKeyOpenAIAdvancedSchedulerLBTopK] = settings.OpenAIAdvancedSchedulerLBTopK
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightPriority] = settings.OpenAIAdvancedSchedulerWeightPriority
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightLoad] = settings.OpenAIAdvancedSchedulerWeightLoad
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightQueue] = settings.OpenAIAdvancedSchedulerWeightQueue
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightErrorRate] = settings.OpenAIAdvancedSchedulerWeightErrorRate
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightTTFT] = settings.OpenAIAdvancedSchedulerWeightTTFT
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightReset] = settings.OpenAIAdvancedSchedulerWeightReset
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom] = settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse] = settings.OpenAIAdvancedSchedulerWeightPreviousResponse
-	updates[SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky] = settings.OpenAIAdvancedSchedulerWeightSessionSticky
+	updates[SettingKeyAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.AdvancedSchedulerStickyWeightedEnabled)
+	updates[SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.AdvancedSchedulerSubscriptionPriorityEnabled)
+	updates[SettingKeyAdvancedSchedulerLBTopK] = settings.AdvancedSchedulerLBTopK
+	updates[SettingKeyAdvancedSchedulerWeightPriority] = settings.AdvancedSchedulerWeightPriority
+	updates[SettingKeyAdvancedSchedulerWeightLoad] = settings.AdvancedSchedulerWeightLoad
+	updates[SettingKeyAdvancedSchedulerWeightQueue] = settings.AdvancedSchedulerWeightQueue
+	updates[SettingKeyAdvancedSchedulerWeightErrorRate] = settings.AdvancedSchedulerWeightErrorRate
+	updates[SettingKeyAdvancedSchedulerWeightTTFT] = settings.AdvancedSchedulerWeightTTFT
+	updates[SettingKeyAdvancedSchedulerWeightReset] = settings.AdvancedSchedulerWeightReset
+	updates[SettingKeyAdvancedSchedulerWeightQuotaHeadroom] = settings.AdvancedSchedulerWeightQuotaHeadroom
+	updates[SettingKeyAdvancedSchedulerWeightPreviousResponse] = settings.AdvancedSchedulerWeightPreviousResponse
+	updates[SettingKeyAdvancedSchedulerWeightSessionSticky] = settings.AdvancedSchedulerWeightSessionSticky
 	if settings.OpenAIQuotaAutoPauseSettingsSet {
 		opsAdvanced, err := s.buildOpsAdvancedSettingsWithQuotaAutoPause(ctx, settings.OpenAIQuotaAutoPauseSettings)
 		if err != nil {
@@ -663,24 +662,23 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		expiresAt: time.Now().Add(openAICodexUserAgentCacheTTL).UnixNano(),
 	})
 	userPromptReplacementCache.Store((*compiledUserPromptReplacementConfig)(nil))
-	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
-	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
-		enabled:                     settings.OpenAIAdvancedSchedulerEnabled,
-		stickyWeightedEnabled:       settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
-		subscriptionPriorityEnabled: settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
-		lbTopKOverride:              parsePositiveIntOverride(settings.OpenAIAdvancedSchedulerLBTopK),
-		weightOverrides: parseOpenAIAdvancedSchedulerWeightOverrides(map[string]string{
-			SettingKeyOpenAIAdvancedSchedulerWeightPriority:         settings.OpenAIAdvancedSchedulerWeightPriority,
-			SettingKeyOpenAIAdvancedSchedulerWeightLoad:             settings.OpenAIAdvancedSchedulerWeightLoad,
-			SettingKeyOpenAIAdvancedSchedulerWeightQueue:            settings.OpenAIAdvancedSchedulerWeightQueue,
-			SettingKeyOpenAIAdvancedSchedulerWeightErrorRate:        settings.OpenAIAdvancedSchedulerWeightErrorRate,
-			SettingKeyOpenAIAdvancedSchedulerWeightTTFT:             settings.OpenAIAdvancedSchedulerWeightTTFT,
-			SettingKeyOpenAIAdvancedSchedulerWeightReset:            settings.OpenAIAdvancedSchedulerWeightReset,
-			SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom:    settings.OpenAIAdvancedSchedulerWeightQuotaHeadroom,
-			SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse: settings.OpenAIAdvancedSchedulerWeightPreviousResponse,
-			SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:    settings.OpenAIAdvancedSchedulerWeightSessionSticky,
+	advancedSchedulerSettingSF.Forget("advanced_scheduler_settings")
+	advancedSchedulerSettingCache.Store(&cachedAdvancedSchedulerSetting{
+		stickyWeightedEnabled:       settings.AdvancedSchedulerStickyWeightedEnabled,
+		subscriptionPriorityEnabled: settings.AdvancedSchedulerSubscriptionPriorityEnabled,
+		lbTopKOverride:              parsePositiveIntOverride(settings.AdvancedSchedulerLBTopK),
+		weightOverrides: parseAdvancedSchedulerWeightOverrides(map[string]string{
+			SettingKeyAdvancedSchedulerWeightPriority:         settings.AdvancedSchedulerWeightPriority,
+			SettingKeyAdvancedSchedulerWeightLoad:             settings.AdvancedSchedulerWeightLoad,
+			SettingKeyAdvancedSchedulerWeightQueue:            settings.AdvancedSchedulerWeightQueue,
+			SettingKeyAdvancedSchedulerWeightErrorRate:        settings.AdvancedSchedulerWeightErrorRate,
+			SettingKeyAdvancedSchedulerWeightTTFT:             settings.AdvancedSchedulerWeightTTFT,
+			SettingKeyAdvancedSchedulerWeightReset:            settings.AdvancedSchedulerWeightReset,
+			SettingKeyAdvancedSchedulerWeightQuotaHeadroom:    settings.AdvancedSchedulerWeightQuotaHeadroom,
+			SettingKeyAdvancedSchedulerWeightPreviousResponse: settings.AdvancedSchedulerWeightPreviousResponse,
+			SettingKeyAdvancedSchedulerWeightSessionSticky:    settings.AdvancedSchedulerWeightSessionSticky,
 		}),
-		expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
+		expiresAt: time.Now().Add(advancedSchedulerSettingCacheTTL).UnixNano(),
 	})
 	// 使配额自动暂停缓存失效，并让下一次读取触发重新加载。
 	// 这里无法判断 ops_advanced_settings 是否也被修改，因此采用防御式处理：

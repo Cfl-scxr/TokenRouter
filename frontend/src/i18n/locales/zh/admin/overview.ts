@@ -825,6 +825,7 @@ affiliates: {
         id: 'ID',
         platform: '上游平台',
         displayBrand: '品牌类型',
+        schedulerType: '调度器',
         rateMultiplier: '费率倍数',
         dataSharing: '数据共享',
         sessionIsolation: '会话隔离',
@@ -858,6 +859,7 @@ affiliates: {
         description: '描述',
         platform: '上游平台',
         displayBrand: '品牌类型',
+        schedulerType: '调度器类型',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',
@@ -937,6 +939,11 @@ affiliates: {
         enabledText: '阻止外部分组会话切入',
         disabledText: '允许会话切换到本分组',
         hint: '开启后，如果显式会话最早归属于其他分组，请求不能切换到当前分组使用。'
+      },
+      scheduler: {
+        basic: '基础调度器',
+        advanced: '高级调度器',
+        hint: '基础调度器保留当前默认排序；高级调度器使用通用评分、Top-K 加权与运行时反馈。'
       },
       platforms: {
         all: '全部平台',

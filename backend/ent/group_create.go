@@ -230,6 +230,20 @@ func (_c *GroupCreate) SetNillablePlatform(v *string) *GroupCreate {
 	return _c
 }
 
+// SetSchedulerType sets the "scheduler_type" field.
+func (_c *GroupCreate) SetSchedulerType(v string) *GroupCreate {
+	_c.mutation.SetSchedulerType(v)
+	return _c
+}
+
+// SetNillableSchedulerType sets the "scheduler_type" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSchedulerType(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetSchedulerType(*v)
+	}
+	return _c
+}
+
 // SetDisplayBrand sets the "display_brand" field.
 func (_c *GroupCreate) SetDisplayBrand(v string) *GroupCreate {
 	_c.mutation.SetDisplayBrand(v)
@@ -921,6 +935,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultPlatform
 		_c.mutation.SetPlatform(v)
 	}
+	if _, ok := _c.mutation.SchedulerType(); !ok {
+		v := group.DefaultSchedulerType
+		_c.mutation.SetSchedulerType(v)
+	}
 	if _, ok := _c.mutation.DisplayBrand(); !ok {
 		v := group.DefaultDisplayBrand
 		_c.mutation.SetDisplayBrand(v)
@@ -1102,6 +1120,14 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.Platform(); ok {
 		if err := group.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SchedulerType(); !ok {
+		return &ValidationError{Name: "scheduler_type", err: errors.New(`ent: missing required field "Group.scheduler_type"`)}
+	}
+	if v, ok := _c.mutation.SchedulerType(); ok {
+		if err := group.SchedulerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "scheduler_type", err: fmt.Errorf(`ent: validator failed for field "Group.scheduler_type": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.DisplayBrand(); !ok {
@@ -1289,6 +1315,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
+	}
+	if value, ok := _c.mutation.SchedulerType(); ok {
+		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
+		_node.SchedulerType = value
 	}
 	if value, ok := _c.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)
@@ -1783,6 +1813,18 @@ func (u *GroupUpsert) SetPlatform(v string) *GroupUpsert {
 // UpdatePlatform sets the "platform" field to the value that was provided on create.
 func (u *GroupUpsert) UpdatePlatform() *GroupUpsert {
 	u.SetExcluded(group.FieldPlatform)
+	return u
+}
+
+// SetSchedulerType sets the "scheduler_type" field.
+func (u *GroupUpsert) SetSchedulerType(v string) *GroupUpsert {
+	u.Set(group.FieldSchedulerType, v)
+	return u
+}
+
+// UpdateSchedulerType sets the "scheduler_type" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSchedulerType() *GroupUpsert {
+	u.SetExcluded(group.FieldSchedulerType)
 	return u
 }
 
@@ -2671,6 +2713,20 @@ func (u *GroupUpsertOne) SetPlatform(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdatePlatform() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetSchedulerType sets the "scheduler_type" field.
+func (u *GroupUpsertOne) SetSchedulerType(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulerType(v)
+	})
+}
+
+// UpdateSchedulerType sets the "scheduler_type" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSchedulerType() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulerType()
 	})
 }
 
@@ -3830,6 +3886,20 @@ func (u *GroupUpsertBulk) SetPlatform(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdatePlatform() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetSchedulerType sets the "scheduler_type" field.
+func (u *GroupUpsertBulk) SetSchedulerType(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulerType(v)
+	})
+}
+
+// UpdateSchedulerType sets the "scheduler_type" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSchedulerType() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulerType()
 	})
 }
 

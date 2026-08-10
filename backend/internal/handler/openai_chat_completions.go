@@ -276,7 +276,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
+						h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
@@ -301,7 +301,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 							continue
 						}
 					}
-					h.gatewayService.RecordOpenAIAccountSwitch()
+					h.gatewayService.RecordOpenAIAccountSwitchForSelection(selection)
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
@@ -329,7 +329,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				if !recordedWarning {
 					h.recordOpenAICyberWarning(c, reqLog, apiKey, account, reqModel, statusCode, nil, err.Error())
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
+				h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated && (!recordedWarning || c.Writer.Size() == writerSizeBeforeForward) {
@@ -348,9 +348,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if result != nil {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), true, result.FirstTokenMs)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), true, result.FirstTokenMs)
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), true, nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), true, nil)
 		}
 
 		userAgent := c.GetHeader("User-Agent")

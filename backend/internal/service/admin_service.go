@@ -68,11 +68,11 @@ type AdminService interface {
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
 	// ListAccountsForSchedulerScoreFilter 返回符合过滤条件的全部账号（不分页），
-	// 作为账号列表页计算 OpenAI 调度分数的过滤范围池。
+	// 作为账号列表页计算高级调度分数的过滤范围池。
 	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
-	// ListOpenAISchedulableAccountsForSchedulerScore 返回指定分组（nil 为未分组）内
-	// 可调度的 OpenAI 账号，用于按组计算调度分数。
-	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error)
+	// ListSchedulableAccountsForAdvancedSchedulerScore 返回指定分组内可调度账号，
+	// 用于按高级分组计算调度分数。
+	ListSchedulableAccountsForAdvancedSchedulerScore(ctx context.Context, groupID *int64, platform string) ([]Account, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -210,9 +210,11 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
-	Name           string
-	Description    string
-	Platform       string
+	Name        string
+	Description string
+	Platform    string
+	// SchedulerType 为空时使用基础调度器，保持新分组的历史默认行为。
+	SchedulerType  string
 	DisplayBrand   string
 	SortOrder      *int
 	RateMultiplier float64
@@ -279,9 +281,11 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
-	Name           string
-	Description    *string
-	Platform       string
+	Name        string
+	Description *string
+	Platform    string
+	// SchedulerType 为 nil 时保留原值。
+	SchedulerType  *string
 	DisplayBrand   *string
 	SortOrder      *int
 	RateMultiplier *float64 // 使用指针以支持设置为0

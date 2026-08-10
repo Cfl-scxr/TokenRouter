@@ -248,31 +248,44 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.gatewaySections.openai": "OpenAI",
     "admin.settings.gatewaySections.antigravity": "Antigravity",
     "admin.settings.gatewaySections.ollamaCloud": "Ollama Cloud",
-    "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
-    "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
+    "admin.settings.scheduling.advancedTitle": "通用高级调度器",
+    "admin.settings.scheduling.advancedDescription": "高级调度器按分组启用，使用通用候选评分、Top-K 加权和运行时错误率与首 token 延迟反馈。未启用高级调度器的分组继续使用基础调度器。",
+    "admin.settings.scheduling.advancedHelp.trigger": "查看高级调度器评分与选择原理",
+    "admin.settings.scheduling.advancedHelp.title": "高级调度器如何工作",
+    "admin.settings.scheduling.advancedHelp.summary": "请求会先通过硬过滤，再对剩余候选账号打分；高分账号进入 Top-K 候选池。",
+    "admin.settings.scheduling.advancedHelp.formula": "总分 = 各信号的归一化得分 × 对应权重 + 可选的粘性加分",
+    "admin.settings.scheduling.advancedHelp.hardFilterTitle": "先硬过滤：",
+    "admin.settings.scheduling.advancedHelp.hardFilter": "按分组、模型与能力、账号状态、限流、代理和并发槽位排除不可用账号。",
+    "admin.settings.scheduling.advancedHelp.scoreTitle": "再计算分数：",
+    "admin.settings.scheduling.advancedHelp.score": "优先级、低负载、低排队、低错误率、低首 token 延迟、窗口重置和额度余量会按权重加总；缺失的可选信号保持中性。",
+    "admin.settings.scheduling.advancedHelp.feedbackTitle": "持续反馈：",
+    "admin.settings.scheduling.advancedHelp.feedback": "请求结果和首 token 延迟以平滑统计更新账号表现，让后续请求避开近期表现较差的账号。",
+    "admin.settings.scheduling.advancedHelp.selectionTitle": "Top-K 加权选择：",
+    "admin.settings.scheduling.advancedHelp.selection": "取分数最高的 Top-K，再按分数权重随机选择，避免单一账号长期垄断；开启粘性加权后，上一响应和会话账号会获得额外优先。",
+    "admin.settings.scheduling.advancedHelp.boundary": "每次尝试都会重查硬约束；发生分组回退时按目标分组重新调度。响应流开始后不会中途切换账号。",
     "admin.settings.openaiQuotaAutoPause.title": "OpenAI 账号配额自动暂停",
     "admin.settings.openaiQuotaAutoPause.description": "当 OpenAI 账号 5h / 7d 用量达到阈值时，调度会自动跳过该账号；窗口滚动后自动恢复。账号级阈值优先于此全局默认值。",
     "admin.settings.openaiQuotaAutoPause.default5h": "默认 5h 用量阈值 (%)",
     "admin.settings.openaiQuotaAutoPause.default7d": "默认 7d 用量阈值 (%)",
     "admin.settings.openaiQuotaAutoPause.thresholdHint": "取值 0-100，留空或 0 表示不启用全局默认阈值。",
     "admin.settings.openaiQuotaAutoPause.rangeError": "OpenAI 配额自动暂停阈值必须在 0-100 之间",
-    "admin.settings.openaiExperimentalScheduler.stickyWeightedTitle": "粘性加权",
-    "admin.settings.openaiExperimentalScheduler.stickyWeightedDescription": "开启后 previous_response_id 和 session_hash 粘性进入高级调度打分；关闭时仍按旧逻辑硬命中粘性账号。",
-    "admin.settings.openaiExperimentalScheduler.subscriptionPriorityTitle": "订阅优先",
-    "admin.settings.openaiExperimentalScheduler.subscriptionPriorityDescription": "开启后先在 ChatGPT 订阅账号池中按权值选取；订阅池拿不到席位时再回退到非订阅账号池。",
-    "admin.settings.openaiExperimentalScheduler.weightsTitle": "调度权值覆盖",
-    "admin.settings.openaiExperimentalScheduler.weightsDescription": "留空时使用配置/环境变量值；配置未设置时使用内置默认值。页面非空设置优先。",
-    "admin.settings.openaiExperimentalScheduler.defaultPlaceholder": "配置/默认：{value}",
-    "admin.settings.openaiExperimentalScheduler.topKLabel": "TopK",
-    "admin.settings.openaiExperimentalScheduler.priorityWeight": "优先级",
-    "admin.settings.openaiExperimentalScheduler.loadWeight": "负载",
-    "admin.settings.openaiExperimentalScheduler.queueWeight": "排队",
-    "admin.settings.openaiExperimentalScheduler.errorRateWeight": "错误率",
-    "admin.settings.openaiExperimentalScheduler.ttftWeight": "首包延迟",
-    "admin.settings.openaiExperimentalScheduler.resetWeight": "重置窗口",
-    "admin.settings.openaiExperimentalScheduler.quotaHeadroomWeight": "额度余量",
-    "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
-    "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
+    "admin.settings.scheduling.stickyWeightedTitle": "粘性加权",
+    "admin.settings.scheduling.stickyWeightedDescription": "开启后，上一响应和会话粘性作为评分信号参与选择；关闭时保留既有粘性优先行为。",
+    "admin.settings.scheduling.subscriptionPriorityTitle": "订阅优先",
+    "admin.settings.scheduling.subscriptionPriorityDescription": "具备订阅能力的账号会获得订阅优先评分；缺少该能力的账号保持中性。",
+    "admin.settings.scheduling.weightsTitle": "高级调度权重",
+    "admin.settings.scheduling.weightsDescription": "留空时使用配置或内置默认值；非空设置优先。权重对所有启用高级调度器的分组生效。",
+    "admin.settings.scheduling.defaultPlaceholder": "配置/默认：{value}",
+    "admin.settings.scheduling.topKLabel": "Top-K",
+    "admin.settings.scheduling.priorityWeight": "优先级",
+    "admin.settings.scheduling.loadWeight": "负载",
+    "admin.settings.scheduling.queueWeight": "排队",
+    "admin.settings.scheduling.errorRateWeight": "错误率",
+    "admin.settings.scheduling.ttftWeight": "首 token 延迟",
+    "admin.settings.scheduling.resetWeight": "窗口重置",
+    "admin.settings.scheduling.quotaHeadroomWeight": "额度余量",
+    "admin.settings.scheduling.previousResponseWeight": "上一响应粘性",
+    "admin.settings.scheduling.sessionStickyWeight": "会话粘性",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -580,29 +593,28 @@ const baseSettingsResponse = {
   payment_visible_method_wxpay_source: "invalid-source",
   payment_visible_method_alipay_enabled: true,
   payment_visible_method_wxpay_enabled: true,
-  openai_advanced_scheduler_enabled: false,
-  openai_advanced_scheduler_sticky_weighted_enabled: false,
-  openai_advanced_scheduler_subscription_priority_enabled: false,
-  openai_advanced_scheduler_lb_top_k: "",
-  openai_advanced_scheduler_weight_priority: "",
-  openai_advanced_scheduler_weight_load: "",
-  openai_advanced_scheduler_weight_queue: "",
-  openai_advanced_scheduler_weight_error_rate: "",
-  openai_advanced_scheduler_weight_ttft: "",
-  openai_advanced_scheduler_weight_reset: "",
-  openai_advanced_scheduler_weight_quota_headroom: "",
-  openai_advanced_scheduler_weight_previous_response: "",
-  openai_advanced_scheduler_weight_session_sticky: "",
-  openai_advanced_scheduler_effective_lb_top_k: "7",
-  openai_advanced_scheduler_effective_weight_priority: "1",
-  openai_advanced_scheduler_effective_weight_load: "1",
-  openai_advanced_scheduler_effective_weight_queue: "0.7",
-  openai_advanced_scheduler_effective_weight_error_rate: "0.8",
-  openai_advanced_scheduler_effective_weight_ttft: "0.5",
-  openai_advanced_scheduler_effective_weight_reset: "0",
-  openai_advanced_scheduler_effective_weight_quota_headroom: "0",
-  openai_advanced_scheduler_effective_weight_previous_response: "5",
-  openai_advanced_scheduler_effective_weight_session_sticky: "3",
+  advanced_scheduler_sticky_weighted_enabled: false,
+  advanced_scheduler_subscription_priority_enabled: false,
+  advanced_scheduler_lb_top_k: "",
+  advanced_scheduler_weight_priority: "",
+  advanced_scheduler_weight_load: "",
+  advanced_scheduler_weight_queue: "",
+  advanced_scheduler_weight_error_rate: "",
+  advanced_scheduler_weight_ttft: "",
+  advanced_scheduler_weight_reset: "",
+  advanced_scheduler_weight_quota_headroom: "",
+  advanced_scheduler_weight_previous_response: "",
+  advanced_scheduler_weight_session_sticky: "",
+  advanced_scheduler_effective_lb_top_k: "7",
+  advanced_scheduler_effective_weight_priority: "1",
+  advanced_scheduler_effective_weight_load: "1",
+  advanced_scheduler_effective_weight_queue: "0.7",
+  advanced_scheduler_effective_weight_error_rate: "0.8",
+  advanced_scheduler_effective_weight_ttft: "0.5",
+  advanced_scheduler_effective_weight_reset: "0",
+  advanced_scheduler_effective_weight_quota_headroom: "0",
+  advanced_scheduler_effective_weight_previous_response: "5",
+  advanced_scheduler_effective_weight_session_sticky: "3",
   openai_account_quota_auto_pause: {
     default_threshold_5h: 0,
     default_threshold_7d: 0,
@@ -1654,9 +1666,12 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(
       wrapper.get('[data-testid="gateway-card-openai-oauth-defaults"]').isVisible(),
     ).toBe(true);
+    expect(wrapper.get('[data-testid="gateway-card-scheduling"]').isVisible()).toBe(true);
     expect(
-      wrapper.get('[data-testid="gateway-scheduling-openai"]').isVisible(),
-    ).toBe(true);
+      wrapper
+        .get('[data-testid="gateway-scheduling-general-advanced"]')
+        .isVisible(),
+    ).toBe(false);
     expect(
       wrapper
         .get('[data-testid="gateway-card-user-prompt-replacement"]')
@@ -1771,16 +1786,43 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
-  it("renders advanced scheduler copy as local experimental gateway policy", async () => {
+  it("renders the advanced scheduler only in General and omits the retired global switch", async () => {
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
 
-    expect(wrapper.text()).toContain("OpenAI 实验调度策略");
-    expect(wrapper.text()).toContain(
-      "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑",
+    const advancedCard = wrapper.get(
+      '[data-testid="gateway-scheduling-general-advanced"]',
     );
-    expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
+    expect(advancedCard.isVisible()).toBe(true);
+    expect(advancedCard.classes()).toContain("border-t");
+    expect(advancedCard.find("h3").text()).toBe("通用高级调度器");
+    expect(
+      advancedCard
+        .get('[data-testid="advanced-scheduler-help"] button')
+        .attributes("title"),
+    ).toBe("查看高级调度器评分与选择原理");
+    expect(advancedCard.text()).toContain("通用高级调度器");
+    expect(wrapper.text()).not.toContain("OpenAI 实验调度策略");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        advanced_scheduler_sticky_weighted_enabled: false,
+        advanced_scheduler_subscription_priority_enabled: false,
+      }),
+    );
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty(
+      "advanced_scheduler_enabled",
+    );
+
+    await openGatewaySection(wrapper, "openai");
+    expect(
+      wrapper.get('[data-testid="settings-openai-quota-auto-pause-5h"]').isVisible(),
+    ).toBe(true);
   });
 
   it("does not render removed upstream billing probe and rate scheduling controls", async () => {

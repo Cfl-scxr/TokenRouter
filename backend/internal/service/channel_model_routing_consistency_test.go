@@ -85,7 +85,7 @@ func TestGatewayAnthropicAccountSupportMapsBeforePlatformNormalization(t *testin
 	}
 }
 
-func TestOpenAIAdvancedSchedulerUsesRoutingModelAndKeepsRequestedModel(t *testing.T) {
+func TestAdvancedSchedulerUsesRoutingModelAndKeepsRequestedModel(t *testing.T) {
 	account := &Account{
 		ID:       72,
 		Platform: PlatformOpenAI,

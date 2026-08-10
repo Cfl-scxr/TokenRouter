@@ -57,6 +57,7 @@ type GeminiMessagesCompatService struct {
 	antigravityGatewayService *AntigravityGatewayService
 	cfg                       *config.Config
 	responseHeaderFilter      *responseheaders.CompiledHeaderFilter
+	advancedAccountStats      *advancedAccountRuntimeStats
 }
 
 func (s *GeminiMessagesCompatService) readUpstreamErrorBody(resp *http.Response) []byte {
@@ -93,6 +94,7 @@ func NewGeminiMessagesCompatService(
 		antigravityGatewayService: antigravityGatewayService,
 		cfg:                       cfg,
 		responseHeaderFilter:      compileResponseHeaderFilter(cfg),
+		advancedAccountStats:      newAdvancedAccountRuntimeStats(),
 	}
 }
 
@@ -107,22 +109,24 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 1. 确定目标平台和调度模式
-	// Determine target platform and scheduling mode
-	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
+	platform, useMixedScheduling, hasForcePlatform, group, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
 
 	cacheKey := "gemini:" + sessionHash
+	usesAdvancedScheduler := !hasForcePlatform && group != nil && group.UsesAdvancedScheduler()
+	advancedSettings := s.advancedSchedulerRuntimeSettings(ctx)
 
 	// 2. 尝试粘性会话命中
-	// Try sticky session hit
-	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
-		return account, nil
+	// 高级粘性加权会在全部硬过滤后的候选评分中处理缓存绑定，因此不允许旧硬粘性提前返回。
+	if !usesAdvancedScheduler || !advancedSettings.stickyWeightedEnabled {
+		if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
+			return account, nil
+		}
 	}
 
 	// 3. 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
-	// Query schedulable accounts (force platform mode: try group first, fallback to all)
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -135,9 +139,14 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		}
 	}
 
-	// 4. 按优先级 + LRU 选择最佳账号
-	// Select best account by priority + LRU
-	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
+	// 4. 先执行既有硬过滤，再由分组选择基础或高级排序。
+	eligible := s.eligibleGeminiAccounts(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
+	var selected *Account
+	if usesAdvancedScheduler {
+		selected = s.selectAdvancedGeminiAccount(ctx, groupID, sessionHash, cacheKey, eligible, advancedSettings)
+	} else {
+		selected = s.selectBestGeminiAccountFromEligible(eligible)
+	}
 
 	if selected == nil {
 		if err := s.groupModelUnsupportedErrorIfApplicable(ctx, accounts, requestedModel, platform, excludedIDs, useMixedScheduling); err != nil {
@@ -150,7 +159,6 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	}
 
 	// 5. 设置粘性会话绑定
-	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
 	}
@@ -159,34 +167,30 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 }
 
 // resolvePlatformAndSchedulingMode 解析目标平台和调度模式。
-// 返回：平台名称、是否使用混合调度、是否强制平台、错误。
-//
-// resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
-// Returns: platform name, whether to use mixed scheduling, whether force platform, error.
-func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
+// 返回：平台名称、是否使用混合调度、是否强制平台、已解析分组、错误。
+func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, group *Group, err error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
-		return forcePlatform, false, true, nil
+		return forcePlatform, false, true, nil, nil
 	}
 
 	if groupID != nil {
 		// 根据分组 platform 决定查询哪种账号
-		var group *Group
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
 		} else {
 			group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
 			if err != nil {
-				return "", false, false, fmt.Errorf("get group failed: %w", err)
+				return "", false, false, nil, fmt.Errorf("get group failed: %w", err)
 			}
 		}
 		// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-		return group.Platform, group.Platform == PlatformGemini, false, nil
+		return group.Platform, group.Platform == PlatformGemini, false, group, nil
 	}
 
 	// 无分组时只使用原生 gemini 平台
-	return PlatformGemini, true, false, nil
+	return PlatformGemini, true, false, nil, nil
 }
 
 // tryStickySessionHit 尝试从粘性会话获取账号。
@@ -333,8 +337,20 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 	platform string,
 	useMixedScheduling bool,
 ) *Account {
-	var selected *Account
+	return s.selectBestGeminiAccountFromEligible(s.eligibleGeminiAccounts(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling))
+}
+
+// eligibleGeminiAccounts 在高级和基础调度器前复用 Gemini 现有的全部硬过滤规则。
+func (s *GeminiMessagesCompatService) eligibleGeminiAccounts(
+	ctx context.Context,
+	accounts []Account,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	platform string,
+	useMixedScheduling bool,
+) []*Account {
 	precheckResult := s.buildPreCheckUsageResultMap(ctx, accounts, requestedModel)
+	eligible := make([]*Account, 0, len(accounts))
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -348,19 +364,106 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 		if !s.isAccountUsableForRequestWithPrecheck(ctx, acc, requestedModel, platform, useMixedScheduling, precheckResult) {
 			continue
 		}
-
-		// 选择最佳账号
-		if selected == nil {
-			selected = acc
-			continue
-		}
-
-		if s.isBetterGeminiAccount(acc, selected) {
-			selected = acc
-		}
+		eligible = append(eligible, acc)
 	}
 
+	return eligible
+}
+
+func (s *GeminiMessagesCompatService) selectBestGeminiAccountFromEligible(eligible []*Account) *Account {
+	var selected *Account
+	for _, account := range eligible {
+		if account == nil {
+			continue
+		}
+		if selected == nil || s.isBetterGeminiAccount(account, selected) {
+			selected = account
+		}
+	}
 	return selected
+}
+
+// groupUsesAdvancedScheduler 只让最终分组显式选择高级模式；无分组和强制平台路径保持基础调度。
+func (s *GeminiMessagesCompatService) groupUsesAdvancedScheduler(ctx context.Context, groupID *int64, hasForcePlatform bool) bool {
+	if s == nil || hasForcePlatform || groupID == nil || *groupID <= 0 {
+		return false
+	}
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == *groupID {
+		return group.UsesAdvancedScheduler()
+	}
+	if s.schedulerSnapshot != nil {
+		if group, err := s.schedulerSnapshot.GetGroupByID(ctx, *groupID); err == nil && group != nil {
+			return group.UsesAdvancedScheduler()
+		}
+	}
+	if s.groupRepo == nil {
+		return false
+	}
+	group, err := s.groupRepo.GetByIDLite(ctx, *groupID)
+	return err == nil && group != nil && group.UsesAdvancedScheduler()
+}
+
+func (s *GeminiMessagesCompatService) advancedSchedulerStats() *advancedAccountRuntimeStats {
+	if s == nil {
+		return nil
+	}
+	if s.advancedAccountStats == nil {
+		s.advancedAccountStats = newAdvancedAccountRuntimeStats()
+	}
+	return s.advancedAccountStats
+}
+
+func (s *GeminiMessagesCompatService) advancedSchedulerRuntimeSettings(ctx context.Context) advancedSchedulerRuntimeSettings {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.advancedSchedulerRuntimeSettings(ctx)
+}
+
+func (s *GeminiMessagesCompatService) advancedSchedulerWeightsForRequest(ctx context.Context) GatewayAdvancedSchedulerScoreWeightsView {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.openAIWSSchedulerWeightsForRequest(ctx)
+}
+
+func (s *GeminiMessagesCompatService) advancedSchedulerLBTopKForRequest(ctx context.Context) int {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.openAIWSLBTopKForRequest(ctx)
+}
+
+// selectAdvancedGeminiAccount 在 Gemini 已完成硬过滤后复用通用高级评分与 Top-K 选择。
+func (s *GeminiMessagesCompatService) selectAdvancedGeminiAccount(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	cacheKey string,
+	eligible []*Account,
+	settings advancedSchedulerRuntimeSettings,
+) *Account {
+	if len(eligible) == 0 {
+		return nil
+	}
+	var stickyAccountID int64
+	if sessionHash != "" && s.cache != nil {
+		stickyAccountID, _ = s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	}
+	input := advancedSchedulerSelectionInput{
+		GroupID:         groupID,
+		SessionHash:     cacheKey,
+		StickyAccountID: stickyAccountID,
+		StickyWeighted:  settings.stickyWeightedEnabled,
+		TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+	}
+	candidates, _ := scoreAdvancedSchedulerCandidates(
+		eligible,
+		nil,
+		s.advancedSchedulerStats(),
+		s.advancedSchedulerWeightsForRequest(ctx),
+		input,
+		time.Now(),
+	)
+	selectionOrder := buildAdvancedSchedulerSelectionOrder(candidates, input)
+	if len(selectionOrder) == 0 {
+		return nil
+	}
+	return selectionOrder[0].account
 }
 
 // groupModelUnsupportedErrorIfApplicable 在确认是分组模型限制时返回 typed error。
@@ -610,6 +713,31 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 
 	if selected == nil {
 		return nil, errors.New("no available Gemini accounts")
+	}
+
+	// AI Studio 端点的账号类型分级是能力约束，不能被高级调度分数跨级覆盖；
+	// 仅在同一能力等级中使用通用高级评分。
+	if s.groupUsesAdvancedScheduler(ctx, groupID, false) {
+		bestRank := rank(selected)
+		if bestRank < 999 {
+			eligible := make([]*Account, 0, len(accounts))
+			for i := range accounts {
+				account := &accounts[i]
+				if rank(account) == bestRank {
+					eligible = append(eligible, account)
+				}
+			}
+			if advanced := s.selectAdvancedGeminiAccount(
+				ctx,
+				groupID,
+				"",
+				"",
+				eligible,
+				s.advancedSchedulerRuntimeSettings(ctx),
+			); advanced != nil {
+				selected = advanced
+			}
+		}
 	}
 	return s.hydrateSelectedAccount(ctx, selected)
 }

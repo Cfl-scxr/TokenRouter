@@ -189,7 +189,36 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
+	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	resolvedCtx, resolvedGroupID, err := s.resolveOpenAISchedulerGroup(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	ctx = resolvedCtx
+	groupID = resolvedGroupID
+	if s.groupUsesAdvancedScheduler(ctx, groupID) {
+		selection, _, selectErr := s.SelectAccountWithScheduler(
+			withAdvancedSchedulerNoSlotSelection(ctx),
+			groupID,
+			"",
+			sessionHash,
+			requestedModel,
+			excludedIDs,
+			OpenAIUpstreamTransportAny,
+			false,
+		)
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		if selection == nil || selection.Account == nil {
+			return nil, ErrNoAvailableAccounts
+		}
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+		return selection.Account, nil
+	}
+	return s.selectAccountForModelWithExclusions(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "")
 }
 
 func shouldUseGroupModelUnsupportedError(ctx context.Context, accounts []Account, requestedModel string) bool {
@@ -1263,6 +1292,9 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	if isAdvancedSchedulerNoSlotSelection(ctx) {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+	}
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}

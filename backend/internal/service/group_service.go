@@ -124,6 +124,7 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		Name:                   req.Name,
 		Description:            req.Description,
 		Platform:               PlatformAnthropic,
+		SchedulerType:          GroupSchedulerTypeBasic,
 		AllowedClientProtocols: defaultGroupClientProtocols(PlatformAnthropic),
 		RateMultiplier:         req.RateMultiplier,
 		IsExclusive:            req.IsExclusive,

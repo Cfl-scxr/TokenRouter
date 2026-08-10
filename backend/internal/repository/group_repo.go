@@ -81,10 +81,16 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if groupIn == nil {
 		return errors.New("group is nil")
 	}
+	schedulerType, err := service.NormalizeGroupSchedulerType(string(groupIn.SchedulerType))
+	if err != nil {
+		return err
+	}
+	groupIn.SchedulerType = schedulerType
 	builder := client.Group.Create().
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
+		SetSchedulerType(string(groupIn.SchedulerType)).
 		SetDisplayBrand(groupIn.DisplayBrand).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetSortOrder(groupIn.SortOrder).
@@ -256,6 +262,14 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	if groupIn == nil {
+		return errors.New("group is nil")
+	}
+	schedulerType, err := service.NormalizeGroupSchedulerType(string(groupIn.SchedulerType))
+	if err != nil {
+		return err
+	}
+	groupIn.SchedulerType = schedulerType
 	client := clientFromContext(ctx, r.client)
 	sqlq := r.sqlExecutorFromContext(ctx)
 
@@ -263,6 +277,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
+		SetSchedulerType(string(schedulerType)).
 		SetDisplayBrand(groupIn.DisplayBrand).
 		SetRateMultiplier(groupIn.RateMultiplier).
 		SetSortOrder(groupIn.SortOrder).

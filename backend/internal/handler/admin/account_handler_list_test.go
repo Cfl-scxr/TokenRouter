@@ -67,7 +67,7 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			Concurrency: 10,
 			Priority:    1,
 			AccountGroups: []service.AccountGroup{
-				{AccountID: 101, GroupID: groupID, Priority: 100, Group: &service.Group{ID: groupID, Name: "openai"}},
+				{AccountID: 101, GroupID: groupID, Priority: 100, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 			},
 			GroupIDs:  []int64{groupID},
 			CreatedAt: now,
@@ -83,7 +83,7 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			Concurrency: 10,
 			Priority:    100000,
 			AccountGroups: []service.AccountGroup{
-				{AccountID: 102, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai"}},
+				{AccountID: 102, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 			},
 			GroupIDs:  []int64{groupID},
 			CreatedAt: now,
@@ -198,7 +198,7 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToFilter(t *testing.T) {
 		Concurrency: 10,
 		Priority:    100000,
 		AccountGroups: []service.AccountGroup{
-			{AccountID: 201, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai"}},
+			{AccountID: 201, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 		},
 		GroupIDs:  []int64{groupID},
 		CreatedAt: now,
@@ -214,7 +214,7 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToFilter(t *testing.T) {
 		Concurrency: 10,
 		Priority:    1,
 		AccountGroups: []service.AccountGroup{
-			{AccountID: 202, GroupID: groupID, Priority: 2, Group: &service.Group{ID: groupID, Name: "openai"}},
+			{AccountID: 202, GroupID: groupID, Priority: 2, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 		},
 		GroupIDs:  []int64{groupID},
 		CreatedAt: now,

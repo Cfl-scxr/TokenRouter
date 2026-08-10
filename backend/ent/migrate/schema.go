@@ -884,6 +884,7 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
 		{Name: "duplicate_operation_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: "anthropic"},
+		{Name: "scheduler_type", Type: field.TypeString, Size: 16, Default: "basic"},
 		{Name: "display_brand", Type: field.TypeString, Size: 50, Default: ""},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
 		{Name: "allow_batch_image_generation", Type: field.TypeBool, Default: false},
@@ -958,17 +959,17 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[40]},
+				Columns: []*schema.Column{GroupsColumns[41]},
 			},
 			{
 				Name:    "group_data_sharing_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[53]},
+				Columns: []*schema.Column{GroupsColumns[54]},
 			},
 			{
 				Name:    "group_session_isolation_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[54]},
+				Columns: []*schema.Column{GroupsColumns[55]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",

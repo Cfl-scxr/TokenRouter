@@ -79,6 +79,87 @@ describe('HelpTooltip', () => {
     wrapper.unmount()
   })
 
+  it('supports hover and click together, with click keeping details open', async () => {
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: {
+        content: 'combined details',
+        trigger: 'both',
+        placement: 'bottom',
+      },
+    })
+
+    const trigger = wrapper.get('.group')
+    const tooltip = getTooltipElement()
+
+    await trigger.trigger('mouseenter')
+    await nextTick()
+    expect(tooltip.style.display).not.toBe('none')
+
+    await trigger.trigger('mouseleave')
+    await nextTick()
+    expect(tooltip.style.display).toBe('none')
+
+    await trigger.trigger('click')
+    await nextTick()
+    expect(tooltip.style.display).not.toBe('none')
+
+    await trigger.trigger('mouseleave')
+    await nextTick()
+    expect(tooltip.style.display).not.toBe('none')
+
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(tooltip.style.display).toBe('none')
+
+    wrapper.unmount()
+  })
+
+  it('flips a bottom tooltip above the trigger when the viewport has no space below', async () => {
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(720)
+
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: {
+        content: 'positioned details',
+        placement: 'bottom',
+      },
+    })
+
+    const trigger = wrapper.get('.group')
+    trigger.element.getBoundingClientRect = vi.fn(() => ({
+      top: 620,
+      left: 600,
+      width: 24,
+      height: 24,
+      right: 624,
+      bottom: 644,
+      x: 600,
+      y: 620,
+      toJSON: () => ({}),
+    }))
+    const tooltip = getTooltipElement()
+    tooltip.getBoundingClientRect = vi.fn(() => ({
+      top: 0,
+      left: 0,
+      width: 320,
+      height: 240,
+      right: 320,
+      bottom: 240,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }))
+
+    await trigger.trigger('mouseenter')
+    await nextTick()
+
+    expect(tooltip.style.top).toBe('calc(612px)')
+    expect(tooltip.classList).toContain('-translate-y-full')
+
+    wrapper.unmount()
+  })
+
   it('uses viewport coordinates and follows the trigger after scrolling', async () => {
     vi.spyOn(window, 'scrollX', 'get').mockReturnValue(240)
     vi.spyOn(window, 'scrollY', 'get').mockReturnValue(600)

@@ -33,6 +33,7 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
+	var resolvedGroup *Group
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		platform = forcePlatform
@@ -43,10 +44,35 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		}
 		groupID = resolvedGroupID
 		ctx = s.withGroupContext(ctx, group)
+		resolvedGroup = group
 		platform = group.Platform
 	} else {
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
+	}
+
+	// count_tokens 与可用性探测不占并发槽，但高级分组仍必须复用与主请求相同的
+	// 最终分组、硬过滤和评分逻辑，不能退回基础排序。
+	if resolvedGroup != nil && resolvedGroup.UsesAdvancedScheduler() {
+		selection, err := s.SelectAccountWithLoadAwareness(
+			withAdvancedSchedulerNoSlotSelection(ctx),
+			groupID,
+			sessionHash,
+			requestedModel,
+			excludedIDs,
+			"",
+			0,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if selection == nil || selection.Account == nil {
+			return nil, ErrNoAvailableAccounts
+		}
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+		return selection.Account, nil
 	}
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
@@ -100,6 +126,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	ctx = s.withGroupContext(ctx, group)
+	usesAdvancedScheduler := group != nil && group.UsesAdvancedScheduler()
+	// 高级调度开启粘性加权后，旧硬粘性不能抢在评分前返回；否则 session
+	// 粘性不会作为统一候选评分的一部分。关闭加权时保留原有硬粘性语义。
+	advancedStickyWeighted := usesAdvancedScheduler && s.advancedSchedulerRuntimeSettings(ctx).stickyWeightedEnabled
 
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -140,7 +170,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			derefGroupID(groupID), groupPlatform, requestedModel, shortSessionHash(sessionHash), stickyAccountID, cfg.LoadBatchEnabled, s.concurrencyService != nil)
 	}
 
-	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
+	// 基础调度器保留原有无负载批路径。高级分组即使没有负载批服务，
+	// 也必须进入统一评分核心，并将缺失负载作为中性信号处理。
+	if !usesAdvancedScheduler && (s.concurrencyService == nil || !cfg.LoadBatchEnabled) {
 
 		localExcluded := make(map[int64]struct{})
 		for k, v := range excludedIDs {
@@ -247,7 +279,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	if len(routingAccountIDs) > 0 && s.concurrencyService != nil {
+	if len(routingAccountIDs) > 0 && (s.concurrencyService != nil || usesAdvancedScheduler) {
 
 		var routingCandidates []*Account
 		var filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost int
@@ -264,6 +296,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				} else {
 					filteredUnsched++
 				}
+				continue
+			}
+			if group != nil && group.RequirePrivacySet && !account.IsPrivacySet() {
+				_ = s.accountRepo.SetError(ctx, account.ID,
+					fmt.Sprintf("Privacy not set, required by group [%s]", group.Name))
 				continue
 			}
 			if !s.isAccountAllowedForPlatform(account, platform, useMixed) {
@@ -309,8 +346,16 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		if len(routingCandidates) > 0 {
+			if usesAdvancedScheduler && (s.concurrencyService == nil || !cfg.LoadBatchEnabled) {
+				if selection, ok, selectErr := s.tryAcquireByAdvancedSchedulerWithoutLoad(ctx, groupID, sessionHash, routingCandidates); selectErr != nil {
+					return nil, selectErr
+				} else if ok {
+					return selection, nil
+				}
+				return nil, ErrNoAvailableAccounts
+			}
 
-			if sessionHash != "" && stickyAccountID > 0 {
+			if (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 {
 				slog.Debug("sticky.layer1_5_checking",
 					"sticky_account_id", stickyAccountID,
 					"in_routing_list", containsInt64(routingAccountIDs, stickyAccountID),
@@ -412,15 +457,25 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			var routingAvailable []accountWithLoad
 			for _, acc := range routingCandidates {
 				loadInfo := routingLoadMap[acc.ID]
-				if loadInfo == nil {
+				if loadInfo == nil && !usesAdvancedScheduler {
 					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 				}
-				if loadInfo.LoadRate < 100 {
+				if loadInfo == nil || loadInfo.LoadRate < 100 {
 					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
 				}
 			}
 
 			if len(routingAvailable) > 0 {
+				// 模型路由只负责提供硬约束候选；高级分组仍统一交给通用评分核心，
+				// 候选耗尽后不能再降级到基础排序。
+				if usesAdvancedScheduler {
+					if selection, ok, selectErr := s.tryAcquireByAdvancedScheduler(ctx, groupID, sessionHash, routingAvailable); selectErr != nil {
+						return nil, selectErr
+					} else if ok {
+						return selection, nil
+					}
+					return nil, ErrNoAvailableAccounts
+				}
 
 				sort.SliceStable(routingAvailable, func(i, j int) bool {
 					a, b := routingAvailable[i], routingAvailable[j]
@@ -482,7 +537,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	if len(routingAccountIDs) == 0 && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
+	if len(routingAccountIDs) == 0 && (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
@@ -614,6 +669,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 		}
+		if group != nil && group.RequirePrivacySet && !acc.IsPrivacySet() {
+			_ = s.accountRepo.SetError(ctx, acc.ID,
+				fmt.Sprintf("Privacy not set, required by group [%s]", group.Name))
+			continue
+		}
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
 			continue
 		}
@@ -648,6 +708,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, ErrNoAvailableAccounts
 	}
 
+	if usesAdvancedScheduler && (s.concurrencyService == nil || !cfg.LoadBatchEnabled) {
+		if selection, ok, selectErr := s.tryAcquireByAdvancedSchedulerWithoutLoad(ctx, groupID, sessionHash, candidates); selectErr != nil {
+			return nil, selectErr
+		} else if ok {
+			return selection, nil
+		}
+		return nil, ErrNoAvailableAccounts
+	}
+
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
@@ -658,6 +727,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
+		if group != nil && group.UsesAdvancedScheduler() {
+			if result, ok, advancedErr := s.tryAcquireByAdvancedSchedulerWithoutLoad(ctx, groupID, sessionHash, candidates); advancedErr != nil {
+				return nil, advancedErr
+			} else if ok {
+				return result, nil
+			}
+			return nil, ErrNoAvailableAccounts
+		}
 		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
 			return nil, legacyErr
 		} else if ok {
@@ -667,15 +744,26 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		var available []accountWithLoad
 		for _, acc := range candidates {
 			loadInfo := loadMap[acc.ID]
-			if loadInfo == nil {
+			if loadInfo == nil && !usesAdvancedScheduler {
 				loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 			}
-			if loadInfo.LoadRate < 100 {
+			if loadInfo == nil || loadInfo.LoadRate < 100 {
 				available = append(available, accountWithLoad{
 					account:  acc,
 					loadInfo: loadInfo,
 				})
 			}
+		}
+
+		if group != nil && group.UsesAdvancedScheduler() {
+			if selection, ok, selectErr := s.tryAcquireByAdvancedScheduler(ctx, groupID, sessionHash, available); selectErr != nil {
+				return nil, selectErr
+			} else if ok {
+				return selection, nil
+			}
+			// 高级分组已完成自己的可用候选与等待计划选择；不可回退到基础排序，
+			// 否则会破坏分组明确选择高级调度器的语义。
+			return nil, ErrNoAvailableAccounts
 		}
 
 		for len(available) > 0 {
@@ -731,6 +819,172 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		})
 	}
 	return nil, ErrNoAvailableAccounts
+}
+
+// ReportAdvancedAccountScheduleResult 将通用网关转发结果写入高级调度运行时反馈。
+// 只有实际由高级调度器选出的请求才会更新统计，基础调度器保持原有行为。
+func (s *GatewayService) ReportAdvancedAccountScheduleResult(selection *AccountSelectionResult, accountID int64, success bool, result *ForwardResult) {
+	if s == nil || selection == nil || !selection.AdvancedScheduler || accountID <= 0 {
+		return
+	}
+	var firstTokenMs *int
+	if result != nil {
+		firstTokenMs = result.FirstTokenMs
+	}
+	s.advancedSchedulerStats().report(accountID, success, firstTokenMs)
+}
+
+// RecordAdvancedAccountSwitch 记录高级调度请求的一次账号切换事件。
+func (s *GatewayService) RecordAdvancedAccountSwitch(selection *AccountSelectionResult) {
+	if s == nil || selection == nil || !selection.AdvancedScheduler {
+		return
+	}
+	s.advancedSchedulerStats().reportSwitch()
+}
+
+// tryAcquireByAdvancedSchedulerWithoutLoad 在负载批读取失败时仍保持高级选择语义。
+// 缺失负载按中性值处理，之后依旧逐账号申请真实并发槽位。
+func (s *GatewayService) tryAcquireByAdvancedSchedulerWithoutLoad(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	accounts []*Account,
+) (*AccountSelectionResult, bool, error) {
+	available := make([]accountWithLoad, 0, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		available = append(available, accountWithLoad{
+			account: account,
+			// 负载批查询失败时不伪造零负载，评分核心会使用中性因子。
+			loadInfo: nil,
+		})
+	}
+	return s.tryAcquireByAdvancedScheduler(ctx, groupID, sessionHash, available)
+}
+
+// tryAcquireByAdvancedScheduler 在既有硬过滤完成后按通用评分和 Top-K 加权顺序复核并发槽位。
+// 所有账号仍逐个调用 tryAcquireAccountSlot，因此负载快照过期时不会越过真实并发上限。
+func (s *GatewayService) tryAcquireByAdvancedScheduler(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	available []accountWithLoad,
+) (*AccountSelectionResult, bool, error) {
+	if s == nil || len(available) == 0 {
+		return nil, false, nil
+	}
+	accounts := make([]*Account, 0, len(available))
+	loadMap := make(map[int64]*AccountLoadInfo, len(available))
+	for _, item := range available {
+		if item.account == nil {
+			continue
+		}
+		accounts = append(accounts, item.account)
+		loadMap[item.account.ID] = item.loadInfo
+	}
+	if len(accounts) == 0 {
+		return nil, false, nil
+	}
+
+	stickyAccountID := int64(0)
+	if sessionHash != "" && s.cache != nil {
+		stickyAccountID, _ = s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+	}
+	settings := s.advancedSchedulerRuntimeSettings(ctx)
+	weights := s.advancedSchedulerWeightsForRequest(ctx)
+	candidates, _ := scoreAdvancedSchedulerCandidates(
+		accounts,
+		loadMap,
+		s.advancedSchedulerStats(),
+		weights,
+		advancedSchedulerSelectionInput{
+			GroupID:         groupID,
+			SessionHash:     sessionHash,
+			StickyAccountID: stickyAccountID,
+			StickyWeighted:  settings.stickyWeightedEnabled,
+			TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+		},
+		time.Now(),
+	)
+	selectionOrder := buildAdvancedSchedulerSelectionOrder(candidates, advancedSchedulerSelectionInput{
+		GroupID:         groupID,
+		SessionHash:     sessionHash,
+		StickyAccountID: stickyAccountID,
+		StickyWeighted:  settings.stickyWeightedEnabled,
+		TopK:            s.advancedSchedulerLBTopKForRequest(ctx),
+	})
+	for _, candidate := range selectionOrder {
+		if candidate.account == nil {
+			continue
+		}
+		result, err := s.tryAcquireAccountSlot(ctx, candidate.account.ID, candidate.account.Concurrency)
+		if err != nil || result == nil || !result.Acquired {
+			continue
+		}
+		if !s.checkAndRegisterSession(ctx, candidate.account, sessionHash) {
+			result.ReleaseFunc()
+			continue
+		}
+		if sessionHash != "" && s.cache != nil {
+			_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, candidate.account.ID, stickySessionTTL)
+		}
+		selection, selectErr := s.newSelectionResult(ctx, candidate.account, true, result.ReleaseFunc, nil)
+		if selectErr != nil {
+			result.ReleaseFunc()
+			return nil, true, selectErr
+		}
+		selection.AdvancedScheduler = true
+		return selection, true, nil
+	}
+	for _, candidate := range selectionOrder {
+		if candidate.account == nil || !s.checkAndRegisterSession(ctx, candidate.account, sessionHash) {
+			continue
+		}
+		selection, selectErr := s.newSelectionResult(ctx, candidate.account, false, nil, &AccountWaitPlan{
+			AccountID:      candidate.account.ID,
+			MaxConcurrency: candidate.account.Concurrency,
+			Timeout:        s.schedulingConfig().FallbackWaitTimeout,
+			MaxWaiting:     s.schedulingConfig().FallbackMaxWaiting,
+		})
+		if selectErr != nil {
+			return nil, true, selectErr
+		}
+		selection.AdvancedScheduler = true
+		return selection, true, nil
+	}
+	return nil, false, nil
+}
+
+// advancedSchedulerStats 返回网关级运行时反馈；测试或旧构造路径未初始化时惰性补齐。
+func (s *GatewayService) advancedSchedulerStats() *advancedAccountRuntimeStats {
+	if s == nil {
+		return nil
+	}
+	if s.advancedAccountStats == nil {
+		s.advancedAccountStats = newAdvancedAccountRuntimeStats()
+	}
+	return s.advancedAccountStats
+}
+
+// advancedSchedulerRuntimeSettings 复用统一的设置缓存，避免各平台读取不同键集合。
+func (s *GatewayService) advancedSchedulerRuntimeSettings(ctx context.Context) advancedSchedulerRuntimeSettings {
+	if s == nil {
+		return advancedSchedulerRuntimeSettings{}
+	}
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.advancedSchedulerRuntimeSettings(ctx)
+}
+
+func (s *GatewayService) advancedSchedulerWeightsForRequest(ctx context.Context) GatewayAdvancedSchedulerScoreWeightsView {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.openAIWSSchedulerWeightsForRequest(ctx)
+}
+
+func (s *GatewayService) advancedSchedulerLBTopKForRequest(ctx context.Context) int {
+	gateway := &OpenAIGatewayService{cfg: s.cfg, rateLimitService: s.rateLimitService}
+	return gateway.openAIWSLBTopKForRequest(ctx)
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
@@ -1125,6 +1379,9 @@ func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool
 }
 
 func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	if isAdvancedSchedulerNoSlotSelection(ctx) {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+	}
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
@@ -1411,6 +1668,9 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 // sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
 func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
+	if isAdvancedSchedulerNoSlotSelection(ctx) {
+		return true
+	}
 	// 只检查 Anthropic OAuth/SetupToken 账号
 	if !account.IsAnthropicOAuthOrSetupToken() {
 		return true
@@ -1461,12 +1721,17 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	if err != nil {
 		return nil, err
 	}
-	return &AccountSelectionResult{
+	selection := &AccountSelectionResult{
 		Account:     hydrated,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
-	}, nil
+	}
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.UsesAdvancedScheduler() {
+		// 让转发层只依据选择结果写入高级运行时反馈，避免基础分组污染统计。
+		selection.AdvancedScheduler = true
+	}
+	return selection, nil
 }
 
 // filterByMinPriority 过滤出优先级最小的账号集合

@@ -46,6 +46,8 @@ const (
 	FieldDuplicateOperationID = "duplicate_operation_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
+	// FieldSchedulerType holds the string denoting the scheduler_type field in the database.
+	FieldSchedulerType = "scheduler_type"
 	// FieldDisplayBrand holds the string denoting the display_brand field in the database.
 	FieldDisplayBrand = "display_brand"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
@@ -221,6 +223,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldDuplicateOperationID,
 	FieldPlatform,
+	FieldSchedulerType,
 	FieldDisplayBrand,
 	FieldAllowImageGeneration,
 	FieldAllowBatchImageGeneration,
@@ -328,6 +331,10 @@ var (
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	PlatformValidator func(string) error
+	// DefaultSchedulerType holds the default value on creation for the "scheduler_type" field.
+	DefaultSchedulerType string
+	// SchedulerTypeValidator is a validator for the "scheduler_type" field. It is called by the builders before save.
+	SchedulerTypeValidator func(string) error
 	// DefaultDisplayBrand holds the default value on creation for the "display_brand" field.
 	DefaultDisplayBrand string
 	// DisplayBrandValidator is a validator for the "display_brand" field. It is called by the builders before save.
@@ -473,6 +480,11 @@ func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 // ByPlatform orders the results by the platform field.
 func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
+}
+
+// BySchedulerType orders the results by the scheduler_type field.
+func BySchedulerType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSchedulerType, opts...).ToFunc()
 }
 
 // ByDisplayBrand orders the results by the display_brand field.

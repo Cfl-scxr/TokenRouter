@@ -593,12 +593,14 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
+		h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 				switch failoverAction {
 				case FailoverContinue:
+					h.gatewayService.RecordAdvancedAccountSwitch(selection)
 					continue
 				case FailoverExhausted:
 					h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)

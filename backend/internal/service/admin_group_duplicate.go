@@ -83,6 +83,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		Name:                            duplicateGroupName(source.Name, 1),
 		Description:                     source.Description,
 		Platform:                        source.Platform,
+		SchedulerType:                   source.SchedulerType,
 		DisplayBrand:                    source.DisplayBrand,
 		RateMultiplier:                  source.RateMultiplier,
 		PeakRateEnabled:                 source.PeakRateEnabled,

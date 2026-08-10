@@ -257,6 +257,7 @@ func (h *QoderGatewayHandler) handle(c *gin.Context, endpoint qoderEndpoint) {
 		if accountRelease != nil {
 			accountRelease()
 		}
+		h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 		if err != nil {
 			if qoderRequestCanceled(forwardCtx, err) {
 				reqLog.Info("qoder.forward_canceled", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -287,6 +288,7 @@ func (h *QoderGatewayHandler) handle(c *gin.Context, endpoint qoderEndpoint) {
 					if accountRelease != nil {
 						accountRelease()
 					}
+					h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 					if err != nil && qoderRequestCanceled(forwardCtx, err) {
 						reqLog.Info("qoder.retry_forward_canceled", zap.Int64("account_id", account.ID), zap.Error(err))
 						return
@@ -295,6 +297,7 @@ func (h *QoderGatewayHandler) handle(c *gin.Context, endpoint qoderEndpoint) {
 					reqLog.Info("qoder.account_refresh_after_auth_error_in_progress", zap.Int64("account_id", account.ID))
 					if c.Writer.Size() == writerSizeBeforeForward && qoderMarkRefreshInProgressAccountFailed(fs, account.ID, h.maxAccountSwitches) {
 						refreshInProgressSelectionExhausted = true
+						h.gatewayService.RecordAdvancedAccountSwitch(selection)
 						continue
 					}
 					c.Header("Retry-After", "1")
@@ -338,6 +341,7 @@ func (h *QoderGatewayHandler) handle(c *gin.Context, endpoint qoderEndpoint) {
 				fs.FailedAccountIDs[account.ID] = struct{}{}
 				if len(fs.FailedAccountIDs) < h.maxAccountSwitches {
 					lastQoderFailoverErr = err
+					h.gatewayService.RecordAdvancedAccountSwitch(selection)
 					continue
 				}
 			}
@@ -353,6 +357,7 @@ func (h *QoderGatewayHandler) handle(c *gin.Context, endpoint qoderEndpoint) {
 			fs.FailedAccountIDs[account.ID] = struct{}{}
 			if len(fs.FailedAccountIDs) < h.maxAccountSwitches {
 				lastQoderFailoverErr = err
+				h.gatewayService.RecordAdvancedAccountSwitch(selection)
 				continue
 			}
 			reqLog.Error("qoder.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))

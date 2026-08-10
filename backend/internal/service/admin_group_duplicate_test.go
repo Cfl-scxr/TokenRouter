@@ -124,6 +124,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		Name:                            "高级订阅",
 		Description:                     "configuration",
 		Platform:                        PlatformOpenAI,
+		SchedulerType:                   GroupSchedulerTypeAdvanced,
 		DisplayBrand:                    "OpenAI",
 		RateMultiplier:                  1.75,
 		PeakRateEnabled:                 true,
@@ -205,6 +206,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.True(t, duplicate.Hydrated, "the duplicate response is reloaded with derived counts")
 	require.Equal(t, source.Description, duplicate.Description)
 	require.Equal(t, source.Platform, duplicate.Platform)
+	require.Equal(t, GroupSchedulerTypeAdvanced, duplicate.SchedulerType)
 	require.Equal(t, source.DisplayBrand, duplicate.DisplayBrand)
 	require.False(t, duplicate.IsDefault)
 	require.Equal(t, source.DataSharingEnabled, duplicate.DataSharingEnabled)

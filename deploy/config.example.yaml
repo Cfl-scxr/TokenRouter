@@ -366,8 +366,7 @@ gateway:
     retry_total_budget_ms: 5000
     # payload_schema 日志采样率（0-1）；降低热路径日志放大
     payload_log_sample_rate: 0.2
-    # 调度与粘连参数
-    lb_top_k: 7
+    # 粘连参数
     sticky_session_ttl_seconds: 3600
     # 会话哈希迁移兼容开关：新 key 未命中时回退读取旧 SHA-256 key
     session_hash_read_old_fallback: true
@@ -378,21 +377,23 @@ gateway:
     sticky_response_id_ttl_seconds: 3600
     # 兼容旧键：当 sticky_response_id_ttl_seconds 缺失时回退该值
     sticky_previous_response_ttl_seconds: 3600
-    scheduler_score_weights:
+  # 通用高级调度器配置。是否使用由每个分组的 scheduler_type 决定。
+  advanced_scheduler:
+    # 每次加权选择前保留的高分候选数量。
+    lb_top_k: 7
+    score_weights:
       priority: 1.0
       load: 1.0
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
-      # 倾向「会话窗口最早重置」的账号，剩余重置时间越短得分越高。
-      # 0 表示关闭（默认，不改变原有行为）；调大可让即将重置的账号被优先用尽。
+      # 倾向会话窗口最早重置的账号，剩余重置时间越短得分越高。
       reset: 0.0
-      # 倾向 Codex 7d 剩余额度更健康的账号。
-      # 0 表示关闭（默认，不改变原有行为）；小流量灰度可设为 0.3。
+      # 倾向 Codex 7d 剩余额度更健康的账号；非对应能力账号使用中性信号。
       quota_headroom: 0.0
-  # OpenAI 高级调度器补充配置
-  openai_scheduler:
-    # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
+      previous_response: 5.0
+      session_sticky: 3.0
+    # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可回退旧行为
     sticky_escape_enabled: true
     # TTFT EWMA 超过该阈值（毫秒）时跳过 sticky，默认 15s，避免轻微抖动就逃逸
     sticky_escape_ttft_ms: 15000

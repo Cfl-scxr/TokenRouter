@@ -71,6 +71,7 @@ const sourceGroup: AdminGroup = {
   name: 'Primary',
   description: null,
   platform: 'openai',
+  scheduler_type: 'advanced',
   rate_multiplier: 1,
   rpm_limit: 0,
   is_exclusive: false,

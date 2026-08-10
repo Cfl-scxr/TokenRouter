@@ -356,8 +356,8 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CapabilityMismat
 
 // TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRoutingModel 验证响应链粘性检查不会把 D 重新解析成 C。
 func TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRoutingModel(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
-	t.Cleanup(resetOpenAIAdvancedSchedulerSettingCacheForTest)
+	resetAdvancedSchedulerSettingCacheForTest()
+	t.Cleanup(resetAdvancedSchedulerSettingCacheForTest)
 
 	ctx := context.Background()
 	groupID := int64(26)
@@ -403,7 +403,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRouti
 		channelService:     newRequestableModelsChannelService(groupID, PlatformOpenAI, channel),
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
 		openaiWSStateStore: store,
-		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		rateLimitService:   newAdvancedSchedulerRateLimitService("true"),
 	}
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_dispatch_model", account.ID, time.Hour))

@@ -439,6 +439,16 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.schedulerType")
+          }}</label>
+          <Select
+            v-model="createForm.scheduler_type"
+            :options="schedulerTypeOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.scheduler.hint") }}</p>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2072,6 +2082,16 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.schedulerType")
+          }}</label>
+          <Select
+            v-model="editForm.scheduler_type"
+            :options="schedulerTypeOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.scheduler.hint") }}</p>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -3802,6 +3822,7 @@ import type {
   GroupAvailabilityProbeConfig,
   GroupClientProtocol,
   GroupPlatform,
+  GroupSchedulerType,
 } from "@/types";
 import type { Column } from "@/components/common/types";
 import AppLayout from "@/components/layout/AppLayout.vue";
@@ -4068,6 +4089,11 @@ const platformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "qoder", label: "Qoder" },
   { value: "grok", label: "Grok" },
+]);
+
+const schedulerTypeOptions = computed(() => [
+  { value: "basic", label: t("admin.groups.scheduler.basic") },
+  { value: "advanced", label: t("admin.groups.scheduler.advanced") },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -4337,6 +4363,7 @@ const createForm = reactive({
   description: "",
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
+  scheduler_type: "basic" as GroupSchedulerType,
   allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
@@ -4758,6 +4785,7 @@ const editForm = reactive({
   description: "",
   display_brand: "",
   platform: "anthropic" as GroupPlatform,
+  scheduler_type: "basic" as GroupSchedulerType,
   allowed_client_protocols: defaultGroupClientProtocols("anthropic") as GroupClientProtocol[],
   rate_multiplier: 1.0,
   is_exclusive: false,
@@ -5225,6 +5253,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.display_brand = "";
   createForm.platform = "anthropic";
+  createForm.scheduler_type = "basic";
   createForm.allowed_client_protocols = defaultGroupClientProtocols("anthropic");
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
@@ -5388,6 +5417,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.display_brand = group.display_brand || "";
   editForm.platform = group.platform;
+  editForm.scheduler_type = group.scheduler_type ?? "basic";
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.is_default = group.is_default ?? false;
@@ -5476,6 +5506,7 @@ const closeEditModal = () => {
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.is_default = false;
+  editForm.scheduler_type = "basic";
   editForm.data_sharing_enabled = false;
   editForm.session_isolation_enabled = false;
   editForm.unavailable_fallback_group_id = null;

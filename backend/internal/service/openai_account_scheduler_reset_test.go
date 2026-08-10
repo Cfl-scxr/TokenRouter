@@ -11,7 +11,7 @@ import (
 
 func openAIResetTestScheduler(reset float64) *defaultOpenAIAccountScheduler {
 	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.SchedulerScoreWeights = config.GatewayOpenAIWSSchedulerScoreWeights{
+	cfg.Gateway.AdvancedScheduler.ScoreWeights = config.GatewayAdvancedSchedulerScoreWeights{
 		Priority:      1.0,
 		Load:          1.0,
 		Queue:         0.7,
@@ -25,7 +25,7 @@ func openAIResetTestScheduler(reset float64) *defaultOpenAIAccountScheduler {
 
 func openAIQuotaHeadroomTestScheduler(quotaHeadroom float64) *defaultOpenAIAccountScheduler {
 	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.SchedulerScoreWeights = config.GatewayOpenAIWSSchedulerScoreWeights{
+	cfg.Gateway.AdvancedScheduler.ScoreWeights = config.GatewayAdvancedSchedulerScoreWeights{
 		QuotaHeadroom: quotaHeadroom,
 	}
 	return &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: cfg}}

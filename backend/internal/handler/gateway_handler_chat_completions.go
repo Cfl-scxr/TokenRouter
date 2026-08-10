@@ -283,6 +283,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
+		h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 
 		if err != nil {
 			var betaBlockedErr *service.BetaBlockedError
@@ -300,6 +301,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 				switch action {
 				case FailoverContinue:
+					h.gatewayService.RecordAdvancedAccountSwitch(selection)
 					continue
 				case FailoverExhausted:
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)

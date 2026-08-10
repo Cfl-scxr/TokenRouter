@@ -174,7 +174,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, time.Since(forwardStart).Milliseconds())
 
 		if err == nil {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), true, nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), true, nil)
 			if result != nil {
 				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID)
 			}
@@ -183,7 +183,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 
 		var failoverErr *service.UpstreamFailoverError
 		if !errors.As(err, &failoverErr) {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
 			if c.Writer.Size() == writerSizeBeforeForward {
 				h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 			}
@@ -191,7 +191,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			return
 		}
 
-		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
+		h.gatewayService.ReportOpenAIAccountScheduleResultForSelection(selection, account.ID, account.GetMappedModel(channelMapping.MappedModel), false, nil)
 		if c.Writer.Size() != writerSizeBeforeForward {
 			h.handleFailoverExhausted(c, failoverErr, true)
 			return
@@ -203,7 +203,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			)
 			return
 		}
-		h.gatewayService.RecordOpenAIAccountSwitch()
+		h.gatewayService.RecordOpenAIAccountSwitchForSelection(selection)
 		failedAccountIDs[account.ID] = struct{}{}
 		lastFailoverErr = failoverErr
 		if switchCount >= maxAccountSwitches {

@@ -248,30 +248,29 @@ type SystemSettings struct {
 	PaymentVisibleMethodAlipayEnabled bool
 	PaymentVisibleMethodWxpayEnabled  bool
 
-	// OpenAI 账号调度
-	OpenAIAdvancedSchedulerEnabled                         bool
-	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
-	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
-	OpenAIAdvancedSchedulerLBTopK                          string
-	OpenAIAdvancedSchedulerWeightPriority                  string
-	OpenAIAdvancedSchedulerWeightLoad                      string
-	OpenAIAdvancedSchedulerWeightQueue                     string
-	OpenAIAdvancedSchedulerWeightErrorRate                 string
-	OpenAIAdvancedSchedulerWeightTTFT                      string
-	OpenAIAdvancedSchedulerWeightReset                     string
-	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string
-	OpenAIAdvancedSchedulerWeightPreviousResponse          string
-	OpenAIAdvancedSchedulerWeightSessionSticky             string
-	OpenAIAdvancedSchedulerEffectiveLBTopK                 string
-	OpenAIAdvancedSchedulerEffectiveWeightPriority         string
-	OpenAIAdvancedSchedulerEffectiveWeightLoad             string
-	OpenAIAdvancedSchedulerEffectiveWeightQueue            string
-	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string
-	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string
-	OpenAIAdvancedSchedulerEffectiveWeightReset            string
-	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
-	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
-	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
+	// 通用高级调度器参数；是否启用由分组 scheduler_type 决定。
+	AdvancedSchedulerStickyWeightedEnabled           bool
+	AdvancedSchedulerSubscriptionPriorityEnabled     bool
+	AdvancedSchedulerLBTopK                          string
+	AdvancedSchedulerWeightPriority                  string
+	AdvancedSchedulerWeightLoad                      string
+	AdvancedSchedulerWeightQueue                     string
+	AdvancedSchedulerWeightErrorRate                 string
+	AdvancedSchedulerWeightTTFT                      string
+	AdvancedSchedulerWeightReset                     string
+	AdvancedSchedulerWeightQuotaHeadroom             string
+	AdvancedSchedulerWeightPreviousResponse          string
+	AdvancedSchedulerWeightSessionSticky             string
+	AdvancedSchedulerEffectiveLBTopK                 string
+	AdvancedSchedulerEffectiveWeightPriority         string
+	AdvancedSchedulerEffectiveWeightLoad             string
+	AdvancedSchedulerEffectiveWeightQueue            string
+	AdvancedSchedulerEffectiveWeightErrorRate        string
+	AdvancedSchedulerEffectiveWeightTTFT             string
+	AdvancedSchedulerEffectiveWeightReset            string
+	AdvancedSchedulerEffectiveWeightQuotaHeadroom    string
+	AdvancedSchedulerEffectiveWeightPreviousResponse string
+	AdvancedSchedulerEffectiveWeightSessionSticky    string
 	// OpenAIQuotaAutoPauseSettings 是 OpenAI 账号配额自动暂停的全局默认阈值，存储在 ops_advanced_settings 中。
 	OpenAIQuotaAutoPauseSettings OpsOpenAIAccountQuotaAutoPauseSettings
 	// OpenAIQuotaAutoPauseSettingsSet 标记本次系统设置更新是否显式带了配额自动暂停配置，避免旧客户端误覆盖。

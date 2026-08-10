@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -388,6 +389,50 @@ func TestGeminiMessagesCompatService_GroupResolution_ReusesContextGroup(t *testi
 	require.NotNil(t, acc)
 	require.Equal(t, 0, groupRepo.getByIDCalls)
 	require.Equal(t, 0, groupRepo.getByIDLiteCalls)
+}
+
+func TestGeminiMessagesCompatService_AdvancedGroupUsesGenericScore(t *testing.T) {
+	groupID := int64(71)
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID:            groupID,
+		Platform:      PlatformGemini,
+		SchedulerType: GroupSchedulerTypeAdvanced,
+		Status:        StatusActive,
+		Hydrated:      true,
+	})
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: true},
+			{ID: 2, Platform: PlatformGemini, Priority: 99, Status: StatusActive, Schedulable: true},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+	stats := newAdvancedAccountRuntimeStats()
+	for range 16 {
+		stats.report(1, false, nil)
+		stats.report(2, true, nil)
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.AdvancedScheduler.LBTopK = 1
+	cfg.Gateway.AdvancedScheduler.ScoreWeights = config.GatewayAdvancedSchedulerScoreWeights{
+		ErrorRate: 10,
+	}
+	svc := &GeminiMessagesCompatService{
+		accountRepo:          repo,
+		groupRepo:            &mockGroupRepoForGemini{groups: map[int64]*Group{}},
+		cache:                &mockGatewayCacheForGemini{},
+		cfg:                  cfg,
+		advancedAccountStats: stats,
+	}
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gemini-2.5-flash", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(2), account.ID, "高级分组应在既有硬过滤后按通用错误率评分选择")
 }
 
 func TestGeminiMessagesCompatService_GroupResolution_UsesLiteFetch(t *testing.T) {

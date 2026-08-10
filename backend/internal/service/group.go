@@ -16,11 +16,36 @@ type GroupAvailabilityProbeConfig = domain.GroupAvailabilityProbeConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 type GroupClientProtocol = domain.GroupClientProtocol
 
+// GroupSchedulerType 表示分组使用的账号调度器类型。
+type GroupSchedulerType string
+
+const (
+	// GroupSchedulerTypeBasic 保持当前默认调度路径。
+	GroupSchedulerTypeBasic GroupSchedulerType = "basic"
+	// GroupSchedulerTypeAdvanced 使用通用高级调度器。
+	GroupSchedulerTypeAdvanced GroupSchedulerType = "advanced"
+)
+
+// NormalizeGroupSchedulerType 归一化并校验调度器类型。
+func NormalizeGroupSchedulerType(value string) (GroupSchedulerType, error) {
+	normalized := GroupSchedulerType(strings.ToLower(strings.TrimSpace(value)))
+	switch normalized {
+	case "", GroupSchedulerTypeBasic:
+		return GroupSchedulerTypeBasic, nil
+	case GroupSchedulerTypeAdvanced:
+		return GroupSchedulerTypeAdvanced, nil
+	default:
+		return "", fmt.Errorf("scheduler_type must be basic or advanced")
+	}
+}
+
 type Group struct {
-	ID             int64
-	Name           string
-	Description    string
-	Platform       string
+	ID          int64
+	Name        string
+	Description string
+	Platform    string
+	// SchedulerType 决定该分组使用基础或高级调度器。
+	SchedulerType  GroupSchedulerType
 	DisplayBrand   string
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
@@ -114,6 +139,11 @@ type Group struct {
 	AccountCount            int64
 	ActiveAccountCount      int64
 	RateLimitedAccountCount int64
+}
+
+// UsesAdvancedScheduler 返回分组是否启用通用高级调度器。
+func (g *Group) UsesAdvancedScheduler() bool {
+	return g != nil && g.SchedulerType == GroupSchedulerTypeAdvanced
 }
 
 func (g *Group) IsActive() bool {

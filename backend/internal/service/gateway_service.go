@@ -540,10 +540,11 @@ type AccountWaitPlan struct {
 }
 
 type AccountSelectionResult struct {
-	Account     *Account
-	Acquired    bool
-	ReleaseFunc func()
-	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	Account           *Account
+	Acquired          bool
+	ReleaseFunc       func()
+	WaitPlan          *AccountWaitPlan // nil means no wait allowed
+	AdvancedScheduler bool             // 仅内部转发链路使用，不对外序列化。
 }
 
 // ClaudeUsage 表示Claude API返回的usage信息
@@ -733,6 +734,7 @@ type GatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	dataSharingService    *DataSharingService
+	advancedAccountStats  *advancedAccountRuntimeStats
 }
 
 // NewGatewayService creates a new GatewayService
@@ -802,6 +804,7 @@ func NewGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		dataSharingService:    dataSharingService,
+		advancedAccountStats:  newAdvancedAccountRuntimeStats(),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,

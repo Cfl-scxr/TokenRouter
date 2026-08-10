@@ -472,6 +472,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
+			h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
@@ -483,6 +484,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 					switch action {
 					case FailoverContinue:
+						h.gatewayService.RecordAdvancedAccountSwitch(selection)
 						continue
 					case FailoverExhausted:
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
@@ -844,6 +846,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
+			h.gatewayService.ReportAdvancedAccountScheduleResult(selection, account.ID, err == nil, result)
 
 			// 成功路径与“流中断但 Forward 已观测到 usage”的错误路径共用同一提交逻辑。
 			// 快照所有 handler 和 fork 特有字段，避免异步 worker 访问已结束的 gin.Context。
@@ -973,6 +976,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 					switch action {
 					case FailoverContinue:
+						h.gatewayService.RecordAdvancedAccountSwitch(selection)
 						continue
 					case FailoverExhausted:
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)

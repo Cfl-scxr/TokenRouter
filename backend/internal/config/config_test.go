@@ -40,6 +40,28 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadRejectsLegacyAdvancedSchedulerConfig(t *testing.T) {
+	t.Run("legacy YAML key", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		configFile := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(configFile, []byte("gateway:\n  openai_ws:\n    lb_top_k: 3\n"), 0o600))
+		t.Setenv("CONFIG_FILE", configFile)
+
+		_, err := Load()
+		require.ErrorContains(t, err, "gateway.openai_ws.lb_top_k")
+		require.ErrorContains(t, err, "gateway.advanced_scheduler.lb_top_k")
+	})
+
+	t.Run("legacy environment variable", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("GATEWAY_OPENAI_SCHEDULER_STICKY_ESCAPE_ENABLED", "false")
+
+		_, err := Load()
+		require.ErrorContains(t, err, "GATEWAY_OPENAI_SCHEDULER_STICKY_ESCAPE_ENABLED")
+		require.ErrorContains(t, err, "GATEWAY_ADVANCED_SCHEDULER_STICKY_ESCAPE_ENABLED")
+	})
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")
@@ -425,14 +447,14 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.StickySessionTTLSeconds != 3600 {
 		t.Fatalf("Gateway.OpenAIWS.StickySessionTTLSeconds = %d, want 3600", cfg.Gateway.OpenAIWS.StickySessionTTLSeconds)
 	}
-	if !cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled {
-		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeEnabled = false, want true")
+	if !cfg.Gateway.AdvancedScheduler.StickyEscapeEnabled {
+		t.Fatalf("Gateway.AdvancedScheduler.StickyEscapeEnabled = false, want true")
 	}
-	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs != 15000 {
-		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeTTFTMs = %d, want 15000", cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs)
+	if cfg.Gateway.AdvancedScheduler.StickyEscapeTTFTMs != 15000 {
+		t.Fatalf("Gateway.AdvancedScheduler.StickyEscapeTTFTMs = %d, want 15000", cfg.Gateway.AdvancedScheduler.StickyEscapeTTFTMs)
 	}
-	if cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate != 0.5 {
-		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeErrorRate = %v, want 0.5", cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate)
+	if cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate != 0.5 {
+		t.Fatalf("Gateway.AdvancedScheduler.StickyEscapeErrorRate = %v, want 0.5", cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate)
 	}
 	if !cfg.Gateway.OpenAIWS.SessionHashReadOldFallback {
 		t.Fatalf("Gateway.OpenAIWS.SessionHashReadOldFallback = false, want true")
@@ -482,8 +504,8 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.PayloadLogSampleRate != 0.2 {
 		t.Fatalf("Gateway.OpenAIWS.PayloadLogSampleRate = %v, want 0.2", cfg.Gateway.OpenAIWS.PayloadLogSampleRate)
 	}
-	if cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom != 0 {
-		t.Fatalf("Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom)
+	if cfg.Gateway.AdvancedScheduler.ScoreWeights.QuotaHeadroom != 0 {
+		t.Fatalf("Gateway.AdvancedScheduler.ScoreWeights.QuotaHeadroom = %v, want 0", cfg.Gateway.AdvancedScheduler.ScoreWeights.QuotaHeadroom)
 	}
 	if !cfg.Gateway.OpenAIWS.StoreDisabledForceNewConn {
 		t.Fatalf("Gateway.OpenAIWS.StoreDisabledForceNewConn = false, want true")
@@ -2240,8 +2262,8 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		},
 		{
 			name:    "lb_top_k 必须为正数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.LBTopK = 0 },
-			wantErr: "gateway.openai_ws.lb_top_k",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.LBTopK = 0 },
+			wantErr: "gateway.advanced_scheduler.lb_top_k",
 		},
 		{
 			name:    "sticky_session_ttl_seconds 必须为正数",
@@ -2263,70 +2285,70 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 		},
 		{
 			name:    "scheduler_score_weights 不能为负数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = -0.1 },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.ScoreWeights.Queue = -0.1 },
+			wantErr: "gateway.advanced_scheduler.score_weights.* must be non-negative",
 		},
 		{
 			name:    "scheduler_score_weights quota_headroom 不能为负数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = -0.1 },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.ScoreWeights.QuotaHeadroom = -0.1 },
+			wantErr: "gateway.advanced_scheduler.score_weights.* must be non-negative",
 		},
 		{
 			name:    "scheduler_score_weights reset 不能为负数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = -0.1 },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.ScoreWeights.Reset = -0.1 },
+			wantErr: "gateway.advanced_scheduler.score_weights.* must be non-negative",
 		},
 		{
 			name:    "scheduler_score_weights 不能为 NaN",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.NaN() },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.ScoreWeights.PreviousResponse = math.NaN() },
+			wantErr: "gateway.advanced_scheduler.score_weights.* must be non-negative and finite",
 		},
 		{
 			name:    "scheduler_score_weights 不能为 Inf",
-			mutate:  func(c *Config) { c.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = math.Inf(1) },
-			wantErr: "gateway.openai_ws.scheduler_score_weights.* must be non-negative and finite",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.ScoreWeights.Reset = math.Inf(1) },
+			wantErr: "gateway.advanced_scheduler.score_weights.* must be non-negative and finite",
 		},
 		{
 			name: "scheduler_score_weights 总和不能溢出",
 			mutate: func(c *Config) {
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Load = math.MaxFloat64
+				c.Gateway.AdvancedScheduler.ScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.AdvancedScheduler.ScoreWeights.Load = math.MaxFloat64
 			},
-			wantErr: "gateway.openai_ws.scheduler_score_weights base-weight sum must be finite",
+			wantErr: "gateway.advanced_scheduler.score_weights base-weight sum must be finite",
 		},
 		{
 			name: "scheduler_score_weights 含 sticky 总和不能溢出",
 			mutate: func(c *Config) {
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = math.MaxFloat64
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse = math.MaxFloat64
+				c.Gateway.AdvancedScheduler.ScoreWeights.Priority = math.MaxFloat64
+				c.Gateway.AdvancedScheduler.ScoreWeights.PreviousResponse = math.MaxFloat64
 			},
-			wantErr: "gateway.openai_ws.scheduler_score_weights total-weight sum must be finite",
+			wantErr: "gateway.advanced_scheduler.score_weights total-weight sum must be finite",
 		},
 		{
 			name: "scheduler_score_weights 不能全为 0",
 			mutate: func(c *Config) {
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
-				c.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
+				c.Gateway.AdvancedScheduler.ScoreWeights.Priority = 0
+				c.Gateway.AdvancedScheduler.ScoreWeights.Load = 0
+				c.Gateway.AdvancedScheduler.ScoreWeights.Queue = 0
+				c.Gateway.AdvancedScheduler.ScoreWeights.ErrorRate = 0
+				c.Gateway.AdvancedScheduler.ScoreWeights.TTFT = 0
 			},
-			wantErr: "gateway.openai_ws.scheduler_score_weights must not all be zero",
+			wantErr: "gateway.advanced_scheduler.score_weights must not all be zero",
 		},
 		{
 			name:    "sticky_escape_ttft_ms 必须为正数",
-			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 0 },
-			wantErr: "gateway.openai_scheduler.sticky_escape_ttft_ms",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.StickyEscapeTTFTMs = 0 },
+			wantErr: "gateway.advanced_scheduler.sticky_escape_ttft_ms",
 		},
 		{
 			name:    "sticky_escape_error_rate 不能小于 0",
-			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeErrorRate = -0.1 },
-			wantErr: "gateway.openai_scheduler.sticky_escape_error_rate",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.StickyEscapeErrorRate = -0.1 },
+			wantErr: "gateway.advanced_scheduler.sticky_escape_error_rate",
 		},
 		{
 			name:    "sticky_escape_error_rate 不能大于 1",
-			mutate:  func(c *Config) { c.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 1.1 },
-			wantErr: "gateway.openai_scheduler.sticky_escape_error_rate",
+			mutate:  func(c *Config) { c.Gateway.AdvancedScheduler.StickyEscapeErrorRate = 1.1 },
+			wantErr: "gateway.advanced_scheduler.sticky_escape_error_rate",
 		},
 	}
 
@@ -2344,25 +2366,25 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 
 	t.Run("quota_headroom 可作为唯一有效调度权重", func(t *testing.T) {
 		cfg := buildValid(t)
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom = 0.1
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Priority = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Load = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Queue = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.ErrorRate = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.TTFT = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Reset = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.QuotaHeadroom = 0.1
 
 		require.NoError(t, cfg.Validate())
 	})
 
 	t.Run("reset 可作为唯一有效调度权重", func(t *testing.T) {
 		cfg := buildValid(t)
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0
-		cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0.1
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Priority = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Load = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Queue = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.ErrorRate = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.TTFT = 0
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Reset = 0.1
 
 		require.NoError(t, cfg.Validate())
 	})

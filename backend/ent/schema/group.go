@@ -79,6 +79,11 @@ func (Group) Fields() []ent.Field {
 		field.String("platform").
 			MaxLen(50).
 			Default(domain.PlatformAnthropic),
+		// scheduler_type 由分组决定基础或高级调度器，默认保持历史基础调度行为。
+		field.String("scheduler_type").
+			MaxLen(16).
+			Default("basic").
+			Comment("分组调度器类型：basic 或 advanced"),
 		field.String("display_brand").
 			MaxLen(50).
 			Default("").

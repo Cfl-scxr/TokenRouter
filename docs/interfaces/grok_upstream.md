@@ -38,6 +38,8 @@ Responses WebSocket 是 Grok/OpenAI 的原生传输能力，不由兼容 Respons
 
 其它通用账号类型即使可由兼容导入层保存，也没有 Grok 正式凭据和转发契约；`cosy` 明确只属于 Qoder。完整分类见[上游账号能力矩阵](upstream_account_matrix.md)。
 
+Grok 使用 OpenAI 兼容能力适配层，但高级调度器由分组而不是平台全局开关决定。最终目标 Group 的 `scheduler_type=advanced` 时，Grok 在既有模型、媒体、账号状态、配额和 transport 硬过滤后复用通用 Top-K 评分；`basic` 保持原有选择顺序。Grok 的请求/令牌额度快照、媒体付费资格和 HTTP bridge 仍是平台专属资格，不能因通用评分缺少这些可选信号而被错误排除。
+
 ## 媒体请求格式
 
 JSON 图片编辑和视频生成请求可在 `image`、`images`、`reference_images` 与 `mask` 对象中提供参考图片。与 xAI 直接兼容的请求应使用 `url` 字段；历史 `image_url` 字段仍可使用，TokenRouter 会在转发前把它规范化为 `url`。如果两者同时存在，则保留非空的 `url`；空白 `url` 会回退使用 `image_url`。multipart 图片编辑中的上传文件也会转换为 `url` 形式的 data URL。

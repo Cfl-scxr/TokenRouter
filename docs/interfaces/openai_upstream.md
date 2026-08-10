@@ -75,7 +75,9 @@ API Key endpoint capability 可通过探测或配置表达 `responses`、`chat_c
 
 ## 额度与调度
 
-OpenAI 使用专用账号调度器，在共同 active/schedulable、分组、模型、限流和并发筛选之外，还会考虑所需 transport/capability、账号优先级、负载、排队、错误率、近期延迟、配额余量和粘性上下文。previous response、WebSocket 会话和显式 session 可约束账号复用；只有策略允许时才能迁移。
+OpenAI 是通用高级调度器的能力适配者之一，而不是该调度器的全局所有者。只有最终目标 Group 的 `scheduler_type=advanced` 时，OpenAI 路径才在共同 active/schedulable、分组、模型、限流和并发硬过滤后使用通用 Top-K 评分；`basic` 保留原有默认选择路径。高级分组还会考虑所需 transport/capability、账号优先级、负载、排队、错误率、近期延迟、配额余量和粘性上下文。previous response、WebSocket 会话和显式 session 可约束账号复用；只有策略允许时才能迁移。
+
+OpenAI 专属能力只在账号和请求具备对应条件时加入候选或分数：Responses transport、WebSocket、旧版 Compact、previous response、订阅优先和 Codex 额度余量都不会排除缺失这类可选信号的普通账号。OAuth 5 小时、7 天等上游窗口和自动暂停仍由 OpenAI 设置及账号运行状态控制，不随高级调度器通用化而迁移到其它平台。
 
 OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运行状态中，可触发临时限流或自动暂停；API Key endpoint capability 仍可独立探测。OpenAI 不再采集上游站点声明倍率，也不按该值进行低倍率优先或高级评分。账户本地 `rate_multiplier` 和渠道上游计费模型来源继续用于 TokenRouter 结算，但都不是用户余额、订阅、Key 限额或用户平台额度。
 

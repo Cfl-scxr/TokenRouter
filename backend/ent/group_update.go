@@ -235,6 +235,20 @@ func (_u *GroupUpdate) SetNillablePlatform(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetSchedulerType sets the "scheduler_type" field.
+func (_u *GroupUpdate) SetSchedulerType(v string) *GroupUpdate {
+	_u.mutation.SetSchedulerType(v)
+	return _u
+}
+
+// SetNillableSchedulerType sets the "scheduler_type" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSchedulerType(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetSchedulerType(*v)
+	}
+	return _u
+}
+
 // SetDisplayBrand sets the "display_brand" field.
 func (_u *GroupUpdate) SetDisplayBrand(v string) *GroupUpdate {
 	_u.mutation.SetDisplayBrand(v)
@@ -1235,6 +1249,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SchedulerType(); ok {
+		if err := group.SchedulerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "scheduler_type", err: fmt.Errorf(`ent: validator failed for field "Group.scheduler_type": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DisplayBrand(); ok {
 		if err := group.DisplayBrandValidator(v); err != nil {
 			return &ValidationError{Name: "display_brand", err: fmt.Errorf(`ent: validator failed for field "Group.display_brand": %w`, err)}
@@ -1318,6 +1337,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SchedulerType(); ok {
+		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)
@@ -2054,6 +2076,20 @@ func (_u *GroupUpdateOne) SetPlatform(v string) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillablePlatform(v *string) *GroupUpdateOne {
 	if v != nil {
 		_u.SetPlatform(*v)
+	}
+	return _u
+}
+
+// SetSchedulerType sets the "scheduler_type" field.
+func (_u *GroupUpdateOne) SetSchedulerType(v string) *GroupUpdateOne {
+	_u.mutation.SetSchedulerType(v)
+	return _u
+}
+
+// SetNillableSchedulerType sets the "scheduler_type" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSchedulerType(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSchedulerType(*v)
 	}
 	return _u
 }
@@ -3071,6 +3107,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "Group.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SchedulerType(); ok {
+		if err := group.SchedulerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "scheduler_type", err: fmt.Errorf(`ent: validator failed for field "Group.scheduler_type": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DisplayBrand(); ok {
 		if err := group.DisplayBrandValidator(v); err != nil {
 			return &ValidationError{Name: "display_brand", err: fmt.Errorf(`ent: validator failed for field "Group.display_brand": %w`, err)}
@@ -3171,6 +3212,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(group.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SchedulerType(); ok {
+		_spec.SetField(group.FieldSchedulerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DisplayBrand(); ok {
 		_spec.SetField(group.FieldDisplayBrand, field.TypeString, value)

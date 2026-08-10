@@ -572,44 +572,41 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
 		changed = append(changed, "payment_visible_method_wxpay_enabled")
 	}
-	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
-		changed = append(changed, "openai_advanced_scheduler_enabled")
+	if before.AdvancedSchedulerStickyWeightedEnabled != after.AdvancedSchedulerStickyWeightedEnabled {
+		changed = append(changed, "advanced_scheduler_sticky_weighted_enabled")
 	}
-	if before.OpenAIAdvancedSchedulerStickyWeightedEnabled != after.OpenAIAdvancedSchedulerStickyWeightedEnabled {
-		changed = append(changed, "openai_advanced_scheduler_sticky_weighted_enabled")
+	if before.AdvancedSchedulerSubscriptionPriorityEnabled != after.AdvancedSchedulerSubscriptionPriorityEnabled {
+		changed = append(changed, "advanced_scheduler_subscription_priority_enabled")
 	}
-	if before.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled != after.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled {
-		changed = append(changed, "openai_advanced_scheduler_subscription_priority_enabled")
+	if before.AdvancedSchedulerLBTopK != after.AdvancedSchedulerLBTopK {
+		changed = append(changed, "advanced_scheduler_lb_top_k")
 	}
-	if before.OpenAIAdvancedSchedulerLBTopK != after.OpenAIAdvancedSchedulerLBTopK {
-		changed = append(changed, "openai_advanced_scheduler_lb_top_k")
+	if before.AdvancedSchedulerWeightPriority != after.AdvancedSchedulerWeightPriority {
+		changed = append(changed, "advanced_scheduler_weight_priority")
 	}
-	if before.OpenAIAdvancedSchedulerWeightPriority != after.OpenAIAdvancedSchedulerWeightPriority {
-		changed = append(changed, "openai_advanced_scheduler_weight_priority")
+	if before.AdvancedSchedulerWeightLoad != after.AdvancedSchedulerWeightLoad {
+		changed = append(changed, "advanced_scheduler_weight_load")
 	}
-	if before.OpenAIAdvancedSchedulerWeightLoad != after.OpenAIAdvancedSchedulerWeightLoad {
-		changed = append(changed, "openai_advanced_scheduler_weight_load")
+	if before.AdvancedSchedulerWeightQueue != after.AdvancedSchedulerWeightQueue {
+		changed = append(changed, "advanced_scheduler_weight_queue")
 	}
-	if before.OpenAIAdvancedSchedulerWeightQueue != after.OpenAIAdvancedSchedulerWeightQueue {
-		changed = append(changed, "openai_advanced_scheduler_weight_queue")
+	if before.AdvancedSchedulerWeightErrorRate != after.AdvancedSchedulerWeightErrorRate {
+		changed = append(changed, "advanced_scheduler_weight_error_rate")
 	}
-	if before.OpenAIAdvancedSchedulerWeightErrorRate != after.OpenAIAdvancedSchedulerWeightErrorRate {
-		changed = append(changed, "openai_advanced_scheduler_weight_error_rate")
+	if before.AdvancedSchedulerWeightTTFT != after.AdvancedSchedulerWeightTTFT {
+		changed = append(changed, "advanced_scheduler_weight_ttft")
 	}
-	if before.OpenAIAdvancedSchedulerWeightTTFT != after.OpenAIAdvancedSchedulerWeightTTFT {
-		changed = append(changed, "openai_advanced_scheduler_weight_ttft")
+	if before.AdvancedSchedulerWeightReset != after.AdvancedSchedulerWeightReset {
+		changed = append(changed, "advanced_scheduler_weight_reset")
 	}
-	if before.OpenAIAdvancedSchedulerWeightReset != after.OpenAIAdvancedSchedulerWeightReset {
-		changed = append(changed, "openai_advanced_scheduler_weight_reset")
+	if before.AdvancedSchedulerWeightQuotaHeadroom != after.AdvancedSchedulerWeightQuotaHeadroom {
+		changed = append(changed, "advanced_scheduler_weight_quota_headroom")
 	}
-	if before.OpenAIAdvancedSchedulerWeightQuotaHeadroom != after.OpenAIAdvancedSchedulerWeightQuotaHeadroom {
-		changed = append(changed, "openai_advanced_scheduler_weight_quota_headroom")
+	if before.AdvancedSchedulerWeightPreviousResponse != after.AdvancedSchedulerWeightPreviousResponse {
+		changed = append(changed, "advanced_scheduler_weight_previous_response")
 	}
-	if before.OpenAIAdvancedSchedulerWeightPreviousResponse != after.OpenAIAdvancedSchedulerWeightPreviousResponse {
-		changed = append(changed, "openai_advanced_scheduler_weight_previous_response")
-	}
-	if before.OpenAIAdvancedSchedulerWeightSessionSticky != after.OpenAIAdvancedSchedulerWeightSessionSticky {
-		changed = append(changed, "openai_advanced_scheduler_weight_session_sticky")
+	if before.AdvancedSchedulerWeightSessionSticky != after.AdvancedSchedulerWeightSessionSticky {
+		changed = append(changed, "advanced_scheduler_weight_session_sticky")
 	}
 	// OpenAI 配额自动暂停阈值迁移到系统设置后，变更也需要进入审计日志。
 	if before.OpenAIQuotaAutoPauseSettings.DefaultThreshold5h != after.OpenAIQuotaAutoPauseSettings.DefaultThreshold5h ||

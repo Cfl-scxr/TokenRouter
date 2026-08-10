@@ -832,6 +832,7 @@ affiliates: {
         id: 'ID',
         platform: 'Upstream Platform',
         displayBrand: 'Brand Type',
+        schedulerType: 'Scheduler',
         rateMultiplier: 'Rate Multiplier',
         dataSharing: 'Data Sharing',
         sessionIsolation: 'Session Isolation',
@@ -867,6 +868,7 @@ affiliates: {
         description: 'Description',
         platform: 'Upstream Platform',
         displayBrand: 'Brand Type',
+        schedulerType: 'Scheduler Type',
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
@@ -949,6 +951,11 @@ affiliates: {
         enabledText: 'Block sessions from other groups',
         disabledText: 'Allow sessions to switch here',
         hint: 'When enabled, explicit sessions first owned by another group cannot be switched into this group.'
+      },
+      scheduler: {
+        basic: 'Basic scheduler',
+        advanced: 'Advanced scheduler',
+        hint: 'The basic scheduler keeps the current default ordering. The advanced scheduler uses shared scoring, Top-K weighting, and runtime feedback.'
       },
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {

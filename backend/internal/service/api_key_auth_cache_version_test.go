@@ -73,3 +73,18 @@ func TestAPIKeyServiceRejectsV26AuthSnapshotWithoutModelMapping(t *testing.T) {
 		t.Fatal("expected v26 auth snapshot to be rejected after model mapping was added")
 	}
 }
+
+func TestAPIKeyServiceRejectsV29AuthSnapshotWithoutSchedulerType(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-scheduler-type", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 29},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok || apiKey != nil {
+		t.Fatal("expected v29 auth snapshot to be rejected after scheduler_type was added")
+	}
+}

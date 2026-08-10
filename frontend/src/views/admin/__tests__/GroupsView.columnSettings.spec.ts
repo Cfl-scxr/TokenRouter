@@ -104,6 +104,7 @@ const createGroup = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({
   name: 'Core Anthropic',
   description: null,
   platform: 'anthropic',
+  scheduler_type: 'basic',
   display_brand: '',
   rate_multiplier: 1,
   rpm_limit: 0,

@@ -30,6 +30,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesGroupCaptureControls(t *testin
 			ID:                      groupID,
 			Name:                    "openai-images",
 			Platform:                PlatformOpenAI,
+			SchedulerType:           GroupSchedulerTypeAdvanced,
 			Status:                  StatusActive,
 			RateMultiplier:          1,
 			DataSharingEnabled:      true,
@@ -50,6 +51,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesGroupCaptureControls(t *testin
 
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, GroupSchedulerTypeAdvanced, roundTrip.Group.SchedulerType)
 	require.True(t, roundTrip.Group.DataSharingEnabled)
 	require.True(t, roundTrip.Group.SessionIsolationEnabled)
 	require.True(t, roundTrip.Group.AllowImageGeneration)

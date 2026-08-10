@@ -47,6 +47,7 @@ type CreateGroupRequest struct {
 	Name           string  `json:"name" binding:"required"`
 	Description    string  `json:"description"`
 	Platform       string  `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
+	SchedulerType  string  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
 	DisplayBrand   string  `json:"display_brand"`
 	SortOrder      *int    `json:"sort_order"`
 	RateMultiplier float64 `json:"rate_multiplier"`
@@ -113,6 +114,7 @@ type UpdateGroupRequest struct {
 	Name           string   `json:"name"`
 	Description    *string  `json:"description"`
 	Platform       string   `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity qoder grok"`
+	SchedulerType  *string  `json:"scheduler_type" binding:"omitempty,oneof=basic advanced"`
 	DisplayBrand   *string  `json:"display_brand"`
 	SortOrder      *int     `json:"sort_order"`
 	RateMultiplier *float64 `json:"rate_multiplier"`
@@ -299,6 +301,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
+		SchedulerType:                   req.SchedulerType,
 		DisplayBrand:                    req.DisplayBrand,
 		SortOrder:                       req.SortOrder,
 		RateMultiplier:                  req.RateMultiplier,
@@ -421,6 +424,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Name:                            req.Name,
 		Description:                     req.Description,
 		Platform:                        req.Platform,
+		SchedulerType:                   req.SchedulerType,
 		DisplayBrand:                    req.DisplayBrand,
 		SortOrder:                       req.SortOrder,
 		RateMultiplier:                  req.RateMultiplier,

@@ -37,15 +37,44 @@ func (s *adminServiceImpl) ListAccountsForSchedulerScoreFilter(ctx context.Conte
 	return s.accountRepo.ListAllWithFilters(ctx, platform, accountType, status, search, groupID, privacyMode)
 }
 
-// ListOpenAISchedulableAccountsForSchedulerScore 查询指定分组内可参与评分的 OpenAI 账号。
-func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]Account, error) {
+// ListSchedulableAccountsForAdvancedSchedulerScore 查询指定分组内可参与高级评分的账号。
+func (s *adminServiceImpl) ListSchedulableAccountsForAdvancedSchedulerScore(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	if s == nil || s.accountRepo == nil {
 		return nil, nil
 	}
-	if groupID != nil {
-		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return nil, nil
 	}
-	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+	// Anthropic/Gemini 主路径会把启用了 mixed_scheduling 的 Antigravity 账号
+	// 纳入同一候选池。评分展示必须使用相同池，避免页面分数与实际选择不一致。
+	if platform == PlatformAnthropic || platform == PlatformGemini {
+		platforms := []string{platform, PlatformAntigravity}
+		var (
+			accounts []Account
+			err      error
+		)
+		if groupID != nil {
+			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
+		} else {
+			accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
+		}
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account.Platform == PlatformAntigravity && !account.IsMixedSchedulingEnabled() {
+				continue
+			}
+			filtered = append(filtered, account)
+		}
+		return filtered, nil
+	}
+	if groupID != nil {
+		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
+	}
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {

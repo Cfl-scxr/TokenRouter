@@ -17,10 +17,10 @@
 | 层级 | 拥有的策略 | 不应承担的责任 |
 | --- | --- | --- |
 | API Key | 分组选择、复合前缀、Key 级模型重定向、Key 限额 | 不能改变上游账号凭据或平台 |
-| Group | 上游平台、客户端协议/媒体准入、fallback、OAuth/privacy、推理上限、模型可见性、RPM 和数据共享 | 不保存真实上游 token |
+| Group | 上游平台、基础/高级调度器选择、客户端协议/媒体准入、fallback、OAuth/privacy、推理上限、模型可见性、RPM 和数据共享 | 不保存真实上游 token |
 | Channel | 一个分组的模型映射、定价和功能配置 | 不能把不存在的账号能力变成可调度能力 |
 | Account | 凭据、代理、模型映射/白名单、重试状态码、临时不可调度、Header override 和 capability | 不能绕过分组对用户公开的能力 |
-| Setting/config | 跨分组运行策略、兼容开关、默认 Header/UA、缓存和安全策略 | 不能替代每个账号的权威运行状态 |
+| Setting/config | 高级调度评分参数、跨分组运行策略、兼容开关、默认 Header/UA、缓存和安全策略 | 不能替代分组的调度器选择或每个账号的权威运行状态 |
 
 每个 Group 当前最多关联一个 Channel；不存在“同一分组多个渠道再二次选择”的运行关系。字段属于哪一层决定缓存失效范围、管理权限和审计来源，不能为了前端表单方便复制为多份互相覆盖的配置。
 
@@ -51,7 +51,9 @@ endpoint capability 还会由账号类型和探测结果继续收窄。例如 Em
 
 Group 可以启用模型路由、默认映射和 OpenAI Messages 专用模型配置。Channel 决定分组内的映射、价格和功能；Account 则处理供应商或站点差异。可见模型只包含当前可请求结果，未知或歧义定价以未定价表达，不使用猜测价格。
 
-Group 的 fallback 包括普通 fallback、invalid-request fallback 和 unavailable fallback。它们是显式的跨分组策略：目标分组仍要重新执行平台、Key、模型、权限和计费约束，不能只把原账号列表替换掉。循环、目标失效或策略不匹配必须终止。
+Group 的 fallback 包括普通 fallback、invalid-request fallback 和 unavailable fallback。它们是显式的跨分组策略：目标分组仍要重新执行平台、Key、模型、权限、计费和 `scheduler_type` 约束，不能只把原账号列表替换掉。循环、目标失效或策略不匹配必须终止。
+
+`scheduler_type` 仅属于 Group，`basic` 为默认值，`advanced` 表示该分组在硬过滤后使用通用高级评分。高级调度的 Top-K、评分权重、粘性加权和订阅优先是网关通用设置，不存在全局启用开关；设置不能把基础分组隐式切换为高级，也不能让 OpenAI/Grok 特有能力作用于不具备该能力的账号。
 
 ## 认证与隐私
 

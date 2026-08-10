@@ -241,30 +241,29 @@ type SystemSettings struct {
 	PaymentVisibleMethodAlipayEnabled bool   `json:"payment_visible_method_alipay_enabled"`
 	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
 
-	// OpenAI account scheduling
-	OpenAIAdvancedSchedulerEnabled                         bool   `json:"openai_advanced_scheduler_enabled"`
-	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool   `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
-	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool   `json:"openai_advanced_scheduler_subscription_priority_enabled"`
-	OpenAIAdvancedSchedulerLBTopK                          string `json:"openai_advanced_scheduler_lb_top_k"`
-	OpenAIAdvancedSchedulerWeightPriority                  string `json:"openai_advanced_scheduler_weight_priority"`
-	OpenAIAdvancedSchedulerWeightLoad                      string `json:"openai_advanced_scheduler_weight_load"`
-	OpenAIAdvancedSchedulerWeightQueue                     string `json:"openai_advanced_scheduler_weight_queue"`
-	OpenAIAdvancedSchedulerWeightErrorRate                 string `json:"openai_advanced_scheduler_weight_error_rate"`
-	OpenAIAdvancedSchedulerWeightTTFT                      string `json:"openai_advanced_scheduler_weight_ttft"`
-	OpenAIAdvancedSchedulerWeightReset                     string `json:"openai_advanced_scheduler_weight_reset"`
-	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string `json:"openai_advanced_scheduler_weight_quota_headroom"`
-	OpenAIAdvancedSchedulerWeightPreviousResponse          string `json:"openai_advanced_scheduler_weight_previous_response"`
-	OpenAIAdvancedSchedulerWeightSessionSticky             string `json:"openai_advanced_scheduler_weight_session_sticky"`
-	OpenAIAdvancedSchedulerEffectiveLBTopK                 string `json:"openai_advanced_scheduler_effective_lb_top_k"`
-	OpenAIAdvancedSchedulerEffectiveWeightPriority         string `json:"openai_advanced_scheduler_effective_weight_priority"`
-	OpenAIAdvancedSchedulerEffectiveWeightLoad             string `json:"openai_advanced_scheduler_effective_weight_load"`
-	OpenAIAdvancedSchedulerEffectiveWeightQueue            string `json:"openai_advanced_scheduler_effective_weight_queue"`
-	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string `json:"openai_advanced_scheduler_effective_weight_error_rate"`
-	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string `json:"openai_advanced_scheduler_effective_weight_ttft"`
-	OpenAIAdvancedSchedulerEffectiveWeightReset            string `json:"openai_advanced_scheduler_effective_weight_reset"`
-	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string `json:"openai_advanced_scheduler_effective_weight_quota_headroom"`
-	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string `json:"openai_advanced_scheduler_effective_weight_previous_response"`
-	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
+	// 通用高级调度器参数；是否启用由分组 scheduler_type 决定。
+	AdvancedSchedulerStickyWeightedEnabled           bool   `json:"advanced_scheduler_sticky_weighted_enabled"`
+	AdvancedSchedulerSubscriptionPriorityEnabled     bool   `json:"advanced_scheduler_subscription_priority_enabled"`
+	AdvancedSchedulerLBTopK                          string `json:"advanced_scheduler_lb_top_k"`
+	AdvancedSchedulerWeightPriority                  string `json:"advanced_scheduler_weight_priority"`
+	AdvancedSchedulerWeightLoad                      string `json:"advanced_scheduler_weight_load"`
+	AdvancedSchedulerWeightQueue                     string `json:"advanced_scheduler_weight_queue"`
+	AdvancedSchedulerWeightErrorRate                 string `json:"advanced_scheduler_weight_error_rate"`
+	AdvancedSchedulerWeightTTFT                      string `json:"advanced_scheduler_weight_ttft"`
+	AdvancedSchedulerWeightReset                     string `json:"advanced_scheduler_weight_reset"`
+	AdvancedSchedulerWeightQuotaHeadroom             string `json:"advanced_scheduler_weight_quota_headroom"`
+	AdvancedSchedulerWeightPreviousResponse          string `json:"advanced_scheduler_weight_previous_response"`
+	AdvancedSchedulerWeightSessionSticky             string `json:"advanced_scheduler_weight_session_sticky"`
+	AdvancedSchedulerEffectiveLBTopK                 string `json:"advanced_scheduler_effective_lb_top_k"`
+	AdvancedSchedulerEffectiveWeightPriority         string `json:"advanced_scheduler_effective_weight_priority"`
+	AdvancedSchedulerEffectiveWeightLoad             string `json:"advanced_scheduler_effective_weight_load"`
+	AdvancedSchedulerEffectiveWeightQueue            string `json:"advanced_scheduler_effective_weight_queue"`
+	AdvancedSchedulerEffectiveWeightErrorRate        string `json:"advanced_scheduler_effective_weight_error_rate"`
+	AdvancedSchedulerEffectiveWeightTTFT             string `json:"advanced_scheduler_effective_weight_ttft"`
+	AdvancedSchedulerEffectiveWeightReset            string `json:"advanced_scheduler_effective_weight_reset"`
+	AdvancedSchedulerEffectiveWeightQuotaHeadroom    string `json:"advanced_scheduler_effective_weight_quota_headroom"`
+	AdvancedSchedulerEffectiveWeightPreviousResponse string `json:"advanced_scheduler_effective_weight_previous_response"`
+	AdvancedSchedulerEffectiveWeightSessionSticky    string `json:"advanced_scheduler_effective_weight_session_sticky"`
 	// OpenAI 账号配额自动暂停全局默认阈值。后端按 0~1 存储，0 表示不启用全局默认阈值。
 	OpenAIQuotaAutoPauseSettings service.OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
 

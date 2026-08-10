@@ -71,6 +71,14 @@
 
 升级前先创建并实际验证 PostgreSQL 备份，同时保存 Redis/对象存储中业务要求恢复的数据。后台备份服务可把数据库 dump 流式写入本地或 S3 兼容存储，并用维护锁串行化备份/恢复；敏感存储配置需要稳定的安全密钥。备份内容策略可能排除大体量历史表，恢复目标必须先核对备份范围。
 
+### 通用高级调度器迁移
+
+迁移 `238_generalize_advanced_scheduler.sql` 为 `groups` 增加受约束的 `scheduler_type`，默认 `basic`，并把旧 OpenAI 实验调度器转换为按分组选择的通用高级调度器。旧 `openai_advanced_scheduler_enabled=true` 时，仅既有 OpenAI 与 Grok 分组回填为 `advanced`；开关为 false 或不存在时，所有存量分组保持基础。其它平台不会被自动升级，新建分组始终为基础。
+
+迁移会把旧粘性、订阅优先、Top-K 和评分权重设置复制到 `advanced_scheduler_*`，随后删除全部 `openai_advanced_scheduler_*` 键，不保留数据库别名或读取回退。部署前必须把配置中的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*`、`gateway.openai_scheduler.sticky_escape_*` 替换为 `gateway.advanced_scheduler`；新版本会拒绝旧配置，管理设置 API 也会拒绝旧字段。
+
+这是破坏性的一次性升级，不支持新旧二进制或新旧前端混跑。先停止全部旧实例、备份 PostgreSQL 与配置，再启动一个新实例完成迁移，确认认证快照因版本变化而重建、分组模式和通用设置符合预期后，再扩容其它新实例。仅回退二进制不能恢复已删除的旧设置；需要回滚时应停止新实例并恢复升级前的数据库备份和配置。
+
 ### 分组客户端协议迁移
 
 迁移 `235_add_group_allowed_client_protocols.sql` 为 Group 增加非空 JSONB `allowed_client_protocols`，按六个平台在升级前的实际路由行为回填。OpenAI 是否加入 Messages 取自旧 `allow_messages_dispatch`；其它已有平台按各自迁移矩阵回填。旧列作为弃用管理 API 字段的数据库镜像保留，不用于支持新旧二进制共存。

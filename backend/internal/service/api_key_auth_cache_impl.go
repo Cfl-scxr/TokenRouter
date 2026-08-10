@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 29 // v29：认证快照包含 API Key 结算模式和指定订阅
+const apiKeyAuthSnapshotVersion = 30 // v30：认证快照包含分组调度器类型
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -445,6 +445,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
 			Platform:                        apiKey.Group.Platform,
+			SchedulerType:                   apiKey.Group.SchedulerType,
 			IsExclusive:                     apiKey.Group.IsExclusive,
 			Status:                          apiKey.Group.Status,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
@@ -572,6 +573,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
 			Platform:                        snapshot.Group.Platform,
+			SchedulerType:                   snapshot.Group.SchedulerType,
 			IsExclusive:                     snapshot.Group.IsExclusive,
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
@@ -640,7 +642,7 @@ func authGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		return nil
 	}
 	return &APIKeyAuthGroupSnapshot{
-		ID: group.ID, Name: group.Name, Platform: group.Platform, IsExclusive: group.IsExclusive,
+		ID: group.ID, Name: group.Name, Platform: group.Platform, SchedulerType: group.SchedulerType, IsExclusive: group.IsExclusive,
 		Status: group.Status, RateMultiplier: group.RateMultiplier, DataSharingEnabled: group.DataSharingEnabled,
 		SessionIsolationEnabled: group.SessionIsolationEnabled, AllowImageGeneration: group.AllowImageGeneration,
 		AllowBatchImageGeneration: group.AllowBatchImageGeneration, ImageRateIndependent: group.ImageRateIndependent,
@@ -667,7 +669,7 @@ func groupFromAuthSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		return nil
 	}
 	return &Group{
-		ID: snapshot.ID, Name: snapshot.Name, Platform: snapshot.Platform, IsExclusive: snapshot.IsExclusive,
+		ID: snapshot.ID, Name: snapshot.Name, Platform: snapshot.Platform, SchedulerType: snapshot.SchedulerType, IsExclusive: snapshot.IsExclusive,
 		Status: snapshot.Status, Hydrated: true, RateMultiplier: snapshot.RateMultiplier,
 		DataSharingEnabled: snapshot.DataSharingEnabled, SessionIsolationEnabled: snapshot.SessionIsolationEnabled,
 		AllowImageGeneration: snapshot.AllowImageGeneration, AllowBatchImageGeneration: snapshot.AllowBatchImageGeneration,
