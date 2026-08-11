@@ -26,18 +26,18 @@ func (s *GroupRepoSuite) TestListWithAccountCountSort_AttachesActiveCount() {
 			&id))
 		return id
 	}
-	link := func(accountID, groupID int64, priority int) {
+	link := func(accountID, groupID int64) {
 		_, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
-			accountID, groupID, priority)
+			"INSERT INTO account_groups (account_id, group_id, created_at) VALUES ($1, $2, NOW())",
+			accountID, groupID)
 		s.Require().NoError(err)
 	}
 
 	// gA：1 active + 1 disabled，因此 total=2，active=1。
-	link(insertAccount("sa-active", service.StatusActive), gA.ID, 1)
-	link(insertAccount("sa-disabled", service.StatusDisabled), gA.ID, 2)
+	link(insertAccount("sa-active", service.StatusActive), gA.ID)
+	link(insertAccount("sa-disabled", service.StatusDisabled), gA.ID)
 	// gB：1 active，因此 total=1，active=1。
-	link(insertAccount("sb-active", service.StatusActive), gB.ID, 1)
+	link(insertAccount("sb-active", service.StatusActive), gB.ID)
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 		Page: 1, PageSize: 100, SortBy: "account_count", SortOrder: "desc",

@@ -1131,7 +1131,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPrev
 	require.True(t, decision.StickyPreviousHit)
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionInTopKUsesStickyFirst(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionUsesTopKSampling(t *testing.T) {
 	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
@@ -1167,9 +1167,10 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionIn
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.ErrorRate = 0.8
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.TTFT = 0.5
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.SessionSticky = 3
-	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
-		"openai:session_hash_weighted_topk": 37101,
-	}}
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{}}
+	for index := 0; index < 128; index++ {
+		cache.sessionBindings["openai:"+fmt.Sprintf("session_hash_weighted_topk_%d", index)] = 37101
+	}
 	svc := &OpenAIGatewayService{
 		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
 		cache:              cache,
@@ -1178,26 +1179,31 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedSessionIn
 		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
 	}
 
-	selection, decision, err := svc.SelectAccountWithScheduler(
-		ctx,
-		&groupID,
-		"",
-		"session_hash_weighted_topk",
-		"gpt-5.1",
-		nil,
-		OpenAIUpstreamTransportAny,
-		false,
-	)
-	require.NoError(t, err)
-	require.NotNil(t, selection)
-	require.NotNil(t, selection.Account)
-	require.Equal(t, int64(37101), selection.Account.ID)
-	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
-	require.True(t, decision.StickySessionHit)
-	require.Equal(t, 2, decision.TopK)
-	if selection.ReleaseFunc != nil {
-		selection.ReleaseFunc()
+	var observedSticky, observedNonSticky bool
+	for index := 0; index < 128; index++ {
+		selection, decision, err := svc.SelectAccountWithScheduler(
+			ctx,
+			&groupID,
+			"",
+			fmt.Sprintf("session_hash_weighted_topk_%d", index),
+			"gpt-5.1",
+			nil,
+			OpenAIUpstreamTransportAny,
+			false,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+		require.Equal(t, 2, decision.TopK)
+		observedSticky = observedSticky || selection.Account.ID == 37101
+		observedNonSticky = observedNonSticky || selection.Account.ID == 37102
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
 	}
+	require.True(t, observedSticky, "粘性加分账号仍应参与抽样")
+	require.True(t, observedNonSticky, "OpenAI 选择器不能把加权粘性强制置首")
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousRequiresMovableContext(t *testing.T) {
@@ -2378,8 +2384,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByTT
 		cfg:                cfg,
 		rateLimitService:   newAdvancedSchedulerRateLimitService("true"),
 		concurrencyService: NewConcurrencyService(concurrencyCache),
-		openaiAccountStats: newOpenAIAccountRuntimeStats(),
 	}
+	svc.openaiAccountStats = svc.rateLimitService.AdvancedSchedulerRuntimeStats()
 	fastTTFT := 14999
 	svc.openaiAccountStats.report(21101, true, &fastTTFT)
 	stableTTFT := 14999
@@ -2426,16 +2432,16 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByEr
 	cfg := &config.Config{}
 	cfg.Gateway.AdvancedScheduler.StickyEscapeEnabled = true
 	cfg.Gateway.AdvancedScheduler.StickyEscapeTTFTMs = 15000
-	cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate = 0.5
+	cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate = 0.7
 	svc := &OpenAIGatewayService{
 		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
 		cache:              cache,
 		cfg:                cfg,
 		rateLimitService:   newAdvancedSchedulerRateLimitService("true"),
 		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{21202: true}}),
-		openaiAccountStats: newOpenAIAccountRuntimeStats(),
 	}
-	for i := 0; i < 3; i++ {
+	svc.openaiAccountStats = svc.rateLimitService.AdvancedSchedulerRuntimeStats()
+	for i := 0; i < 2; i++ {
 		svc.openaiAccountStats.report(21201, false, nil)
 	}
 	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_sticky_error_rate", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
@@ -2448,9 +2454,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByEr
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
-	for i := 0; i < 2; i++ {
-		svc.openaiAccountStats.report(21201, false, nil)
-	}
+	svc.openaiAccountStats.report(21201, false, nil)
 
 	selection, decision, err = svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_sticky_error_rate", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
 	require.NoError(t, err)
@@ -2534,8 +2538,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeDisa
 		cfg:                cfg,
 		rateLimitService:   newAdvancedSchedulerRateLimitService("true"),
 		concurrencyService: NewConcurrencyService(concurrencyCache),
-		openaiAccountStats: newOpenAIAccountRuntimeStats(),
 	}
+	svc.openaiAccountStats = svc.rateLimitService.AdvancedSchedulerRuntimeStats()
 	slowTTFT := 20000
 	svc.openaiAccountStats.report(21401, true, &slowTTFT)
 	for i := 0; i < 5; i++ {
@@ -2713,6 +2717,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityDis
 func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWithinGroupPool(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10123)
+	ctx = withAdvancedSchedulerTestGroup(ctx, groupID)
 	accounts := []Account{
 		{
 			ID:          21631,
@@ -2723,7 +2728,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 			Concurrency: 1,
 			Priority:    1,
 			AccountGroups: []AccountGroup{
-				{AccountID: 21631, GroupID: groupID, Priority: 100},
+				{AccountID: 21631, GroupID: groupID},
 			},
 			GroupIDs: []int64{groupID},
 		},
@@ -2736,12 +2741,13 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 			Concurrency: 1,
 			Priority:    100000,
 			AccountGroups: []AccountGroup{
-				{AccountID: 21632, GroupID: groupID, Priority: 1},
+				{AccountID: 21632, GroupID: groupID},
 			},
 			GroupIDs: []int64{groupID},
 		},
 	}
 	cfg := newSchedulerTestSubscriptionPriorityConfig()
+	cfg.Gateway.AdvancedScheduler.LBTopK = 1
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.Load = 0
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.Queue = 0
 	svc := &OpenAIGatewayService{
@@ -2796,34 +2802,34 @@ func TestDefaultOpenAIAccountScheduler_ShouldEscapeStickyAccount_ThresholdBounda
 	stats.report(accountID, true, nil)
 	scheduler := &defaultOpenAIAccountScheduler{stats: stats}
 
-	reason, errorRate, observedTTFT, shouldEscape := scheduler.shouldEscapeStickyAccount(accountID, openAIStickyEscapeConfig{
+	reason, errorRate, observedTTFT, shouldEscape := scheduler.shouldEscapeStickyAccount(accountID, advancedStickyEscapeConfig{
 		enabled:   true,
 		ttftMs:    15000,
 		errorRate: 0.5,
 	})
 	require.False(t, shouldEscape)
 	require.Empty(t, reason)
-	require.InDelta(t, 0.16, errorRate, 1e-9)
+	require.InDelta(t, 0.416, errorRate, 1e-9)
 	require.InDelta(t, 15000, observedTTFT, 1e-9)
 
 	for i := 0; i < 4; i++ {
 		stats.report(accountID, false, nil)
 	}
-	reason, errorRate, _, shouldEscape = scheduler.shouldEscapeStickyAccount(accountID, openAIStickyEscapeConfig{
+	reason, errorRate, _, shouldEscape = scheduler.shouldEscapeStickyAccount(accountID, advancedStickyEscapeConfig{
 		enabled:   true,
 		ttftMs:    15000,
 		errorRate: 1,
 	})
 	require.False(t, shouldEscape)
 	require.Empty(t, reason)
-	reason, errorRate, observedTTFT, shouldEscape = scheduler.shouldEscapeStickyAccount(accountID, openAIStickyEscapeConfig{
+	reason, errorRate, observedTTFT, shouldEscape = scheduler.shouldEscapeStickyAccount(accountID, advancedStickyEscapeConfig{
 		enabled:   true,
 		ttftMs:    15000,
 		errorRate: errorRate,
 	})
 	require.False(t, shouldEscape)
 	require.Empty(t, reason)
-	require.InDelta(t, 0.655936, errorRate, 1e-9)
+	require.InDelta(t, 0.7607936, errorRate, 1e-9)
 	require.InDelta(t, 15000, observedTTFT, 1e-9)
 }
 
@@ -3270,7 +3276,7 @@ func TestOpenAIAccountRuntimeStats_ReportAndSnapshot(t *testing.T) {
 
 	errorRate, ttft, hasTTFT := stats.snapshot(1001)
 	require.True(t, hasTTFT)
-	require.InDelta(t, 0.36, errorRate, 1e-9)
+	require.InDelta(t, 0.616, errorRate, 1e-9)
 	require.InDelta(t, 120.0, ttft, 1e-9)
 	require.Equal(t, 1, stats.size())
 }
@@ -3654,12 +3660,12 @@ func int64PtrForTest(v int64) *int64 {
 	return &v
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedFallbackSkipsOutOfGroupStickyAccount(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedDoesNotFallbackOutsideTopK(t *testing.T) {
 	resetAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
 	groupID := int64(101081)
-	otherGroupID := int64(101082)
+	ctx = withAdvancedSchedulerTestGroup(ctx, groupID)
 	accounts := []Account{
 		{
 			ID:          38001,
@@ -3668,29 +3674,29 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedFallbackS
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    10,
+			Priority:    1,
 			GroupIDs:    []int64{groupID},
 		},
 		{
-			// 会话粘连绑定指向的账号已被移出请求分组（绑定 TTL 内账号改组的场景）。
+			// 粘性账号仍在分组内，但分数不足以进入 Top-K。
 			ID:          38002,
 			Platform:    PlatformOpenAI,
 			Type:        AccountTypeAPIKey,
 			Status:      StatusActive,
 			Schedulable: true,
 			Concurrency: 1,
-			Priority:    0,
-			GroupIDs:    []int64{otherGroupID},
+			Priority:    100,
+			GroupIDs:    []int64{groupID},
 		},
 	}
 	cfg := &config.Config{}
-	cfg.Gateway.AdvancedScheduler.LBTopK = 2
+	cfg.Gateway.AdvancedScheduler.LBTopK = 1
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.Priority = 1
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.Load = 1
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.Queue = 0.7
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.ErrorRate = 0.8
 	cfg.Gateway.AdvancedScheduler.ScoreWeights.TTFT = 0.5
-	cfg.Gateway.AdvancedScheduler.ScoreWeights.SessionSticky = 3
+	cfg.Gateway.AdvancedScheduler.ScoreWeights.SessionSticky = 0
 	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{
 		"openai:session_weighted_out_of_group": 38002,
 	}}
@@ -3718,14 +3724,13 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedFallbackS
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	// 组内唯一候选 38001 满并发：必须返回其等待计划，绝不能把请求泄漏到组外的粘连账号 38002。
+	// Top-K 候选 38001 满并发时必须返回其等待计划，不能再硬回退到 Top-K 外的粘性账号。
 	require.Equal(t, int64(38001), selection.Account.ID)
 	require.False(t, selection.Acquired)
 	require.NotNil(t, selection.WaitPlan)
 	require.Equal(t, int64(38001), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
-	// 失效的粘连绑定应被清理，避免后续请求反复走同一条泄漏路径。
-	require.Positive(t, cache.deletedSessions["openai:session_weighted_out_of_group"])
+	require.False(t, decision.StickySessionHit)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWaitsOnBusySubscriptionWhenRegularUnusable(t *testing.T) {

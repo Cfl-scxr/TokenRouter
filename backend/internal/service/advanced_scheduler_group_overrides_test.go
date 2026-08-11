@@ -69,30 +69,52 @@ func TestResolveAdvancedSchedulerEffectiveSettingsPrefersGroupOverrides(t *testi
 	require.Equal(t, 20.0, settings.weights.SessionSticky)
 }
 
-func TestResolveAdvancedSchedulerEffectiveSettingsFallsBackForLegacyInvalidOverrides(t *testing.T) {
+func TestResolveAdvancedSchedulerEffectiveSettingsKeepsExplicitZeroWeights(t *testing.T) {
 	settings := resolveAdvancedSchedulerEffectiveSettings(
 		7,
-		groupAdvancedSchedulerOverrideTestWeights(),
-		advancedSchedulerRuntimeSettings{
-			weightOverrides: map[string]float64{
-				"priority": 10,
-			},
+		GatewayAdvancedSchedulerScoreWeightsView{
+			Priority: 1,
 		},
+		advancedSchedulerRuntimeSettings{},
 		GroupAdvancedSchedulerOverrides{
-			WeightPriority:      groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightLoad:          groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightQueue:         groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightErrorRate:     groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightTTFT:          groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightReset:         groupAdvancedSchedulerOverrideTestPointer(0.0),
-			WeightQuotaHeadroom: groupAdvancedSchedulerOverrideTestPointer(0.0),
+			WeightPriority: groupAdvancedSchedulerOverrideTestPointer(0.0),
 		},
 	)
 
-	// 旧数据库若已保存无效组合，不能让请求期调度器失去全部评分信号。
-	require.Equal(t, 10.0, settings.weights.Priority)
-	require.Equal(t, 2.0, settings.weights.Load)
-	require.Equal(t, 3.0, settings.weights.Queue)
+	require.Zero(t, settings.weights.Priority)
+	require.Zero(t, settings.weights.Load)
+	require.Zero(t, settings.weights.Queue)
+}
+
+func TestResolveAdvancedSchedulerEffectiveSettingsRejectsOverflowingMergedWeightsAtRuntime(t *testing.T) {
+	globalWeights := GatewayAdvancedSchedulerScoreWeightsView{
+		Priority: 1,
+		Previous: 2,
+	}
+	settings := resolveAdvancedSchedulerEffectiveSettings(
+		7,
+		globalWeights,
+		advancedSchedulerRuntimeSettings{},
+		GroupAdvancedSchedulerOverrides{
+			WeightPriority: groupAdvancedSchedulerOverrideTestPointer(math.MaxFloat64),
+			WeightLoad:     groupAdvancedSchedulerOverrideTestPointer(math.MaxFloat64),
+		},
+	)
+
+	require.Equal(t, globalWeights, settings.weights)
+	require.False(t, math.IsNaN(settings.weights.configWeights().TotalWeightSum()))
+	require.False(t, math.IsInf(settings.weights.configWeights().TotalWeightSum(), 0))
+}
+
+func TestValidateAdvancedSchedulerEffectiveWeightsAllowsZeroBaseAndRejectsOverflow(t *testing.T) {
+	require.NoError(t, validateAdvancedSchedulerEffectiveWeights(GatewayAdvancedSchedulerScoreWeightsView{
+		Previous:      5,
+		SessionSticky: 3,
+	}))
+	require.Error(t, validateAdvancedSchedulerEffectiveWeights(GatewayAdvancedSchedulerScoreWeightsView{
+		Priority: math.MaxFloat64,
+		Load:     math.MaxFloat64,
+	}))
 }
 
 func TestValidateGroupAdvancedSchedulerOverrides(t *testing.T) {
@@ -130,7 +152,7 @@ func TestValidateGroupAdvancedSchedulerOverrides(t *testing.T) {
 			wantError: true,
 		},
 		{
-			name: "all explicit base weights cannot be zero",
+			name: "all explicit base weights can be zero",
 			overrides: GroupAdvancedSchedulerOverrides{
 				WeightPriority:      groupAdvancedSchedulerOverrideTestPointer(0.0),
 				WeightLoad:          groupAdvancedSchedulerOverrideTestPointer(0.0),
@@ -140,7 +162,6 @@ func TestValidateGroupAdvancedSchedulerOverrides(t *testing.T) {
 				WeightReset:         groupAdvancedSchedulerOverrideTestPointer(0.0),
 				WeightQuotaHeadroom: groupAdvancedSchedulerOverrideTestPointer(0.0),
 			},
-			wantError: true,
 		},
 	}
 

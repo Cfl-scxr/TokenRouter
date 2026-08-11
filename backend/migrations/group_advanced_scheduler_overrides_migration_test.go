@@ -15,6 +15,8 @@ func TestGroupAdvancedSchedulerOverridesMigration(t *testing.T) {
 
 	require.Contains(t, sql, "add column if not exists advanced_scheduler_overrides jsonb not null default '{}'::jsonb")
 	require.Contains(t, sql, "groups_advanced_scheduler_overrides_object_check")
+	require.Contains(t, sql, "conrelid = 'groups'::regclass")
+	require.Contains(t, sql, "contype = 'c'")
 	require.Contains(t, sql, "check (jsonb_typeof(advanced_scheduler_overrides) = 'object')")
 	require.Contains(t, sql, "分组高级调度器稀疏覆盖")
 }

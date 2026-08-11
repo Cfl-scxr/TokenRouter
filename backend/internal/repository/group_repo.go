@@ -177,7 +177,7 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 	return groupEntityToService(row), nil
 }
 
-// CreateFromSource 原子保存分组副本、源账号绑定优先级和调度事件。
+// CreateFromSource 原子保存分组副本、源账号绑定和调度事件。
 func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service.Group, sourceGroupID int64) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
@@ -203,8 +203,8 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	}
 	result, err := txClient.ExecContext(
 		txCtx,
-		`INSERT INTO account_groups (account_id, group_id, priority, created_at)
-		 SELECT ag.account_id, $2, ag.priority, NOW()
+		`INSERT INTO account_groups (account_id, group_id, created_at)
+		 SELECT ag.account_id, $2, NOW()
 		 FROM account_groups ag
 		 JOIN accounts a ON a.id = ag.account_id
 		 WHERE ag.group_id = $1
@@ -1023,8 +1023,8 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 	// 使用 INSERT ... ON CONFLICT DO NOTHING 忽略已存在的绑定
 	_, err := sqlq.ExecContext(
 		ctx,
-		`INSERT INTO account_groups (account_id, group_id, priority, created_at)
-		 SELECT unnest($1::bigint[]), $2, 50, NOW()
+		`INSERT INTO account_groups (account_id, group_id, created_at)
+		 SELECT unnest($1::bigint[]), $2, NOW()
 		 ON CONFLICT (account_id, group_id) DO NOTHING`,
 		pq.Array(accountIDs),
 		groupID,

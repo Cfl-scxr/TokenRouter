@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -78,6 +79,72 @@ func TestAdvancedSchedulerCoreTreatsMissingSignalsAsNeutral(t *testing.T) {
 	require.True(t, candidates[1].loadKnown)
 }
 
+func TestAdvancedSchedulerCoreTopKUsesStableOrderForMixedKnownAndUnknownLoads(t *testing.T) {
+	base, _ := scoreAdvancedSchedulerCandidates(
+		[]*Account{
+			{ID: 1, Priority: 5},
+			{ID: 2, Priority: 5},
+			{ID: 3, Priority: 5},
+			{ID: 4, Priority: 5},
+		},
+		map[int64]*AccountLoadInfo{
+			1: {AccountID: 1, LoadRate: 99, WaitingCount: 9},
+			3: {AccountID: 3, LoadRate: 1, WaitingCount: 0},
+		},
+		nil,
+		GatewayAdvancedSchedulerScoreWeightsView{},
+		advancedSchedulerSelectionInput{},
+		time.Now(),
+	)
+	require.Len(t, base, 4)
+	require.True(t, base[0].loadKnown)
+	require.False(t, base[1].loadKnown)
+	require.True(t, base[2].loadKnown)
+	require.False(t, base[3].loadKnown)
+
+	// 遍历全部输入排列，确保全零权重下已知/未知负载混排不会改变同分 Top-K。
+	permutation := []int{0, 1, 2, 3}
+	var verifyPermutations func(int)
+	verifyPermutations = func(position int) {
+		if position == len(permutation) {
+			candidates := make([]advancedSchedulerCandidateScore, 0, len(permutation))
+			for _, index := range permutation {
+				candidates = append(candidates, base[index])
+			}
+			topK := selectTopKAdvancedSchedulerCandidates(candidates, 2)
+			require.Len(t, topK, 2)
+			require.Equal(t, []int64{1, 2}, []int64{topK[0].account.ID, topK[1].account.ID}, "输入顺序=%v", permutation)
+			return
+		}
+		for index := position; index < len(permutation); index++ {
+			permutation[position], permutation[index] = permutation[index], permutation[position]
+			verifyPermutations(position + 1)
+			permutation[position], permutation[index] = permutation[index], permutation[position]
+		}
+	}
+	verifyPermutations(0)
+}
+
+func TestAdvancedSchedulerCoreRanksFirstFailureBelowUnknownAccount(t *testing.T) {
+	failed := &Account{ID: 31, Priority: 1, Platform: PlatformGemini}
+	unknown := &Account{ID: 32, Priority: 1, Platform: PlatformGemini}
+	stats := newAdvancedAccountRuntimeStats()
+	stats.report(failed.ID, false, nil)
+
+	candidates, _ := scoreAdvancedSchedulerCandidates(
+		[]*Account{failed, unknown},
+		nil,
+		stats,
+		GatewayAdvancedSchedulerScoreWeightsView{ErrorRate: 1},
+		advancedSchedulerSelectionInput{},
+		time.Now(),
+	)
+
+	require.Len(t, candidates, 2)
+	require.Less(t, candidates[0].score, candidates[1].score)
+	require.Equal(t, unknown.ID, candidates[1].account.ID)
+}
+
 func TestAdvancedSchedulerCoreSelectsNonOpenAIGroupAndMarksResult(t *testing.T) {
 	groupID := int64(42)
 	group := &Group{ID: groupID, Platform: PlatformGemini, SchedulerType: GroupSchedulerTypeAdvanced}
@@ -103,19 +170,27 @@ func TestAdvancedSchedulerCoreSelectsNonOpenAIGroupAndMarksResult(t *testing.T) 
 	require.False(t, basicSelection.AdvancedScheduler)
 }
 
-func TestAdvancedSchedulerCoreKeepsWeightedStickyInsideTopK(t *testing.T) {
+func TestAdvancedSchedulerCoreUsesWeightedSamplingForStickyCandidate(t *testing.T) {
 	candidates := []advancedSchedulerCandidateScore{
 		{account: &Account{ID: 1, Priority: 1}, loadInfo: &AccountLoadInfo{}, score: 10},
 		{account: &Account{ID: 2, Priority: 1}, loadInfo: &AccountLoadInfo{}, score: 9},
 		{account: &Account{ID: 3, Priority: 1}, loadInfo: &AccountLoadInfo{}, score: 1},
 	}
 
-	order := buildAdvancedSchedulerSelectionOrder(candidates, advancedSchedulerSelectionInput{
-		StickyWeighted:  true,
-		StickyAccountID: 2,
-		TopK:            2,
-	})
+	var observedSticky, observedNonSticky bool
+	for index := 0; index < 128; index++ {
+		order := buildAdvancedSchedulerSelectionOrder(candidates, advancedSchedulerSelectionInput{
+			SessionHash:     fmt.Sprintf("weighted-sticky-%d", index),
+			StickyWeighted:  true,
+			StickyAccountID: 2,
+			TopK:            2,
+		})
 
-	require.Len(t, order, 2)
-	require.Equal(t, int64(2), order[0].account.ID)
+		require.Len(t, order, 2)
+		require.ElementsMatch(t, []int64{1, 2}, []int64{order[0].account.ID, order[1].account.ID})
+		observedSticky = observedSticky || order[0].account.ID == 2
+		observedNonSticky = observedNonSticky || order[0].account.ID == 1
+	}
+	require.True(t, observedSticky, "粘性加分账号仍应有机会被抽中")
+	require.True(t, observedNonSticky, "粘性加权不能退化为强制置首")
 }

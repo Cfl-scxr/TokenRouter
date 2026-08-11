@@ -159,7 +159,7 @@ type AdvancedSchedulerScoreDiagnosticPolicySignal struct {
 type AdvancedSchedulerScoreDiagnosticSource interface {
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetGroup(ctx context.Context, id int64) (*Group, error)
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error)
 	ListSchedulableAccountsForAdvancedSchedulerScore(ctx context.Context, groupID *int64, platform string) ([]Account, error)
 }
 
@@ -169,6 +169,17 @@ type AdvancedSchedulerScoreDiagnosticService struct {
 	source             AdvancedSchedulerScoreDiagnosticSource
 	concurrencyService *ConcurrencyService
 	rateLimitService   *RateLimitService
+	gatewayService     *GatewayService
+	openAIGateway      *OpenAIGatewayService
+}
+
+// SetSchedulingServices 注入生产调度服务，供诊断复用只读硬过滤逻辑。
+func (s *AdvancedSchedulerScoreDiagnosticService) SetSchedulingServices(gateway *GatewayService, openAIGateway *OpenAIGatewayService) {
+	if s == nil {
+		return
+	}
+	s.gatewayService = gateway
+	s.openAIGateway = openAIGateway
 }
 
 // NewAdvancedSchedulerScoreDiagnosticService 创建高级评分诊断服务。
@@ -367,13 +378,15 @@ func (s *AdvancedSchedulerScoreDiagnosticService) buildGroupSummary(
 	if err != nil {
 		return summary, err
 	}
+	ctx = s.prepareEligibilityContext(ctx, group, poolAccounts)
 	filtered := make([]*Account, 0, len(poolAccounts))
 	for index := range poolAccounts {
 		candidate := poolAccounts[index]
-		if diagnosticHardFilterReason(&candidate, group, AdvancedSchedulerScoreDiagnosticRequest{GroupID: group.ID}, now) == "" {
+		if s.diagnosticHardFilterReason(ctx, &candidate, group, AdvancedSchedulerScoreDiagnosticRequest{GroupID: group.ID}, now) == "" {
 			filtered = append(filtered, &candidate)
 		}
 	}
+	filtered, _, _ = diagnosticSubscriptionPriorityPool(filtered, group, effective)
 	loadMap := s.loadMap(ctx, filtered)
 	var stats *advancedAccountRuntimeStats
 	if s.rateLimitService != nil {
@@ -411,13 +424,25 @@ func (s *AdvancedSchedulerScoreDiagnosticService) buildDetail(
 ) (*AdvancedSchedulerScoreDiagnosticDetail, error) {
 	now := time.Now()
 	effective, runtime := s.effectiveSettings(ctx, group)
-	allAccounts, _, err := s.source.ListAccounts(ctx, 1, 10000, "", "", "", "", group.ID, "", "", "")
+	allAccounts, err := s.source.ListAccountsForSchedulerScoreFilter(ctx, "", "", "", "", group.ID, "")
 	if err != nil {
 		return nil, err
 	}
 	poolAccounts, err := s.source.ListSchedulableAccountsForAdvancedSchedulerScore(ctx, &group.ID, group.Platform)
 	if err != nil {
 		return nil, err
+	}
+	ctx = s.prepareEligibilityContext(ctx, group, poolAccounts)
+	stats := (*advancedAccountRuntimeStats)(nil)
+	if s.rateLimitService != nil {
+		stats = s.rateLimitService.AdvancedSchedulerRuntimeStats()
+	}
+	eligibilityRequest := request
+	// 硬粘性逃逸后，生产调度会按普通候选执行费用与 RPM 门禁；诊断必须使用相同语义。
+	if !effective.stickyWeightedEnabled && request.StickyAccountID > 0 {
+		if _, _, _, escaped := shouldEscapeAdvancedStickyAccount(stats, request.StickyAccountID, s.stickyEscapeConfig()); escaped {
+			eligibilityRequest.StickyAccountID = 0
+		}
 	}
 
 	exclusions := make(map[string]int)
@@ -426,7 +451,7 @@ func (s *AdvancedSchedulerScoreDiagnosticService) buildDetail(
 	for i := range poolAccounts {
 		candidate := poolAccounts[i]
 		seenPoolIDs[candidate.ID] = struct{}{}
-		if reason := diagnosticHardFilterReason(&candidate, group, request, now); reason != "" {
+		if reason := s.diagnosticHardFilterReason(ctx, &candidate, group, eligibilityRequest, now); reason != "" {
 			exclusions[reason]++
 			continue
 		}
@@ -437,41 +462,59 @@ func (s *AdvancedSchedulerScoreDiagnosticService) buildDetail(
 		if _, found := seenPoolIDs[account.ID]; found {
 			continue
 		}
-		reason := diagnosticHardFilterReason(account, group, request, now)
+		reason := s.diagnosticHardFilterReason(ctx, account, group, eligibilityRequest, now)
 		if reason == "" {
 			reason = "not_in_schedulable_pool"
 		}
 		exclusions[reason]++
 	}
 
+	policyOutcome := diagnosticHardStickyPolicyOutcome(filtered, group, request, effective, stats, s.stickyEscapeConfig())
+	deferredAccountIDs := map[int64]struct{}{}
+	if policyOutcome.forcedAccountID == 0 {
+		var subscriptionPoolActive bool
+		filtered, deferredAccountIDs, subscriptionPoolActive = diagnosticSubscriptionPriorityPool(filtered, group, effective)
+		policyOutcome.subscriptionPoolActive = subscriptionPoolActive
+		if len(deferredAccountIDs) > 0 {
+			exclusions["subscription_priority_deferred"] += len(deferredAccountIDs)
+		}
+	}
+
 	loadMap := s.loadMap(ctx, filtered)
-	stats := (*advancedAccountRuntimeStats)(nil)
-	if s.rateLimitService != nil {
-		stats = s.rateLimitService.AdvancedSchedulerRuntimeStats()
+	previousResponseAccountID := int64(0)
+	if group != nil && group.Platform == PlatformOpenAI {
+		previousResponseAccountID = request.PreviousResponseAccountID
 	}
 	input := advancedSchedulerSelectionInput{
 		GroupID:                 &group.ID,
 		RequestedModel:          request.RequestedModel,
 		StickyAccountID:         request.StickyAccountID,
-		StickyPreviousAccountID: request.PreviousResponseAccountID,
+		StickyPreviousAccountID: previousResponseAccountID,
 		StickyWeighted:          effective.stickyWeightedEnabled,
 		TopK:                    effective.topK,
 		QuotaHeadroomFactor:     openAIQuotaHeadroomFactor,
 	}
 	candidates, _, ranges := scoreAdvancedSchedulerCandidatesWithRanges(filtered, loadMap, stats, effective.weights, input, now)
-	sortAdvancedSchedulerCandidates(candidates)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return isAdvancedSchedulerCandidateBetter(candidates[i], candidates[j])
+	})
 	topKCandidates := selectTopKAdvancedSchedulerCandidates(candidates, effective.topK)
-	selection := diagnosticSelectionStats(topKCandidates, input)
+	selection := diagnosticSelectionStats(topKCandidates, policyOutcome.forcedAccountID)
 
 	detail := &AdvancedSchedulerScoreDiagnosticDetail{
 		Group:             diagnosticGroupSummary(group),
 		Context:           diagnosticContext(request),
 		CandidatePool:     diagnosticCandidatePool(candidates, topKCandidates, ranges, exclusions, selection),
 		EffectiveSettings: diagnosticEffectiveSettings(group, runtime, effective),
-		PolicySignals:     diagnosticPolicySignals(group, request, effective),
+		PolicySignals:     diagnosticPolicySignals(group, request, effective, policyOutcome),
 		Metrics:           make([]AdvancedSchedulerScoreDiagnosticMetric, 0),
 	}
-	targetReason := diagnosticHardFilterReason(target, group, request, now)
+	targetReason := s.diagnosticHardFilterReason(ctx, target, group, eligibilityRequest, now)
+	if target != nil {
+		if _, deferred := deferredAccountIDs[target.ID]; deferred {
+			targetReason = "subscription_priority_deferred"
+		}
+	}
 	if targetReason != "" {
 		detail.HardFilterReasons = append(detail.HardFilterReasons, targetReason)
 	}
@@ -498,6 +541,28 @@ func (s *AdvancedSchedulerScoreDiagnosticService) effectiveSettings(ctx context.
 	return gateway.advancedSchedulerEffectiveSettingsForGroup(ctx, group), runtime
 }
 
+func (s *AdvancedSchedulerScoreDiagnosticService) stickyEscapeConfig() advancedStickyEscapeConfig {
+	if s == nil || s.rateLimitService == nil {
+		return advancedStickyEscapeConfig{}
+	}
+	return resolveAdvancedStickyEscapeConfig(s.rateLimitService.cfg)
+}
+
+func (s *AdvancedSchedulerScoreDiagnosticService) prepareEligibilityContext(ctx context.Context, group *Group, accounts []Account) context.Context {
+	if s == nil {
+		return ctx
+	}
+	if s.gatewayService != nil {
+		ctx = s.gatewayService.withGroupContext(ctx, group)
+		ctx = s.gatewayService.withWindowCostPrefetch(ctx, accounts)
+		ctx = s.gatewayService.withRPMPrefetch(ctx, accounts)
+	}
+	if s.openAIGateway != nil && group != nil && (group.Platform == PlatformOpenAI || group.Platform == PlatformGrok) {
+		ctx = s.openAIGateway.withOpenAIQuotaAutoPauseContext(ctx)
+	}
+	return ctx
+}
+
 func (s *AdvancedSchedulerScoreDiagnosticService) loadMap(ctx context.Context, accounts []*Account) map[int64]*AccountLoadInfo {
 	if s == nil || s.concurrencyService == nil || len(accounts) == 0 {
 		return map[int64]*AccountLoadInfo{}
@@ -505,7 +570,7 @@ func (s *AdvancedSchedulerScoreDiagnosticService) loadMap(ctx context.Context, a
 	loads := make([]AccountWithConcurrency, 0, len(accounts))
 	for _, account := range accounts {
 		if account != nil {
-			loads = append(loads, AccountWithConcurrency{ID: account.ID, MaxConcurrency: account.Concurrency})
+			loads = append(loads, AccountWithConcurrency{ID: account.ID, MaxConcurrency: account.EffectiveLoadFactor()})
 		}
 	}
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, loads)
@@ -525,7 +590,91 @@ func diagnosticContext(request AdvancedSchedulerScoreDiagnosticRequest) Advanced
 	}
 }
 
-func diagnosticHardFilterReason(account *Account, group *Group, request AdvancedSchedulerScoreDiagnosticRequest, now time.Time) string {
+func (s *AdvancedSchedulerScoreDiagnosticService) diagnosticHardFilterReason(
+	ctx context.Context,
+	account *Account,
+	group *Group,
+	request AdvancedSchedulerScoreDiagnosticRequest,
+	now time.Time,
+) string {
+	if reason := diagnosticBaseHardFilterReason(account, group, now); reason != "" {
+		return reason
+	}
+	model := strings.TrimSpace(request.RequestedModel)
+	if group != nil && (group.Platform == PlatformOpenAI || group.Platform == PlatformGrok) {
+		if !account.IsSchedulableForModelWithContext(ctx, model) {
+			return "model_runtime_blocked"
+		}
+		if account.IsOpenAI() {
+			if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+				return "quota_auto_pause"
+			}
+		}
+		if account.IsGrok() {
+			if paused, _ := shouldAutoPauseGrokAccountByQuota(account); paused {
+				return "quota_auto_pause"
+			}
+		}
+		if !openAIAccountSupportsRoutingModel(ctx, account, model) {
+			return "model_unsupported"
+		}
+		if s != nil && s.openAIGateway != nil {
+			if s.openAIGateway.isOpenAIAccountRequestRuntimeBlocked(account, model) {
+				return "runtime_blocked"
+			}
+			if s.openAIGateway.isOpenAIProxyStreamQuarantined(ctx, account) {
+				return "proxy_stream_quarantined"
+			}
+			scheduler := &defaultOpenAIAccountScheduler{service: s.openAIGateway}
+			if !parentHealthyForShadow(account, func(id int64) *Account {
+				return scheduler.lookupShadowParentAccount(ctx, id)
+			}) {
+				return "shadow_parent_unhealthy"
+			}
+			groupID := group.ID
+			if s.openAIGateway.needsUpstreamChannelRestrictionCheck(ctx, &groupID) &&
+				s.openAIGateway.isUpstreamRoutingModelRestrictedByChannel(ctx, groupID, account, model, false) {
+				return "channel_upstream_restricted"
+			}
+		}
+		return ""
+	}
+
+	if s != nil && s.gatewayService != nil {
+		if model != "" && !s.gatewayService.isModelSupportedByAccountWithContext(ctx, account, model) {
+			return "model_unsupported"
+		}
+		if !s.gatewayService.isAccountSchedulableForModelSelection(ctx, account, model) {
+			return "model_runtime_blocked"
+		}
+		if !s.gatewayService.isAccountSchedulableForQuota(account) {
+			return "quota_exceeded"
+		}
+		isSticky := account.ID == request.StickyAccountID
+		if !s.gatewayService.isAccountSchedulableForWindowCost(ctx, account, isSticky) {
+			return "window_cost_exceeded"
+		}
+		if !s.gatewayService.isAccountSchedulableForRPM(ctx, account, isSticky) {
+			return "rpm_exceeded"
+		}
+		groupID := group.ID
+		if s.gatewayService.needsUpstreamChannelRestrictionCheck(ctx, &groupID) &&
+			s.gatewayService.isUpstreamModelRestrictedByChannel(ctx, groupID, account, model) {
+			return "channel_upstream_restricted"
+		}
+		return ""
+	}
+
+	if model != "" && !account.IsModelSupported(model) {
+		return "model_unsupported"
+	}
+	if !account.IsSchedulableForModelWithContext(ctx, model) {
+		return "model_runtime_blocked"
+	}
+	return ""
+}
+
+func diagnosticBaseHardFilterReason(account *Account, group *Group, now time.Time) string {
 	if account == nil {
 		return "account_missing"
 	}
@@ -553,9 +702,6 @@ func diagnosticHardFilterReason(account *Account, group *Group, request Advanced
 	if group != nil && group.RequirePrivacySet && !account.IsPrivacySet() {
 		return "privacy_not_set"
 	}
-	if model := strings.TrimSpace(request.RequestedModel); model != "" && !account.IsModelSupported(model) {
-		return "model_unsupported"
-	}
 	return ""
 }
 
@@ -570,6 +716,96 @@ func diagnosticPlatformMatchesGroup(account *Account, group *Group) bool {
 		account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 }
 
+func diagnosticSubscriptionPriorityPool(
+	accounts []*Account,
+	group *Group,
+	effective advancedSchedulerEffectiveSettings,
+) ([]*Account, map[int64]struct{}, bool) {
+	deferred := make(map[int64]struct{})
+	if group == nil || !effective.subscriptionPriorityEnabled ||
+		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok) {
+		return accounts, deferred, false
+	}
+	subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(accounts)
+	if len(subscriptionAccounts) == 0 {
+		return accounts, deferred, false
+	}
+	for _, account := range regularAccounts {
+		if account != nil {
+			deferred[account.ID] = struct{}{}
+		}
+	}
+	return subscriptionAccounts, deferred, true
+}
+
+type diagnosticPolicyOutcome struct {
+	forcedAccountID        int64
+	previousResponseState  string
+	sessionStickyState     string
+	stickyEscapeReason     string
+	subscriptionPoolActive bool
+}
+
+func diagnosticHardStickyPolicyOutcome(
+	accounts []*Account,
+	group *Group,
+	request AdvancedSchedulerScoreDiagnosticRequest,
+	effective advancedSchedulerEffectiveSettings,
+	stats *advancedAccountRuntimeStats,
+	escapeConfig advancedStickyEscapeConfig,
+) diagnosticPolicyOutcome {
+	outcome := diagnosticPolicyOutcome{}
+	eligibleIDs := make(map[int64]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			eligibleIDs[account.ID] = struct{}{}
+		}
+	}
+	if effective.stickyWeightedEnabled {
+		if request.PreviousResponseAccountID > 0 {
+			if group == nil || group.Platform != PlatformOpenAI {
+				outcome.previousResponseState = "ignored"
+			} else {
+				outcome.previousResponseState = "weighted"
+			}
+		}
+		if request.StickyAccountID > 0 {
+			outcome.sessionStickyState = "weighted"
+		}
+		return outcome
+	}
+
+	if request.PreviousResponseAccountID > 0 {
+		if group == nil || group.Platform != PlatformOpenAI {
+			outcome.previousResponseState = "ignored"
+		} else if _, eligible := eligibleIDs[request.PreviousResponseAccountID]; eligible {
+			outcome.previousResponseState = "forced_first"
+			outcome.forcedAccountID = request.PreviousResponseAccountID
+		} else {
+			outcome.previousResponseState = "unavailable"
+		}
+	}
+	if request.StickyAccountID <= 0 {
+		return outcome
+	}
+	if outcome.forcedAccountID > 0 {
+		outcome.sessionStickyState = "not_reached"
+		return outcome
+	}
+	if reason, _, _, escape := shouldEscapeAdvancedStickyAccount(stats, request.StickyAccountID, escapeConfig); escape {
+		outcome.sessionStickyState = "escaped"
+		outcome.stickyEscapeReason = reason
+		return outcome
+	}
+	if _, eligible := eligibleIDs[request.StickyAccountID]; !eligible {
+		outcome.sessionStickyState = "unavailable"
+		return outcome
+	}
+	outcome.sessionStickyState = "forced_first"
+	outcome.forcedAccountID = request.StickyAccountID
+	return outcome
+}
+
 type diagnosticTopKSelection struct {
 	minimumScore    float64
 	weightSum       float64
@@ -578,7 +814,7 @@ type diagnosticTopKSelection struct {
 	forcedAccountID int64
 }
 
-func diagnosticSelectionStats(topK []advancedSchedulerCandidateScore, input advancedSchedulerSelectionInput) diagnosticTopKSelection {
+func diagnosticSelectionStats(topK []advancedSchedulerCandidateScore, forcedAccountID int64) diagnosticTopKSelection {
 	selection := diagnosticTopKSelection{
 		weights:       make(map[int64]float64, len(topK)),
 		probabilities: make(map[int64]float64, len(topK)),
@@ -608,13 +844,12 @@ func diagnosticSelectionStats(topK []advancedSchedulerCandidateScore, input adva
 			selection.probabilities[accountID] = weight / selection.weightSum
 		}
 	}
-	if input.StickyWeighted {
-		for _, accountID := range []int64{input.StickyPreviousAccountID, input.StickyAccountID} {
-			if _, found := selection.weights[accountID]; found && accountID > 0 {
-				selection.forcedAccountID = accountID
-				break
-			}
+	if forcedAccountID > 0 {
+		selection.forcedAccountID = forcedAccountID
+		for accountID := range selection.probabilities {
+			selection.probabilities[accountID] = 0
 		}
+		selection.probabilities[forcedAccountID] = 1
 	}
 	return selection
 }
@@ -664,11 +899,13 @@ func diagnosticCandidatePool(
 			Rank:       index + 1,
 			InTopK:     inTopK,
 		}
-		if inTopK {
-			weight := selection.weights[candidate.account.ID]
-			probability := selection.probabilities[candidate.account.ID]
-			item.SelectionWeight = &weight
-			item.SelectionProbability = &probability
+		if inTopK || selection.forcedAccountID == candidate.account.ID {
+			if weight, found := selection.weights[candidate.account.ID]; found {
+				item.SelectionWeight = &weight
+			}
+			if probability, found := selection.probabilities[candidate.account.ID]; found {
+				item.SelectionProbability = &probability
+			}
 		}
 		pool.Candidates = append(pool.Candidates, item)
 	}
@@ -729,15 +966,20 @@ func diagnosticScore(
 		score.InTopK = true
 		weight := selection.weights[candidate.account.ID]
 		probability := selection.probabilities[candidate.account.ID]
-		if selection.forcedAccountID > 0 {
-			score.SelectionMode = "sticky_forced_first"
-		}
 		score.SelectionWeight = &weight
 		score.SelectionProbability = &probability
 		break
 	}
-	if !effective.stickyWeightedEnabled || (request.StickyAccountID == 0 && request.PreviousResponseAccountID == 0) {
-		score.SelectionMode = "top_k_weighted"
+	if selection.forcedAccountID > 0 {
+		score.SelectionMode = "sticky_forced_first"
+		if probability, found := selection.probabilities[candidate.account.ID]; found {
+			score.SelectionProbability = &probability
+		}
+		if candidate.account != nil && candidate.account.ID == selection.forcedAccountID {
+			if weight, found := selection.weights[candidate.account.ID]; found {
+				score.SelectionWeight = &weight
+			}
+		}
 	}
 	return score
 }
@@ -1012,12 +1254,13 @@ func diagnosticPolicySignals(
 	group *Group,
 	request AdvancedSchedulerScoreDiagnosticRequest,
 	effective advancedSchedulerEffectiveSettings,
+	outcome diagnosticPolicyOutcome,
 ) []AdvancedSchedulerScoreDiagnosticPolicySignal {
-	signals := make([]AdvancedSchedulerScoreDiagnosticPolicySignal, 0, 3)
+	signals := make([]AdvancedSchedulerScoreDiagnosticPolicySignal, 0, 4)
 	if request.PreviousResponseAccountID > 0 {
-		state := "ignored"
-		if effective.stickyWeightedEnabled {
-			state = "weighted"
+		state := outcome.previousResponseState
+		if state == "" {
+			state = "ignored"
 		}
 		signals = append(signals, AdvancedSchedulerScoreDiagnosticPolicySignal{
 			Key: "previous_response_binding", State: state,
@@ -1025,22 +1268,37 @@ func diagnosticPolicySignals(
 		})
 	}
 	if request.StickyAccountID > 0 {
-		state := "ignored"
-		if effective.stickyWeightedEnabled {
-			state = "weighted"
+		state := outcome.sessionStickyState
+		if state == "" {
+			state = "ignored"
+		}
+		detail := "仅使用管理员输入的账号 ID 模拟会话粘性；不会读取或写入 session hash。"
+		if outcome.stickyEscapeReason != "" {
+			detail += " 当前运行时反馈触发粘性逃逸：" + outcome.stickyEscapeReason + "。"
 		}
 		signals = append(signals, AdvancedSchedulerScoreDiagnosticPolicySignal{
 			Key: "session_sticky", State: state,
-			Detail: "仅使用管理员输入的账号 ID 模拟会话粘性；不会读取或写入 session hash。",
+			Detail: detail,
 		})
 	}
 	if group != nil && (group.Platform == PlatformOpenAI || group.Platform == PlatformGrok) && effective.subscriptionPriorityEnabled {
+		state := "enabled"
+		detail := "当前没有可用订阅账号，使用完整候选池。"
+		if outcome.subscriptionPoolActive {
+			state = "active_pool"
+			detail = "当前存在可用订阅账号，排名、Top-K 与概率仅基于订阅池计算。"
+		}
 		signals = append(signals,
 			AdvancedSchedulerScoreDiagnosticPolicySignal{
-				Key: "subscription_priority", State: "enabled",
-				Detail: "订阅优先属于候选策略，不作为普通加权指标展示。",
+				Key: "subscription_priority", State: state,
+				Detail: detail,
 			},
 		)
 	}
+	signals = append(signals, AdvancedSchedulerScoreDiagnosticPolicySignal{
+		Key:    "request_capabilities",
+		State:  "not_evaluated",
+		Detail: "诊断请求未提供端点、传输协议、compact 与会话注册上下文，这些请求级门禁不参与本次结果。",
+	})
 	return signals
 }

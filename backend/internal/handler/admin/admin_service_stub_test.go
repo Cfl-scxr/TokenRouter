@@ -18,6 +18,8 @@ type stubAdminService struct {
 	openAISchedulerScorePoolAccounts    []service.Account
 	schedulerScoreFilterCalls           int
 	openAISchedulerScorePoolCalls       int
+	openAISchedulerScorePoolGroupIDs    []int64
+	getGroupCalls                       int
 	proxies                             []service.Proxy
 	proxyCounts                         []service.ProxyWithAccountCount
 	redeems                             []service.RedeemCode
@@ -283,6 +285,7 @@ func (s *stubAdminService) GetAllGroupsIncludingInactive(ctx context.Context) ([
 }
 
 func (s *stubAdminService) GetGroup(ctx context.Context, id int64) (*service.Group, error) {
+	s.getGroupCalls++
 	group := service.Group{ID: id, Name: "group", Status: service.StatusActive}
 	return &group, nil
 }
@@ -380,6 +383,9 @@ func (s *stubAdminService) ListAccountsForSchedulerScoreFilter(_ context.Context
 
 func (s *stubAdminService) ListSchedulableAccountsForAdvancedSchedulerScore(_ context.Context, groupID *int64, platform string) ([]service.Account, error) {
 	s.openAISchedulerScorePoolCalls++
+	if groupID != nil {
+		s.openAISchedulerScorePoolGroupIDs = append(s.openAISchedulerScorePoolGroupIDs, *groupID)
+	}
 	accounts := s.openAISchedulerScorePoolAccounts
 	if accounts == nil {
 		accounts = s.accounts

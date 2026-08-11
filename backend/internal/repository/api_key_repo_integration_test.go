@@ -214,11 +214,14 @@ func (s *APIKeyRepoSuite) TestGetByKey_NotFound() {
 
 func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesSelectedGroupFields() {
 	user := s.mustCreateUser("getbykey-auth-dispatch@test.com")
+	lbTopK := 4
 	group, err := s.client.Group.Create().
 		SetName("g-auth-dispatch").
 		SetPlatform(service.PlatformOpenAI).
 		SetStatus(service.StatusActive).
 		SetRateMultiplier(1).
+		SetSchedulerType(string(service.GroupSchedulerTypeAdvanced)).
+		SetAdvancedSchedulerOverrides(service.GroupAdvancedSchedulerOverrides{LBTopK: &lbTopK}).
 		SetWebSearchPricePerCall(0.008).
 		SetAllowedClientProtocols([]service.GroupClientProtocol{
 			service.GroupClientProtocolAnthropicMessages,
@@ -260,6 +263,9 @@ func (s *APIKeyRepoSuite) TestGetByKeyForAuth_PreservesSelectedGroupFields() {
 	s.Require().Equal("gpt-5.4", got.Group.DefaultMappedModel)
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.OpusMappedModel)
 	s.Require().Equal("gpt-5.4-nano", got.Group.MessagesDispatchModelConfig.ExactModelMappings["claude-sonnet-4.5"])
+	s.Require().Equal(service.GroupSchedulerTypeAdvanced, got.Group.SchedulerType)
+	s.Require().NotNil(got.Group.AdvancedSchedulerOverrides.LBTopK)
+	s.Require().Equal(4, *got.Group.AdvancedSchedulerOverrides.LBTopK)
 }
 
 // --- Update ---

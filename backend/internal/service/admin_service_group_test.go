@@ -4,9 +4,11 @@ package service
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -149,6 +151,74 @@ func TestAdminServiceGroupAdvancedSchedulerOverrides(t *testing.T) {
 
 		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
 		require.Equal(t, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", infraerrors.Reason(err))
+	})
+
+	t.Run("merged weight overflow is rejected", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		cfg := &config.Config{}
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Priority = math.MaxFloat64 * 0.75
+		svc := &adminServiceImpl{
+			groupRepo:      repo,
+			settingService: NewSettingService(nil, cfg),
+		}
+
+		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "overflowing-advanced-overrides", Platform: PlatformAnthropic, RateMultiplier: 1,
+			AdvancedSchedulerOverrides: GroupAdvancedSchedulerOverrides{
+				WeightLoad: groupAdvancedSchedulerOverrideTestPointer(math.MaxFloat64 * 0.75),
+			},
+		})
+
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", infraerrors.Reason(err))
+		require.Nil(t, repo.created)
+	})
+
+	t.Run("update rejects merged weight overflow", func(t *testing.T) {
+		existing := &Group{
+			ID: 8, Name: "existing-advanced-overrides", Platform: PlatformGemini,
+			Status: StatusActive, SchedulerType: GroupSchedulerTypeAdvanced,
+		}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		cfg := &config.Config{}
+		cfg.Gateway.AdvancedScheduler.ScoreWeights.Priority = math.MaxFloat64 * 0.75
+		svc := &adminServiceImpl{
+			groupRepo:      repo,
+			settingService: NewSettingService(nil, cfg),
+		}
+		overrides := GroupAdvancedSchedulerOverrides{
+			WeightLoad: groupAdvancedSchedulerOverrideTestPointer(math.MaxFloat64 * 0.75),
+		}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+			AdvancedSchedulerOverrides: &overrides,
+		})
+
+		require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+		require.Equal(t, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", infraerrors.Reason(err))
+		require.Nil(t, repo.updated)
+	})
+
+	t.Run("all zero base weights remain writable", func(t *testing.T) {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+		zero := 0.0
+
+		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+			Name: "zero-base-advanced-overrides", Platform: PlatformGemini, RateMultiplier: 1,
+			AdvancedSchedulerOverrides: GroupAdvancedSchedulerOverrides{
+				WeightPriority:      &zero,
+				WeightLoad:          &zero,
+				WeightQueue:         &zero,
+				WeightErrorRate:     &zero,
+				WeightTTFT:          &zero,
+				WeightReset:         &zero,
+				WeightQuotaHeadroom: &zero,
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, repo.created)
 	})
 }
 
@@ -362,6 +432,42 @@ type groupRepoStubForAdmin struct {
 	groupSortOrderLockCalls    int
 }
 
+type groupAccountCopyRepoStub struct {
+	*groupRepoStubForAdmin
+	groupsByID       map[int64]*Group
+	sourceAccountIDs []int64
+	deletedGroupID   int64
+	boundGroupID     int64
+	boundAccountIDs  []int64
+}
+
+func (s *groupAccountCopyRepoStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	group := s.groupsByID[id]
+	if group == nil {
+		return nil, ErrGroupNotFound
+	}
+	return group, nil
+}
+
+func (s *groupAccountCopyRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	return s.GetByID(ctx, id)
+}
+
+func (s *groupAccountCopyRepoStub) GetAccountIDsByGroupIDs(_ context.Context, _ []int64) ([]int64, error) {
+	return append([]int64(nil), s.sourceAccountIDs...), nil
+}
+
+func (s *groupAccountCopyRepoStub) DeleteAccountGroupsByGroupID(_ context.Context, groupID int64) (int64, error) {
+	s.deletedGroupID = groupID
+	return 1, nil
+}
+
+func (s *groupAccountCopyRepoStub) BindAccountsToGroup(_ context.Context, groupID int64, accountIDs []int64) error {
+	s.boundGroupID = groupID
+	s.boundAccountIDs = append([]int64(nil), accountIDs...)
+	return nil
+}
+
 func (s *groupRepoStubForAdmin) Create(_ context.Context, g *Group) error {
 	s.created = g
 	return nil
@@ -455,6 +561,28 @@ func (s *groupRepoStubForAdmin) GetAccountIDsByGroupIDs(_ context.Context, _ []i
 
 func (s *groupRepoStubForAdmin) UpdateSortOrders(_ context.Context, _ []GroupSortOrderUpdate) error {
 	return nil
+}
+
+func TestAdminServiceUpdateGroupCopiesMembershipWithoutAssociationPriority(t *testing.T) {
+	target := &Group{ID: 1701, Name: "target", Platform: PlatformGemini, Status: StatusActive}
+	source := &Group{ID: 1702, Name: "source", Platform: PlatformGemini, Status: StatusActive}
+	base := &groupRepoStubForAdmin{}
+	repo := &groupAccountCopyRepoStub{
+		groupRepoStubForAdmin: base,
+		groupsByID:            map[int64]*Group{target.ID: target, source.ID: source},
+		sourceAccountIDs:      []int64{71, 72},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	updated, err := svc.UpdateGroup(context.Background(), target.ID, &UpdateGroupInput{
+		CopyAccountsFromGroupIDs: []int64{source.ID},
+	})
+
+	require.NoError(t, err)
+	require.Same(t, target, updated)
+	require.Equal(t, target.ID, repo.deletedGroupID)
+	require.Equal(t, target.ID, repo.boundGroupID)
+	require.Equal(t, []int64{71, 72}, repo.boundAccountIDs)
 }
 
 // LockGroupSortOrder 记录创建流程是否申请了排序位置锁。

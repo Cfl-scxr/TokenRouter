@@ -498,14 +498,13 @@ func mustCreateSubscription(t *testing.T, client *dbent.Client, s *service.UserS
 	return s
 }
 
-func mustBindAccountToGroup(t *testing.T, client *dbent.Client, accountID, groupID int64, priority int) {
+func mustBindAccountToGroup(t *testing.T, client *dbent.Client, accountID, groupID int64) {
 	t.Helper()
 	ctx := context.Background()
 
 	_, err := client.AccountGroup.Create().
 		SetAccountID(accountID).
 		SetGroupID(groupID).
-		SetPriority(priority).
 		Save(ctx)
 	require.NoError(t, err, "create account_group")
 }

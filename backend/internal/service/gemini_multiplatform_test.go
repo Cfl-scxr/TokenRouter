@@ -708,7 +708,9 @@ func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_ForcePl
 	}
 
 	cache := &mockGatewayCacheForGemini{}
-	groupRepo := &mockGroupRepoForGemini{groups: map[int64]*Group{}}
+	groupRepo := &mockGroupRepoForGemini{groups: map[int64]*Group{
+		groupID: {ID: groupID, Platform: PlatformAntigravity, Status: StatusActive},
+	}}
 
 	svc := &GeminiMessagesCompatService{
 		accountRepo: repo,

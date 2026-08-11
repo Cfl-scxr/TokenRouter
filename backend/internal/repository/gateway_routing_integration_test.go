@@ -118,7 +118,7 @@ func (s *GatewayRoutingSuite) TestListSchedulableByGroupIDAndPlatforms_WithGroup
 	})
 
 	// 只绑定一个账户到分组
-	mustBindAccountToGroup(s.T(), s.client, boundAcc.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, boundAcc.ID, group.ID)
 
 	// 查询分组内的账户
 	accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatforms(s.ctx, group.ID, []string{

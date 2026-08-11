@@ -248,7 +248,7 @@ func (b *openAISelectionProbeBudget) wasAttempted(accountID int64) bool {
 	return ok
 }
 
-type openAIStickyEscapeConfig struct {
+type advancedStickyEscapeConfig struct {
 	enabled   bool
 	ttftMs    float64
 	errorRate float64
@@ -471,11 +471,11 @@ func openAIAccountSchedulingPriority(account *Account) int {
 	return account.Priority
 }
 
-func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int64, cfg openAIStickyEscapeConfig) (reason string, errorRate float64, ttft float64, shouldEscape bool) {
-	if !cfg.enabled || s == nil || s.stats == nil || accountID <= 0 {
+func shouldEscapeAdvancedStickyAccount(stats *advancedAccountRuntimeStats, accountID int64, cfg advancedStickyEscapeConfig) (reason string, errorRate float64, ttft float64, shouldEscape bool) {
+	if !cfg.enabled || stats == nil || accountID <= 0 {
 		return "", 0, 0, false
 	}
-	errorRate, ttft, hasTTFT := s.stats.snapshot(accountID)
+	errorRate, ttft, hasTTFT := stats.snapshot(accountID)
 	if hasTTFT && ttft > cfg.ttftMs {
 		return "ttft", errorRate, ttft, true
 	}
@@ -483,6 +483,13 @@ func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int6
 		return "error_rate", errorRate, ttft, true
 	}
 	return "", errorRate, ttft, false
+}
+
+func (s *defaultOpenAIAccountScheduler) shouldEscapeStickyAccount(accountID int64, cfg advancedStickyEscapeConfig) (reason string, errorRate float64, ttft float64, shouldEscape bool) {
+	if s == nil {
+		return "", 0, 0, false
+	}
+	return shouldEscapeAdvancedStickyAccount(s.stats, accountID, cfg)
 }
 
 // 以下别名保留 OpenAI 适配层的局部语义；底层实现由通用高级调度核心共享。
@@ -633,32 +640,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			groupTopK = len(pool)
 		}
 		ranked := selectTopKOpenAICandidates(pool, groupTopK)
-		var primary []openAIAccountCandidateScore
-		if req.StickyWeighted {
-			stickyIDs := []int64{req.StickyAccountID}
-			if req.PreviousResponseCanMove {
-				stickyIDs = append([]int64{req.StickyPreviousAccountID}, stickyIDs...)
-			}
-			for _, stickyID := range stickyIDs {
-				if stickyID <= 0 {
-					continue
-				}
-				for i, candidate := range ranked {
-					if candidate.account != nil && candidate.account.ID == stickyID {
-						primary = append([]openAIAccountCandidateScore{candidate}, ranked[:i]...)
-						primary = append(primary, ranked[i+1:]...)
-						break
-					}
-				}
-				if len(primary) > 0 {
-					break
-				}
-			}
-		}
-		if len(primary) == 0 {
-			primary = buildOpenAIWeightedSelectionOrder(ranked, req)
-		}
-		return primary
+		return buildOpenAIWeightedSelectionOrder(ranked, req)
 	}
 
 	if req.RequireCompact {
@@ -820,78 +802,6 @@ func (s *defaultOpenAIAccountScheduler) consumeOpenAISelectionDBRecheck(budget *
 		return true
 	}
 	return budget.recordRecheck()
-}
-
-func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
-	ctx context.Context,
-	req OpenAIAccountScheduleRequest,
-) (*AccountSelectionResult, error) {
-	if !req.StickyWeighted {
-		return nil, nil
-	}
-	for _, accountID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
-		if accountID <= 0 {
-			continue
-		}
-		if req.ExcludedIDs != nil {
-			if _, excluded := req.ExcludedIDs[accountID]; excluded {
-				continue
-			}
-		}
-		account, err := s.service.getSchedulableAccount(ctx, accountID)
-		if err != nil || account == nil {
-			continue
-		}
-		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-			continue
-		}
-		account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.routingModel(), req.RequireCompact, req.RequiredCapability)
-		if account == nil {
-			if accountID == req.StickyAccountID && strings.TrimSpace(req.SessionHash) != "" {
-				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
-			}
-			continue
-		}
-		if !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) {
-			if accountID == req.StickyAccountID && strings.TrimSpace(req.SessionHash) != "" {
-				_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, req.SessionHash)
-			}
-			continue
-		}
-		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-			continue
-		}
-		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
-			continue
-		}
-		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
-		if acquireErr != nil {
-			return nil, acquireErr
-		}
-		if result != nil && result.Acquired {
-			if req.SessionHash != "" && !req.PreserveStickyBinding {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, account.ID)
-			}
-			return &AccountSelectionResult{
-				Account:     account,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
-			}, nil
-		}
-		if s.service.concurrencyService != nil {
-			cfg := s.service.schedulingConfig()
-			return &AccountSelectionResult{
-				Account: account,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.StickySessionWaitTimeout,
-					MaxWaiting:     cfg.StickySessionMaxWaiting,
-				},
-			}, nil
-		}
-	}
-	return nil, nil
 }
 
 // openAISelectionFilterStats 统计负载均衡初筛阶段排除候选账号的原因。
@@ -1169,12 +1079,6 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 
 	if len(attempt.selectionOrder) == 0 {
 		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionErrorForRoutingWithDetails(ctx, req.RequestedModel, req.routingModel(), attempt.compactBlocked, filterStats.summary("selection_order_empty"))
-	}
-
-	if stickyFallback, stickyErr := s.tryFallbackToWeightedSticky(ctx, req); stickyErr != nil {
-		return nil, candidateCount, topK, loadSkew, stickyErr
-	} else if stickyFallback != nil {
-		return stickyFallback, candidateCount, topK, loadSkew, nil
 	}
 
 	cfg := s.service.schedulingConfig()
@@ -1996,9 +1900,9 @@ func (s *OpenAIGatewayService) openAIWSLBTopKForRequest(ctx context.Context) int
 	return base
 }
 
-func (s *OpenAIGatewayService) openAIStickyEscapeConfig() openAIStickyEscapeConfig {
-	if s != nil && s.cfg != nil {
-		cfg := s.cfg.Gateway.AdvancedScheduler
+func resolveAdvancedStickyEscapeConfig(appConfig *config.Config) advancedStickyEscapeConfig {
+	if appConfig != nil {
+		cfg := appConfig.Gateway.AdvancedScheduler
 		enabled := cfg.StickyEscapeEnabled
 		if !enabled && cfg.StickyEscapeTTFTMs == 0 && cfg.StickyEscapeErrorRate == 0 {
 			enabled = true
@@ -2014,17 +1918,24 @@ func (s *OpenAIGatewayService) openAIStickyEscapeConfig() openAIStickyEscapeConf
 		if errorRate == 0 && cfg.StickyEscapeTTFTMs == 0 && cfg.StickyEscapeErrorRate == 0 {
 			errorRate = 0.5
 		}
-		return openAIStickyEscapeConfig{
+		return advancedStickyEscapeConfig{
 			enabled:   enabled,
 			ttftMs:    ttftMs,
 			errorRate: errorRate,
 		}
 	}
-	return openAIStickyEscapeConfig{
+	return advancedStickyEscapeConfig{
 		enabled:   true,
 		ttftMs:    15000,
 		errorRate: 0.5,
 	}
+}
+
+func (s *OpenAIGatewayService) openAIStickyEscapeConfig() advancedStickyEscapeConfig {
+	if s == nil {
+		return resolveAdvancedStickyEscapeConfig(nil)
+	}
+	return resolveAdvancedStickyEscapeConfig(s.cfg)
 }
 
 func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayAdvancedSchedulerScoreWeightsView {

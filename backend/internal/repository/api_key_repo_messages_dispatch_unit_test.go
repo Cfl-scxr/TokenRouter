@@ -62,12 +62,15 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()
 	user := mustCreateAPIKeyRepoUser(t, ctx, client, "getbykey-auth-dispatch-unit@test.com")
+	lbTopK := 4
 
 	group, err := client.Group.Create().
 		SetName("g-auth-dispatch-unit").
 		SetPlatform(service.PlatformOpenAI).
 		SetStatus(service.StatusActive).
 		SetRateMultiplier(1).
+		SetSchedulerType(string(service.GroupSchedulerTypeAdvanced)).
+		SetAdvancedSchedulerOverrides(service.GroupAdvancedSchedulerOverrides{LBTopK: &lbTopK}).
 		SetAllowedClientProtocols([]service.GroupClientProtocol{
 			service.GroupClientProtocolAnthropicMessages,
 			service.GroupClientProtocolOpenAIResponses,
@@ -101,6 +104,9 @@ func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_S
 	require.NotNil(t, got.Group)
 	require.Equal(t, group.AllowedClientProtocols, got.Group.AllowedClientProtocols)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.Group.MessagesDispatchModelConfig)
+	require.Equal(t, service.GroupSchedulerTypeAdvanced, got.Group.SchedulerType)
+	require.NotNil(t, got.Group.AdvancedSchedulerOverrides.LBTopK)
+	require.Equal(t, 4, *got.Group.AdvancedSchedulerOverrides.LBTopK)
 }
 
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesImageGenerationControls_SQLite(t *testing.T) {

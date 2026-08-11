@@ -15,7 +15,7 @@
 
 ## 调度输入
 
-调度不是只按 `platform` 随机选择账号。请求在进入调度前已经确定或携带分组、强制平台、客户端模型、映射后的模型、endpoint/媒体意图、协议 transport、OAuth/privacy 要求和可选 session 标识。账号还通过分组关联携带优先级，不能用账号全局优先级替代分组内优先级。
+调度不是只按 `platform` 随机选择账号。请求在进入调度前已经确定或携带分组、强制平台、客户端模型、映射后的模型、endpoint/媒体意图、协议 transport、OAuth/privacy 要求和可选 session 标识。账号优先级统一来自 `accounts.priority`；`account_groups` 只表达成员关系，不保存分组内优先级。
 
 快照 bucket 由分组、平台和模式共同区分：
 
@@ -23,30 +23,31 @@
 - `mixed`：Anthropic 或 Gemini 分组允许纳入显式开启 mixed scheduling 的 Antigravity 账号。
 - `forced`：专用 Antigravity 路由等强制平台场景，不混入其它平台。
 
-同一账号可能属于多个分组，但每个 bucket 的资格、优先级和模型范围独立计算。
+同一账号可能属于多个分组；每个 bucket 的资格和模型范围独立计算，但账号全局优先级在所有分组中一致。分组查询按 `accounts.priority`、`account_id` 稳定排序。
 
+<a id="advanced_scheduler_selection"></a>
 ## 调度器模式
 
-`groups.scheduler_type` 是分组级调度策略，取值只能是 `basic` 或 `advanced`，新建和历史未配置分组均为 `basic`。它不是平台能力开关：任何平台的分组都能选择高级调度器；未绑定分组的请求保持基础调度。Claude Code-only、不可用组等回退链完成后，必须以实际落到的最终分组重新读取该字段，不能沿用原分组的模式。
+`groups.scheduler_type` 是分组级调度策略，取值只能是 `basic` 或 `advanced`，新建和历史未配置分组均为 `basic`。它不是平台能力开关：任何平台的分组都能选择高级调度器；未绑定分组的请求保持基础调度。Claude Code-only、不可用组等回退链完成后，必须以实际落到的最终分组重新读取该字段，不能沿用原分组的模式。强制平台只改变候选平台和混合模式，不清除最终分组，也不能绕过该分组的高级模式与参数覆盖。
 
-高级分组的有效参数按字段合并，而不是把一整套全局参数复制到分组：`gateway.advanced_scheduler` 提供进程默认值，`advanced_scheduler_*` 运行时设置可覆盖该默认值，最终由 Group 的 `advanced_scheduler_overrides` 覆盖。覆盖 JSON 缺失字段继续继承；显式 `false` 和 `0` 都是有效的分组值，空对象代表全部继承。基础分组和无分组路径忽略这份对象，避免配置残留改变基础调度语义。
+高级分组的有效参数按字段合并，而不是把一整套全局参数复制到分组：`gateway.advanced_scheduler` 提供进程默认值，`advanced_scheduler_*` 运行时设置可覆盖该默认值，最终由 Group 的 `advanced_scheduler_overrides` 覆盖。覆盖 JSON 缺失字段继续继承；显式 `false` 和 `0` 都是有效的分组值，空对象代表全部继承。七项基础权重最终全为零也是有效策略，此时粘性加成仍可参与，完全并列的候选只按账号全局优先级、账号 ID 稳定决胜，再进入 Top-K 抽样；负载和等待已经属于评分信号，不能作为第二套同分比较规则。合并后的基础权重和完整权重总和必须有限，管理写入拒绝会使任一总和溢出的覆盖；请求期遇到历史异常对象时仅把权重回退到已验证的全局值，避免生成 `NaN`/`Inf`。基础分组和无分组路径忽略这份对象，避免配置残留改变基础调度语义。
 
 基础调度器保留原有的优先级、最近使用、负载、粘性和等待路径，不因高级调度器的存在改变排序或失败语义。高级调度器只在各平台先完成现有硬过滤后接管候选排序：
 
-1. 适配层先执行分组、平台/混合模式、模型、能力、账号状态、限流、代理、privacy、配额和并发资格检查。
+1. 适配层先执行分组、平台/混合模式、模型、能力、账号状态、限流、代理、privacy、配额、窗口费用和 RPM 等硬过滤。
 2. 通用核心对剩余候选组合优先级、负载、队列、错误率 EWMA、首 token 延迟 EWMA、窗口重置和可选会话粘性分数，并在 Top-K 内做加权无放回选择。
-3. 选择前仍逐账号复核真实并发槽；负载快照缺失、没有结果反馈、没有 TTFT、没有窗口或没有平台专属额度时都使用中性信号，不能据此排除账号。
+3. 暂时满槽或负载率为 100% 的硬资格合格账号仍进入高级核心；选择前逐账号复核真实并发槽，全部满槽时可产生等待计划，无槽探测则忽略占用。负载快照缺失、没有结果反馈、没有 TTFT、没有窗口或没有平台专属额度时都使用中性信号，不能据此排除账号。
 4. 实际由高级调度器选出的转发结果、失败、TTFT 和切换会回写运行时统计；流已开始后的不可切换边界不变。
 
-OpenAI/Grok 是通用核心的能力适配者：在高级分组中，OpenAI 额外处理 previous response、订阅优先、Responses transport、旧版 Compact 和额度余量，Grok 继续执行自身配额及媒体能力约束。Anthropic/Gemini 的 mixed bucket 仍只纳入显式开启 mixed scheduling 的 Antigravity 账号。管理端“高级调度评分”只对高级分组显示，并复用同一评分函数和候选池；其展示不把账号变成可用候选，也不取代请求级硬过滤。
+OpenAI/Grok 是通用核心的能力适配者：在高级分组中，OpenAI 额外处理 previous response、订阅优先、Responses transport、旧版 Compact 和额度余量，Grok 继续执行自身配额及媒体能力约束。Anthropic/Gemini 的 mixed bucket 仍只纳入显式开启 mixed scheduling 的 Antigravity 账号。关闭粘性加权时，各平台保留硬会话粘性；OpenAI previous response 不可跨账号移动时无论开关状态都保持硬绑定，可移动时才作为加权信号。共享错误率或 TTFT 超过通用逃逸阈值时只对当前请求逃逸，并保留原绑定。开启粘性加权时，上一响应和会话账号只获得评分加成，并与其它 Top-K 候选一起按权重抽样，不能被强制置首，也不能在 Top-K 尝试失败后获得额外硬兜底；window-cost/RPM 的 sticky-only 区间仍允许当前绑定账号进入评分。非 OpenAI 平台没有 previous-response 绑定语义，诊断输入中的该信号标记为 `ignored`。管理端“高级调度评分”只对高级分组显示，并复用同一评分函数和候选池；其展示不把账号变成可用候选，也不取代请求级硬过滤。
 
 ## 评分诊断
 
-管理员可通过账号高级调度评分诊断查看当前候选池的实时解释。基准诊断不指定模型、会话粘性或上一响应粘性；模拟诊断只接受模型和两个账号 ID，不能接收 session hash、previous response 内容、凭据或代理认证信息。诊断候选池复用平台通用的可调度筛选与分组/模型硬过滤，但不会获取并发槽、注册会话、写入粘性或修改运行时统计。真实请求仍会在最终选择顺序确定后复验并发槽，并按 endpoint、transport、Compact、媒体等完整请求上下文追加硬约束。
+管理员可通过账号高级调度评分诊断查看当前候选池的实时解释。基准诊断不指定模型、会话粘性或上一响应粘性；模拟诊断只接受模型和两个账号 ID，不能接收 session hash、previous response 内容、凭据或代理认证信息。诊断使用无分页分组全集统计排除原因，并复用生产服务可安全执行的模型运行时封禁、额度、窗口费用、RPM、代理流隔离、OpenAI/Grok 配额自动暂停、影子母账号健康和渠道限制；它不会获取并发槽、注册会话、写入粘性或修改运行时统计。endpoint、transport、Compact、媒体等缺少请求输入的门禁以 `not_evaluated` 策略信号返回，真实请求仍会在完整上下文中追加检查。
 
-评分核心在单次候选池中固定输出 `base_score = Σ(weight_i × normalized_i)`、`final_score = base_score + sticky_bonus`、`selection_weight = final_score - top_k_min_score + 1`、`selection_probability = selection_weight / top_k_weight_sum`。粘性优先、订阅优先、粘性逃逸与 OpenAI/Grok 的 transport/Compact 能力属于策略或硬约束，必须与普通加权指标分开解释；诊断只返回当前场景能够判断或实际生效的策略，不重复展示所有候选共有的并发槽复验。即使粘性策略强制首选，诊断仍返回原始 Top-K 加权概率，以便复核公式。
+评分核心在单次候选池中固定输出 `base_score = Σ(weight_i × normalized_i)`、`final_score = base_score + sticky_bonus`、`selection_weight = final_score - top_k_min_score + 1`、`selection_probability = selection_weight / top_k_weight_sum`。开启粘性加权时，诊断概率就是包含粘性加成后的 Top-K 抽样概率，不再附加置首规则。开启订阅优先且存在可用 ChatGPT 订阅账号时，排名、Top-K 和概率只基于订阅池，普通账号标记为 deferred；订阅池不可用时才使用普通池。关闭粘性加权且硬粘性账号可用时，诊断保留其原始排名和 `in_top_k` 状态，但把实际选择模式标记为 `sticky_forced_first`，被强制账号概率为 1，其它候选概率为 0。发生粘性逃逸时，原绑定账号按普通候选执行 window-cost/RPM 门禁；逃逸和缺少上下文的能力门禁继续作为独立策略信号展示。
 
-错误率和 TTFT 使用共享的运行时 EWMA；每个聚合值还保存样本数和最近观测时间。没有负载、反馈、TTFT、窗口重置或平台额度快照时，诊断明确标注“未观测，使用中性值”，而不是把账号表示为失败或不可调度。分组覆盖、全局运行时设置与进程默认值均逐字段标注来源，保证诊断公式和实际高级调度路径共用相同有效参数。
+错误率和 TTFT 使用共享的运行时 EWMA；错误率从中性先验初始化，使首次失败账号立即劣于完全未观测账号。每个聚合值还保存样本数和最近观测时间。没有负载、反馈、TTFT、窗口重置或平台额度快照时，诊断明确标注“未观测，使用中性值”，而不是把账号表示为失败或不可调度。负载分母使用账号的 `EffectiveLoadFactor()`。分组覆盖、全局运行时设置与进程默认值均逐字段标注来源，保证诊断公式和实际高级调度路径共用相同有效参数。
 
 <a id="scheduler_snapshot_consistency"></a>
 ## 快照一致性

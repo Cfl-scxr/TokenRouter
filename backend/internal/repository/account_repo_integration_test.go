@@ -292,7 +292,7 @@ func (s *AccountRepoSuite) TestDelete_RemovesSchedulerAccountSnapshot() {
 func (s *AccountRepoSuite) TestDelete_WithGroupBindings() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-del"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-del"})
-	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID)
 
 	err := s.repo.Delete(s.ctx, account.ID)
 	s.Require().NoError(err, "Delete should cascade remove bindings")
@@ -568,7 +568,7 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 				group := mustCreateGroup(s.T(), client, &service.Group{Name: "g-ungrouped"})
 				grouped := mustCreateAccount(s.T(), client, &service.Account{Name: "grouped-account"})
 				mustCreateAccount(s.T(), client, &service.Account{Name: "ungrouped-account"})
-				mustBindAccountToGroup(s.T(), client, grouped.ID, group.ID, 1)
+				mustBindAccountToGroup(s.T(), client, grouped.ID, group.ID)
 			},
 			groupID:   service.AccountListGroupUngrouped,
 			wantCount: 1,
@@ -633,16 +633,16 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 
 func (s *AccountRepoSuite) TestListByGroup() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-list"})
-	acc1 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a1", Status: service.StatusActive})
-	acc2 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a2", Status: service.StatusActive})
-	mustBindAccountToGroup(s.T(), s.client, acc1.ID, group.ID, 2)
-	mustBindAccountToGroup(s.T(), s.client, acc2.ID, group.ID, 1)
+	acc1 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a1", Status: service.StatusActive, Priority: 2})
+	acc2 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a2", Status: service.StatusActive, Priority: 1})
+	mustBindAccountToGroup(s.T(), s.client, acc1.ID, group.ID)
+	mustBindAccountToGroup(s.T(), s.client, acc2.ID, group.ID)
 
 	accounts, err := s.repo.ListByGroup(s.ctx, group.ID)
 	s.Require().NoError(err, "ListByGroup")
 	s.Require().Len(accounts, 2)
-	// Should be ordered by priority
-	s.Require().Equal(acc2.ID, accounts[0].ID, "expected acc2 first (priority=1)")
+	// 分组列表使用账号自身的全局优先级排序。
+	s.Require().Equal(acc2.ID, accounts[0].ID, "expected acc2 first (account priority=1)")
 }
 
 func (s *AccountRepoSuite) TestListActive() {
@@ -675,7 +675,7 @@ func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {
 		Name:    "acc1",
 		ProxyID: &proxy.ID,
 	})
-	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID)
 
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err, "GetByID")
@@ -703,7 +703,7 @@ func (s *AccountRepoSuite) TestGroupBinding_And_BindGroups() {
 	g2 := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g2"})
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc"})
 
-	s.Require().NoError(s.repo.AddToGroup(s.ctx, account.ID, g1.ID, 10), "AddToGroup")
+	s.Require().NoError(s.repo.AddToGroup(s.ctx, account.ID, g1.ID), "AddToGroup")
 	groups, err := s.repo.GetGroups(s.ctx, account.ID)
 	s.Require().NoError(err, "GetGroups")
 	s.Require().Len(groups, 1, "expected 1 group")
@@ -723,7 +723,7 @@ func (s *AccountRepoSuite) TestGroupBinding_And_BindGroups() {
 func (s *AccountRepoSuite) TestBindGroups_EmptyList() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-empty"})
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-empty"})
-	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, account.ID, group.ID)
 
 	s.Require().NoError(s.repo.BindGroups(s.ctx, account.ID, []int64{}), "BindGroups empty")
 
@@ -739,11 +739,11 @@ func (s *AccountRepoSuite) TestListSchedulable() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-sched"})
 
 	okAcc := mustCreateAccount(s.T(), s.client, &service.Account{Name: "ok", Schedulable: true})
-	mustBindAccountToGroup(s.T(), s.client, okAcc.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, okAcc.ID, group.ID)
 
 	future := now.Add(10 * time.Minute)
 	overloaded := mustCreateAccount(s.T(), s.client, &service.Account{Name: "over", Schedulable: true, OverloadUntil: &future})
-	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group.ID)
 
 	sched, err := s.repo.ListSchedulable(s.ctx)
 	s.Require().NoError(err, "ListSchedulable")
@@ -757,14 +757,14 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupID_TimeBoundaries_And_Statu
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-sched"})
 
 	okAcc := mustCreateAccount(s.T(), s.client, &service.Account{Name: "ok", Schedulable: true})
-	mustBindAccountToGroup(s.T(), s.client, okAcc.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, okAcc.ID, group.ID)
 
 	future := now.Add(10 * time.Minute)
 	overloaded := mustCreateAccount(s.T(), s.client, &service.Account{Name: "over", Schedulable: true, OverloadUntil: &future})
-	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group.ID)
 
 	rateLimited := mustCreateAccount(s.T(), s.client, &service.Account{Name: "rl", Schedulable: true})
-	mustBindAccountToGroup(s.T(), s.client, rateLimited.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, rateLimited.ID, group.ID)
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, rateLimited.ID, now.Add(10*time.Minute)), "SetRateLimited")
 
 	s.Require().NoError(s.repo.SetError(s.ctx, overloaded.ID, "boom"), "SetError")
@@ -791,8 +791,8 @@ func (s *AccountRepoSuite) TestListSchedulableCapacityByGroupIDs() {
 		Concurrency: 3,
 		Extra:       map[string]any{"base_rpm": 12},
 	})
-	mustBindAccountToGroup(s.T(), s.client, shared.ID, group1.ID, 1)
-	mustBindAccountToGroup(s.T(), s.client, shared.ID, group2.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, shared.ID, group1.ID)
+	mustBindAccountToGroup(s.T(), s.client, shared.ID, group2.ID)
 
 	future := now.Add(10 * time.Minute)
 	overloaded := mustCreateAccount(s.T(), s.client, &service.Account{
@@ -800,7 +800,7 @@ func (s *AccountRepoSuite) TestListSchedulableCapacityByGroupIDs() {
 		Schedulable:   true,
 		OverloadUntil: &future,
 	})
-	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group1.ID, 2)
+	mustBindAccountToGroup(s.T(), s.client, overloaded.ID, group1.ID)
 
 	rows, err := s.repo.ListSchedulableCapacityByGroupIDs(s.ctx, []int64{group2.ID, group1.ID, group2.ID, 0})
 	s.Require().NoError(err)
@@ -829,8 +829,8 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupIDAndPlatform() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-sp"})
 	a1 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a1", Platform: service.PlatformAnthropic, Schedulable: true})
 	a2 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a2", Platform: service.PlatformOpenAI, Schedulable: true})
-	mustBindAccountToGroup(s.T(), s.client, a1.ID, group.ID, 1)
-	mustBindAccountToGroup(s.T(), s.client, a2.ID, group.ID, 2)
+	mustBindAccountToGroup(s.T(), s.client, a1.ID, group.ID)
+	mustBindAccountToGroup(s.T(), s.client, a2.ID, group.ID)
 
 	accounts, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, service.PlatformAnthropic)
 	s.Require().NoError(err)

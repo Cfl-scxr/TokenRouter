@@ -222,9 +222,8 @@ type AccountSchedulerScore struct {
 
 // AccountSchedulerGroupScore 表示账号在指定分组中的调度评分。
 type AccountSchedulerGroupScore struct {
-	GroupID       *int64 `json:"group_id"`
-	GroupName     string `json:"group_name,omitempty"`
-	GroupPriority *int   `json:"group_priority,omitempty"`
+	GroupID   *int64 `json:"group_id"`
+	GroupName string `json:"group_name,omitempty"`
 	AccountSchedulerScore
 }
 
@@ -384,19 +383,12 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 	for i := range accounts {
 		account := &accounts[i]
 		pageAccountIDs[account.ID] = struct{}{}
-		if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
+		if len(account.AccountGroups) == 0 {
 			continue
 		}
 		for _, accountGroup := range account.AccountGroups {
 			if accountGroup.GroupID > 0 && accountGroup.Group != nil && accountGroup.Group.UsesAdvancedScheduler() {
 				advancedGroups[accountGroup.GroupID] = accountGroup.Group
-			}
-		}
-		for _, groupID := range account.GroupIDs {
-			if groupID > 0 && h.adminService != nil {
-				if group, err := h.adminService.GetGroup(ctx, groupID); err == nil && group != nil && group.UsesAdvancedScheduler() {
-					advancedGroups[groupID] = group
-				}
 			}
 		}
 	}
@@ -448,7 +440,7 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 	}
 
 	groupScoresByAccount := make(map[int64][]AccountSchedulerGroupScore)
-	scoreGroupPool := func(groupID *int64, group *service.Group, groupNameByID map[int64]string, groupPriorityByAccount map[int64]int, pool []service.Account) {
+	scoreGroupPool := func(groupID *int64, group *service.Group, groupNameByID map[int64]string, pool []service.Account) {
 		if len(pool) == 0 {
 			return
 		}
@@ -463,9 +455,6 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 			}
 			if groupID != nil {
 				groupScore.GroupName = groupNameByID[*groupID]
-				if priority, ok := groupPriorityByAccount[accountID]; ok {
-					groupScore.GroupPriority = &priority
-				}
 			}
 			groupScoresByAccount[accountID] = append(groupScoresByAccount[accountID], groupScore)
 		}
@@ -478,20 +467,18 @@ func (h *AccountHandler) buildAdvancedAccountSchedulerScores(
 			continue
 		}
 		groupNameByID := make(map[int64]string)
-		groupPriorityByAccount := make(map[int64]int)
 		for i := range pool {
 			account := &pool[i]
 			for _, accountGroup := range account.AccountGroups {
 				if accountGroup.GroupID != gid {
 					continue
 				}
-				groupPriorityByAccount[account.ID] = accountGroup.Priority
 				if accountGroup.Group != nil {
 					groupNameByID[gid] = accountGroup.Group.Name
 				}
 			}
 		}
-		scoreGroupPool(&gid, advancedGroups[gid], groupNameByID, groupPriorityByAccount, pool)
+		scoreGroupPool(&gid, advancedGroups[gid], groupNameByID, pool)
 	}
 	// 只返回至少属于一个高级调度分组的评分；基础分组和未分组账号不显示该管理配置。
 	for accountID := range baseScores {

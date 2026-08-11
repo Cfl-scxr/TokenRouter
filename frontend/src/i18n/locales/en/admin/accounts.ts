@@ -223,7 +223,7 @@ export default {
         finalScore: 'Final score',
         rank: 'Top-K rank',
         selectionProbability: 'Selection probability',
-        selectionExplanation: 'The score ranks candidates; probability drives Top-K weighted selection. A matching sticky-first policy takes precedence over random weighted selection.',
+        selectionExplanation: 'The score ranks candidates; probability drives Top-K weighted selection. Hard stickiness only takes precedence when sticky weighting is disabled or an OpenAI previous response cannot move across accounts.',
         formula: 'Final expression',
         copyFormula: 'Copy formula',
         formulaCopied: 'Scoring formula copied.',
@@ -282,12 +282,19 @@ export default {
         policyNames: {
           previous_response_binding: 'Previous-response affinity',
           session_sticky: 'Session affinity',
-          subscription_priority: 'Subscription priority'
+          subscription_priority: 'Subscription priority',
+          request_capabilities: 'Request capabilities'
         },
         policyStates: {
           ignored: 'Inactive',
           weighted: 'Weighted',
-          enabled: 'Enabled'
+          enabled: 'Enabled',
+          forced_first: 'Forced first',
+          unavailable: 'Unavailable',
+          not_reached: 'Not reached',
+          escaped: 'Escaped',
+          active_pool: 'Active pool',
+          not_evaluated: 'Not evaluated'
         },
         filterReasons: {
           account_missing: 'Account missing',
@@ -300,6 +307,16 @@ export default {
           account_temporarily_unschedulable: 'Account temporarily unschedulable',
           privacy_not_set: 'Privacy setup incomplete',
           model_unsupported: 'Requested model unsupported',
+          model_runtime_blocked: 'Requested model is temporarily blocked',
+          quota_auto_pause: 'Upstream quota auto-pause is active',
+          runtime_blocked: 'Account runtime block is active',
+          proxy_stream_quarantined: 'Proxy streaming is quarantined',
+          shadow_parent_unhealthy: 'Shadow parent account is unhealthy',
+          channel_upstream_restricted: 'Channel upstream restriction',
+          quota_exceeded: 'Account quota exceeded',
+          window_cost_exceeded: 'Window cost limit exceeded',
+          rpm_exceeded: 'RPM limit exceeded',
+          subscription_priority_deferred: 'Deferred by subscription priority',
           not_in_schedulable_pool: 'Not in the schedulable candidate pool'
         }
       },

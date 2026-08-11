@@ -40,12 +40,18 @@ WHERE id = $1
 `, groupID).Scan(&stored))
 	require.JSONEq(t, `{}`, stored)
 
+	_, err = tx.ExecContext(ctx, "SAVEPOINT invalid_advanced_scheduler_overrides")
+	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, `
 UPDATE groups
 SET advanced_scheduler_overrides = '[]'::jsonb
 WHERE id = $1
 `, groupID)
 	require.Error(t, err, "数组不能作为分组高级调度器覆盖")
+	_, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT invalid_advanced_scheduler_overrides")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "RELEASE SAVEPOINT invalid_advanced_scheduler_overrides")
+	require.NoError(t, err)
 
 	_, err = tx.ExecContext(ctx, `
 UPDATE groups

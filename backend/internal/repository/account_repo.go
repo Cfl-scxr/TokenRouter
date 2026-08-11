@@ -180,7 +180,7 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	return nil
 }
 
-// CreateWithAccountGroups 在同一事务中持久化账号、分组精确优先级，
+// CreateWithAccountGroups 在同一事务中持久化账号、分组绑定，
 // 以及用于发布新路由快照的调度 outbox 事件。
 func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
 	if account == nil {
@@ -211,8 +211,7 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 			groupIDs = append(groupIDs, groups[i].GroupID)
 			builders = append(builders, txClient.AccountGroup.Create().
 				SetAccountID(account.ID).
-				SetGroupID(groups[i].GroupID).
-				SetPriority(groups[i].Priority),
+				SetGroupID(groups[i].GroupID),
 			)
 		}
 		if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
@@ -1575,11 +1574,10 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {
+func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64) error {
 	_, err := r.client.AccountGroup.Create().
 		SetAccountID(accountID).
 		SetGroupID(groupID).
-		SetPriority(priority).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -1657,11 +1655,10 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	}
 
 	builders := make([]*dbent.AccountGroupCreate, 0, len(groupIDs))
-	for i, groupID := range groupIDs {
+	for _, groupID := range groupIDs {
 		builders = append(builders, txClient.AccountGroup.Create().
 			SetAccountID(accountID).
-			SetGroupID(groupID).
-			SetPriority(i+1),
+			SetGroupID(groupID),
 		)
 	}
 
@@ -1788,7 +1785,7 @@ func (r *accountRepository) ListSchedulableCapacityByGroupIDs(ctx context.Contex
 			AND (a.expires_at IS NULL OR a.expires_at > $3 OR a.auto_pause_on_expired = FALSE)
 			AND (a.overload_until IS NULL OR a.overload_until <= $3)
 			AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= $3)
-		ORDER BY ag.group_id ASC, ag.priority ASC, a.priority ASC, a.id ASC
+		ORDER BY ag.group_id ASC, a.priority ASC, a.id ASC
 	`, pq.Array(groupIDs), service.StatusActive, time.Now())
 	if err != nil {
 		return nil, err
@@ -1929,7 +1926,7 @@ func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Con
 	if len(platforms) == 0 {
 		return nil, nil
 	}
-	// 复用按分组查询逻辑，保证分组优先级 + 账号优先级的排序与筛选一致。
+	// 复用按分组查询逻辑，保证账号全局优先级与账号 ID 的稳定排序一致。
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status:      service.StatusActive,
 		schedulable: true,
@@ -2732,8 +2729,8 @@ func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID in
 
 	groups, err := q.
 		Order(
-			dbaccountgroup.ByPriority(),
 			dbaccountgroup.ByAccountField(dbaccount.FieldPriority),
+			dbaccountgroup.ByAccountID(),
 		).
 		WithAccount().
 		All(ctx)
@@ -2881,7 +2878,7 @@ func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []
 		}
 		entries, err := r.client.AccountGroup.Query().
 			Where(dbaccountgroup.AccountIDIn(accountIDs[start:end]...)).
-			Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
+			Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByGroupID()).
 			All(ctx)
 		if err != nil {
 			return nil, nil, nil, err
@@ -2901,7 +2898,6 @@ func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []
 			agSvc := service.AccountGroup{
 				AccountID: ag.AccountID,
 				GroupID:   ag.GroupID,
-				Priority:  ag.Priority,
 				CreatedAt: ag.CreatedAt,
 				Group:     groupSvc,
 			}

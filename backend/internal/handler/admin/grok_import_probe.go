@@ -177,6 +177,8 @@ func ProvideAccountHandler(
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
 	concurrencyService *service.ConcurrencyService,
+	gatewayService *service.GatewayService,
+	openAIGatewayService *service.OpenAIGatewayService,
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
@@ -201,8 +203,8 @@ func ProvideAccountHandler(
 		grokOAuthService,
 	)
 	handler.grokImportProber = grokQuotaService
-	handler.SetAdvancedSchedulerScoreDiagnosticService(
-		service.NewAdvancedSchedulerScoreDiagnosticService(adminService, concurrencyService, rateLimitService),
-	)
+	diagnostics := service.NewAdvancedSchedulerScoreDiagnosticService(adminService, concurrencyService, rateLimitService)
+	diagnostics.SetSchedulingServices(gatewayService, openAIGatewayService)
+	handler.SetAdvancedSchedulerScoreDiagnosticService(diagnostics)
 	return handler
 }

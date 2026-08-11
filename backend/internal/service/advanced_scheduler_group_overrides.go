@@ -18,7 +18,7 @@ type advancedSchedulerEffectiveSettings struct {
 }
 
 // ValidateGroupAdvancedSchedulerOverrides 校验分组稀疏覆盖的单字段边界。
-// 当基础评分权重全部由分组覆盖时，同时拒绝全部为零的无效组合。
+// 基础权重允许全部显式设为零，此时 Top-K 使用稳定并列规则并等权抽样。
 func ValidateGroupAdvancedSchedulerOverrides(overrides GroupAdvancedSchedulerOverrides) error {
 	if overrides.LBTopK != nil && *overrides.LBTopK <= 0 {
 		return fmt.Errorf("lb_top_k must be a positive integer")
@@ -47,44 +47,53 @@ func ValidateGroupAdvancedSchedulerOverrides(overrides GroupAdvancedSchedulerOve
 		}
 	}
 
-	// 只有全部基础权重都由分组给出时，才能在不依赖全局值的前提下完整校验。
-	baseWeights := []*float64{
-		overrides.WeightPriority,
-		overrides.WeightLoad,
-		overrides.WeightQueue,
-		overrides.WeightErrorRate,
-		overrides.WeightTTFT,
-		overrides.WeightReset,
-		overrides.WeightQuotaHeadroom,
+	return nil
+}
+
+// validateAdvancedSchedulerEffectiveWeights 校验合并后的完整权重。
+// 基础权重总和可以为零，但基础和完整总和都必须保持有限，避免评分出现 NaN 或 Inf。
+func validateAdvancedSchedulerEffectiveWeights(weights GatewayAdvancedSchedulerScoreWeightsView) error {
+	values := []struct {
+		name  string
+		value float64
+	}{
+		{"weight_priority", weights.Priority},
+		{"weight_load", weights.Load},
+		{"weight_queue", weights.Queue},
+		{"weight_error_rate", weights.ErrorRate},
+		{"weight_ttft", weights.TTFT},
+		{"weight_reset", weights.Reset},
+		{"weight_quota_headroom", weights.QuotaHeadroom},
+		{"weight_previous_response", weights.Previous},
+		{"weight_session_sticky", weights.SessionSticky},
 	}
-	allBaseWeightsOverridden := true
-	for _, weight := range baseWeights {
-		if weight == nil {
-			allBaseWeightsOverridden = false
-			break
+	for _, item := range values {
+		if item.value < 0 || math.IsNaN(item.value) || math.IsInf(item.value, 0) {
+			return fmt.Errorf("%s must be a non-negative finite number", item.name)
 		}
 	}
-	if allBaseWeightsOverridden {
-		resolved := GatewayAdvancedSchedulerScoreWeightsView{
-			Priority:      *overrides.WeightPriority,
-			Load:          *overrides.WeightLoad,
-			Queue:         *overrides.WeightQueue,
-			ErrorRate:     *overrides.WeightErrorRate,
-			TTFT:          *overrides.WeightTTFT,
-			Reset:         *overrides.WeightReset,
-			QuotaHeadroom: *overrides.WeightQuotaHeadroom,
-		}
-		if overrides.WeightPreviousResponse != nil {
-			resolved.Previous = *overrides.WeightPreviousResponse
-		}
-		if overrides.WeightSessionSticky != nil {
-			resolved.SessionSticky = *overrides.WeightSessionSticky
-		}
-		if !resolved.configWeights().IsValid() {
-			return fmt.Errorf("base score weights must not all be zero")
-		}
+
+	resolved := weights.configWeights()
+	if baseSum := resolved.BaseWeightSum(); math.IsNaN(baseSum) || math.IsInf(baseSum, 0) {
+		return fmt.Errorf("base-weight sum must be finite")
+	}
+	if totalSum := resolved.TotalWeightSum(); math.IsNaN(totalSum) || math.IsInf(totalSum, 0) {
+		return fmt.Errorf("total-weight sum must be finite")
 	}
 	return nil
+}
+
+// hasGroupAdvancedSchedulerWeightOverrides 判断是否需要读取全局权重完成合并校验。
+func hasGroupAdvancedSchedulerWeightOverrides(overrides GroupAdvancedSchedulerOverrides) bool {
+	return overrides.WeightPriority != nil ||
+		overrides.WeightLoad != nil ||
+		overrides.WeightQueue != nil ||
+		overrides.WeightErrorRate != nil ||
+		overrides.WeightTTFT != nil ||
+		overrides.WeightReset != nil ||
+		overrides.WeightQuotaHeadroom != nil ||
+		overrides.WeightPreviousResponse != nil ||
+		overrides.WeightSessionSticky != nil
 }
 
 // CloneGroupAdvancedSchedulerOverrides 返回覆盖对象及其指针字段的独立副本。
@@ -126,8 +135,89 @@ func CloneGroupAdvancedSchedulerOverrides(overrides GroupAdvancedSchedulerOverri
 	}
 }
 
+// applyGroupAdvancedSchedulerWeightOverrides 只替换分组显式提供的权重字段。
+func applyGroupAdvancedSchedulerWeightOverrides(
+	weights GatewayAdvancedSchedulerScoreWeightsView,
+	overrides GroupAdvancedSchedulerOverrides,
+) GatewayAdvancedSchedulerScoreWeightsView {
+	if overrides.WeightPriority != nil {
+		weights.Priority = *overrides.WeightPriority
+	}
+	if overrides.WeightLoad != nil {
+		weights.Load = *overrides.WeightLoad
+	}
+	if overrides.WeightQueue != nil {
+		weights.Queue = *overrides.WeightQueue
+	}
+	if overrides.WeightErrorRate != nil {
+		weights.ErrorRate = *overrides.WeightErrorRate
+	}
+	if overrides.WeightTTFT != nil {
+		weights.TTFT = *overrides.WeightTTFT
+	}
+	if overrides.WeightReset != nil {
+		weights.Reset = *overrides.WeightReset
+	}
+	if overrides.WeightQuotaHeadroom != nil {
+		weights.QuotaHeadroom = *overrides.WeightQuotaHeadroom
+	}
+	if overrides.WeightPreviousResponse != nil {
+		weights.Previous = *overrides.WeightPreviousResponse
+	}
+	if overrides.WeightSessionSticky != nil {
+		weights.SessionSticky = *overrides.WeightSessionSticky
+	}
+	return weights
+}
+
+// validateGroupAdvancedSchedulerOverridesForWrite 使用当前全局权重校验写入后的完整结果。
+func (s *adminServiceImpl) validateGroupAdvancedSchedulerOverridesForWrite(
+	ctx context.Context,
+	overrides GroupAdvancedSchedulerOverrides,
+) error {
+	if err := ValidateGroupAdvancedSchedulerOverrides(overrides); err != nil {
+		return err
+	}
+	if !hasGroupAdvancedSchedulerWeightOverrides(overrides) {
+		return nil
+	}
+
+	globalWeights, err := s.advancedSchedulerGlobalWeightsForValidation(ctx)
+	if err != nil {
+		return err
+	}
+	return validateAdvancedSchedulerEffectiveWeights(applyGroupAdvancedSchedulerWeightOverrides(globalWeights, overrides))
+}
+
+// advancedSchedulerGlobalWeightsForValidation 直接读取设置仓库，避免写入校验依赖短 TTL 热路径缓存。
+func (s *adminServiceImpl) advancedSchedulerGlobalWeightsForValidation(
+	ctx context.Context,
+) (GatewayAdvancedSchedulerScoreWeightsView, error) {
+	gateway := &OpenAIGatewayService{}
+	if s != nil && s.settingService != nil {
+		gateway.cfg = s.settingService.cfg
+	}
+	baseWeights := gateway.openAIWSSchedulerWeights()
+	if !baseWeights.configWeights().IsValid() {
+		baseWeights = (&OpenAIGatewayService{}).openAIWSSchedulerWeights()
+	}
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return baseWeights, nil
+	}
+
+	values, err := s.settingService.settingRepo.GetMultiple(ctx, advancedSchedulerRuntimeSettingKeys())
+	if err != nil {
+		return GatewayAdvancedSchedulerScoreWeightsView{}, fmt.Errorf("load advanced scheduler settings: %w", err)
+	}
+	globalWeights := applyAdvancedSchedulerWeightOverrides(baseWeights, parseAdvancedSchedulerWeightOverrides(values))
+	if !globalWeights.configWeights().IsValid() {
+		return baseWeights, nil
+	}
+	return globalWeights, nil
+}
+
 // resolveAdvancedSchedulerEffectiveSettings 以全局生效配置为基线合并分组覆盖。
-// 若历史脏数据导致合并后的权重失效，保留其余分组覆盖并回退权重到全局有效值。
+// 分组显式零值保持生效，不因最终基础权重全零而静默恢复全局参数。
 func resolveAdvancedSchedulerEffectiveSettings(
 	baseTopK int,
 	baseWeights GatewayAdvancedSchedulerScoreWeightsView,
@@ -161,34 +251,9 @@ func resolveAdvancedSchedulerEffectiveSettings(
 	if overrides.LBTopK != nil && *overrides.LBTopK > 0 {
 		effective.topK = *overrides.LBTopK
 	}
-	if overrides.WeightPriority != nil {
-		effective.weights.Priority = *overrides.WeightPriority
-	}
-	if overrides.WeightLoad != nil {
-		effective.weights.Load = *overrides.WeightLoad
-	}
-	if overrides.WeightQueue != nil {
-		effective.weights.Queue = *overrides.WeightQueue
-	}
-	if overrides.WeightErrorRate != nil {
-		effective.weights.ErrorRate = *overrides.WeightErrorRate
-	}
-	if overrides.WeightTTFT != nil {
-		effective.weights.TTFT = *overrides.WeightTTFT
-	}
-	if overrides.WeightReset != nil {
-		effective.weights.Reset = *overrides.WeightReset
-	}
-	if overrides.WeightQuotaHeadroom != nil {
-		effective.weights.QuotaHeadroom = *overrides.WeightQuotaHeadroom
-	}
-	if overrides.WeightPreviousResponse != nil {
-		effective.weights.Previous = *overrides.WeightPreviousResponse
-	}
-	if overrides.WeightSessionSticky != nil {
-		effective.weights.SessionSticky = *overrides.WeightSessionSticky
-	}
-	if !effective.weights.configWeights().IsValid() {
+	effective.weights = applyGroupAdvancedSchedulerWeightOverrides(effective.weights, overrides)
+	if validateErr := validateAdvancedSchedulerEffectiveWeights(effective.weights); validateErr != nil {
+		// 历史异常数据不能进入评分；仅回退权重，保留分组其它有效覆盖。
 		effective.weights = globalWeights
 	}
 	return effective

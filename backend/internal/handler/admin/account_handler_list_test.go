@@ -67,7 +67,7 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			Concurrency: 10,
 			Priority:    1,
 			AccountGroups: []service.AccountGroup{
-				{AccountID: 101, GroupID: groupID, Priority: 100, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
+				{AccountID: 101, GroupID: groupID, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 			},
 			GroupIDs:  []int64{groupID},
 			CreatedAt: now,
@@ -83,7 +83,7 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			Concurrency: 10,
 			Priority:    100000,
 			AccountGroups: []service.AccountGroup{
-				{AccountID: 102, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
+				{AccountID: 102, GroupID: groupID, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 			},
 			GroupIDs:  []int64{groupID},
 			CreatedAt: now,
@@ -104,10 +104,9 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 					BaseScore float64 `json:"base_score"`
 				} `json:"scheduler_score"`
 				SchedulerScores []struct {
-					GroupID       *int64  `json:"group_id"`
-					GroupName     string  `json:"group_name"`
-					GroupPriority *int    `json:"group_priority"`
-					BaseScore     float64 `json:"base_score"`
+					GroupID   *int64  `json:"group_id"`
+					GroupName string  `json:"group_name"`
+					BaseScore float64 `json:"base_score"`
 				} `json:"scheduler_scores"`
 			} `json:"items"`
 		} `json:"data"`
@@ -121,10 +120,9 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 			BaseScore float64 `json:"base_score"`
 		} `json:"scheduler_score"`
 		SchedulerScores []struct {
-			GroupID       *int64  `json:"group_id"`
-			GroupName     string  `json:"group_name"`
-			GroupPriority *int    `json:"group_priority"`
-			BaseScore     float64 `json:"base_score"`
+			GroupID   *int64  `json:"group_id"`
+			GroupName string  `json:"group_name"`
+			BaseScore float64 `json:"base_score"`
 		} `json:"scheduler_scores"`
 	}
 	for i := range payload.Data.Items {
@@ -142,9 +140,64 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Len(t, low.SchedulerScores, 1)
 	require.Equal(t, groupID, *high.SchedulerScores[0].GroupID)
 	require.Equal(t, "openai", high.SchedulerScores[0].GroupName)
-	require.Equal(t, 100, *high.SchedulerScores[0].GroupPriority)
-	require.Equal(t, 1, *low.SchedulerScores[0].GroupPriority)
 	require.Greater(t, high.SchedulerScores[0].BaseScore, low.SchedulerScores[0].BaseScore)
+}
+
+func TestAccountHandlerListReusesHydratedGroupsWithoutRepositoryLookups(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	now := time.Now().UTC()
+	firstGroup := &service.Group{
+		ID: 51, Name: "openai-primary", Platform: service.PlatformOpenAI,
+		SchedulerType: service.GroupSchedulerTypeAdvanced,
+	}
+	secondGroup := &service.Group{
+		ID: 52, Name: "openai-secondary", Platform: service.PlatformOpenAI,
+		SchedulerType: service.GroupSchedulerTypeAdvanced,
+	}
+	accountGroups := func(accountID int64) []service.AccountGroup {
+		return []service.AccountGroup{
+			{AccountID: accountID, GroupID: firstGroup.ID, Group: firstGroup},
+			{AccountID: accountID, GroupID: secondGroup.ID, Group: secondGroup},
+		}
+	}
+	adminSvc.accounts = []service.Account{
+		{
+			ID: 111, Name: "first", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Status: service.StatusActive, Schedulable: true, Concurrency: 10, Priority: 1,
+			AccountGroups: accountGroups(111), GroupIDs: []int64{51, 52, 51}, CreatedAt: now, UpdatedAt: now,
+		},
+		{
+			ID: 112, Name: "second", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Status: service.StatusActive, Schedulable: true, Concurrency: 10, Priority: 2,
+			AccountGroups: accountGroups(112), GroupIDs: []int64{52, 51, 52}, CreatedAt: now, UpdatedAt: now,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&platform=openai&include_scheduler_score=1", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Zero(t, adminSvc.getGroupCalls)
+	require.Equal(t, []int64{firstGroup.ID, secondGroup.ID}, adminSvc.openAISchedulerScorePoolGroupIDs)
+	require.Equal(t, 2, adminSvc.openAISchedulerScorePoolCalls)
+
+	var payload struct {
+		Data struct {
+			Items []struct {
+				SchedulerScores []struct {
+					GroupID *int64 `json:"group_id"`
+				} `json:"scheduler_scores"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 2)
+	for _, item := range payload.Data.Items {
+		require.Len(t, item.SchedulerScores, 2)
+		groupIDs := []int64{*item.SchedulerScores[0].GroupID, *item.SchedulerScores[1].GroupID}
+		require.ElementsMatch(t, []int64{firstGroup.ID, secondGroup.ID}, groupIDs)
+	}
 }
 
 func TestAccountHandlerListSkipsSchedulerScoresByDefault(t *testing.T) {
@@ -198,7 +251,7 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToFilter(t *testing.T) {
 		Concurrency: 10,
 		Priority:    100000,
 		AccountGroups: []service.AccountGroup{
-			{AccountID: 201, GroupID: groupID, Priority: 1, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
+			{AccountID: 201, GroupID: groupID, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 		},
 		GroupIDs:  []int64{groupID},
 		CreatedAt: now,
@@ -214,7 +267,7 @@ func TestAccountHandlerListKeepsSchedulerScoreScopedToFilter(t *testing.T) {
 		Concurrency: 10,
 		Priority:    1,
 		AccountGroups: []service.AccountGroup{
-			{AccountID: 202, GroupID: groupID, Priority: 2, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
+			{AccountID: 202, GroupID: groupID, Group: &service.Group{ID: groupID, Name: "openai", Platform: service.PlatformOpenAI, SchedulerType: service.GroupSchedulerTypeAdvanced}},
 		},
 		GroupIDs:  []int64{groupID},
 		CreatedAt: now,

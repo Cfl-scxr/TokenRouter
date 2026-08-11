@@ -134,7 +134,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SCHEDULER_TYPE", "%v", err)
 	}
-	if err := ValidateGroupAdvancedSchedulerOverrides(input.AdvancedSchedulerOverrides); err != nil {
+	if err := s.validateGroupAdvancedSchedulerOverridesForWrite(ctx, input.AdvancedSchedulerOverrides); err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", "%v", err)
 	}
 	allowedClientProtocols := input.AllowedClientProtocols
@@ -529,7 +529,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.SchedulerType = schedulerType
 	}
 	if input.AdvancedSchedulerOverrides != nil {
-		if validationErr := ValidateGroupAdvancedSchedulerOverrides(*input.AdvancedSchedulerOverrides); validationErr != nil {
+		if validationErr := s.validateGroupAdvancedSchedulerOverridesForWrite(ctx, *input.AdvancedSchedulerOverrides); validationErr != nil {
 			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_ADVANCED_SCHEDULER_OVERRIDES", "%v", validationErr)
 		}
 		group.AdvancedSchedulerOverrides = CloneGroupAdvancedSchedulerOverrides(*input.AdvancedSchedulerOverrides)
@@ -778,10 +778,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	sanitizeGroupReasoningEffortPolicy(group)
 	normalizeGroupDefaultState(group)
 
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
-	}
-
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
 	var accountIDsToCopy []int64
 	if len(input.CopyAccountsFromGroupIDs) > 0 {
@@ -860,6 +856,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
 
 	return group, nil

@@ -8,6 +8,8 @@ BEGIN
         SELECT 1
         FROM pg_constraint
         WHERE conname = 'groups_scheduler_type_check'
+          AND conrelid = 'groups'::regclass
+          AND contype = 'c'
     ) THEN
         ALTER TABLE groups
             ADD CONSTRAINT groups_scheduler_type_check

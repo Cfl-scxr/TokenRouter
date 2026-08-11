@@ -586,7 +586,6 @@ func TestModelMarketplaceListPublicPrefetchesAccountsOnce(t *testing.T) {
 			AccountGroups: []AccountGroup{{
 				AccountID: 5101,
 				GroupID:   4101,
-				Priority:  1,
 			}},
 			Credentials: map[string]any{
 				"model_mapping":   map[string]any{"client-a": "upstream-a"},
@@ -600,7 +599,6 @@ func TestModelMarketplaceListPublicPrefetchesAccountsOnce(t *testing.T) {
 			AccountGroups: []AccountGroup{{
 				AccountID: 5102,
 				GroupID:   4102,
-				Priority:  1,
 			}},
 			Credentials: map[string]any{
 				"model_mapping":   map[string]any{"client-b": "upstream-b"},
@@ -655,6 +653,28 @@ func TestModelMarketplaceListPublicPrefetchesAccountsOnce(t *testing.T) {
 	}
 	if _, leaked := groupBModels["client-a"]; leaked {
 		t.Fatalf("group B models = %#v, must not contain client-a", result[1].Models)
+	}
+}
+
+func TestModelMarketplacePrefetchSortsByGlobalAccountPriority(t *testing.T) {
+	accountRepo := &modelsListAccountRepoStub{all: []Account{
+		{ID: 5103, Priority: 10, GroupIDs: []int64{4101}},
+		{ID: 5102, Priority: 5, GroupIDs: []int64{4101}},
+		{ID: 5101, Priority: 5, GroupIDs: []int64{4101}},
+	}}
+	svc := NewModelMarketplaceService(nil, nil, &GatewayService{accountRepo: accountRepo}, nil, nil, nil, nil)
+
+	accountsByGroup, ok := svc.prefetchPublicGroupAccounts(context.Background())
+
+	if !ok {
+		t.Fatal("prefetchPublicGroupAccounts should succeed")
+	}
+	accounts := accountsByGroup[4101]
+	if len(accounts) != 3 {
+		t.Fatalf("prefetched accounts = %d, want 3", len(accounts))
+	}
+	if accounts[0].ID != 5101 || accounts[1].ID != 5102 || accounts[2].ID != 5103 {
+		t.Fatalf("prefetched account order = [%d %d %d], want [5101 5102 5103]", accounts[0].ID, accounts[1].ID, accounts[2].ID)
 	}
 }
 

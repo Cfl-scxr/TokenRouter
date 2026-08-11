@@ -16,6 +16,9 @@ import (
 // 可用性探测和 count_tokens 需要复用高级评分，但不能占用真实并发槽或注册会话数量。
 type advancedSchedulerNoSlotSelectionContextKey struct{}
 
+// advancedSchedulerPreserveStickyBindingContextKey 标记当前请求只逃逸一次，不覆盖原粘性绑定。
+type advancedSchedulerPreserveStickyBindingContextKey struct{}
+
 // withAdvancedSchedulerNoSlotSelection 为辅助选择入口保留完整硬过滤和评分语义，
 // 同时跳过并发槽与会话数量的副作用。
 func withAdvancedSchedulerNoSlotSelection(ctx context.Context) context.Context {
@@ -31,6 +34,21 @@ func isAdvancedSchedulerNoSlotSelection(ctx context.Context) bool {
 	}
 	enabled, _ := ctx.Value(advancedSchedulerNoSlotSelectionContextKey{}).(bool)
 	return enabled
+}
+
+func withAdvancedSchedulerPreserveStickyBinding(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, advancedSchedulerPreserveStickyBindingContextKey{}, true)
+}
+
+func shouldPreserveAdvancedSchedulerStickyBinding(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	preserve, _ := ctx.Value(advancedSchedulerPreserveStickyBindingContextKey{}).(bool)
+	return preserve
 }
 
 // advancedAccountRuntimeStats 保存所有高级调度分组共享的运行时反馈。
@@ -77,6 +95,8 @@ func (s *advancedAccountRuntimeStats) loadOrCreate(accountID int64) *advancedAcc
 	}
 
 	stat := &advancedAccountRuntimeStat{}
+	// 错误率从中性先验开始，保证首次失败不会比完全未观测账号得分更高。
+	stat.errorRateEWMABits.Store(math.Float64bits(0.5))
 	stat.ttftEWMABits.Store(math.Float64bits(math.NaN()))
 	actual, loaded := s.accounts.LoadOrStore(accountID, stat)
 	if !loaded {
@@ -312,15 +332,7 @@ func isAdvancedSchedulerCandidateBetter(left, right advancedSchedulerCandidateSc
 	if left.account.Priority != right.account.Priority {
 		return left.account.Priority < right.account.Priority
 	}
-	// 缺失负载是中性信号，不能因排序兜底而让未知负载账号额外失分。
-	if left.loadKnown && right.loadKnown {
-		if left.loadInfo.LoadRate != right.loadInfo.LoadRate {
-			return left.loadInfo.LoadRate < right.loadInfo.LoadRate
-		}
-		if left.loadInfo.WaitingCount != right.loadInfo.WaitingCount {
-			return left.loadInfo.WaitingCount < right.loadInfo.WaitingCount
-		}
-	}
+	// 负载与等待已经进入评分；同分时只用实体 ID 决胜，保持严格且可传递的稳定全序。
 	return left.account.ID < right.account.ID
 }
 
@@ -376,6 +388,8 @@ type advancedSchedulerSelectionInput struct {
 	QuotaHeadroomFactor     func(*Account, time.Time) float64
 }
 
+// scoreAdvancedSchedulerCandidates 对硬过滤后的候选执行通用评分，并返回负载偏斜。
+// @project-doc docs/architecture/account_scheduling_and_cache.md#advanced_scheduler_selection
 func scoreAdvancedSchedulerCandidates(
 	accounts []*Account,
 	loadMap map[int64]*AccountLoadInfo,
@@ -681,19 +695,6 @@ func buildAdvancedSchedulerSelectionOrder(candidates []advancedSchedulerCandidat
 		topK = 1
 	}
 	ranked := selectTopKAdvancedSchedulerCandidates(candidates, topK)
-	if input.StickyWeighted {
-		for _, stickyID := range []int64{input.StickyPreviousAccountID, input.StickyAccountID} {
-			if stickyID <= 0 {
-				continue
-			}
-			for i, candidate := range ranked {
-				if candidate.account != nil && candidate.account.ID == stickyID {
-					order := append([]advancedSchedulerCandidateScore{candidate}, ranked[:i]...)
-					return append(order, ranked[i+1:]...)
-				}
-			}
-		}
-	}
 	return buildAdvancedWeightedSelectionOrder(ranked, input)
 }
 

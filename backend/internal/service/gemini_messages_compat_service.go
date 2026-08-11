@@ -113,13 +113,13 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	if err != nil {
 		return nil, err
 	}
-	if group != nil && !hasForcePlatform {
+	if group != nil {
 		// 后续高级评分必须读取本次解析出的最终分组覆盖，而非再次走可能不同的缓存来源。
 		ctx = context.WithValue(ctx, ctxkey.Group, group)
 	}
 
 	cacheKey := "gemini:" + sessionHash
-	usesAdvancedScheduler := !hasForcePlatform && group != nil && group.UsesAdvancedScheduler()
+	usesAdvancedScheduler := group != nil && group.UsesAdvancedScheduler()
 	advancedSettings := s.advancedSchedulerEffectiveSettingsForRequest(ctx, groupID)
 
 	// 2. 尝试粘性会话命中
@@ -176,7 +176,17 @@ func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx conte
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
-		return forcePlatform, false, true, nil, nil
+		if groupID == nil {
+			return forcePlatform, false, true, nil, nil
+		}
+		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
+			return forcePlatform, false, true, ctxGroup, nil
+		}
+		group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
+		if err != nil {
+			return "", false, false, nil, fmt.Errorf("get group failed: %w", err)
+		}
+		return forcePlatform, false, true, group, nil
 	}
 
 	if groupID != nil {
@@ -387,9 +397,9 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccountFromEligible(eligib
 	return selected
 }
 
-// groupUsesAdvancedScheduler 只让最终分组显式选择高级模式；无分组和强制平台路径保持基础调度。
+// groupUsesAdvancedScheduler 只让最终分组显式选择高级模式；无分组路径保持基础调度。
 func (s *GeminiMessagesCompatService) groupUsesAdvancedScheduler(ctx context.Context, groupID *int64, hasForcePlatform bool) bool {
-	if s == nil || hasForcePlatform || groupID == nil || *groupID <= 0 {
+	if s == nil || groupID == nil || *groupID <= 0 {
 		return false
 	}
 	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == *groupID {

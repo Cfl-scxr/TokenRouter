@@ -120,7 +120,7 @@ type AccountRepository interface {
 }
 
 type AccountDuplicateRepository interface {
-	// CreateWithAccountGroups 原子持久化账号、精确分组优先级与新路由快照的调度 outbox 事件。
+	// CreateWithAccountGroups 原子持久化账号、分组绑定与新路由快照的调度 outbox 事件。
 	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
 }
 

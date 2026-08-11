@@ -1320,7 +1320,6 @@ export interface Account {
 export interface AccountSchedulerGroupScore {
   group_id?: number | null
   group_name?: string
-  group_priority?: number | null
   base_score: number
   sticky_score?: number
   sticky_score_infinity?: boolean

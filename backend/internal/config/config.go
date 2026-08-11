@@ -1690,12 +1690,6 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
 	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
-	if cfg.Gateway.AdvancedScheduler.StickyEscapeTTFTMs == 0 {
-		cfg.Gateway.AdvancedScheduler.StickyEscapeTTFTMs = 15000
-	}
-	if cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate == 0 {
-		cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate = 0.5
-	}
 	// 作为兜底保留：setEnvReachableDefaults 已用实际默认值 true 注册该键，
 	// 因而 IsSet 通常恒为 true；若后续误删注册，这里仍能守住默认行为。
 	if !cfg.Gateway.AdvancedScheduler.StickyEscapeEnabled && !viper.IsSet("gateway.advanced_scheduler.sticky_escape_enabled") {
@@ -2448,12 +2442,11 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.user_message_queue.mode", "")
 	viper.SetDefault("update.proxy_url", "")
 
-	// sticky_escape_enabled 是零值规则的唯一例外：实际默认值为 true。
-	// 若注册 false，IsSet 会恒为 true 并永久关闭 sticky escape，因此直接注册
-	// 实际默认值；配置文件或环境变量显式设置 false 仍可覆盖。
+	// sticky escape 使用实际默认值，保留显式 error rate 0，并让显式 TTFT 0
+	// 进入配置校验。配置文件或环境变量仍可覆盖这些值。
 	viper.SetDefault("gateway.advanced_scheduler.sticky_escape_enabled", true)
-	viper.SetDefault("gateway.advanced_scheduler.sticky_escape_error_rate", 0.0)
-	viper.SetDefault("gateway.advanced_scheduler.sticky_escape_ttft_ms", 0)
+	viper.SetDefault("gateway.advanced_scheduler.sticky_escape_error_rate", 0.5)
+	viper.SetDefault("gateway.advanced_scheduler.sticky_escape_ttft_ms", 15000)
 
 	// server.trusted_proxies 与 security.forwarded_client_ip_headers 是另一组例外：
 	// load() 需要区分“显式配置”和“配置缺席”（#4600），而 viper.IsSet 也会把

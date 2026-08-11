@@ -141,7 +141,7 @@ func (s *ModelMarketplaceService) ListPublic(ctx context.Context) ([]ModelMarket
 	return out, nil
 }
 
-// prefetchPublicGroupAccounts 一次读取全部可调度账号，并按分组优先级恢复分组查询顺序。
+// prefetchPublicGroupAccounts 一次读取全部可调度账号，并按账号全局优先级恢复分组查询顺序。
 func (s *ModelMarketplaceService) prefetchPublicGroupAccounts(ctx context.Context) (map[int64][]Account, bool) {
 	if s == nil || s.gatewayService == nil || s.gatewayService.accountRepo == nil {
 		return nil, false
@@ -177,11 +177,6 @@ func (s *ModelMarketplaceService) prefetchPublicGroupAccounts(ctx context.Contex
 	for groupID := range accountsByGroup {
 		groupAccounts := accountsByGroup[groupID]
 		sort.SliceStable(groupAccounts, func(i, j int) bool {
-			leftPriority := marketplaceAccountGroupPriority(&groupAccounts[i], groupID)
-			rightPriority := marketplaceAccountGroupPriority(&groupAccounts[j], groupID)
-			if leftPriority != rightPriority {
-				return leftPriority < rightPriority
-			}
 			if groupAccounts[i].Priority != groupAccounts[j].Priority {
 				return groupAccounts[i].Priority < groupAccounts[j].Priority
 			}
@@ -190,18 +185,6 @@ func (s *ModelMarketplaceService) prefetchPublicGroupAccounts(ctx context.Contex
 		accountsByGroup[groupID] = groupAccounts
 	}
 	return accountsByGroup, true
-}
-
-func marketplaceAccountGroupPriority(account *Account, groupID int64) int {
-	if account == nil {
-		return 0
-	}
-	for _, accountGroup := range account.AccountGroups {
-		if accountGroup.GroupID == groupID {
-			return accountGroup.Priority
-		}
-	}
-	return 0
 }
 
 func (s *ModelMarketplaceService) getPublicCapacityMap(ctx context.Context, groups []Group) map[int64]GroupCapacitySummary {

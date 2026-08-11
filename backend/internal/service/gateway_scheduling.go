@@ -37,6 +37,14 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		platform = forcePlatform
+		if groupID != nil {
+			group, err := s.resolveGroupByID(ctx, *groupID)
+			if err != nil {
+				return nil, err
+			}
+			ctx = s.withGroupContext(ctx, group)
+			resolvedGroup = group
+		}
 	} else if groupID != nil {
 		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
 		if err != nil {
@@ -147,6 +155,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
 			stickyAccountID = accountID
 			stickySource = "cache"
+		}
+	}
+	stickyEscaped := false
+	if usesAdvancedScheduler && !advancedStickyWeighted && stickyAccountID > 0 {
+		escapeCfg := resolveAdvancedStickyEscapeConfig(s.cfg)
+		if reason, errorRate, ttft, shouldEscape := shouldEscapeAdvancedStickyAccount(s.advancedSchedulerStats(), stickyAccountID, escapeCfg); shouldEscape {
+			stickyEscaped = true
+			ctx = withAdvancedSchedulerPreserveStickyBinding(ctx)
+			slog.Info("sticky_escape_triggered",
+				"account_id", stickyAccountID,
+				"reason", reason,
+				"error_rate", errorRate,
+				"ttft", ttft,
+			)
 		}
 	}
 
@@ -324,12 +346,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				continue
 			}
 
-			if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
+			weightedSticky := advancedStickyWeighted && account.ID == stickyAccountID
+			if !s.isAccountSchedulableForWindowCost(ctx, account, weightedSticky) {
 				filteredWindowCost++
 				continue
 			}
 
-			if !s.isAccountSchedulableForRPM(ctx, account, false) {
+			if !s.isAccountSchedulableForRPM(ctx, account, weightedSticky) {
 				continue
 			}
 			routingCandidates = append(routingCandidates, account)
@@ -346,16 +369,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		if len(routingCandidates) > 0 {
-			if usesAdvancedScheduler && (s.concurrencyService == nil || !cfg.LoadBatchEnabled) {
-				if selection, ok, selectErr := s.tryAcquireByAdvancedSchedulerWithoutLoad(ctx, groupID, sessionHash, routingCandidates); selectErr != nil {
-					return nil, selectErr
-				} else if ok {
-					return selection, nil
-				}
-				return nil, ErrNoAvailableAccounts
-			}
-
-			if (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 {
+			if !stickyEscaped && (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 {
 				slog.Debug("sticky.layer1_5_checking",
 					"sticky_account_id", stickyAccountID,
 					"in_routing_list", containsInt64(routingAccountIDs, stickyAccountID),
@@ -445,6 +459,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				}
 			}
 
+			if usesAdvancedScheduler && (s.concurrencyService == nil || !cfg.LoadBatchEnabled) {
+				if selection, ok, selectErr := s.tryAcquireByAdvancedSchedulerWithoutLoad(ctx, groupID, sessionHash, routingCandidates); selectErr != nil {
+					return nil, selectErr
+				} else if ok {
+					return selection, nil
+				}
+				return nil, ErrNoAvailableAccounts
+			}
+
 			routingLoads := make([]AccountWithConcurrency, 0, len(routingCandidates))
 			for _, acc := range routingCandidates {
 				routingLoads = append(routingLoads, AccountWithConcurrency{
@@ -460,7 +483,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if loadInfo == nil && !usesAdvancedScheduler {
 					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 				}
-				if loadInfo == nil || loadInfo.LoadRate < 100 {
+				if usesAdvancedScheduler || loadInfo == nil || loadInfo.LoadRate < 100 {
 					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
 				}
 			}
@@ -537,7 +560,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	if len(routingAccountIDs) == 0 && (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
+	if !stickyEscaped && len(routingAccountIDs) == 0 && (!usesAdvancedScheduler || !advancedStickyWeighted) && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
@@ -691,11 +714,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			continue
 		}
 
-		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+		weightedSticky := advancedStickyWeighted && acc.ID == stickyAccountID
+		if !s.isAccountSchedulableForWindowCost(ctx, acc, weightedSticky) {
 			continue
 		}
 
-		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+		if !s.isAccountSchedulableForRPM(ctx, acc, weightedSticky) {
 			continue
 		}
 		candidates = append(candidates, acc)
@@ -747,7 +771,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if loadInfo == nil && !usesAdvancedScheduler {
 				loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 			}
-			if loadInfo == nil || loadInfo.LoadRate < 100 {
+			if usesAdvancedScheduler || loadInfo == nil || loadInfo.LoadRate < 100 {
 				available = append(available, accountWithLoad{
 					account:  acc,
 					loadInfo: loadInfo,
@@ -926,7 +950,7 @@ func (s *GatewayService) tryAcquireByAdvancedScheduler(
 			result.ReleaseFunc()
 			continue
 		}
-		if sessionHash != "" && s.cache != nil {
+		if sessionHash != "" && s.cache != nil && !shouldPreserveAdvancedSchedulerStickyBinding(ctx) {
 			_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, candidate.account.ID, stickySessionTTL)
 		}
 		selection, selectErr := s.newSelectionResult(ctx, candidate.account, true, result.ReleaseFunc, nil)
@@ -1118,7 +1142,11 @@ func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID
 
 	// 强制平台模式不检查 Claude Code 限制
 	if forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform && forcePlatform != "" {
-		return nil, groupID, nil
+		group, err := s.resolveGroupByID(ctx, *groupID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return group, groupID, nil
 	}
 
 	group, resolvedID, err := s.resolveGatewayGroup(ctx, groupID)

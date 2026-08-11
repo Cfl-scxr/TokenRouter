@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// AccountGroup holds the edge schema definition for the account_groups relationship.
-// It stores extra fields (priority, created_at) and uses a composite primary key.
+// AccountGroup 定义 account_groups 关联表。
+// 该表保存绑定创建时间，并使用联合主键。
 type AccountGroup struct {
 	ent.Schema
 }
@@ -30,8 +30,6 @@ func (AccountGroup) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("account_id"),
 		field.Int64("group_id"),
-		field.Int("priority").
-			Default(50),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
@@ -55,6 +53,5 @@ func (AccountGroup) Edges() []ent.Edge {
 func (AccountGroup) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("group_id"),
-		index.Fields("priority"),
 	}
 }

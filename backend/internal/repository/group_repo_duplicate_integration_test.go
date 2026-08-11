@@ -34,7 +34,6 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 	_, err = client.AccountGroup.Create().
 		SetAccountID(account.ID).
 		SetGroupID(source.ID).
-		SetPriority(29).
 		Save(ctx)
 	require.NoError(t, err)
 

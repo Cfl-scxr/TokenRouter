@@ -62,6 +62,45 @@ func TestLoadRejectsLegacyAdvancedSchedulerConfig(t *testing.T) {
 	})
 }
 
+func TestLoadAdvancedSchedulerStickyEscapeZeroBoundaries(t *testing.T) {
+	t.Run("YAML 保留显式零错误率", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		configFile := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(configFile, []byte("gateway:\n  advanced_scheduler:\n    sticky_escape_error_rate: 0\n"), 0o600))
+		t.Setenv("CONFIG_FILE", configFile)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Zero(t, cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate)
+	})
+
+	t.Run("环境变量保留显式零错误率", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("GATEWAY_ADVANCED_SCHEDULER_STICKY_ESCAPE_ERROR_RATE", "0")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Zero(t, cfg.Gateway.AdvancedScheduler.StickyEscapeErrorRate)
+	})
+
+	for _, source := range []string{"yaml", "env"} {
+		source := source
+		t.Run(source+" 拒绝显式零 TTFT", func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			if source == "yaml" {
+				configFile := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(configFile, []byte("gateway:\n  advanced_scheduler:\n    sticky_escape_ttft_ms: 0\n"), 0o600))
+				t.Setenv("CONFIG_FILE", configFile)
+			} else {
+				t.Setenv("GATEWAY_ADVANCED_SCHEDULER_STICKY_ESCAPE_TTFT_MS", "0")
+			}
+
+			_, err := Load()
+			require.ErrorContains(t, err, "gateway.advanced_scheduler.sticky_escape_ttft_ms")
+		})
+	}
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")

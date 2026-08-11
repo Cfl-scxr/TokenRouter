@@ -173,7 +173,7 @@ export default {
         finalScore: '最终分',
         rank: 'Top-K 内排名',
         selectionProbability: '选择概率',
-        selectionExplanation: '分数是候选排序依据，概率是 Top-K 加权选择依据。命中粘性优先策略时，首选账号会优先于随机加权选择。',
+        selectionExplanation: '分数是候选排序依据，概率是 Top-K 加权选择依据。仅关闭粘性加权或 OpenAI 上一响应不可跨账号移动时，硬粘性才优先于加权抽样。',
         formula: '最终表达式',
         copyFormula: '复制公式',
         formulaCopied: '评分公式已复制',
@@ -232,12 +232,19 @@ export default {
         policyNames: {
           previous_response_binding: '上一响应粘性',
           session_sticky: '会话粘性',
-          subscription_priority: '订阅优先'
+          subscription_priority: '订阅优先',
+          request_capabilities: '请求能力门禁'
         },
         policyStates: {
           ignored: '未生效',
           weighted: '已参与加权',
-          enabled: '已启用'
+          enabled: '已启用',
+          forced_first: '强制优先',
+          unavailable: '不可用',
+          not_reached: '未执行',
+          escaped: '已逃逸',
+          active_pool: '当前生效池',
+          not_evaluated: '未评估'
         },
         filterReasons: {
           account_missing: '账号不存在',
@@ -250,6 +257,16 @@ export default {
           account_temporarily_unschedulable: '账号临时不可调度',
           privacy_not_set: '隐私设置未完成',
           model_unsupported: '不支持请求模型',
+          model_runtime_blocked: '请求模型正处于临时封禁',
+          quota_auto_pause: '上游配额自动暂停中',
+          runtime_blocked: '账号运行时封禁中',
+          proxy_stream_quarantined: '代理流式请求隔离中',
+          shadow_parent_unhealthy: '影子母账号不可用',
+          channel_upstream_restricted: '渠道上游限制',
+          quota_exceeded: '账号额度已耗尽',
+          window_cost_exceeded: '窗口费用已达上限',
+          rpm_exceeded: 'RPM 已达上限',
+          subscription_priority_deferred: '因订阅优先暂缓',
           not_in_schedulable_pool: '不在可调度候选池中'
         }
       },
