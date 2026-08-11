@@ -710,6 +710,7 @@ func buildAdvancedAccountSchedulerScoreSnapshot(
 	accounts []*Account,
 	loadMap map[int64]*AccountLoadInfo,
 	stats *advancedAccountRuntimeStats,
+	group *Group,
 	weights GatewayAdvancedSchedulerScoreWeightsView,
 	stickyWeightedEnabled bool,
 	quotaHeadroomFactor func(*Account, time.Time) float64,
@@ -728,7 +729,15 @@ func buildAdvancedAccountSchedulerScoreSnapshot(
 			StickyScoreInfinity:   !stickyWeightedEnabled,
 		}
 		if stickyWeightedEnabled {
-			score.StickyScore = candidate.score + weights.Previous + weights.SessionSticky
+			// 分组平台定义请求语义；无分组兼容入口按账号平台判断。
+			platform := candidate.account.Platform
+			if group != nil && strings.TrimSpace(group.Platform) != "" {
+				platform = group.Platform
+			}
+			score.StickyScore = candidate.score + weights.SessionSticky
+			if platform == PlatformOpenAI {
+				score.StickyScore += weights.Previous
+			}
 		}
 		result[candidate.account.ID] = score
 	}

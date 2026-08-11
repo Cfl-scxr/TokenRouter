@@ -143,6 +143,56 @@ func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	require.Greater(t, high.SchedulerScores[0].BaseScore, low.SchedulerScores[0].BaseScore)
 }
 
+func TestAccountHandlerListNonOpenAIStickyScoreExcludesPreviousResponse(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+	now := time.Now().UTC()
+	groupID := int64(45)
+	stickyWeighted := true
+	previousWeight := 11.0
+	sessionWeight := 7.0
+	group := &service.Group{
+		ID:            groupID,
+		Name:          "gemini",
+		Platform:      service.PlatformGemini,
+		SchedulerType: service.GroupSchedulerTypeAdvanced,
+		AdvancedSchedulerOverrides: service.GroupAdvancedSchedulerOverrides{
+			StickyWeightedEnabled:  &stickyWeighted,
+			WeightPreviousResponse: &previousWeight,
+			WeightSessionSticky:    &sessionWeight,
+		},
+	}
+	adminSvc.accounts = []service.Account{
+		{
+			ID: 105, Name: "gemini-account", Platform: service.PlatformGemini,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true,
+			Concurrency: 10, Priority: 1,
+			AccountGroups: []service.AccountGroup{{AccountID: 105, GroupID: groupID, Group: group}},
+			GroupIDs:      []int64{groupID}, CreatedAt: now, UpdatedAt: now,
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&platform=gemini&include_scheduler_score=1", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Items []struct {
+				SchedulerScores []struct {
+					BaseScore   float64 `json:"base_score"`
+					StickyScore float64 `json:"sticky_score"`
+				} `json:"scheduler_scores"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	require.Len(t, payload.Data.Items[0].SchedulerScores, 1)
+	score := payload.Data.Items[0].SchedulerScores[0]
+	require.InDelta(t, score.BaseScore+sessionWeight, score.StickyScore, 0.000001)
+}
+
 func TestAccountHandlerListReusesHydratedGroupsWithoutRepositoryLookups(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
 	now := time.Now().UTC()

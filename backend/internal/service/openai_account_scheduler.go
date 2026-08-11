@@ -2050,14 +2050,17 @@ func (s *RateLimitService) BuildAdvancedAccountSchedulerScoreSnapshotForGroup(
 	loadMap map[int64]*AccountLoadInfo,
 ) map[int64]AdvancedAccountSchedulerScoreSnapshot {
 	gateway := &OpenAIGatewayService{cfg: nil, rateLimitService: s}
+	var stats *advancedAccountRuntimeStats
 	if s != nil {
 		gateway.cfg = s.cfg
+		stats = s.AdvancedSchedulerRuntimeStats()
 	}
 	effectiveSettings := gateway.advancedSchedulerEffectiveSettingsForGroup(ctx, group)
 	return buildAdvancedAccountSchedulerScoreSnapshot(
 		accounts,
 		loadMap,
-		nil,
+		stats,
+		group,
 		effectiveSettings.weights,
 		effectiveSettings.stickyWeightedEnabled,
 		openAIQuotaHeadroomFactor,
@@ -2085,6 +2088,7 @@ func BuildAdvancedAccountSchedulerScoreSnapshotForGroup(
 		accounts,
 		loadMap,
 		nil,
+		group,
 		effectiveSettings.weights,
 		effectiveSettings.stickyWeightedEnabled,
 		openAIQuotaHeadroomFactor,
