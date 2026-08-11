@@ -32,14 +32,14 @@ func TestRateLimitServiceAdvancedSchedulerScoreSnapshotUsesSharedRuntimeStats(t 
 		{ID: 7102, Platform: PlatformGemini, Priority: 1},
 	}
 
-	// 没有样本时，共享统计和 nil 统计都必须走相同的中性评分。
+	// 没有样本时，共享统计和 nil 统计都必须把错误率按 0% 处理。
 	neutral := rateLimits.BuildAdvancedAccountSchedulerScoreSnapshotForGroup(context.Background(), group, accounts, nil)
 	neutralCore, _ := scoreAdvancedSchedulerCandidates(accounts, nil, nil, weights, advancedSchedulerSelectionInput{
 		QuotaHeadroomFactor: openAIQuotaHeadroomFactor,
 	}, time.Now())
 	require.Len(t, neutralCore, 2)
 	for index, account := range accounts {
-		require.InDelta(t, 3.5, neutral[account.ID].BaseScore, 0.000001)
+		require.InDelta(t, 4.5, neutral[account.ID].BaseScore, 0.000001)
 		require.InDelta(t, neutralCore[index].score, neutral[account.ID].BaseScore, 0.000001)
 	}
 
@@ -56,9 +56,9 @@ func TestRateLimitServiceAdvancedSchedulerScoreSnapshotUsesSharedRuntimeStats(t 
 	for index, account := range accounts {
 		require.InDelta(t, core[index].score, observed[account.ID].BaseScore, 0.000001)
 	}
-	// 失败账号的错误率因子降至 0.4 且慢 TTFT 因子为 0；成功账号分别为 0.6 和 1。
-	require.InDelta(t, 1.8, observed[accounts[0].ID].BaseScore, 0.000001)
-	require.InDelta(t, 5.2, observed[accounts[1].ID].BaseScore, 0.000001)
+	// 零基线下首次失败把错误率 EWMA 更新为 0.2，错误率因子降至 0.8；首次成功保持 1。
+	require.InDelta(t, 2.6, observed[accounts[0].ID].BaseScore, 0.000001)
+	require.InDelta(t, 6.0, observed[accounts[1].ID].BaseScore, 0.000001)
 	require.Less(t, observed[accounts[0].ID].BaseScore, neutral[accounts[0].ID].BaseScore)
 	require.Greater(t, observed[accounts[1].ID].BaseScore, neutral[accounts[1].ID].BaseScore)
 }

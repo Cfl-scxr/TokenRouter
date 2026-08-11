@@ -1106,8 +1106,8 @@ func diagnosticErrorRateMetric(candidate *advancedSchedulerCandidateScore, weigh
 		Source:               "advanced_scheduler.error_rate_ewma",
 	}
 	if !candidate.feedback.HasFeedback {
-		metric.RawValue = "未观测"
-		metric.Normalization = "未观测，使用中性值 0.5000"
+		metric.RawValue = "0%（未观测）"
+		metric.Normalization = "未观测，错误率按 0% 计算：1 - 0 = 1.0000"
 		metric.Neutral = true
 		return metric
 	}

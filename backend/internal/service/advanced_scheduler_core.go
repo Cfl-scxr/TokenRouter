@@ -52,7 +52,7 @@ func shouldPreserveAdvancedSchedulerStickyBinding(ctx context.Context) bool {
 }
 
 // advancedAccountRuntimeStats 保存所有高级调度分组共享的运行时反馈。
-// 账号没有反馈样本时，评分函数使用中性值，不会把它排除出候选集。
+// 账号没有反馈样本时，错误率按 0% 处理，其它可选信号仍使用中性值。
 type advancedAccountRuntimeStats struct {
 	accounts     sync.Map
 	accountCount atomic.Int64
@@ -88,8 +88,8 @@ func (s *advancedAccountRuntimeStats) loadOrCreate(accountID int64) *advancedAcc
 	}
 
 	stat := &advancedAccountRuntimeStat{}
-	// 错误率从中性先验开始，保证首次失败不会比完全未观测账号得分更高。
-	stat.errorRateEWMABits.Store(math.Float64bits(0.5))
+	// 未观测错误率按 0% 处理，后续样本从零基线更新 EWMA。
+	stat.errorRateEWMABits.Store(math.Float64bits(0))
 	stat.ttftEWMABits.Store(math.Float64bits(math.NaN()))
 	actual, loaded := s.accounts.LoadOrStore(accountID, stat)
 	if !loaded {
@@ -513,7 +513,8 @@ func scoreAdvancedSchedulerCandidatesWithRanges(
 			loadFactor = 1 - clamp01(float64(item.loadInfo.LoadRate)/100.0)
 			queueFactor = 1 - clamp01(float64(item.loadInfo.WaitingCount)/float64(maxWaiting))
 		}
-		errorFactor := 0.5
+		// 没有错误反馈等价于 0% 错误率，因此获得完整健康度分值。
+		errorFactor := 1.0
 		if item.hasFeedback {
 			errorFactor = 1 - clamp01(item.errorRate)
 		}

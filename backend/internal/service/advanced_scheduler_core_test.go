@@ -49,7 +49,7 @@ func TestAdvancedSchedulerCoreUsesRuntimeFeedbackAndNeutralOptionalSignals(t *te
 	require.False(t, candidates[1].hasTTFT)
 }
 
-func TestAdvancedSchedulerCoreTreatsMissingSignalsAsNeutral(t *testing.T) {
+func TestAdvancedSchedulerCoreTreatsMissingErrorRateAsZero(t *testing.T) {
 	accounts := []*Account{
 		{ID: 21, Priority: 1, Platform: PlatformGemini},
 		{ID: 22, Priority: 1, Platform: PlatformGemini},
@@ -62,7 +62,7 @@ func TestAdvancedSchedulerCoreTreatsMissingSignalsAsNeutral(t *testing.T) {
 	}
 
 	// 账号 21 缺失负载，账号 22 的已知负载恰好处于中性位置。两者均没有
-	// 运行时反馈、TTFT 或窗口信息，因此分数必须一致，不能把缺失值当作劣化。
+	// 错误反馈、TTFT 或窗口信息，因此错误率都按 0% 处理且最终分数一致。
 	candidates, skew := scoreAdvancedSchedulerCandidates(
 		accounts,
 		map[int64]*AccountLoadInfo{22: {AccountID: 22, LoadRate: 50}},
@@ -77,6 +77,8 @@ func TestAdvancedSchedulerCoreTreatsMissingSignalsAsNeutral(t *testing.T) {
 	require.Equal(t, 0.0, skew, "只有一个已知负载样本时不能计算出偏斜")
 	require.False(t, candidates[0].loadKnown)
 	require.True(t, candidates[1].loadKnown)
+	require.InDelta(t, 1.0, candidates[0].factors.ErrorRate, 0.000001)
+	require.InDelta(t, 1.0, candidates[1].factors.ErrorRate, 0.000001)
 }
 
 func TestAdvancedSchedulerCoreTopKUsesStableOrderForMixedKnownAndUnknownLoads(t *testing.T) {

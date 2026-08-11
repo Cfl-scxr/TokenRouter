@@ -176,7 +176,9 @@ func TestGatewayAdvancedSchedulerEscapesNonOpenAIHardSticky(t *testing.T) {
 		cache: cache, cfg: cfg, concurrencyService: NewConcurrencyService(concurrencyCache),
 		advancedAccountStats: newAdvancedAccountRuntimeStats(),
 	}
-	svc.advancedSchedulerStats().report(16011, false, nil)
+	for range 4 {
+		svc.advancedSchedulerStats().report(16011, false, nil)
+	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, group)
 
 	selection, err := svc.SelectAccountWithLoadAwareness(ctx, &group.ID, "sticky", "gemini-3-pro", nil, "", 0)

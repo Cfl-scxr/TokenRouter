@@ -163,7 +163,9 @@ func TestAdvancedSchedulerScoreDiagnosticService_UsesActualFormulaAndSafeDTO(t *
 	errorMetric := findAdvancedSchedulerDiagnosticMetric(result.Detail.Metrics, "error_rate")
 	require.NotNil(t, errorMetric)
 	require.True(t, errorMetric.Neutral)
-	require.Contains(t, errorMetric.Normalization, "中性值")
+	require.Equal(t, "0%（未观测）", errorMetric.RawValue)
+	require.InDelta(t, 1.0, errorMetric.NormalizedValue, 0.000001)
+	require.Contains(t, errorMetric.Normalization, "错误率按 0% 计算")
 
 	prioritySetting := findAdvancedSchedulerDiagnosticSetting(result.Detail.EffectiveSettings, "weight_priority")
 	require.NotNil(t, prioritySetting)
@@ -190,7 +192,7 @@ func TestAdvancedSchedulerRuntimeFeedbackSnapshot_RecordsSamplesAndObservedTime(
 	require.True(t, snapshot.HasTTFT)
 	require.EqualValues(t, 1, snapshot.TTFTSamples)
 	require.NotNil(t, snapshot.LastTTFTAt)
-	require.InDelta(t, 0.52, snapshot.ErrorRate, 0.000001)
+	require.InDelta(t, 0.2, snapshot.ErrorRate, 0.000001)
 	require.InDelta(t, 240, snapshot.TTFT, 0.000001)
 }
 
@@ -462,7 +464,9 @@ func TestAdvancedSchedulerScoreDiagnosticService_EscapedStickyUsesRegularWindowC
 		StickyEscapeEnabled: true, StickyEscapeTTFTMs: 15000, StickyEscapeErrorRate: 0.55,
 	}}}
 	rateLimitService := NewRateLimitService(nil, nil, cfg, nil, nil)
-	rateLimitService.AdvancedSchedulerRuntimeStats().report(target.ID, false, nil)
+	for range 4 {
+		rateLimitService.AdvancedSchedulerRuntimeStats().report(target.ID, false, nil)
+	}
 	diagnostics := NewAdvancedSchedulerScoreDiagnosticService(source, nil, rateLimitService)
 	diagnostics.SetSchedulingServices(&GatewayService{
 		cfg: cfg, sessionLimitCache: &sessionLimitCacheHotpathStub{batchData: map[int64]float64{target.ID: 11}},
