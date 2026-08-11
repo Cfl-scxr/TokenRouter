@@ -28,10 +28,9 @@
         </div>
         <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.modelDistribution') }}</h3>
         <!-- 桌面端顶部对齐，避免数据较少时表格被圆环图垂直居中。 -->
-        <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
+        <div v-if="modelData" class="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6" data-testid="model-distribution-content">
           <div class="h-48 w-48 shrink-0">
-            <Doughnut v-if="modelData" :data="modelData" :options="doughnutOptions" />
-            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('dashboard.noDataAvailable') }}</div>
+            <Doughnut :data="modelData" :options="doughnutOptions" />
           </div>
           <div class="max-h-48 w-full min-w-0 flex-1 overflow-auto">
             <table class="w-full text-xs">
@@ -55,6 +54,9 @@
               </tbody>
             </table>
           </div>
+        </div>
+        <div v-else data-testid="model-distribution-empty" class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+          {{ t('dashboard.noDataAvailable') }}
         </div>
       </div>
 

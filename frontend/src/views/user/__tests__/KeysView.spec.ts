@@ -899,6 +899,7 @@ describe('user KeysView column settings', () => {
 
     expect(wrapper.get('[data-test="group"]').text()).toContain('GPT')
     expect(wrapper.get('[data-test="group"]').text()).toContain('Claude')
+    expect(wrapper.get('[data-test="composite-group-summary"]').classes()).toContain('max-w-[22rem]')
     await wrapper.get('[data-test="group"] button').trigger('click')
     await nextTick()
 

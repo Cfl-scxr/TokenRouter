@@ -136,7 +136,8 @@
             <button
               v-if="row.is_composite"
               type="button"
-              class="flex max-w-[28rem] flex-wrap items-center gap-1.5 rounded-md px-1 py-1 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
+              data-test="composite-group-summary"
+              class="flex max-w-[22rem] flex-wrap items-center gap-1.5 rounded-md px-1 py-1 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
               :title="t('keys.composite.editMappings')"
               @click="editKey(row)"
             >

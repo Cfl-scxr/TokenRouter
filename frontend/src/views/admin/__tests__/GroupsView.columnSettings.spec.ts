@@ -278,6 +278,14 @@ describe('admin GroupsView column settings', () => {
     wrapper.unmount()
   })
 
+  it('omits the exclusive-group filter from the toolbar and list request', async () => {
+    const wrapper = await mountView()
+
+    // 顶部只保留平台和状态筛选，专属属性仍可在表格与编辑表单中管理。
+    expect(wrapper.findAll('select')).toHaveLength(2)
+    expect(listGroups.mock.calls[0]?.[2]).not.toHaveProperty('is_exclusive')
+  })
+
   it('hides the id column and internal sort values by default', async () => {
     const wrapper = await mountView()
 

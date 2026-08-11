@@ -24,22 +24,40 @@
       <!-- 右侧状态项：只调整按钮形状、间距和分隔线，不改变顶部栏主体结构。 -->
       <div class="header-status-actions">
         <div class="header-status-icon-group">
-          <AnnouncementBell v-if="user" variant="status" />
+          <div v-if="user" class="hidden sm:block">
+            <AnnouncementBell variant="status" />
+          </div>
 
           <a
             v-if="docUrl"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="header-status-icon-button"
+            class="header-status-icon-button hidden sm:flex"
             :aria-label="t('nav.docs')"
             :title="t('nav.docs')"
           >
             <Icon name="book" size="md" />
           </a>
+
+          <!-- 主题切换在窄屏始终保留，公告和文档入口优先让出空间。 -->
+          <button
+            type="button"
+            data-testid="theme-toggle"
+            class="header-status-icon-button"
+            :aria-label="isDark ? t('nav.lightMode') : t('nav.darkMode')"
+            :title="isDark ? t('nav.lightMode') : t('nav.darkMode')"
+            @click="toggleTheme"
+          >
+            <Icon
+              :name="isDark ? 'sun' : 'moon'"
+              size="md"
+              :class="{ 'text-amber-500': isDark }"
+            />
+          </button>
         </div>
 
-        <div v-if="user || docUrl" class="header-status-divider hidden sm:block"></div>
+        <div class="header-status-divider hidden sm:block"></div>
 
         <LocaleSwitcher variant="status" />
 
@@ -230,6 +248,7 @@ import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const route = useRoute()
@@ -239,6 +258,7 @@ const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 const { formatBalanceAmount } = useBalanceDisplay()
+const { isDark, toggleTheme } = useTheme()
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
@@ -387,7 +407,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-icon-group {
-  @apply hidden items-center gap-2 sm:flex;
+  @apply flex items-center gap-1 sm:gap-2;
 }
 
 .header-status-divider {

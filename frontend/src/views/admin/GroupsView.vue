@@ -35,13 +35,6 @@
               class="w-40"
               @change="loadGroups"
             />
-            <Select
-              v-model="filters.is_exclusive"
-              :options="exclusiveOptions"
-              :placeholder="t('admin.groups.allGroups')"
-              class="w-44"
-              @change="loadGroups"
-            />
           </div>
 
           <!-- 右侧：刷新、排序和创建等操作。 -->
@@ -4119,12 +4112,6 @@ const statusOptions = computed(() => [
   { value: "inactive", label: t("admin.accounts.status.inactive") },
 ]);
 
-const exclusiveOptions = computed(() => [
-  { value: "", label: t("admin.groups.allGroups") },
-  { value: "true", label: t("admin.groups.exclusive") },
-  { value: "false", label: t("admin.groups.nonExclusive") },
-]);
-
 const platformOptions = computed(() => [
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
@@ -4374,7 +4361,6 @@ const searchQuery = ref("");
 const filters = reactive({
   platform: "",
   status: "",
-  is_exclusive: "",
 });
 const pagination = reactive({
   page: 1,
@@ -5176,9 +5162,6 @@ const loadGroups = async () => {
       {
         platform: (filters.platform as GroupPlatform) || undefined,
         status: filters.status as any,
-        is_exclusive: filters.is_exclusive
-          ? filters.is_exclusive === "true"
-          : undefined,
         search: searchQuery.value.trim() || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order,

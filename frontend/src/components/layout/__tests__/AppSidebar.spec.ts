@@ -8,6 +8,23 @@ const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSi
 const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
+const layoutPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppLayout.vue')
+const layoutSource = readFileSync(layoutPath, 'utf8')
+
+describe('AppSidebar layout controls', () => {
+  it('removes the footer controls and uses the narrower expanded width', () => {
+    // 同时约束侧栏和内容偏移，避免宽度修改后出现空白或遮挡。
+    expect(componentSource).not.toContain('@click="toggleTheme"')
+    expect(componentSource).not.toContain('@click="toggleSidebar"')
+    expect(componentSource).toContain("sidebarCollapsed ? 'w-[72px]' : 'w-56'")
+    expect(layoutSource).toContain("sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-56'")
+    expect(styleSource).toMatch(/\.sidebar\s*\{[\s\S]*?@apply w-56 /)
+  })
+
+  it('renders the site logo without an outer glow', () => {
+    expect(componentSource).not.toContain('shadow-glow')
+  })
+})
 
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {

@@ -44,7 +44,7 @@
     </div>
 
     <!-- Today Cost -->
-    <div class="card p-4">
+    <div class="card p-4" data-testid="user-dashboard-cost">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
           <BalanceIcon size="md" class="text-purple-600 dark:text-purple-400" />
@@ -53,12 +53,10 @@
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</p>
           <p class="text-xl font-bold text-gray-900 dark:text-white">
             <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actualDescription')">{{ formatBalanceAmount(stats?.today_actual_cost || 0, { fractionDigits: 4 }) }}</span>
-            <span class="text-sm font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standardDescription')"> / {{ formatUsdAmount(stats?.today_cost || 0, { fractionDigits: 4 }) }}</span>
           </p>
           <p class="text-xs">
             <span class="text-gray-500 dark:text-gray-400">{{ t('common.total') }}: </span>
             <span class="text-purple-600 dark:text-purple-400" :title="t('dashboard.actualDescription')">{{ formatBalanceAmount(stats?.total_actual_cost || 0, { fractionDigits: 4 }) }}</span>
-            <span class="text-gray-400 dark:text-gray-500" :title="t('dashboard.standardDescription')"> / {{ formatUsdAmount(stats?.total_cost || 0, { fractionDigits: 4 }) }}</span>
           </p>
         </div>
       </div>
@@ -145,7 +143,7 @@ defineProps<{
   isSimple: boolean
 }>()
 const { t } = useI18n()
-const { formatBalanceAmount, formatUsdAmount } = useBalanceDisplay()
+const { formatBalanceAmount } = useBalanceDisplay()
 
 const formatNumber = (n: number) => n.toLocaleString()
 const formatTokens = (t: number) => {
