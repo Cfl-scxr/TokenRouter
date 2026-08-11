@@ -155,6 +155,18 @@ describe('DataTable', () => {
     }
   })
 
+  it('uses a line boundary for sticky columns by default', () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Key' }]
+      }
+    })
+
+    expect(wrapper.get('.table-wrapper').classes()).toContain('sticky-boundary-line')
+    expect(wrapper.get('.table-wrapper').classes()).not.toContain('sticky-boundary-shadow')
+  })
+
   it('switches to windowed rendering once row count exceeds virtualizeThreshold', async () => {
     const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
     const wrapper = mount(DataTable, {

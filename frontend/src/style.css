@@ -928,17 +928,20 @@
   }
 
   /* ============ 表格页面布局优化 ============ */
+  /* 所有表格滚动区域统一禁止边界回弹，避免表头、表体或固定列被临时拉开。 */
+  table,
+  :where(.table-wrapper, .table-container, .table-scroll-container),
+  :where(.overflow-auto, .overflow-x-auto, .overflow-y-auto):has(table) {
+    overscroll-behavior: none;
+  }
+
   /* 表格容器 - 默认仅支持水平滚动 */
   .table-wrapper {
     overflow-x: auto;
   }
 
-  /* 表头固定时添加底部阴影，增强视觉层次 */
+  /* 固定表头沿用单元格分隔线，不再叠加阴影。 */
   .table-wrapper thead.sticky {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-  }
-
-  .dark .table-wrapper thead.sticky {
     box-shadow: none;
   }
 }

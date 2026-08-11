@@ -62,6 +62,7 @@ const messages: Record<string, string> = {
   'keys.expiresAt': 'Expires',
   'keys.group': 'Group',
   'keys.groupRequired': 'Group required',
+  'keys.selectGroup': 'Select a group',
   'keys.composite.label': 'Composite key',
   'keys.composite.hint': 'Choose a group with a prefix/model ID.',
   'keys.composite.addMapping': 'Add group mapping',
@@ -442,6 +443,12 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_ip')
     expect(visibleColumnKeys(wrapper)).not.toContain('id')
+  })
+
+  it('omits the inline selection hint from the group table cell', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="group"]').text()).not.toContain('Select a group')
   })
 
   it('places the key scope dropdown directly after the refresh action', async () => {

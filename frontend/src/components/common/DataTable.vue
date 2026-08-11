@@ -93,7 +93,7 @@
   <div
     v-else
     ref="tableWrapperRef"
-    class="table-wrapper"
+    class="table-wrapper sticky-boundary-line"
     :class="{
       'actions-expanded': actionsExpanded,
       'is-scrollable': isScrollable
@@ -958,12 +958,17 @@ defineExpose({
 /* 表格横向滚动 */
 .table-wrapper {
   --select-col-width: 52px; /* 勾选列宽度：px-6 (24px*2) + checkbox (16px) */
+  --sticky-boundary-line-color: rgb(228 228 231);
   position: relative;
   overflow-x: auto;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   isolation: isolate;
+}
+
+.dark .table-wrapper {
+  --sticky-boundary-line-color: rgb(51 51 56);
 }
 
 /* 表头容器，确保在滚动时覆盖表体内容 */
@@ -1045,54 +1050,30 @@ tbody tr:hover .sticky-col {
   background-color: rgb(31 31 35);
 }
 
-/* 阴影只在可滚动时显示 */
-/* 单列固定右侧阴影 */
-.is-scrollable .sticky-col-left::after {
+/* 所有固定列统一使用细线边界，避免滚动时出现渐变阴影带。 */
+.sticky-boundary-line.is-scrollable .sticky-col-left::after,
+.sticky-boundary-line.is-scrollable .sticky-col-left-second::after {
   content: '';
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
+  background-color: var(--sticky-boundary-line-color);
   pointer-events: none;
 }
 
-/* 双列固定：只在第二列显示阴影 */
-.is-scrollable .sticky-col-left-second::after {
+.sticky-boundary-line.is-scrollable .sticky-col-right::before {
   content: '';
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
-  width: 10px;
-  transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
-  pointer-events: none;
-}
-
-/* 操作列左侧阴影 */
-.is-scrollable .sticky-col-right::before {
-  content: '';
-  position: absolute;
-  top: 0;
   left: 0;
-  bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(-100%);
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.08), transparent);
+  background-color: var(--sticky-boundary-line-color);
   pointer-events: none;
-}
-
-/* 暗色模式阴影 */
-.dark .is-scrollable .sticky-col-left::after,
-.dark .is-scrollable .sticky-col-left-second::after {
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
-}
-
-.dark .is-scrollable .sticky-col-right::before {
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent);
 }
 </style>
 
