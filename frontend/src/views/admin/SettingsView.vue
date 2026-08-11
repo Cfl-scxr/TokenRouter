@@ -12158,9 +12158,7 @@ watch(
 .settings-tabs-shell {
   @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl dark:border-dark-600/70 dark:bg-dark-900/90;
   top: 4.75rem;
-  box-shadow:
-    0 12px 28px rgb(0 0 0 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
 
 .settings-tabs-scroll {
@@ -12213,9 +12211,7 @@ watch(
 
 .settings-tab-active {
   @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
-  box-shadow:
-    0 8px 18px rgb(0 0 0 / 0.08),
-    0 1px 0 rgb(255 255 255 / 0.92) inset;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.92) inset;
 }
 
 .settings-tab-active::before {
@@ -12311,9 +12307,7 @@ watch(
 .dark .settings-tabs-shell {
   border-color: rgb(63 63 70 / 0.65);
   background: rgb(24 24 27 / 0.86);
-  box-shadow:
-    0 16px 36px rgb(0 0 0 / 0.28),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset;
 }
 
 .dark .settings-tab::before {
@@ -12321,8 +12315,6 @@ watch(
 }
 
 .dark .settings-tab-active {
-  box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.22),
-    0 1px 0 rgb(255 255 255 / 0.08) inset;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.08) inset;
 }
 </style>
