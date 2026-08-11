@@ -100,4 +100,12 @@ describe('AppSidebar admin personal menu', () => {
     expect(componentSource.match(/path: '\/admin\/teams'.*featureFlag: flagTeamAccess/g)).toHaveLength(1)
     expect(componentSource.match(/path: '\/admin\/data-sharing'.*featureFlag: flagDataSharingAccess/g)).toHaveLength(1)
   })
+
+  it('uses distinct icons for ranking, usage, team, and affiliate entries', () => {
+    // 普通用户菜单与管理员个人菜单使用相同映射，避免同组入口再次出现重复图标。
+    expect(componentSource.match(/path: '\/usage-ranking'.*icon: RankingIcon/g)).toHaveLength(2)
+    expect(componentSource.match(/path: '\/usage'.*icon: ChartIcon/g)).toHaveLength(2)
+    expect(componentSource.match(/path: '\/team'.*icon: UsersIcon/g)).toHaveLength(2)
+    expect(componentSource.match(/path: '\/affiliate',[\s\S]{0,180}?icon: AffiliateIcon/g)).toHaveLength(2)
+  })
 })

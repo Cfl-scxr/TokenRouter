@@ -635,7 +635,7 @@ dataSharing: {
         },
         contactInfo: '客服联系方式',
         contactInfoPlaceholder: '例如：QQ: 123456789',
-        contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
+        contactInfoHint: '填写客服联系方式，将展示在个人资料、顶部用户菜单等位置',
         docUrl: '文档链接',
         docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
         docUrlPlaceholder: 'https://docs.example.com',
