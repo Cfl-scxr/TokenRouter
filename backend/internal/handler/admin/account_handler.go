@@ -840,10 +840,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if err := service.ValidateOpenAILongContextBillingExtra(req.Platform, req.Extra); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
+	service.DiscardDeprecatedAccountExtra(req.Extra)
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
@@ -975,6 +972,11 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
+	}
+	if normalizedExtra, shouldReplaceExtra := service.NormalizeDeprecatedAccountExtraUpdate(req.Extra); shouldReplaceExtra {
+		req.Extra = normalizedExtra
+	} else {
+		req.Extra = nil
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
@@ -1438,6 +1440,7 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	service.DiscardDeprecatedAccountExtra(req.Extra)
 
 	ctx := c.Request.Context()
 	existing, err := h.adminService.GetAccount(ctx, accountID)
@@ -1449,11 +1452,6 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("NOT_OAUTH", "cannot apply oauth credentials to non-OAuth account"))
 		return
 	}
-	if err := service.ValidateOpenAILongContextBillingExtra(existing.Platform, req.Extra); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
 	updatedAccount, err := h.adminService.UpdateAccount(ctx, accountID, &service.UpdateAccountInput{
 		Type:        req.Type,
 		Credentials: req.Credentials,
@@ -1878,13 +1876,9 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	for _, item := range req.Accounts {
-		if err := service.ValidateOpenAILongContextBillingExtra(item.Platform, item.Extra); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
+	for index := range req.Accounts {
+		service.DiscardDeprecatedAccountExtra(req.Accounts[index].Extra)
 	}
-
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		success := 0
 		failed := 0
@@ -2121,6 +2115,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "No updates provided")
 		return
 	}
+	service.DiscardDeprecatedAccountExtra(req.Extra)
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,

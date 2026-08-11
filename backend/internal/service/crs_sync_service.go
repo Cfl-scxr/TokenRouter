@@ -648,14 +648,8 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		if existing != nil {
 			existingExtra = existing.Extra
 		}
-		extra, err = mergeCRSOpenAILongContextBillingExtra(existingExtra, extra)
-		if err != nil {
-			item.Action = "failed"
-			item.Error = err.Error()
-			result.Failed++
-			result.Items = append(result.Items, item)
-			continue
-		}
+		extra = mergeMap(existingExtra, extra)
+		DiscardDeprecatedAccountExtra(extra)
 		if existing != nil {
 			credentials = mergeMap(existing.Credentials, credentials)
 		}
@@ -799,14 +793,8 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		if existing != nil {
 			existingExtra = existing.Extra
 		}
-		extra, err = mergeCRSOpenAILongContextBillingExtra(existingExtra, extra)
-		if err != nil {
-			item.Action = "failed"
-			item.Error = err.Error()
-			result.Failed++
-			result.Items = append(result.Items, item)
-			continue
-		}
+		extra = mergeMap(existingExtra, extra)
+		DiscardDeprecatedAccountExtra(extra)
 		if existing != nil {
 			credentials = mergeMap(existing.Credentials, credentials)
 		}
@@ -1160,7 +1148,7 @@ func reconcileCRSOllamaCloudUsageExtra(
 	targetCredentials map[string]any,
 	extra map[string]any,
 ) {
-	discardDeprecatedUpstreamBillingProbeExtra(extra)
+	DiscardDeprecatedAccountExtra(extra)
 	for _, key := range []string{
 		OllamaCloudUsageSessionExtraKey,
 		OllamaCloudUsageAutoRefreshExtraKey,
@@ -1184,10 +1172,6 @@ func reconcileCRSOllamaCloudUsageExtra(
 			extra[OllamaCloudUsageSnapshotExtraKey] = snapshot
 		}
 	}
-}
-
-func mergeCRSOpenAILongContextBillingExtra(existing, updates map[string]any) (map[string]any, error) {
-	return normalizeOpenAILongContextBillingExtra(PlatformOpenAI, mergeMap(existing, updates))
 }
 
 func (s *CRSSyncService) mapOrCreateProxy(ctx context.Context, enabled bool, cached *[]Proxy, src *crsProxy, defaultName string) (*int64, error) {

@@ -323,6 +323,67 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
 
+func TestImportDataIdempotencyIgnoresDeprecatedLongContextBillingExtra(t *testing.T) {
+	const deprecatedKey = "openai_long_context_billing_enabled"
+	previousCoordinator := service.DefaultIdempotencyCoordinator()
+	service.SetDefaultIdempotencyCoordinator(service.NewIdempotencyCoordinator(
+		newMemoryIdempotencyRepoStub(),
+		service.DefaultIdempotencyConfig(),
+	))
+	t.Cleanup(func() {
+		service.SetDefaultIdempotencyCoordinator(previousCoordinator)
+	})
+
+	router, adminSvc := setupAccountDataRouter()
+	call := func(extra map[string]any) *httptest.ResponseRecorder {
+		t.Helper()
+		account := map[string]any{
+			"name":        "openai-oauth",
+			"platform":    service.PlatformOpenAI,
+			"type":        service.AccountTypeOAuth,
+			"credentials": map[string]any{"access_token": "token"},
+			"extra":       extra,
+		}
+		payload := map[string]any{
+			"data": map[string]any{
+				"type":     dataType,
+				"version":  dataVersion,
+				"proxies":  []map[string]any{},
+				"accounts": []map[string]any{account},
+			},
+			"skip_default_group_bind": true,
+		}
+		body, err := json.Marshal(payload)
+		require.NoError(t, err)
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "import-deprecated-long-context")
+		router.ServeHTTP(recorder, request)
+		return recorder
+	}
+
+	first := call(map[string]any{
+		deprecatedKey: false,
+		"preserved":   "value",
+	})
+	second := call(map[string]any{"preserved": "value"})
+	third := call(map[string]any{
+		deprecatedKey: map[string]any{"malformed": true},
+		"preserved":   "value",
+	})
+
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, http.StatusOK, third.Code, third.Body.String())
+	require.Empty(t, first.Header().Get("X-Idempotency-Replayed"))
+	require.Equal(t, "true", second.Header().Get("X-Idempotency-Replayed"))
+	require.Equal(t, "true", third.Header().Get("X-Idempotency-Replayed"))
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.NotContains(t, adminSvc.createdAccounts[0].Extra, deprecatedKey)
+	require.Equal(t, "value", adminSvc.createdAccounts[0].Extra["preserved"])
+}
+
 func TestImportDataAppliesOpenAIOAuthDefaultModelWhitelistWhenMissing(t *testing.T) {
 	settingSvc := service.NewSettingService(&settingHandlerRepoStub{}, &config.Config{})
 	router, adminSvc := setupAccountDataRouterWithSettings(settingSvc)

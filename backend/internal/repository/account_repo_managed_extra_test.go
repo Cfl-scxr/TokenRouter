@@ -71,7 +71,7 @@ func TestLockAndMergeAccountManagedExtraProtectsOllamaFields(t *testing.T) {
 	}
 }
 
-func TestUpdateExtraDiscardsDeprecatedBillingProbeKeys(t *testing.T) {
+func TestUpdateExtraDiscardsDeprecatedAccountExtraKeys(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -79,7 +79,7 @@ func TestUpdateExtraDiscardsDeprecatedBillingProbeKeys(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'upstream_billing_probe' - 'upstream_billing_probe_enabled'.*`).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'upstream_billing_probe' - 'upstream_billing_probe_enabled' - 'openai_long_context_billing_enabled'.*`).
 		WithArgs(`{"custom":"value"}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
@@ -91,10 +91,39 @@ func TestUpdateExtraDiscardsDeprecatedBillingProbeKeys(t *testing.T) {
 	err = repo.UpdateExtra(context.Background(), 27, map[string]any{
 		deprecatedUpstreamBillingProbeExtraKey:        map[string]any{"status": "forged"},
 		deprecatedUpstreamBillingProbeEnabledExtraKey: true,
+		deprecatedOpenAILongContextBillingExtraKey:    []bool{true},
 		"custom": "value",
 	})
 
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestBulkUpdateDiscardsDeprecatedLongContextBillingExtra(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'openai_long_context_billing_enabled'.*`).
+		WithArgs([]byte(`{"custom":"value"}`), `{27}`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+	extra := map[string]any{
+		deprecatedOpenAILongContextBillingExtraKey: map[string]any{"malformed": true},
+		"custom": "value",
+	}
+
+	rows, err := repo.BulkUpdate(context.Background(), []int64{27}, service.AccountBulkUpdate{Extra: extra})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), rows)
+	require.NotContains(t, extra, deprecatedOpenAILongContextBillingExtraKey)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -62,14 +62,16 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 }
 
 const (
-	// 旧版倍率探测键仅用于写入边界清理，仓储不得再赋予它们业务语义。
+	// 废弃账号扩展键仅用于写入边界清理，仓储不得再赋予它们业务语义。
 	deprecatedUpstreamBillingProbeExtraKey        = "upstream_billing_probe"
 	deprecatedUpstreamBillingProbeEnabledExtraKey = "upstream_billing_probe_enabled"
+	deprecatedOpenAILongContextBillingExtraKey    = "openai_long_context_billing_enabled"
 )
 
-func discardDeprecatedUpstreamBillingProbeExtra(extra map[string]any) {
+func discardDeprecatedAccountExtra(extra map[string]any) {
 	delete(extra, deprecatedUpstreamBillingProbeExtraKey)
 	delete(extra, deprecatedUpstreamBillingProbeEnabledExtraKey)
+	delete(extra, deprecatedOpenAILongContextBillingExtraKey)
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -113,7 +115,7 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
-	discardDeprecatedUpstreamBillingProbeExtra(account.Extra)
+	discardDeprecatedAccountExtra(account.Extra)
 
 	builder := client.Account.Create().
 		SetName(account.Name).
@@ -610,7 +612,7 @@ func lockAndMergeAccountManagedExtra(ctx context.Context, client *dbent.Client, 
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	discardDeprecatedUpstreamBillingProbeExtra(extra)
+	discardDeprecatedAccountExtra(extra)
 	for _, key := range []string{
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
@@ -679,7 +681,7 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
-				-- 凭证整体未变化时不清理 Ollama 状态；旧版倍率探测键始终从写入结果剔除。
+				-- 凭证整体未变化时不清理 Ollama 状态；废弃账号扩展键始终从写入结果剔除。
 				WHEN platform IN ('openai', 'anthropic')
 					AND type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
@@ -692,13 +694,15 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 					)
 				THEN (COALESCE(extra, '{}'::jsonb)
 						- 'upstream_billing_probe'
-						- 'upstream_billing_probe_enabled')
+						- 'upstream_billing_probe_enabled'
+						- 'openai_long_context_billing_enabled')
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
 				ELSE COALESCE(extra, '{}'::jsonb)
 					- 'upstream_billing_probe'
 					- 'upstream_billing_probe_enabled'
+					- 'openai_long_context_billing_enabled'
 			END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
@@ -2369,7 +2373,7 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
-	discardDeprecatedUpstreamBillingProbeExtra(updates)
+	discardDeprecatedAccountExtra(updates)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -2397,7 +2401,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 			client = tx.Client()
 		}
 	}
-	extraExpression := "(COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled') || $1::jsonb"
+	extraExpression := "(COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled' - 'openai_long_context_billing_enabled') || $1::jsonb"
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
@@ -2506,7 +2510,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	discardDeprecatedUpstreamBillingProbeExtra(updates.Extra)
+	discardDeprecatedAccountExtra(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
@@ -2589,7 +2593,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	}
 
 	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
-		extraExpression := "COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled'"
+		extraExpression := "COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled' - 'openai_long_context_billing_enabled'"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
 			if err != nil {

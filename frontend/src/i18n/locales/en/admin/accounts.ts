@@ -618,9 +618,6 @@ export default {
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default. Enable only for an OAuth relay that rejects namespace tools. Regular Responses requests otherwise preserve Codex namespaces; compact requests always flatten them.',
-        longContextBilling: 'API long-context pricing',
-        longContextBillingDesc:
-          'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',

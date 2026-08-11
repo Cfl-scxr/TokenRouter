@@ -68,6 +68,75 @@ func TestBuildUsageBillingCommand_BillableAmountTracksActualCost(t *testing.T) {
 	}
 }
 
+func TestBuildUsageBillingCommand_AccountQuotaUsesAccountStatsCost(t *testing.T) {
+	t.Parallel()
+
+	customCost := 2.0
+	zeroCost := 0.0
+	tests := []struct {
+		name                  string
+		accountStatsCost      *float64
+		totalCost             float64
+		actualCost            float64
+		accountRateMultiplier float64
+		wantAccountQuota      float64
+	}{
+		{
+			name:                  "自定义账号成本乘账号倍率",
+			accountStatsCost:      &customCost,
+			totalCost:             5,
+			actualCost:            7,
+			accountRateMultiplier: 1.5,
+			wantAccountQuota:      3,
+		},
+		{
+			name:                  "空账号成本回退总成本",
+			totalCost:             4,
+			actualCost:            1.25,
+			accountRateMultiplier: 2,
+			wantAccountQuota:      8,
+		},
+		{
+			name:                  "显式零账号成本不累计额度",
+			accountStatsCost:      &zeroCost,
+			totalCost:             4,
+			actualCost:            1.25,
+			accountRateMultiplier: 3,
+			wantAccountQuota:      0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			usageLog := &UsageLog{AccountStatsCost: tt.accountStatsCost}
+			p := &usageBillingParams{
+				Cost: &CostBreakdown{
+					TotalCost:  tt.totalCost,
+					ActualCost: tt.actualCost,
+				},
+				User:                  &User{ID: 1},
+				APIKey:                &APIKey{ID: 2},
+				Account:               &Account{ID: 3, Type: AccountTypeAPIKey, Extra: map[string]any{"quota_limit": 100}},
+				AccountRateMultiplier: tt.accountRateMultiplier,
+			}
+
+			cmd := buildUsageBillingCommand("req-account-quota", usageLog, p)
+
+			if cmd == nil {
+				t.Fatal("buildUsageBillingCommand returned nil")
+			}
+			if cmd.AccountQuotaCost != tt.wantAccountQuota {
+				t.Errorf("AccountQuotaCost = %v, want %v", cmd.AccountQuotaCost, tt.wantAccountQuota)
+			}
+			// 用户余额、订阅和 API Key 配额仍必须使用 ActualCost，不能被账号成本口径影响。
+			if cmd.BillableAmountUSD != tt.actualCost {
+				t.Errorf("BillableAmountUSD = %v, want %v", cmd.BillableAmountUSD, tt.actualCost)
+			}
+		})
+	}
+}
+
 func TestBuildUsageBillingCommand_IncludesRequestGroupID(t *testing.T) {
 	groupID := int64(42)
 	p := &usageBillingParams{

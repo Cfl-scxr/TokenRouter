@@ -6,23 +6,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
-	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *testing.T) {
-	const malformedExtra = `"extra":{"openai_long_context_billing_enabled":"true"}`
+const deprecatedLongContextBillingExtraKey = "openai_long_context_billing_enabled"
+
+func TestAccountAdminBoundariesDiscardDeprecatedLongContextBillingExtra(t *testing.T) {
+	const malformedExtra = `"extra":{"openai_long_context_billing_enabled":{"malformed":true},"preserved":"value"}`
 
 	tests := []struct {
-		name   string
-		method string
-		path   string
-		body   string
-		mount  func(*gin.Engine, *AccountHandler)
-		setup  func(*stubAdminService)
+		name          string
+		method        string
+		path          string
+		body          string
+		mount         func(*gin.Engine, *AccountHandler)
+		capturedExtra func(*stubAdminService) map[string]any
 	}{
 		{
 			name:   "create",
@@ -30,6 +32,10 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 			path:   "/accounts",
 			body:   `{"name":"account","platform":"openai","type":"apikey","credentials":{"api_key":"test"},` + malformedExtra + `}`,
 			mount:  func(router *gin.Engine, handler *AccountHandler) { router.POST("/accounts", handler.Create) },
+			capturedExtra: func(stub *stubAdminService) map[string]any {
+				require.Len(t, stub.createdAccounts, 1)
+				return stub.createdAccounts[0].Extra
+			},
 		},
 		{
 			name:   "update",
@@ -37,8 +43,9 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 			path:   "/accounts/1",
 			body:   `{` + malformedExtra + `}`,
 			mount:  func(router *gin.Engine, handler *AccountHandler) { router.PUT("/accounts/:id", handler.Update) },
-			setup: func(stub *stubAdminService) {
-				stub.updateAccountErr = infraerrors.BadRequest("OPENAI_LONG_CONTEXT_BILLING_INVALID", "invalid")
+			capturedExtra: func(stub *stubAdminService) map[string]any {
+				require.NotNil(t, stub.updateAccountInput)
+				return stub.updateAccountInput.Extra
 			},
 		},
 		{
@@ -49,8 +56,9 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 			mount: func(router *gin.Engine, handler *AccountHandler) {
 				router.POST("/accounts/bulk-update", handler.BulkUpdate)
 			},
-			setup: func(stub *stubAdminService) {
-				stub.bulkUpdateAccountErr = infraerrors.BadRequest("OPENAI_LONG_CONTEXT_BILLING_INVALID", "invalid")
+			capturedExtra: func(stub *stubAdminService) map[string]any {
+				require.NotNil(t, stub.lastBulkUpdateAccountInput)
+				return stub.lastBulkUpdateAccountInput.Extra
 			},
 		},
 		{
@@ -59,14 +67,9 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 			path:   "/accounts/batch",
 			body:   `{"accounts":[{"name":"account","platform":"openai","type":"apikey","credentials":{"api_key":"test"},` + malformedExtra + `}]}`,
 			mount:  func(router *gin.Engine, handler *AccountHandler) { router.POST("/accounts/batch", handler.BatchCreate) },
-		},
-		{
-			name:   "Codex session import",
-			method: http.MethodPost,
-			path:   "/accounts/import-codex-session",
-			body:   `{"content":"token",` + malformedExtra + `}`,
-			mount: func(router *gin.Engine, handler *AccountHandler) {
-				router.POST("/accounts/import-codex-session", handler.ImportCodexSession)
+			capturedExtra: func(stub *stubAdminService) map[string]any {
+				require.Len(t, stub.createdAccounts, 1)
+				return stub.createdAccounts[0].Extra
 			},
 		},
 	}
@@ -75,9 +78,6 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 		t.Run(tt.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			stub := newStubAdminService()
-			if tt.setup != nil {
-				tt.setup(stub)
-			}
 			handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			router := gin.New()
 			tt.mount(router, handler)
@@ -87,33 +87,58 @@ func TestAccountAdminBoundariesRejectMalformedOpenAILongContextBillingValue(t *t
 
 			router.ServeHTTP(recorder, request)
 
-			require.Equal(t, http.StatusBadRequest, recorder.Code)
-			var responseBody struct {
-				Reason string `json:"reason"`
-			}
-			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
-			require.Equal(t, "OPENAI_LONG_CONTEXT_BILLING_INVALID", responseBody.Reason)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			extra := tt.capturedExtra(stub)
+			require.NotContains(t, extra, deprecatedLongContextBillingExtraKey)
+			require.Equal(t, "value", extra["preserved"])
 		})
 	}
 }
 
-func TestAccountCreateBoundaryDoesNotApplyOpenAIValidationToOtherPlatforms(t *testing.T) {
+func TestAccountUpdateDeprecatedOnlyIsNormalizedToNoExtraUpdate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := NewAccountHandler(newStubAdminService(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	stub := newStubAdminService()
+	handler := NewAccountHandler(stub, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.POST("/accounts", handler.Create)
+	router.PUT("/accounts/:id", handler.Update)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/accounts", bytes.NewBufferString(
-		`{"name":"account","platform":"anthropic","type":"apikey","credentials":{"api_key":"test"},"extra":{"openai_long_context_billing_enabled":"provider-owned"}}`,
+	request := httptest.NewRequest(http.MethodPut, "/accounts/1", bytes.NewBufferString(
+		`{"extra":{"openai_long_context_billing_enabled":{"malformed":true}}}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
 
 	router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.NotNil(t, stub.updateAccountInput)
+	require.Nil(t, stub.updateAccountInput.Extra)
 }
 
-func TestApplyOAuthCredentialsRejectsMalformedOpenAILongContextBillingBeforeMutation(t *testing.T) {
+func TestCodexSessionImportDiscardsDeprecatedLongContextBillingExtra(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := newCodexImportMemoryAdminService(nil)
+	handler := newCodexImportTestHandler(stub)
+	router := gin.New()
+	router.POST("/accounts/import-codex-session", handler.ImportCodexSession)
+	body, err := json.Marshal(CodexSessionImportRequest{
+		Content:              buildCodexAccessToken(t, "workspace-1", "user-1", time.Now().Add(time.Hour)),
+		Extra:                map[string]any{deprecatedLongContextBillingExtraKey: []bool{true}, "preserved": "value"},
+		SkipDefaultGroupBind: boolPtr(true),
+	})
+	require.NoError(t, err)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/accounts/import-codex-session", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Len(t, stub.createdAccounts, 1)
+	require.NotContains(t, stub.createdAccounts[0].Extra, deprecatedLongContextBillingExtraKey)
+	require.Equal(t, "value", stub.createdAccounts[0].Extra["preserved"])
+}
+
+func TestApplyOAuthCredentialsDiscardsDeprecatedLongContextBillingExtra(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := newStubAdminService()
 	stub.accounts = []service.Account{{
@@ -126,40 +151,15 @@ func TestApplyOAuthCredentialsRejectsMalformedOpenAILongContextBillingBeforeMuta
 	router.POST("/accounts/:id/apply-oauth-credentials", handler.ApplyOAuthCredentials)
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/accounts/1/apply-oauth-credentials", bytes.NewBufferString(
-		`{"type":"oauth","credentials":{"access_token":"new-token"},"extra":{"openai_long_context_billing_enabled":"true"}}`,
+		`{"type":"oauth","credentials":{"access_token":"new-token"},"extra":{"openai_long_context_billing_enabled":1,"preserved":"value"}}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
 
 	router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	var responseBody struct {
-		Reason string `json:"reason"`
-	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
-	require.Equal(t, "OPENAI_LONG_CONTEXT_BILLING_INVALID", responseBody.Reason)
-	require.Nil(t, stub.updateAccountInput)
-	require.Empty(t, stub.updateExtraCalls)
-}
-
-func TestOpenAIOAuthCodexPATBoundaryRejectsMalformedOpenAILongContextBillingValueBeforeTokenValidation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	handler := NewOpenAIOAuthHandler(nil, newStubAdminService(), nil, nil)
-	router := gin.New()
-	router.Use(gin.Recovery())
-	router.POST("/openai/create-from-codex-pat", handler.CreateAccountFromCodexPAT)
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/openai/create-from-codex-pat", bytes.NewBufferString(
-		`{"access_token":"token","extra":{"openai_long_context_billing_enabled":1}}`,
-	))
-	request.Header.Set("Content-Type", "application/json")
-
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	var responseBody struct {
-		Reason string `json:"reason"`
-	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
-	require.Equal(t, "OPENAI_LONG_CONTEXT_BILLING_INVALID", responseBody.Reason)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.NotNil(t, stub.updateAccountInput)
+	require.Len(t, stub.updateExtraCalls, 1)
+	require.NotContains(t, stub.updateExtraCalls[0], deprecatedLongContextBillingExtraKey)
+	require.Equal(t, "value", stub.updateExtraCalls[0]["preserved"])
 }

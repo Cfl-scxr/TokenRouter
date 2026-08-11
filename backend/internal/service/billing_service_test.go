@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"math"
 	"strings"
@@ -264,17 +265,220 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t *testing.T) {
 	svc := newTestBillingService()
 
-	cost, err := svc.calculateCostWithServiceTierPolicy(
+	cost, err := svc.CalculateCostWithServiceTier(
 		"gpt-5.4-2026-03-05",
 		UsageTokens{InputTokens: 300000},
 		0,
 		"",
-		true,
 	)
 
 	require.NoError(t, err)
 	require.Zero(t, cost.ActualCost)
 	require.False(t, cost.LongContextBillingApplied)
+}
+
+func TestCalculateCost_OpenAILongContextBoundaryIncludesCacheTokens(t *testing.T) {
+	svc := newTestBillingService()
+	tests := []struct {
+		name        string
+		cacheRead   int
+		wantApplied bool
+	}{
+		{name: "exact threshold uses base price", cacheRead: 72000, wantApplied: false},
+		{name: "one token above threshold uses long price", cacheRead: 72001, wantApplied: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, err := svc.CalculateCost("gpt-5.4", UsageTokens{
+				InputTokens:         100000,
+				CacheCreationTokens: 100000,
+				CacheReadTokens:     tt.cacheRead,
+				OutputTokens:        1000,
+			}, 1)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantApplied, cost.LongContextBillingApplied)
+		})
+	}
+}
+
+func TestCalculateCost_GPT56SolMarketplaceIntervalsMatchSettlement(t *testing.T) {
+	svc := newTestBillingService()
+	const groupRate = 3.0
+
+	display := svc.GetDisplayPricing("gpt-5.6-sol", groupRate, nil)
+	require.Equal(t, "token", display.PricingMode)
+	require.Len(t, display.ContextIntervals, 2)
+	baseInterval := display.ContextIntervals[0]
+	longInterval := display.ContextIntervals[1]
+	require.NotNil(t, baseInterval.MaxTokens)
+	require.Equal(t, 272000, *baseInterval.MaxTokens)
+	require.Equal(t, 272000, longInterval.MinTokens)
+	require.Nil(t, longInterval.MaxTokens)
+	require.InDelta(t, 15.0, baseInterval.InputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 90.0, baseInterval.OutputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 18.75, baseInterval.CacheWritePricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 1.5, baseInterval.CacheReadPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 30.0, baseInterval.FastInputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 180.0, baseInterval.FastOutputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 37.5, baseInterval.FastCacheWritePricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 3.0, baseInterval.FastCacheReadPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 30.0, longInterval.InputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 135.0, longInterval.OutputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 37.5, longInterval.CacheWritePricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 3.0, longInterval.CacheReadPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 60.0, longInterval.FastInputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 270.0, longInterval.FastOutputPricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 75.0, longInterval.FastCacheWritePricePerToken*1_000_000, 1e-10)
+	require.InDelta(t, 6.0, longInterval.FastCacheReadPricePerToken*1_000_000, 1e-10)
+
+	tokens := UsageTokens{
+		InputTokens:         100000,
+		CacheCreationTokens: 100000,
+		CacheReadTokens:     72001,
+		OutputTokens:        1000,
+	}
+	tiers := []struct {
+		name, serviceTier               string
+		inputPrice, outputPrice         float64
+		cacheWritePrice, cacheReadPrice float64
+	}{
+		{
+			name:            "standard",
+			inputPrice:      longInterval.InputPricePerToken,
+			outputPrice:     longInterval.OutputPricePerToken,
+			cacheWritePrice: longInterval.CacheWritePricePerToken,
+			cacheReadPrice:  longInterval.CacheReadPricePerToken,
+		},
+		{
+			name:            "priority",
+			serviceTier:     "priority",
+			inputPrice:      longInterval.FastInputPricePerToken,
+			outputPrice:     longInterval.FastOutputPricePerToken,
+			cacheWritePrice: longInterval.FastCacheWritePricePerToken,
+			cacheReadPrice:  longInterval.FastCacheReadPricePerToken,
+		},
+	}
+	for _, tier := range tiers {
+		t.Run(tier.name, func(t *testing.T) {
+			cost, err := svc.CalculateCostWithServiceTier("gpt-5.6-sol", tokens, groupRate, tier.serviceTier)
+			require.NoError(t, err)
+			require.True(t, cost.LongContextBillingApplied)
+			require.InDelta(t, float64(tokens.InputTokens)*tier.inputPrice, cost.InputCost*groupRate, 1e-10)
+			require.InDelta(t, float64(tokens.OutputTokens)*tier.outputPrice, cost.OutputCost*groupRate, 1e-10)
+			require.InDelta(t, float64(tokens.CacheCreationTokens)*tier.cacheWritePrice, cost.CacheCreationCost*groupRate, 1e-10)
+			require.InDelta(t, float64(tokens.CacheReadTokens)*tier.cacheReadPrice, cost.CacheReadCost*groupRate, 1e-10)
+			wantActualCost := float64(tokens.InputTokens)*tier.inputPrice +
+				float64(tokens.OutputTokens)*tier.outputPrice +
+				float64(tokens.CacheCreationTokens)*tier.cacheWritePrice +
+				float64(tokens.CacheReadTokens)*tier.cacheReadPrice
+			require.InDelta(t, wantActualCost, cost.ActualCost, 1e-10)
+		})
+	}
+}
+
+func TestApplyLongContextDisplayMultipliersScalesAllCachePrices(t *testing.T) {
+	pricing := &ModelPricing{
+		InputPricePerToken:                 1,
+		InputPricePerTokenPriority:         2,
+		OutputPricePerToken:                3,
+		OutputPricePerTokenPriority:        4,
+		CacheCreationPricePerToken:         5,
+		CacheCreationPricePerTokenPriority: 6,
+		CacheCreation5mPrice:               7,
+		CacheCreation1hPrice:               8,
+		CacheReadPricePerToken:             9,
+		CacheReadPricePerTokenPriority:     10,
+		LongContextInputMultiplier:         2,
+		LongContextOutputMultiplier:        1.5,
+	}
+
+	adjusted := applyLongContextDisplayMultipliers(pricing)
+
+	require.NotSame(t, pricing, adjusted)
+	require.Equal(t, float64(1), pricing.InputPricePerToken)
+	require.Equal(t, float64(2), adjusted.InputPricePerToken)
+	require.Equal(t, float64(4), adjusted.InputPricePerTokenPriority)
+	require.Equal(t, 4.5, adjusted.OutputPricePerToken)
+	require.Equal(t, float64(6), adjusted.OutputPricePerTokenPriority)
+	require.Equal(t, float64(10), adjusted.CacheCreationPricePerToken)
+	require.Equal(t, float64(12), adjusted.CacheCreationPricePerTokenPriority)
+	require.Equal(t, float64(14), adjusted.CacheCreation5mPrice)
+	require.Equal(t, float64(16), adjusted.CacheCreation1hPrice)
+	require.Equal(t, float64(18), adjusted.CacheReadPricePerToken)
+	require.Equal(t, float64(20), adjusted.CacheReadPricePerTokenPriority)
+}
+
+func TestCalculateCostUnified_ExplicitIntervalsDoNotReapplyLongContextMultiplier(t *testing.T) {
+	svc := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, svc)
+	basePricing, err := svc.GetModelPricing("gpt-5.6-sol")
+	require.NoError(t, err)
+
+	shortMax := 272000
+	shortInput := 7e-6
+	shortOutput := 31e-6
+	shortCacheWrite := 3e-6
+	shortCacheRead := 0.3e-6
+	longInput := 11e-6
+	longOutput := 41e-6
+	longCacheWrite := 4e-6
+	longCacheRead := 0.4e-6
+	resolved := &ResolvedPricing{
+		Mode:        BillingModeToken,
+		BasePricing: basePricing,
+		Source:      PricingSourceChannel,
+		Intervals: []PricingInterval{
+			{
+				MinTokens: 0, MaxTokens: &shortMax,
+				InputPrice: &shortInput, OutputPrice: &shortOutput,
+				CacheWritePrice: &shortCacheWrite, CacheReadPrice: &shortCacheRead,
+			},
+			{
+				MinTokens:  shortMax,
+				InputPrice: &longInput, OutputPrice: &longOutput,
+				CacheWritePrice: &longCacheWrite, CacheReadPrice: &longCacheRead,
+			},
+		},
+	}
+	tokens := UsageTokens{
+		InputTokens:         100000,
+		CacheCreationTokens: 100000,
+		CacheReadTokens:     72001,
+		OutputTokens:        1000,
+	}
+	const groupRate = 2.0
+
+	cost, err := svc.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "gpt-5.6-sol",
+		Tokens:         tokens,
+		RateMultiplier: groupRate,
+		Resolver:       resolver,
+		Resolved:       resolved,
+	})
+
+	require.NoError(t, err)
+	require.False(t, cost.LongContextBillingApplied)
+	require.InDelta(t, float64(tokens.InputTokens)*longInput, cost.InputCost, 1e-10)
+	require.InDelta(t, float64(tokens.OutputTokens)*longOutput, cost.OutputCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheCreationTokens)*longCacheWrite, cost.CacheCreationCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*longCacheRead, cost.CacheReadCost, 1e-10)
+	wantActualCost := (float64(tokens.InputTokens)*longInput +
+		float64(tokens.OutputTokens)*longOutput +
+		float64(tokens.CacheCreationTokens)*longCacheWrite +
+		float64(tokens.CacheReadTokens)*longCacheRead) * groupRate
+	require.InDelta(t, wantActualCost, cost.ActualCost, 1e-10)
+
+	display, ok := displayPricingFromResolved("gpt-5.6-sol", groupRate, groupRate, resolved)
+	require.True(t, ok)
+	require.Len(t, display.ContextIntervals, 2)
+	displayLong := display.ContextIntervals[1]
+	require.InDelta(t, longInput*groupRate, displayLong.InputPricePerToken, 1e-12)
+	require.InDelta(t, longOutput*groupRate, displayLong.OutputPricePerToken, 1e-12)
+	require.InDelta(t, longCacheWrite*groupRate, displayLong.CacheWritePricePerToken, 1e-12)
+	require.InDelta(t, longCacheRead*groupRate, displayLong.CacheReadPricePerToken, 1e-12)
 }
 
 func TestCalculateCost_OpenAIGPT55ProLongContextAppliesWholeSessionMultipliers(t *testing.T) {

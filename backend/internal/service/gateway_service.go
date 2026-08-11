@@ -1591,8 +1591,8 @@ func (p *usageBillingParams) shouldDeductAPIKeyQuota() bool {
 	return p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil
 }
 
-func (p *usageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+func (p *usageBillingParams) shouldUpdateAccountQuota(accountQuotaCost float64) bool {
+	return accountQuotaCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
 func (p *usageBillingParams) shouldUpdateRateLimits() bool {

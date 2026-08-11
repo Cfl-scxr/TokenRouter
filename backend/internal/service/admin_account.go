@@ -98,14 +98,31 @@ const maxAccountNameRunes = 100
 const duplicateAccountOperationIDExtraKey = "duplicate_operation_id"
 
 const (
-	// 旧版倍率探测键只用于阻止历史客户端重新写入，业务代码不得再读取这些值。
+	// 废弃账号扩展键只用于阻止历史客户端重新写入，业务代码不得再读取这些值。
 	deprecatedUpstreamBillingProbeExtraKey        = "upstream_billing_probe"
 	deprecatedUpstreamBillingProbeEnabledExtraKey = "upstream_billing_probe_enabled"
+	deprecatedOpenAILongContextBillingExtraKey    = "openai_long_context_billing_enabled"
 )
 
-func discardDeprecatedUpstreamBillingProbeExtra(extra map[string]any) {
+// DiscardDeprecatedAccountExtra 静默移除旧客户端可能继续提交的废弃账号扩展键。
+func DiscardDeprecatedAccountExtra(extra map[string]any) {
 	delete(extra, deprecatedUpstreamBillingProbeExtraKey)
 	delete(extra, deprecatedUpstreamBillingProbeEnabledExtraKey)
+	delete(extra, deprecatedOpenAILongContextBillingExtraKey)
+}
+
+// NormalizeDeprecatedAccountExtraUpdate 规范化整份替换语义的账号 Extra 更新。
+// 第二个返回值表示是否仍应执行替换：显式空对象保留清空语义，只有废弃键的对象视为未提供更新。
+func NormalizeDeprecatedAccountExtraUpdate(extra map[string]any) (map[string]any, bool) {
+	if extra == nil {
+		return nil, false
+	}
+	normalized := maps.Clone(extra)
+	DiscardDeprecatedAccountExtra(normalized)
+	if len(extra) > 0 && len(normalized) == 0 {
+		return nil, false
+	}
+	return normalized, true
 }
 
 func duplicateAccountName(sourceName string) string {
@@ -349,14 +366,10 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		SkipDefaultGroupBind:  true,
 		SkipMixedChannelCheck: true,
 	}
-	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
-	if err != nil {
-		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
-	}
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
-	duplicate, err := buildAccountForCreate(input, accountExtra)
+	duplicate, err := buildAccountForCreate(input, input.Extra)
 	if err != nil {
 		return nil, err
 	}
@@ -383,59 +396,6 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 		}
 	}
 	return concurrency
-}
-
-// ValidateOpenAILongContextBillingExtra 校验 OpenAI 账号的长上下文计费开关。
-func ValidateOpenAILongContextBillingExtra(platform string, extra map[string]any) error {
-	if platform != PlatformOpenAI {
-		return nil
-	}
-	raw, exists := extra[openAILongContextBillingEnabledKey]
-	if !exists {
-		return nil
-	}
-	if _, ok := raw.(bool); !ok {
-		return infraerrors.BadRequest(
-			"OPENAI_LONG_CONTEXT_BILLING_INVALID",
-			"openai_long_context_billing_enabled must be a boolean",
-		)
-	}
-	return nil
-}
-
-func normalizeOpenAILongContextBillingExtra(platform string, extra map[string]any) (map[string]any, error) {
-	if platform != PlatformOpenAI {
-		return extra, nil
-	}
-	if err := ValidateOpenAILongContextBillingExtra(platform, extra); err != nil {
-		return nil, err
-	}
-
-	normalized := maps.Clone(extra)
-	if normalized == nil {
-		normalized = make(map[string]any, 1)
-	}
-	_, exists := normalized[openAILongContextBillingEnabledKey]
-	if !exists {
-		normalized[openAILongContextBillingEnabledKey] = false
-	}
-	return normalized, nil
-}
-
-func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *UpdateAccountInput) (map[string]any, error) {
-	normalized, err := normalizeOpenAILongContextBillingExtra(account.Platform, input.Extra)
-	if err != nil || account.Platform != PlatformOpenAI {
-		return normalized, err
-	}
-
-	_, provided := input.Extra[openAILongContextBillingEnabledKey]
-	current, hasCurrent := account.Extra[openAILongContextBillingEnabledKey].(bool)
-	if !provided {
-		if hasCurrent {
-			normalized[openAILongContextBillingEnabledKey] = current
-		}
-	}
-	return normalized, nil
 }
 
 // ValidateGrokMediaEligibilityExtra 校验可选的媒体调度覆盖；null 表示删除覆盖，
@@ -496,8 +456,8 @@ func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAcc
 }
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
-	// 受管会话状态由系统维护，旧版倍率探测字段不得通过通用账号接口写入。
-	discardDeprecatedUpstreamBillingProbeExtra(accountExtra)
+	// 受管会话状态由系统维护，废弃字段不得通过通用账号接口写入。
+	DiscardDeprecatedAccountExtra(accountExtra)
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -547,11 +507,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
-	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
-	if err != nil {
-		return nil, err
-	}
-	accountExtra, err = normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
+	accountExtra := maps.Clone(input.Extra)
+	DiscardDeprecatedAccountExtra(accountExtra)
+	accountExtra, err := normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
 	}
@@ -636,12 +594,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	originalQoderSite, originalQoderSiteErr := qoderSiteForAccount(account)
 	originalQoderPAT := strings.TrimSpace(account.GetCredential("pat"))
-	var normalizedExtra map[string]any
-	if input.Extra != nil {
-		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
-		if err != nil {
-			return nil, err
-		}
+	normalizedExtra, shouldReplaceExtra := NormalizeDeprecatedAccountExtraUpdate(input.Extra)
+	if shouldReplaceExtra {
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
 		if err != nil {
 			return nil, err
@@ -698,9 +652,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
-	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
-	if input.Extra != nil {
-		discardDeprecatedUpstreamBillingProbeExtra(normalizedExtra)
+	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库；只有废弃键时则不替换。
+	if shouldReplaceExtra {
+		DiscardDeprecatedAccountExtra(normalizedExtra)
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -750,7 +704,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
-	discardDeprecatedUpstreamBillingProbeExtra(account.Extra)
+	DiscardDeprecatedAccountExtra(account.Extra)
 	if account.Extra != nil {
 		if !IsOllamaCloudUsageAccount(account) {
 			delete(account.Extra, OllamaCloudUsageSessionExtraKey)
@@ -853,19 +807,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 
 // UpdateAccountExtra 仅对账号 Extra JSONB 做 key 级合并，避免覆盖运行态或持久化配置键。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
-	discardDeprecatedUpstreamBillingProbeExtra(updates)
+	DiscardDeprecatedAccountExtra(updates)
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
-	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
-		account, err := s.accountRepo.GetByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
-			return err
-		}
-	}
 	if len(updates) == 0 {
 		return nil
 	}
@@ -875,8 +820,8 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts 在单次请求中更新多个账号。
 // 凭据和 extra 使用键级合并，不覆盖整个对象。
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
-	// 受管会话状态只能通过专用类型接口更新，旧版倍率探测字段直接丢弃。
-	discardDeprecatedUpstreamBillingProbeExtra(input.Extra)
+	// 受管会话状态只能通过专用类型接口更新，废弃账号扩展字段直接丢弃。
+	DiscardDeprecatedAccountExtra(input.Extra)
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
@@ -905,29 +850,16 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
-	_, hasLongContextBillingUpdate := input.Extra[openAILongContextBillingEnabledKey]
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
 	}
-	if hasLongContextBillingUpdate {
-		for _, account := range cachedTargets {
-			if account == nil || account.Platform != PlatformOpenAI {
-				continue
-			}
-			if err := ValidateOpenAILongContextBillingExtra(account.Platform, input.Extra); err != nil {
-				return nil, err
-			}
-			break
-		}
-	}
-
 	// 影子账号绝不持有凭据:批量更新携带凭据时,目标中不得含影子(外审 G5,与单账号
 	// UpdateAccount 守卫对齐)。覆盖显式 IDs 与 filter 解析出的 IDs(此处 AccountIDs 已解析完成)。
 	if len(input.Credentials) > 0 {
@@ -1276,9 +1208,6 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		Priority:        priority,
 		Concurrency:     concurrency,
 		Schedulable:     true,
-		Extra: map[string]any{
-			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
-		},
 	}
 
 	// 5. 持久化（Create 填充 shadow.ID）。并发竞态:预查(步骤2)放行后另一请求抢先建成,本次会撞

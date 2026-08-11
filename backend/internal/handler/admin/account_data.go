@@ -278,6 +278,10 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	// 废弃账号字段不参与导入幂等指纹，旧客户端的值或非法类型都与缺省输入等价。
+	for index := range req.Data.Accounts {
+		service.DiscardDeprecatedAccountExtra(req.Data.Accounts[index].Extra)
+	}
 
 	executeAdminIdempotentJSON(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		return h.importData(ctx, req)

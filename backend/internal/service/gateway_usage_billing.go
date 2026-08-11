@@ -181,12 +181,29 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *usageBill
 	if p.shouldUpdateRateLimits() {
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
-	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+	accountQuotaCost := resolveUsageBillingAccountQuotaCost(usageLog, p)
+	if p.shouldUpdateAccountQuota(accountQuotaCost) {
+		cmd.AccountQuotaCost = accountQuotaCost
 	}
 
 	cmd.Normalize()
 	return cmd
+}
+
+// resolveUsageBillingAccountQuotaCost 让账号额度与账号统计使用同一成本口径。
+// AccountStatsCost 的显式零值必须保留，只有 nil 才回退用户计费基础成本。
+func resolveUsageBillingAccountQuotaCost(usageLog *UsageLog, p *usageBillingParams) float64 {
+	if p == nil || p.Cost == nil {
+		return 0
+	}
+	baseCost := p.Cost.TotalCost
+	if usageLog != nil && usageLog.AccountStatsCost != nil {
+		baseCost = *usageLog.AccountStatsCost
+	}
+	if baseCost <= 0 || p.AccountRateMultiplier <= 0 {
+		return 0
+	}
+	return baseCost * p.AccountRateMultiplier
 }
 
 func applyUsageBillingRateMultipliers(cmd *UsageBillingCommand, p *usageBillingParams) {

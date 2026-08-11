@@ -686,8 +686,6 @@ export default {
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭。仅当 OAuth 中转上游拒绝 namespace 工具时开启；普通 Responses 请求会原样保留，compact 请求始终摊平。',
-        longContextBilling: 'API 长上下文计费',
-        longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           '默认关闭。开启后可启用 responses_websockets_v2 协议能力（受网关全局开关与账号类型开关约束）。',

@@ -167,7 +167,7 @@ type UsageLog struct {
 	LongContextBillingApplied bool // 长上下文规则是否实际增加费用
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
 	AccountRateMultiplier *float64
-	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
+	// AccountStatsCost 账号统计定价预计算基数（nil 时回退 total_cost，之后再乘账号倍率）
 	AccountStatsCost *float64
 
 	BillingType  int8

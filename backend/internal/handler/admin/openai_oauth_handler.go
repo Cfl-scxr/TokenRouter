@@ -369,10 +369,7 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if err := service.ValidateOpenAILongContextBillingExtra(service.PlatformOpenAI, req.Extra); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
+	service.DiscardDeprecatedAccountExtra(req.Extra)
 	if req.Concurrency != nil && *req.Concurrency < 0 {
 		response.BadRequest(c, "concurrency must be >= 0")
 		return

@@ -959,17 +959,16 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 
 // CostInput 统一计费输入
 type CostInput struct {
-	Ctx                       context.Context
-	Model                     string
-	GroupID                   *int64 // 用于渠道定价查找
-	Tokens                    UsageTokens
-	RequestCount              int    // 按次计费时使用
-	SizeTier                  string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
-	RateMultiplier            float64
-	ServiceTier               string                // "priority","flex","" 等
-	Resolver                  *ModelPricingResolver // 定价解析器
-	Resolved                  *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
-	LongContextBillingEnabled *bool                 // nil 表示沿用默认策略，非 nil 表示账号级开关
+	Ctx            context.Context
+	Model          string
+	GroupID        *int64 // 用于渠道定价查找
+	Tokens         UsageTokens
+	RequestCount   int    // 按次计费时使用
+	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	RateMultiplier float64
+	ServiceTier    string                // "priority","flex","" 等
+	Resolver       *ModelPricingResolver // 定价解析器
+	Resolved       *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
 }
 
 // CalculateCostUnified 统一计费入口，支持三种计费模式。
@@ -977,18 +976,7 @@ type CostInput struct {
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
 	if input.Resolver == nil {
 		// 无 Resolver，回退到旧路径
-		applyLongContextBilling := true
-		if input.LongContextBillingEnabled != nil {
-			applyLongContextBilling = *input.LongContextBillingEnabled
-		}
-		return s.calculateCostInternalWithPolicy(
-			input.Model,
-			input.Tokens,
-			input.RateMultiplier,
-			input.ServiceTier,
-			nil,
-			applyLongContextBilling,
-		)
+		return s.calculateCostInternal(input.Model, input.Tokens, input.RateMultiplier, input.ServiceTier, nil)
 	}
 
 	// 优先使用预解析结果，避免重复 Resolve 调用
@@ -1035,9 +1023,6 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	// 长上下文定价仅在无区间定价时应用（区间定价已包含上下文分层）
 	applyLongCtx := len(resolved.Intervals) == 0
-	if input.LongContextBillingEnabled != nil {
-		applyLongCtx = applyLongCtx && *input.LongContextBillingEnabled
-	}
 
 	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
 }
@@ -1215,28 +1200,7 @@ func (s *BillingService) CalculateCostWithServiceTier(model string, tokens Usage
 	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier, nil)
 }
 
-func (s *BillingService) calculateCostWithServiceTierPolicy(
-	model string,
-	tokens UsageTokens,
-	rateMultiplier float64,
-	serviceTier string,
-	longContextBillingEnabled bool,
-) (*CostBreakdown, error) {
-	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, nil, longContextBillingEnabled)
-}
-
 func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {
-	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, channelPricing, true)
-}
-
-func (s *BillingService) calculateCostInternalWithPolicy(
-	model string,
-	tokens UsageTokens,
-	rateMultiplier float64,
-	serviceTier string,
-	channelPricing *ChannelModelPricing,
-	longContextBillingEnabled bool,
-) (*CostBreakdown, error) {
 	var pricing *ModelPricing
 	var err error
 	if channelPricing != nil {
@@ -1248,7 +1212,7 @@ func (s *BillingService) calculateCostInternalWithPolicy(
 		return nil, err
 	}
 
-	return s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, longContextBillingEnabled), nil
+	return s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, true), nil
 }
 
 func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *ModelPricing) *ModelPricing {
@@ -1697,18 +1661,30 @@ func longContextDisplayPricingIntervals(pricing *ModelPricing, rateMultiplier fl
 	maxTokens := pricing.LongContextInputThreshold
 	baseInterval := modelPricingDisplayInterval(0, &maxTokens, pricing, rateMultiplier)
 
-	longContextPricing := *pricing
-	longContextPricing.InputPricePerToken *= pricing.LongContextInputMultiplier
-	longContextPricing.OutputPricePerToken *= pricing.LongContextOutputMultiplier
-	if longContextPricing.InputPricePerTokenPriority > 0 {
-		longContextPricing.InputPricePerTokenPriority *= pricing.LongContextInputMultiplier
-	}
-	if longContextPricing.OutputPricePerTokenPriority > 0 {
-		longContextPricing.OutputPricePerTokenPriority *= pricing.LongContextOutputMultiplier
-	}
-	longContextInterval := modelPricingDisplayInterval(pricing.LongContextInputThreshold, nil, &longContextPricing, rateMultiplier)
+	longContextPricing := applyLongContextDisplayMultipliers(pricing)
+	longContextInterval := modelPricingDisplayInterval(pricing.LongContextInputThreshold, nil, longContextPricing, rateMultiplier)
 
 	return []ModelDisplayPricingInterval{baseInterval, longContextInterval}
+}
+
+// applyLongContextDisplayMultipliers 按结算规则生成长上下文展示价格，不修改原始模型定价。
+// 缓存创建与读取都属于输入侧，普通价、priority 价及缓存时长明细必须使用同一输入倍率。
+func applyLongContextDisplayMultipliers(pricing *ModelPricing) *ModelPricing {
+	if pricing == nil {
+		return nil
+	}
+	adjusted := *pricing
+	adjusted.InputPricePerToken *= pricing.LongContextInputMultiplier
+	adjusted.InputPricePerTokenPriority *= pricing.LongContextInputMultiplier
+	adjusted.OutputPricePerToken *= pricing.LongContextOutputMultiplier
+	adjusted.OutputPricePerTokenPriority *= pricing.LongContextOutputMultiplier
+	adjusted.CacheCreationPricePerToken *= pricing.LongContextInputMultiplier
+	adjusted.CacheCreationPricePerTokenPriority *= pricing.LongContextInputMultiplier
+	adjusted.CacheCreation5mPrice *= pricing.LongContextInputMultiplier
+	adjusted.CacheCreation1hPrice *= pricing.LongContextInputMultiplier
+	adjusted.CacheReadPricePerToken *= pricing.LongContextInputMultiplier
+	adjusted.CacheReadPricePerTokenPriority *= pricing.LongContextInputMultiplier
+	return &adjusted
 }
 
 func hasLongContextDisplayPricing(pricing *ModelPricing) bool {
@@ -1757,6 +1733,9 @@ func fastModeDisplayPricing(pricing *ModelPricing) (*ModelPricing, bool) {
 		if pricing.OutputPricePerTokenPriority > 0 {
 			fastPricing.OutputPricePerToken = pricing.OutputPricePerTokenPriority
 		}
+		if pricing.CacheCreationPricePerTokenPriority > 0 {
+			fastPricing.CacheCreationPricePerToken = pricing.CacheCreationPricePerTokenPriority
+		}
 		if pricing.CacheReadPricePerTokenPriority > 0 {
 			fastPricing.CacheReadPricePerToken = pricing.CacheReadPricePerTokenPriority
 		}
@@ -1779,6 +1758,7 @@ func hasFastModeDisplayPricing(pricing *ModelPricing) bool {
 			pricing.SupportsServiceTier ||
 			pricing.InputPricePerTokenPriority > 0 ||
 			pricing.OutputPricePerTokenPriority > 0 ||
+			pricing.CacheCreationPricePerTokenPriority > 0 ||
 			pricing.CacheReadPricePerTokenPriority > 0)
 }
 
