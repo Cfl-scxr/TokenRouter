@@ -23,7 +23,7 @@ const BaseDialogStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'Select',
+  name: 'SelectStub',
   props: ['modelValue', 'options'],
   emits: ['update:modelValue'],
   template: '<button type="button" class="select-stub">{{ modelValue }}</button>'

@@ -533,8 +533,9 @@ func (s *AdvancedSchedulerScoreDiagnosticService) buildDetail(
 }
 
 func (s *AdvancedSchedulerScoreDiagnosticService) effectiveSettings(ctx context.Context, group *Group) (advancedSchedulerEffectiveSettings, advancedSchedulerRuntimeSettings) {
-	gateway := &OpenAIGatewayService{rateLimitService: s.rateLimitService}
+	gateway := &OpenAIGatewayService{}
 	if s != nil && s.rateLimitService != nil {
+		gateway.rateLimitService = s.rateLimitService
 		gateway.cfg = s.rateLimitService.cfg
 	}
 	runtime := gateway.advancedSchedulerRuntimeSettings(ctx)

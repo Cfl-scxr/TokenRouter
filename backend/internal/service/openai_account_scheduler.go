@@ -175,7 +175,6 @@ func (m *openAIAccountSchedulerMetrics) recordSwitch() {
 
 // 兼容内部调用点的别名：OpenAI 是通用高级调度器的能力适配者之一。
 type openAIAccountRuntimeStats = advancedAccountRuntimeStats
-type openAIAccountRuntimeStat = advancedAccountRuntimeStat
 
 func newOpenAIAccountRuntimeStats() *advancedAccountRuntimeStats {
 	return newAdvancedAccountRuntimeStats()
@@ -462,13 +461,6 @@ func openAIStickyAccountMatchesGroup(account *Account, groupID *int64) bool {
 		}
 	}
 	return false
-}
-
-func openAIAccountSchedulingPriority(account *Account) int {
-	if account == nil {
-		return 0
-	}
-	return account.Priority
 }
 
 func shouldEscapeAdvancedStickyAccount(stats *advancedAccountRuntimeStats, accountID int64, cfg advancedStickyEscapeConfig) (reason string, errorRate float64, ttft float64, shouldEscape bool) {
@@ -1332,10 +1324,6 @@ func (s *OpenAIGatewayService) advancedSchedulerRuntimeSettings(ctx context.Cont
 
 func (s *OpenAIGatewayService) isAdvancedSchedulerStickyWeightedEnabled(ctx context.Context) bool {
 	return s.advancedSchedulerRuntimeSettings(ctx).stickyWeightedEnabled
-}
-
-func (s *OpenAIGatewayService) isAdvancedSchedulerSubscriptionPriorityEnabled(ctx context.Context) bool {
-	return s.advancedSchedulerRuntimeSettings(ctx).subscriptionPriorityEnabled
 }
 
 func advancedSchedulerRuntimeSettingKeys() []string {

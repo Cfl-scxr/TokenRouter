@@ -386,11 +386,10 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	if err != nil {
 		return nil, err
 	}
-	group, groupCtx := errgroup.WithContext(ctx)
 
 	// 用户和 Owner 团队分别使用索引扫描；第二分支排除用户本人，保证只统计一次。
-	group.Go(func() error {
-		return scanSingleRow(groupCtx, r.sql, `
+	loadAPIKeyStats := func(queryCtx context.Context) error {
+		return scanSingleRow(queryCtx, r.sql, `
 			WITH scoped AS (
 				SELECT status FROM api_keys
 				WHERE deleted_at IS NULL AND user_id = $1
@@ -400,7 +399,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 			)
 			SELECT COUNT(*), COUNT(*) FILTER (WHERE status = $3) FROM scoped
 		`, []any{userID, teamID, service.StatusActive}, &stats.TotalAPIKeys, &stats.ActiveAPIKeys)
-	})
+	}
 
 	// 累计和今日统计共用同一组可索引范围，避免重复扫描大型使用记录表。
 	var totalDuration, durationCount int64
@@ -429,9 +428,9 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $3), 0)
 		FROM scoped
 	`
-	group.Go(func() error {
+	loadUsageStats := func(queryCtx context.Context) error {
 		return scanSingleRow(
-			groupCtx,
+			queryCtx,
 			r.sql,
 			usageStatsQuery,
 			[]any{userID, teamID, today},
@@ -452,16 +451,16 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 			&stats.TodayCost,
 			&stats.TodayActualCost,
 		)
-	})
+	}
 
 	// 近五分钟窗口有独立时间索引，与累计统计并行执行。
 	var rpm, tpm int64
-	group.Go(func() error {
+	loadPerformanceStats := func(queryCtx context.Context) error {
 		var performanceErr error
-		rpm, tpm, performanceErr = r.getPerformanceStatsForScope(groupCtx, userID, teamID)
+		rpm, tpm, performanceErr = r.getPerformanceStatsForScope(queryCtx, userID, teamID)
 		return performanceErr
-	})
-	if err := group.Wait(); err != nil {
+	}
+	if err := r.runDashboardQueries(ctx, loadAPIKeyStats, loadUsageStats, loadPerformanceStats); err != nil {
 		return nil, err
 	}
 	if durationCount > 0 {

@@ -338,22 +338,6 @@ func (s *GeminiMessagesCompatService) passesRateLimitPreCheckWithCache(ctx conte
 	return ok
 }
 
-// selectBestGeminiAccount 从候选账号中选择最佳账号（优先级 + LRU + OAuth 优先）。
-// 返回 nil 表示无可用账号。
-//
-// selectBestGeminiAccount selects best account from candidates (priority + LRU + OAuth preferred).
-// Returns nil if no available account.
-func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
-	ctx context.Context,
-	accounts []Account,
-	requestedModel string,
-	excludedIDs map[int64]struct{},
-	platform string,
-	useMixedScheduling bool,
-) *Account {
-	return s.selectBestGeminiAccountFromEligible(s.eligibleGeminiAccounts(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling))
-}
-
 // eligibleGeminiAccounts 在高级和基础调度器前复用 Gemini 现有的全部硬过滤规则。
 func (s *GeminiMessagesCompatService) eligibleGeminiAccounts(
 	ctx context.Context,

@@ -65,13 +65,6 @@ func (s *advancedAccountRuntimeStats) reportSwitch() {
 	}
 }
 
-func (s *advancedAccountRuntimeStats) switches() int64 {
-	if s == nil {
-		return 0
-	}
-	return s.switchCount.Load()
-}
-
 type advancedAccountRuntimeStat struct {
 	errorRateEWMABits atomic.Uint64
 	ttftEWMABits      atomic.Uint64
@@ -225,16 +218,6 @@ func (s *advancedAccountRuntimeStats) snapshot(accountID int64) (errorRate float
 		return errorRate, 0, false
 	}
 	return errorRate, ttftValue, true
-}
-
-// hasFeedback 判断账号是否已经产生过高级调度运行时反馈。
-// 错误率的零值既可能表示全成功，也可能表示没有样本，因此不能仅凭数值判断。
-func (s *advancedAccountRuntimeStats) hasFeedback(accountID int64) bool {
-	if s == nil || accountID <= 0 {
-		return false
-	}
-	_, ok := s.accounts.Load(accountID)
-	return ok
 }
 
 func (s *advancedAccountRuntimeStats) size() int {
