@@ -929,11 +929,12 @@
   }
 
   /* ============ 表格页面布局优化 ============ */
-  /* 所有表格滚动区域统一禁止边界回弹，避免表头、表体或固定列被临时拉开。 */
+  /* 横向禁止边界回弹，纵向到顶或到底后继续把滚动传递给外层页面。 */
   table,
   :where(.table-wrapper, .table-container, .table-scroll-container),
   :where(.overflow-auto, .overflow-x-auto, .overflow-y-auto):has(table) {
-    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
   }
 
   /* 表格容器 - 默认仅支持水平滚动 */
