@@ -12,7 +12,7 @@
 
 ## 构建与运行形态
 
-发布镜像通过多阶段构建生成前端静态资源、Go 后端和必要运行时工具；前端最终嵌入后端二进制。GitHub Release 同时发布 Linux `amd64`、Linux `arm64` 等产物，具体矩阵以 [release workflow](../../.github/workflows/release.yml) 为准。
+标准发布先生成一次前端静态资源，再由独立 runner 把同一份前端嵌入各平台 Go 二进制并行交叉编译；最终发布阶段统一归档二进制，并用 Linux `amd64`、`arm64` 产物组装多架构镜像和必要运行时工具。GitHub Release 同时发布 Linux `amd64`、Linux `arm64` 等产物，具体矩阵以 [release workflow](../../.github/workflows/release.yml) 为准。
 
 仓库支持以下运行形态：
 
