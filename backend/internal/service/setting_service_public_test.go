@@ -238,3 +238,61 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
 }
+
+func TestSettingService_GetPublicSettings_ExposesEffectiveGoogleOneTapConfig(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyGoogleOneTapEnabled:            "true",
+		SettingKeyGoogleOAuthEnabled:             "true",
+		SettingKeyGoogleOAuthClientID:            "google-web-client",
+		SettingKeyGoogleOAuthClientSecret:        "google-client-secret",
+		SettingKeyGoogleOAuthRedirectURL:         "https://app.example/api/v1/auth/oauth/google/callback",
+		SettingKeyGoogleOAuthFrontendRedirectURL: "/auth/oauth/callback",
+	}}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.GoogleOAuthEnabled)
+	require.True(t, settings.GoogleOneTapEnabled)
+	require.Equal(t, "google-web-client", settings.GoogleOAuthClientID)
+
+	raw, err := json.Marshal(settings)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "google-web-client")
+	require.NotContains(t, string(raw), "google-client-secret")
+}
+
+func TestSettingService_GetPublicSettings_DisablesGoogleOneTapWhenOAuthIsIncomplete(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyGoogleOneTapEnabled:    "true",
+		SettingKeyGoogleOAuthEnabled:     "true",
+		SettingKeyGoogleOAuthClientID:    "google-web-client",
+		SettingKeyGoogleOAuthRedirectURL: "https://app.example/api/v1/auth/oauth/google/callback",
+	}}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.GoogleOAuthEnabled)
+	require.False(t, settings.GoogleOneTapEnabled)
+	require.Empty(t, settings.GoogleOAuthClientID)
+}
+
+func TestSettingService_GetGoogleOneTapConfigRequiresIndependentSwitch(t *testing.T) {
+	values := map[string]string{
+		SettingKeyGoogleOneTapEnabled:            "false",
+		SettingKeyGoogleOAuthEnabled:             "true",
+		SettingKeyGoogleOAuthClientID:            "google-web-client",
+		SettingKeyGoogleOAuthClientSecret:        "google-client-secret",
+		SettingKeyGoogleOAuthRedirectURL:         "https://app.example/api/v1/auth/oauth/google/callback",
+		SettingKeyGoogleOAuthFrontendRedirectURL: "/auth/oauth/callback",
+	}
+	svc := NewSettingService(&settingPublicRepoStub{values: values}, &config.Config{})
+
+	_, err := svc.GetGoogleOneTapConfig(context.Background())
+	require.Error(t, err)
+
+	values[SettingKeyGoogleOneTapEnabled] = "true"
+	settings, err := svc.GetGoogleOneTapConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "google-web-client", settings.ClientID)
+	require.Equal(t, "google-client-secret", settings.ClientSecret)
+}

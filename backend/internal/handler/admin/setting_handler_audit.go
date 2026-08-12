@@ -368,6 +368,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.GoogleOAuthEnabled != after.GoogleOAuthEnabled {
 		changed = append(changed, "google_oauth_enabled")
 	}
+	if before.GoogleOneTapEnabled != after.GoogleOneTapEnabled {
+		changed = append(changed, "google_one_tap_enabled")
+	}
 	if before.GoogleOAuthClientID != after.GoogleOAuthClientID {
 		changed = append(changed, "google_oauth_client_id")
 	}

@@ -318,6 +318,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyGitHubOAuthClientSecret] = settings.GitHubOAuthClientSecret
 	}
 	updates[SettingKeyGoogleOAuthEnabled] = strconv.FormatBool(settings.GoogleOAuthEnabled)
+	updates[SettingKeyGoogleOneTapEnabled] = strconv.FormatBool(settings.GoogleOneTapEnabled)
 	updates[SettingKeyGoogleOAuthClientID] = settings.GoogleOAuthClientID
 	updates[SettingKeyGoogleOAuthRedirectURL] = settings.GoogleOAuthRedirectURL
 	updates[SettingKeyGoogleOAuthFrontendRedirectURL] = settings.GoogleOAuthFrontendRedirectURL

@@ -2807,6 +2807,53 @@
                       }}
                     </div>
 
+                    <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+                      <div class="flex items-start justify-between gap-4">
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                            Google One Tap
+                          </h4>
+                          <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                            {{
+                              localText(
+                                "在主页和登录页向未登录用户显示浏览器托管的 Google 账号选择器。",
+                                "Show the browser-managed Google account chooser to signed-out users on the home and login pages.",
+                              )
+                            }}
+                          </p>
+                        </div>
+                        <Toggle v-model="form.google_one_tap_enabled" />
+                      </div>
+
+                      <div v-if="form.google_one_tap_enabled" class="mt-3">
+                        <label class="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Authorized JavaScript origin
+                        </label>
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <code class="min-w-0 flex-1 select-all break-all rounded bg-gray-50 px-2 py-1.5 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                            {{ googleOneTapOriginSuggestion }}
+                          </code>
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-sm w-fit"
+                            :disabled="!googleOneTapOriginSuggestion"
+                            @click="copyGoogleOneTapOrigin"
+                          >
+                            <Icon name="copy" size="sm" class="mr-1.5" />
+                            {{ localText("复制", "Copy") }}
+                          </button>
+                        </div>
+                        <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                          {{
+                            localText(
+                              "请将该 Origin 加入 Google Cloud OAuth 客户端的 Authorized JavaScript origins；生产环境必须使用 HTTPS。",
+                              "Add this origin to the OAuth client's Authorized JavaScript origins in Google Cloud; production requires HTTPS.",
+                            )
+                          }}
+                        </p>
+                      </div>
+                    </div>
+
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                       <div>
                         <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
@@ -9115,6 +9162,7 @@ const form = reactive<SettingsForm>({
   github_oauth_redirect_url: "",
   github_oauth_frontend_redirect_url: "/auth/oauth/callback",
   google_oauth_enabled: false,
+  google_one_tap_enabled: false,
   google_oauth_client_id: "",
   google_oauth_client_secret: "",
   google_oauth_client_secret_configured: false,
@@ -9961,6 +10009,20 @@ const githubOAuthRedirectUrlSuggestion = computed(() => {
 const googleOAuthRedirectUrlSuggestion = computed(() => {
   return buildApiCallbackUrl("/auth/oauth/google/callback");
 });
+
+const googleOneTapOriginSuggestion = computed(() => {
+  if (typeof window === "undefined") return "";
+  return window.location.origin;
+});
+
+async function copyGoogleOneTapOrigin() {
+  const origin = googleOneTapOriginSuggestion.value;
+  if (!origin) return;
+  await copyToClipboard(
+    origin,
+    localText("JavaScript Origin 已复制。", "JavaScript origin copied."),
+  );
+}
 
 async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
   const url =
@@ -10880,6 +10942,7 @@ async function saveSettings() {
       github_oauth_frontend_redirect_url:
         form.github_oauth_frontend_redirect_url,
       google_oauth_enabled: form.google_oauth_enabled,
+      google_one_tap_enabled: form.google_one_tap_enabled,
       google_oauth_client_id: form.google_oauth_client_id,
       google_oauth_client_secret:
         form.google_oauth_client_secret || undefined,

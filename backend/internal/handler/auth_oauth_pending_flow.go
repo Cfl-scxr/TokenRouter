@@ -51,6 +51,7 @@ type oauthPendingSessionPayload struct {
 	BrowserSessionKey      string
 	UpstreamIdentityClaims map[string]any
 	CompletionResponse     map[string]any
+	PromoCode              string
 }
 
 type oauthAdoptionDecisionRequest struct {
@@ -240,7 +241,7 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 	localFlowState := map[string]any{
 		oauthCompletionResponseKey: payload.CompletionResponse,
 	}
-	if promoCode := readOAuthPromoCode(c); promoCode != "" {
+	if promoCode := strings.TrimSpace(firstNonEmpty(payload.PromoCode, readOAuthPromoCode(c))); promoCode != "" {
 		localFlowState[oauthPromoCodeStateKey] = promoCode
 	}
 

@@ -9,7 +9,12 @@ const getPublicSettingsMock = vi.fn()
 const startOAuthLoginMock = vi.fn()
 const verifyActionMock = vi.fn()
 const captchaResetMock = vi.fn()
-const locationState = { href: 'http://localhost/login' }
+const oneTapCancelMock = vi.fn()
+const locationState = {
+  href: 'http://localhost/login',
+  protocol: 'http:',
+  hostname: 'localhost'
+}
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -75,6 +80,34 @@ const OAuthButtonStub = defineComponent({
   }
 })
 
+const GoogleOneTapStub = defineComponent({
+  name: 'GoogleOneTap',
+  props: {
+    enabled: Boolean,
+    clientId: String
+  },
+  setup(props, { expose }) {
+    expose({ cancelPrompt: oneTapCancelMock })
+    return () => h('div', {
+      'data-testid': 'google-one-tap',
+      'data-enabled': String(props.enabled),
+      'data-client-id': props.clientId
+    })
+  }
+})
+
+const LoginAgreementStub = defineComponent({
+  name: 'LoginAgreementPrompt',
+  emits: ['accept', 'reject', 'open'],
+  setup(_, { emit }) {
+    return () => h('button', {
+      type: 'button',
+      'data-testid': 'accept-login-agreement',
+      onClick: () => emit('accept')
+    })
+  }
+})
+
 function mountLogin() {
   return mount(LoginView, {
     global: {
@@ -83,8 +116,9 @@ function mountLogin() {
         RouterLink: true,
         TurnstileWidget: CaptchaChallengeStub,
         Icon: true,
-        LoginAgreementPrompt: true,
+        LoginAgreementPrompt: LoginAgreementStub,
         TotpLoginModal: true,
+        GoogleOneTap: GoogleOneTapStub,
         EmailOAuthButtons: OAuthButtonStub,
         LinuxDoOAuthSection: true,
         DingTalkOAuthSection: true,
@@ -122,6 +156,7 @@ describe('Action captcha gate', () => {
     startOAuthLoginMock.mockReset()
     verifyActionMock.mockReset()
     captchaResetMock.mockReset()
+    oneTapCancelMock.mockReset()
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
@@ -291,5 +326,57 @@ describe('Action captcha gate', () => {
     expect(loginWithPasskeyMock).toHaveBeenCalledWith({
       turnstile_token: 'aliyun-param-1'
     })
+  })
+
+  it('enables One Tap only after the current login agreement is accepted', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      tencent_captcha_enabled: false,
+      aliyun_captcha_enabled: false,
+      backend_mode_enabled: false,
+      password_reset_enabled: false,
+      passkey_enabled: false,
+      github_oauth_enabled: false,
+      google_oauth_enabled: true,
+      google_one_tap_enabled: true,
+      google_oauth_client_id: 'google-client',
+      login_agreement_enabled: true,
+      login_agreement_mode: 'modal',
+      login_agreement_revision: 'revision-1',
+      login_agreement_documents: [{
+        id: 'terms',
+        title: 'Terms',
+        content_md: 'Terms content'
+      }]
+    })
+
+    const wrapper = mountLogin()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="google-one-tap"]').attributes('data-enabled')).toBe('false')
+
+    await wrapper.get('[data-testid="accept-login-agreement"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="google-one-tap"]').attributes('data-enabled')).toBe('true')
+  })
+
+  it('cancels One Tap when the user starts entering a password login', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      turnstile_enabled: false,
+      tencent_captcha_enabled: false,
+      aliyun_captcha_enabled: false,
+      backend_mode_enabled: false,
+      password_reset_enabled: false,
+      passkey_enabled: false,
+      github_oauth_enabled: false,
+      google_oauth_enabled: true,
+      google_one_tap_enabled: true,
+      google_oauth_client_id: 'google-client'
+    })
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    await wrapper.get('#email').setValue('user@example.com')
+    expect(oneTapCancelMock).toHaveBeenCalled()
   })
 })

@@ -1,4 +1,10 @@
 <template>
+  <GoogleOneTap
+    ref="googleOneTapRef"
+    :enabled="googleOneTapEligible"
+    :client-id="googleOneTapClientID"
+  />
+
   <AuthLayout>
     <div class="space-y-6">
       <!-- Title -->
@@ -226,6 +232,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
+import GoogleOneTap from '@/components/auth/GoogleOneTap.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
@@ -250,10 +257,13 @@ import type {
 } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { clearAllAffiliateCodes } from '@/utils/oauthAffiliate'
+import {
+  hasAcceptedLoginAgreement,
+  LOGIN_AGREEMENT_STORAGE_KEY
+} from '@/utils/loginAgreement'
+import { isGoogleOneTapEligible, isGoogleOneTapOriginSupported } from '@/utils/googleIdentity'
 
 const { t } = useI18n()
-const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
-
 // ==================== Router & Stores ====================
 
 const router = useRouter()
@@ -286,6 +296,8 @@ const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
+const googleOneTapEnabled = ref<boolean>(false)
+const googleOneTapClientID = ref<string>('')
 const passwordResetEnabled = ref<boolean>(false)
 const passkeyEnabled = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
@@ -322,6 +334,7 @@ const show2FAModal = ref<boolean>(false)
 const totpTempToken = ref<string>('')
 const totpUserEmailMasked = ref<string>('')
 const totpModalRef = ref<InstanceType<typeof TotpLoginModal> | null>(null)
+const googleOneTapRef = ref<InstanceType<typeof GoogleOneTap> | null>(null)
 
 const formData = reactive({
   email: '',
@@ -361,11 +374,35 @@ const showOAuthLogin = computed(
       googleOAuthEnabled.value)
 )
 
+const googleOneTapEligible = computed(
+  () => isGoogleOneTapEligible({
+    publicSettingsLoaded: publicSettingsLoaded.value,
+    isAuthenticated: authStore.isAuthenticated,
+    oneTapEnabled: googleOAuthEnabled.value && googleOneTapEnabled.value,
+    clientID: googleOneTapClientID.value,
+    backendModeEnabled: backendModeEnabled.value,
+    tencentCaptchaEnabled: tencentCaptchaEnabled.value,
+    aliyunCaptchaEnabled: aliyunCaptchaEnabled.value,
+    loginAgreementEnabled: loginAgreementEnabled.value,
+    loginAgreementAccepted: !agreementGateActive.value,
+    originSupported: isGoogleOneTapOriginSupported()
+  })
+)
+
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
     appStore.showError(value)
   }
 })
+
+watch(
+  () => [formData.email, formData.password],
+  ([email, password]) => {
+    if (email.trim() || password.trim()) {
+      googleOneTapRef.value?.cancelPrompt()
+    }
+  }
+)
 
 // ==================== Lifecycle ====================
 
@@ -397,6 +434,8 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
+    googleOneTapEnabled.value = settings.google_one_tap_enabled === true
+    googleOneTapClientID.value = settings.google_oauth_client_id || ''
     backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
     passkeyEnabled.value = settings.passkey_enabled === true
@@ -433,22 +472,6 @@ function applyLoginAgreementSettings(settings: {
   agreementAccepted.value = !loginAgreementEnabled.value || hasAcceptedLoginAgreement(loginAgreementRevision.value)
   showAgreementModal.value =
     loginAgreementEnabled.value && !agreementAccepted.value && loginAgreementMode.value !== 'checkbox'
-}
-
-function hasAcceptedLoginAgreement(revision: string): boolean {
-  if (!revision) {
-    return false
-  }
-  try {
-    const raw = localStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
-    if (!raw) {
-      return false
-    }
-    const parsed = JSON.parse(raw) as { revision?: string }
-    return parsed.revision === revision
-  } catch {
-    return false
-  }
 }
 
 function acceptLoginAgreement(): void {
@@ -558,6 +581,7 @@ function validateForm(): boolean {
 // ==================== Form Handlers ====================
 
 async function handleLogin(): Promise<void> {
+  googleOneTapRef.value?.cancelPrompt()
   // Clear previous error
   errorMessage.value = ''
 
@@ -615,6 +639,7 @@ async function handleLogin(): Promise<void> {
 }
 
 async function handlePasskeyLogin(): Promise<void> {
+  googleOneTapRef.value?.cancelPrompt()
   if (agreementGateActive.value) {
     appStore.showWarning(t('legal.loginAgreementPrompt.loginRequiredWarning'))
     if (loginAgreementMode.value !== 'checkbox') {
@@ -657,6 +682,7 @@ async function handlePasskeyLogin(): Promise<void> {
 }
 
 async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
+  googleOneTapRef.value?.cancelPrompt()
   if (authActionDisabled.value) return
 
   if (!actionCaptchaEnabled.value) {

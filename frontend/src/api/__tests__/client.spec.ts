@@ -302,6 +302,46 @@ describe('API Client', () => {
       })
     })
 
+    it('One Tap 401 不刷新旧会话且不离开当前页面', async () => {
+      localStorage.setItem('refresh_token', 'stale-refresh-token')
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+      const refreshSpy = vi.spyOn(axios, 'post').mockRejectedValue(new Error('unexpected refresh'))
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, pathname: '/home', href: '/home' },
+        writable: true,
+      })
+
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 401,
+          data: {
+            code: 401,
+            reason: 'GOOGLE_ONE_TAP_INVALID_CREDENTIAL',
+            message: 'google credential is invalid',
+          },
+        },
+        config: {
+          url: '/auth/oauth/google/one-tap',
+          headers: {},
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+
+      try {
+        await expect(
+          apiClient.post('/auth/oauth/google/one-tap', { credential: 'invalid' })
+        ).rejects.toMatchObject({ reason: 'GOOGLE_ONE_TAP_INVALID_CREDENTIAL' })
+        expect(refreshSpy).not.toHaveBeenCalled()
+        expect(window.location.href).toBe('/home')
+      } finally {
+        Object.defineProperty(window, 'location', {
+          value: originalLocation,
+          writable: true,
+        })
+      }
+    })
+
     it('有 refresh_token 时刷新并重试原请求', async () => {
       localStorage.setItem('auth_token', 'expired-token')
       localStorage.setItem('refresh_token', 'refresh-token')

@@ -598,6 +598,7 @@ export interface SystemSettings {
   github_oauth_redirect_url: string;
   github_oauth_frontend_redirect_url: string;
   google_oauth_enabled: boolean;
+  google_one_tap_enabled: boolean;
   google_oauth_client_id: string;
   google_oauth_client_secret_configured: boolean;
   google_oauth_redirect_url: string;
@@ -905,6 +906,7 @@ export interface UpdateSettingsRequest {
   github_oauth_redirect_url?: string;
   github_oauth_frontend_redirect_url?: string;
   google_oauth_enabled?: boolean;
+  google_one_tap_enabled?: boolean;
   google_oauth_client_id?: string;
   google_oauth_client_secret?: string;
   google_oauth_redirect_url?: string;

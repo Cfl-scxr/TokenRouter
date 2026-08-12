@@ -147,6 +147,7 @@ type UpdateSettingsRequest struct {
 	GitHubOAuthRedirectURL         string `json:"github_oauth_redirect_url"`
 	GitHubOAuthFrontendRedirectURL string `json:"github_oauth_frontend_redirect_url"`
 	GoogleOAuthEnabled             bool   `json:"google_oauth_enabled"`
+	GoogleOneTapEnabled            bool   `json:"google_one_tap_enabled"`
 	GoogleOAuthClientID            string `json:"google_oauth_client_id"`
 	GoogleOAuthClientSecret        string `json:"google_oauth_client_secret"`
 	GoogleOAuthRedirectURL         string `json:"google_oauth_redirect_url"`
@@ -1691,6 +1692,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GitHubOAuthRedirectURL:                 req.GitHubOAuthRedirectURL,
 		GitHubOAuthFrontendRedirectURL:         req.GitHubOAuthFrontendRedirectURL,
 		GoogleOAuthEnabled:                     req.GoogleOAuthEnabled,
+		GoogleOneTapEnabled:                    req.GoogleOneTapEnabled,
 		GoogleOAuthClientID:                    req.GoogleOAuthClientID,
 		GoogleOAuthClientSecret:                req.GoogleOAuthClientSecret,
 		GoogleOAuthRedirectURL:                 req.GoogleOAuthRedirectURL,
@@ -2222,6 +2224,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GitHubOAuthRedirectURL:                           updatedSettings.GitHubOAuthRedirectURL,
 		GitHubOAuthFrontendRedirectURL:                   updatedSettings.GitHubOAuthFrontendRedirectURL,
 		GoogleOAuthEnabled:                               updatedSettings.GoogleOAuthEnabled,
+		GoogleOneTapEnabled:                              updatedSettings.GoogleOneTapEnabled,
 		GoogleOAuthClientID:                              updatedSettings.GoogleOAuthClientID,
 		GoogleOAuthClientSecretConfigured:                updatedSettings.GoogleOAuthClientSecretConfigured,
 		GoogleOAuthRedirectURL:                           updatedSettings.GoogleOAuthRedirectURL,

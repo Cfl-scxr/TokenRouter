@@ -18,6 +18,12 @@ const (
 	NonceTemplate = "__CSP_NONCE__"
 	// CloudflareInsightsDomain is the domain for Cloudflare Web Analytics
 	CloudflareInsightsDomain = "https://static.cloudflareinsights.com"
+	// GoogleIdentityScriptURL 是 Google Identity Services 官方脚本地址。
+	GoogleIdentityScriptURL = "https://accounts.google.com/gsi/client"
+	// GoogleIdentityResourceURL 是 One Tap iframe 与网络请求使用的路径来源。
+	GoogleIdentityResourceURL = "https://accounts.google.com/gsi/"
+	// GoogleIdentityStyleURL 是 One Tap 浏览器界面使用的官方样式地址。
+	GoogleIdentityStyleURL = "https://accounts.google.com/gsi/style"
 	// TencentCaptchaDomain 是腾讯验证码 2.0 中国站 Web SDK 域名。
 	TencentCaptchaDomain = "https://turing.captcha.qcloud.com"
 	// TencentCaptchaStaticDomain 是腾讯验证码静态资源域名。
@@ -56,6 +62,10 @@ var requiredCSPDirectiveValues = []struct {
 	value     string
 }{
 	{"script-src", CloudflareInsightsDomain},
+	{"script-src", GoogleIdentityScriptURL},
+	{"frame-src", GoogleIdentityResourceURL},
+	{"connect-src", GoogleIdentityResourceURL},
+	{"style-src", GoogleIdentityStyleURL},
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
 	{"style-src", TencentCaptchaStaticDomain},

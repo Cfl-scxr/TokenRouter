@@ -148,7 +148,10 @@ apiClient.interceptors.response.use(
       if (status === 401 && !originalRequest._retry) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
-          url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+          url.includes('/auth/login') ||
+          url.includes('/auth/register') ||
+          url.includes('/auth/refresh') ||
+          url.includes('/auth/oauth/google/one-tap')
 
         // If we have a refresh token and this is not an auth endpoint, try to refresh
         if (refreshToken && !isAuthEndpoint) {
@@ -219,8 +222,8 @@ apiClient.interceptors.response.use(
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         }
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
+        // 登录入口自己的 401 交给当前页面处理，不能误判为已有会话过期。
+        if (!isAuthEndpoint && !window.location.pathname.includes('/login')) {
           window.location.href = '/login'
         }
       }

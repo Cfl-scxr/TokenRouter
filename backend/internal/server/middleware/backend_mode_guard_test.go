@@ -289,6 +289,12 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
+			name:       "enabled_blocks_google_one_tap",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/google/one-tap",
+			wantStatus: http.StatusForbidden,
+		},
+		{
 			name:       "enabled_allows_google_complete_registration",
 			enabled:    "true",
 			path:       "/api/v1/auth/oauth/google/complete-registration",

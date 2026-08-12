@@ -164,23 +164,13 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 	redirectTo string,
 	profile *emailOAuthProfile,
 ) {
-	input := service.EmailOAuthIdentityInput{
-		ProviderType:     provider,
-		ProviderKey:      provider,
-		ProviderSubject:  profile.Subject,
-		Email:            profile.Email,
-		EmailVerified:    profile.EmailVerified,
-		Username:         profile.Username,
-		DisplayName:      profile.DisplayName,
-		AvatarURL:        profile.AvatarURL,
-		UpstreamMetadata: profile.Metadata,
-	}
+	input := newEmailOAuthIdentityInput(provider, profile)
 	affCode := h.emailOAuthAffCode(c)
 	if shouldCreate, err := h.emailOAuthShouldCreatePendingRegistration(c.Request.Context(), input); err != nil {
 		redirectOAuthError(c, frontendCallback, infraerrors.Reason(err), infraerrors.Message(err), "")
 		return
 	} else if shouldCreate {
-		if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
+		if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile, affCode, readOAuthPromoCode(c)); pendingErr != nil {
 			redirectOAuthError(c, frontendCallback, infraerrors.Reason(pendingErr), infraerrors.Message(pendingErr), "")
 			return
 		}
@@ -191,7 +181,7 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithSignupCodes(c.Request.Context(), input, "", affCode, readOAuthPromoCode(c))
 	if err != nil {
 		if errors.Is(err, service.ErrOAuthInvitationRequired) {
-			if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
+			if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile, affCode, readOAuthPromoCode(c)); pendingErr != nil {
 				redirectOAuthError(c, frontendCallback, infraerrors.Reason(pendingErr), infraerrors.Message(pendingErr), "")
 				return
 			}
@@ -213,6 +203,23 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 	fragment.Set("token_type", "Bearer")
 	fragment.Set("redirect", redirectTo)
 	redirectWithFragment(c, frontendCallback, fragment)
+}
+
+func newEmailOAuthIdentityInput(provider string, profile *emailOAuthProfile) service.EmailOAuthIdentityInput {
+	if profile == nil {
+		return service.EmailOAuthIdentityInput{}
+	}
+	return service.EmailOAuthIdentityInput{
+		ProviderType:     provider,
+		ProviderKey:      provider,
+		ProviderSubject:  profile.Subject,
+		Email:            profile.Email,
+		EmailVerified:    profile.EmailVerified,
+		Username:         profile.Username,
+		DisplayName:      profile.DisplayName,
+		AvatarURL:        profile.AvatarURL,
+		UpstreamMetadata: profile.Metadata,
+	}
 }
 
 func (h *AuthHandler) emailOAuthShouldCreatePendingRegistration(ctx context.Context, input service.EmailOAuthIdentityInput) (bool, error) {
@@ -260,6 +267,8 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 	frontendCallback string,
 	redirectTo string,
 	profile *emailOAuthProfile,
+	affCode string,
+	promoCode string,
 ) error {
 	if h == nil || profile == nil {
 		return infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
@@ -272,7 +281,7 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 
 	email := strings.TrimSpace(strings.ToLower(profile.Email))
 	username := strings.TrimSpace(profile.Username)
-	affCode := h.emailOAuthAffCode(c)
+	affCode = strings.TrimSpace(affCode)
 	upstreamClaims := map[string]any{
 		"email":            email,
 		"email_verified":   profile.EmailVerified,
@@ -329,6 +338,7 @@ func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 		BrowserSessionKey:      browserSessionKey,
 		UpstreamIdentityClaims: upstreamClaims,
 		CompletionResponse:     completionResponse,
+		PromoCode:              strings.TrimSpace(promoCode),
 	})
 }
 

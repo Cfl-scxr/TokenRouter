@@ -453,6 +453,21 @@ func (s *SettingService) GetEmailOAuthProviderConfig(ctx context.Context, provid
 	return effective, nil
 }
 
+// GetGoogleOneTapConfig 返回启用 One Tap 后可用于校验 Google ID Token 的最终配置。
+func (s *SettingService) GetGoogleOneTapConfig(ctx context.Context) (config.EmailOAuthProviderConfig, error) {
+	if s == nil || s.settingRepo == nil {
+		return config.EmailOAuthProviderConfig{}, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyGoogleOneTapEnabled})
+	if err != nil {
+		return config.EmailOAuthProviderConfig{}, fmt.Errorf("get google one tap setting: %w", err)
+	}
+	if settings[SettingKeyGoogleOneTapEnabled] != "true" {
+		return config.EmailOAuthProviderConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "google one tap is disabled")
+	}
+	return s.GetEmailOAuthProviderConfig(ctx, "google")
+}
+
 // GetLinuxDoConnectOAuthConfig 返回用于登录的"最终生效" LinuxDo Connect 配置。
 //
 // 优先级：

@@ -41,6 +41,17 @@ export interface OAuthLoginStartResponse {
   authorize_url: string
 }
 
+export interface GoogleOneTapRequest {
+  credential: string
+  redirect?: string
+  aff_code?: string
+  promo_code?: string
+}
+
+export type GoogleOneTapResponse =
+  | (OAuthTokenResponse & { status: 'authenticated' })
+  | { status: 'registration_required'; redirect: string }
+
 export function buildOAuthLoginStartURL(request: OAuthLoginStart): string {
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
@@ -58,6 +69,13 @@ export async function startOAuthLogin(
     proof,
     { params: request.params }
   )
+  return data
+}
+
+export async function exchangeGoogleOneTap(
+  request: GoogleOneTapRequest
+): Promise<GoogleOneTapResponse> {
+  const { data } = await apiClient.post<GoogleOneTapResponse>('/auth/oauth/google/one-tap', request)
   return data
 }
 

@@ -230,6 +230,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyGitHubOAuthRedirectURL,
 		SettingKeyGitHubOAuthFrontendRedirectURL,
 		SettingKeyGoogleOAuthEnabled,
+		SettingKeyGoogleOneTapEnabled,
 		SettingKeyGoogleOAuthClientID,
 		SettingKeyGoogleOAuthClientSecret,
 		SettingKeyGoogleOAuthRedirectURL,
@@ -280,6 +281,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	weChatEnabled, weChatOpenEnabled, weChatMPEnabled, weChatMobileEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
 	gitHubOAuthEnabled := s.emailOAuthPublicEnabled(settings, "github")
 	googleOAuthEnabled := s.emailOAuthPublicEnabled(settings, "google")
+	googleOAuthConfig := s.effectiveEmailOAuthConfig(settings, "google")
+	googleOneTapEnabled := settings[SettingKeyGoogleOneTapEnabled] == "true" && googleOAuthEnabled
+	googleOAuthClientID := ""
+	if googleOneTapEnabled {
+		googleOAuthClientID = strings.TrimSpace(googleOAuthConfig.ClientID)
+	}
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -375,6 +382,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		OIDCOAuthProviderName:            oidcProviderName,
 		GitHubOAuthEnabled:               gitHubOAuthEnabled,
 		GoogleOAuthEnabled:               googleOAuthEnabled,
+		GoogleOneTapEnabled:              googleOneTapEnabled,
+		GoogleOAuthClientID:              googleOAuthClientID,
 		BalanceUnitName:                  balanceUnitName,
 		BalanceUnitSymbol:                balanceUnitSymbol,
 		BalanceIconSVG:                   strings.TrimSpace(settings[SettingKeyBalanceIconSVG]),
@@ -469,6 +478,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 		GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
 		GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+		GoogleOneTapEnabled              bool                     `json:"google_one_tap_enabled"`
+		GoogleOAuthClientID              string                   `json:"google_oauth_client_id"`
 		Version                          string                   `json:"version,omitempty"`
 		// 服务器全局时区与当前 UTC 偏移，供前端标注高峰计费窗口等服务端本地时间。
 		ServerTimezone              string  `json:"server_timezone"`
@@ -545,6 +556,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
+		GoogleOneTapEnabled:              settings.GoogleOneTapEnabled,
+		GoogleOAuthClientID:              settings.GoogleOAuthClientID,
 		Version:                          s.version,
 		ServerTimezone:                   timezone.Name(),
 		ServerUTCOffset:                  timezone.UTCOffset(),

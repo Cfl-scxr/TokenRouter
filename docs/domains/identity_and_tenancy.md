@@ -36,6 +36,8 @@
 
 公开认证动作通过统一验证码边界选择 Cloudflare Turnstile、腾讯天御或阿里云验证码 2.0，三个提供方不能同时启用。普通登录、注册、验证码发送和密码找回校验当前启用的提供方；腾讯天御与阿里云还保护 Passkey 登录 begin 与 OAuth 登录 start，票据只随触发动作提交且不能复用到 finish/callback。腾讯天御的 `cn` 与 `intl` 站点必须在前端 SDK 和服务端校验 endpoint 上保持一致；国际站先在当前表单容器展示 checkbox，成功票据只缓存到一次动作消费，过期、动作失败或显式重置后立即销毁并重新初始化。OAuth 当前用户绑定 start 保留既有已认证边界，不重复要求匿名登录验证码；动作验证码已启用但服务或必要凭据不完整时必须 fail-close。
 
+Google One Tap 是现有 Google 登录的浏览器凭据入口，不创建新的身份类型。前端仅在未登录、公开设置完整、非 backend mode、安全 Origin、登录协议已满足且腾讯/阿里云动作验证码关闭时请求 GIS 展示；Cloudflare Turnstile 不扩大到该入口。服务端只接受经 Google 官方验证器校验签名、`aud`、`iss` 和 `exp` 后的 ID Token，并严格要求非空 `sub`、邮箱及 `email_verified=true`。`sub` 继续作为 Google `AuthIdentity` 的稳定主体；已有用户进入统一 token pair 签发和用户状态检查，新用户写入现有 `PendingAuthSession` 后进入相同的密码、邀请码、邮箱策略、注册开关和优惠补全流程。One Tap 关闭、Google OAuth 配置不完整、动作验证码启用、backend mode、注册关闭或身份不可登录时都必须 fail-close，原始 token 与完整 claims 不得写日志。
+
 普通面板请求使用 JWT 中间件，验证流程至少包括：
 
 1. 只接受配置的 HMAC 签名方法并限制 token 长度，解析签发与过期声明。
@@ -89,7 +91,7 @@ LinuxDo、微信和邮件等外部身份最终都映射到 `AuthIdentity`，而�
 | WeChat | 优先稳定 union/open identity，并兼容历史 provider key/openid channel | 登录与当前用户绑定使用 pending 流程；支付 OAuth 是支付授权，不等同于登录身份 |
 | OIDC | `provider_key` 为 issuer，`provider_subject` 为 issuer 下 subject | 支持创建、接纳、绑定既有登录和当前用户 bind；不能跨 issuer 合并同名 subject |
 | GitHub | GitHub user ID；注册必须取得 verified email | 有登录/注册完成流程；当前个人资料绑定面不提供 GitHub 自助 bind/unbind |
-| Google | Google subject；注册必须取得 verified email | 有登录/注册完成流程；当前个人资料绑定面不提供 Google 自助 bind/unbind |
+| Google | Google `sub`；注册必须取得 verified email | OAuth redirect 与 One Tap 共用身份唯一性、pending 注册和首次绑定权益；当前个人资料绑定面不提供 Google 自助 bind/unbind |
 | DingTalk | unionID 作为稳定 subject，企业/部门资料保存为 claims/属性 | 支持组织策略、创建/绑定既有登录和当前用户 bind；跨组织降级不能用企业内 user ID 替代 unionID |
 
 GitHub/Google 与 LinuxDo/OIDC 等共享 `AuthIdentity` 唯一性，但 HTTP 流程并不完全相同。新增 bind 路由或前端入口前应先补齐服务端意图、CSRF/state、pending session、解绑安全和契约测试，不能只复用 OAuth callback。

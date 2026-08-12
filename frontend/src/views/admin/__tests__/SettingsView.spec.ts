@@ -859,6 +859,35 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(showSuccess).toHaveBeenCalled();
   });
 
+  it("loads and saves Google One Tap settings with the current browser origin", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      google_oauth_enabled: true,
+      google_one_tap_enabled: true,
+      google_oauth_client_id: "google-web-client",
+      google_oauth_client_secret_configured: true,
+      google_oauth_redirect_url:
+        "https://app.example/api/v1/auth/oauth/google/callback",
+      google_oauth_frontend_redirect_url: "/auth/oauth/callback",
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Google One Tap");
+    expect(wrapper.text()).toContain(window.location.origin);
+
+    await wrapper.get("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        google_oauth_enabled: true,
+        google_one_tap_enabled: true,
+        google_oauth_client_id: "google-web-client",
+      }),
+    );
+  });
+
   it("does not render legacy visible payment method controls", async () => {
     const wrapper = mountView();
 

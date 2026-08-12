@@ -191,6 +191,9 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.GoogleOAuthStart)
 		auth.GET("/oauth/google/callback", h.Auth.GoogleOAuthCallback)
+		auth.POST("/oauth/google/one-tap", rateLimiter.LimitWithOptions("oauth-google-one-tap", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Auth.GoogleOneTap)
 		auth.POST("/oauth/google/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-google-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,

@@ -110,6 +110,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGitHubOAuthRedirectURL:                    "",
 		SettingKeyGitHubOAuthFrontendRedirectURL:            defaultGitHubOAuthFrontend,
 		SettingKeyGoogleOAuthEnabled:                        "false",
+		SettingKeyGoogleOneTapEnabled:                       "false",
 		SettingKeyGoogleOAuthClientID:                       "",
 		SettingKeyGoogleOAuthClientSecret:                   "",
 		SettingKeyGoogleOAuthRedirectURL:                    "",
@@ -746,6 +747,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	googleEffective := s.effectiveEmailOAuthConfig(settings, "google")
 	result.GoogleOAuthEnabled = googleEffective.Enabled
+	result.GoogleOneTapEnabled = settings[SettingKeyGoogleOneTapEnabled] == "true"
 	result.GoogleOAuthClientID = strings.TrimSpace(googleEffective.ClientID)
 	result.GoogleOAuthClientSecret = strings.TrimSpace(googleEffective.ClientSecret)
 	result.GoogleOAuthClientSecretConfigured = result.GoogleOAuthClientSecret != ""

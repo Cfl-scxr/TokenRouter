@@ -8,6 +8,7 @@ vi.mock('@/api/client', () => ({
 
 import {
   buildOAuthLoginStartURL,
+  exchangeGoogleOneTap,
   startOAuthLogin,
   type OAuthLoginStart
 } from '@/api/auth'
@@ -41,5 +42,26 @@ describe('OAuth captcha start API', () => {
       provider: 'wechat',
       params: { mode: 'open', redirect: '/billing?plan=pro' }
     })).toBe('/api/v1/auth/oauth/wechat/start?mode=open&redirect=%2Fbilling%3Fplan%3Dpro')
+  })
+
+  it('exchanges a Google One Tap credential through the dedicated endpoint', async () => {
+    const response = {
+      status: 'registration_required',
+      redirect: '/dashboard'
+    }
+    post.mockResolvedValue({ data: response })
+
+    await expect(exchangeGoogleOneTap({
+      credential: 'google-id-token',
+      redirect: '/dashboard',
+      aff_code: 'AFF123',
+      promo_code: 'PROMO123'
+    })).resolves.toEqual(response)
+    expect(post).toHaveBeenCalledWith('/auth/oauth/google/one-tap', {
+      credential: 'google-id-token',
+      redirect: '/dashboard',
+      aff_code: 'AFF123',
+      promo_code: 'PROMO123'
+    })
   })
 })

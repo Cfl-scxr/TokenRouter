@@ -278,6 +278,9 @@ export interface PublicSettings {
   oidc_oauth_provider_name: string
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
+  // 旧版 HTML 注入缓存可能缺少 One Tap 字段，调用方必须按关闭处理。
+  google_one_tap_enabled?: boolean
+  google_oauth_client_id?: string
   backend_mode_enabled: boolean
   version: string
   // 服务器全局时区与当前 UTC 偏移；旧注入缓存可能缺失。

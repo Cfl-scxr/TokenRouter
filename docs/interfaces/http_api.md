@@ -52,6 +52,8 @@ RequestLogger
 
 OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC 同时保留 `GET` 与 `POST`。未启用腾讯天御或阿里云验证码时，`GET` 继续以 `302` 跳转保持兼容；任一动作验证码启用后，匿名登录必须用 `POST`，腾讯票据使用 `tencent_captcha_ticket` 与 `tencent_captcha_randstr`，阿里云的 `captchaVerifyParam` 复用 `turnstile_token` 字段，成功响应的 `data.authorize_url` 由前端再导航。`*/bind/start` 是当前用户绑定入口，不消费匿名登录验证码。Passkey 登录的 `/auth/passkey/login/begin` 使用相同的提供方字段映射，`finish` 只接受 ceremony session 和 WebAuthn credential。
 
+`POST /api/v1/auth/oauth/google/one-tap` 接受浏览器 GIS 返回的 `credential`、本地 `redirect` 及可选 `aff_code`/`promo_code`。credential 上限为 16 KiB，入口按客户端 IP 使用 Redis `20 次/分钟` fail-close 限流；不接收 Client Secret，也不能记录 token 或未验证 claims。验证和已有用户登录成功时，统一 envelope 的 `data` 返回 `status=authenticated` 与标准 `access_token`、`refresh_token`、`expires_in`、`token_type`；新用户只返回 `status=registration_required` 与本地 redirect，并通过 HttpOnly pending cookies 继续 `/auth/oauth/callback` 的既有补全状态机。One Tap 设置或 Google OAuth 配置无效、backend mode、腾讯/阿里云动作验证码启用、注册关闭、token 无效或用户状态不可登录时拒绝。Turnstile 单独开启时不新增该入口的校验范围。
+
 部分下载路由使用短期签名票据，以支持浏览器原生下载大文件；票据只授权一个预生成资源，不能等价为用户 JWT。模型列表、用量和既有批任务管理即使跳过消费余额检查，仍要执行 Key 身份和资源归属验证。
 
 上游声明倍率探测与 Key 账单自省已从路由表完全注销：`GET /v1/sub2api/billing`，`GET|PUT /api/v1/admin/accounts/upstream-billing-probe/settings`，`POST /api/v1/admin/accounts/upstream-billing-probe/batch`，以及 `PUT|POST /api/v1/admin/accounts/:id/upstream-billing-probe` 都返回普通 `404`。这些路径没有兼容 handler、重定向或弃用响应，也不再享有 API Key 非消费请求豁免。
@@ -98,6 +100,7 @@ gemini_generate_content
 | 管理 API Key | 管理接口 `x-api-key` | 绑定首个真实管理员；启用敏感 step-up 后不能执行需近期 TOTP 的操作 |
 | TokenRouter API Key | 网关 `Authorization: Bearer`、`x-api-key`，Gemini 兼容 `x-goog-api-key` | Key、用户/团队、分组、IP、额度/订阅和请求资源归属；通用网关不接受 query Key |
 | OAuth/pending completion 状态 | auth callback 和完成接口 | provider state、浏览器会话、一次性完成码与过期时间共同约束 |
+| Google GIS ID Token | `/api/v1/auth/oauth/google/one-tap` 请求体 | 仅经官方验证器校验后的 `sub` 和 verified email 可进入现有 Google 身份与 pending 流程；不能作为其它接口的 Bearer 凭据 |
 | 支付 webhook 签名 | 原始 body/query + provider headers | 只授权解释一条已绑定本地订单的通知，仍需校验金额和 metadata |
 | 下载/resume ticket | 指定公共恢复或下载路由 | 有时限、限定资源和操作，不能升级为一般会话 |
 

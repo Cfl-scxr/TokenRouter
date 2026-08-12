@@ -296,6 +296,7 @@ const (
 	SettingKeyGitHubOAuthRedirectURL         = "github_oauth_redirect_url"
 	SettingKeyGitHubOAuthFrontendRedirectURL = "github_oauth_frontend_redirect_url"
 	SettingKeyGoogleOAuthEnabled             = "google_oauth_enabled"
+	SettingKeyGoogleOneTapEnabled            = "google_one_tap_enabled"
 	SettingKeyGoogleOAuthClientID            = "google_oauth_client_id"
 	SettingKeyGoogleOAuthClientSecret        = "google_oauth_client_secret"
 	SettingKeyGoogleOAuthRedirectURL         = "google_oauth_redirect_url"

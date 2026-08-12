@@ -1,4 +1,9 @@
 <template>
+  <GoogleOneTap
+    :enabled="googleOneTapEligible"
+    :client-id="googleOneTapClientID"
+  />
+
   <!-- Custom Home Content: Full Page Mode -->
   <div v-if="homeContent" class="min-h-screen">
     <!-- iframe mode -->
@@ -515,6 +520,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import GitHubMark from '@/components/auth/GitHubMark.vue'
+import GoogleOneTap from '@/components/auth/GoogleOneTap.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -522,6 +528,8 @@ import { useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels, getMarketplaceStats } from '@/api/marketplace'
 import type { MarketplaceGroup, MarketplaceStats } from '@/types'
 import { sanitizeUrl } from '@/utils/url'
+import { hasAcceptedLoginAgreement } from '@/utils/loginAgreement'
+import { isGoogleOneTapEligible, isGoogleOneTapOriginSupported } from '@/utils/googleIdentity'
 import {
   providerBrandDisplayName,
   providerBrandFilterKey,
@@ -617,6 +625,27 @@ const userInitial = computed(() => {
   const user = authStore.user
   if (!user || !user.email) return ''
   return user.email.charAt(0).toUpperCase()
+})
+
+const googleOneTapClientID = computed(
+  () => appStore.cachedPublicSettings?.google_oauth_client_id || ''
+)
+const googleOneTapEligible = computed(() => {
+  const settings = appStore.cachedPublicSettings
+  if (!settings) return false
+  const agreementEnabled = settings.login_agreement_enabled === true
+  return isGoogleOneTapEligible({
+    publicSettingsLoaded: appStore.publicSettingsLoaded,
+    isAuthenticated: isAuthenticated.value,
+    oneTapEnabled: settings.google_one_tap_enabled === true,
+    clientID: googleOneTapClientID.value,
+    backendModeEnabled: settings.backend_mode_enabled,
+    tencentCaptchaEnabled: settings.tencent_captcha_enabled === true,
+    aliyunCaptchaEnabled: settings.aliyun_captcha_enabled === true,
+    loginAgreementEnabled: agreementEnabled,
+    loginAgreementAccepted: !agreementEnabled || hasAcceptedLoginAgreement(settings.login_agreement_revision || ''),
+    originSupported: isGoogleOneTapOriginSupported()
+  })
 })
 
 const currentYear = computed(() => new Date().getFullYear())

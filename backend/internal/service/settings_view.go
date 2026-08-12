@@ -142,6 +142,7 @@ type SystemSettings struct {
 	GitHubOAuthRedirectURL            string
 	GitHubOAuthFrontendRedirectURL    string
 	GoogleOAuthEnabled                bool
+	GoogleOneTapEnabled               bool
 	GoogleOAuthClientID               string
 	GoogleOAuthClientSecret           string
 	GoogleOAuthClientSecretConfigured bool
@@ -363,6 +364,8 @@ type PublicSettings struct {
 	OIDCOAuthProviderName    string
 	GitHubOAuthEnabled       bool
 	GoogleOAuthEnabled       bool
+	GoogleOneTapEnabled      bool
+	GoogleOAuthClientID      string
 	Version                  string
 	BalanceUnitName          string
 	BalanceUnitSymbol        string

@@ -99,6 +99,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
+		GoogleOneTapEnabled:              settings.GoogleOneTapEnabled,
+		GoogleOAuthClientID:              settings.GoogleOAuthClientID,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		TeamEnabled:                      settings.TeamEnabled,
