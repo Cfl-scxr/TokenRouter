@@ -2,6 +2,7 @@
   <div class="ba-theme-shell relative flex min-h-screen items-center justify-center overflow-hidden p-4">
     <!-- Background -->
     <div class="ba-theme-backdrop pointer-events-none fixed inset-0"></div>
+    <AuthBackground />
 
     <!-- Content Container -->
     <div class="relative z-10 w-full max-w-md">
@@ -44,6 +45,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AuthBackground from '@/components/auth/AuthBackground.vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
