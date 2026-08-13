@@ -1073,6 +1073,14 @@ func (s *SettingService) GetAccountSchedulingThresholds(ctx context.Context) map
 
 		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyAccountSchedulingThresholds)
 		if err != nil {
+			if errors.Is(err, ErrSettingNotFound) {
+				// 未配置阈值属于稳定默认状态，按正常周期缓存，避免热点路径持续查询数据库。
+				accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+					thresholds: cloneAccountSchedulingThresholds(thresholds),
+					expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+				})
+				return cloneAccountSchedulingThresholds(thresholds), nil
+			}
 			slog.Warn("failed to get account scheduling thresholds, falling back to defaults", "error", err)
 			accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
 				thresholds: cloneAccountSchedulingThresholds(thresholds),
