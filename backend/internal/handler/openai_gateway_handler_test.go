@@ -357,6 +357,28 @@ func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespons
 	assert.Contains(t, body, "Upstream request failed")
 }
 
+func TestOpenAIEnsureForwardErrorResponse_CompactKeepaliveOnlyWritesResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	service.MarkOpenAICompactClientStream(c)
+
+	stop := service.StartOpenAICompactSSEKeepalive(c, 5*time.Millisecond)
+	defer stop()
+	before := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+	require.Equal(t, before, service.OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	// 模拟上游错误路径已设置 committed 标记，但未实际写出语义事件。
+	service.MarkResponseCommitted(c)
+
+	h := &OpenAIGatewayHandler{}
+	require.True(t, h.ensureForwardErrorResponse(c, false))
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), "event: response.failed\n")
+	require.NotContains(t, w.Body.String(), "event: error\n")
+}
+
 func TestOpenAIEnsureForwardErrorResponse_ResponsesRouteCyberWarningEmitsOriginalMessage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
