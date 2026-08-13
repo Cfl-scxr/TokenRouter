@@ -140,9 +140,9 @@ dataSharing: {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn)",
+          "Emails from allowlist domains can register without a quota. When the allowlist is not empty, every other registrable domain can register one account. Empty the allowlist to remove the quota for all domains (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn).",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
-        emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
+        emailSuffixWhitelistInputHint: 'Empty the allowlist to remove the registration quota. Use *.edu.cn to match edu.cn and its subdomains.',
         emailNormalization: 'Email Normalization',
         emailNormalizationHint:
           "When enabled, registration or email updates strip +tags for all domains, treat Gmail/Googlemail dot variants and trailing domain dots as the same inbox, and compare against all registered accounts. Existing stored emails are unchanged.",

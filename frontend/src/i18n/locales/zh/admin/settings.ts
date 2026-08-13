@@ -138,9 +138,9 @@ dataSharing: {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
+          "白名单域名的邮箱可无限注册；白名单非空时，其他可注册主域名各限注册一个账户。清空白名单后，所有域名均不限制注册数量（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
-        emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
+        emailSuffixWhitelistInputHint: '清空白名单后不限制注册数量。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         emailNormalization: '邮箱地址归一化',
         emailNormalizationHint:
           '启用后，注册或修改邮箱时会移除所有域名的 +标签，将 Gmail/Googlemail 点号变体和域名根点视为同一收件箱，并与全部已注册账号比较。不会修改已保存的邮箱。',
