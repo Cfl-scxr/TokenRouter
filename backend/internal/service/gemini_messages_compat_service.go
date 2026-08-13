@@ -3009,6 +3009,11 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 	if statusCode != 429 {
 		return
 	}
+	// 池模式账号保留在上游账号池中，由请求级重试或切号消化 429；
+	// 管理员显式配置的自定义错误策略优先，命中时仍允许写入账号状态。
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
+		return
+	}
 
 	oauthType := account.GeminiOAuthType()
 	tierID := account.GeminiTierID()
