@@ -194,6 +194,9 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.registration.emailNormalization": "邮箱地址归一化",
     "admin.settings.registration.emailNormalizationHint":
       "启用后，注册或修改邮箱时会按归一化后的邮箱地址检查重复注册。",
+    "admin.settings.registration.emailDomainQuota": "非白名单域名限量注册",
+    "admin.settings.registration.emailDomainQuotaHint":
+      "开启后，其他可注册主域名各限注册一个账户。",
     "admin.settings.wechatConnect.title": "微信登录",
     "admin.settings.wechatConnect.description": "用于微信开放平台或公众号/小程序的第三方登录配置。",
     "admin.settings.wechatConnect.enabledLabel": "启用微信登录",
@@ -462,6 +465,7 @@ const baseSettingsResponse = {
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
   registration_email_normalization: false,
+  registration_email_domain_quota_enabled: false,
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -2243,6 +2247,34 @@ describe("admin SettingsView security tab controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         registration_email_normalization: true,
+      }),
+    );
+  });
+
+  it("renders and submits the email domain quota switch", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      registration_email_domain_quota_enabled: true,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const quotaSetting = wrapper
+      .findAll("div")
+      .find((node) => node.text().includes("非白名单域名限量注册"));
+    expect(quotaSetting).toBeDefined();
+    const quotaToggle = quotaSetting?.find("input.toggle-stub");
+    expect(quotaToggle?.exists()).toBe(true);
+    expect((quotaToggle?.element as HTMLInputElement | undefined)?.checked).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registration_email_domain_quota_enabled: true,
       }),
     );
   });

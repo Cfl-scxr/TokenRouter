@@ -392,8 +392,9 @@ func TestAuthService_Register_ReservedEmail(t *testing.T) {
 func TestAuthService_Register_EmailDomainRegistrationLimit(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"other.com": 1}}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 	}, nil, nil)
 
 	_, _, err := service.Register(context.Background(), "user@other.com", "password")
@@ -405,14 +406,79 @@ func TestAuthService_Register_EmailDomainRegistrationLimit(t *testing.T) {
 func TestAuthService_Register_NonWhitelistDomainAllowsFirstAccount(t *testing.T) {
 	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0}}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 	}, nil, nil)
 
 	_, user, err := service.Register(context.Background(), "first@sub.custom.example", "password")
 	require.NoError(t, err)
 	require.Equal(t, int64(9), user.ID)
 	require.Equal(t, []string{"custom.example"}, repo.domainGuardCalls)
+}
+
+func TestAuthService_Register_NonWhitelistDomainRejectedWhenQuotaDisabledByDefault(t *testing.T) {
+	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "first@custom.example", "password")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	require.Equal(t, "EMAIL_SUFFIX_NOT_ALLOWED", infraerrors.FromError(err).Reason)
+	require.Empty(t, repo.created)
+	require.Empty(t, repo.domainGuardCalls)
+}
+
+func TestAuthService_Register_NonWhitelistDomainRejectedWhenQuotaExplicitlyDisabled(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "false",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "first@custom.example", "password")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+}
+
+// 预检通过后管理员关闭开关时，最终创建阶段必须重新读取设置并恢复严格白名单。
+func TestAuthService_CreateRegisteredUser_RechecksDomainQuotaSwitch(t *testing.T) {
+	ctx := context.Background()
+	settings := map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+	}
+	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0}}
+	cfg := &config.Config{Default: config.DefaultConfig{UserConcurrency: 1}}
+	settingService := NewSettingService(&settingRepoStub{values: settings}, cfg)
+	service := NewAuthService(
+		nil,
+		repo,
+		nil,
+		nil,
+		cfg,
+		settingService,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	require.NoError(t, service.validateRegistrationEmailQuota(ctx, "first@custom.example"))
+	settings[SettingKeyRegistrationEmailDomainQuotaEnabled] = "false"
+
+	err := service.createRegisteredUser(ctx, &User{Email: "first@custom.example"}, &registrationArtifacts{
+		enforceEmailDomainQuota: true,
+	})
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	require.Empty(t, repo.created)
+	require.Empty(t, repo.domainGuardCalls)
 }
 
 func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
@@ -431,14 +497,37 @@ func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
 func TestAuthService_SendVerifyCode_EmailDomainRegistrationLimit(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"other.com": 1}}
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 	}, nil, nil)
 
 	err := service.SendVerifyCode(context.Background(), "user@other.com")
 	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
 	appErr := infraerrors.FromError(err)
 	require.Equal(t, "EMAIL_DOMAIN_REGISTRATION_LIMIT", appErr.Reason)
+}
+
+func TestAuthService_SendVerifyCode_NonWhitelistDomainRejectedWhenQuotaDisabled(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	}, nil, nil)
+
+	err := service.SendVerifyCode(context.Background(), "user@custom.example")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+}
+
+func TestAuthService_SendVerifyCodeAsync_NonWhitelistDomainRejectedWhenQuotaDisabled(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	}, nil, nil)
+
+	_, err := service.SendVerifyCodeAsync(context.Background(), "user@custom.example")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
 }
 
 func TestAuthService_Register_CreateError(t *testing.T) {

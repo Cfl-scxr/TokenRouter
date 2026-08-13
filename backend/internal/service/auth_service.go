@@ -1007,20 +1007,21 @@ func (s *AuthService) createRegisteredUser(ctx context.Context, user *User, arti
 	if artifacts == nil {
 		artifacts = &registrationArtifacts{}
 	}
-	domainLimit := ""
-	if artifacts.enforceEmailDomainQuota {
-		var err error
-		domainLimit, err = s.registrationEmailDomainLimit(ctx, user.Email)
-		if err != nil {
-			return err
-		}
-	}
 	normalizedEmail := ""
 	if s.settingService != nil && s.settingService.IsRegistrationEmailNormalizationEnabled(ctx) {
 		normalizedEmail = NormalizeRegistrationEmailAddress(user.Email)
 	}
 
 	run := func(runCtx context.Context) error {
+		domainLimit := ""
+		if artifacts.enforceEmailDomainQuota {
+			var err error
+			domainLimit, err = s.registrationEmailDomainLimit(runCtx, user.Email)
+			if err != nil {
+				return err
+			}
+		}
+
 		if normalizedEmail != "" {
 			if dbent.TxFromContext(runCtx) != nil {
 				if err := s.userRepo.LockRegistrationEmail(runCtx, normalizedEmail); err != nil {
@@ -1377,8 +1378,18 @@ func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email
 }
 
 // validateRegistrationEmailQuota 保留白名单为空时的全放行行为；配置白名单后，
-// 非白名单邮箱按可注册主域名共享一个注册名额。
+// 默认严格拒绝非白名单邮箱，仅在域名额度开关开启时按主域名共享一个名额。
 func (s *AuthService) validateRegistrationEmailQuota(ctx context.Context, email string) error {
+	if s == nil || s.settingService == nil {
+		return nil
+	}
+	whitelist := s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
+	if !IsRegistrationEmailSuffixLimited(email, whitelist) {
+		return nil
+	}
+	if !s.settingService.IsRegistrationEmailDomainQuotaEnabled(ctx) {
+		return buildEmailSuffixNotAllowedError(whitelist)
+	}
 	domain, err := s.registrationEmailDomainLimit(ctx, email)
 	if err != nil || domain == "" {
 		return err
@@ -1409,6 +1420,10 @@ func (s *AuthService) registrationEmailDomainLimit(ctx context.Context, email st
 	whitelist := s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
 	if !IsRegistrationEmailSuffixLimited(email, whitelist) {
 		return "", nil
+	}
+	// 事务内再次读取开关，避免预检后设置被关闭仍按额度放行。
+	if !s.settingService.IsRegistrationEmailDomainQuotaEnabled(ctx) {
+		return "", buildEmailSuffixNotAllowedError(whitelist)
 	}
 	domain := RegistrationEmailDomain(email)
 	if domain == "" {

@@ -285,6 +285,7 @@ describe('RegisterView', () => {
       github_oauth_enabled: false,
       google_oauth_enabled: false,
       registration_email_suffix_whitelist: ['@allowed.example'],
+      registration_email_domain_quota_enabled: true,
     })
 
     const wrapper = await mountView()
@@ -315,6 +316,7 @@ describe('RegisterView', () => {
       github_oauth_enabled: false,
       google_oauth_enabled: false,
       registration_email_suffix_whitelist: ['@allowed.example'],
+      registration_email_domain_quota_enabled: true,
     })
     registerMock.mockRejectedValueOnce({
       reason: 'EMAIL_DOMAIN_REGISTRATION_LIMIT',
@@ -328,5 +330,63 @@ describe('RegisterView', () => {
     await flushPromises()
 
     expect(showErrorMock).toHaveBeenCalledWith('auth.emailDomainRegistrationLimit')
+  })
+
+  it('rejects a non-whitelist domain locally when quota is disabled by default', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      registration_enabled: true,
+      email_verify_enabled: false,
+      promo_code_enabled: false,
+      invitation_code_enabled: false,
+      affiliate_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      linuxdo_oauth_enabled: false,
+      wechat_oauth_enabled: false,
+      oidc_oauth_enabled: false,
+      github_oauth_enabled: false,
+      google_oauth_enabled: false,
+      registration_email_suffix_whitelist: ['@allowed.example'],
+    })
+
+    const wrapper = await mountView()
+    await wrapper.get('#email').setValue('first@custom.example')
+    await wrapper.get('#password').setValue('secret123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('auth.emailSuffixNotAllowedWithAllowed')
+    expect(wrapper.get('#email').classes()).toContain('input-error')
+  })
+
+  it('submits a whitelisted domain when quota is disabled', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      registration_enabled: true,
+      email_verify_enabled: false,
+      promo_code_enabled: false,
+      invitation_code_enabled: false,
+      affiliate_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      linuxdo_oauth_enabled: false,
+      wechat_oauth_enabled: false,
+      oidc_oauth_enabled: false,
+      github_oauth_enabled: false,
+      google_oauth_enabled: false,
+      registration_email_suffix_whitelist: ['@allowed.example'],
+    })
+
+    const wrapper = await mountView()
+    await wrapper.get('#email').setValue('user@allowed.example')
+    await wrapper.get('#password').setValue('secret123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'user@allowed.example' }),
+    )
   })
 })

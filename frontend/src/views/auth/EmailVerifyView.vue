@@ -196,6 +196,11 @@ import {
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode } from '@/utils/apiError'
+import {
+  formatRegistrationEmailSuffixWhitelistForMessage,
+  isRegistrationEmailSuffixAllowed,
+  normalizeRegistrationEmailSuffixWhitelist
+} from '@/utils/registrationEmailPolicy'
 import { clearAllAffiliateCodes, loadAffiliateCode, oauthAffiliatePayload } from '@/utils/oauthAffiliate'
 import type { PublicSettings } from '@/types'
 
@@ -264,6 +269,8 @@ const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
 const publicSettings = ref<PublicSettings | null>(null)
 const siteName = computed(() => resolveLocalizedSiteName(publicSettings.value))
+const registrationEmailSuffixWhitelist = ref<string[]>([])
+const emailDomainQuotaEnabled = ref<boolean>(false)
 
 // Turnstile for resend
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
@@ -363,6 +370,10 @@ onMounted(async () => {
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     publicSettings.value = settings
+    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
+      settings.registration_email_suffix_whitelist || []
+    )
+    emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -485,7 +496,16 @@ async function acquireCreateAccountActionProof(): Promise<boolean> {
 }
 
 function isPendingOAuthFlow(): boolean {
-  return Boolean(pendingProvider.value.trim())
+	return Boolean(pendingProvider.value.trim())
+}
+
+// pending OAuth 可能提交存量非白名单邮箱用于绑定已有账号，必须交由后端先解析用户。
+function shouldBypassRegistrationEmailPolicy(): boolean {
+	return (
+		emailDomainQuotaEnabled.value ||
+		isPendingOAuthFlow() ||
+		Boolean(pendingAuthToken.value.trim())
+	)
 }
 
 function resolvePendingOAuthCallbackRoute(provider: string): string {
@@ -528,8 +548,17 @@ async function sendCode(): Promise<void> {
   let requestSucceeded = false
   let captchaProofUsed = false
 
-  try {
-    const requestPayload = {
+	try {
+		if (
+			!shouldBypassRegistrationEmailPolicy() &&
+			!isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)
+		) {
+			errorMessage.value = buildEmailSuffixNotAllowedMessage()
+			appStore.showError(errorMessage.value)
+			return
+		}
+
+		const requestPayload = {
       email: email.value,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
@@ -646,9 +675,18 @@ function validateForm(): boolean {
 async function handleVerify(): Promise<void> {
   errorMessage.value = ''
 
-  if (!validateForm()) {
-    return
-  }
+	if (!validateForm()) {
+		return
+	}
+
+	if (
+		!shouldBypassRegistrationEmailPolicy() &&
+		!isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)
+	) {
+		errorMessage.value = buildEmailSuffixNotAllowedMessage()
+		appStore.showError(errorMessage.value)
+		return
+	}
 
   if (!(await acquireCreateAccountActionProof())) {
     return
@@ -754,7 +792,23 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
   if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return t('auth.emailDomainRegistrationLimit')
   }
-  return buildAuthErrorMessage(error, { fallback })
+	return buildAuthErrorMessage(error, { fallback })
+}
+
+function buildEmailSuffixNotAllowedMessage(): string {
+	const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
+		registrationEmailSuffixWhitelist.value
+	)
+	if (normalizedWhitelist.length === 0) {
+		return t('auth.emailSuffixNotAllowed')
+	}
+	const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
+	return t('auth.emailSuffixNotAllowedWithAllowed', {
+		suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
+			separator,
+			more: (count) => t('auth.emailSuffixAllowedMore', { count })
+		})
+	})
 }
 </script>
 
