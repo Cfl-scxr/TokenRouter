@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 	responseBody     []byte
 }
 
@@ -37,6 +38,7 @@ type openaiNonStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 	responseBody     []byte
 }
 
@@ -150,6 +152,16 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	// Grok 始终启用上游读取空闲超时，使挂起的 SSE 响应触发故障转移，
+	// 避免持续占用 OAuth 槽位直到客户端取消。优先使用全局网关配置，
+	// 未配置时采用 Grok 专用默认值。
+	if account != nil && account.Platform == PlatformGrok {
+		cfgSec := 0
+		if s.cfg != nil {
+			cfgSec = s.cfg.Gateway.StreamDataIntervalTimeout
+		}
+		streamInterval = resolveGrokStreamIdleTimeout(cfgSec)
 	}
 	// 仅监控上游数据间隔超时，不被下游写入阻塞影响
 	var intervalTicker *time.Ticker
@@ -291,6 +303,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
+	searchCounter := 0
+	// 对 SSE 事件中的搜索工具调用去重，例如 item.done 与 response.completed
+	// 可能包含同一 call_id，重复统计会使附加费接近翻倍。
+	streamSearchSeen := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
@@ -298,6 +314,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			searchCount:      searchCounter,
 			responseBody:     cloneDataSharingRequestBody(finalResponseBody),
 		}
 	}
@@ -495,6 +512,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			imageCounter.AddSSEData(dataBytes)
+			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -726,6 +744,15 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+			}
+			// Grok 在尚未向客户端提交可见字节时执行短期冷却与账号故障转移。
+			// 输出开始后保留旧版 stream_timeout 路径，避免部分 SSE 被重复写入。
+			if account != nil && account.Platform == PlatformGrok {
+				s.tempUnscheduleGrok(ctx, account, grokStreamIdleCooldown, "grok stream idle timeout")
+				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
+					_ = resp.Body.Close()
+					return resultWithUsage(), grokStreamIdleFailoverError(account, streamInterval)
+				}
 			}
 			sendErrorEvent("stream_timeout")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
@@ -1221,6 +1248,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
 		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }
@@ -1328,6 +1356,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
 		responseBody:     cloneDataSharingRequestBody(body),
 	}, nil
 }

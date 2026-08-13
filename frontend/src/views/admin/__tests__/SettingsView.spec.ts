@@ -246,6 +246,7 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.gatewaySections.general": "通用",
     "admin.settings.gatewaySections.anthropic": "Anthropic",
     "admin.settings.gatewaySections.openai": "OpenAI",
+    "admin.settings.gatewaySections.grok": "Grok",
     "admin.settings.gatewaySections.antigravity": "Antigravity",
     "admin.settings.gatewaySections.ollamaCloud": "Ollama Cloud",
     "admin.settings.scheduling.advancedTitle": "通用高级调度器",
@@ -548,6 +549,8 @@ const baseSettingsResponse = {
   fallback_model_openai: "",
   fallback_model_gemini: "",
   fallback_model_antigravity: "",
+  grok_default_text_model: "grok-4.5",
+  grok_cross_client_model_map_enabled: false,
   enable_identity_patch: false,
   identity_patch_prompt: "",
   ops_monitoring_enabled: false,
@@ -689,7 +692,13 @@ async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
 
 async function openGatewaySection(
   wrapper: ReturnType<typeof mountView>,
-  section: "general" | "anthropic" | "openai" | "antigravity" | "ollamaCloud",
+  section:
+    | "general"
+    | "anthropic"
+    | "openai"
+    | "grok"
+    | "antigravity"
+    | "ollamaCloud",
 ) {
   await wrapper
     .get(`[data-testid="gateway-section-tab-${section}"]`)
@@ -1615,18 +1624,19 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateProvider).not.toHaveBeenCalled();
   });
 
-  it("groups gateway settings into five platform sections with General selected by default", async () => {
+  it("groups gateway settings into six platform sections with General selected by default", async () => {
     const wrapper = mountView();
 
     await flushPromises();
     await openGatewayTab(wrapper);
 
     const sectionTabs = wrapper.findAll('[data-testid^="gateway-section-tab-"]');
-    expect(sectionTabs).toHaveLength(5);
+    expect(sectionTabs).toHaveLength(6);
     expect(sectionTabs.map((tab) => tab.text())).toEqual([
       "通用",
       "Anthropic",
       "OpenAI",
+      "Grok",
       "Antigravity",
       "Ollama Cloud",
     ]);
@@ -1654,6 +1664,7 @@ describe("admin SettingsView payment visible method controls", () => {
     const providerBrands = [
       ["anthropic", "Anthropic"],
       ["openai", "OpenAI"],
+      ["grok", "Grok"],
       ["antigravity", "Google"],
       ["ollamaCloud", "Ollama"],
     ];
@@ -1706,6 +1717,17 @@ describe("admin SettingsView payment visible method controls", () => {
         .get('[data-testid="gateway-card-user-prompt-replacement"]')
         .attributes("style"),
     ).toContain("display: none");
+
+    await openGatewaySection(wrapper, "grok");
+    expect(
+      wrapper.get('[data-testid="gateway-forwarding-grok"]').isVisible(),
+    ).toBe(true);
+    expect(wrapper.get('[data-testid="grok-default-text-model"]').isVisible()).toBe(
+      true,
+    );
+    expect(
+      wrapper.get('[data-testid="grok-default-base-url-mode"]').isVisible(),
+    ).toBe(true);
 
     await openGatewaySection(wrapper, "antigravity");
     expect(

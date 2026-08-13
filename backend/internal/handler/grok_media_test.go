@@ -6,6 +6,7 @@ import (
 	"errors"
 	"mime"
 	"mime/multipart"
+	"strings"
 	"testing"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
@@ -78,13 +79,13 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "video generation records usage",
+			name:     "video generation defers usage until status",
 			endpoint: service.GrokMediaEndpointVideosGenerations,
 			model:    "grok-imagine-video-1.5",
-			want:     true,
+			want:     false,
 		},
 		{
-			name:     "video status skips empty model usage",
+			name:     "video status skips immediate helper (status path claims separately)",
 			endpoint: service.GrokMediaEndpointVideoStatus,
 			model:    "",
 			want:     false,
@@ -105,7 +106,18 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, shouldRecordGrokMediaUsage(tt.endpoint, tt.model))
+			// 结果为 nil 时绝不能计费。
+			require.False(t, shouldRecordGrokMediaUsage(tt.endpoint, tt.model, nil))
+			// 即时辅助函数只对图片生成计费，异步视频在状态查询时计费。
+			result := &service.OpenAIForwardResult{ImageCount: 1, VideoCount: 0}
+			if tt.endpoint.IsGenerationRequest() && !isGrokVideoCreateEndpoint(tt.endpoint) && strings.TrimSpace(tt.model) != "" {
+				require.Equal(t, tt.want, shouldRecordGrokMediaUsage(tt.endpoint, tt.model, result))
+			} else {
+				require.False(t, shouldRecordGrokMediaUsage(tt.endpoint, tt.model, result))
+			}
+			// 即使存在生成端点与模型，计费单位为零时也不得计费。
+			empty := &service.OpenAIForwardResult{}
+			require.False(t, shouldRecordGrokMediaUsage(tt.endpoint, tt.model, empty))
 		})
 	}
 }

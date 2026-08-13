@@ -109,6 +109,10 @@ const typeLabel = computed(() => {
   }
 })
 
+const normalizedPlanType = computed(() =>
+  (props.planType || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+)
+
 const planLabel = computed(() => {
   if (!props.planType) return ''
   const lower = props.planType.toLowerCase()
@@ -170,6 +174,32 @@ const typeClass = computed(() => {
 const planBadgeClass = computed(() => {
   if (props.planType && props.planType.toLowerCase() === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+  }
+  // 免费层保持柔和灰色，Grok 付费层使用不同颜色区分。
+  if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') {
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  }
+  if (props.platform === 'grok' && normalizedPlanType.value) {
+    // Heavy 与 SuperGrok Heavy 使用紫色。
+    if (normalizedPlanType.value.includes('heavy')) {
+      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300'
+    }
+    // SuperGrok 使用青色。
+    if (normalizedPlanType.value.includes('supergrok')) {
+      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
+    }
+    // 其它非免费 Grok 套餐使用琥珀色，未来新增套餐也能保持醒目。
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
+  // OpenAI 与其他付费计划标签需要和免费层灰色保持清晰区别。
+  if (normalizedPlanType.value === 'plus') {
+    return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+  }
+  if (normalizedPlanType.value === 'team') {
+    return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+  }
+  if (normalizedPlanType.value === 'pro' || normalizedPlanType.value === 'chatgptpro') {
+    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
   }
   return typeClass.value
 })

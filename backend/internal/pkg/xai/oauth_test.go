@@ -261,6 +261,14 @@ func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
 	require.Equal(t, "http://grok.example.test/v1/responses", target)
 }
 
+func TestValidateTrustedBaseURLAcceptsOfficialRegionalHosts(t *testing.T) {
+	for _, raw := range []string{DefaultUSEast1BaseURL, DefaultUSWest2BaseURL, DefaultEUWest1BaseURL} {
+		got, err := ValidateTrustedBaseURL(raw)
+		require.NoError(t, err, raw)
+		require.Equal(t, raw, got)
+	}
+}
+
 func TestBuildResponsesURLPreservesUnsafeOverrideCustomPath(t *testing.T) {
 	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
 

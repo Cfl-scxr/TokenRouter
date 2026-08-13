@@ -530,6 +530,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
 	var cyberPolicyErr error
+	// Grok Chat bridge 复用 Responses SSE，需对原生搜索调用去重计数以计费。
+	searchCount := 0
+	streamSearchSeen := make(map[string]struct{})
+	countSearch := account != nil && account.IsGrok()
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
@@ -552,7 +556,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if len(responseBody) == 0 {
 			responseBody = streamAccumulator.ResponseBody(&usage)
 		}
-		return &OpenAIForwardResult{
+		out := &OpenAIForwardResult{
 			RequestID:     requestID,
 			Usage:         usage,
 			Model:         originalModel,
@@ -563,6 +567,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			FirstTokenMs:  firstTokenMs,
 			ResponseBody:  responseBody,
 		}
+		if searchCount > 0 {
+			out.SearchCount = searchCount
+		}
+		return out
 	}
 
 	processDataLine := func(payload string) bool {
@@ -570,6 +578,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
+		}
+		if countSearch {
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 		}
 
 		var event apicompat.ResponsesStreamEvent

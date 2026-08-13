@@ -933,6 +933,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenMs *int
 		responseID := ""
 		imageCount := 0
+		searchCount := 0
 		var imageOutputSizes []string
 		var responseBody []byte
 		if reqStream {
@@ -990,6 +991,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageInputSize = imageInputSize
 			forwardResult.ImageOutputSizes = imageOutputSizes
 			forwardResult.BillingModel = imageBillingModel
+		}
+		// Grok 原生 web_search、x_search 与 tool_search 工具调用按每千次计价。
+		// 响应含令牌用量时仍单独计算令牌费用，搜索费用只作叠加。
+		// 配置 search_price_per_1k 时启用；价格为 nil 时 CalculateSearchCost 返回零。
+		if searchCount > 0 && account != nil && account.IsGrok() {
+			forwardResult.SearchCount = searchCount
 		}
 		return forwardResult, nil
 	}

@@ -65,6 +65,14 @@ var AllowedQuotaPlatforms = []string{
 	PlatformGrok,
 }
 
+// AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
+// 仅 openai / anthropic / grok 有原生用量窗口可供评估；其他平台写入阈值无效果。
+var AllowedSchedulingThresholdPlatforms = []string{
+	PlatformOpenAI,
+	PlatformAnthropic,
+	PlatformGrok,
+}
+
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
 func IsAllowedQuotaPlatform(s string) bool {
 	for _, p := range AllowedQuotaPlatforms {
@@ -396,6 +404,11 @@ const (
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 
+	// Grok 默认模型、跨客户端映射与文本上游区域策略。
+	SettingKeyGrokDefaultTextModel           = "grok_default_text_model"
+	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
+	SettingKeyGrokDefaultBaseURLMode         = "grok_default_base_url_mode"
+
 	// =========================
 	// Ops Monitoring (vNext)
 	// =========================
@@ -557,6 +570,10 @@ const (
 // SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台日/周/月 USD 上限（JSON）。
 // 值为 map[platform]{daily,weekly,monthly}，null/缺省 = 不限制；0 = 禁用；>0 = USD 上限。
 const SettingKeyDefaultPlatformQuotas = "default_platform_quotas"
+
+// SettingKeyAccountSchedulingThresholds —— 系统全局：按平台自动停调阈值（JSON map）。
+// 值为 map[platform]percent，1..100；100 = 禁用该平台自动停调。
+const SettingKeyAccountSchedulingThresholds = "account_scheduling_thresholds"
 
 // SettingKeyAuthSourcePlatformQuotas 返回某 auth source 的 platform quota JSON key。
 // 形如 auth_source_default_{source}_platform_quotas

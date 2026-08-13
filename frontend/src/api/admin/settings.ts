@@ -42,6 +42,37 @@ export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuot
 
 const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "qoder", "grok"]
 
+export type SchedulingThresholdPlatformType = "openai" | "anthropic" | "grok"
+
+export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
+
+export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
+  "openai",
+  "anthropic",
+  "grok",
+]
+
+/** 将各平台自动停调阈值归一化到 1 到 100，100 表示关闭。 */
+export function normalizeAccountSchedulingThresholdsMap(
+  input?: Partial<Record<SchedulingThresholdPlatformType, number>> | null,
+): AccountSchedulingThresholdsMap {
+  const result = {} as AccountSchedulingThresholdsMap
+  for (const platform of SCHEDULING_THRESHOLD_PLATFORMS) {
+    const value = input?.[platform]
+    result[platform] = typeof value === "number" && Number.isFinite(value)
+      ? Math.min(100, Math.max(1, Math.trunc(value)))
+      : 100
+  }
+  return result
+}
+
+/** 保存前清洗各平台自动停调阈值。 */
+export function sanitizeAccountSchedulingThresholdsMap(
+  input?: Partial<Record<SchedulingThresholdPlatformType, number>> | null,
+): AccountSchedulingThresholdsMap {
+  return normalizeAccountSchedulingThresholdsMap(input)
+}
+
 /** 归一化为全平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const result: DefaultPlatformQuotasMap = {}
@@ -610,6 +641,12 @@ export interface SystemSettings {
   fallback_model_openai: string;
   fallback_model_gemini: string;
   fallback_model_antigravity: string;
+  grok_default_text_model: string;
+  grok_cross_client_model_map_enabled: boolean;
+  grok_default_base_url_mode: string;
+
+  // 各平台账号自动暂停阈值，100 表示禁用。
+  account_scheduling_thresholds: AccountSchedulingThresholdsMap;
 
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean;
@@ -916,6 +953,10 @@ export interface UpdateSettingsRequest {
   fallback_model_openai?: string;
   fallback_model_gemini?: string;
   fallback_model_antigravity?: string;
+  grok_default_text_model?: string;
+  grok_cross_client_model_map_enabled?: boolean;
+  grok_default_base_url_mode?: string;
+  account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
   ops_monitoring_enabled?: boolean;

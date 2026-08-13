@@ -4,12 +4,13 @@ import en from '../locales/en'
 import zh from '../locales/zh'
 
 describe('gateway settings locale copy', () => {
-  it('keeps the five platform section labels aligned across locales', () => {
+  it('keeps the platform section labels aligned across locales', () => {
     // 标签顺序由页面元数据控制，这里只约束中英文都完整覆盖相同的平台集合。
     const expectedSections = [
       'general',
       'anthropic',
       'openai',
+      'grok',
       'antigravity',
       'ollamaCloud'
     ]

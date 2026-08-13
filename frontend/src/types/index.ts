@@ -549,6 +549,7 @@ export interface PaginationConfig {
 
 export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
 export type GroupSchedulerType = 'basic' | 'advanced'
+export type VideoModelPrices = Record<string, Record<string, number>>
 
 // 分组高级调度器的稀疏覆盖；未出现的字段继承网关通用设置。
 export interface GroupAdvancedSchedulerOverrides {
@@ -723,8 +724,15 @@ export interface Group {
   video_price_480p: number | null
   video_price_720p: number | null
   video_price_1080p: number | null
+  // 可选的 Grok 视频模型族与分辨率价格覆盖。
+  video_model_prices?: VideoModelPrices
   // Codex 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
   web_search_price_per_call: number | null
+  // Grok Voice 显式定价（分组级）
+  search_price_per_1k: number | null
+  audio_realtime_price_per_min: number | null
+  audio_tts_price_per_million_chars: number | null
+  audio_stt_price_per_hour: number | null
   // 高峰时段倍率配置
   peak_rate_enabled: boolean
   peak_start: string
@@ -926,7 +934,12 @@ export interface CreateGroupRequest {
   video_price_480p?: number | null
   video_price_720p?: number | null
   video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -983,7 +996,12 @@ export interface UpdateGroupRequest {
   video_price_480p?: number | null
   video_price_720p?: number | null
   video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -1133,6 +1151,9 @@ export interface TempUnschedulableState {
   matched_keyword: string
   rule_index: number
   error_message: string
+  trigger_count?: number
+  trigger_threshold?: number
+  trigger_window_minutes?: number
 }
 
 export interface TempUnschedulableStatus {
@@ -1377,6 +1398,14 @@ export interface GrokBillingSummary {
   billing_period_start?: string
   billing_period_end?: string
   used_percent?: number | null
+  /** 账单探测返回的美元绝对金额。 */
+  prepaid_balance?: number | null
+  monthly_limit?: number | null
+  monthly_used?: number | null
+  on_demand_cap?: number | null
+  on_demand_used?: number | null
+  top_up_method?: string
+  is_unified_billing_user?: boolean
   plan?: string
   status_code?: number
   source?: string
@@ -1395,6 +1424,7 @@ export interface AccountUsageInfo {
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
   seven_day_fable?: UsageProgress | null
+  thirty_day?: UsageProgress | null
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null

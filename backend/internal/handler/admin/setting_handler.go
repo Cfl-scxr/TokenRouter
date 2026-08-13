@@ -301,6 +301,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FallbackModelOpenAI:                              settings.FallbackModelOpenAI,
 		FallbackModelGemini:                              settings.FallbackModelGemini,
 		FallbackModelAntigravity:                         settings.FallbackModelAntigravity,
+		GrokDefaultTextModel:                             settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:                   settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:                           settings.GrokDefaultBaseURLMode,
 		EnableIdentityPatch:                              settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                              settings.IdentityPatchPrompt,
 		OpsMonitoringEnabled:                             opsEnabled && settings.OpsMonitoringEnabled,
@@ -381,6 +384,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitMode:                       paymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:                         paymentCfg.AlipayForceQRCode,
 		PaymentAlipayMobilePrecreateDeepLink:             paymentCfg.AlipayMobilePrecreateDeepLink,
+		AccountSchedulingThresholds:                      settings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:                       settings.AllowUserViewErrorRequests,
 	}
 
