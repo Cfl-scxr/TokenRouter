@@ -344,8 +344,6 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	return cache
 }
 
-// invalidateCache 使缓存失效，让下次读取时自然重建
-
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
 // 各平台（antigravity / anthropic / gemini / openai）严格独立，不跨平台匹配。
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
@@ -357,6 +355,14 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 func matchingPlatforms(groupPlatform string) []string {
 	return []string{groupPlatform}
 }
+
+// InvalidateCache 失效并重建渠道缓存。
+// 供渠道以外、但会影响渠道缓存内容的变更调用（如分组平台变更）。
+func (s *ChannelService) InvalidateCache() {
+	s.invalidateCache()
+}
+
+// invalidateCache 使缓存失效，并立即尝试重建。
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")

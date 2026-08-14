@@ -683,6 +683,14 @@ type adminServiceImpl struct {
 	httpUpstream         HTTPUpstream
 	tlsFPProfileService  *TLSFingerprintProfileService
 	affiliateService     adminRechargeAffiliateAccruer
+	// 分组平台变更后失效渠道缓存；可为 nil，此时缓存会在 TTL 到期后自然重建。
+	channelCacheInvalidator ChannelCacheInvalidator
+}
+
+// ChannelCacheInvalidator 失效渠道缓存。
+// 使用窄接口避免管理服务依赖整个 ChannelService。
+type ChannelCacheInvalidator interface {
+	InvalidateCache()
 }
 
 // adminRechargeAffiliateAccruer 抽象管理员充值返利能力，便于隔离测试计提行为。
@@ -717,6 +725,7 @@ func NewAdminService(
 	httpUpstream HTTPUpstream,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	affiliateService *AffiliateService,
+	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -743,6 +752,8 @@ func NewAdminService(
 		httpUpstream:         httpUpstream,
 		tlsFPProfileService:  tlsFPProfileService,
 		affiliateService:     affiliateService,
+
+		channelCacheInvalidator: channelCacheInvalidator,
 	}
 }
 

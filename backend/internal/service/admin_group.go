@@ -905,6 +905,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
+	// 渠道缓存持有分组平台，渠道定价、模型映射和模型白名单均依赖该值。
+	// 仅在平台实际变化且事务提交成功后失效，避免继续按旧平台匹配。
+	if group.Platform != previousPlatform && s.channelCacheInvalidator != nil {
+		s.channelCacheInvalidator.InvalidateCache()
+	}
 
 	return group, nil
 }

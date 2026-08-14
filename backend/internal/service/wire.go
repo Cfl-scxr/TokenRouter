@@ -913,6 +913,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGroupAvailabilityProbeRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,
+	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
 	NewModelPricingResolver,
 	ProvideContentModerationService,
 	ProvidePaymentConfigService,
