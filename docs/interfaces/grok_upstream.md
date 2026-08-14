@@ -39,7 +39,7 @@ Responses WebSocket 是 Grok/OpenAI 的原生传输能力，不由兼容 Respons
 
 邮箱密码授权由进程配置 `gateway.grok.password_auth_enabled` 控制，默认关闭且管理端不展示入口。即使显式开启，服务也只接受密码到 SSO、再到 OAuth token 的临时转换。成功重新授权会清除 Grok 的软性消费上限重新授权标记，并以凭据快照/CAS 规则更新账号，避免旧请求覆盖新 token。
 
-账号未保存显式 base URL 时，数据库运行时设置 `grok_default_base_url_mode` 决定文本请求使用 CLI 代理、公共 API 或三个区域 API；账号显式端点始终优先。`grok_default_text_model` 决定空模型和别名的默认目标；`grok_cross_client_model_map_enabled` 开启后才把 GPT、Codex、o 系列和 Claude 模型名映射到该目标。三项设置热更新运行时映射快照，不能把媒体模型继承为文本价格或文本默认模型。
+账号未保存显式 base URL 时，数据库运行时设置 `grok_default_base_url_mode` 决定文本请求使用 CLI 代理、公共 API 或三个区域 API；账号显式端点始终优先。`grok_default_text_model` 作为需要默认文本模型的请求及 Claude Messages 映射的目标；`grok_cross_client_model_map_enabled` 开启后，Grok 分组的 Anthropic Messages 派发会将 Claude 模型 ID 映射到该目标，不影响 Responses 或 Chat Completions 中的其他模型。三项设置热更新运行时映射快照，不能把媒体模型继承为文本价格或文本默认模型。
 
 其它通用账号类型即使可由兼容导入层保存，也没有 Grok 正式凭据和转发契约；`cosy` 明确只属于 Qoder。完整分类见[上游账号能力矩阵](upstream_account_matrix.md)。
 

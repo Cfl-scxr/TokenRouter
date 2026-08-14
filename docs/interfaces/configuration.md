@@ -73,7 +73,7 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 进程配置的默认参数位于 `gateway.advanced_scheduler`，包含 `lb_top_k`、`score_weights` 与粘性逃逸阈值。默认值由 Viper 在解码前注册，因此 YAML 或环境变量显式设置 `sticky_escape_error_rate=0` 会保留为零，表示任意正错误率均可触发逃逸；`sticky_escape_ttft_ms=0` 不合法并在启动校验时失败，不会被默认值覆盖。旧的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*` 和 `gateway.openai_scheduler.sticky_escape_*` 均不再兼容，启动校验会明确拒绝；管理设置请求中的 `openai_advanced_scheduler_*` 或旧全局开关也会返回弃用错误，而不是被静默忽略。OpenAI 配额自动暂停仍是 OpenAI 专属设置，不属于通用高级调度参数。
 
-Grok 文本转发有三项数据库运行时设置：`grok_default_text_model`、`grok_cross_client_model_map_enabled` 和 `grok_default_base_url_mode`。默认模型与跨客户端开关共同发布进程级模型映射快照；base URL 模式只在账号未保存显式端点时生效，可选 CLI 代理、公共 API、`us-east-1`、`us-west-2` 和 `eu-west-1`。这些设置可热更新，不覆盖账号显式 URL，也不改变媒体/Voice 的官方端点选择。
+Grok 文本转发有三项数据库运行时设置：`grok_default_text_model`、`grok_cross_client_model_map_enabled` 和 `grok_default_base_url_mode`。默认模型与跨客户端开关共同发布进程级模型映射快照；当前开关只在 Grok 分组的 Anthropic Messages 派发阶段生效，将 Claude 模型 ID 映射到默认文本模型，不改写 Responses 或 Chat Completions 中的其他模型。base URL 模式只在账号未保存显式端点时生效，可选 CLI 代理、公共 API、`us-east-1`、`us-west-2` 和 `eu-west-1`。这些设置可热更新，不覆盖账号显式 URL，也不改变媒体/Voice 的官方端点选择。
 
 `account_scheduling_thresholds` 是整体替换的 JSON map，只允许 OpenAI、Anthropic 和 Grok 的 1-100 整数，100 表示关闭对应平台自动停调；账号可在自身凭据中覆盖。管理设置的部分更新省略该字段时必须保留数据库值和进程缓存，不能把前端初始默认值当成显式更新。
 
