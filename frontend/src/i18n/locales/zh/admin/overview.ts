@@ -1176,7 +1176,7 @@ affiliates: {
         allowDispatch: '允许 /v1/messages 调度',
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
         familyMappingTitle: '系列默认映射',
-        familyMappingHint: '当请求命中 Opus、Sonnet、Haiku 系列时，会优先使用这里配置的目标模型。',
+        familyMappingHint: '仅对已填写目标模型的系列执行映射；留空时不执行这里的映射。',
         opusModel: 'Opus 映射模型',
         opusModelPlaceholder: '例如: gpt-5.4',
         sonnetModel: 'Sonnet 映射模型',
