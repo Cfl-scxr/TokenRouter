@@ -1019,6 +1019,19 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 }
 
 func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	// 上游代理或 CDN 在请求到达 OpenAI API 前拦截时，可能返回 HTML 403，
+	// 这只能证明当前链路或端点被阻断，不能证明账号凭据或权限失效。
+	// 若继续计数或写账号状态，同一个错误请求会在 failover 中逐个处罚账号，
+	// 最终把整组账号错误地下线。这里只跳过账号处罚，保留调用方既有切号行为。
+	if isHTMLResponse(responseBody) {
+		slog.Warn(
+			"openai_403_html_body_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
