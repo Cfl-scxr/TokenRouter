@@ -89,7 +89,7 @@ gemini_generate_content
 
 `allow_messages_dispatch` 是弃用兼容字段，响应值由新集合是否包含 `anthropic_messages` 派生。只有 OpenAI 分组在新字段缺省时继续接受旧字段输入；两者同时提交时以 `allowed_client_protocols` 为准。`messages_dispatch_model_config` 仅保存 OpenAI Messages 到 GPT 的模型映射，不参与协议准入。
 
-管理 Group 创建、更新和返回体额外包含 `scheduler_type`（`basic` 或 `advanced`）及 `advanced_scheduler_overrides`。后者是高级分组的稀疏参数对象：未出现字段继承网关通用设置，显式 `false`/`0` 是覆盖，更新传空对象会清除全部覆盖；省略该对象则保持现值。公开 Group DTO 不包含这两个管理配置字段。
+管理 Group 创建、更新和返回体额外包含 `scheduler_type`（`basic` 或 `advanced`）及 `advanced_scheduler_overrides`。后者是高级分组的稀疏参数对象：未出现字段继承网关通用设置，显式 `false`/`0` 是覆盖，更新传空对象会清除全部覆盖；省略该对象则保持现值。管理接口还接受 `long_context_pricing_enabled` 和 `model_pricing`：创建时省略长上下文开关默认开启，显式 `false` 才关闭；更新时省略两者都保持原值，`model_pricing: []` 清空分组价卡。公开 Group DTO 返回有效价格开关和价卡供模型市场投影，但不包含调度器管理配置。
 
 准入使用认证后最终选中的分组。普通 Key 在读取正文和调度前检查；复合 Key 需要先读取并恢复正文以解析目标分组，再按该最终分组检查。文本协议开关不扩展 Live、WebSocket、Embedding、图片或视频能力，也不会绕过账号 endpoint capability 等更窄限制。
 

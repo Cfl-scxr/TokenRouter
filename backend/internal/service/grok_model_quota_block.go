@@ -46,6 +46,32 @@ func markGrokModelQuotaBlock(accountID int64, model string, until time.Time) {
 	if max := now.Add(grokModelQuotaBlockMaxTTL); until.After(max) {
 		until = max
 	}
+	storeGrokModelQuotaBlock(accountID, model, until, now)
+}
+
+const (
+	grokModelTransientBlockMinTTL = 500 * time.Millisecond
+	grokModelTransientBlockMaxTTL = 5 * time.Minute
+)
+
+// markGrokModelTransientBlock 在短时容量波动时仅软阻断单个模型，
+// 不使用免费额度的 20 分钟下限，也不暂停整个账号。
+func markGrokModelTransientBlock(accountID int64, model string, until time.Time) {
+	model = strings.TrimSpace(model)
+	if accountID <= 0 || model == "" || until.IsZero() {
+		return
+	}
+	now := time.Now()
+	if !until.After(now.Add(grokModelTransientBlockMinTTL)) {
+		until = now.Add(grokModelTransientBlockMinTTL)
+	}
+	if max := now.Add(grokModelTransientBlockMaxTTL); until.After(max) {
+		until = max
+	}
+	storeGrokModelQuotaBlock(accountID, model, until, now)
+}
+
+func storeGrokModelQuotaBlock(accountID int64, model string, until, now time.Time) {
 	key := grokModelQuotaBlockKey(accountID, model)
 	globalGrokModelQuotaBlocks.mu.Lock()
 	defer globalGrokModelQuotaBlocks.mu.Unlock()

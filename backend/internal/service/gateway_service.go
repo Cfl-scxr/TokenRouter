@@ -1524,8 +1524,13 @@ func (s *GatewayService) resolveChannelPricingWithBaseHint(ctx context.Context, 
 		return nil
 	}
 	gid := apiKey.Group.ID
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, BaseModelHint: baseModelHint})
-	if resolved.Source == PricingSourceChannel {
+	resolved := s.resolver.Resolve(ctx, PricingInput{
+		Model:         billingModel,
+		GroupID:       &gid,
+		BaseModelHint: baseModelHint,
+		Group:         apiKey.Group,
+	})
+	if resolved.Source == PricingSourceGroup || resolved.Source == PricingSourceChannel {
 		return resolved
 	}
 	return nil
@@ -1539,7 +1544,7 @@ func (s *GatewayService) resolveQoderChannelPricingForUsage(
 	// Qoder 必须严格按渠道选定的计费模型匹配，不能跨 R/C/U 寻找其他价格行。
 	billingModel = strings.TrimSpace(billingModel)
 	resolved := s.resolveChannelPricingWithBaseHint(ctx, billingModel, "", apiKey)
-	if resolved != nil && resolved.HasEffectiveChannelPricing() {
+	if resolved != nil && (resolved.Source == PricingSourceGroup || resolved.HasEffectiveChannelPricing()) {
 		return resolved, billingModel
 	}
 	return nil, billingModel

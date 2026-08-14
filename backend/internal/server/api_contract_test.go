@@ -414,6 +414,7 @@ func TestAPIContracts(t *testing.T) {
 						"peak_rate_multiplier": 1,
 						"is_exclusive": false,
 						"status": "active",
+						"long_context_pricing_enabled": false,
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,

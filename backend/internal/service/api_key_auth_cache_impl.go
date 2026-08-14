@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 32 // v32：认证快照包含 Grok 按模型视频价、搜索价和 Voice 定价
+const apiKeyAuthSnapshotVersion = 33 // v33：认证快照包含分组逐模型定价和长上下文开关
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -470,6 +470,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AudioRealtimePricePerMin:        apiKey.Group.AudioRealtimePricePerMin,
 			AudioTTSPricePerMillionChars:    apiKey.Group.AudioTTSPricePerMillionChars,
 			AudioSTTPricePerHour:            apiKey.Group.AudioSTTPricePerHour,
+			LongContextPricingEnabled:       apiKey.Group.LongContextPricingEnabled,
+			ModelPricing:                    cloneChannelModelPricingEntries(apiKey.Group.ModelPricing),
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
@@ -605,6 +607,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AudioRealtimePricePerMin:        snapshot.Group.AudioRealtimePricePerMin,
 			AudioTTSPricePerMillionChars:    snapshot.Group.AudioTTSPricePerMillionChars,
 			AudioSTTPricePerHour:            snapshot.Group.AudioSTTPricePerHour,
+			LongContextPricingEnabled:       snapshot.Group.LongContextPricingEnabled,
+			ModelPricing:                    cloneChannelModelPricingEntries(snapshot.Group.ModelPricing),
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
@@ -666,6 +670,7 @@ func authGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		VideoModelPrices: NormalizeVideoModelPrices(group.VideoModelPrices), WebSearchPricePerCall: group.WebSearchPricePerCall,
 		SearchPricePer1k: group.SearchPricePer1k, AudioRealtimePricePerMin: group.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars: group.AudioTTSPricePerMillionChars, AudioSTTPricePerHour: group.AudioSTTPricePerHour,
+		LongContextPricingEnabled: group.LongContextPricingEnabled, ModelPricing: cloneChannelModelPricingEntries(group.ModelPricing),
 		ClaudeCodeOnly:  group.ClaudeCodeOnly,
 		FallbackGroupID: group.FallbackGroupID, FallbackGroupIDOnInvalidRequest: group.FallbackGroupIDOnInvalidRequest,
 		UnavailableFallbackGroupID: group.UnavailableFallbackGroupID, ModelRouting: group.ModelRouting,
@@ -699,6 +704,8 @@ func groupFromAuthSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		AudioRealtimePricePerMin:     snapshot.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars: snapshot.AudioTTSPricePerMillionChars,
 		AudioSTTPricePerHour:         snapshot.AudioSTTPricePerHour,
+		LongContextPricingEnabled:    snapshot.LongContextPricingEnabled,
+		ModelPricing:                 cloneChannelModelPricingEntries(snapshot.ModelPricing),
 		ClaudeCodeOnly:               snapshot.ClaudeCodeOnly, FallbackGroupID: snapshot.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: snapshot.FallbackGroupIDOnInvalidRequest,
 		UnavailableFallbackGroupID:      snapshot.UnavailableFallbackGroupID, ModelRouting: snapshot.ModelRouting,
@@ -710,4 +717,16 @@ func groupFromAuthSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		ReasoningEffortMappings: snapshot.ReasoningEffortMappings, PeakRateEnabled: snapshot.PeakRateEnabled,
 		PeakStart: snapshot.PeakStart, PeakEnd: snapshot.PeakEnd, PeakRateMultiplier: snapshot.PeakRateMultiplier,
 	}
+}
+
+// cloneChannelModelPricingEntries 复制认证快照中的价卡切片，避免请求对象修改缓存内容。
+func cloneChannelModelPricingEntries(entries []ChannelModelPricing) []ChannelModelPricing {
+	if entries == nil {
+		return nil
+	}
+	cloned := make([]ChannelModelPricing, len(entries))
+	for i := range entries {
+		cloned[i] = entries[i].Clone()
+	}
+	return cloned
 }

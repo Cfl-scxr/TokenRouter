@@ -291,6 +291,10 @@ func isKnownGrokFreeAccount(account *Account) bool {
 	if account == nil || !account.IsGrokOAuth() {
 		return false
 	}
+	// 实时访问令牌 JWT 优先于陈旧的账单或凭据快照，令牌刷新后可立即反映降级到免费档位。
+	if jwtTier := xai.SubscriptionTierFromJWT(account.GetCredential("access_token")); jwtTier != "" {
+		return isGrokFreeSubscriptionTier(jwtTier)
+	}
 	freeSignal := false
 	paidSignal := false
 	inferredFreeSignal := false
@@ -343,8 +347,8 @@ func isKnownGrokFreeAccount(account *Account) bool {
 }
 
 func isGrokFreeSubscriptionTier(tier string) bool {
-	switch strings.ToLower(strings.TrimSpace(tier)) {
-	case "free", "grok-free", "grok_free", "free-tier", "free_tier", "basic", "grok-basic", "grok_basic":
+	switch xai.NormalizeSubscriptionTier(tier) {
+	case "free", "x_basic":
 		return true
 	default:
 		return false

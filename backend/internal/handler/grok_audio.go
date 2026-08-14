@@ -87,7 +87,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		model = "grok-voice-latest"
 	}
 	started := time.Now()
-	proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
+	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
 	elapsed := time.Since(started)
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))
@@ -96,16 +96,21 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 			return
 		}
 	}
-	// 任一端正常关闭时 relay 通常仍返回关闭错误，但已消耗的上游音频时长必须结算。
-	if elapsed > 0 {
-		result := &service.OpenAIForwardResult{
-			// 每个 WebSocket 会话使用独立持久 ID，避免复用客户端 ID 导致合并或重复扣费。
-			RequestID:  service.StableGrokRealtimeBillingRequestID(""),
-			Model:      model,
-			Duration:   elapsed,
-			AudioUsage: &service.AudioUsage{Mode: "realtime", DurationOrUnits: elapsed.Minutes()},
-		}
+	if result := grokRealtimeBillingResult(model, elapsed, audioObserved); result != nil {
 		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result)
+	}
+}
+
+// grokRealtimeBillingResult 仅为实际出现音频且时长为正的会话生成结算事件。
+func grokRealtimeBillingResult(model string, elapsed time.Duration, audioObserved bool) *service.OpenAIForwardResult {
+	if !audioObserved || elapsed <= 0 {
+		return nil
+	}
+	return &service.OpenAIForwardResult{
+		RequestID:  service.StableGrokRealtimeBillingRequestID(""),
+		Model:      model,
+		Duration:   elapsed,
+		AudioUsage: &service.AudioUsage{Mode: "realtime", DurationOrUnits: elapsed.Minutes()},
 	}
 }
 

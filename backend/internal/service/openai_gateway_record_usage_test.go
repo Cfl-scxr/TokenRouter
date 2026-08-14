@@ -1311,6 +1311,67 @@ func TestOpenAIGatewayServiceRecordUsage_LongContextBillingIgnoresLegacyAccountE
 	}
 }
 
+func TestOpenAIGatewayServiceRecordUsage_GroupControlsLongContextBilling(t *testing.T) {
+	// 分组开关是唯一外部策略来源；账户 Extra 中的历史字段不再参与判断。
+	tests := []struct {
+		name        string
+		groupEnable bool
+		wantApplied bool
+	}{
+		{name: "group enabled", groupEnable: true, wantApplied: true},
+		{name: "group disabled", groupEnable: false, wantApplied: false},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newOpenAIRecordUsageServiceForTest(
+				usageRepo,
+				&openAIRecordUsageUserRepoStub{},
+				&openAIRecordUsageSubRepoStub{},
+				nil,
+			)
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+			groupID := int64(1)
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID: "resp_group_long_context_" + tt.name,
+					Usage:     OpenAIUsage{InputTokens: 300000, OutputTokens: 2000},
+					Model:     "gpt-5.4-2026-03-05",
+					Duration:  time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      int64(1020 + i),
+					GroupID: &groupID,
+					Group: &Group{
+						ID:                        groupID,
+						RateMultiplier:            1,
+						LongContextPricingEnabled: tt.groupEnable,
+					},
+				},
+				User: &User{ID: int64(2020 + i)},
+				Account: &Account{
+					ID:       int64(3020 + i),
+					Platform: PlatformOpenAI,
+					Extra:    map[string]any{deprecatedOpenAILongContextBillingExtraKey: !tt.groupEnable},
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, tt.wantApplied, usageRepo.lastLog.LongContextBillingApplied)
+			inputMultiplier := 1.0
+			outputMultiplier := 1.0
+			if tt.wantApplied {
+				inputMultiplier = 2.0
+				outputMultiplier = 1.5
+			}
+			require.InDelta(t, 300000*2.5e-6*inputMultiplier, usageRepo.lastLog.InputCost, 1e-10)
+			require.InDelta(t, 2000*15e-6*outputMultiplier, usageRepo.lastLog.OutputCost, 1e-10)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

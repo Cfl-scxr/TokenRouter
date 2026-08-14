@@ -633,7 +633,8 @@ func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
 func grokSupportsReasoningEffort(model string) bool {
 	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
 	switch model {
-	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.3", "grok-4.3-latest",
+	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
+		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
 		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":
 		return true
@@ -1108,7 +1109,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
 	}
 
-	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+	s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.Header, resp.StatusCode)
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
 	if err != nil {
 		return "", OpenAIUsage{}, fmt.Errorf("read grok composer image bridge response: %w", err)
@@ -1302,6 +1303,12 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
+	// 请求路径中的 Account 指针来自每次 Redis/DB 解码，不是进程内共享缓存；
+	// 这里与 token 刷新和限流写入保持一致，调用方不得跨 goroutine 复用同一指针。
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[grokQuotaSnapshotExtraKey] = snapshot
 	if s.accountRepo != nil {
 		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, updates)
 	}
@@ -1317,6 +1324,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 func (s *OpenAIGatewayService) updateGrokUsageFromResponse(ctx context.Context, account *Account, headers http.Header, statusCode int) {
 	snapshot := parseGrokQuotaSnapshot(headers, statusCode, time.Now())
 	if snapshot != nil {
+		stampGrokQuotaSnapshotForPlan(account, snapshot, grokRequestedModelFromCtx(ctx))
 		s.updateGrokUsageSnapshot(ctx, account, snapshot)
 		return
 	}
@@ -1616,6 +1624,38 @@ func withGrokTeamRateLimitModel(ctx context.Context, model string) context.Conte
 	return context.WithValue(ctx, grokTeamRateLimitModelContextKey{}, model)
 }
 
+// grokRequestedModelFromCtx 读取当前请求实际使用的 Grok 上游模型。
+func grokRequestedModelFromCtx(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	model, _ := ctx.Value(grokTeamRateLimitModelContextKey{}).(string)
+	return strings.TrimSpace(model)
+}
+
+// isGrokHeavyTransientModel 判断模型是否需要独立的瞬态冷却。
+func isGrokHeavyTransientModel(requestedModel string) bool {
+	model := strings.ToLower(strings.TrimSpace(xai.ResolveGrokTextResponsesModelID(requestedModel)))
+	return strings.Contains(model, "multi-agent")
+}
+
+// persistGrokTransientModelCooldown 为高成本模型记录账号内的模型级瞬态冷却。
+func persistGrokTransientModelCooldown(account *Account, decision GrokUpstreamFailureDecision) bool {
+	if account == nil {
+		return false
+	}
+	model := strings.TrimSpace(decision.Model)
+	if model == "" || !isGrokHeavyTransientModel(model) {
+		return false
+	}
+	cooldown := decision.Cooldown
+	if cooldown <= 0 {
+		cooldown = 3 * time.Minute
+	}
+	markGrokModelTransientBlock(account.ID, model, time.Now().Add(cooldown))
+	return true
+}
+
 // applyGrokAccountUpstreamError 先处理精确模型状态和显式策略，再处理非池模式的 Grok 默认状态。
 // 调用方应传入账号映射后的模型；这里仅补做幂等的平台规范化，绝不再次执行账号映射。
 func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
@@ -1641,6 +1681,11 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 
 	now := time.Now()
 	quotaSnapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
+	quotaModel := firstRequestedModel(canonicalModel)
+	if quotaModel == "" {
+		quotaModel = grokRequestedModelFromCtx(ctx)
+	}
+	stampGrokQuotaSnapshotForPlan(account, quotaSnapshot, quotaModel)
 	s.updateGrokUsageSnapshot(stateCtx, account, quotaSnapshot)
 
 	decision := upstreamErrorDecisionWithoutPersistence(account, statusCode)
@@ -1684,6 +1729,9 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 	// Grok API Key 的 5xx 与 OpenAI API Key 共用账号+最终模型的瞬态冷却；
 	// OAuth 和模型未知的请求继续沿用账号级退避，避免扩大既有行为变化。
 	model := firstRequestedModel(canonicalModel)
+	if model == "" {
+		model = quotaModel
+	}
 	if account.Type == AccountTypeAPIKey && model != "" && statusCode >= 500 &&
 		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {
 		s.recordOpenAICompatibleModelTransientFailure(account, model)

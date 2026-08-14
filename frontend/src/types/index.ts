@@ -710,6 +710,7 @@ export interface Group {
   data_sharing_enabled: boolean
   session_isolation_enabled: boolean
   status: 'active' | 'inactive'
+  long_context_pricing_enabled: boolean
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
@@ -763,6 +764,7 @@ export interface AdminGroup extends Group {
   // 仅管理端可配置，公开分组接口不返回调度器模式。
   scheduler_type: GroupSchedulerType
   advanced_scheduler_overrides?: GroupAdvancedSchedulerOverrides
+  model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
 
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
@@ -921,6 +923,8 @@ export interface CreateGroupRequest {
   is_default?: boolean
   data_sharing_enabled?: boolean
   session_isolation_enabled?: boolean
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -983,6 +987,8 @@ export interface UpdateGroupRequest {
   data_sharing_enabled?: boolean
   session_isolation_enabled?: boolean
   status?: 'active' | 'inactive'
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean

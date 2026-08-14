@@ -226,6 +226,9 @@ type CreateGroupInput struct {
 	DataSharingEnabled bool
 	// SessionIsolationEnabled 开启后拒绝其它分组已归属的显式会话切入。
 	SessionIsolationEnabled bool
+	// LongContextPricingEnabled 为 nil 时默认开启，以兼容未发送新字段的客户端。
+	LongContextPricingEnabled *bool
+	ModelPricing              []ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool
 	AllowBatchImageGeneration    bool
@@ -306,8 +309,10 @@ type UpdateGroupInput struct {
 	// DataSharingEnabled 控制分组是否进入数据共享采集流程。
 	DataSharingEnabled *bool
 	// SessionIsolationEnabled 控制目标分组是否开启会话隔离。
-	SessionIsolationEnabled *bool
-	Status                  string
+	SessionIsolationEnabled   *bool
+	Status                    string
+	LongContextPricingEnabled *bool
+	ModelPricing              *[]ChannelModelPricing
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool

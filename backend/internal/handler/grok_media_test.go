@@ -9,9 +9,19 @@ import (
 	"strings"
 	"testing"
 
+	middleware2 "github.com/TokenFlux/TokenRouter/internal/server/middleware"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRecordGrokMediaUsageIgnoresNilResult(t *testing.T) {
+	require.NotPanics(t, func() {
+		recordGrokMediaUsage(
+			nil, nil, nil, nil, middleware2.AuthSubject{}, nil, nil, nil,
+			"", service.ChannelMappingResult{}, nil, "",
+		)
+	})
+}
 
 func TestApplyGrokMediaChannelMappingRewritesForwardBody(t *testing.T) {
 	jsonBody, contentType, err := applyGrokMediaChannelMapping(

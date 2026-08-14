@@ -464,6 +464,9 @@ func (s *OpenAIGatewayService) applyGrokUpstreamFailureDecision(
 	case GrokFailureEmptyUpstream:
 		reason = "grok empty model output"
 	case GrokFailureModelCapacity:
+		if persistGrokTransientModelCooldown(account, decision) {
+			return true
+		}
 		reason = "grok model capacity"
 	case GrokFailureRateLimit:
 		// 不含免费额度语义的纯 429 继续走 Retry-After 与额度请求头快照路径。

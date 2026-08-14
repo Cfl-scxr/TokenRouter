@@ -128,7 +128,8 @@ type Group struct {
 	// 数据共享分组会采集符合规则的 Agent session，用户切换前必须确认须知。
 	DataSharingEnabled bool `json:"data_sharing_enabled"`
 	// 会话隔离开启后，目标分组会拒绝其它分组已归属的显式会话切入。
-	SessionIsolationEnabled bool `json:"session_isolation_enabled"`
+	SessionIsolationEnabled   bool `json:"session_isolation_enabled"`
+	LongContextPricingEnabled bool `json:"long_context_pricing_enabled"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
@@ -235,6 +236,8 @@ type AdminGroup struct {
 	SchedulerType string `json:"scheduler_type"`
 	// AdvancedSchedulerOverrides 仅管理端可见；空字段继承网关通用设置。
 	AdvancedSchedulerOverrides domain.GroupAdvancedSchedulerOverrides `json:"advanced_scheduler_overrides"`
+	// ModelPricing 是分组覆盖渠道与内置价格的管理员价卡。
+	ModelPricing []service.ChannelModelPricing `json:"model_pricing"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`

@@ -21,7 +21,7 @@ TokenRouter 支持 Grok OAuth 订阅账号和标准 xAI API Key 账号，并通�
 
 - 平台名：`grok`
 - 账号类型：OAuth 订阅账号、API Key 账号
-- 主要网关入口：`/v1/responses`、`/responses`、Chat Completions、Messages、Responses WebSocket、`/v1/web_search`、`/v1/tts`、`/v1/stt`、`/v1/custom-voices` 和 `/v1/realtime`；Voice/搜索也提供不带 `/v1` 的同名入口
+- 主要网关入口：`/v1/responses`、`/responses`、Chat Completions、Messages、Responses WebSocket、`/v1/web_search`、`/v1/x_search`、`/v1/tts`、`/v1/stt`、`/v1/custom-voices` 和 `/v1/realtime`；Voice/搜索也提供不带 `/v1` 的同名入口
 - API Key 账号默认上游地址：`https://api.x.ai/v1`
 
 ## 客户端协议
@@ -45,6 +45,8 @@ Responses WebSocket 是 Grok/OpenAI 的原生传输能力，不由兼容 Respons
 
 Grok 使用 OpenAI 兼容能力适配层，但高级调度器由分组而不是平台全局开关决定。最终目标 Group 的 `scheduler_type=advanced` 时，Grok 在既有模型、媒体、账号状态、配额和 transport 硬过滤后复用通用 Top-K 评分；`basic` 保持原有选择顺序。Grok 的请求/令牌额度快照、媒体付费资格和 HTTP bridge 仍是平台专属资格，不能因通用评分缺少这些可选信号而被错误排除。
 
+OAuth 访问令牌 JWT 的数字或字符串 `tier` 是账号档位的首选信号；刷新后新 JWT 有声明时覆盖旧凭据，没有声明时才保留已有值。账单月限额可进一步确认已知付费档位。供应商含糊的 `SuperGrokPro` 只有在 24 小时内观察到 `grok-4.5` Responses 的 Heavy 请求/令牌窗口时才显示为 Heavy，其他模型的新快照会延续但不会刷新该信号；过期或来自其它模型的窗口不能升级档位。明确的 Free、SuperGrok Lite、SuperGrok Plus 和 Heavy 信号不走这条推断。管理端账号徽章和用量条都使用同一规范档位，并在额度快照变化后刷新。
+
 ## 媒体请求格式
 
 JSON 图片编辑和视频生成请求可在 `image`、`images`、`reference_images` 与 `mask` 对象中提供参考图片。与 xAI 直接兼容的请求应使用 `url` 字段；历史 `image_url` 字段仍可使用，TokenRouter 会在转发前把它规范化为 `url`。如果两者同时存在，则保留非空的 `url`；空白 `url` 会回退使用 `image_url`。multipart 图片编辑中的上传文件也会转换为 `url` 形式的 data URL。
@@ -59,9 +61,9 @@ Grok 兼容账号对所选端点返回 HTTP `405` 时，表示该账号不支持
 
 ## 搜索与语音
 
-`POST /v1/web_search` 只允许 Grok 分组，接收查询和最多 20 条结果。请求在选择账号前进入共同内容审计，随后复用常规 Grok 账号资格、并发等待和最多四次账号尝试。服务通过原生 Responses `web_search` 工具执行搜索，只返回实际来源 URL 对应的结果。每次调用使用独立服务端 request ID 作为结算幂等键；不得用查询、IP 或 User-Agent 哈希合并相同搜索。Responses/Chat 路径从上游 usage 或工具事件恢复出的 `SearchCount` 作为 token 费用之外的附加费。
+`POST /v1/web_search` 和 `POST /v1/x_search` 只允许 Grok 分组，接收查询或 `input` 和最多 20 条结果。两者在选择账号前进入共同内容审计，随后复用常规 Grok 账号资格、并发等待和最多四次账号尝试。`web_search` 使用原生 Responses `web_search` 工具；`x_search` 强制使用 `x_search`，并接受 `allowed_x_handles`、`excluded_x_handles`、`from_date`、`to_date` 及图片/视频理解开关。两者只返回实际工具来源 URL 对应的结果，分别以 `grok-web-search` 和 `grok-x-search` 记录计费模型。每次调用使用独立服务端 request ID 作为结算幂等键；不得用查询、IP 或 User-Agent 哈希合并相同搜索。Responses/Chat 路径会保留原生 `x_search` 工具字段，并从上游 usage 或工具事件恢复 `SearchCount` 作为 token 费用之外的附加费。
 
-Voice HTTP 入口包括 TTS、STT 和自定义 Voice 的创建、读取、修改、删除与音频下载；`GET /v1/realtime` 代理 xAI Voice WebSocket。所有入口只允许 Grok 分组，并在整个会话持有并发槽。TTS 按字符、STT 按音频时长、Realtime 按连接音频时长生成 `AudioUsage`；正常或常见断开仍要结算已消费的上游音频时间。Voice 和搜索分别使用分组显式价格，`NULL` 回退代码默认价，显式 `0` 表示免费，且都使用基础分组倍率，不混入文本 token 价格。
+Voice HTTP 入口包括 TTS、STT 和自定义 Voice 的创建、读取、修改、删除与音频下载；`GET /v1/realtime` 代理 xAI Voice WebSocket。所有入口只允许 Grok 分组，并在整个会话持有并发槽。TTS 按字符、STT 按音频时长生成 `AudioUsage`；Realtime 必须先在任一中继方向观察到包含非空音频负载的事件，才按连接会话时长生成用量，握手失败、纯文本或只有转录事件的会话不结算。正常或常见断开仍要结算此前已确认的音频会话。Voice 和搜索分别使用分组显式价格，`NULL` 回退代码默认价，显式 `0` 表示免费，且都使用基础分组倍率，不混入文本 token 价格。
 
 ## 任务归属与结算
 
@@ -81,6 +83,7 @@ Grok Build CLI 的模型配置必须指向 TokenRouter 对外地址（以 `/v1` 
 
 ## 默认模型目录
 
+- `grok-4.6`
 - `grok-4.5`
 - `grok-4.3`
 - `grok-build-0.1`
@@ -95,7 +98,7 @@ Grok Build CLI 的模型配置必须指向 TokenRouter 对外地址（以 `/v1` 
 - `grok-imagine-video`
 - `grok-imagine-video-1.5`
 
-`grok`、`grok-latest` 和 `grok-4.5-latest` 归一化为 `grok-4.5`，其它内置别名由 `internal/pkg/xai/models.go` 维护。模型列表默认展示当前目录，并结合账号模型映射/范围和 API Key 别名；未知模型保持透传，以支持管理员配置的 xAI 兼容上游。
+`grok`、`grok-latest` 和 `grok-4.5-latest` 归一化为 `grok-4.5`，`grok-4.6-latest` 归一化为 `grok-4.6`，其它内置别名由 `internal/pkg/xai/models.go` 维护。模型列表默认展示当前目录，并结合账号模型映射/范围和 API Key 别名；未知模型保持透传，以支持管理员配置的 xAI 兼容上游。未知 Grok 文本族在没有显式定价时按 `grok-4.5` 回退，图片、视频、Voice 和搜索等非文本族不会误用该价格。
 
 ## 环境变量
 

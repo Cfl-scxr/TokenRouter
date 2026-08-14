@@ -42,6 +42,12 @@ type QuotaSnapshot struct {
 	LastProbeAt       string            `json:"last_probe_at,omitempty"`
 	LastHeadersSeenAt string            `json:"last_headers_seen_at,omitempty"`
 	UpdatedAt         string            `json:"updated_at"`
+	// Model 记录产生当前限流响应头的实际上游模型。
+	Model string `json:"model,omitempty"`
+	// PlanFrom45Responses 根据 grok-4.5 Responses 窗口推断档位（8300/53M 表示 Heavy），
+	// 后续其他模型覆盖快照时仍延续该信号。
+	PlanFrom45Responses   string `json:"plan_from_45_responses,omitempty"`
+	PlanFrom45ResponsesAt string `json:"plan_from_45_responses_at,omitempty"`
 }
 
 func (s *QuotaSnapshot) HasObservedHeaders() bool {

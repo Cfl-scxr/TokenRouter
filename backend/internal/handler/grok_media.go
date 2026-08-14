@@ -736,6 +736,10 @@ func recordGrokMediaUsage(
 	body []byte,
 	requestID string,
 ) {
+	// 没有转发结果时不存在可结算用量，也不能继续读取模型元数据。
+	if result == nil {
+		return
+	}
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
@@ -748,7 +752,7 @@ func recordGrokMediaUsage(
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 	channelUsageFields := clientRequestedUsageFields(c, channelMapping, requestModel, result.UpstreamModel)
 	videoTaskID := ""
-	if result != nil && result.VideoCount > 0 {
+	if result.VideoCount > 0 {
 		videoTaskID = strings.TrimSpace(firstNonEmptyString(requestID, result.ResponseID))
 		if stable := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
 			result.RequestID = stable
