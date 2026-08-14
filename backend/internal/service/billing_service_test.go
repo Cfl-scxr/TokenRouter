@@ -1144,7 +1144,7 @@ func TestGetModelPricing_UnknownGrokTextFallsBackToGrok45(t *testing.T) {
 	baseline, err := svc.GetModelPricing("grok-4.5")
 	require.NoError(t, err)
 
-	for _, model := range []string{"grok-5", "grok-5-latest", "x-ai/grok-7", "grok-4.7-beta"} {
+	for _, model := range []string{"grok-5", "grok-5-latest", "x-ai/grok-7", "grok-4.7-beta", "grok-2-vision-1212"} {
 		pricing, err := svc.GetModelPricing(model)
 		require.NoError(t, err, "model %s", model)
 		require.InDelta(t, baseline.InputPricePerToken, pricing.InputPricePerToken, 1e-12, model)
@@ -1153,6 +1153,10 @@ func TestGetModelPricing_UnknownGrokTextFallsBackToGrok45(t *testing.T) {
 	}
 
 	for _, model := range []string{
+		"grok-2-image-1212",
+		"grok-2-audio",
+		"grok-5-video",
+		"x-ai/grok-6-image",
 		"grok-imagine-image-3.0",
 		"grok-imagine-video-2",
 		"grok-voice-latest",

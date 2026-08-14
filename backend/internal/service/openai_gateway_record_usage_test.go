@@ -1372,6 +1372,64 @@ func TestOpenAIGatewayServiceRecordUsage_GroupControlsLongContextBilling(t *test
 	}
 }
 
+// Grok 没有账号级长上下文开关，官方阶梯只能由分组策略控制。
+func TestOpenAIGatewayServiceRecordUsage_GrokLongContextFollowsGroupToggle(t *testing.T) {
+	baseInput := 250000 * 2e-6
+	baseOutput := 1000 * 6e-6
+
+	for i, tt := range []struct {
+		name        string
+		groupEnable bool
+		wantApplied bool
+	}{
+		{name: "group enabled", groupEnable: true, wantApplied: true},
+		{name: "group disabled", groupEnable: false, wantApplied: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newOpenAIRecordUsageServiceForTest(
+				usageRepo,
+				&openAIRecordUsageUserRepoStub{},
+				&openAIRecordUsageSubRepoStub{},
+				nil,
+			)
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+			groupID := int64(10 + i)
+
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID: "resp_grok_long_context_" + tt.name,
+					Usage:     OpenAIUsage{InputTokens: 250000, OutputTokens: 1000},
+					Model:     "grok-4.5",
+					Duration:  time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      int64(1030 + i),
+					GroupID: &groupID,
+					Group: &Group{
+						ID:                        groupID,
+						Platform:                  PlatformGrok,
+						RateMultiplier:            1,
+						LongContextPricingEnabled: tt.groupEnable,
+					},
+				},
+				User:    &User{ID: int64(2030 + i)},
+				Account: &Account{ID: int64(3030 + i), Platform: PlatformGrok, Type: AccountTypeOAuth},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, tt.wantApplied, usageRepo.lastLog.LongContextBillingApplied)
+			multiplier := 1.0
+			if tt.wantApplied {
+				multiplier = 2
+			}
+			require.InDelta(t, baseInput*multiplier, usageRepo.lastLog.InputCost, 1e-10)
+			require.InDelta(t, baseOutput*multiplier, usageRepo.lastLog.OutputCost, 1e-10)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ServiceTierPriorityUsesFastPricing(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

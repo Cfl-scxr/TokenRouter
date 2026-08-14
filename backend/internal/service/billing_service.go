@@ -892,6 +892,9 @@ func (s *BillingService) grokUnknownTextFamilyFallback(model string) *ModelPrici
 
 func isGrokUnknownTextFamilyModel(model string) bool {
 	native := strings.ToLower(strings.TrimSpace(xai.StripGrokProviderPrefix(model)))
+	if isGrokMediaFamilyModel(native) {
+		return false
+	}
 	switch {
 	case native == "grok", native == "grok-latest":
 		return true
@@ -905,6 +908,17 @@ func isGrokUnknownTextFamilyModel(model string) bool {
 	default:
 		return false
 	}
+}
+
+// isGrokMediaFamilyModel 判断模型 ID 是否属于按图片、视频或音频单位计费的媒体族。
+// 带版本号的媒体 ID 不能进入未知文本兜底；vision 多模态对话仍按 token 计费。
+func isGrokMediaFamilyModel(native string) bool {
+	for _, marker := range []string{"imagine", "image", "video", "audio", "speech", "tts", "transcribe", "realtime"} {
+		if strings.Contains(native, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetModelPricing 获取模型价格配置
