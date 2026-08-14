@@ -758,6 +758,12 @@ export default {
         clientPolicyClaudeCodeHint: '当前策略不是 Codex-only，Claude Code 额外放行白名单不会生效。',
         codexCLIOnlyAllowClaudeCode: '额外放行 Claude Code 的 Codex 插件',
         codexCLIOnlyAllowClaudeCodeDesc: '仅在上方开关开启时生效。额外放行通过 Claude Code 的 Codex 插件发起的请求（精确匹配 originator=Claude Code），不影响对其他非官方客户端的拦截。',
+        codexFingerprintMode: 'Codex 指纹收敛',
+        codexFingerprintModeDesc: '多人共享同一 OAuth 账号时，将各用户的设备/会话标识收敛为账号级恒定值，减少上游可见的设备数和会话数。关闭时保留既有转发行为，不做额外收敛。',
+        codexFingerprintOff: '关闭',
+        codexFingerprintDevice: '仅设备',
+        codexFingerprintSession: '设备+会话（推荐）',
+        codexFingerprintFull: '完全收敛',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
