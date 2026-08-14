@@ -28,7 +28,7 @@ OpenAI 平台拥有以下正式协议族：
 | --- | --- |
 | Responses HTTP/SSE | 原生 OAuth/API Key 转发；支持允许的 `/responses/*` 子路径 |
 | Responses WebSocket | 根据账号 transport capability 选择 WS 或兼容传输；连接建立后遵守流式不可换账号边界 |
-| Chat Completions | 可原生转发或转换到 Responses；每次 attempt 重建协议状态 |
+| Chat Completions | 可原生转发或转换到 Responses；每次 attempt 重建协议状态；响应兼容 `reasoning` 推理别名 |
 | Anthropic Messages | 转换到 OpenAI 请求并把事件、工具、thinking/usage 恢复为 Anthropic 形状 |
 | Embeddings | 仅 OpenAI 分组，账号必须声明或探测到相应 endpoint capability |
 | Images | OpenAI 图片生成/编辑；当前网关保留同步生命周期，批量图片由 Gemini/Vertex 专题定义 |

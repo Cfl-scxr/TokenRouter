@@ -98,7 +98,7 @@ func (d *openAIChatSilentRefusalDetector) ObserveChatChunk(chunk apicompat.ChatC
 		if delta.Content != nil && *delta.Content != "" {
 			d.sawContent = true
 		}
-		if delta.ReasoningContent != nil {
+		if delta.ReasoningText() != nil {
 			d.sawReasoning = true
 		}
 		if len(delta.ToolCalls) > 0 {

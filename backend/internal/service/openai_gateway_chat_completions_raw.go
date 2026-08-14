@@ -471,8 +471,8 @@ func (a *openAIChatCompletionsStreamAccumulator) ObservePayload(payload string) 
 		if choice.Delta.Content != nil {
 			_, _ = a.content.WriteString(*choice.Delta.Content)
 		}
-		if choice.Delta.ReasoningContent != nil {
-			_, _ = a.reasoning.WriteString(*choice.Delta.ReasoningContent)
+		if reasoning := choice.Delta.ReasoningText(); reasoning != nil {
+			_, _ = a.reasoning.WriteString(*reasoning)
 		}
 		for _, deltaCall := range choice.Delta.ToolCalls {
 			idx := len(a.toolCalls)
