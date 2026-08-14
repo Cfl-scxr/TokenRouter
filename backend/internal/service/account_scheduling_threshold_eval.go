@@ -52,7 +52,7 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	var winner *accountSchedulingThresholdCandidate
 	switch decision.Platform {
 	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account), threshold, now)
+		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
 	case PlatformAnthropic:
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
@@ -148,7 +148,7 @@ func lookupAccountSchedulingThreshold(thresholds map[string]int, platform string
 	return value, ok
 }
 
-func openAIThresholdCandidates(account *Account) []*accountSchedulingThresholdCandidate {
+func openAIThresholdCandidates(account *Account, now time.Time) []*accountSchedulingThresholdCandidate {
 	if account == nil {
 		return nil
 	}
@@ -156,8 +156,8 @@ func openAIThresholdCandidates(account *Account) []*accountSchedulingThresholdCa
 		return nil
 	}
 	return []*accountSchedulingThresholdCandidate{
-		openAIThresholdCandidate(account.Extra, "5h"),
-		openAIThresholdCandidate(account.Extra, "7d"),
+		openAIThresholdCandidate(account.Extra, "5h", now),
+		openAIThresholdCandidate(account.Extra, "7d", now),
 	}
 }
 
@@ -221,7 +221,7 @@ func firstStringValue(values map[string]any, keys ...string) string {
 	return ""
 }
 
-func openAIThresholdCandidate(extra map[string]any, window string) *accountSchedulingThresholdCandidate {
+func openAIThresholdCandidate(extra map[string]any, window string, now time.Time) *accountSchedulingThresholdCandidate {
 	if len(extra) == 0 {
 		return nil
 	}
@@ -243,6 +243,9 @@ func openAIThresholdCandidate(extra map[string]any, window string) *accountSched
 
 	usedPercent, ok := extra[usedPercentKey]
 	if !ok {
+		return nil
+	}
+	if openAIQuotaWindowReset(extra, window, now) || openAICodexSnapshotStaleForPause(extra, now) {
 		return nil
 	}
 	return &accountSchedulingThresholdCandidate{
