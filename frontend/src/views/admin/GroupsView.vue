@@ -904,6 +904,17 @@
                 class="input"
               />
             </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.availabilityProbe.maxRetries") }}</label>
+              <input
+                v-model.number="createForm.availability_probe_max_retries"
+                type="number"
+                min="0"
+                max="10"
+                step="1"
+                class="input"
+              />
+            </div>
             <div class="md:col-span-2">
               <label class="input-label">{{ t("admin.groups.availabilityProbe.userAgent") }}</label>
               <input
@@ -2697,6 +2708,17 @@
                 type="number"
                 min="5"
                 max="120"
+                class="input"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.availabilityProbe.maxRetries") }}</label>
+              <input
+                v-model.number="editForm.availability_probe_max_retries"
+                type="number"
+                min="0"
+                max="10"
+                step="1"
                 class="input"
               />
             </div>
@@ -4825,6 +4847,7 @@ const createForm = reactive({
   availability_probe_prompt: "hi",
   availability_probe_interval_minutes: 30,
   availability_probe_timeout_seconds: 30,
+  availability_probe_max_retries: 3,
   availability_probe_user_agent: "",
 });
 
@@ -5102,6 +5125,7 @@ const resetAvailabilityProbeFormState = (
   form.availability_probe_prompt = config?.prompt ?? "hi";
   form.availability_probe_interval_minutes = config?.interval_minutes ?? 30;
   form.availability_probe_timeout_seconds = config?.timeout_seconds ?? 30;
+  form.availability_probe_max_retries = config?.max_retries ?? 3;
   form.availability_probe_user_agent = config?.user_agent ?? "";
 };
 
@@ -5127,6 +5151,8 @@ const buildAvailabilityProbeConfig = (
     prompt,
     interval_minutes: Number(form.availability_probe_interval_minutes) || 30,
     timeout_seconds: Number(form.availability_probe_timeout_seconds) || 30,
+    // Number("") 为 0，这里有意保留 0 次重试的显式配置。
+    max_retries: Number(form.availability_probe_max_retries),
     user_agent: form.availability_probe_user_agent.trim(),
   };
 };
@@ -5257,6 +5283,7 @@ const editForm = reactive({
   availability_probe_prompt: "hi",
   availability_probe_interval_minutes: 30,
   availability_probe_timeout_seconds: 30,
+  availability_probe_max_retries: 3,
   availability_probe_user_agent: "",
 });
 
@@ -5774,6 +5801,7 @@ const handleCreateGroup = async () => {
     delete (requestData as any).availability_probe_prompt;
     delete (requestData as any).availability_probe_interval_minutes;
     delete (requestData as any).availability_probe_timeout_seconds;
+    delete (requestData as any).availability_probe_max_retries;
     delete (requestData as any).availability_probe_user_agent;
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
@@ -6042,6 +6070,7 @@ const handleUpdateGroup = async () => {
     delete (payload as any).availability_probe_prompt;
     delete (payload as any).availability_probe_interval_minutes;
     delete (payload as any).availability_probe_timeout_seconds;
+    delete (payload as any).availability_probe_max_retries;
     delete (payload as any).availability_probe_user_agent;
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,

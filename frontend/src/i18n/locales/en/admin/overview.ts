@@ -1147,6 +1147,7 @@ affiliates: {
         selectModel: 'Select probe model',
         interval: 'Probe Interval (minutes)',
         timeout: 'Timeout (seconds)',
+        maxRetries: 'Maximum Retries',
         userAgent: 'User Agent',
         userAgentPlaceholder: 'Leave empty to use the default probe User Agent',
         prompt: 'Probe Prompt',
