@@ -136,7 +136,7 @@ client_model
 
 ## 用量与结算
 
-上游转发产生可计量 usage 后，handler 把解析出的 token/图片/视频用量、客户端与上游模型、endpoint、账号、订阅快照、请求标识和渠道映射交给有界 UsageRecord worker pool。Anthropic 流在终止事件前中断时，若已观测到上游 token，部分 usage 仍与转发错误一起返回并入账；无 token 不生成记录，failover 错误不携带部分结果，避免重试成功后双重计费。worker 使用脱离已结束请求取消信号但受自身超时约束的 Context；队列策略可以同步回退或丢弃，并通过指标/日志暴露压力，不能为每个请求创建无界 goroutine。
+上游转发产生可计量 usage 后，handler 把解析出的 token/图片/视频用量、客户端与上游模型、endpoint、账号、订阅快照、请求标识和渠道映射交给有界 UsageRecord worker pool。Anthropic 流在终止事件前中断时，若已观测到上游 token，部分 usage 仍与转发错误一起返回并入账；无 token 不生成记录，failover 错误不携带部分结果，避免重试成功后双重计费。OpenAI OAuth 图片响应在 HTTP 成功后若发生上游 body 传输中断，仅在尚未向客户端写出真实图片内容时按 502 进入账号策略和 failover；JSON keepalive 空白不算真实输出，客户端取消、deadline、响应体超限以及首字节后的中断不会换号。worker 使用脱离已结束请求取消信号但受自身超时约束的 Context；队列策略可以同步回退或丢弃，并通过指标/日志暴露压力，不能为每个请求创建无界 goroutine。
 
 标准模式中的共同顺序为：
 
