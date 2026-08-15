@@ -62,6 +62,8 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2StaysOnResponses(t *test
 	require.False(t, seedExists)
 	_, streamMarkerExists := c.Get(service.OpenAICompactClientStreamKeyForTest())
 	require.False(t, streamMarkerExists)
+	// 原生 V2 保持路径的同时必须留下协商标记，供出站请求补齐 beta feature。
+	require.True(t, c.GetBool("openai_native_compaction_v2"))
 }
 
 func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2DoesNotRequireBetaHeader(t *testing.T) {

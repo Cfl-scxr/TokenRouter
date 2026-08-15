@@ -693,10 +693,10 @@ export default {
         codexCLIOnlyAllowClaudeCodeDesc:
           'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values to reduce upstream-visible device and session count. Off keeps the existing forwarding behavior without additional convergence.',
+        codexFingerprintModeDesc: 'Optional convergence for shared OAuth accounts. Off is the default and preserves client identifiers; choose a stronger mode only when intentionally consolidating device and session identifiers.',
         codexFingerprintOff: 'Off',
         codexFingerprintDevice: 'Device only',
-        codexFingerprintSession: 'Device + Session (recommended)',
+        codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
@@ -727,9 +727,14 @@ export default {
         compactAuto: 'Legacy compact auto',
         compactUnknown: 'Legacy compact auto',
         compactLastChecked: 'Last legacy compact probe',
+        nativeCompactV2Supported: 'Native V2 compact available',
+        nativeCompactV2Unsupported: 'Native V2 compact unavailable',
+        nativeCompactV2Unknown: 'Native V2 compact untested',
+        nativeCompactV2LastChecked: 'Last native V2 compact probe',
         testMode: 'Test mode',
         testModeDefault: 'Default request',
-        testModeCompact: 'Legacy compact endpoint probe',
+        testModeCompact: 'Native V2 compact probe',
+        testModeLegacyCompact: 'Legacy compact endpoint probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: the final model whitelist and account model mapping will not take effect.',
       },
       grok: {

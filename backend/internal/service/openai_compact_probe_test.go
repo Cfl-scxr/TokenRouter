@@ -16,6 +16,7 @@ func TestNormalizeAccountTestMode(t *testing.T) {
 		{input: "default", want: AccountTestModeDefault},
 		{input: " compact ", want: AccountTestModeCompact},
 		{input: "COMPACT", want: AccountTestModeCompact},
+		{input: " legacy_compact ", want: AccountTestModeLegacyCompact},
 		{input: "unknown", want: AccountTestModeDefault},
 	}
 
@@ -23,6 +24,53 @@ func TestNormalizeAccountTestMode(t *testing.T) {
 		if got := normalizeAccountTestMode(tt.input); got != tt.want {
 			t.Fatalf("normalizeAccountTestMode(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestCreateOpenAICompactProbePayload_NativeV2Shape(t *testing.T) {
+	payload := createOpenAICompactProbePayload("gpt-5.6-sol", true)
+	if payload["stream"] != true || payload["store"] != false {
+		t.Fatalf("OAuth V2 probe payload must be streaming with store:false: %#v", payload)
+	}
+	input, ok := payload["input"].([]any)
+	if !ok || len(input) != 2 {
+		t.Fatalf("expected message and compaction_trigger input items: %#v", payload["input"])
+	}
+	last, ok := input[len(input)-1].(map[string]any)
+	if !ok || last["type"] != "compaction_trigger" {
+		t.Fatalf("last input item must be compaction_trigger: %#v", input[len(input)-1])
+	}
+
+	legacy := createOpenAILegacyCompactProbePayload("gpt-5.6-sol")
+	legacyInput := legacy["input"].([]any)
+	if len(legacyInput) != 1 {
+		t.Fatalf("legacy probe must not inject a V2 trigger: %#v", legacyInput)
+	}
+}
+
+func TestOpenAICompactProbeFoundCompactionItem(t *testing.T) {
+	sse := []byte("data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"compaction\",\"id\":\"cmp_1\"}}\n\n")
+	if !openAICompactProbeFoundCompactionItem(sse) {
+		t.Fatal("SSE compaction item should mark native V2 support")
+	}
+	if openAICompactProbeFoundCompactionItem([]byte(`{"output":[{"type":"message"}]}`)) {
+		t.Fatal("ordinary output item must not mark native V2 support")
+	}
+}
+
+func TestBuildOpenAINativeCompactionV2ProbeExtraUpdates_UsesDedicatedKeys(t *testing.T) {
+	now := time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC)
+	updates := buildOpenAINativeCompactionV2ProbeExtraUpdates(&http.Response{StatusCode: http.StatusOK}, nil, nil, true, now)
+	if updates[openAINativeCompactionV2SupportedExtraKey] != true {
+		t.Fatalf("native V2 support = %v, want true", updates[openAINativeCompactionV2SupportedExtraKey])
+	}
+	if _, legacyTouched := updates["openai_compact_supported"]; legacyTouched {
+		t.Fatal("native V2 probe must not overwrite legacy compact state")
+	}
+
+	withoutItem := buildOpenAINativeCompactionV2ProbeExtraUpdates(&http.Response{StatusCode: http.StatusOK}, []byte(`{"output":[]}`), nil, false, now)
+	if withoutItem[openAINativeCompactionV2SupportedExtraKey] != false {
+		t.Fatalf("2xx without compaction item = %v, want false", withoutItem[openAINativeCompactionV2SupportedExtraKey])
 	}
 }
 

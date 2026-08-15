@@ -343,7 +343,7 @@ func createTestPayloadWithPrompt(modelID string, prompt string) (map[string]any,
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
-// mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
+// mode 是可选的："compact" 探测原生 V2，"legacy_compact" 仅探测旧端点兼容性。
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
 	ctx := c.Request.Context()
 
@@ -692,12 +692,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		testModelID = openai.DefaultTestModel
 	}
 
-	// Align test routing with gateway behavior: OpenAI accounts apply normal
-	// account model mapping, and compact mode applies compact-only mapping on top.
+	// 原生 V2 与普通 Responses 一样只使用常规模型映射；旧端点兼容性测试才
+	// 在其基础上追加 compact_model_mapping。
 	testModelID = account.GetMappedModel(testModelID)
 	if mode == AccountTestModeCompact {
+		return s.testOpenAINativeCompactionV2Connection(c, account, testModelID)
+	}
+	if mode == AccountTestModeLegacyCompact {
 		testModelID = resolveOpenAICompactForwardModel(account, testModelID)
-		return s.testOpenAICompactConnection(c, account, testModelID)
+		return s.testOpenAILegacyCompactConnection(c, account, testModelID)
 	}
 
 	// Route to image generation test if an image model is selected
@@ -1061,9 +1064,169 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	return s.processOpenAIChatCompletionsStream(c, resp.Body)
 }
 
-// testOpenAICompactConnection probes /responses/compact and persists the
-// resulting capability state on the account.
-func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string) error {
+// testOpenAINativeCompactionV2Connection 探测原生 V2（流式 /responses +
+// compaction_trigger）。它使用普通模型映射，并只写入 V2 独立能力状态。
+func (s *AccountTestService) testOpenAINativeCompactionV2Connection(c *gin.Context, account *Account, testModelID string) error {
+	ctx := c.Request.Context()
+	credentialAccount := account
+	if account.IsShadow() {
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to resolve account credentials")
+		}
+		credentialAccount = resolved
+	}
+
+	authToken := ""
+	apiURL := ""
+	isOAuth := false
+	switch {
+	case credentialAccount.IsOAuth():
+		isOAuth = true
+		if !credentialAccount.IsOpenAIAgentIdentity() {
+			authToken = credentialAccount.GetOpenAIAccessToken()
+		}
+		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
+			return s.sendErrorAndEnd(c, "No access token available")
+		}
+		apiURL = chatgptCodexAPIURL
+	case account.Type == AccountTypeAPIKey:
+		authToken = account.GetOpenAIApiKey()
+		if authToken == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		baseURL := account.GetOpenAIBaseURL()
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+	default:
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	if isOAuth {
+		testModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
+	}
+	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID, isOAuth))
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	// 与真实 V2 请求相同，即使账号覆盖尝试移除该头，后面也会重新补齐。
+	ensureOpenAIRemoteCompactionV2BetaFeature(req.Header)
+	if credentialAccount.IsOpenAIAgentIdentity() {
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
+		if authErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to build Agent Identity authentication")
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	req.Header.Set("Originator", openai.CodexDefaultOriginator)
+	req.Header.Set("User-Agent", codexCLIUserAgent)
+	req.Header.Set("Version", codexCLIVersion)
+	probeSessionID := compactProbeSessionID(account.ID)
+	req.Header.Set("Session_ID", probeSessionID)
+	req.Header.Set("Conversation_ID", probeSessionID)
+	s.applyOpenAIAccountTestRouting(c, account, req, isOAuth)
+
+	if isOAuth {
+		req.Host = "chatgpt.com"
+		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
+		if fingerprintIDs := resolveCodexFingerprintIDsFromRequest(account, req.Header); fingerprintIDs != nil {
+			applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
+		}
+		enforceCodexIdentityHeaders(req.Header)
+	}
+
+	// 账号覆盖先执行，再补 V2 协商头，保证探测和真实转发有相同的协议契约。
+	account.ApplyHeaderOverrides(req.Header)
+	ensureOpenAIRemoteCompactionV2BetaFeature(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveOpenAIAccountTestTLSProfile(c, account))
+	if err != nil {
+		if s.accountRepo != nil {
+			updates := buildOpenAINativeCompactionV2ProbeExtraUpdates(nil, nil, err, false, time.Now())
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+			mergeAccountExtra(account, updates)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
+	if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+		expectedTaskID := credentialAccount.GetCredential("task_id")
+		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
+		}
+		c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
+		return s.testOpenAINativeCompactionV2Connection(c, account, testModelID)
+	}
+
+	compactionFound := openAICompactProbeFoundCompactionItem(body)
+	if s.accountRepo != nil {
+		updates := buildOpenAINativeCompactionV2ProbeExtraUpdates(resp, body, nil, compactionFound, time.Now())
+		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
+			updates = mergeExtraUpdates(updates, codexUpdates)
+		}
+		if len(updates) > 0 {
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+			mergeAccountExtra(account, updates)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
+		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+	if !compactionFound {
+		return s.sendErrorAndEnd(c, "Upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported on this chain)")
+	}
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Native remote compaction v2 probe succeeded"})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// testOpenAILegacyCompactConnection 仅探测旧版 /responses/compact 兼容路径，并且
+// 只更新 legacy 状态，绝不影响原生 V2 能力。
+func (s *AccountTestService) testOpenAILegacyCompactConnection(c *gin.Context, account *Account, testModelID string) error {
 	ctx := c.Request.Context()
 	credentialAccount := account
 	if account.IsShadow() {
@@ -1112,7 +1275,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID))
+	payloadBytes, _ := json.Marshal(createOpenAILegacyCompactProbePayload(testModelID))
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
 		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	}
@@ -1142,7 +1305,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	req.Header.Set("Originator", openai.CodexDefaultOriginator)
 	req.Header.Set("User-Agent", codexCLIUserAgent)
 	req.Header.Set("Version", codexCLIVersion)
-	probeSessionID := compactProbeSessionID(account.ID)
+	probeSessionID := legacyCompactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)
 	s.applyOpenAIAccountTestRouting(c, account, req, isOAuth)
@@ -1181,7 +1344,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
 		}
 		c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
-		return s.testOpenAICompactConnection(c, account, testModelID)
+		return s.testOpenAILegacyCompactConnection(c, account, testModelID)
 	}
 
 	if s.accountRepo != nil {

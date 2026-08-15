@@ -3,8 +3,10 @@ package service
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,9 +65,9 @@ func TestGetCodexFingerprintMode(t *testing.T) {
 	}{
 		{"nil 账号", nil, codexFingerprintOff},
 		{"非 OAuth 账号", &Account{Platform: PlatformOpenAI, Type: "api_key"}, codexFingerprintOff},
-		{"无 extra 默认 session", newTestOAuthAccount(1, nil), codexFingerprintSession},
-		{"空值默认 session", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: ""}), codexFingerprintSession},
-		{"非法值默认 session", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "invalid"}), codexFingerprintSession},
+		{"无 extra 默认 off", newTestOAuthAccount(1, nil), codexFingerprintOff},
+		{"空值默认 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: ""}), codexFingerprintOff},
+		{"非法值默认 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "invalid"}), codexFingerprintOff},
 		{"显式 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "off"}), codexFingerprintOff},
 		{"device", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "device"}), codexFingerprintDevice},
 		{"session", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "session"}), codexFingerprintSession},
@@ -128,13 +130,10 @@ func TestResolveCodexFingerprintIDsFromRequest_ExplicitOff(t *testing.T) {
 	assert.Nil(t, ids, "显式 off 模式应返回 nil")
 }
 
-func TestResolveCodexFingerprintIDsFromRequest_DefaultIsSession(t *testing.T) {
+func TestResolveCodexFingerprintIDsFromRequest_DefaultIsOff(t *testing.T) {
 	account := newTestOAuthAccount(1, nil)
 	ids := resolveCodexFingerprintIDsFromRequest(account, nil)
-	require.NotNil(t, ids, "无 extra 默认 session 模式，应返回非 nil")
-	assert.Equal(t, codexFingerprintSession, ids.mode)
-	assert.NotEmpty(t, ids.sessionID)
-	assert.NotEmpty(t, ids.turnID)
+	assert.Nil(t, ids, "无 extra 默认 off 模式，应返回 nil")
 }
 
 // --- applyCodexFingerprintHeaders: off 模式 ---
@@ -469,4 +468,40 @@ func TestExtractClientSessionID(t *testing.T) {
 			assert.Equal(t, tt.expected, extractClientSessionID(tt.headers))
 		})
 	}
+}
+
+func TestApplyCodexFingerprintClientMetadataRaw_MatchesDecodedPath(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: "session"})
+	ids := resolveCodexFingerprintIDs(account, "client-session-raw", codexFingerprintSession)
+	require.NotNil(t, ids)
+	body := []byte(`{"model":"gpt-5.6-sol","input":[{"type":"message"}],"client_metadata":{"session_id":"old","x-codex-turn-metadata":"{\"installation_id\":\"old\",\"sandbox\":\"seccomp\"}"}}`)
+
+	decoded := map[string]any{}
+	require.NoError(t, json.Unmarshal(body, &decoded))
+	require.True(t, applyCodexFingerprintClientMetadata(decoded, ids))
+
+	rawBody, changed, err := applyCodexFingerprintClientMetadataRaw(body, ids)
+	require.NoError(t, err)
+	require.True(t, changed)
+	rawDecoded := map[string]any{}
+	require.NoError(t, json.Unmarshal(rawBody, &rawDecoded))
+
+	assert.Equal(t, decoded["client_metadata"], rawDecoded["client_metadata"])
+	assert.Equal(t, "gpt-5.6-sol", rawDecoded["model"])
+}
+
+func TestStageCodexFingerprintIDs_NilClearsPriorAttempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	accountA := newTestOAuthAccount(11, map[string]any{codexFingerprintModeExtraKey: "session"})
+	stageCodexFingerprintIDs(c, resolveCodexFingerprintIDs(accountA, "client-a", codexFingerprintSession))
+	stageCodexFingerprintIDs(c, nil)
+
+	headers := http.Header{}
+	headers.Set("x-codex-installation-id", "client-installation")
+	applyStagedCodexFingerprintHeaders(c, newTestOAuthAccount(12, nil), headers)
+	assert.Equal(t, "client-installation", headers.Get("x-codex-installation-id"))
 }

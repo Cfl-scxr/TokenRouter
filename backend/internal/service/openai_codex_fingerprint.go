@@ -9,8 +9,38 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+// codexFingerprintIDsContextKey 保存单次透传尝试的收敛 ID。请求体与请求头必须
+// 共享它，才能保证每次请求随机生成的 turn ID 在两个载体中一致。
+const codexFingerprintIDsContextKey = "codex_fingerprint_ids"
+
+// stageCodexFingerprintIDs 无条件写入当前尝试的 ID（包括 nil）。故障转移从
+// 收敛账号切到关闭收敛的账号时，不能沿用旧账号留在 Gin context 中的值。
+func stageCodexFingerprintIDs(c *gin.Context, ids *codexFingerprintIDs) {
+	if c != nil {
+		c.Set(codexFingerprintIDsContextKey, ids)
+	}
+}
+
+// applyStagedCodexFingerprintHeaders 将透传路径暂存的 ID 应用于出站头。账号
+// 类型校验阻止混合账号故障转移时的残留状态影响 API Key 请求。
+func applyStagedCodexFingerprintHeaders(c *gin.Context, account *Account, h http.Header) {
+	if c == nil || account == nil || account.Type != AccountTypeOAuth {
+		return
+	}
+	value, ok := c.Get(codexFingerprintIDsContextKey)
+	if !ok {
+		return
+	}
+	if ids, ok := value.(*codexFingerprintIDs); ok {
+		applyCodexFingerprintHeaders(h, ids)
+	}
+}
 
 // codexFingerprintMode 控制 OAuth 账号出站请求的设备指纹收敛强度。
 // 多人共享同一 OAuth 账号时，每个用户的 Codex 客户端会携带各自不同的
@@ -36,7 +66,7 @@ const (
 const codexFingerprintModeExtraKey = "codex_fingerprint_mode"
 
 // GetCodexFingerprintMode 从账号 extra JSON 读取指纹收敛模式。
-// 未设置时默认 session（设备+会话收敛），显式设为 "off" 才关闭。
+// 未设置、空值或非法值均默认 off；收敛只能由管理员显式开启。
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	if a == nil || !a.IsOpenAIOAuth() {
 		return codexFingerprintOff
@@ -46,7 +76,7 @@ func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
 		return codexFingerprintMode(raw)
 	default:
-		return codexFingerprintSession
+		return codexFingerprintOff
 	}
 }
 
@@ -257,6 +287,19 @@ func applyCodexFingerprintClientMetadata(reqBody map[string]any, ids *codexFinge
 	if existing == nil {
 		existing = make(map[string]any)
 	}
+	if !applyCodexFingerprintToClientMetadataMap(existing, ids) {
+		return false
+	}
+	reqBody["client_metadata"] = existing
+	return true
+}
+
+// applyCodexFingerprintToClientMetadataMap 是解码体与透传原始 JSON 共用的改写
+// 核心，保证两条转发路径不会出现不同的收敛字段语义。
+func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *codexFingerprintIDs) bool {
+	if existing == nil || ids == nil {
+		return false
+	}
 
 	modified := false
 
@@ -269,9 +312,6 @@ func applyCodexFingerprintClientMetadata(reqBody map[string]any, ids *codexFinge
 		rewriteClientMetadataEmbeddedTurnMetadata(existing, map[string]any{
 			"installation_id": ids.installationID,
 		})
-		if modified {
-			reqBody["client_metadata"] = existing
-		}
 		return modified
 	}
 
@@ -289,9 +329,37 @@ func applyCodexFingerprintClientMetadata(reqBody map[string]any, ids *codexFinge
 		"window_id":               ids.windowID,
 		"turn_started_at_unix_ms": time.Now().UnixMilli(),
 	})
-
-	reqBody["client_metadata"] = existing
 	return true
+}
+
+// applyCodexFingerprintClientMetadataRaw 只抽取并改写 client_metadata 小对象，
+// 避免 OAuth 透传路径为大请求体做整包反序列化；其它 JSON 字段保持原样。
+func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintIDs) ([]byte, bool, error) {
+	if len(body) == 0 || ids == nil {
+		return body, false, nil
+	}
+	if !gjson.ParseBytes(body).IsObject() {
+		return body, false, nil
+	}
+
+	existing := map[string]any{}
+	if metadata := gjson.GetBytes(body, "client_metadata"); metadata.IsObject() {
+		if err := json.Unmarshal([]byte(metadata.Raw), &existing); err != nil {
+			return body, false, fmt.Errorf("decode client_metadata for fingerprint: %w", err)
+		}
+	}
+	if !applyCodexFingerprintToClientMetadataMap(existing, ids) {
+		return body, false, nil
+	}
+	raw, err := json.Marshal(existing)
+	if err != nil {
+		return body, false, fmt.Errorf("encode converged client_metadata: %w", err)
+	}
+	updated, err := sjson.SetRawBytes(body, "client_metadata", raw)
+	if err != nil {
+		return body, false, fmt.Errorf("splice converged client_metadata: %w", err)
+	}
+	return updated, true, nil
 }
 
 // rewriteClientMetadataEmbeddedTurnMetadata 改写 client_metadata 中内嵌的

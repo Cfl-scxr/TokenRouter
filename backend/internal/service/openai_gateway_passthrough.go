@@ -83,6 +83,27 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = normalizedBody
 		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
+
+		// 透传与普通转换路径共享指纹收敛语义。只局部改写 client_metadata，
+		// 避免为大请求体做整包反序列化。
+		if !isOpenAIResponsesCompactPath(c) {
+			var clientHeaders http.Header
+			if c != nil && c.Request != nil {
+				clientHeaders = c.Request.Header
+			}
+			fingerprintIDs := resolveCodexFingerprintIDsFromRequest(account, clientHeaders)
+			if fingerprintIDs != nil {
+				updatedBody, changed, fingerprintErr := applyCodexFingerprintClientMetadataRaw(body, fingerprintIDs)
+				if fingerprintErr != nil {
+					return nil, fingerprintErr
+				}
+				if changed {
+					body = updatedBody
+				}
+			}
+			// nil 也必须覆盖，避免 failover 复用前一个账号的收敛 ID。
+			stageCodexFingerprintIDs(c, fingerprintIDs)
+		}
 	}
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
@@ -232,6 +253,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
+	// 仅在成功响应确定会写回客户端后记录签发账号。
+	if extractOpenAICodexTurnState(resp.Header) != "" {
+		s.noteOpenAICodexTurnStateProvenance(c, account)
+	}
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
@@ -371,6 +396,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 
+	// 故障转移换号后，不能把已知由旧账号签发的回合状态送往新账号。
+	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
 	req.Header.Del("authorization")
 	req.Header.Del("x-api-key")
 	req.Header.Del("x-goog-api-key")
@@ -437,6 +464,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 
 	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, true, routerMatch...)
+	// 请求体和请求头必须使用同一次解析出的收敛 ID。
+	applyStagedCodexFingerprintHeaders(c, account, req.Header)
 
 	// 终态收口：originator 必须与最终 User-Agent 首段配套且为官方身份，非官方 UA 整体回退为
 	// 默认 Codex TUI 身份，同时避免 originator 与 UA 首段错配导致上游 404，详见 issue #3901。
@@ -449,6 +478,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http_passthrough", req.Header, body, "not_applicable")
 
@@ -1773,5 +1803,13 @@ func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, fil
 		for _, v := range vals {
 			dst.Add(key, v)
 		}
+	}
+
+	// 回合状态不受通用响应头白名单控制；上游缺失时也要清理旧值，避免
+	// failover 后把其它账号的状态留在下游响应中。
+	turnStateKey := http.CanonicalHeaderKey(openAICodexTurnStateHeader)
+	dst.Del(turnStateKey)
+	for _, value := range getCaseInsensitiveValues(src, openAICodexTurnStateHeader) {
+		dst.Add(turnStateKey, value)
 	}
 }
