@@ -65,7 +65,9 @@ func TestStagedOpenAICodexTurnStateOnlyRecordsAfterCommit(t *testing.T) {
 	svc.noteStagedOpenAICodexTurnStateCommitted(c, &Account{ID: 52}, staged)
 	raw, exists := svc.openaiCodexTurnStateOrigins.Load("8\x00session-staged")
 	require.True(t, exists)
-	require.Equal(t, int64(52), raw.(openAICodexTurnStateOrigin).accountID)
+	origin, ok := raw.(openAICodexTurnStateOrigin)
+	require.True(t, ok)
+	require.Equal(t, int64(52), origin.accountID)
 }
 
 func TestGuardOpenAICodexTurnStateEchoStripsOnlyForeignOrigin(t *testing.T) {

@@ -1238,6 +1238,7 @@ func (s *UsageLogRepoSuite) TestUsageAnalyticsQueriesExecuteOnPostgreSQL() {
 	if !now.After(todayStart.Add(3 * time.Hour)) {
 		s.T().Skip("当前业务日尚无足够的完整小时用于聚合查询")
 	}
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
 	createdAt := todayStart.Add(90 * time.Minute)
 	user := mustCreateUser(s.T(), s.client, &service.User{Email: "analytics-query@test.com"})
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-analytics-query", Name: "analytics"})
@@ -1253,13 +1254,13 @@ func (s *UsageLogRepoSuite) TestUsageAnalyticsQueriesExecuteOnPostgreSQL() {
 	s.Require().NoError(err)
 
 	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
-	s.Require().NoError(aggRepo.AggregateUsageAnalyticsRange(s.ctx, todayStart, now))
+	s.Require().NoError(aggRepo.AggregateUsageAnalyticsRange(s.ctx, yesterdayStart, now))
 	_, err = s.tx.ExecContext(s.ctx, `
 		UPDATE usage_analytics_aggregation_state
 		SET live_watermark = $1, coverage_start = $2, backfill_cursor = $2,
 		    source_oldest_at = $3, phase = 'idle'
 		WHERE id = 1
-	`, now, todayStart, createdAt)
+	`, now, yesterdayStart, createdAt)
 	s.Require().NoError(err)
 	s.repo.preAggregation = service.NewPreAggregationSettingsService(nil, &config.Config{
 		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},

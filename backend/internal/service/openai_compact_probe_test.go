@@ -42,8 +42,8 @@ func TestCreateOpenAICompactProbePayload_NativeV2Shape(t *testing.T) {
 	}
 
 	legacy := createOpenAILegacyCompactProbePayload("gpt-5.6-sol")
-	legacyInput := legacy["input"].([]any)
-	if len(legacyInput) != 1 {
+	legacyInput, ok := legacy["input"].([]any)
+	if !ok || len(legacyInput) != 1 {
 		t.Fatalf("legacy probe must not inject a V2 trigger: %#v", legacyInput)
 	}
 }
