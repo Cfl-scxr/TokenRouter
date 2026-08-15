@@ -220,6 +220,14 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
+// openAIResponsesRequiredCapabilityForRequest 让原生远程压缩与旧 Compact 都要求 Responses 能力。
+func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponses bool, platform string) service.OpenAIEndpointCapability {
+	if needsResponses && platform == service.PlatformOpenAI {
+		return service.OpenAIEndpointCapabilityResponses
+	}
+	return openAIResponsesRequiredCapability(imageIntent, platform)
+}
+
 // allowOpenAICompatibleMessagesDispatch 兼容直接调用 handler 的测试与内部入口。
 func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
@@ -320,6 +328,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
+	legacyCompact := isOpenAILegacyCompactPath(c)
+	nativeCompactionV2 := isBareOpenAIResponsesPath(c) && isOpenAIRemoteCompactionV2Request(body)
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
 	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
@@ -468,7 +478,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 	}
-	requireCompact := isOpenAIRemoteCompactPath(c)
+	requireCompact := legacyCompact
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -485,7 +495,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 复用前置权限与并发阶段按渠道模型 C 和未再修改的 forwardBody 确认的显式生图意图，
 	// 避免大 tools 请求重复扫描。
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
-	requiredCapability := openAIResponsesRequiredCapability(imageIntent, requestPlatform)
+	requiredCapability := openAIResponsesRequiredCapabilityForRequest(
+		imageIntent,
+		nativeCompactionV2 || legacyCompact,
+		requestPlatform,
+	)
 
 	for {
 		// 流式 Forward 会主动分离上游请求，以便客户端断开后继续回收用量；每次账号尝试前
@@ -518,7 +532,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
+				if legacyCompact && errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
 					return
@@ -771,12 +785,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 }
 
-func isOpenAIRemoteCompactPath(c *gin.Context) bool {
-	if c == nil || c.Request == nil || c.Request.URL == nil {
-		return false
-	}
-	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
-	return strings.HasSuffix(normalizedPath, "/responses/compact")
+func isOpenAILegacyCompactPath(c *gin.Context) bool {
+	return service.IsOpenAIResponsesCompactPath(c)
 }
 
 // isBareOpenAIResponsesPath 仅匹配裸 /responses 端点（无 /compact 等子路径），
@@ -786,32 +796,27 @@ func isBareOpenAIResponsesPath(c *gin.Context) bool {
 		return false
 	}
 	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
-	return strings.HasSuffix(normalizedPath, "/responses")
-}
-
-// isOpenAIRemoteCompactionV2Request 判断请求是否明确使用原生 remote compaction v2 流式协议。
-func isOpenAIRemoteCompactionV2Request(c *gin.Context, body []byte) bool {
-	stream, valid := parseOpenAICompatibleStream(body)
-	if !valid || !stream || c == nil || c.Request == nil {
+	switch normalizedPath {
+	case EndpointResponses, "/openai/v1/responses", "/responses", "/backend-api/codex/responses":
+		return true
+	default:
 		return false
 	}
-	for _, header := range c.Request.Header.Values("x-codex-beta-features") {
-		for _, feature := range strings.Split(header, ",") {
-			if strings.TrimSpace(feature) == "remote_compaction_v2" {
-				return true
-			}
-		}
-	}
-	return false
+}
+
+// isOpenAIRemoteCompactionV2Request 按 wire 形状识别原生 remote compaction v2 流式协议。
+func isOpenAIRemoteCompactionV2Request(body []byte) bool {
+	stream, valid := parseOpenAICompatibleStream(body)
+	return valid && stream && service.HasCompactionTriggerInInput(body)
 }
 
 // normalizeOpenAIResponsesCompactRequest 保留 Codex remote compaction v2 原生的
-// 流式 /responses 链路；未明确声明该协议的 body-signal 请求仍提升到旧 compact 桥接链路。
+// 流式 /responses 链路；不满足原生 V2 wire 形状的 body-signal 请求仍提升到旧 compact 桥接链路。
 // 返回归一化后的 body；ok=false 表示错误响应已写出，调用方应直接 return。
 func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Context, reqLog *zap.Logger, body []byte) ([]byte, bool) {
-	isCompactRequest := service.IsOpenAIResponsesCompactPathForTest(c)
+	isCompactRequest := isOpenAILegacyCompactPath(c)
 	if !isCompactRequest && isBareOpenAIResponsesPath(c) && service.HasCompactionTriggerInInput(body) {
-		if isOpenAIRemoteCompactionV2Request(c, body) {
+		if isOpenAIRemoteCompactionV2Request(body) {
 			return body, true
 		}
 		c.Request.URL.Path = strings.TrimRight(c.Request.URL.Path, "/") + "/compact"
@@ -840,7 +845,7 @@ func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Con
 }
 
 func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {
-	if !isOpenAIRemoteCompactPath(c) {
+	if !isOpenAILegacyCompactPath(c) {
 		return
 	}
 

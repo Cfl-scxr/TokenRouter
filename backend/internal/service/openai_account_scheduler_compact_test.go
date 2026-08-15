@@ -218,6 +218,78 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactAllowsGrok(t *te
 	require.Equal(t, int64(71030), selection.Account.ID)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionSeparatesLegacyCompactSupport(t *testing.T) {
+	resetAdvancedSchedulerSettingCacheForTest()
+
+	groupID := int64(91005)
+	accounts := []Account{
+		{
+			ID:          71050,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    10,
+			Extra: map[string]any{
+				"openai_compact_supported":   true,
+				"openai_responses_supported": false,
+			},
+		},
+		{
+			ID:          71051,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Extra: map[string]any{
+				"openai_compact_mode":        OpenAICompactModeForceOff,
+				"openai_responses_supported": true,
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	nativeSelection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		context.Background(),
+		&groupID,
+		"",
+		"",
+		"gpt-5.6-sol",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityResponses,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, nativeSelection)
+	require.Equal(t, int64(71051), nativeSelection.Account.ID)
+
+	legacySelection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		context.Background(),
+		&groupID,
+		"",
+		"",
+		"gpt-5.6-sol",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityResponses,
+		true,
+		false,
+	)
+	require.ErrorIs(t, err, ErrNoAvailableCompactAccounts)
+	require.Nil(t, legacySelection)
+}
+
 // TestOpenAICompactSupportTier 验证 tier 分类逻辑。
 func TestOpenAICompactSupportTier(t *testing.T) {
 	tests := []struct {
