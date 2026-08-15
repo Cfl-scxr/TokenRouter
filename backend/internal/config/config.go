@@ -1687,6 +1687,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	// 环境变量支持
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	if tz, ok := os.LookupEnv("TZ"); ok && strings.TrimSpace(tz) != "" {
+		// 标准 TZ 显式覆盖兼容的 TIMEZONE，避免容器时区与应用统计口径分离。
+		viper.Set("timezone", strings.TrimSpace(tz))
+	}
 	if err := viper.BindEnv("server.enable_server_timing", "ENABLE_SERVER_TIMING"); err != nil {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
 	}

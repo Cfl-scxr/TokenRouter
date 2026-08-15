@@ -271,7 +271,7 @@ func (s *DashboardService) GetGroupStatsWithUsageFilters(ctx context.Context, st
 	return s.GetGroupStatsWithFilters(ctx, startTime, endTime, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.RequestType, filters.Stream, filters.BillingType)
 }
 
-// GetGroupUsageSummary returns today's and cumulative cost for all groups.
+// GetGroupUsageSummary 返回全部分组的今日、昨日和累计费用。
 func (s *DashboardService) GetGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	results, err := s.usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
 	if err != nil {

@@ -100,6 +100,70 @@ func TestBuildUsageAnalyticsQueryBeforeUTCMidnightKeepsTodayBoundary(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestGetAllGroupUsageSummaryFromAnalyticsIncludesYesterday(t *testing.T) {
+	db, mock := newSQLMock(t)
+	settings := service.NewPreAggregationSettingsService(nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: true, IntervalSeconds: 60},
+	})
+	repo := &usageLogRepository{sql: db, preAggregation: settings}
+	now := time.Now().UTC()
+	todayStart := now.AddDate(0, 0, -2).Truncate(24 * time.Hour)
+	sourceOldest := todayStart.AddDate(0, 0, -7)
+	watermark := now.Truncate(time.Hour)
+
+	mock.ExpectQuery("(?s)SELECT source_oldest_at.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"source_oldest_at"}).AddRow(sourceOldest))
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, sourceOldest))
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, sourceOldest))
+	mock.ExpectQuery("(?s)SELECT live_watermark, coverage_start.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"live_watermark", "coverage_start"}).AddRow(watermark, sourceOldest))
+	mock.ExpectQuery("(?s)SELECT g.id, COALESCE\\(SUM\\(c.actual_cost\\), 0\\).*FROM groups g").
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost"}).
+			AddRow(int64(1), 9.0).
+			AddRow(int64(2), 0.0))
+	mock.ExpectQuery("(?s)SELECT group_id, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "cost"}).
+			AddRow(int64(1), 2.0).
+			AddRow(int64(2), 1.0))
+	mock.ExpectQuery("(?s)SELECT group_id, COALESCE\\(SUM\\(actual_cost\\), 0\\).*FROM combined").
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "cost"}).
+			AddRow(int64(1), 3.0))
+
+	results, ok, err := repo.getAllGroupUsageSummaryFromAnalytics(context.Background(), todayStart)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []usagestats.GroupUsageSummary{
+		{GroupID: 1, TodayCost: 2, YesterdayCost: 3, TotalCost: 9},
+		{GroupID: 2, TodayCost: 1, YesterdayCost: 0, TotalCost: 0},
+	}, results)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetAllGroupUsageSummaryFallbackIncludesYesterday(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	location, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	todayStart := time.Date(2026, time.March, 9, 0, 0, 0, 0, location)
+	yesterdayStart := time.Date(2026, time.March, 8, 0, 0, 0, 0, location)
+
+	mock.ExpectQuery("(?s)SELECT source_oldest_at.*usage_analytics_aggregation_state").
+		WillReturnRows(sqlmock.NewRows([]string{"source_oldest_at"}).AddRow(nil))
+	mock.ExpectQuery("(?s)SELECT.*AS total_cost.*AS today_cost.*AS yesterday_cost.*FROM groups g").
+		WithArgs(todayStart, yesterdayStart).
+		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}).
+			AddRow(int64(1), 9.0, 2.0, 3.0))
+
+	results, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.GroupUsageSummary{
+		{GroupID: 1, TodayCost: 2, YesterdayCost: 3, TotalCost: 9},
+	}, results)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // TestUsageAnalyticsFallbackWarningIsRateLimited 验证同一操作一分钟内只产生一次聚合故障告警。
 func TestUsageAnalyticsFallbackWarningIsRateLimited(t *testing.T) {
 	operation := "test_rate_limit_analytics_fallback"

@@ -603,7 +603,7 @@ func (r *usageLogRepository) getUserBreakdownStatsFromAnalytics(ctx context.Cont
 	return results, true, nil
 }
 
-// getAllGroupUsageSummaryFromAnalytics 分别使用日表主体和小时表计算累计与今日分组用量。
+// getAllGroupUsageSummaryFromAnalytics 使用通用预聚合计算累计、今日和昨日分组用量。
 func (r *usageLogRepository) getAllGroupUsageSummaryFromAnalytics(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, bool, error) {
 	var sourceOldest sql.NullTime
 	if err := scanSingleRow(ctx, r.sql, `
@@ -622,6 +622,11 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromAnalytics(ctx context.Co
 		return nil, false, err
 	}
 	todayQuery, ok, err := r.buildUsageAnalyticsQuery(ctx, UsageLogFilters{}, todayStart, now, false)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+	yesterdayQuery, ok, err := r.buildUsageAnalyticsQuery(ctx, UsageLogFilters{}, yesterdayStart, todayStart, false)
 	if err != nil || !ok {
 		return nil, false, err
 	}
@@ -654,26 +659,36 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromAnalytics(ctx context.Co
 		return nil, false, err
 	}
 
-	todayRows, err := r.sql.QueryContext(ctx, todayQuery.cte+`
-		SELECT group_id, COALESCE(SUM(actual_cost), 0)
-		FROM combined
-		GROUP BY group_id
-	`, todayQuery.args...)
-	if err != nil {
+	applyPeriod := func(query usageAnalyticsQuery, apply func(*usagestats.GroupUsageSummary, float64)) error {
+		rows, queryErr := r.sql.QueryContext(ctx, query.cte+`
+			SELECT group_id, COALESCE(SUM(actual_cost), 0)
+			FROM combined
+			GROUP BY group_id
+		`, query.args...)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var groupID int64
+			var cost float64
+			if scanErr := rows.Scan(&groupID, &cost); scanErr != nil {
+				return scanErr
+			}
+			if position, exists := byID[groupID]; exists {
+				apply(&results[position], cost)
+			}
+		}
+		return rows.Err()
+	}
+	if err := applyPeriod(todayQuery, func(row *usagestats.GroupUsageSummary, cost float64) {
+		row.TodayCost = cost
+	}); err != nil {
 		return nil, false, err
 	}
-	defer func() { _ = todayRows.Close() }()
-	for todayRows.Next() {
-		var groupID int64
-		var todayCost float64
-		if err := todayRows.Scan(&groupID, &todayCost); err != nil {
-			return nil, false, err
-		}
-		if position, exists := byID[groupID]; exists {
-			results[position].TodayCost = todayCost
-		}
-	}
-	if err := todayRows.Err(); err != nil {
+	if err := applyPeriod(yesterdayQuery, func(row *usagestats.GroupUsageSummary, cost float64) {
+		row.YesterdayCost = cost
+	}); err != nil {
 		return nil, false, err
 	}
 	return results, true, nil

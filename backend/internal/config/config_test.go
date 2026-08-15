@@ -23,6 +23,38 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 }
 
+func TestLoadTimezonePrecedence(t *testing.T) {
+	tests := []struct {
+		name         string
+		fileTimezone string
+		timezoneEnv  string
+		tzEnv        string
+		want         string
+	}{
+		{name: "默认值", want: "Asia/Shanghai"},
+		{name: "配置文件", fileTimezone: "Europe/London", want: "Europe/London"},
+		{name: "兼容环境变量", fileTimezone: "Europe/London", timezoneEnv: "UTC", want: "UTC"},
+		{name: "标准环境变量优先", fileTimezone: "Europe/London", timezoneEnv: "UTC", tzEnv: "America/New_York", want: "America/New_York"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("TIMEZONE", tt.timezoneEnv)
+			t.Setenv("TZ", tt.tzEnv)
+			if tt.fileTimezone != "" {
+				configFile := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(configFile, []byte("timezone: "+tt.fileTimezone+"\n"), 0o600))
+				t.Setenv("CONFIG_FILE", configFile)
+			}
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Timezone)
+		})
+	}
+}
+
 func TestLoadServerTimingConfig(t *testing.T) {
 	t.Run("disabled by default", func(t *testing.T) {
 		resetViperWithJWTSecret(t)
