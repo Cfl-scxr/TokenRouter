@@ -727,6 +727,12 @@ export default {
         compactAuto: 'Legacy compact auto',
         compactUnknown: 'Legacy compact auto',
         compactLastChecked: 'Last legacy compact probe',
+        nativeCompactV2Mode: 'Native V2 compact',
+        nativeCompactV2ModeDesc:
+          'Controls how this account participates in native remote_compaction_v2 routing only. Auto follows native V2 probe results, Force On always allows, and Force Off always excludes.',
+        nativeCompactV2ModeAuto: 'Auto',
+        nativeCompactV2ModeForceOn: 'Force On',
+        nativeCompactV2ModeForceOff: 'Force Off',
         nativeCompactV2Supported: 'Native V2 compact available',
         nativeCompactV2Unsupported: 'Native V2 compact unavailable',
         nativeCompactV2Unknown: 'Native V2 compact untested',

@@ -793,6 +793,12 @@ export default {
         compactAuto: '旧版 Compact 自动',
         compactUnknown: '旧版 Compact 自动',
         compactLastChecked: '最近旧版 Compact 探测',
+        nativeCompactV2Mode: '原生 V2 压缩',
+        nativeCompactV2ModeDesc:
+          '仅控制本账号参与原生 remote_compaction_v2 调度。自动跟随原生 V2 探测结果，强制开启始终允许，强制关闭始终排除。',
+        nativeCompactV2ModeAuto: '自动',
+        nativeCompactV2ModeForceOn: '强制开启',
+        nativeCompactV2ModeForceOff: '强制关闭',
         nativeCompactV2Supported: '原生 V2 压缩可用',
         nativeCompactV2Unsupported: '原生 V2 压缩不可用',
         nativeCompactV2Unknown: '原生 V2 压缩未探测',

@@ -45,8 +45,8 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2StaysOnResponses(t *test
 	require.False(t, isOpenAILegacyCompactPath(c))
 	require.True(t, isBareOpenAIResponsesPath(c))
 	require.True(t, isOpenAIRemoteCompactionV2Request(normalized))
-	require.Equal(t, service.OpenAIEndpointCapabilityResponses,
-		openAIResponsesRequiredCapabilityForRequest(false, true, service.PlatformOpenAI))
+	require.Equal(t, service.OpenAIEndpointCapabilityRemoteCompactionV2,
+		openAIResponsesRequiredCapabilityForRequest(false, true, false, service.PlatformOpenAI))
 	require.Equal(t, body, normalized)
 	require.True(t, gjson.GetBytes(normalized, "stream").Bool())
 	require.True(t, gjson.GetBytes(normalized, "store").Bool())

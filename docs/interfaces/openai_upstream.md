@@ -51,9 +51,9 @@ TokenRouter 同时兼容原生 Remote Compaction V2 和旧版 Compact 端点。�
 | HTTP 识别 | 裸 `/responses` 请求同时携带 `stream=true` 且 `input` 含 `compaction_trigger`；`x-codex-beta-features` 不是识别门槛，但原生 V2 出站必保证包含 `remote_compaction_v2` | 客户端显式请求 `/responses/compact`，或带 `compaction_trigger` 但不满足原生 V2 条件的裸 `/responses` 请求被网关提升 |
 | 上游传输 | 保持普通 Responses 流式链路，由上游直接返回包含 `compaction` item 的 SSE | 走独立 Compact 子路径；body-signal 流式客户端由网关把 unary JSON 结果合成为 Responses SSE，并在长时间等待时发送注释心跳 |
 | 模型处理 | 沿用普通 Responses 的模型处理，不应用 `compact_model_mapping`，也不会因此追加 `-openai-compact` | 仅此路径在常规模型处理基础上应用账号 `credentials.compact_model_mapping` |
-| 账号设置 | 不读取 `openai_compact_mode` 和旧端点探测结果来切换协议或筛选账号；V2 探测只写 `openai_native_compaction_v2_*` | `extra.openai_compact_mode`、`openai_compact_supported`、`openai_compact_*` 探测信息和 Compact 专属模型映射都只控制此路径 |
+| 账号设置 | `extra.openai_native_compaction_v2_mode`、`openai_native_compaction_v2_supported` 和对应 `openai_native_compaction_v2_*` 探测信息只控制此路径；不读取旧端点状态 | `extra.openai_compact_mode`、`openai_compact_supported`、`openai_compact_*` 探测信息和 Compact 专属模型映射都只控制此路径 |
 
-账号设置页中的“旧版 Compact 端点”是能力覆盖而不是协议开关：`force_on` 只把账号视为可承接旧端点并提高其 Compact 支持等级，`force_off` 只将账号排除在旧端点调度之外；两者都不会把普通 Responses 或原生 V2 改写成 `/responses/compact`，也不会启用或禁用原生 V2。旧端点的 OpenAI OAuth GPT-5.6 请求还会把 `reasoning.effort=max` 降为 `xhigh`，原生 V2 则保留常规 Responses 推理强度语义。
+账号设置页中的“原生 V2 压缩”和“旧版 Compact 端点”都是各自协议的能力覆盖，不是协议开关。两者均提供 `auto`、`force_on`、`force_off`：自动模式跟随各自独立的探测结果，未探测账号保持可选以兼容历史配置，明确不支持时排除；强制开启始终允许，强制关闭始终排除。V2 模式只筛选原生 V2 请求，旧版模式只筛选 `/responses/compact`；两者都不会把普通 Responses 或另一条压缩协议改写成自己的路径。原生 V2 即使强制开启仍须满足普通 Responses 端点能力，不能把不支持 Responses 的 API Key 上游纳入候选。旧端点的 OpenAI OAuth GPT-5.6 请求还会把 `reasoning.effort=max` 降为 `xhigh`，原生 V2 则保留常规 Responses 推理强度语义。
 
 管理端连接测试的 `compact` 模式是原生 V2 健康检查，使用普通账号模型映射并要求响应实际出现 compaction item；`legacy_compact` 是旧端点兼容性测试，才使用 `compact_model_mapping`。两种测试的可用状态、最后状态、错误和时间戳完全隔离，旧端点 404 不得改变 V2 能力判定。
 

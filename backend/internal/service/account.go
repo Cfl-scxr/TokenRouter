@@ -104,6 +104,9 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityRemoteCompactionV2 表示账号可承接原生 remote_compaction_v2。
+	// 它仍要求普通 Responses 能力，额外受账号级 V2 模式和探测结果控制。
+	OpenAIEndpointCapabilityRemoteCompactionV2 OpenAIEndpointCapability = "remote_compaction_v2"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1062,6 +1065,50 @@ func (a *Account) AllowsOpenAICompact() bool {
 	return supported
 }
 
+// GetOpenAINativeCompactionV2Mode 返回原生 V2 压缩的账号级调度模式。
+// 缺失或非法值保持自动，避免历史账号因新增配置被意外排除。
+func (a *Account) GetOpenAINativeCompactionV2Mode() string {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return OpenAICompactModeAuto
+	}
+	mode, _ := a.Extra[openAINativeCompactionV2ModeExtraKey].(string)
+	return normalizeOpenAICompactMode(mode)
+}
+
+// OpenAINativeCompactionV2SupportKnown 返回原生 V2 是否已具有明确的有效支持结论。
+// 强制模式优先于探测状态；自动模式仅使用原生 V2 的独立探测字段。
+func (a *Account) OpenAINativeCompactionV2SupportKnown() (supported bool, known bool) {
+	if a == nil || !a.IsOpenAI() {
+		return false, false
+	}
+
+	switch a.GetOpenAINativeCompactionV2Mode() {
+	case OpenAICompactModeForceOn:
+		return true, true
+	case OpenAICompactModeForceOff:
+		return false, true
+	}
+
+	if a.Extra == nil {
+		return false, false
+	}
+	supported, ok := a.Extra[openAINativeCompactionV2SupportedExtraKey].(bool)
+	if !ok {
+		return false, false
+	}
+	return supported, true
+}
+
+// AllowsOpenAINativeCompactionV2 保留自动模式下未探测账号的既有可用性，
+// 但会排除明确不支持或被管理员强制关闭的账号。
+func (a *Account) AllowsOpenAINativeCompactionV2() bool {
+	if a == nil || !a.IsOpenAI() {
+		return false
+	}
+	supported, known := a.OpenAINativeCompactionV2SupportKnown()
+	return !known || supported
+}
+
 // GetCompactModelMapping returns compact-only model remapping configuration.
 // This mapping is intended for /responses/compact only and does not affect
 // normal /responses traffic.
@@ -1651,6 +1698,11 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			a.Type == AccountTypeOAuth &&
 			!a.IsOpenAIPersonalAccessToken() &&
 			!a.IsOpenAIAgentIdentity()
+	case OpenAIEndpointCapabilityRemoteCompactionV2:
+		if !a.AllowsOpenAINativeCompactionV2() {
+			return false
+		}
+		fallthrough
 	case OpenAIEndpointCapabilityResponses:
 		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
 		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游

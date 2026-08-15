@@ -1630,6 +1630,11 @@ type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
 function getOpenAINativeCompactV2State(row: any): OpenAICompactBadgeState | null {
   if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
   const extra = row.extra as Record<string, unknown> | undefined
+  const mode = typeof extra?.openai_native_compaction_v2_mode === 'string'
+    ? extra.openai_native_compaction_v2_mode
+    : 'auto'
+  if (mode === 'force_on') return 'active'
+  if (mode === 'force_off') return 'blocked'
   if (typeof extra?.openai_native_compaction_v2_supported !== 'boolean') return 'auto'
   return extra.openai_native_compaction_v2_supported ? 'active' : 'blocked'
 }

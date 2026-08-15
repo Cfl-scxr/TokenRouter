@@ -3272,6 +3272,21 @@
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.nativeCompactV2Mode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.nativeCompactV2ModeDesc') }}
+            </p>
+          </div>
+          <div class="w-44">
+            <Select
+              v-model="openAINativeCompactionV2Mode"
+              data-testid="create-openai-native-compaction-v2-mode"
+              :options="openAINativeCompactionV2ModeOptions"
+            />
+          </div>
+        </div>
         <div class="flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
@@ -4243,6 +4258,7 @@ const openaiPassthroughEnabled = ref(false)
 // OpenAI OAuth namespace 工具摊平兼容开关，缺省关闭即原样保留。
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAINativeCompactionV2Mode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -4322,6 +4338,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const openAINativeCompactionV2ModeOptions = computed(() => [
+  { value: 'auto', label: t('admin.accounts.openai.nativeCompactV2ModeAuto') },
+  { value: 'force_on', label: t('admin.accounts.openai.nativeCompactV2ModeForceOn') },
+  { value: 'force_off', label: t('admin.accounts.openai.nativeCompactV2ModeForceOff') }
 ])
 const openAIOAuthClientPolicyOptions = computed(() => [
   { value: 'any', label: t('admin.accounts.openai.clientPolicyAny') },
@@ -4667,6 +4688,9 @@ const applyOpenAIOAuthImportDefaultsToForm = () => {
   }
   if (isOpenAICompactMode(extra.openai_compact_mode) && openAICompactMode.value === 'auto') {
     openAICompactMode.value = extra.openai_compact_mode
+  }
+  if (isOpenAICompactMode(extra.openai_native_compaction_v2_mode) && openAINativeCompactionV2Mode.value === 'auto') {
+    openAINativeCompactionV2Mode.value = extra.openai_native_compaction_v2_mode
   }
   if (extra.enable_tls_fingerprint === true) {
     tlsFingerprintEnabled.value = true
@@ -5473,6 +5497,7 @@ const resetForm = () => {
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAICompactMode.value = 'auto'
+  openAINativeCompactionV2Mode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5661,6 +5686,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.openai_compact_mode = openAICompactMode.value
   } else {
     delete extra.openai_compact_mode
+  }
+  if (openAINativeCompactionV2Mode.value !== 'auto') {
+    extra.openai_native_compaction_v2_mode = openAINativeCompactionV2Mode.value
+  } else {
+    delete extra.openai_native_compaction_v2_mode
   }
 
   if (

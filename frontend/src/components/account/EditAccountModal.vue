@@ -1994,6 +1994,31 @@
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.nativeCompactV2Mode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.nativeCompactV2ModeDesc') }}
+            </p>
+          </div>
+          <div class="w-44">
+            <Select
+              v-model="openAINativeCompactionV2Mode"
+              data-testid="edit-openai-native-compaction-v2-mode"
+              :options="openAINativeCompactionV2ModeOptions"
+            />
+          </div>
+        </div>
+        <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+          <span class="font-medium">{{ t(openAINativeCompactionV2StatusKey) }}</span>
+          <span
+            v-if="account?.extra?.openai_native_compaction_v2_checked_at"
+            class="ml-2 text-gray-500 dark:text-gray-400"
+          >
+            {{ t('admin.accounts.openai.nativeCompactV2LastChecked') }}:
+            {{ formatDateTime(new Date(String(account.extra.openai_native_compaction_v2_checked_at))) }}
+          </span>
+        </div>
         <div class="flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
@@ -2953,6 +2978,7 @@ const openaiFlattenNamespacesEnabled = ref(false)
 // OpenAI 订阅档位（Plus/Pro/Free）手动覆盖值,存于 credentials.plan_type;'' 表示清空/自动识别
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAINativeCompactionV2Mode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3069,6 +3095,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const openAINativeCompactionV2ModeOptions = computed(() => [
+  { value: 'auto', label: t('admin.accounts.openai.nativeCompactV2ModeAuto') },
+  { value: 'force_on', label: t('admin.accounts.openai.nativeCompactV2ModeForceOn') },
+  { value: 'force_off', label: t('admin.accounts.openai.nativeCompactV2ModeForceOff') }
 ])
 // OpenAI 订阅档位手动覆盖选项(清空 + Plus/Pro/Free;别名/自定义值友好显示且保留 canonical)
 const planTypeOptions = computed(() =>
@@ -3200,6 +3231,21 @@ const openAICompactStatusKey = computed(() => {
       : 'admin.accounts.openai.compactUnsupported'
   }
   return 'admin.accounts.openai.compactAuto'
+})
+const openAINativeCompactionV2StatusKey = computed(() => {
+  const extra = props.account?.extra as Record<string, unknown> | undefined
+  if (!props.account || props.account.platform !== 'openai') return ''
+  const mode = typeof extra?.openai_native_compaction_v2_mode === 'string'
+    ? extra.openai_native_compaction_v2_mode
+    : 'auto'
+  if (mode === 'force_on') return 'admin.accounts.openai.nativeCompactV2Supported'
+  if (mode === 'force_off') return 'admin.accounts.openai.nativeCompactV2Unsupported'
+  if (typeof extra?.openai_native_compaction_v2_supported === 'boolean') {
+    return extra.openai_native_compaction_v2_supported
+      ? 'admin.accounts.openai.nativeCompactV2Supported'
+      : 'admin.accounts.openai.nativeCompactV2Unsupported'
+  }
+  return 'admin.accounts.openai.nativeCompactV2Unknown'
 })
 
 // Computed: current preset mappings based on platform
@@ -3439,6 +3485,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiFlattenNamespacesEnabled.value = false
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
+  openAINativeCompactionV2Mode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
@@ -3460,6 +3507,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       ? readPlanType(newAccount.credentials as Record<string, unknown> | undefined)
       : ''
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
+    openAINativeCompactionV2Mode.value = (extra?.openai_native_compaction_v2_mode as OpenAICompactMode) || 'auto'
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
@@ -4870,6 +4918,11 @@ const handleSubmit = async () => {
         delete newExtra.openai_compact_mode
       } else {
         newExtra.openai_compact_mode = openAICompactMode.value
+      }
+      if (openAINativeCompactionV2Mode.value === 'auto') {
+        delete newExtra.openai_native_compaction_v2_mode
+      } else {
+        newExtra.openai_native_compaction_v2_mode = openAINativeCompactionV2Mode.value
       }
 		if (props.account.type === 'apikey') {
         if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {

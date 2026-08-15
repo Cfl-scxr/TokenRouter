@@ -220,9 +220,13 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
-// openAIResponsesRequiredCapabilityForRequest 让原生远程压缩与旧 Compact 都要求 Responses 能力。
-func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponses bool, platform string) service.OpenAIEndpointCapability {
-	if needsResponses && platform == service.PlatformOpenAI {
+// openAIResponsesRequiredCapabilityForRequest 让两类压缩都要求 Responses 能力，
+// 其中原生 V2 还必须通过自身独立的账号模式和探测状态门禁。
+func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, nativeCompactionV2 bool, legacyCompact bool, platform string) service.OpenAIEndpointCapability {
+	if nativeCompactionV2 && platform == service.PlatformOpenAI {
+		return service.OpenAIEndpointCapabilityRemoteCompactionV2
+	}
+	if legacyCompact && platform == service.PlatformOpenAI {
 		return service.OpenAIEndpointCapabilityResponses
 	}
 	return openAIResponsesRequiredCapability(imageIntent, platform)
@@ -497,7 +501,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
 	requiredCapability := openAIResponsesRequiredCapabilityForRequest(
 		imageIntent,
-		nativeCompactionV2 || legacyCompact,
+		nativeCompactionV2,
+		legacyCompact,
 		requestPlatform,
 	)
 

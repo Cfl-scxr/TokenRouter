@@ -332,6 +332,11 @@ vi.mock("vue-i18n", async () => {
     "admin.accounts.openai.compactModeAuto": "自动",
     "admin.accounts.openai.compactModeForceOn": "强制开启",
     "admin.accounts.openai.compactModeForceOff": "强制关闭",
+    "admin.accounts.openai.nativeCompactV2Mode": "原生 V2 压缩",
+    "admin.accounts.openai.nativeCompactV2ModeDesc": "仅控制本账号参与原生 remote_compaction_v2 调度。自动跟随原生 V2 探测结果，强制开启始终允许，强制关闭始终排除。",
+    "admin.accounts.openai.nativeCompactV2ModeAuto": "自动",
+    "admin.accounts.openai.nativeCompactV2ModeForceOn": "强制开启",
+    "admin.accounts.openai.nativeCompactV2ModeForceOff": "强制关闭",
     "admin.accounts.quotaControl.tlsFingerprint.label": "TLS 指纹模拟",
     "admin.accounts.quotaControl.tlsFingerprint.hint": "模拟 Node.js/Claude Code/Codex CLI 客户端的 TLS 指纹",
     "admin.accounts.quotaControl.tlsFingerprint.defaultProfile": "内置默认",
@@ -1976,6 +1981,34 @@ describe("admin SettingsView payment visible method controls", () => {
           enable_tls_fingerprint: true,
           tls_fingerprint_profile_id: 9,
         }),
+      }),
+    );
+  });
+
+  it("loads and submits the OpenAI OAuth import default native V2 compact mode", async () => {
+    getOpenAIOAuthImportDefaults.mockResolvedValueOnce({
+      credentials: { model_whitelist: ["gpt-5.2"] },
+      extra: { openai_native_compaction_v2_mode: "force_off" },
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const mode = wrapper.get('[data-testid="openai-oauth-default-native-compaction-v2-mode"]');
+    expect((mode.element as HTMLSelectElement).value).toBe("force_off");
+    await mode.setValue("force_on");
+
+    const defaultsCard = wrapper.get("#openai-oauth-import-defaults");
+    const saveButton = defaultsCard
+      .findAll("button")
+      .find((node) => node.text() === "common.save");
+    expect(saveButton).toBeDefined();
+    await saveButton?.trigger("click");
+    await flushPromises();
+
+    expect(updateOpenAIOAuthImportDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extra: expect.objectContaining({ openai_native_compaction_v2_mode: "force_on" }),
       }),
     );
   });

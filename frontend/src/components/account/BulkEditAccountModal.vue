@@ -1163,6 +1163,42 @@
         </div>
       </div>
 
+      <!-- OpenAI 原生 V2 压缩模式 -->
+      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-native-compaction-v2-mode-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-native-compaction-v2-mode-enabled"
+            >
+              {{ t('admin.accounts.openai.nativeCompactV2Mode') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.nativeCompactV2ModeDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAINativeCompactionV2Mode"
+            id="bulk-edit-openai-native-compaction-v2-mode-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-native-compaction-v2-mode"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-native-compaction-v2-mode"
+          :class="!enableOpenAINativeCompactionV2Mode && 'pointer-events-none opacity-50'"
+        >
+          <Select
+            v-model="openAINativeCompactionV2Mode"
+            data-testid="bulk-edit-openai-native-compaction-v2-mode-select"
+            :options="openAINativeCompactionV2ModeOptions"
+            aria-labelledby="bulk-edit-openai-native-compaction-v2-mode-label"
+          />
+        </div>
+      </div>
+
       <!-- OpenAI 旧版 Compact 端点模式 -->
       <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1750,6 +1786,7 @@ const enableAutoPause7dThreshold = ref(false)
 const enableAutoPause5hDisabled = ref(false)
 const enableAutoPause7dDisabled = ref(false)
 const enableOpenAICompactMode = ref(false)
+const enableOpenAINativeCompactionV2Mode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
 const enableTLSFingerprint = ref(false)
@@ -1797,6 +1834,7 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAINativeCompactionV2Mode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
@@ -1863,6 +1901,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const openAINativeCompactionV2ModeOptions = computed(() => [
+  { value: 'auto', label: t('admin.accounts.openai.nativeCompactV2ModeAuto') },
+  { value: 'force_on', label: t('admin.accounts.openai.nativeCompactV2ModeForceOn') },
+  { value: 'force_off', label: t('admin.accounts.openai.nativeCompactV2ModeForceOff') }
 ])
 const openAIWSModeConcurrencyHintKey = computed(() =>
   resolveOpenAIWSModeConcurrencyHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -2306,6 +2349,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_compact_mode = openAICompactMode.value
   }
 
+  if (enableOpenAINativeCompactionV2Mode.value) {
+    const extra = ensureExtra()
+    extra.openai_native_compaction_v2_mode = openAINativeCompactionV2Mode.value
+  }
+
   if (enableOpenAICompactModelMapping.value) {
     credentials.compact_model_mapping = buildOpenAICompactModelMapping() ?? {}
     credentialsChanged = true
@@ -2418,6 +2466,7 @@ const handleSubmit = async () => {
     enableTLSFingerprint.value ||
     enableCodexFingerprintMode.value ||
     enableOpenAICompactMode.value ||
+    enableOpenAINativeCompactionV2Mode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
     userMsgQueueMode.value !== null
@@ -2554,6 +2603,7 @@ const resetBulkEditFormState = () => {
   enableAutoPause7dDisabled.value = false
   enableCodexFingerprintMode.value = false
   enableOpenAICompactMode.value = false
+  enableOpenAINativeCompactionV2Mode.value = false
   enableOpenAICompactModelMapping.value = false
   enableRpmLimit.value = false
   enableTLSFingerprint.value = false
@@ -2585,6 +2635,7 @@ const resetBulkEditFormState = () => {
   autoPause7dDisabled.value = false
   codexFingerprintMode.value = 'off'
   openAICompactMode.value = 'auto'
+  openAINativeCompactionV2Mode.value = 'auto'
   openAICompactModelMappings.value = []
   rpmLimitEnabled.value = false
   bulkBaseRpm.value = null

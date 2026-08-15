@@ -290,6 +290,82 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionSeparat
 	require.Nil(t, legacySelection)
 }
 
+// TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionV2Mode
+// 验证原生 V2 只读取自身模式和探测结果，不借用旧版 Compact 状态。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionV2Mode(t *testing.T) {
+	resetAdvancedSchedulerSettingCacheForTest()
+
+	groupID := int64(91006)
+	accounts := []Account{
+		{
+			ID:          71060,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra: map[string]any{
+				"openai_responses_supported":              true,
+				openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOff,
+				openAINativeCompactionV2SupportedExtraKey: true,
+			},
+		},
+		{
+			ID:          71061,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+			Extra: map[string]any{
+				"openai_responses_supported":              true,
+				openAINativeCompactionV2SupportedExtraKey: false,
+			},
+		},
+		{
+			ID:          71062,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    2,
+			Extra: map[string]any{
+				"openai_responses_supported":              true,
+				openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOn,
+				openAINativeCompactionV2SupportedExtraKey: false,
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		context.Background(),
+		&groupID,
+		"",
+		"",
+		"gpt-5.6-sol",
+		nil,
+		OpenAIUpstreamTransportAny,
+		OpenAIEndpointCapabilityRemoteCompactionV2,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(71062), selection.Account.ID)
+}
+
 // TestOpenAICompactSupportTier 验证 tier 分类逻辑。
 func TestOpenAICompactSupportTier(t *testing.T) {
 	tests := []struct {

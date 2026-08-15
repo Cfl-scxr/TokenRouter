@@ -18,6 +18,7 @@ const (
 
 const (
 	// 原生 V2 与旧端点状态分别保存，旧端点 404 不得污染 V2 能力判定。
+	openAINativeCompactionV2ModeExtraKey       = "openai_native_compaction_v2_mode"
 	openAINativeCompactionV2SupportedExtraKey  = "openai_native_compaction_v2_supported"
 	openAINativeCompactionV2CheckedAtExtraKey  = "openai_native_compaction_v2_checked_at"
 	openAINativeCompactionV2LastStatusExtraKey = "openai_native_compaction_v2_last_status"

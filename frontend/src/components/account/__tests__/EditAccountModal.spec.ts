@@ -460,10 +460,11 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('submits OpenAI compact mode and compact-only model mapping', async () => {
+  it('submits independent OpenAI native V2 and legacy compact settings', async () => {
     const account = buildAccount()
     account.extra = {
-      openai_compact_mode: 'force_on'
+      openai_compact_mode: 'force_on',
+      openai_native_compaction_v2_mode: 'force_off'
     }
     account.credentials = {
       ...account.credentials,
@@ -482,6 +483,7 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_compact_mode).toBe('force_on')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_native_compaction_v2_mode).toBe('force_off')
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping).toEqual({
       'gpt-5.4': 'gpt-5.4-openai-compact'
     })

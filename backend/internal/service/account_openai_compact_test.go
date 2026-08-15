@@ -223,6 +223,176 @@ func TestAccountAllowsOpenAICompact(t *testing.T) {
 	}
 }
 
+func TestAccountGetOpenAINativeCompactionV2Mode(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    string
+	}{
+		{
+			name: "nil account defaults to auto",
+			want: OpenAICompactModeAuto,
+		},
+		{
+			name: "non openai account defaults to auto",
+			account: &Account{
+				Platform: PlatformAnthropic,
+				Extra:    map[string]any{openAINativeCompactionV2ModeExtraKey: OpenAICompactModeForceOn},
+			},
+			want: OpenAICompactModeAuto,
+		},
+		{
+			name: "invalid mode defaults to auto",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{openAINativeCompactionV2ModeExtraKey: "invalid"},
+			},
+			want: OpenAICompactModeAuto,
+		},
+		{
+			name: "force on is normalized",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{openAINativeCompactionV2ModeExtraKey: " FORCE_ON "},
+			},
+			want: OpenAICompactModeForceOn,
+		},
+		{
+			name: "force off is normalized",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{openAINativeCompactionV2ModeExtraKey: OpenAICompactModeForceOff},
+			},
+			want: OpenAICompactModeForceOff,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.GetOpenAINativeCompactionV2Mode(); got != tt.want {
+				t.Fatalf("GetOpenAINativeCompactionV2Mode() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAccountOpenAINativeCompactionV2SupportKnown(t *testing.T) {
+	tests := []struct {
+		name          string
+		account       *Account
+		wantSupported bool
+		wantKnown     bool
+	}{
+		{
+			name: "nil account is unknown",
+		},
+		{
+			name: "force on overrides native probe state",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra: map[string]any{
+					openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOn,
+					openAINativeCompactionV2SupportedExtraKey: false,
+				},
+			},
+			wantSupported: true,
+			wantKnown:     true,
+		},
+		{
+			name: "force off overrides native probe state",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra: map[string]any{
+					openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOff,
+					openAINativeCompactionV2SupportedExtraKey: true,
+				},
+			},
+			wantSupported: false,
+			wantKnown:     true,
+		},
+		{
+			name: "auto uses native probe state",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{openAINativeCompactionV2SupportedExtraKey: true},
+			},
+			wantSupported: true,
+			wantKnown:     true,
+		},
+		{
+			name: "auto without native probe remains unknown",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotSupported, gotKnown := tt.account.OpenAINativeCompactionV2SupportKnown()
+			if gotSupported != tt.wantSupported || gotKnown != tt.wantKnown {
+				t.Fatalf("OpenAINativeCompactionV2SupportKnown() = (%v, %v), want (%v, %v)", gotSupported, gotKnown, tt.wantSupported, tt.wantKnown)
+			}
+		})
+	}
+}
+
+func TestAccountAllowsOpenAINativeCompactionV2(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{
+			name: "unknown account remains allowed",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{},
+			},
+			want: true,
+		},
+		{
+			name: "probe false rejects auto mode",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{openAINativeCompactionV2SupportedExtraKey: false},
+			},
+			want: false,
+		},
+		{
+			name: "force on allows account despite probe false",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra: map[string]any{
+					openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOn,
+					openAINativeCompactionV2SupportedExtraKey: false,
+				},
+			},
+			want: true,
+		},
+		{
+			name: "force off rejects account despite probe true",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra: map[string]any{
+					openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOff,
+					openAINativeCompactionV2SupportedExtraKey: true,
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.account.AllowsOpenAINativeCompactionV2(); got != tt.want {
+				t.Fatalf("AllowsOpenAINativeCompactionV2() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAccountGetCompactModelMapping(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -158,6 +158,20 @@
             </div>
             <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div class="min-w-0">
+                <label class="input-label mb-0">{{ t('admin.accounts.openai.nativeCompactV2Mode') }}</label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.openai.nativeCompactV2ModeDesc') }}
+                </p>
+              </div>
+              <Select
+                v-model="nativeCompactV2Mode"
+                :options="nativeCompactV2ModeOptions"
+                class="w-full sm:w-44"
+                data-testid="openai-oauth-default-native-compaction-v2-mode"
+              />
+            </div>
+            <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="min-w-0">
                 <label class="input-label mb-0">{{ t('admin.accounts.openai.compactMode') }}</label>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.accounts.openai.compactModeDesc') }}
@@ -371,6 +385,7 @@ const openAIOAuthClientPolicy = ref<OpenAIOAuthClientPolicy>('any')
 const codexCLIOnlyAllowClaudeCode = ref(false)
 const wsMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const compactMode = ref<OpenAICompactMode>('auto')
+const nativeCompactV2Mode = ref<OpenAICompactMode>('auto')
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
@@ -423,6 +438,7 @@ const structuredExtraKeys = [
   'auto_pause_7d_threshold',
   'auto_pause_5h_disabled',
   'auto_pause_7d_disabled',
+  'openai_native_compaction_v2_mode',
   'openai_compact_mode',
   'enable_tls_fingerprint',
   'tls_fingerprint_profile_id',
@@ -454,6 +470,11 @@ const compactModeOptions = computed<SelectOption[]>(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const nativeCompactV2ModeOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: t('admin.accounts.openai.nativeCompactV2ModeAuto') },
+  { value: 'force_on', label: t('admin.accounts.openai.nativeCompactV2ModeForceOn') },
+  { value: 'force_off', label: t('admin.accounts.openai.nativeCompactV2ModeForceOff') }
 ])
 
 const tlsFingerprintProfileOptions = computed<SelectOption[]>(() => [
@@ -626,6 +647,9 @@ const hydrate = (defaults: OpenAIOAuthImportDefaults) => {
     defaultMode: OPENAI_WS_MODE_OFF
   })
   compactMode.value = isCompactMode(extra.openai_compact_mode) ? extra.openai_compact_mode : 'auto'
+  nativeCompactV2Mode.value = isCompactMode(extra.openai_native_compaction_v2_mode)
+    ? extra.openai_native_compaction_v2_mode
+    : 'auto'
   tlsFingerprintEnabled.value = extra.enable_tls_fingerprint === true
   tlsFingerprintProfileId.value = tlsFingerprintEnabled.value
     ? normalizeTLSFingerprintProfileId(extra.tls_fingerprint_profile_id)
@@ -750,6 +774,9 @@ const save = async () => {
     }
     if (compactMode.value !== 'auto') {
       extra.openai_compact_mode = compactMode.value
+    }
+    if (nativeCompactV2Mode.value !== 'auto') {
+      extra.openai_native_compaction_v2_mode = nativeCompactV2Mode.value
     }
     if (tlsFingerprintEnabled.value) {
       extra.enable_tls_fingerprint = true

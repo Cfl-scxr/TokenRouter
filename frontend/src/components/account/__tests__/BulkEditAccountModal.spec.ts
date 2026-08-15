@@ -815,7 +815,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('[data-testid="bulk-edit-upstream-billing-auto-probe-select"]').exists()).toBe(false)
   })
 
-  it('筛选 OpenAI 账号批量编辑应提交旧版 Compact 端点模式和专属模型映射', async () => {
+  it('筛选 OpenAI 账号批量编辑应提交原生 V2、旧版 Compact 模式和专属模型映射', async () => {
     const wrapper = mountModal({
       accountIds: [],
       selectedPlatforms: [],
@@ -829,6 +829,8 @@ describe('BulkEditAccountModal', () => {
       }
     })
 
+    await wrapper.get('#bulk-edit-openai-native-compaction-v2-mode-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-native-compaction-v2-mode-select"]').setValue('force_on')
     await wrapper.get('#bulk-edit-openai-compact-mode-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-compact-mode-select"]').setValue('force_on')
     await wrapper.get('#bulk-edit-openai-compact-model-mapping-enabled').setValue(true)
@@ -843,6 +845,7 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({
       filters: { platform: 'openai' },
       extra: {
+        openai_native_compaction_v2_mode: 'force_on',
         openai_compact_mode: 'force_on'
       },
       credentials: {
