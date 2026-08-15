@@ -135,12 +135,16 @@
                   v-for="(_, index) in 6"
                   :key="index"
                   :ref="(el) => setInputRef(el, index)"
+                  data-testid="totp-digit-input"
                   type="text"
-                  maxlength="1"
+                  :maxlength="index === 0 ? 6 : 1"
                   inputmode="numeric"
-                  pattern="[0-9]"
+                  :pattern="index === 0 ? '[0-9]{1,6}' : '[0-9]'"
+                  :autocomplete="index === 0 ? 'one-time-code' : 'off'"
+                  :name="index === 0 ? 'totp_setup_code' : undefined"
                   class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
                   @input="handleCodeInput($event, index)"
+                  @change="handleCodeInput($event, index)"
                   @keydown="handleKeydown($event, index)"
                   @paste="handlePaste"
                 />
@@ -182,7 +186,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
-// Step: 0 = verify identity, 1 = QR code, 2 = verify TOTP code
+// 步骤：0 = 身份验证，1 = 显示二维码，2 = 校验 TOTP 验证码。
 const step = ref(0)
 const methodLoading = ref(true)
 const verificationMethod = ref<'email' | 'password'>('password')
@@ -220,7 +224,7 @@ const canProceedFromVerify = computed(() => {
   return verifyForm.value.password.length > 0
 })
 
-// Generate QR code as base64 when setupData changes
+// setupData 变化时重新生成 Base64 二维码。
 watch(
   () => setupData.value?.qr_code_url,
   async (url) => {
@@ -248,8 +252,19 @@ const setInputRef = (el: any, index: number) => {
 
 const handleCodeInput = (event: Event, index: number) => {
   const input = event.target as HTMLInputElement
-  const value = input.value.replace(/[^0-9]/g, '')
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 6)
+
+  // 密码管理器可能把完整验证码一次写入当前分格，需要在这里拆回各格。
+  if (digits.length > 1) {
+    fillCodeDigits(digits.split(''))
+    const focusIndex = Math.min(digits.length, 5)
+    nextTick(() => inputRefs.value[focusIndex]?.focus())
+    return
+  }
+
+  const value = digits[0] || ''
   code.value[index] = value
+  input.value = value
 
   if (value && index < 5) {
     nextTick(() => {
@@ -258,16 +273,32 @@ const handleCodeInput = (event: Event, index: number) => {
   }
 }
 
+const fillCodeDigits = (digits: string[]) => {
+  const nextCode = ['', '', '', '', '', '']
+  const availableDigits = digits.slice(0, 6)
+
+  availableDigits.forEach((digit, offset) => {
+    nextCode[offset] = digit
+  })
+  for (let index = availableDigits.length; index < 6; index++) {
+    nextCode[index] = ''
+  }
+
+  code.value = nextCode
+  inputRefs.value.forEach((visibleInput, index) => {
+    if (visibleInput) visibleInput.value = nextCode[index]
+  })
+}
+
 const handleKeydown = (event: KeyboardEvent, index: number) => {
   if (event.key === 'Backspace') {
     const input = event.target as HTMLInputElement
-    // If current cell is empty and not the first, move to previous cell
+    // 当前格为空且不是首格时，退格回到上一格。
     if (!input.value && index > 0) {
       event.preventDefault()
       inputRefs.value[index - 1]?.focus()
     }
-    // Otherwise, let the browser handle the backspace naturally
-    // The input event will sync code.value via handleCodeInput
+    // 其他情况交给浏览器处理，input 事件会通过 handleCodeInput 同步状态。
   }
 }
 
@@ -276,21 +307,8 @@ const handlePaste = (event: ClipboardEvent) => {
   const pastedData = event.clipboardData?.getData('text') || ''
   const digits = pastedData.replace(/[^0-9]/g, '').slice(0, 6).split('')
 
-  // Update both the ref and the input elements
-  digits.forEach((digit, index) => {
-    code.value[index] = digit
-    if (inputRefs.value[index]) {
-      inputRefs.value[index]!.value = digit
-    }
-  })
-
-  // Clear remaining inputs if pasted less than 6 digits
-  for (let i = digits.length; i < 6; i++) {
-    code.value[i] = ''
-    if (inputRefs.value[i]) {
-      inputRefs.value[i]!.value = ''
-    }
-  }
+  // 同步响应式验证码和可见输入框。
+  fillCodeDigits(digits)
 
   const focusIndex = Math.min(digits.length, 5)
   nextTick(() => {
@@ -382,6 +400,9 @@ const handleVerify = async () => {
   } catch (err: any) {
     appStore.showError(err.response?.data?.message || t('profile.totp.verifyFailed'))
     code.value = ['', '', '', '', '', '']
+    inputRefs.value.forEach((input) => {
+      if (input) input.value = ''
+    })
     nextTick(() => {
       inputRefs.value[0]?.focus()
     })

@@ -137,6 +137,51 @@ describe('TOTP 弹窗定时器清理', () => {
     expect(wrapper.find('.bg-red-50').exists()).toBe(false)
   })
 
+  it('TotpSetupModal 会拆分写入首格的完整 autofill 验证码', async () => {
+    mocks.getVerificationMethod.mockResolvedValue({ method: 'password' })
+
+    const wrapper = mount(TotpSetupModal)
+    await flushPromises()
+
+    await wrapper.get('input[type="password"]').setValue('correct horse battery staple')
+    const firstNextButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'common.next')
+    expect(firstNextButton).toBeTruthy()
+    await firstNextButton!.trigger('click')
+    await flushPromises()
+
+    const secondNextButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'common.next')
+    expect(secondNextButton).toBeTruthy()
+    await secondNextButton!.trigger('click')
+    await flushPromises()
+
+    const visibleInputs = wrapper.findAll('[data-testid="totp-digit-input"]')
+    expect(visibleInputs[0].attributes('autocomplete')).toBe('one-time-code')
+    expect(visibleInputs[0].attributes('pattern')).toBe('[0-9]{1,6}')
+
+    const firstInput = visibleInputs[0].element as HTMLInputElement
+    firstInput.value = '864209'
+    await visibleInputs[0].trigger('change')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(visibleInputs.map(input => (input.element as HTMLInputElement).value)).toEqual([
+      '8',
+      '6',
+      '4',
+      '2',
+      '0',
+      '9',
+    ])
+    expect(mocks.enable).toHaveBeenCalledWith({
+      totp_code: '864209',
+      setup_token: 'setup-token'
+    })
+  })
+
   it('TotpDisableDialog 失败时改用 toast 并不渲染内联错误', async () => {
     mocks.getVerificationMethod.mockResolvedValue({ method: 'password' })
     mocks.disable.mockRejectedValue({

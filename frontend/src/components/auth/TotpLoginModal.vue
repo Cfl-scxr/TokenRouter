@@ -24,7 +24,7 @@
 
         <!-- 验证码输入 -->
         <div class="mb-6">
-          <!-- 隐藏输入框用于让密码管理器识别并自动填充一次性验证码。 -->
+          <!-- 隐藏输入框用于兼容系统一次性验证码填充，1Password 使用首个可见输入框。 -->
           <input
             ref="hiddenOtpInputRef"
             type="text"
@@ -34,21 +34,26 @@
             class="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
             aria-hidden="true"
             tabindex="-1"
+            data-1p-ignore
             @input="handleHiddenOtpInput"
+            @change="handleHiddenOtpInput"
           />
           <div class="flex justify-center gap-2">
             <input
               v-for="(_, index) in 6"
               :key="index"
               :ref="(el) => setInputRef(el, index)"
+              data-testid="totp-digit-input"
               type="text"
-              maxlength="1"
+              :maxlength="index === 0 ? 6 : 1"
               inputmode="numeric"
-              pattern="[0-9]"
-              autocomplete="off"
+              :pattern="index === 0 ? '[0-9]{1,6}' : '[0-9]'"
+              :autocomplete="index === 0 ? 'one-time-code' : 'off'"
+              :name="index === 0 ? 'totp_login_code' : undefined"
               class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               :disabled="verifying"
               @input="handleCodeInput($event, index)"
+              @change="handleCodeInput($event, index)"
               @keydown="handleKeydown($event, index)"
               @paste="handlePaste"
             />
@@ -96,12 +101,18 @@ const verifying = ref(false)
 const code = ref<string[]>(['', '', '', '', '', ''])
 const inputRefs = ref<(HTMLInputElement | null)[]>([])
 const hiddenOtpInputRef = ref<HTMLInputElement | null>(null)
+const lastSubmittedCode = ref('')
 
 // 监听验证码变化，输入 6 位后自动提交。
 watch(
   () => code.value.join(''),
   (newCode) => {
-    if (newCode.length === 6 && !verifying.value) {
+    if (!/^[0-9]{6}$/.test(newCode)) {
+      lastSubmittedCode.value = ''
+      return
+    }
+    if (!verifying.value && newCode !== lastSubmittedCode.value) {
+      lastSubmittedCode.value = newCode
       emit('verify', newCode)
     }
   }
@@ -114,6 +125,7 @@ defineExpose({
       appStore.showError(message)
     }
     code.value = ['', '', '', '', '', '']
+    lastSubmittedCode.value = ''
     // 清空可见输入框的 DOM 值。
     inputRefs.value.forEach(input => {
       if (input) input.value = ''
@@ -134,8 +146,19 @@ const setInputRef = (el: any, index: number) => {
 
 const handleCodeInput = (event: Event, index: number) => {
   const input = event.target as HTMLInputElement
-  const value = input.value.replace(/[^0-9]/g, '')
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 6)
+
+  // 密码管理器可能把完整验证码一次写入当前分格，需要在这里拆回各格。
+  if (digits.length > 1) {
+    fillCodeDigits(digits.split(''))
+    const focusIndex = Math.min(digits.length, 5)
+    nextTick(() => inputRefs.value[focusIndex]?.focus())
+    return
+  }
+
+  const value = digits[0] || ''
   code.value[index] = value
+  input.value = value
 
   if (value && index < 5) {
     nextTick(() => {
@@ -145,19 +168,20 @@ const handleCodeInput = (event: Event, index: number) => {
 }
 
 const fillCodeDigits = (digits: string[]) => {
-  digits.forEach((digit, index) => {
-    code.value[index] = digit
-    if (inputRefs.value[index]) {
-      inputRefs.value[index]!.value = digit
-    }
-  })
+  const nextCode = ['', '', '', '', '', '']
+  const availableDigits = digits.slice(0, 6)
 
-  for (let i = digits.length; i < 6; i++) {
-    code.value[i] = ''
-    if (inputRefs.value[i]) {
-      inputRefs.value[i]!.value = ''
-    }
+  availableDigits.forEach((digit, offset) => {
+    nextCode[offset] = digit
+  })
+  for (let index = availableDigits.length; index < 6; index++) {
+    nextCode[index] = ''
   }
+
+  code.value = nextCode
+  inputRefs.value.forEach((visibleInput, index) => {
+    if (visibleInput) visibleInput.value = nextCode[index]
+  })
 }
 
 const handleHiddenOtpInput = (event: Event) => {

@@ -28,21 +28,26 @@
             class="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
             aria-hidden="true"
             tabindex="-1"
+            data-1p-ignore
             @input="handleHiddenOtpInput"
+            @change="handleHiddenOtpInput"
           />
           <div class="flex justify-center gap-2">
             <input
               v-for="(_, index) in 6"
               :key="index"
               :ref="(el) => setInputRef(el, index)"
+              data-testid="totp-digit-input"
               type="text"
-              maxlength="1"
+              :maxlength="index === 0 ? 6 : 1"
               inputmode="numeric"
-              pattern="[0-9]"
-              autocomplete="off"
+              :pattern="index === 0 ? '[0-9]{1,6}' : '[0-9]'"
+              :autocomplete="index === 0 ? 'one-time-code' : 'off'"
+              :name="index === 0 ? 'totp_step_up_code' : undefined"
               class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               :disabled="verifying"
               @input="handleCodeInput($event, index)"
+              @change="handleCodeInput($event, index)"
               @keydown="handleKeydown($event, index)"
               @paste="handlePaste"
             />
@@ -100,7 +105,7 @@ watch(
 watch(
   () => code.value.join(''),
   (newCode) => {
-    if (newCode.length === 6 && !verifying.value) {
+    if (/^[0-9]{6}$/.test(newCode) && !verifying.value) {
       submit(newCode)
     }
   }
@@ -140,20 +145,45 @@ const setInputRef = (el: any, index: number) => {
 
 const handleCodeInput = (event: Event, index: number) => {
   const input = event.target as HTMLInputElement
-  const value = input.value.replace(/[^0-9]/g, '')
+  const digits = input.value.replace(/[^0-9]/g, '').slice(0, 6)
+
+  // 密码管理器可能把完整验证码一次写入当前分格，需要在这里拆回各格。
+  if (digits.length > 1) {
+    fillCodeDigits(digits.split(''))
+    const focusIndex = Math.min(digits.length, 5)
+    nextTick(() => inputRefs.value[focusIndex]?.focus())
+    return
+  }
+
+  const value = digits[0] || ''
   code.value[index] = value
+  input.value = value
   if (value && index < 5) {
     nextTick(() => inputRefs.value[index + 1]?.focus())
   }
 }
 
+const fillCodeDigits = (digits: string[]) => {
+  const nextCode = ['', '', '', '', '', '']
+  const availableDigits = digits.slice(0, 6)
+
+  availableDigits.forEach((digit, offset) => {
+    nextCode[offset] = digit
+  })
+  for (let index = availableDigits.length; index < 6; index++) {
+    nextCode[index] = ''
+  }
+
+  code.value = nextCode
+  inputRefs.value.forEach((visibleInput, index) => {
+    if (visibleInput) visibleInput.value = nextCode[index]
+  })
+}
+
 const handleHiddenOtpInput = (event: Event) => {
   const input = event.target as HTMLInputElement
   const digits = input.value.replace(/[^0-9]/g, '').slice(0, 6).split('')
-  for (let i = 0; i < 6; i++) {
-    code.value[i] = digits[i] || ''
-    if (inputRefs.value[i]) inputRefs.value[i]!.value = digits[i] || ''
-  }
+  fillCodeDigits(digits)
 }
 
 const handleKeydown = (event: KeyboardEvent, index: number) => {
@@ -170,10 +200,7 @@ const handlePaste = (event: ClipboardEvent) => {
   event.preventDefault()
   const pastedData = event.clipboardData?.getData('text') || ''
   const digits = pastedData.replace(/[^0-9]/g, '').slice(0, 6).split('')
-  for (let i = 0; i < 6; i++) {
-    code.value[i] = digits[i] || ''
-    if (inputRefs.value[i]) inputRefs.value[i]!.value = digits[i] || ''
-  }
+  fillCodeDigits(digits)
   const focusIndex = Math.min(digits.length, 5)
   nextTick(() => inputRefs.value[focusIndex]?.focus())
 }

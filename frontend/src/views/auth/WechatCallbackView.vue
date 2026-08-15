@@ -294,6 +294,7 @@
                 type="text"
                 inputmode="numeric"
                 maxlength="6"
+                autocomplete="one-time-code"
                 class="input w-full"
                 placeholder="123456"
                 :disabled="isSubmitting"
