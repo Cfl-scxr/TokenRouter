@@ -88,20 +88,26 @@ export interface UsageRankingItem {
   user_id: number
   display_name: string
   avatar_url: string
-  requests: number
-  input_tokens: number
-  output_tokens: number
-  cache_creation_tokens: number
-  cache_read_tokens: number
-  total_tokens: number
-  actual_cost: number
+  requests?: number
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_tokens?: number
+  cache_read_tokens?: number
+  total_tokens?: number
+  actual_cost?: number
 }
+
+export type UsageRankingSortBy = 'total_tokens' | 'requests' | 'actual_cost'
 
 export interface UsageRankingResponse {
   ranking: UsageRankingItem[]
-  total_requests: number
-  total_tokens: number
-  total_actual_cost: number
+  total_requests?: number
+  total_tokens?: number
+  total_actual_cost?: number
+  sort_by: UsageRankingSortBy
+  show_total_tokens: boolean
+  show_requests: boolean
+  show_actual_cost: boolean
   start_date: string
   end_date: string
   limit: number

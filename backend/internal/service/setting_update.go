@@ -381,7 +381,26 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal table page size options: %w", err)
 	}
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
-	updates[SettingKeyUsageRankingLimit] = strconv.Itoa(normalizeUsageRankingLimit(settings.UsageRankingLimit))
+	usageRanking := NormalizeUsageRankingSettings(UsageRankingSettings{
+		Enabled:         settings.UsageRankingEnabled,
+		SortBy:          UsageRankingSortBy(settings.UsageRankingSortBy),
+		ShowTotalTokens: settings.UsageRankingShowTotalTokens,
+		ShowRequests:    settings.UsageRankingShowRequests,
+		ShowActualCost:  settings.UsageRankingShowActualCost,
+		Limit:           settings.UsageRankingLimit,
+	})
+	settings.UsageRankingEnabled = usageRanking.Enabled
+	settings.UsageRankingSortBy = string(usageRanking.SortBy)
+	settings.UsageRankingShowTotalTokens = usageRanking.ShowTotalTokens
+	settings.UsageRankingShowRequests = usageRanking.ShowRequests
+	settings.UsageRankingShowActualCost = usageRanking.ShowActualCost
+	settings.UsageRankingLimit = usageRanking.Limit
+	updates[SettingKeyUsageRankingLimit] = strconv.Itoa(usageRanking.Limit)
+	updates[SettingKeyUsageRankingEnabled] = strconv.FormatBool(usageRanking.Enabled)
+	updates[SettingKeyUsageRankingSortBy] = string(usageRanking.SortBy)
+	updates[SettingKeyUsageRankingShowTotalTokens] = strconv.FormatBool(usageRanking.ShowTotalTokens)
+	updates[SettingKeyUsageRankingShowRequests] = strconv.FormatBool(usageRanking.ShowRequests)
+	updates[SettingKeyUsageRankingShowActualCost] = strconv.FormatBool(usageRanking.ShowActualCost)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyFooterLinks] = settings.FooterLinks

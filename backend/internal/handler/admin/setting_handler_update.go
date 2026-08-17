@@ -174,6 +174,11 @@ type UpdateSettingsRequest struct {
 	TableDefaultPageSize        int                    `json:"table_default_page_size"`
 	TablePageSizeOptions        []int                  `json:"table_page_size_options"`
 	UsageRankingLimit           int                    `json:"usage_ranking_limit"`
+	UsageRankingEnabled         *bool                  `json:"usage_ranking_enabled"`
+	UsageRankingSortBy          *string                `json:"usage_ranking_sort_by"`
+	UsageRankingShowTotalTokens *bool                  `json:"usage_ranking_show_total_tokens"`
+	UsageRankingShowRequests    *bool                  `json:"usage_ranking_show_requests"`
+	UsageRankingShowActualCost  *bool                  `json:"usage_ranking_show_actual_cost"`
 	CustomMenuItems             *[]dto.CustomMenuItem  `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint  `json:"custom_endpoints"`
 	FooterLinks                 *[]dto.FooterLinkGroup `json:"footer_links"`
@@ -579,6 +584,34 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.UsageRankingLimit > service.MaxUsageRankingLimit {
 		req.UsageRankingLimit = service.MaxUsageRankingLimit
 	}
+	usageRanking := service.UsageRankingSettings{
+		Enabled:         previousSettings.UsageRankingEnabled,
+		SortBy:          service.UsageRankingSortBy(previousSettings.UsageRankingSortBy),
+		ShowTotalTokens: previousSettings.UsageRankingShowTotalTokens,
+		ShowRequests:    previousSettings.UsageRankingShowRequests,
+		ShowActualCost:  previousSettings.UsageRankingShowActualCost,
+		Limit:           req.UsageRankingLimit,
+	}
+	if req.UsageRankingEnabled != nil {
+		usageRanking.Enabled = *req.UsageRankingEnabled
+	}
+	if req.UsageRankingSortBy != nil {
+		if !service.IsValidUsageRankingSortBy(*req.UsageRankingSortBy) {
+			response.BadRequest(c, "Invalid usage ranking sort field")
+			return
+		}
+		usageRanking.SortBy = service.UsageRankingSortBy(*req.UsageRankingSortBy)
+	}
+	if req.UsageRankingShowTotalTokens != nil {
+		usageRanking.ShowTotalTokens = *req.UsageRankingShowTotalTokens
+	}
+	if req.UsageRankingShowRequests != nil {
+		usageRanking.ShowRequests = *req.UsageRankingShowRequests
+	}
+	if req.UsageRankingShowActualCost != nil {
+		usageRanking.ShowActualCost = *req.UsageRankingShowActualCost
+	}
+	usageRanking = service.NormalizeUsageRankingSettings(usageRanking)
 	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
 	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
 	req.SMTPPassword = strings.TrimSpace(req.SMTPPassword)
@@ -1730,7 +1763,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:                purchaseURL,
 		TableDefaultPageSize:                   req.TableDefaultPageSize,
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
-		UsageRankingLimit:                      req.UsageRankingLimit,
+		UsageRankingLimit:                      usageRanking.Limit,
+		UsageRankingEnabled:                    usageRanking.Enabled,
+		UsageRankingSortBy:                     string(usageRanking.SortBy),
+		UsageRankingShowTotalTokens:            usageRanking.ShowTotalTokens,
+		UsageRankingShowRequests:               usageRanking.ShowRequests,
+		UsageRankingShowActualCost:             usageRanking.ShowActualCost,
 		CustomMenuItems:                        customMenuJSON,
 		CustomEndpoints:                        customEndpointsJSON,
 		FooterLinks:                            footerLinksJSON,
@@ -2282,6 +2320,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TableDefaultPageSize:                             updatedSettings.TableDefaultPageSize,
 		TablePageSizeOptions:                             updatedSettings.TablePageSizeOptions,
 		UsageRankingLimit:                                updatedSettings.UsageRankingLimit,
+		UsageRankingEnabled:                              updatedSettings.UsageRankingEnabled,
+		UsageRankingSortBy:                               updatedSettings.UsageRankingSortBy,
+		UsageRankingShowTotalTokens:                      updatedSettings.UsageRankingShowTotalTokens,
+		UsageRankingShowRequests:                         updatedSettings.UsageRankingShowRequests,
+		UsageRankingShowActualCost:                       updatedSettings.UsageRankingShowActualCost,
 		CustomMenuItems:                                  dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                                  dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		FooterLinks:                                      dto.ParseFooterLinks(updatedSettings.FooterLinks),

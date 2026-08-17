@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/usagestats"
+	"github.com/TokenFlux/TokenRouter/internal/service"
 )
 
 type usageAnalyticsQuery struct {
@@ -467,13 +468,27 @@ func (r *usageLogRepository) getUserSpendingRankingFromAnalytics(ctx context.Con
 }
 
 // getUsageRankingFromAnalytics 从组合聚合源计算公开用量排行。
-func (r *usageLogRepository) getUsageRankingFromAnalytics(ctx context.Context, start, end time.Time, limit int) (*UsageRankingResponse, bool, error) {
+func usageRankingAnalyticsEligibility(sortBy service.UsageRankingSortBy) string {
+	switch service.NormalizeUsageRankingSortBy(string(sortBy)) {
+	case service.UsageRankingSortByRequests:
+		return "COALESCE(SUM(total_requests), 0) > 0"
+	case service.UsageRankingSortByActualCost:
+		return "COALESCE(SUM(actual_cost), 0) > 0"
+	default:
+		return "COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) > 0"
+	}
+}
+
+// getUsageRankingFromAnalytics 从组合聚合源计算公开用量排行。
+func (r *usageLogRepository) getUsageRankingFromAnalytics(ctx context.Context, start, end time.Time, limit int, sortBy service.UsageRankingSortBy) (*UsageRankingResponse, bool, error) {
 	query, ok, err := r.buildUsageAnalyticsQuery(ctx, UsageLogFilters{}, start, end, true)
 	if err != nil || !ok {
 		return nil, false, err
 	}
 	query.args = append(query.args, limit)
 	limitPosition := len(query.args)
+	_, orderBy := usageRankingQueryParts(sortBy)
+	eligibility := usageRankingAnalyticsEligibility(sortBy)
 	rows, err := r.sql.QueryContext(ctx, query.cte+fmt.Sprintf(`,
 		user_usage AS (
 			SELECT user_id,
@@ -486,17 +501,17 @@ func (r *usageLogRepository) getUsageRankingFromAnalytics(ctx context.Context, s
 			       COALESCE(SUM(actual_cost), 0) AS actual_cost
 			FROM combined
 			GROUP BY user_id
-			HAVING SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) > 0
+			HAVING %s
 		),
 		ranked AS (
-			SELECT ROW_NUMBER() OVER (ORDER BY total_tokens DESC, requests DESC, user_id ASC) AS rank,
+			SELECT ROW_NUMBER() OVER (ORDER BY %s) AS rank,
 			       user_id, requests, input_tokens, output_tokens, cache_creation_tokens,
 			       cache_read_tokens, total_tokens, actual_cost,
 			       COALESCE(SUM(requests) OVER (), 0) AS total_requests,
 			       COALESCE(SUM(total_tokens) OVER (), 0) AS ranking_total_tokens,
 			       COALESCE(SUM(actual_cost) OVER (), 0) AS total_actual_cost
 			FROM user_usage
-			ORDER BY total_tokens DESC, requests DESC, user_id ASC
+			ORDER BY %s
 			LIMIT $%d
 		)
 		SELECT r.rank, r.user_id, COALESCE(u.email, ''), COALESCE(u.username, ''),
@@ -506,7 +521,7 @@ func (r *usageLogRepository) getUsageRankingFromAnalytics(ctx context.Context, s
 		FROM ranked r
 		LEFT JOIN users u ON u.id = r.user_id
 		LEFT JOIN user_avatars a ON a.user_id = r.user_id
-		ORDER BY r.rank ASC`, limitPosition), query.args...)
+		ORDER BY r.rank ASC`, eligibility, orderBy, orderBy, limitPosition), query.args...)
 	if err != nil {
 		return nil, false, err
 	}

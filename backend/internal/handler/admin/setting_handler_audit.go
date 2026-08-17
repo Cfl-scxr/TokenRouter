@@ -515,6 +515,21 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.UsageRankingLimit != after.UsageRankingLimit {
 		changed = append(changed, "usage_ranking_limit")
 	}
+	if before.UsageRankingEnabled != after.UsageRankingEnabled {
+		changed = append(changed, "usage_ranking_enabled")
+	}
+	if before.UsageRankingSortBy != after.UsageRankingSortBy {
+		changed = append(changed, "usage_ranking_sort_by")
+	}
+	if before.UsageRankingShowTotalTokens != after.UsageRankingShowTotalTokens {
+		changed = append(changed, "usage_ranking_show_total_tokens")
+	}
+	if before.UsageRankingShowRequests != after.UsageRankingShowRequests {
+		changed = append(changed, "usage_ranking_show_requests")
+	}
+	if before.UsageRankingShowActualCost != after.UsageRankingShowActualCost {
+		changed = append(changed, "usage_ranking_show_actual_cost")
+	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
 	}

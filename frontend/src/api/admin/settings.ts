@@ -22,6 +22,8 @@ export interface DefaultSubscriptionSetting {
   plan_id: number;
 }
 
+export type UsageRankingSortBy = "total_tokens" | "requests" | "actual_cost";
+
 type DefaultSubscriptionInput = Partial<DefaultSubscriptionSetting> & {
   group_id?: number | null;
 };
@@ -527,6 +529,11 @@ export interface SystemSettings {
   table_default_page_size: number;
   table_page_size_options: number[];
   usage_ranking_limit: number;
+  usage_ranking_enabled: boolean;
+  usage_ranking_sort_by: UsageRankingSortBy;
+  usage_ranking_show_total_tokens: boolean;
+  usage_ranking_show_requests: boolean;
+  usage_ranking_show_actual_cost: boolean;
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
@@ -852,6 +859,11 @@ export interface UpdateSettingsRequest {
   table_default_page_size?: number;
   table_page_size_options?: number[];
   usage_ranking_limit?: number;
+  usage_ranking_enabled?: boolean;
+  usage_ranking_sort_by?: UsageRankingSortBy;
+  usage_ranking_show_total_tokens?: boolean;
+  usage_ranking_show_requests?: boolean;
+  usage_ranking_show_actual_cost?: boolean;
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];

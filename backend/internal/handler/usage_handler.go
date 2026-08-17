@@ -45,6 +45,85 @@ type userGroupStat struct {
 	ActualCost  float64 `json:"actual_cost"`
 }
 
+type usageRankingItemResponse struct {
+	Rank                int      `json:"rank"`
+	UserID              int64    `json:"user_id"`
+	DisplayName         string   `json:"display_name"`
+	AvatarURL           string   `json:"avatar_url"`
+	Requests            *int64   `json:"requests,omitempty"`
+	InputTokens         *int64   `json:"input_tokens,omitempty"`
+	OutputTokens        *int64   `json:"output_tokens,omitempty"`
+	CacheCreationTokens *int64   `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     *int64   `json:"cache_read_tokens,omitempty"`
+	TotalTokens         *int64   `json:"total_tokens,omitempty"`
+	ActualCost          *float64 `json:"actual_cost,omitempty"`
+}
+
+type usageRankingResponse struct {
+	Ranking         []usageRankingItemResponse `json:"ranking"`
+	TotalRequests   *int64                     `json:"total_requests,omitempty"`
+	TotalTokens     *int64                     `json:"total_tokens,omitempty"`
+	TotalActualCost *float64                   `json:"total_actual_cost,omitempty"`
+	SortBy          string                     `json:"sort_by"`
+	ShowTotalTokens bool                       `json:"show_total_tokens"`
+	ShowRequests    bool                       `json:"show_requests"`
+	ShowActualCost  bool                       `json:"show_actual_cost"`
+	StartDate       string                     `json:"start_date"`
+	EndDate         string                     `json:"end_date"`
+	Limit           int                        `json:"limit"`
+}
+
+func usageRankingInt64Ptr(value int64) *int64 {
+	return &value
+}
+
+func usageRankingFloat64Ptr(value float64) *float64 {
+	return &value
+}
+
+// projectUsageRankingResponse 按公开设置裁剪用户接口中的敏感用量字段。
+func projectUsageRankingResponse(ranking *usagestats.UsageRankingResponse, settings service.UsageRankingSettings) usageRankingResponse {
+	result := usageRankingResponse{
+		Ranking:         make([]usageRankingItemResponse, 0, len(ranking.Ranking)),
+		SortBy:          string(settings.SortBy),
+		ShowTotalTokens: settings.ShowTotalTokens,
+		ShowRequests:    settings.ShowRequests,
+		ShowActualCost:  settings.ShowActualCost,
+	}
+	if settings.ShowRequests {
+		result.TotalRequests = usageRankingInt64Ptr(ranking.TotalRequests)
+	}
+	if settings.ShowTotalTokens {
+		result.TotalTokens = usageRankingInt64Ptr(ranking.TotalTokens)
+	}
+	if settings.ShowActualCost {
+		result.TotalActualCost = usageRankingFloat64Ptr(ranking.TotalActualCost)
+	}
+	for _, row := range ranking.Ranking {
+		item := usageRankingItemResponse{
+			Rank:        row.Rank,
+			UserID:      row.UserID,
+			DisplayName: row.DisplayName,
+			AvatarURL:   row.AvatarURL,
+		}
+		if settings.ShowRequests {
+			item.Requests = usageRankingInt64Ptr(row.Requests)
+		}
+		if settings.ShowTotalTokens {
+			item.InputTokens = usageRankingInt64Ptr(row.InputTokens)
+			item.OutputTokens = usageRankingInt64Ptr(row.OutputTokens)
+			item.CacheCreationTokens = usageRankingInt64Ptr(row.CacheCreationTokens)
+			item.CacheReadTokens = usageRankingInt64Ptr(row.CacheReadTokens)
+			item.TotalTokens = usageRankingInt64Ptr(row.TotalTokens)
+		}
+		if settings.ShowActualCost {
+			item.ActualCost = usageRankingFloat64Ptr(row.ActualCost)
+		}
+		result.Ranking = append(result.Ranking, item)
+	}
+	return result
+}
+
 // UsageHandler 处理用户侧用量相关请求。
 type UsageHandler struct {
 	usageService   *service.UsageService
@@ -403,6 +482,16 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 		return
 	}
 
+	rankingSettings, err := h.settingService.GetUsageRankingSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !rankingSettings.Enabled {
+		response.Forbidden(c, "Usage ranking is currently disabled")
+		return
+	}
+
 	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
 	startTime, endTime, err := parseUsageRankingTimeRange(c, now, userTZ)
@@ -410,27 +499,19 @@ func (h *UsageHandler) Ranking(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	limit := service.DefaultUsageRankingLimit
-	if h.settingService != nil {
-		limit = h.settingService.GetUsageRankingLimit(c.Request.Context())
-	}
 
-	ranking, err := h.usageService.GetUsageRanking(c.Request.Context(), startTime, endTime, limit)
+	ranking, err := h.usageService.GetUsageRanking(c.Request.Context(), startTime, endTime, rankingSettings.Limit, rankingSettings.SortBy)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	projected := projectUsageRankingResponse(ranking, rankingSettings)
+	projected.StartDate = startTime.Format("2006-01-02")
+	projected.EndDate = usageRankingDisplayEndDate(endTime)
+	projected.Limit = rankingSettings.Limit
 
 	// 返回本次排行使用的时间范围，日期按用户时区格式化，便于前端展示。
-	response.Success(c, gin.H{
-		"ranking":           ranking.Ranking,
-		"total_requests":    ranking.TotalRequests,
-		"total_tokens":      ranking.TotalTokens,
-		"total_actual_cost": ranking.TotalActualCost,
-		"start_date":        startTime.Format("2006-01-02"),
-		"end_date":          usageRankingDisplayEndDate(endTime),
-		"limit":             limit,
-	})
+	response.Success(c, projected)
 }
 
 // parseUsageRankingTimeRange 解析排行时间范围，未传参数时默认使用用户时区的今天。

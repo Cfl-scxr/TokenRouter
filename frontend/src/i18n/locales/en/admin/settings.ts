@@ -79,6 +79,26 @@ dataSharing: {
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
+      usageRanking: {
+        title: 'Usage Ranking',
+        description: 'Control the user usage-ranking entry, sorting, and visible fields.',
+        enabled: 'Enable Usage Ranking',
+        enabledHint: 'When disabled, users cannot access the ranking from navigation or its API.',
+        sortBy: 'Rank By',
+        sortByHint: 'Only positive values of the selected metric are ranked, and that metric is always shown.',
+        limit: 'Ranking Count',
+        limitHint: 'Show the top 1 to 100 users in each time range.',
+        fields: 'Visible Fields',
+        fieldsHint: 'Hidden fields are also omitted from the user API response.',
+        totalTokens: 'Total Tokens',
+        requests: 'Requests',
+        actualCost: 'Actual Cost',
+        sortOptions: {
+          totalTokens: 'Total Tokens',
+          requests: 'Requests',
+          actualCost: 'Actual Cost',
+        },
+      },
       marketplaceAvailability: {
         title: 'Marketplace Availability',
         description:

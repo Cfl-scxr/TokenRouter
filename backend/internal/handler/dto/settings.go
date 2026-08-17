@@ -165,6 +165,11 @@ type SystemSettings struct {
 	TableDefaultPageSize        int               `json:"table_default_page_size"`
 	TablePageSizeOptions        []int             `json:"table_page_size_options"`
 	UsageRankingLimit           int               `json:"usage_ranking_limit"`
+	UsageRankingEnabled         bool              `json:"usage_ranking_enabled"`
+	UsageRankingSortBy          string            `json:"usage_ranking_sort_by"`
+	UsageRankingShowTotalTokens bool              `json:"usage_ranking_show_total_tokens"`
+	UsageRankingShowRequests    bool              `json:"usage_ranking_show_requests"`
+	UsageRankingShowActualCost  bool              `json:"usage_ranking_show_actual_cost"`
 	CustomMenuItems             []CustomMenuItem  `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint  `json:"custom_endpoints"`
 	FooterLinks                 []FooterLinkGroup `json:"footer_links"`
@@ -374,6 +379,11 @@ type PublicSettings struct {
 	TableDefaultPageSize                int                      `json:"table_default_page_size"`
 	TablePageSizeOptions                []int                    `json:"table_page_size_options"`
 	UsageRankingLimit                   int                      `json:"usage_ranking_limit"`
+	UsageRankingEnabled                 bool                     `json:"usage_ranking_enabled"`
+	UsageRankingSortBy                  string                   `json:"usage_ranking_sort_by"`
+	UsageRankingShowTotalTokens         bool                     `json:"usage_ranking_show_total_tokens"`
+	UsageRankingShowRequests            bool                     `json:"usage_ranking_show_requests"`
+	UsageRankingShowActualCost          bool                     `json:"usage_ranking_show_actual_cost"`
 	CustomMenuItems                     []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                     []CustomEndpoint         `json:"custom_endpoints"`
 	FooterLinks                         []FooterLinkGroup        `json:"footer_links"`

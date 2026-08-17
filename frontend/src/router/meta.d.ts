@@ -68,6 +68,12 @@ declare module 'vue-router' {
     requiresDataSharing?: boolean
 
     /**
+     * 是否要求用量排行功能开关已启用
+     * @default false
+     */
+    requiresUsageRanking?: boolean
+
+    /**
      * 是否要求邀请返利功能开关已启用
      * @default false
      */

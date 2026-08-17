@@ -199,6 +199,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTableDefaultPageSize,
 		SettingKeyTablePageSizeOptions,
 		SettingKeyUsageRankingLimit,
+		SettingKeyUsageRankingEnabled,
+		SettingKeyUsageRankingSortBy,
+		SettingKeyUsageRankingShowTotalTokens,
+		SettingKeyUsageRankingShowRequests,
+		SettingKeyUsageRankingShowActualCost,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
 		SettingKeyFooterLinks,
@@ -299,7 +304,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],
 	)
-	usageRankingLimit := normalizeUsageRankingLimitString(settings[SettingKeyUsageRankingLimit])
+	usageRanking := parseUsageRankingSettings(settings)
 	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
 	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
 	if loginAgreementUpdatedAt == "" {
@@ -367,7 +372,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PurchaseSubscriptionURL:             strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		TableDefaultPageSize:                tableDefaultPageSize,
 		TablePageSizeOptions:                tablePageSizeOptions,
-		UsageRankingLimit:                   usageRankingLimit,
+		UsageRankingLimit:                   usageRanking.Limit,
+		UsageRankingEnabled:                 usageRanking.Enabled,
+		UsageRankingSortBy:                  string(usageRanking.SortBy),
+		UsageRankingShowTotalTokens:         usageRanking.ShowTotalTokens,
+		UsageRankingShowRequests:            usageRanking.ShowRequests,
+		UsageRankingShowActualCost:          usageRanking.ShowActualCost,
 		CustomMenuItems:                     settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		FooterLinks:                         settings[SettingKeyFooterLinks],
@@ -462,6 +472,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TableDefaultPageSize                int                      `json:"table_default_page_size"`
 		TablePageSizeOptions                []int                    `json:"table_page_size_options"`
 		UsageRankingLimit                   int                      `json:"usage_ranking_limit"`
+		UsageRankingEnabled                 bool                     `json:"usage_ranking_enabled"`
+		UsageRankingSortBy                  string                   `json:"usage_ranking_sort_by"`
+		UsageRankingShowTotalTokens         bool                     `json:"usage_ranking_show_total_tokens"`
+		UsageRankingShowRequests            bool                     `json:"usage_ranking_show_requests"`
+		UsageRankingShowActualCost          bool                     `json:"usage_ranking_show_actual_cost"`
 		CustomMenuItems                     json.RawMessage          `json:"custom_menu_items"`
 		CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
 		FooterLinks                         json.RawMessage          `json:"footer_links"`
@@ -541,6 +556,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TableDefaultPageSize:                settings.TableDefaultPageSize,
 		TablePageSizeOptions:                settings.TablePageSizeOptions,
 		UsageRankingLimit:                   settings.UsageRankingLimit,
+		UsageRankingEnabled:                 settings.UsageRankingEnabled,
+		UsageRankingSortBy:                  settings.UsageRankingSortBy,
+		UsageRankingShowTotalTokens:         settings.UsageRankingShowTotalTokens,
+		UsageRankingShowRequests:            settings.UsageRankingShowRequests,
+		UsageRankingShowActualCost:          settings.UsageRankingShowActualCost,
 		CustomMenuItems:                     filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                     safeRawJSONArray(settings.CustomEndpoints),
 		FooterLinks:                         safeRawJSONArray(settings.FooterLinks),

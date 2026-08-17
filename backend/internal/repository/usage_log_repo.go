@@ -272,18 +272,31 @@ func (r *usageLogRepository) GetDashboardPublicStats(ctx context.Context, start,
 	return stats, nil
 }
 
-// GetUsageRanking 返回用户侧按 Token 总量排序的用量排行。
-func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UsageRankingResponse, err error) {
+// usageRankingQueryParts 只返回受控的 SQL 片段，避免把设置值直接拼接进查询。
+func usageRankingQueryParts(sortBy service.UsageRankingSortBy) (eligibility, orderBy string) {
+	switch service.UsageRankingSortBy(service.NormalizeUsageRankingSortBy(string(sortBy))) {
+	case service.UsageRankingSortByRequests:
+		return "COUNT(*) > 0", "requests DESC, total_tokens DESC, actual_cost DESC, user_id ASC"
+	case service.UsageRankingSortByActualCost:
+		return "COALESCE(SUM(u.actual_cost), 0) > 0", "actual_cost DESC, total_tokens DESC, requests DESC, user_id ASC"
+	default:
+		return "COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) > 0", "total_tokens DESC, requests DESC, actual_cost DESC, user_id ASC"
+	}
+}
+
+// GetUsageRanking 返回用户侧按配置指标排序的用量排行。
+func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int, sortBy service.UsageRankingSortBy) (result *UsageRankingResponse, err error) {
 	if limit <= 0 {
 		limit = service.DefaultUsageRankingLimit
 	}
-	if aggregated, ok, aggregateErr := r.getUsageRankingFromAnalytics(ctx, startTime, endTime, limit); aggregateErr == nil && ok {
+	if aggregated, ok, aggregateErr := r.getUsageRankingFromAnalytics(ctx, startTime, endTime, limit, sortBy); aggregateErr == nil && ok {
 		return aggregated, nil
 	} else if aggregateErr != nil {
 		r.logUsageAnalyticsFallback("usage_ranking", aggregateErr)
 	}
 
-	query := `
+	eligibility, orderBy := usageRankingQueryParts(sortBy)
+	query := fmt.Sprintf(`
 		WITH user_usage AS (
 			SELECT
 				u.user_id,
@@ -297,11 +310,11 @@ func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, end
 			FROM usage_logs u
 			WHERE u.created_at >= $1 AND u.created_at < $2
 			GROUP BY u.user_id
-			HAVING COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) > 0
+			HAVING %s
 		),
 		ranked AS (
 			SELECT
-				ROW_NUMBER() OVER (ORDER BY total_tokens DESC, requests DESC, user_id ASC) as rank,
+				ROW_NUMBER() OVER (ORDER BY %s) as rank,
 				user_id,
 				requests,
 				input_tokens,
@@ -314,7 +327,7 @@ func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, end
 				COALESCE(SUM(total_tokens) OVER (), 0) as ranking_total_tokens,
 				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost
 			FROM user_usage
-			ORDER BY total_tokens DESC, requests DESC, user_id ASC
+			ORDER BY %s
 			LIMIT $3
 		)
 		SELECT
@@ -337,7 +350,7 @@ func (r *usageLogRepository) GetUsageRanking(ctx context.Context, startTime, end
 		LEFT JOIN users us ON r.user_id = us.id
 		LEFT JOIN user_avatars ua ON ua.user_id = r.user_id
 		ORDER BY r.rank ASC
-	`
+	`, eligibility, orderBy, orderBy)
 
 	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
 	if err != nil {

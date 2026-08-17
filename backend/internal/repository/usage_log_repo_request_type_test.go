@@ -859,7 +859,7 @@ func TestUsageLogRepositoryGetUsageRankingMasksEmail(t *testing.T) {
 		WithArgs(start, end, 20).
 		WillReturnRows(rows)
 
-	got, err := repo.GetUsageRanking(context.Background(), start, end, 20)
+	got, err := repo.GetUsageRanking(context.Background(), start, end, 20, service.UsageRankingSortByTotalTokens)
 	require.NoError(t, err)
 	require.Equal(t, int64(17), got.TotalRequests)
 	require.Equal(t, int64(1700), got.TotalTokens)

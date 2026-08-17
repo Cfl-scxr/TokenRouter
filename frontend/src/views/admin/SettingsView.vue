@@ -5949,6 +5949,112 @@
         <div v-show="activeTab === 'general'" class="space-y-6">
           <PreAggregationSettings />
 
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.usageRanking.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.usageRanking.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.usageRanking.enabled") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.usageRanking.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.usage_ranking_enabled" />
+              </div>
+
+              <div
+                class="grid grid-cols-1 gap-6 border-t border-gray-100 pt-5 dark:border-dark-700 md:grid-cols-2"
+                :class="!form.usage_ranking_enabled && 'opacity-60'"
+              >
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.usageRanking.sortBy") }}
+                  </label>
+                  <Select
+                    v-model="form.usage_ranking_sort_by"
+                    :options="usageRankingSortOptions"
+                    :disabled="!form.usage_ranking_enabled"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.usageRanking.sortByHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.usageRanking.limit") }}
+                  </label>
+                  <input
+                    v-model.number="form.usage_ranking_limit"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    class="input w-40"
+                    :disabled="!form.usage_ranking_enabled"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.usageRanking.limitHint") }}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                class="space-y-3 border-t border-gray-100 pt-5 dark:border-dark-700"
+                :class="!form.usage_ranking_enabled && 'opacity-60'"
+              >
+                <div>
+                  <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.usageRanking.fields") }}
+                  </h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.usageRanking.fieldsHint") }}
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div class="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.usageRanking.totalTokens") }}
+                    </span>
+                    <Toggle
+                      v-model="form.usage_ranking_show_total_tokens"
+                      size="sm"
+                      :disabled="!form.usage_ranking_enabled || form.usage_ranking_sort_by === 'total_tokens'"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.usageRanking.requests") }}
+                    </span>
+                    <Toggle
+                      v-model="form.usage_ranking_show_requests"
+                      size="sm"
+                      :disabled="!form.usage_ranking_enabled || form.usage_ranking_sort_by === 'requests'"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.usageRanking.actualCost") }}
+                    </span>
+                    <Toggle
+                      v-model="form.usage_ranking_show_actual_cost"
+                      size="sm"
+                      :disabled="!form.usage_ranking_enabled || form.usage_ranking_sort_by === 'actual_cost'"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Balance Display Settings -->
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -6282,7 +6388,7 @@
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.site.tablePreferencesDescription") }}
                 </p>
-                <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
+                <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div>
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -6317,24 +6423,6 @@
                     />
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.site.tablePageSizeOptionsHint") }}
-                    </p>
-                  </div>
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{ t("admin.settings.site.usageRankingLimit") }}
-                    </label>
-                    <input
-                      v-model.number="form.usage_ranking_limit"
-                      type="number"
-                      min="1"
-                      max="100"
-                      step="1"
-                      class="input w-40"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.site.usageRankingLimitHint") }}
                     </p>
                   </div>
                 </div>
@@ -8507,6 +8595,7 @@ import type {
   UserPromptReplacementConfig,
   UserPromptReplacementRule,
   UserPromptReplacementType,
+  UsageRankingSortBy,
 } from "@/api/admin/settings";
 import type { LoginAgreementDocument, NotifyEmailEntry, Proxy } from "@/types";
 import type { ProviderInstance, SubscriptionPlan } from "@/types/payment";
@@ -8932,6 +9021,20 @@ const tablePageSizeDefault = 20;
 const usageRankingLimitMin = 1;
 const usageRankingLimitMax = 100;
 const usageRankingLimitDefault = 20;
+const usageRankingSortOptions = computed(() => [
+  {
+    value: "total_tokens" as UsageRankingSortBy,
+    label: t("admin.settings.usageRanking.sortOptions.totalTokens"),
+  },
+  {
+    value: "requests" as UsageRankingSortBy,
+    label: t("admin.settings.usageRanking.sortOptions.requests"),
+  },
+  {
+    value: "actual_cost" as UsageRankingSortBy,
+    label: t("admin.settings.usageRanking.sortOptions.actualCost"),
+  },
+]);
 const marketplaceAvailabilityWindowDaysMin = 1;
 const marketplaceAvailabilityWindowDaysMax = 90;
 const marketplaceAvailabilityWindowDaysDefault = 7;
@@ -9204,6 +9307,11 @@ const form = reactive<SettingsForm>({
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   usage_ranking_limit: usageRankingLimitDefault,
+  usage_ranking_enabled: true,
+  usage_ranking_sort_by: "total_tokens" as UsageRankingSortBy,
+  usage_ranking_show_total_tokens: true,
+  usage_ranking_show_requests: true,
+  usage_ranking_show_actual_cost: true,
   custom_menu_items: [] as Array<{
     id: string;
     label: string;
@@ -9402,6 +9510,26 @@ const form = reactive<SettingsForm>({
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   allow_user_view_error_requests: false,
 });
+
+// 排名依据必须始终显示，避免用户无法解释排行名次。
+function ensureUsageRankingSortMetricVisible() {
+  switch (form.usage_ranking_sort_by) {
+    case "requests":
+      form.usage_ranking_show_requests = true;
+      break;
+    case "actual_cost":
+      form.usage_ranking_show_actual_cost = true;
+      break;
+    default:
+      form.usage_ranking_show_total_tokens = true;
+      break;
+  }
+}
+
+watch(
+  () => form.usage_ranking_sort_by,
+  () => ensureUsageRankingSortMetricVisible(),
+);
 
 const {
   balanceUnitName: previewBalanceUnitName,
@@ -10801,6 +10929,7 @@ async function saveSettings() {
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
     form.usage_ranking_limit = normalizedUsageRankingLimit;
+    ensureUsageRankingSortMetricVisible();
     form.balance_unit_name = form.balance_unit_name.trim() || "USD";
     form.balance_unit_symbol = form.balance_unit_symbol.trim() || "$";
     form.balance_icon_svg = form.balance_icon_svg.trim();
@@ -11024,6 +11153,11 @@ async function saveSettings() {
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       usage_ranking_limit: form.usage_ranking_limit,
+      usage_ranking_enabled: form.usage_ranking_enabled,
+      usage_ranking_sort_by: form.usage_ranking_sort_by,
+      usage_ranking_show_total_tokens: form.usage_ranking_show_total_tokens,
+      usage_ranking_show_requests: form.usage_ranking_show_requests,
+      usage_ranking_show_actual_cost: form.usage_ranking_show_actual_cost,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       footer_links: normalizeFooterLinksForSave(),

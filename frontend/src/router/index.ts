@@ -280,6 +280,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      requiresUsageRanking: true,
       title: 'Usage Ranking',
       titleKey: 'usageRanking.title',
       descriptionKey: 'usageRanking.description'
@@ -882,6 +883,7 @@ router.beforeEach(async (to, _from, next) => {
     || to.meta.requiresRiskControl
     || to.meta.requiresTeam
     || to.meta.requiresDataSharing
+    || to.meta.requiresUsageRanking
   if (requiresPublicFeature && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
@@ -923,6 +925,15 @@ router.beforeEach(async (to, _from, next) => {
     to.meta.requiresDataSharing &&
     appStore.publicSettingsLoaded &&
     appStore.cachedPublicSettings?.data_sharing_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
+  if (
+    to.meta.requiresUsageRanking &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.usage_ranking_enabled === false
   ) {
     next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
     return

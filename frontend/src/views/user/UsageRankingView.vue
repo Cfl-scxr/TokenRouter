@@ -34,6 +34,8 @@
             v-for="item in topCards"
             :key="item.rank"
             :item="item"
+            :primary-metric="primaryMetric"
+            :visible-metrics="visibleMetrics"
             :class="[topCardOrderClass(item.rank), topCards.length === 1 && item.rank === 1 ? 'md:col-start-2' : '']"
             :featured="item.rank === 1"
           />
@@ -50,7 +52,13 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ dateRangeLabel }}</span>
           </div>
           <div class="divide-y divide-gray-100 dark:divide-dark-700">
-            <RankingRow v-for="item in ranking" :key="item.rank" :item="item" />
+            <RankingRow
+              v-for="item in ranking"
+              :key="item.rank"
+              :item="item"
+              :primary-metric="primaryMetric"
+              :visible-metrics="visibleMetrics"
+            />
           </div>
         </section>
 
@@ -71,7 +79,12 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { usageAPI, type UsageRankingItem, type UsageRankingResponse } from '@/api/usage'
+import {
+  usageAPI,
+  type UsageRankingItem,
+  type UsageRankingResponse,
+  type UsageRankingSortBy,
+} from '@/api/usage'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
@@ -91,6 +104,21 @@ const startDate = ref(today)
 const endDate = ref(today)
 const ranking = computed(() => response.value?.ranking || [])
 const topCards = computed(() => ranking.value.slice(0, 3))
+type UsageRankingMetric = UsageRankingSortBy
+
+const visibleMetrics = computed<UsageRankingMetric[]>(() => {
+  const current = response.value
+  const metrics: UsageRankingMetric[] = []
+  if (current?.show_total_tokens !== false) metrics.push('total_tokens')
+  if (current?.show_requests !== false) metrics.push('requests')
+  if (current?.show_actual_cost !== false) metrics.push('actual_cost')
+  return metrics
+})
+const primaryMetric = computed<UsageRankingMetric>(() => {
+  const sortBy = response.value?.sort_by
+  if (sortBy && visibleMetrics.value.includes(sortBy)) return sortBy
+  return visibleMetrics.value[0] || 'total_tokens'
+})
 const dateRangeLabel = computed(() => {
   const start = response.value?.start_date || startDate.value
   const end = response.value?.end_date || endDate.value
@@ -121,6 +149,36 @@ function initials(name: string): string {
 
 function rankLabel(rank: number): string {
   return `#${rank}`
+}
+
+function metricLabel(metric: UsageRankingMetric): string {
+  switch (metric) {
+    case 'requests':
+      return t('usageRanking.requests')
+    case 'actual_cost':
+      return t('usageRanking.reasoningCost', { unit: balanceUnitName.value })
+    default:
+      return t('usageRanking.totalTokens')
+  }
+}
+
+function metricValue(item: UsageRankingItem, metric: UsageRankingMetric): string {
+  switch (metric) {
+    case 'requests':
+      return formatNumber(item.requests ?? 0)
+    case 'actual_cost':
+      return formatBalanceAmount(item.actual_cost ?? 0, { fractionDigits: 4 })
+    default:
+      return formatNumber(item.total_tokens ?? 0)
+  }
+}
+
+function metricGridStyle(metricCount: number): Record<string, string> {
+  return { gridTemplateColumns: `repeat(${Math.max(metricCount, 1)}, minmax(0, 1fr))` }
+}
+
+function orderedMetrics(metrics: UsageRankingMetric[], primary: UsageRankingMetric): UsageRankingMetric[] {
+  return [primary, ...metrics.filter((metric) => metric !== primary)]
 }
 
 // 仅前三名使用独立主题，第四名之后保持普通列表样式。
@@ -210,11 +268,14 @@ const TopRankCard = defineComponent({
   name: 'TopRankCard',
   props: {
     item: { type: Object as PropType<UsageRankingItem>, required: true },
+    primaryMetric: { type: String as PropType<UsageRankingMetric>, required: true },
+    visibleMetrics: { type: Array as PropType<UsageRankingMetric[]>, required: true },
     featured: { type: Boolean, default: false },
   },
   setup(props) {
     return () => {
       const theme = rankTheme(props.item.rank)
+      const secondaryMetrics = props.visibleMetrics.filter((metric) => metric !== props.primaryMetric)
       return h(
         'article',
         {
@@ -235,13 +296,24 @@ const TopRankCard = defineComponent({
           h('div', { class: 'relative mt-7 flex flex-col items-center text-center' }, [
             h(UserAvatar, { item: props.item, size: 'lg' }),
             h('h3', { class: 'mt-4 max-w-full truncate text-lg font-semibold text-gray-900 dark:text-white' }, props.item.display_name),
-            h('p', { class: 'mt-2 text-3xl font-semibold text-gray-900 dark:text-white' }, formatNumber(props.item.total_tokens)),
-            h('p', { class: 'mt-1 text-xs text-gray-500 dark:text-gray-400' }, t('usageRanking.tokens')),
+            h('p', { class: 'mt-2 text-3xl font-semibold text-gray-900 dark:text-white' }, metricValue(props.item, props.primaryMetric)),
+            h('p', { class: 'mt-1 text-xs text-gray-500 dark:text-gray-400' }, metricLabel(props.primaryMetric)),
           ]),
-          h('div', { class: 'relative mt-6 grid grid-cols-2 gap-2 text-center text-xs text-gray-500 dark:text-gray-400' }, [
-            h('div', [h('p', { class: 'font-medium text-gray-900 dark:text-white' }, formatBalanceAmount(props.item.actual_cost, { fractionDigits: 4 })), h('p', t('usageRanking.reasoningCost', { unit: balanceUnitName.value }))]),
-            h('div', [h('p', { class: 'font-medium text-gray-900 dark:text-white' }, formatNumber(props.item.requests)), h('p', t('usageRanking.requests'))]),
-          ]),
+          secondaryMetrics.length > 0
+            ? h(
+                'div',
+                {
+                  class: 'relative mt-6 grid gap-2 text-center text-xs text-gray-500 dark:text-gray-400',
+                  style: metricGridStyle(secondaryMetrics.length),
+                },
+                secondaryMetrics.map((metric) =>
+                  h('div', { key: metric }, [
+                    h('p', { class: 'font-medium text-gray-900 dark:text-white' }, metricValue(props.item, metric)),
+                    h('p', metricLabel(metric)),
+                  ]),
+                ),
+              )
+            : null,
         ],
       )
     }
@@ -252,11 +324,14 @@ const RankingRow = defineComponent({
   name: 'RankingRow',
   props: {
     item: { type: Object as PropType<UsageRankingItem>, required: true },
+    primaryMetric: { type: String as PropType<UsageRankingMetric>, required: true },
+    visibleMetrics: { type: Array as PropType<UsageRankingMetric[]>, required: true },
   },
   setup(props) {
     return () => {
       const theme = rankTheme(props.item.rank)
       const topClass = props.item.rank <= 3 ? theme.card : 'border-transparent bg-transparent'
+      const metrics = orderedMetrics(props.visibleMetrics, props.primaryMetric)
       return h(
         'div',
         {
@@ -270,20 +345,19 @@ const RankingRow = defineComponent({
               h('p', { class: 'truncate text-sm font-medium text-gray-900 dark:text-white' }, props.item.display_name),
             ]),
           ]),
-          h('div', { class: 'col-span-2 grid grid-cols-3 gap-3 text-sm sm:col-span-1 sm:grid-cols-[130px_110px_140px] sm:text-right' }, [
-            h('div', [
-              h('p', { class: 'font-semibold text-gray-900 dark:text-white' }, formatNumber(props.item.total_tokens)),
-              h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, t('usageRanking.totalTokens')),
-            ]),
-            h('div', [
-              h('p', { class: 'font-semibold text-gray-900 dark:text-white' }, formatNumber(props.item.requests)),
-              h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, t('usageRanking.requests')),
-            ]),
-            h('div', [
-              h('p', { class: 'font-semibold text-gray-900 dark:text-white' }, formatBalanceAmount(props.item.actual_cost, { fractionDigits: 4 })),
-              h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, t('usageRanking.reasoningCost', { unit: balanceUnitName.value })),
-            ]),
-          ]),
+          h(
+            'div',
+            {
+              class: 'col-span-2 grid gap-3 text-sm sm:col-span-1 sm:text-right',
+              style: metricGridStyle(metrics.length),
+            },
+            metrics.map((metric) =>
+              h('div', { key: metric }, [
+                h('p', { class: 'font-semibold text-gray-900 dark:text-white' }, metricValue(props.item, metric)),
+                h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, metricLabel(metric)),
+              ]),
+            ),
+          ),
         ],
       )
     }

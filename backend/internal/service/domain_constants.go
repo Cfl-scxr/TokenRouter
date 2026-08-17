@@ -331,12 +331,23 @@ const (
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
 	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
 	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组）
-	SettingKeyUsageRankingLimit           = "usage_ranking_limit"           // 用户侧用量排行显示名次上限
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyFooterLinks                 = "footer_links"                  // 首页底栏链接分组（JSON 数组）
 	SettingKeyFooterText                  = "footer_text"                   // 首页底栏附加文本（备案号等，支持多行）
+)
 
+const (
+	// 用户侧用量排行设置
+	SettingKeyUsageRankingLimit           = "usage_ranking_limit"             // 用户侧用量排行显示名次上限
+	SettingKeyUsageRankingEnabled         = "usage_ranking_enabled"           // 用户侧用量排行是否启用
+	SettingKeyUsageRankingSortBy          = "usage_ranking_sort_by"           // 用户侧用量排行排序依据
+	SettingKeyUsageRankingShowTotalTokens = "usage_ranking_show_total_tokens" // 用户侧用量排行是否显示总 Token
+	SettingKeyUsageRankingShowRequests    = "usage_ranking_show_requests"     // 用户侧用量排行是否显示请求数
+	SettingKeyUsageRankingShowActualCost  = "usage_ranking_show_actual_cost"  // 用户侧用量排行是否显示实际消费
+)
+
+const (
 	// 默认配置
 	SettingKeyDefaultConcurrency                   = "default_concurrency"                     // 新用户默认并发量
 	SettingKeyDefaultBalance                       = "default_balance"                         // 新用户默认余额

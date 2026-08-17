@@ -363,6 +363,14 @@ const ToggleStub = defineComponent({
       type: Boolean,
       default: false,
     },
+    size: {
+      type: String,
+      default: "md",
+    },
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ["update:modelValue"],
   inheritAttrs: false,
@@ -374,6 +382,7 @@ const ToggleStub = defineComponent({
         type: "checkbox",
         "data-testid": attrs["data-testid"],
         checked: props.modelValue,
+        disabled: props.disabled,
         onChange: (event: Event) => {
           emit("update:modelValue", (event.target as HTMLInputElement).checked);
         },
@@ -875,6 +884,36 @@ describe("admin SettingsView payment visible method controls", () => {
       public_ip_rpm: 300,
     });
     expect(showSuccess).toHaveBeenCalled();
+  });
+
+  it("renders and submits usage ranking controls with the selected metric kept visible", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      usage_ranking_limit: 12,
+      usage_ranking_enabled: true,
+      usage_ranking_sort_by: "actual_cost",
+      usage_ranking_show_total_tokens: false,
+      usage_ranking_show_requests: false,
+      usage_ranking_show_actual_cost: false,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("admin.settings.usageRanking.title");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage_ranking_limit: 12,
+        usage_ranking_enabled: true,
+        usage_ranking_sort_by: "actual_cost",
+        usage_ranking_show_total_tokens: false,
+        usage_ranking_show_requests: false,
+        usage_ranking_show_actual_cost: true,
+      }),
+    );
   });
 
   it("loads and saves Google One Tap settings with the current browser origin", async () => {

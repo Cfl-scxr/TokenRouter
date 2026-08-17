@@ -265,6 +265,12 @@ export interface PublicSettings {
   table_default_page_size: number
   table_page_size_options: number[]
   usage_ranking_limit: number
+  // 旧版公开设置可能缺少以下字段，调用方应仅在明确为 false 时关闭入口或字段。
+  usage_ranking_enabled?: boolean
+  usage_ranking_sort_by?: 'total_tokens' | 'requests' | 'actual_cost'
+  usage_ranking_show_total_tokens?: boolean
+  usage_ranking_show_requests?: boolean
+  usage_ranking_show_actual_cost?: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   footer_links?: FooterLinkGroup[]

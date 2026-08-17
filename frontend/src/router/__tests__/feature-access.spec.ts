@@ -27,6 +27,7 @@ const appStore = vi.hoisted(() => ({
     risk_control_enabled?: boolean
     team_enabled?: boolean
     data_sharing_enabled?: boolean
+    usage_ranking_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -146,6 +147,7 @@ describe('feature route guard', () => {
     ['risk control', { requiresRiskControl: true }, '/admin/risk-control'],
     ['team', { requiresTeam: true }, '/team'],
     ['data sharing', { requiresDataSharing: true }, '/data-sharing'],
+    ['usage ranking', { requiresUsageRanking: true }, '/usage-ranking'],
   ])('does not treat a failed %s settings load as explicitly disabled', async (_name, meta, path) => {
     authStore.isAdmin = path.startsWith('/admin/')
     appStore.fetchPublicSettings.mockResolvedValue(null)
@@ -171,6 +173,7 @@ describe('feature route guard', () => {
     ['admin team', { requiresTeam: true }, { team_enabled: false }, '/admin/settings', true],
     ['data sharing', { requiresDataSharing: true }, { data_sharing_enabled: false }, '/dashboard', false],
     ['admin data sharing', { requiresDataSharing: true }, { data_sharing_enabled: false }, '/admin/settings', true],
+    ['usage ranking', { requiresUsageRanking: true }, { usage_ranking_enabled: false }, '/dashboard', false],
   ])('redirects when loaded settings explicitly disable %s', async (_name, meta, settings, target, isAdmin) => {
     authStore.isAdmin = isAdmin
     appStore.cachedPublicSettings = settings

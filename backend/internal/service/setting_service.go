@@ -25,6 +25,86 @@ const (
 	GrokDefaultBaseURLModeCLI     = "cli"
 )
 
+// UsageRankingSortBy 表示用户侧用量排行的排名指标。
+type UsageRankingSortBy string
+
+const (
+	UsageRankingSortByTotalTokens UsageRankingSortBy = "total_tokens"
+	UsageRankingSortByRequests    UsageRankingSortBy = "requests"
+	UsageRankingSortByActualCost  UsageRankingSortBy = "actual_cost"
+)
+
+// UsageRankingSettings 是用户侧排行读取和展示共用的运行时配置。
+type UsageRankingSettings struct {
+	Enabled         bool
+	SortBy          UsageRankingSortBy
+	ShowTotalTokens bool
+	ShowRequests    bool
+	ShowActualCost  bool
+	Limit           int
+}
+
+func IsValidUsageRankingSortBy(value string) bool {
+	switch UsageRankingSortBy(strings.TrimSpace(value)) {
+	case UsageRankingSortByTotalTokens, UsageRankingSortByRequests, UsageRankingSortByActualCost:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeUsageRankingSortBy(value string) UsageRankingSortBy {
+	if IsValidUsageRankingSortBy(value) {
+		return UsageRankingSortBy(strings.TrimSpace(value))
+	}
+	return UsageRankingSortByTotalTokens
+}
+
+// NormalizeUsageRankingSortBy 将历史或非法值回退到总 Token 排序。
+func NormalizeUsageRankingSortBy(value string) UsageRankingSortBy {
+	return normalizeUsageRankingSortBy(value)
+}
+
+func defaultUsageRankingSettings() UsageRankingSettings {
+	return UsageRankingSettings{
+		Enabled:         true,
+		SortBy:          UsageRankingSortByTotalTokens,
+		ShowTotalTokens: true,
+		ShowRequests:    true,
+		ShowActualCost:  true,
+		Limit:           DefaultUsageRankingLimit,
+	}
+}
+
+// NormalizeUsageRankingSettings 保证排序依据始终可见，避免用户无法理解排行名次。
+func NormalizeUsageRankingSettings(settings UsageRankingSettings) UsageRankingSettings {
+	settings.SortBy = normalizeUsageRankingSortBy(string(settings.SortBy))
+	settings.Limit = normalizeUsageRankingLimit(settings.Limit)
+	switch settings.SortBy {
+	case UsageRankingSortByRequests:
+		settings.ShowRequests = true
+	case UsageRankingSortByActualCost:
+		settings.ShowActualCost = true
+	default:
+		settings.ShowTotalTokens = true
+	}
+	return settings
+}
+
+func parseUsageRankingSettings(values map[string]string) UsageRankingSettings {
+	settings := defaultUsageRankingSettings()
+	if values == nil {
+		return settings
+	}
+	settings.Enabled = values[SettingKeyUsageRankingEnabled] != "false"
+	settings.SortBy = normalizeUsageRankingSortBy(values[SettingKeyUsageRankingSortBy])
+	settings.ShowTotalTokens = values[SettingKeyUsageRankingShowTotalTokens] != "false"
+	settings.ShowRequests = values[SettingKeyUsageRankingShowRequests] != "false"
+	settings.ShowActualCost = values[SettingKeyUsageRankingShowActualCost] != "false"
+	settings.Limit = normalizeUsageRankingLimitString(values[SettingKeyUsageRankingLimit])
+	return NormalizeUsageRankingSettings(settings)
+}
+
 func normalizeGrokDefaultBaseURLMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case GrokDefaultBaseURLModeAPI:
@@ -450,13 +530,32 @@ func (s *SettingService) GetOpenAIOAuthImportDefaults(ctx context.Context) (*Ope
 	return fillOpenAIOAuthImportDefaults(&settings), nil
 }
 
+// GetUsageRankingSettings 获取用户侧用量排行的完整运行时配置。
+func (s *SettingService) GetUsageRankingSettings(ctx context.Context) (UsageRankingSettings, error) {
+	if s == nil || s.settingRepo == nil {
+		return defaultUsageRankingSettings(), nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyUsageRankingLimit,
+		SettingKeyUsageRankingEnabled,
+		SettingKeyUsageRankingSortBy,
+		SettingKeyUsageRankingShowTotalTokens,
+		SettingKeyUsageRankingShowRequests,
+		SettingKeyUsageRankingShowActualCost,
+	})
+	if err != nil {
+		return UsageRankingSettings{}, fmt.Errorf("get usage ranking settings: %w", err)
+	}
+	return parseUsageRankingSettings(values), nil
+}
+
 // GetUsageRankingLimit 获取用户侧用量排行展示数量。
 func (s *SettingService) GetUsageRankingLimit(ctx context.Context) int {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyUsageRankingLimit)
+	settings, err := s.GetUsageRankingSettings(ctx)
 	if err != nil {
 		return DefaultUsageRankingLimit
 	}
-	return normalizeUsageRankingLimitString(value)
+	return settings.Limit
 }
 
 // IsOpenAIAllowClaudeCodeCodexPluginEnabled 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认关闭）。
