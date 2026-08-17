@@ -11,7 +11,7 @@
     @apply scroll-smooth antialiased;
     scrollbar-color: rgba(18, 167, 232, 0.26) transparent;
     scrollbar-width: thin;
-    background: #FFFFFF;
+    background: #FCFCFE;
     background-attachment: fixed;
   }
 
@@ -24,7 +24,7 @@
   body {
     @apply text-dark-950 dark:text-white;
     @apply min-h-screen;
-    background: #FFFFFF;
+    background: #FCFCFE;
     background-attachment: fixed;
   }
 
@@ -980,7 +980,7 @@
 
   /* 全局背景：浅色使用纯白，深色保留微亮到纯黑的纵向渐变。 */
   .ba-theme-shell {
-    background: #FFFFFF;
+    background: #FCFCFE;
   }
 
   .dark .ba-theme-shell {
@@ -989,7 +989,7 @@
 
   .ba-theme-backdrop {
     overflow: hidden;
-    background: #FFFFFF;
+    background: #FCFCFE;
   }
 
   .ba-theme-backdrop::before {
