@@ -28,7 +28,7 @@ describe('AppSidebar layout controls', () => {
 
 describe('light theme text contrast', () => {
   it('uses opaque navigation text and isolates stronger muted text to light mode', () => {
-    const sidebarLinkBlock = styleSource.match(/\.sidebar-link\s*\{[\s\S]*?\n  \}/)
+    const sidebarLinkBlock = styleSource.match(/\.sidebar-link\s*\{[\s\S]*?\n {2}\}/)
 
     expect(sidebarLinkBlock).not.toBeNull()
     expect(sidebarLinkBlock?.[0]).toContain('@apply text-primary-900 dark:text-dark-100;')
