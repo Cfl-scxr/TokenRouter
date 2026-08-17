@@ -141,18 +141,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 				responsesBody = stripped
 			}
 		}
-		responsesBody, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
+		_, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
 		if err != nil {
 			return nil, fmt.Errorf("normalize service_tier in responses-shape body: %w", err)
 		}
-		// Minimal stub populated from the raw body so downstream billing
-		// propagation (ServiceTier, ReasoningEffort) keeps working.
+		// Minimal stub populated from the raw body so downstream ServiceTier
+		// propagation keeps working.
 		responsesReq = &apicompat.ResponsesRequest{
 			Model:       upstreamModel,
 			ServiceTier: normalizedServiceTier,
-		}
-		if effort := gjson.GetBytes(responsesBody, "reasoning.effort").String(); effort != "" {
-			responsesReq.Reasoning = &apicompat.ResponsesReasoning{Effort: effort}
 		}
 	} else {
 		// Normal path: convert Chat Completions → Responses.
@@ -240,6 +237,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	// Usage Log 记录最终实际发送给上游的 effort，避免把转换过程中被丢弃的
+	// Chat Completions 非标准字段误记为已转发。
+	reasoningEffort := extractEffectiveOpenAIReasoningEffortFromBody(responsesBody, body, upstreamModel, billingModel, originalModel)
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, responsesBody, billingModel)
 	if serviceTier := extractOpenAIServiceTierFromBody(responsesBody); serviceTier != nil {
 		responsesReq.ServiceTier = *serviceTier
 	} else {
@@ -320,16 +321,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, handleErr
 	}
 
-	// Propagate ServiceTier and ReasoningEffort to result for billing
+	// Propagate normalized request metadata to result for billing and usage logs.
 	if handleErr == nil && result != nil {
 		if responsesReq.ServiceTier != "" {
 			st := responsesReq.ServiceTier
 			result.ServiceTier = &st
 		}
-		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
-			re := responsesReq.Reasoning.Effort
-			result.ReasoningEffort = &re
-		}
+		result.ReasoningEffort = reasoningEffort
 	}
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
