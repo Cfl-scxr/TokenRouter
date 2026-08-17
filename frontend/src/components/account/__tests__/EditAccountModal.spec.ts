@@ -638,10 +638,79 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
       email: 'oauth@example.com',
       plan_type: 'free',
-      model_mapping: {
-        'gpt-5.4': 'gpt-5.4'
-      }
+      model_whitelist: ['gpt-5.4']
     })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toBeUndefined()
+  })
+
+  it('OpenAI OAuth 编辑白名单时提交独立 model_whitelist', async () => {
+    const account = buildOpenAIOAuthAccount()
+    account.credentials = {
+      ...account.credentials,
+      model_mapping: {
+        'codex-alias': 'gpt-5.4'
+      },
+      model_whitelist: ['gpt-5.4']
+    }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const whitelistButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.modelWhitelist'))
+    expect(whitelistButton).toBeTruthy()
+
+    await whitelistButton!.trigger('click')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.4')
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'codex-alias': 'gpt-5.4'
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toEqual([
+      'gpt-5.2-2025-12-11'
+    ])
+  })
+
+  it('OpenAI OAuth 在独立白名单格式中回填自映射规则', async () => {
+    const account = buildOpenAIOAuthAccount()
+    account.credentials = {
+      ...account.credentials,
+      model_mapping: {
+        'gpt-5.6-sol': 'gpt-5.6-sol'
+      },
+      model_whitelist: []
+    }
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const mappingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.modelMapping'))
+    expect(mappingButton).toBeTruthy()
+
+    await mappingButton!.trigger('click')
+
+    const requestInput = wrapper
+      .findAll('input')
+      .find((input) => input.attributes('placeholder') === 'admin.accounts.requestModel')
+    const targetInput = wrapper
+      .findAll('input')
+      .find((input) => input.attributes('placeholder') === 'admin.accounts.actualModel')
+    expect(requestInput).toBeTruthy()
+    expect(targetInput).toBeTruthy()
+    expect((requestInput!.element as HTMLInputElement).value).toBe('gpt-5.6-sol')
+    expect((targetInput!.element as HTMLInputElement).value).toBe('gpt-5.6-sol')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_whitelist).toEqual([])
   })
 
   it('loads and submits the Codex fingerprint mode for OpenAI OAuth accounts', async () => {
