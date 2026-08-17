@@ -375,7 +375,7 @@ onUnmounted(() => {
 
 .batch-test-btn {
   @apply flex-shrink-0 rounded-lg p-1.5;
-  @apply text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400;
+  @apply text-primary-900/90 hover:text-emerald-600 dark:hover:text-emerald-400;
   @apply hover:bg-emerald-50 dark:hover:bg-emerald-900/20;
   @apply transition-colors disabled:cursor-not-allowed disabled:opacity-50;
 }
@@ -404,7 +404,7 @@ onUnmounted(() => {
 
 .select-empty {
   @apply px-4 py-8 text-center text-sm;
-  @apply text-gray-500 dark:text-dark-400;
+  @apply text-primary-900/90 dark:text-dark-400;
 }
 
 .test-btn {

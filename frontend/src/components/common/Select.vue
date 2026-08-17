@@ -581,7 +581,7 @@ onUnmounted(() => {
   @apply cursor-default select-none;
   @apply bg-gray-50 dark:bg-dark-900;
   @apply text-[11px] font-bold uppercase tracking-wider;
-  @apply text-gray-500 dark:text-gray-400;
+  @apply text-primary-900/90 dark:text-gray-400;
 }
 
 .select-dropdown-portal .select-option-group:hover {
@@ -594,7 +594,7 @@ onUnmounted(() => {
 
 .select-dropdown-portal .select-empty {
   @apply px-4 py-8 text-center text-sm;
-  @apply text-gray-500 dark:text-dark-400;
+  @apply text-primary-900/90 dark:text-dark-400;
 }
 
 .select-dropdown-enter-active,

@@ -26,6 +26,20 @@ describe('AppSidebar layout controls', () => {
   })
 })
 
+describe('light theme text contrast', () => {
+  it('uses opaque navigation text and isolates stronger muted text to light mode', () => {
+    const sidebarLinkBlock = styleSource.match(/\.sidebar-link\s*\{[\s\S]*?\n  \}/)
+
+    expect(sidebarLinkBlock).not.toBeNull()
+    expect(sidebarLinkBlock?.[0]).toContain('@apply text-primary-900 dark:text-dark-100;')
+    expect(sidebarLinkBlock?.[0]).not.toContain('text-primary-900/75')
+    expect(styleSource).toContain('html:not(.dark) :is(')
+    expect(styleSource).toContain('.text-gray-500')
+    expect(styleSource).toContain('.text-primary-900\\/65')
+    expect(styleSource).toContain('color: #426177;')
+  })
+})
+
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
     expect(componentSource).toContain('.sidebar-svg-icon {')

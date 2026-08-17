@@ -293,7 +293,7 @@
   }
 
   .btn-ghost {
-    @apply bg-transparent text-primary-900/80 dark:text-dark-100;
+    @apply bg-transparent text-primary-900/90 dark:text-dark-100;
     @apply hover:bg-primary-100 dark:hover:bg-dark-800;
   }
 
@@ -378,7 +378,7 @@
   }
 
   .input-hint {
-    @apply mt-1 text-xs text-primary-900/65 dark:text-dark-100/80;
+    @apply mt-1 text-xs text-primary-900/80 dark:text-dark-100/80;
   }
 
   .input-error-text {
@@ -478,7 +478,7 @@
   }
 
   .stat-label {
-    @apply text-sm text-primary-900/65 dark:text-dark-100/80;
+    @apply text-sm text-primary-900/80 dark:text-dark-100/80;
   }
 
   .stat-trend {
@@ -751,7 +751,7 @@
     @apply flex items-center gap-3 rounded-xl py-2.5;
     @apply overflow-hidden;
     @apply text-sm font-medium;
-    @apply text-primary-900/75 dark:text-dark-100;
+    @apply text-primary-900 dark:text-dark-100;
     @apply transition-all duration-200;
     @apply hover:bg-primary-100 dark:hover:bg-dark-950;
     @apply hover:text-primary-900 dark:hover:text-white;
@@ -773,7 +773,7 @@
   .sidebar-section-title {
     @apply mb-2 px-3;
     @apply text-xs font-semibold uppercase tracking-wider;
-    @apply text-primary-900/45 dark:text-dark-300;
+    @apply text-primary-900/80 dark:text-dark-300;
   }
 
   /* ============ 页面头部 ============ */
@@ -786,7 +786,7 @@
   }
 
   .page-description {
-    @apply mt-1 text-sm text-primary-900/65 dark:text-dark-100/80;
+    @apply mt-1 text-sm text-primary-900/90 dark:text-dark-100/80;
   }
 
   /* ============ 空状态 ============ */
@@ -805,7 +805,7 @@
   }
 
   .empty-state-description {
-    @apply max-w-sm text-sm text-primary-900/65 dark:text-dark-100/80;
+    @apply max-w-sm text-sm text-primary-900/90 dark:text-dark-100/80;
   }
 
   /* ============ 加载状态 ============ */
@@ -831,7 +831,7 @@
 
   .tab {
     @apply rounded-lg px-4 py-2 text-sm font-medium;
-    @apply text-primary-900/70 dark:text-dark-100/80;
+    @apply text-primary-900/90 dark:text-dark-100/80;
     @apply transition-all duration-200;
     @apply hover:text-primary-900 dark:hover:text-white;
   }
@@ -949,6 +949,16 @@
 }
 
 @layer utilities {
+  /* 浅色主题统一加深常规次级文字，暗色主题继续使用各组件原有的颜色。 */
+  html:not(.dark) :is(
+    .text-gray-500,
+    .text-primary-900\/65,
+    .text-primary-900\/70,
+    .text-primary-900\/75
+  ) {
+    color: #426177;
+  }
+
   .dark [class*="shadow-"] {
     --tw-shadow: 0 0 #0000 !important;
     --tw-shadow-colored: 0 0 #0000 !important;

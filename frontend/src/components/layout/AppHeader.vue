@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-icon-button {
-  @apply flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/70 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
+  @apply flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
 }
 
 .header-status-balance {

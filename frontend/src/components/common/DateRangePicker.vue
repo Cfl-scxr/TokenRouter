@@ -495,7 +495,7 @@ onUnmounted(() => {
 }
 
 .date-picker-label {
-  @apply mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400;
+  @apply mb-1 block text-xs font-medium text-primary-900/90 dark:text-gray-400;
 }
 
 .date-picker-input {
