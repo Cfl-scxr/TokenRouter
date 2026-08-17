@@ -36,4 +36,6 @@ func TestPaymentRoutesDoNotExposeAIChannels(t *testing.T) {
 
 	require.False(t, registered[http.MethodGet+" /api/v1/payment/channels"])
 	require.True(t, registered[http.MethodGet+" /api/v1/payment/checkout-info"])
+	require.True(t, registered[http.MethodPost+" /api/v1/admin/payment/orders/:id/force-expire"])
+	require.True(t, registered[http.MethodPost+" /api/v1/admin/payment/providers/test"])
 }

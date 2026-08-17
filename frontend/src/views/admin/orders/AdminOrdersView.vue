@@ -34,6 +34,10 @@
               <Icon name="x" size="sm" />
               {{ t('payment.orders.cancel') }}
             </button>
+            <button v-if="row.status === 'PENDING'" @click="openForceExpireDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
+              <Icon name="exclamationTriangle" size="sm" />
+              {{ t('payment.admin.forceExpire') }}
+            </button>
             <button v-if="row.status === 'FAILED'" @click="handleRetryOrder(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20">
               <Icon name="refresh" size="sm" />
               {{ t('payment.admin.retry') }}
@@ -122,6 +126,40 @@
       </div>
     </BaseDialog>
 
+    <BaseDialog :show="showForceExpireDialog" :title="t('payment.admin.forceExpireOrder')" width="normal" @close="closeForceExpireDialog">
+      <form id="force-expire-form" class="space-y-4" @submit.prevent="handleForceExpireOrder">
+        <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+          {{ t('payment.admin.forceExpireWarning') }}
+        </div>
+        <div v-if="forceExpireTarget" class="rounded-md bg-gray-50 p-3 text-sm dark:bg-dark-700">
+          <div class="flex justify-between gap-3">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
+            <span class="font-mono text-gray-900 dark:text-white">#{{ forceExpireTarget.id }}</span>
+          </div>
+          <div class="mt-1 flex justify-between gap-3">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
+            <span class="break-all text-right text-gray-900 dark:text-white">{{ forceExpireTarget.out_trade_no }}</span>
+          </div>
+        </div>
+        <div>
+          <label for="force-expire-reason" class="input-label">{{ t('payment.admin.forceExpireReason') }}</label>
+          <textarea id="force-expire-reason" v-model="forceExpireReason" rows="3" maxlength="500" class="input" :placeholder="t('payment.admin.forceExpireReasonPlaceholder')" required></textarea>
+        </div>
+        <label class="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+          <input id="force-expire-confirm" v-model="forceExpireConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+          <span>{{ t('payment.admin.forceExpireAcknowledge') }}</span>
+        </label>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeForceExpireDialog">{{ t('common.cancel') }}</button>
+          <button type="submit" form="force-expire-form" :disabled="forceExpireSubmitting || !forceExpireConfirmed || !forceExpireReason.trim()" class="btn btn-danger">
+            {{ forceExpireSubmitting ? t('common.processing') : t('payment.admin.confirmForceExpire') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" :require-force="refundRequireForce" :warning="refundWarning" @confirm="handleRefund" @cancel="closeRefundDialog" />
   </AppLayout>
 </template>
@@ -131,7 +169,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
-import { extractI18nErrorMessage } from '@/utils/apiError'
+import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import { formatOrderDateTime } from '@/components/payment/orderUtils'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { PaymentOrder } from '@/types/payment'
@@ -165,6 +203,11 @@ const orderPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
+const showForceExpireDialog = ref(false)
+const forceExpireTarget = ref<PaymentOrder | null>(null)
+const forceExpireReason = ref('')
+const forceExpireConfirmed = ref(false)
+const forceExpireSubmitting = ref(false)
 const refundSubmitting = ref(false)
 const refundRequireForce = ref(false)
 const refundWarning = ref('')
@@ -255,6 +298,42 @@ async function showOrderDetail(order: PaymentOrder) {
 async function handleCancelOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.cancelOrder(order.id); appStore.showSuccess(t('payment.admin.orderCancelled')); loadOrders() }
   catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
+}
+
+function openForceExpireDialog(order: PaymentOrder) {
+  forceExpireTarget.value = order
+  forceExpireReason.value = ''
+  forceExpireConfirmed.value = false
+  showForceExpireDialog.value = true
+}
+
+function closeForceExpireDialog() {
+  showForceExpireDialog.value = false
+  forceExpireTarget.value = null
+  forceExpireReason.value = ''
+  forceExpireConfirmed.value = false
+}
+
+async function handleForceExpireOrder() {
+  const order = forceExpireTarget.value
+  const reason = forceExpireReason.value.trim()
+  if (!order || !reason || !forceExpireConfirmed.value) return
+
+  forceExpireSubmitting.value = true
+  try {
+    await adminPaymentAPI.forceExpireOrder(order.id, { reason })
+    appStore.showSuccess(t('payment.admin.forceExpireSuccess'))
+    closeForceExpireDialog()
+    loadOrders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+    if (extractApiErrorCode(err) === 'ORDER_STATUS_CHANGED') {
+      closeForceExpireDialog()
+      await loadOrders()
+    }
+  } finally {
+    forceExpireSubmitting.value = false
+  }
 }
 
 async function handleRetryOrder(order: PaymentOrder) {

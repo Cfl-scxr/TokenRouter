@@ -62,6 +62,20 @@ export interface RefundResult {
   subscription_days_deducted?: number
 }
 
+export interface ForceExpireOrderRequest {
+  reason: string
+}
+
+export interface ProviderDraftTestRequest {
+  provider_key: string
+  instance_id?: number
+  config: Record<string, string>
+}
+
+export interface ProviderDraftTestResult {
+  reachable: boolean
+}
+
 export const adminPaymentAPI = {
   // ==================== Config ====================
 
@@ -115,6 +129,11 @@ export const adminPaymentAPI = {
   /** Cancel an order (admin) */
   cancelOrder(id: number) {
     return apiClient.post(`/admin/payment/orders/${id}/cancel`)
+  },
+
+  /** 管理员显式确认后强制过期待支付订单。 */
+  forceExpireOrder(id: number, data: ForceExpireOrderRequest) {
+    return apiClient.post(`/admin/payment/orders/${id}/force-expire`, data)
   },
 
   /** Retry recharge for a failed order */
@@ -196,6 +215,11 @@ export const adminPaymentAPI = {
   /** Delete a provider instance */
   deleteProvider(id: number) {
     return apiClient.delete(`/admin/payment/providers/${id}`)
+  },
+
+  /** 测试未保存的 EasyPay 服务商草稿，不写入持久化配置。 */
+  testProviderDraft(data: ProviderDraftTestRequest) {
+    return apiClient.post<ProviderDraftTestResult>('/admin/payment/providers/test', data)
   }
 }
 

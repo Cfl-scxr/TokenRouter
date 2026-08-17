@@ -14,6 +14,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/enttest"
 	"github.com/TokenFlux/TokenRouter/ent/paymentauditlog"
 	"github.com/TokenFlux/TokenRouter/internal/payment"
+	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 
@@ -719,6 +720,72 @@ func TestCancelOrderStillClosesPendingUpstreamOrder(t *testing.T) {
 	require.Equal(t, OrderStatusCancelled, reloaded.Status)
 }
 
+func TestForceExpireOrderRecordsAuditAndRejectsRepeatedTransition(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, time.Now().Add(time.Hour))
+	svc := &PaymentService{entClient: client}
+
+	require.NoError(t, svc.ForceExpireOrder(ctx, order.ID, "provider endpoint returned HTML"))
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusExpired, reloaded.Status)
+
+	audit, err := client.PaymentAuditLog.Query().Where(
+		paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+		paymentauditlog.ActionEQ("ORDER_FORCE_EXPIRED"),
+	).Only(ctx)
+	require.NoError(t, err)
+	require.Contains(t, audit.Detail, "provider endpoint returned HTML")
+
+	err = svc.ForceExpireOrder(ctx, order.ID, "repeat")
+	require.Error(t, err)
+	require.Equal(t, 409, infraerrors.Code(err))
+	require.Equal(t, "ORDER_STATUS_CHANGED", infraerrors.Reason(err))
+}
+
+func TestForceExpireOrderRollsBackWhenAuditWriteFails(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, time.Now().Add(time.Hour))
+	_, err := client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(order.ID, 10)).
+		SetAction("ORDER_FORCE_EXPIRED").
+		SetDetail(`{"reason":"existing audit record"}`).
+		SetOperator("admin").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+	err = svc.ForceExpireOrder(ctx, order.ID, "provider endpoint returned HTML")
+	require.Error(t, err)
+
+	reloaded, getErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+}
+
+func TestCancelOrderReturnsStatusUnavailableWhenProviderQueryFails(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, time.Now().Add(time.Hour))
+	provider := &paymentOrderLifecycleQueryProvider{queryErr: errors.New("upstream unavailable")}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	_, err := svc.CancelOrder(ctx, order.ID, order.UserID)
+	require.Error(t, err)
+	require.Equal(t, 503, infraerrors.Code(err))
+	require.Equal(t, "PAYMENT_STATUS_UNAVAILABLE", infraerrors.Reason(err))
+
+	reloaded, getErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+	require.True(t, svc.hasAuditLog(ctx, order.ID, "PAYMENT_CANCEL_FAILED"))
+}
+
 func TestCancelOrderMovesToProcessingWhenCloseRacesWithCheckoutCompletion(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
@@ -772,6 +839,36 @@ func TestExpireTimedOutOrdersKeepsPendingWhenCloseAndRequeryRemainUncertain(t *t
 	require.NoError(t, getErr)
 	require.Equal(t, OrderStatusPending, reloaded.Status)
 	require.True(t, svc.hasAuditLog(ctx, order.ID, "PAYMENT_CANCEL_FAILED"))
+}
+
+func TestExpireTimedOutOrdersBacksOffAfterProviderFailure(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	now := time.Now()
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, OrderStatusPending, now.Add(-time.Minute))
+	provider := &paymentOrderLifecycleQueryProvider{queryErr: errors.New("upstream unavailable")}
+	registry := payment.NewRegistry()
+	registry.Register(provider)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+
+	expired, err := svc.expireTimedOutOrdersAt(ctx, now)
+	require.NoError(t, err)
+	require.Zero(t, expired)
+	require.Equal(t, 1, provider.queryCalls)
+
+	expired, err = svc.expireTimedOutOrdersAt(ctx, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, expired)
+	require.Equal(t, 1, provider.queryCalls)
+
+	expired, err = svc.expireTimedOutOrdersAt(ctx, now.Add(paymentExpiryRetryDelay+time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, expired)
+	require.Equal(t, 2, provider.queryCalls)
+
+	reloaded, getErr := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
 }
 
 func TestReconcileProcessingOrdersFinalizesFailureAndAuditsStaleOnlyOnce(t *testing.T) {

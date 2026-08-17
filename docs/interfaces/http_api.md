@@ -50,6 +50,16 @@ RequestLogger
 | `/backend-api/codex/*` | TokenRouter API Key | Codex Responses、Realtime 与 sideband 兼容入口 |
 | `/api/v1/pages/*` 等 page routes | 按页面类型为用户或管理员 JWT | 服务端生成/读取的 pricing、账单或管理页面数据 |
 
+<a id="payment_admin_recovery"></a>
+## 支付管理恢复
+
+管理员支付订单提供两条恢复接口，均受管理员认证、面板限流和审计中间件保护：
+
+- `POST /api/v1/admin/payment/orders/{id}/force-expire` 接受必填 JSON 字段 `reason`（1 至 500 个字符）。仅当前为 `PENDING` 的订单可被无上游调用地写为 `EXPIRED`，成功响应 `data.message=force_expired`；订单不存在返回 `NOT_FOUND`，状态竞争返回 `ORDER_STATUS_CHANGED`（409）。此操作的迟到付款仍通过正常 webhook 恢复。
+- `POST /api/v1/admin/payment/providers/test` 接受 `provider_key`、`config` 和可选 `instance_id`。当前仅支持 `easypay`；带实例 ID 时服务端按更新规则合并未回传的敏感字段，再以随机订单号执行只读查单。接口不保存草稿、不创建订单，成功只返回 `data.reachable=true`，不会返回上游 body、URL 细节或凭据。
+
+普通取消在无法确认上游支付状态时返回 `PAYMENT_STATUS_UNAVAILABLE`（503），而不是泛化 500。若一个 provider instance 仍拥有强制过期且未恢复的订单，删除接口返回 `FORCED_EXPIRED_ORDERS`（409）；管理员应停用并保留该实例以接收迟到回调。
+
 `GET /api/v1/admin/groups/usage-summary` 仅返回管理员可见的全局分组汇总，字段为 `today_cost`、`yesterday_cost` 和 `total_cost`。自然日固定使用服务端配置时区，不接受浏览器时区参数，避免不同管理员在同一列表看到不同的“今日”边界。
 
 OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC 同时保留 `GET` 与 `POST`。未启用腾讯天御或阿里云验证码时，`GET` 继续以 `302` 跳转保持兼容；任一动作验证码启用后，匿名登录必须用 `POST`，腾讯票据使用 `tencent_captcha_ticket` 与 `tencent_captcha_randstr`，阿里云的 `captchaVerifyParam` 复用 `turnstile_token` 字段，成功响应的 `data.authorize_url` 由前端再导航。`*/bind/start` 是当前用户绑定入口，不消费匿名登录验证码。Passkey 登录的 `/auth/passkey/login/begin` 使用相同的提供方字段映射，`finish` 只接受 ceremony session 和 WebAuthn credential。

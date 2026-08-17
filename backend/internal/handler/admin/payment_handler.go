@@ -162,6 +162,30 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 	response.Success(c, gin.H{"message": msg})
 }
 
+// ForceExpireOrderRequest 是管理员强制过期订单的审计原因。
+type ForceExpireOrderRequest struct {
+	Reason string `json:"reason"`
+}
+
+// ForceExpireOrder 在上游状态无法确认时由管理员显式终结待支付订单。
+// POST /api/v1/admin/payment/orders/:id/force-expire
+func (h *PaymentHandler) ForceExpireOrder(c *gin.Context) {
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req ForceExpireOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.paymentService.ForceExpireOrder(c.Request.Context(), orderID, req.Reason); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "force_expired"})
+}
+
 // RetryFulfillment retries fulfillment for a paid order.
 // POST /api/v1/admin/payment/orders/:id/retry
 func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
@@ -440,6 +464,22 @@ func (h *PaymentHandler) CreateProvider(c *gin.Context) {
 	}
 	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Created(c, inst)
+}
+
+// TestProvider 使用未保存的 EasyPay 配置草稿执行只读连通性测试。
+// POST /api/v1/admin/payment/providers/test
+func (h *PaymentHandler) TestProvider(c *gin.Context) {
+	var req service.TestProviderDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.configService.TestProviderDraft(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // UpdateProvider updates an existing payment provider instance.

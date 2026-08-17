@@ -8,11 +8,14 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
+	"github.com/TokenFlux/TokenRouter/ent/paymentorder"
 	"github.com/TokenFlux/TokenRouter/internal/payment"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -675,6 +678,92 @@ func TestUpdateProviderInstanceClearsAirwallexAccountID(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cfg["accountId"])
 	require.Equal(t, "client-id-test", cfg["clientId"])
+}
+
+func TestProviderDraftTestUsesStoredSensitiveConfigWithoutPersistingDraft(t *testing.T) {
+	ctx := context.Background()
+	var receivedProbe string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		require.Equal(t, "pid-test", r.PostForm.Get("pid"))
+		require.Equal(t, "pkey-test", r.PostForm.Get("key"))
+		receivedProbe = r.PostForm.Get("out_trade_no")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"msg":"not found"}`))
+	}))
+	defer server.Close()
+
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{entClient: client, encryptionKey: []byte("0123456789abcdef0123456789abcdef")}
+	config := validEasyPayProviderConfig(t)
+	config["apiBase"] = server.URL
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    payment.TypeEasyPay,
+		Name:           "draft-test-easypay",
+		Config:         config,
+		SupportedTypes: []string{payment.TypeAlipay},
+		Enabled:        true,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.TestProviderDraft(ctx, TestProviderDraftRequest{
+		ProviderKey: payment.TypeEasyPay,
+		InstanceID:  &instance.ID,
+		Config: map[string]string{
+			"apiBase": server.URL,
+			"pkey":    "",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.Reachable)
+	require.NotEmpty(t, receivedProbe)
+	require.NotEqual(t, instance.ID, receivedProbe)
+
+	saved, err := client.PaymentProviderInstance.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	savedConfig, err := svc.decryptConfig(saved.Config)
+	require.NoError(t, err)
+	require.Equal(t, "pkey-test", savedConfig["pkey"])
+}
+
+func TestDeleteProviderInstanceRetainsUnrecoveredForceExpiredOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{entClient: client, encryptionKey: []byte("0123456789abcdef0123456789abcdef")}
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    payment.TypeEasyPay,
+		Name:           "force-expired-easypay",
+		Config:         validEasyPayProviderConfig(t),
+		SupportedTypes: []string{payment.TypeAlipay},
+		Enabled:        true,
+	})
+	require.NoError(t, err)
+	createPendingProviderConfigOrder(t, ctx, client, instance)
+
+	order, err := client.PaymentOrder.Query().
+		Where(paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(instance.ID, 10))).
+		Only(ctx)
+	require.NoError(t, err)
+	_, err = client.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusExpired).Save(ctx)
+	require.NoError(t, err)
+	_, err = client.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(order.ID, 10)).
+		SetAction("ORDER_FORCE_EXPIRED").
+		SetDetail(`{"reason":"provider unavailable"}`).
+		SetOperator("admin").
+		Save(ctx)
+	require.NoError(t, err)
+
+	disabled := false
+	_, err = svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{Enabled: &disabled})
+	require.NoError(t, err)
+	err = svc.DeleteProviderInstance(ctx, instance.ID)
+	require.Error(t, err)
+	require.Equal(t, "FORCED_EXPIRED_ORDERS", infraerrors.Reason(err))
+
+	_, err = client.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusCompleted).Save(ctx)
+	require.NoError(t, err)
+	require.NoError(t, svc.DeleteProviderInstance(ctx, instance.ID))
 }
 
 func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance) {

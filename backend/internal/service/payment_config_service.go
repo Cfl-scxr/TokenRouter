@@ -179,6 +179,19 @@ type UpdateProviderInstanceRequest struct {
 	AllowUserRefund *bool             `json:"allow_user_refund"`
 }
 
+// TestProviderDraftRequest 表示管理员尚未保存的支付渠道配置草稿。
+// 编辑既有实例时携带 InstanceID，以便服务端补回未回传的敏感字段。
+type TestProviderDraftRequest struct {
+	ProviderKey string            `json:"provider_key"`
+	InstanceID  *int64            `json:"instance_id,omitempty"`
+	Config      map[string]string `json:"config"`
+}
+
+// ProviderDraftTestResult 只暴露连通性结果，不返回上游响应或敏感配置。
+type ProviderDraftTestResult struct {
+	Reachable bool `json:"reachable"`
+}
+
 type nullableFloat64Patch struct {
 	present bool
 	value   *float64

@@ -6,12 +6,14 @@ import AdminOrdersView from '../AdminOrdersView.vue'
 const {
   mockGetOrders,
   mockRefundOrder,
+  mockForceExpireOrder,
   mockShowError,
   mockShowSuccess,
   mockShowWarning,
 } = vi.hoisted(() => ({
   mockGetOrders: vi.fn(),
   mockRefundOrder: vi.fn(),
+  mockForceExpireOrder: vi.fn(),
   mockShowError: vi.fn(),
   mockShowSuccess: vi.fn(),
   mockShowWarning: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock('@/api/admin/payment', () => {
   const paymentAPI = {
     getOrders: (...args: unknown[]) => mockGetOrders(...args),
     refundOrder: (...args: unknown[]) => mockRefundOrder(...args),
+    forceExpireOrder: (...args: unknown[]) => mockForceExpireOrder(...args),
   }
   return {
     adminPaymentAPI: paymentAPI,
@@ -41,7 +44,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key,
+      t: (key: string) => key === 'payment.errors.ORDER_STATUS_CHANGED' ? '订单状态已变更，列表已刷新' : key,
     }),
   }
 })
@@ -112,6 +115,7 @@ describe('AdminOrdersView', () => {
   beforeEach(() => {
     mockGetOrders.mockReset()
     mockRefundOrder.mockReset()
+    mockForceExpireOrder.mockReset()
     mockShowError.mockReset()
     mockShowSuccess.mockReset()
     mockShowWarning.mockReset()
@@ -172,5 +176,60 @@ describe('AdminOrdersView', () => {
     await flushPromises()
     expect(wrapper.find('#force-refund').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('insufficient balance, use force')
+  })
+
+  it('管理员确认并填写原因后才能强制过期待支付订单', async () => {
+    const pendingOrder = { ...order, status: 'PENDING' as const }
+    mockGetOrders.mockResolvedValue({
+      data: { items: [pendingOrder], total: 1, page: 1, page_size: 20 },
+    })
+    mockForceExpireOrder.mockResolvedValue({ data: { message: 'force_expired' } })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const forceAction = wrapper.findAll('button').find((button) => button.text() === 'payment.admin.forceExpire')
+    expect(forceAction).toBeDefined()
+    await forceAction!.trigger('click')
+    await flushPromises()
+
+    const submitButton = wrapper.find<HTMLButtonElement>('button[form="force-expire-form"]')
+    expect(submitButton.exists()).toBe(true)
+    expect(submitButton.element.disabled).toBe(true)
+    await wrapper.find<HTMLTextAreaElement>('#force-expire-reason').setValue('provider endpoint returned HTML')
+    expect(submitButton.element.disabled).toBe(true)
+    await wrapper.find<HTMLInputElement>('#force-expire-confirm').setValue(true)
+    expect(submitButton.element.disabled).toBe(false)
+
+    await wrapper.find('#force-expire-form').trigger('submit')
+    await flushPromises()
+
+    expect(mockForceExpireOrder).toHaveBeenCalledWith(42, { reason: 'provider endpoint returned HTML' })
+    expect(mockShowSuccess).toHaveBeenCalledWith('payment.admin.forceExpireSuccess')
+    expect(wrapper.find('#force-expire-form').exists()).toBe(false)
+  })
+
+  it('强制过期与付款完成竞争时刷新订单列表并关闭确认弹窗', async () => {
+    const pendingOrder = { ...order, status: 'PENDING' as const }
+    mockGetOrders.mockResolvedValue({
+      data: { items: [pendingOrder], total: 1, page: 1, page_size: 20 },
+    })
+    mockForceExpireOrder.mockRejectedValue({
+      reason: 'ORDER_STATUS_CHANGED',
+      message: 'order status changed before force expiration',
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    const forceAction = wrapper.findAll('button').find((button) => button.text() === 'payment.admin.forceExpire')
+    await forceAction!.trigger('click')
+    await wrapper.find<HTMLTextAreaElement>('#force-expire-reason').setValue('provider callback won the race')
+    await wrapper.find<HTMLInputElement>('#force-expire-confirm').setValue(true)
+    await wrapper.find('#force-expire-form').trigger('submit')
+    await flushPromises()
+
+    expect(mockShowError).toHaveBeenCalledWith('订单状态已变更，列表已刷新')
+    expect(mockGetOrders).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('#force-expire-form').exists()).toBe(false)
   })
 })

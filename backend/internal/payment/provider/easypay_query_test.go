@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/TokenFlux/TokenRouter/internal/payment"
@@ -125,6 +126,63 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 				if got := gotForm.Get(key); got != want {
 					t.Fatalf("form[%s] = %q, want %q (form=%v)", key, got, want, gotForm)
 				}
+			}
+		})
+	}
+}
+
+func TestEasyPayQueryOrderRejectsUnsafeResponses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantErr    string
+	}{
+		{
+			name:       "non success status",
+			statusCode: http.StatusBadGateway,
+			body:       `{"code":0,"msg":"gateway error"}`,
+			wantErr:    "easypay query HTTP 502",
+		},
+		{
+			name:       "html response",
+			statusCode: http.StatusOK,
+			body:       "<html>secret-response</html>",
+			wantErr:    "easypay query non-JSON response (HTTP 200)",
+		},
+		{
+			name:       "plain response",
+			statusCode: http.StatusOK,
+			body:       "gateway unavailable",
+			wantErr:    "easypay query non-JSON response (HTTP 200)",
+		},
+		{
+			name:       "empty response",
+			statusCode: http.StatusOK,
+			body:       "",
+			wantErr:    "easypay query empty response (HTTP 200)",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			provider := newTestEasyPay(t, server.URL)
+			_, err := provider.QueryOrder(context.Background(), "order-unsafe")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("QueryOrder error = %v, want containing %q", err, tt.wantErr)
+			}
+			if strings.Contains(err.Error(), "secret-response") {
+				t.Fatalf("QueryOrder error leaked response body: %v", err)
 			}
 		})
 	}

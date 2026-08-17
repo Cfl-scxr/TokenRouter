@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -35,6 +36,7 @@ const (
 	fulfillmentReconcileLimit  = 20
 	fulfillmentRetryDelay      = time.Minute
 	processingStaleAfter       = 24 * time.Hour
+	paymentExpiryRetryDelay    = 15 * time.Minute
 )
 
 var createPaymentProviderFromInstance = provider.CreateProvider
@@ -126,12 +128,66 @@ func (s *PaymentService) AdminCancelOrder(ctx context.Context, orderID int64) (s
 	return s.cancelCore(ctx, o, OrderStatusCancelled, "admin", "admin cancelled order")
 }
 
+// @project-doc docs/domains/payments_and_entitlements.md#forced_expiration_recovery
+// ForceExpireOrder 由管理员显式确认后终结无法确认上游状态的待支付订单。
+// 保留 EXPIRED 状态使验签通过的迟到付款仍能进入既有恢复和履约流程。
+func (s *PaymentService) ForceExpireOrder(ctx context.Context, orderID int64, reason string) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" || len([]rune(reason)) > 500 {
+		return infraerrors.BadRequest("INVALID_FORCE_EXPIRE_REASON", "force expiration reason is invalid")
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin force expire transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	updated, err := tx.PaymentOrder.Update().
+		Where(paymentorder.IDEQ(orderID), paymentorder.StatusEQ(OrderStatusPending)).
+		SetStatus(OrderStatusExpired).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("force expire payment order: %w", err)
+	}
+	if updated == 0 {
+		if _, err := tx.PaymentOrder.Get(ctx, orderID); err != nil {
+			if !dbent.IsNotFound(err) {
+				return fmt.Errorf("reload payment order after force expiration race: %w", err)
+			}
+			return infraerrors.NotFound("NOT_FOUND", "order not found")
+		}
+		return infraerrors.Conflict("ORDER_STATUS_CHANGED", "order status changed before force expiration")
+	}
+
+	detail, err := json.Marshal(map[string]any{
+		"previous_status":        OrderStatusPending,
+		"reason":                 reason,
+		"upstream_check_skipped": true,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal force expiration audit detail: %w", err)
+	}
+	if _, err := tx.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(orderID, 10)).
+		SetAction("ORDER_FORCE_EXPIRED").
+		SetDetail(string(detail)).
+		SetOperator("admin").
+		Save(ctx); err != nil {
+		return fmt.Errorf("write force expiration audit log: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit force expire transaction: %w", err)
+	}
+	return nil
+}
+
 func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, fs, op, ad string) (string, error) {
 	if o.PaymentTradeNo != "" || o.PaymentType != "" {
 		prov, queryRef, resp, err := s.queryPaymentOrderProvider(ctx, o)
 		if err != nil {
 			s.recordPaymentCancelFailure(ctx, o, prov, queryRef, err, nil)
-			return "", err
+			return "", paymentStatusUnavailableError(err)
 		}
 		outcome, err := s.applyQueriedPaymentStatus(ctx, o, prov, queryRef, resp)
 		if err != nil {
@@ -173,9 +229,9 @@ func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, 
 				}
 				s.recordPaymentCancelFailure(ctx, o, prov, queryRef, cancelErr, retryResp)
 				if retryErr != nil {
-					return "", fmt.Errorf("cancel upstream payment: %w; requery: %v", cancelErr, retryErr)
+					return "", paymentStatusUnavailableError(fmt.Errorf("cancel upstream payment: %w; requery: %v", cancelErr, retryErr))
 				}
-				return "", fmt.Errorf("cancel upstream payment: %w", cancelErr)
+				return "", paymentStatusUnavailableError(fmt.Errorf("cancel upstream payment: %w", cancelErr))
 			}
 		}
 	}
@@ -224,22 +280,33 @@ func (s *PaymentService) finalizePendingOrder(ctx context.Context, o *dbent.Paym
 }
 
 func (s *PaymentService) recordPaymentCancelFailure(ctx context.Context, o *dbent.PaymentOrder, prov payment.Provider, queryRef string, cancelErr error, resp *payment.QueryOrderResponse) {
-	if s.hasAuditLog(ctx, o.ID, "PAYMENT_CANCEL_FAILED") {
-		return
+	if !s.hasAuditLog(ctx, o.ID, "PAYMENT_CANCEL_FAILED") {
+		providerKey := "system"
+		if prov != nil {
+			providerKey = prov.ProviderKey()
+		}
+		detail := map[string]any{
+			"queryRef": queryRef,
+			"error":    psErrMsg(cancelErr),
+		}
+		if resp != nil {
+			detail["providerStatus"] = resp.Status
+			detail["tradeNo"] = resp.TradeNo
+		}
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_CANCEL_FAILED", providerKey, detail)
 	}
-	providerKey := "system"
-	if prov != nil {
-		providerKey = prov.ProviderKey()
+
+	// 每次失败都刷新时间戳，以便超时任务按固定冷却窗口重试而不是每分钟重复请求。
+	if _, err := s.entClient.PaymentOrder.Update().
+		Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).
+		SetUpdatedAt(time.Now()).
+		Save(ctx); err != nil {
+		slog.Warn("record payment cancellation retry time failed", "orderID", o.ID, "error", err)
 	}
-	detail := map[string]any{
-		"queryRef": queryRef,
-		"error":    psErrMsg(cancelErr),
-	}
-	if resp != nil {
-		detail["providerStatus"] = resp.Status
-		detail["tradeNo"] = resp.TradeNo
-	}
-	s.writeAuditLog(ctx, o.ID, "PAYMENT_CANCEL_FAILED", providerKey, detail)
+}
+
+func paymentStatusUnavailableError(cause error) error {
+	return infraerrors.ServiceUnavailable("PAYMENT_STATUS_UNAVAILABLE", "payment status is temporarily unavailable").WithCause(cause)
 }
 
 func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) (string, error) {
@@ -516,12 +583,19 @@ func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
 
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
 	now := time.Now()
+	return s.expireTimedOutOrdersAt(ctx, now)
+}
+
+func (s *PaymentService) expireTimedOutOrdersAt(ctx context.Context, now time.Time) (int, error) {
 	orders, err := s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusPending), paymentorder.ExpiresAtLTE(now)).All(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("query expired: %w", err)
 	}
 	n := 0
 	for _, o := range orders {
+		if !s.shouldRetryTimedOutOrder(ctx, o, now) {
+			continue
+		}
 		// 到期决策必须先确认上游状态并成功关闭待支付单据。
 		outcome, cancelErr := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
 		if cancelErr != nil {
@@ -537,6 +611,13 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 		}
 	}
 	return n, nil
+}
+
+func (s *PaymentService) shouldRetryTimedOutOrder(ctx context.Context, order *dbent.PaymentOrder, now time.Time) bool {
+	if order == nil || !s.hasAuditLog(ctx, order.ID, "PAYMENT_CANCEL_FAILED") {
+		return true
+	}
+	return !order.UpdatedAt.After(now.Add(-paymentExpiryRetryDelay))
 }
 
 // ReconcileProcessingOrders 低频补偿可能漏掉 Webhook 的渠道处理中订单。

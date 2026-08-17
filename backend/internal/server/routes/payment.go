@@ -90,6 +90,7 @@ func RegisterPaymentRoutes(
 			adminOrders.GET("/:id", adminPaymentHandler.GetOrderDetail)
 			adminOrders.GET("/:id/invoice", adminPaymentHandler.GetOrderInvoice)
 			adminOrders.POST("/:id/cancel", adminPaymentHandler.CancelOrder)
+			adminOrders.POST("/:id/force-expire", adminPaymentHandler.ForceExpireOrder)
 			adminOrders.POST("/:id/retry", adminPaymentHandler.RetryFulfillment)
 			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
 			adminOrders.POST("/:id/refund/query", adminPaymentHandler.QueryAndFinalizeRefund)
@@ -109,6 +110,7 @@ func RegisterPaymentRoutes(
 		{
 			providers.GET("", adminPaymentHandler.ListProviders)
 			providers.POST("", adminPaymentHandler.CreateProvider)
+			providers.POST("/test", adminPaymentHandler.TestProvider)
 			providers.PUT("/:id", adminPaymentHandler.UpdateProvider)
 			providers.DELETE("/:id", adminPaymentHandler.DeleteProvider)
 		}

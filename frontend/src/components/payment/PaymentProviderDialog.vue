@@ -294,9 +294,18 @@
     </form>
 
     <template #footer>
-      <div class="flex justify-end gap-3">
+      <div class="flex flex-wrap justify-end gap-3">
         <button type="button" @click="emit('close')" class="btn btn-secondary">{{ t('common.cancel') }}</button>
-        <button type="submit" form="provider-form" :disabled="saving" class="btn btn-primary">
+        <button
+          v-if="form.provider_key === 'easypay'"
+          type="button"
+          :disabled="saving || testing"
+          class="btn btn-secondary"
+          @click="handleTest"
+        >
+          {{ testing ? t('admin.settings.payment.testingConnection') : t('admin.settings.payment.testConnection') }}
+        </button>
+        <button type="submit" form="provider-form" :disabled="saving || testing" class="btn btn-primary">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>
@@ -354,6 +363,7 @@ function isValidPaymentMode(providerKey: string, mode: string): boolean {
 const props = defineProps<{
   show: boolean
   saving: boolean
+  testing?: boolean
   editing: ProviderInstance | null
   allKeyOptions: TypeOption[]
   enabledKeyOptions: TypeOption[]
@@ -373,6 +383,11 @@ const emit = defineEmits<{
     allow_user_refund: boolean
     config: Record<string, string>
     limits: string
+  }]
+  test: [payload: {
+    provider_key: string
+    instance_id?: number
+    config: Record<string, string>
   }]
 }>()
 
@@ -664,9 +679,34 @@ function handleSave() {
     }
     syncEasyPayCustomMethods()
   }
-  // Validate required config fields — all non-optional fields must be filled.
-  // In edit mode, sensitive fields may be left blank to preserve the stored
-  // value (backend merges blanks by preserving the existing secret).
+  if (!validateRequiredProviderConfig()) return
+
+  const filteredConfig = buildProviderConfig()
+
+  emit('save', {
+    provider_key: form.provider_key,
+    name: form.name,
+    supported_types: form.supported_types,
+    enabled: form.enabled,
+    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
+    refund_enabled: form.refund_enabled,
+    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
+    config: filteredConfig,
+    limits: serializeLimits(),
+  })
+}
+
+function handleTest() {
+  if (form.provider_key !== 'easypay') return
+  if (!validateRequiredProviderConfig()) return
+  emit('test', {
+    provider_key: form.provider_key,
+    ...(props.editing ? { instance_id: props.editing.id } : {}),
+    config: buildProviderConfig(),
+  })
+}
+
+function validateRequiredProviderConfig(): boolean {
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.optional) continue
     if (props.editing && f.sensitive) continue
@@ -674,10 +714,13 @@ function handleSave() {
     if (!val) {
       const label = f.label || t(`admin.settings.payment.field_${f.key}`)
       emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
-      return
+      return false
     }
   }
+  return true
+}
 
+function buildProviderConfig(): Record<string, string> {
   const clearableConfigKeys = new Set(
     (PROVIDER_CONFIG_FIELDS[form.provider_key] || [])
       .filter(field => field.clearable)
@@ -709,17 +752,7 @@ function handleSave() {
     if (paths.returnUrl) filteredConfig['returnUrl'] = returnBase + paths.returnUrl
   }
 
-  emit('save', {
-    provider_key: form.provider_key,
-    name: form.name,
-    supported_types: form.supported_types,
-    enabled: form.enabled,
-    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
-    refund_enabled: form.refund_enabled,
-    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
-    config: filteredConfig,
-    limits: serializeLimits(),
-  })
+  return filteredConfig
 }
 
 function syncEasyPayCustomMethods(): string[] {

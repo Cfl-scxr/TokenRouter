@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
+	"github.com/TokenFlux/TokenRouter/ent/paymentauditlog"
 	"github.com/TokenFlux/TokenRouter/ent/paymentorder"
 	"github.com/TokenFlux/TokenRouter/ent/paymentproviderinstance"
 	"github.com/TokenFlux/TokenRouter/internal/payment"
@@ -211,6 +212,46 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
 		SetAllowUserRefund(allowUserRefund).
 		Save(ctx)
+}
+
+// TestProviderDraft 使用未持久化的 EasyPay 草稿执行只读查单探测。
+// 探测订单号不会写入本地或发起任何真实扣款。
+func (s *PaymentConfigService) TestProviderDraft(ctx context.Context, req TestProviderDraftRequest) (*ProviderDraftTestResult, error) {
+	providerKey := strings.TrimSpace(req.ProviderKey)
+	if providerKey != payment.TypeEasyPay {
+		return nil, infraerrors.BadRequest("UNSUPPORTED_PROVIDER_TEST", "payment provider test is not supported")
+	}
+
+	config := req.Config
+	if config == nil {
+		config = map[string]string{}
+	}
+	if req.InstanceID != nil {
+		inst, err := s.entClient.PaymentProviderInstance.Get(ctx, *req.InstanceID)
+		if err != nil {
+			if dbent.IsNotFound(err) {
+				return nil, infraerrors.NotFound("PROVIDER_NOT_FOUND", "payment provider instance not found")
+			}
+			return nil, fmt.Errorf("load provider instance for test: %w", err)
+		}
+		if inst.ProviderKey != providerKey {
+			return nil, infraerrors.BadRequest("PROVIDER_KEY_MISMATCH", "provider key does not match instance")
+		}
+		mergedConfig, mergeErr := s.mergeConfig(ctx, *req.InstanceID, config)
+		if mergeErr != nil {
+			return nil, mergeErr
+		}
+		config = mergedConfig
+	}
+
+	prov, err := provider.CreateProvider(providerKey, "_draft_test_", config)
+	if err != nil {
+		return nil, infraerrors.BadRequest("PAYMENT_PROVIDER_TEST_INVALID_CONFIG", "payment provider test configuration is invalid").WithCause(err)
+	}
+	if _, err := prov.QueryOrder(ctx, generateOutTradeNo()); err != nil {
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_PROVIDER_TEST_FAILED", "payment provider test failed").WithCause(err)
+	}
+	return &ProviderDraftTestResult{Reachable: true}, nil
 }
 
 func validateProviderRequest(providerKey, name, supportedTypes string) error {
@@ -528,9 +569,42 @@ func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id in
 	}
 	if count > 0 {
 		return infraerrors.Conflict("PENDING_ORDERS",
-			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted — wait for orders to complete or disable the instance first", count))
+			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted", count))
+	}
+	forcedExpiredCount, err := s.countForcedExpiredOrders(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check force expired orders: %w", err)
+	}
+	if forcedExpiredCount > 0 {
+		return infraerrors.Conflict("FORCED_EXPIRED_ORDERS",
+			fmt.Sprintf("this instance has %d force-expired orders and must remain available for late payment recovery", forcedExpiredCount)).
+			WithMetadata(map[string]string{"count": strconv.Itoa(forcedExpiredCount)})
 	}
 	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
+}
+
+// countForcedExpiredOrders 只统计仍等待迟到付款恢复的强制过期订单。
+func (s *PaymentConfigService) countForcedExpiredOrders(ctx context.Context, providerInstanceID int64) (int, error) {
+	orderIDs, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
+			paymentorder.StatusEQ(payment.OrderStatusExpired),
+		).
+		IDs(ctx)
+	if err != nil || len(orderIDs) == 0 {
+		return 0, err
+	}
+
+	auditOrderIDs := make([]string, 0, len(orderIDs))
+	for _, orderID := range orderIDs {
+		auditOrderIDs = append(auditOrderIDs, strconv.FormatInt(orderID, 10))
+	}
+	return s.entClient.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDIn(auditOrderIDs...),
+			paymentauditlog.ActionEQ("ORDER_FORCE_EXPIRED"),
+		).
+		Count(ctx)
 }
 
 // encryptConfig serialises a provider config for storage.

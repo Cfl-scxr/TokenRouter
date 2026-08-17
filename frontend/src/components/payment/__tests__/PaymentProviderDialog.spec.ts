@@ -21,6 +21,8 @@ const messages: Record<string, string> = {
   'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
+  'admin.settings.payment.testConnection': 'Test Connection',
+  'admin.settings.payment.testingConnection': 'Testing...',
 }
 
 vi.mock('vue-i18n', () => ({
@@ -227,6 +229,43 @@ describe('PaymentProviderDialog payment guide', () => {
     }
     expect(payload.config.customMethods).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"}]')
     expect(payload.supported_types).toEqual(['alipay', 'wxpay', 'ldc'])
+  })
+
+  it('emits an EasyPay draft test without saving the dialog', async () => {
+    const provider = providerFactory({
+      id: 23,
+      provider_key: 'easypay',
+      name: 'EasyPay',
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+      },
+      supported_types: ['alipay'],
+      payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+
+    const testButton = wrapper.findAll('button').find(button => button.text() === 'Test Connection')
+    if (!testButton) throw new Error('test connection button not found')
+    await testButton.trigger('click')
+
+    expect(wrapper.emitted('save')).toBeUndefined()
+    expect(wrapper.emitted('test')?.[0]?.[0]).toEqual({
+      provider_key: 'easypay',
+      instance_id: 23,
+      config: {
+        pid: 'pid-1',
+        apiBase: 'https://pay.example.com',
+        notifyUrl: 'https://example.com/api/v1/payment/webhook/easypay',
+        returnUrl: 'https://example.com/payment/result',
+        customMethods: '',
+      },
+    })
   })
 
   it('rejects custom EasyPay method types with built-in payment prefixes', async () => {

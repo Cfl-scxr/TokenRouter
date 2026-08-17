@@ -254,32 +254,58 @@ func (e *EasyPay) upstreamPaymentType(paymentType string) string {
 	return paymentType
 }
 
+type easyPayQueryData struct {
+	TradeStatus *string `json:"trade_status"`
+	Status      *int    `json:"status"`
+	Money       *string `json:"money"`
+	TradeNo     *string `json:"trade_no"`
+}
+
+type easyPayQueryResponse struct {
+	Code        int              `json:"code"`
+	Msg         string           `json:"msg"`
+	TradeStatus *string          `json:"trade_status"`
+	Status      *int             `json:"status"`
+	Money       *string          `json:"money"`
+	TradeNo     *string          `json:"trade_no"`
+	Data        easyPayQueryData `json:"data"`
+}
+
 func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	params := map[string]string{
 		"act": "order", "pid": e.config["pid"],
 		"key": e.config["pkey"], "out_trade_no": tradeNo,
 	}
-	body, err := e.post(ctx, e.apiBase()+"/api.php", params)
+	body, statusCode, err := e.postRaw(ctx, e.apiBase()+"/api.php", params)
 	if err != nil {
 		return nil, fmt.Errorf("easypay query: %w", err)
 	}
-	type easyPayQueryData struct {
-		TradeStatus *string `json:"trade_status"`
-		Status      *int    `json:"status"`
-		Money       *string `json:"money"`
-		TradeNo     *string `json:"trade_no"`
+	return parseEasyPayQueryResponse(statusCode, body, tradeNo, e.MerchantIdentityMetadata())
+}
+
+// parseEasyPayQueryResponse 只把成功 HTTP 响应中的 JSON 对象解释为支付状态。
+// 错误响应不携带原始 body，避免错误页回显敏感信息进入日志或客户端。
+func parseEasyPayQueryResponse(statusCode int, body []byte, fallbackTradeNo string, metadata map[string]string) (*payment.QueryOrderResponse, error) {
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("easypay query HTTP %d", statusCode)
 	}
-	var resp struct {
-		Code        int              `json:"code"`
-		Msg         string           `json:"msg"`
-		TradeStatus *string          `json:"trade_status"`
-		Status      *int             `json:"status"`
-		Money       *string          `json:"money"`
-		TradeNo     *string          `json:"trade_no"`
-		Data        easyPayQueryData `json:"data"`
+
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return nil, fmt.Errorf("easypay query empty response (HTTP %d)", statusCode)
 	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "<!doctype html") || strings.HasPrefix(lower, "<html") ||
+		(strings.HasPrefix(lower, "<") && strings.Contains(lower, "html")) {
+		return nil, fmt.Errorf("easypay query non-JSON response (HTTP %d)", statusCode)
+	}
+	if !strings.HasPrefix(trimmed, "{") {
+		return nil, fmt.Errorf("easypay query non-JSON response (HTTP %d)", statusCode)
+	}
+
+	var resp easyPayQueryResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("easypay parse query: %w", err)
+		return nil, fmt.Errorf("easypay query non-JSON response (HTTP %d)", statusCode)
 	}
 	status := payment.ProviderStatusPending
 	if resp.TradeStatus != nil {
@@ -304,7 +330,7 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	} else if resp.Data.Money != nil {
 		money = *resp.Data.Money
 	}
-	responseTradeNo := tradeNo
+	responseTradeNo := fallbackTradeNo
 	if resp.TradeNo != nil {
 		if *resp.TradeNo != "" {
 			responseTradeNo = *resp.TradeNo
@@ -318,7 +344,7 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		TradeNo:  responseTradeNo,
 		Status:   status,
 		Amount:   amount,
-		Metadata: e.MerchantIdentityMetadata(),
+		Metadata: metadata,
 	}, nil
 }
 
