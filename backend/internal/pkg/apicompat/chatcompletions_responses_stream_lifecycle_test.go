@@ -208,6 +208,64 @@ func TestStream_ToolCallArgumentsInFirstChunkNotDoubled(t *testing.T) {
 	require.Equal(t, `{"cmd":"ls"}`, argsDelta.String(), "arguments delta 不应重复累加")
 }
 
+func TestStream_InvalidToolArgumentsAreRejectedBeforeFinalize(t *testing.T) {
+	idx := 0
+	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-flash")
+	chunk := &ChatCompletionsChunk{
+		Choices: []ChatChunkChoice{
+			{
+				Index: 0,
+				Delta: ChatDelta{
+					ToolCalls: []ChatToolCall{
+						{
+							Index: &idx,
+							ID:    "call_bad",
+							Type:  "function",
+							Function: ChatFunctionCall{
+								Name:      "exec_command",
+								Arguments: `{"cmd": "ssh root@HOST`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	ChatCompletionsChunkToResponsesEvents(chunk, state)
+
+	err := state.ValidateToolCallArguments()
+	require.ErrorContains(t, err, "invalid JSON")
+}
+
+func TestStream_ToolCallAtOutputLimitIsRejectedBeforeFinalize(t *testing.T) {
+	idx := 0
+	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-flash")
+	chunk := &ChatCompletionsChunk{
+		Choices: []ChatChunkChoice{
+			{
+				Index: 0,
+				Delta: ChatDelta{
+					ToolCalls: []ChatToolCall{
+						{
+							Index: &idx,
+							ID:    "call_at_limit",
+							Type:  "function",
+							Function: ChatFunctionCall{
+								Name:      "exec_command",
+								Arguments: `{}`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	ChatCompletionsChunkToResponsesEvents(chunk, state)
+	state.FinishReason = "length"
+
+	require.ErrorContains(t, state.ValidateToolCallArguments(), "max output length")
+}
+
 // TestStream_SSEWireComplete 让完整流经过 SSE 编码，确认 function_call 事件在
 // wire 上携带完整字段。
 func TestStream_SSEWireComplete(t *testing.T) {

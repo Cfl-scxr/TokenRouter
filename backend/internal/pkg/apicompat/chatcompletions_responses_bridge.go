@@ -253,6 +253,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	// lastTurnReasoning 记录本轮最近一次 reasoning，跨越 tool output 保留，
 	// 供链式工具调用在没有重复 reasoning item 时回放；用户输入开启新一轮。
 	var lastTurnReasoning string
+	invalidFunctionCallIDs := make(map[string]struct{})
 	reasoningForAssistant := func() string {
 		if pendingReasoning != "" {
 			return pendingReasoning
@@ -304,6 +305,17 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			if strings.TrimSpace(arguments) == "" {
 				arguments = "{}"
 			}
+			callID := rawString(item["call_id"])
+			if !json.Valid([]byte(arguments)) {
+				// 上一轮流式请求可能在 Codex 历史中留下截断的 function_call；
+				// 不要把它发送给会拒绝整段请求的 Chat Completions 上游，同时跳过
+				// 对应输出，让下一轮用户输入可以自愈而不会反复重放坏历史。
+				if callID != "" {
+					invalidFunctionCallIDs[callID] = struct{}{}
+				}
+				pendingReasoning = ""
+				continue
+			}
 			name := rawString(item["name"])
 			// namespace 子工具的历史调用带 namespace 字段，需与请求方向的摊平
 			// 命名（namespaceChildrenToChatTools）保持一致。
@@ -311,7 +323,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				name = flattenNamespaceToolName(ns, name)
 			}
 			toolCall := ChatToolCall{
-				ID:   rawString(item["call_id"]),
+				ID:   callID,
 				Type: "function",
 				Function: ChatFunctionCall{
 					Name:      name,
@@ -361,6 +373,10 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
 			callID := rawString(item["call_id"])
+			if _, skipped := invalidFunctionCallIDs[callID]; skipped {
+				pendingReasoning = ""
+				continue
+			}
 			delete(mediaByCallID, callID)
 
 			outputText, media, rewritten := extractToolOutputMedia(outputRaw)
@@ -1346,6 +1362,33 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 		toolNamespace:    make(map[int]NamespacedToolName),
 		toolAnnounced:    make(map[int]bool),
 	}
+}
+
+// ValidateToolCallArguments 在流结束前校验累积的 function-call 参数，避免
+// 截断或丢失参数的工具项以 completed 状态写入 Responses 历史。
+func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() error {
+	if state == nil {
+		return nil
+	}
+	if state.FinishReason == "length" && len(state.ToolCalls) > 0 {
+		return fmt.Errorf("tool call stream ended at max output length")
+	}
+	for idx, toolCall := range state.ToolCalls {
+		if toolCall == nil {
+			continue
+		}
+		if state.toolIsCustom[idx] || state.toolIsToolSearch[idx] {
+			continue
+		}
+		arguments := strings.TrimSpace(toolCall.Function.Arguments)
+		if arguments == "" {
+			continue
+		}
+		if !json.Valid([]byte(arguments)) {
+			return fmt.Errorf("tool call %q (%s) arguments are invalid JSON", toolCall.ID, toolCall.Function.Name)
+		}
+	}
+	return nil
 }
 
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
