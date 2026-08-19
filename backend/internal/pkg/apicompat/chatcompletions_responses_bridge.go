@@ -254,6 +254,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	// 供链式工具调用在没有重复 reasoning item 时回放；用户输入开启新一轮。
 	var lastTurnReasoning string
 	invalidFunctionCallIDs := make(map[string]struct{})
+	invalidEmptyFunctionCallOutputs := 0
 	reasoningForAssistant := func() string {
 		if pendingReasoning != "" {
 			return pendingReasoning
@@ -312,6 +313,8 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				// 对应输出，让下一轮用户输入可以自愈而不会反复重放坏历史。
 				if callID != "" {
 					invalidFunctionCallIDs[callID] = struct{}{}
+				} else {
+					invalidEmptyFunctionCallOutputs++
 				}
 				pendingReasoning = ""
 				continue
@@ -373,6 +376,11 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
 			callID := rawString(item["call_id"])
+			if callID == "" && invalidEmptyFunctionCallOutputs > 0 {
+				invalidEmptyFunctionCallOutputs--
+				pendingReasoning = ""
+				continue
+			}
 			if _, skipped := invalidFunctionCallIDs[callID]; skipped {
 				pendingReasoning = ""
 				continue
@@ -1178,6 +1186,11 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bo
 			})
 			continue
 		}
+		// 普通 Responses function_call 的 arguments 必须是有效 JSON；截断的非流式
+		// Chat 工具调用不能标记为 completed，否则会像流式分支一样污染下一轮历史。
+		if !json.Valid([]byte(arguments)) {
+			continue
+		}
 		if ns, ok := namespaceTools[toolCall.Function.Name]; ok {
 			outputs = append(outputs, ResponsesOutput{
 				Type:      "function_call",
@@ -1369,9 +1382,6 @@ func NewChatCompletionsToResponsesStreamState(model string) *ChatCompletionsToRe
 func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() error {
 	if state == nil {
 		return nil
-	}
-	if state.FinishReason == "length" && len(state.ToolCalls) > 0 {
-		return fmt.Errorf("tool call stream ended at max output length")
 	}
 	for idx, toolCall := range state.ToolCalls {
 		if toolCall == nil {

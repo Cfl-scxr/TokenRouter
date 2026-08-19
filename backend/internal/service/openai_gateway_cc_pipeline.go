@@ -295,11 +295,9 @@ func (s *OpenAIGatewayService) scanCCStream(
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
-			// 畸形 chunk 可能只包含工具参数的中间或尾部；若跳过后继续收尾，
-			// 截断调用会被伪装成 completed Responses item，并污染 Codex 下一轮历史。
-			// 将流标记为不完整，让调用方跳过收尾并返回上游流错误。
-			st.Err = fmt.Errorf("malformed chat stream chunk: %w", err)
-			break
+			// 单个无法解析的 chunk 不应阻断后续合法事件；最终工具参数由
+			// Responses 转换状态在收尾时单独校验。
+			continue
 		}
 		if st.FirstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
 			ms := int(time.Since(startTime).Milliseconds())
