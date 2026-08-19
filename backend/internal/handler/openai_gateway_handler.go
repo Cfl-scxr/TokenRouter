@@ -217,7 +217,7 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	if imageIntent && platform == service.PlatformOpenAI {
 		return service.OpenAIEndpointCapabilityResponses
 	}
-	return service.OpenAIEndpointCapabilityChatCompletions
+	return service.OpenAIEndpointCapabilityTextGeneration
 }
 
 // openAIResponsesRequiredCapabilityForRequest 让两类压缩都要求 Responses 能力，
@@ -1089,7 +1089,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			accountLayerModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityTextGeneration,
 			false,
 			false,
 			requestPlatform,
@@ -1876,7 +1876,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
 	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
 	// 首轮显式意图已按渠道模型 C 判断，被动 namespace 不会误过滤账号（#4476）。
-	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
+	requiredCapability := service.OpenAIEndpointCapabilityTextGeneration
 	if imageIntent && requestPlatform == service.PlatformOpenAI {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
@@ -2037,7 +2037,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					// 后续 turn 的账号资格检查必须包含该轮生图限流范围。
 					turnCtx = service.WithOpenAIImageGenerationIntent(turnCtx)
 				}
-				turnCapability := service.OpenAIEndpointCapabilityChatCompletions
+				turnCapability := service.OpenAIEndpointCapabilityTextGeneration
 				if turnImageIntent && requestPlatform == service.PlatformOpenAI {
 					turnCapability = service.OpenAIEndpointCapabilityResponses
 				}

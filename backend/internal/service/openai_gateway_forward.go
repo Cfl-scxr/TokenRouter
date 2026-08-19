@@ -120,7 +120,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, err
 	}
 
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	if account.Type == AccountTypeAPIKey && openai_compat.ResolveUpstreamTextProtocol(
+		account.Extra,
+		openai_compat.TextProtocolResponses,
+	) == openai_compat.TextProtocolChatCompletions {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, tlsRouterMatch)
 	}
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {

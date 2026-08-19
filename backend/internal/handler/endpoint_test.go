@@ -212,6 +212,22 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 			result:  &service.OpenAIForwardResult{},
 			want:    EndpointResponses,
 		},
+		{
+			name:    "openai api key preserves chat by default",
+			account: &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+			result:  &service.OpenAIForwardResult{},
+			want:    EndpointChatCompletions,
+		},
+		{
+			name: "openai api key forced responses records responses",
+			account: &service.Account{
+				Platform: service.PlatformOpenAI,
+				Type:     service.AccountTypeAPIKey,
+				Extra:    map[string]any{"openai_text_route_mode": "force_responses"},
+			},
+			result: &service.OpenAIForwardResult{},
+			want:   EndpointResponses,
+		},
 	}
 
 	for _, tt := range tests {

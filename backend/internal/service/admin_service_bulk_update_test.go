@@ -16,6 +16,7 @@ type accountRepoStubForBulkUpdate struct {
 	accountRepoStub
 	bulkUpdateErr    error
 	bulkUpdateIDs    []int64
+	lastBulkUpdate   AccountBulkUpdate
 	bindGroupErrByID map[int64]error
 	bindGroupsCalls  []int64
 	getByIDsAccounts []*Account
@@ -42,12 +43,44 @@ type accountRepoStubForBulkUpdate struct {
 	}
 }
 
-func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, _ AccountBulkUpdate) (int64, error) {
+func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
 	s.bulkUpdateIDs = append([]int64{}, ids...)
+	s.lastBulkUpdate = updates
 	if s.bulkUpdateErr != nil {
 		return 0, s.bulkUpdateErr
 	}
 	return int64(len(ids)), nil
+}
+
+func TestAdminServiceBulkUpdateAccountsNormalizesLegacyOpenAIConfiguration(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{
+			ID:       1,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+		}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+	input := &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			legacyOpenAICapabilitiesCredentialKey: []any{"chat_completions"},
+		},
+		Extra: map[string]any{
+			legacyOpenAIResponsesModeExtraKey:      "auto",
+			legacyOpenAIResponsesSupportedExtraKey: false,
+		},
+	}
+
+	_, err := svc.BulkUpdateAccounts(context.Background(), input)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"text_generation"}, repo.lastBulkUpdate.Credentials[openAIWorkloadCapabilitiesCredentialKey])
+	require.NotContains(t, repo.lastBulkUpdate.Credentials, legacyOpenAICapabilitiesCredentialKey)
+	require.Equal(t, "preserve_client_protocol", repo.lastBulkUpdate.Extra["openai_text_route_mode"])
+	require.Equal(t, "unsupported", repo.lastBulkUpdate.Extra["openai_responses_probe_status"])
+	require.NotContains(t, repo.lastBulkUpdate.Extra, legacyOpenAIResponsesModeExtraKey)
+	require.NotContains(t, repo.lastBulkUpdate.Extra, legacyOpenAIResponsesSupportedExtraKey)
 }
 
 func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {

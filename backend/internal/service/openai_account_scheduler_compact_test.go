@@ -207,7 +207,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactAllowsGrok(t *te
 		"grok-4.5",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		true,
 		false,
 		PlatformGrok,
@@ -232,8 +232,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionSeparat
 			Concurrency: 1,
 			Priority:    10,
 			Extra: map[string]any{
-				"openai_compact_supported":   true,
-				"openai_responses_supported": false,
+				"openai_compact_supported":      true,
+				"openai_responses_probe_status": "unsupported",
 			},
 		},
 		{
@@ -244,8 +244,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionSeparat
 			Schedulable: true,
 			Concurrency: 1,
 			Extra: map[string]any{
-				"openai_compact_mode":        OpenAICompactModeForceOff,
-				"openai_responses_supported": true,
+				"openai_compact_mode":           OpenAICompactModeForceOff,
+				"openai_responses_probe_status": "supported",
 			},
 		},
 	}
@@ -306,7 +306,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionV2Mode(
 			Concurrency: 1,
 			Priority:    0,
 			Extra: map[string]any{
-				"openai_responses_supported":              true,
+				"openai_responses_probe_status":           "supported",
 				openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOff,
 				openAINativeCompactionV2SupportedExtraKey: true,
 			},
@@ -320,7 +320,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionV2Mode(
 			Concurrency: 1,
 			Priority:    1,
 			Extra: map[string]any{
-				"openai_responses_supported":              true,
+				"openai_responses_probe_status":           "supported",
 				openAINativeCompactionV2SupportedExtraKey: false,
 			},
 		},
@@ -333,7 +333,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionV2Mode(
 			Concurrency: 1,
 			Priority:    2,
 			Extra: map[string]any{
-				"openai_responses_supported":              true,
+				"openai_responses_probe_status":           "supported",
 				openAINativeCompactionV2ModeExtraKey:      OpenAICompactModeForceOn,
 				openAINativeCompactionV2SupportedExtraKey: false,
 			},

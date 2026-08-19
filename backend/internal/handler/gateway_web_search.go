@@ -132,7 +132,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		selected, _, selectErr := h.openAIGatewayService.SelectAccountWithSchedulerForCapability(
 			c.Request.Context(), groupID, "", "", searchModel, failedAccounts,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityTextGeneration,
 			false, false, service.PlatformGrok,
 		)
 		if selectErr != nil {

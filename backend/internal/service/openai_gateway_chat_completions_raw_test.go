@@ -216,7 +216,7 @@ func TestForwardAsChatCompletions_OpenAICompatibleRawUsageGuard(t *testing.T) {
 			service := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			account := rawChatCompletionsTestAccount()
 			account.Name = "openai-compatible"
-			account.Extra = map[string]any{openai_compat.ExtraKeyResponsesSupported: false}
+			account.Extra = map[string]any{openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusUnsupported)}
 			if testCase.modelMapping != nil {
 				account.Credentials["model_mapping"] = testCase.modelMapping
 			}
@@ -765,7 +765,7 @@ func TestForwardAsRawChatCompletions_UsesFilteredServiceTierForBilling(t *testin
 	require.Equal(t, 2, result.Usage.OutputTokens)
 }
 
-func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedChatURL(t *testing.T) {
+func TestForwardAsChatCompletions_PreserveClientProtocolUsesVersionedChatURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"glm-4.5-air","messages":[{"role":"user","content":"hello"}],"stream":false}`)
@@ -776,13 +776,8 @@ func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedCh
 
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{
-			StatusCode: http.StatusNotFound,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"}}`)),
-		},
-		{
 			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_raw_fallback"}},
+			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_raw_chat"}},
 			Body: io.NopCloser(strings.NewReader(
 				`{"id":"chatcmpl_1","object":"chat.completion","model":"glm-4.5-air","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`,
 			)),
@@ -803,11 +798,11 @@ func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedCh
 	require.Equal(t, 1, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, "ok", gjson.GetBytes(result.ResponseBody, "choices.0.message.content").String())
-	require.Len(t, upstream.requests, 2)
-	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", upstream.requests[0].URL.String())
-	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/chat/completions", upstream.requests[1].URL.String())
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/chat/completions", upstream.requests[0].URL.String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.Equal(t, "router-agent", upstream.requests[0].Header.Get("User-Agent"))
-	require.Equal(t, "router-agent", upstream.requests[1].Header.Get("User-Agent"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"content":"ok"`)
 }

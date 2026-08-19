@@ -525,7 +525,7 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 			"api_key":  "sk-test",
 			"base_url": "https://compat-upstream.example/v1",
 		},
-		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusUnsupported)},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "hello", "")
@@ -564,7 +564,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 			"api_key":  "sk-test",
 			"base_url": "https://compat-upstream.example",
 		},
-		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusUnsupported)},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
@@ -593,7 +593,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathTimeout(t *testing.T) {
 			"api_key":  "sk-test",
 			"base_url": "https://compat-upstream.example",
 		},
-		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusUnsupported)},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
@@ -627,7 +627,7 @@ func TestAccountTestService_OpenAIChatCompletionsPathRejectsNonJSONStream(t *tes
 			"api_key":  "sk-test",
 			"base_url": "https://compat-upstream.example",
 		},
-		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusUnsupported)},
 	}
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")

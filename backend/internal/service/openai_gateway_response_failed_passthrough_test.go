@@ -50,6 +50,13 @@ func bindPassthroughRule(c *gin.Context, platform string, keywords []string, res
 	BindErrorPassthroughService(c, svc)
 }
 
+// forcedResponsesChatTestAccount 让 Chat 入站进入 Responses 错误转换测试路径。
+func forcedResponsesChatTestAccount() *Account {
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{"openai_text_route_mode": "force_responses"}
+	return account
+}
+
 func TestForwardAsChatCompletions_ResponseFailed_PassthroughRule(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -71,7 +78,7 @@ func TestForwardAsChatCompletions_ResponseFailed_PassthroughRule(t *testing.T) {
 		httpUpstream: upstream,
 	}
 
-	account := rawChatCompletionsTestAccount()
+	account := forcedResponsesChatTestAccount()
 	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
 
 	require.Error(t, err)
@@ -107,7 +114,7 @@ func TestForwardAsChatCompletions_StreamingResponseFailed_PassthroughRule(t *tes
 		httpUpstream: upstream,
 	}
 
-	_, err := svc.ForwardAsChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "", "")
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, forcedResponsesChatTestAccount(), body, "", "")
 
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -193,7 +200,7 @@ func TestForwardAsChatCompletions_ResponseFailed_NoRule_Still502(t *testing.T) {
 		httpUpstream: upstream,
 	}
 
-	account := rawChatCompletionsTestAccount()
+	account := forcedResponsesChatTestAccount()
 	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
 
 	require.Error(t, err)
@@ -221,7 +228,7 @@ func TestForwardAsChatCompletions_ResponseFailedCustomErrorMissReturnsGeneric500
 		}},
 	}
 	svc.rateLimitService = NewRateLimitService(repo, nil, svc.cfg, nil, nil)
-	account := rawChatCompletionsTestAccount()
+	account := forcedResponsesChatTestAccount()
 	account.Credentials["custom_error_codes_enabled"] = true
 	account.Credentials["custom_error_codes"] = []any{float64(http.StatusUnprocessableEntity)}
 
@@ -256,7 +263,7 @@ func TestForwardAsChatCompletions_ResponseFailedCustomNonDefaultStatusFailsOver(
 		}},
 	}
 	svc.rateLimitService = NewRateLimitService(repo, nil, svc.cfg, nil, nil)
-	account := rawChatCompletionsTestAccount()
+	account := forcedResponsesChatTestAccount()
 	account.Credentials["custom_error_codes_enabled"] = true
 	account.Credentials["custom_error_codes"] = []any{float64(http.StatusUnprocessableEntity)}
 
@@ -367,7 +374,7 @@ func TestForwardAsChatCompletions_ResponseFailed_ErrorCodeRuleMatchesViaSemantic
 		httpUpstream: upstream,
 	}
 
-	account := rawChatCompletionsTestAccount()
+	account := forcedResponsesChatTestAccount()
 	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
 
 	require.Error(t, err)

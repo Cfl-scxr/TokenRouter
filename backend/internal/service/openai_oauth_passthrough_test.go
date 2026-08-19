@@ -203,8 +203,8 @@ func TestOpenAIGatewayService_NativeResponsesBodyModificationPreservesHTMLChars(
 			"base_url": "http://upstream.example",
 		},
 		Extra: map[string]any{
-			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
-			openai_compat.ExtraKeyResponsesSupported: true,
+			openai_compat.ExtraKeyTextRouteMode:        string(openai_compat.TextRouteModePreserveClientProtocol),
+			openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusSupported),
 		},
 		Status:      StatusActive,
 		Schedulable: true,

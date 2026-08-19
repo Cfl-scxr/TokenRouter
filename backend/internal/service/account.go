@@ -90,18 +90,17 @@ type Account struct {
 type OpenAIEndpointCapability string
 
 const (
-	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
-	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
-	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
+	OpenAIEndpointCapabilityTextGeneration OpenAIEndpointCapability = "text_generation"
+	OpenAIEndpointCapabilityEmbeddings     OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAlphaSearch    OpenAIEndpointCapability = "alpha_search"
 	// OpenAIEndpointCapabilityLive 表示仅 ChatGPT OAuth 账号支持的 Frameless Live 能力。
 	OpenAIEndpointCapabilityLive OpenAIEndpointCapability = "live"
 	// OpenAIEndpointCapabilityGrokMediaGeneration 用于排除被显式禁用或计费资格
 	// 探测遭拒的 Grok 账号；视频状态查询不要求该能力，以便继续查询已提交的任务。
 	OpenAIEndpointCapabilityGrokMediaGeneration OpenAIEndpointCapability = "grok_media_generation"
 	// OpenAIEndpointCapabilityResponses 表示上游确实提供 /v1/responses 端点。
-	// 与其他能力不同：支持状态来自 accounts.extra 的自动探测标记
-	// （openai_responses_supported / openai_responses_mode），而非
-	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
+	// 与其他能力不同：有效支持状态来自路由模式与 Responses 探测状态，而非
+	// credentials["openai_workload_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
 	// OpenAIEndpointCapabilityRemoteCompactionV2 表示账号可承接原生 remote_compaction_v2。
@@ -109,7 +108,7 @@ const (
 	OpenAIEndpointCapabilityRemoteCompactionV2 OpenAIEndpointCapability = "remote_compaction_v2"
 )
 
-const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+const openAIWorkloadCapabilitiesCredentialKey = "openai_workload_capabilities"
 
 const (
 	GeminiProviderTypeCredentialKey = "provider_type"
@@ -1709,7 +1708,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	if a.IsGrok() {
 		switch capability {
-		case OpenAIEndpointCapabilityChatCompletions:
+		case OpenAIEndpointCapabilityTextGeneration:
 			return true
 		case OpenAIEndpointCapabilityGrokMediaGeneration:
 			eligible, reason := a.GrokMediaGenerationEligibility()
@@ -1721,7 +1720,7 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		}
 	}
 	switch capability {
-	case OpenAIEndpointCapabilityChatCompletions:
+	case OpenAIEndpointCapabilityTextGeneration:
 	case OpenAIEndpointCapabilityLive:
 		return a.Platform == PlatformOpenAI &&
 			a.Type == AccountTypeOAuth &&
@@ -1733,16 +1732,17 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		}
 		fallthrough
 	case OpenAIEndpointCapabilityResponses:
-		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
-		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游
-		// 必须排除——否则会在 forward 阶段被静默降级为 Chat Completions，
-		// 无法完成生图（#4417）。未探测/OAuth 账号保留旧行为（不排除）。
-		if a.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(a.Extra) {
+		// 生图等原生 Responses 路径不能降级；使用 Responses 首选协议解析后，
+		// 被强制为 Chat 或探测明确不支持的 APIKey 账号必须排除。
+		if a.Type == AccountTypeAPIKey && openai_compat.ResolveUpstreamTextProtocol(
+			a.Extra,
+			openai_compat.TextProtocolResponses,
+		) != openai_compat.TextProtocolResponses {
 			return false
 		}
-		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
+		// 支持 Responses 的上游同样需具备普通文本能力：复用下方 text_generation
 		// 配置集校验。
-		capability = OpenAIEndpointCapabilityChatCompletions
+		capability = OpenAIEndpointCapabilityTextGeneration
 	case OpenAIEndpointCapabilityAlphaSearch:
 		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
 		// chatgpt.com/backend-api/codex/alpha/search，API key 走
@@ -1759,11 +1759,11 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return false
 	}
 
-	configured, found := a.openAIEndpointCapabilitySet()
+	configured, found := a.openAIWorkloadCapabilitySet()
 	if !found {
 		return true
 	}
-	if capability == OpenAIEndpointCapabilityAlphaSearch && configured[string(OpenAIEndpointCapabilityChatCompletions)] {
+	if capability == OpenAIEndpointCapabilityAlphaSearch && configured[string(OpenAIEndpointCapabilityTextGeneration)] {
 		return true
 	}
 	return configured[string(capability)]
@@ -1813,11 +1813,11 @@ func grokMediaEligibilityOverride(extra map[string]any) (bool, bool) {
 	return value, ok
 }
 
-func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
+func (a *Account) openAIWorkloadCapabilitySet() (map[string]bool, bool) {
 	if a == nil || a.Credentials == nil {
 		return nil, false
 	}
-	raw, found := a.Credentials[openAIEndpointCapabilitiesCredentialKey]
+	raw, found := a.Credentials[openAIWorkloadCapabilitiesCredentialKey]
 	if !found || raw == nil {
 		return nil, false
 	}

@@ -3337,53 +3337,59 @@
         </div>
       </div>
 
-      <!-- OpenAI API Key 的 Responses API 支持模式 -->
+      <!-- OpenAI API Key 文本工作负载、协议路由与探测状态 -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'apikey'"
-        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        class="space-y-5 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.responsesMode') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.responsesModeDesc') }}
-            </p>
-          </div>
-          <div class="w-56">
-            <Select
-              v-model="openAIResponsesMode"
-              :options="openAIResponsesModeOptions"
-              :disabled="!openAITextGenerationCapabilityEnabled"
-              data-testid="openai-responses-mode-select"
-            />
-          </div>
-        </div>
-        <p
-          v-if="!openAITextGenerationCapabilityEnabled"
-          class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
-          data-testid="openai-responses-mode-not-applicable"
-        >
-          {{ t('admin.accounts.openai.responsesModeTextDisabledHint') }}
-        </p>
         <div>
-          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.endpointCapabilities') }}</label>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.workloadCapabilities') }}</label>
           <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label
-              v-for="option in openAIEndpointCapabilityOptions"
+              v-for="option in openAIWorkloadCapabilityOptions"
               :key="option.value"
               class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
             >
               <input
                 type="checkbox"
                 class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
-                :data-testid="`openai-endpoint-capability-${option.value}`"
-                :checked="openAIEndpointCapabilities.includes(option.value)"
-                @change="toggleOpenAIEndpointCapability(option.value, $event)"
+                :data-testid="`openai-workload-capability-${option.value}`"
+                :checked="openAIWorkloadCapabilities.includes(option.value)"
+                @change="toggleOpenAIWorkloadCapability(option.value)"
               />
               <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
             </label>
           </div>
-          <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
+          <p class="input-hint">{{ t('admin.accounts.openai.workloadCapabilitiesDesc') }}</p>
+        </div>
+        <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-dark-600 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.textRouteMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.textRouteModeDesc') }}
+            </p>
+          </div>
+          <div class="w-full sm:w-64">
+            <Select
+              v-model="openAITextRouteMode"
+              :options="openAITextRouteModeOptions"
+              data-testid="openai-text-route-mode-select"
+            />
+          </div>
+        </div>
+        <div
+          class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-dark-600 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="openai-responses-probe-status"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.responsesProbeStatus') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.responsesProbeStatusDesc') }}
+            </p>
+          </div>
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-200 sm:text-right">
+            {{ t('admin.accounts.openai.responsesProbeUnknown') }}
+          </span>
         </div>
       </div>
 
@@ -3964,8 +3970,8 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIOAuthClientPolicy,
-  OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAITextRouteMode,
+  OpenAIWorkloadCapability
 } from '@/types'
 import type { OpenAIOAuthImportDefaults } from '@/api/admin/settings'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -4302,8 +4308,8 @@ const openaiPassthroughEnabled = ref(false)
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAINativeCompactionV2Mode = ref<OpenAICompactMode>('auto')
-const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
-const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const openAITextRouteMode = ref<OpenAITextRouteMode>('preserve_client_protocol')
+const openAIWorkloadCapabilities = ref<OpenAIWorkloadCapability[]>(['text_generation', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
@@ -4392,62 +4398,44 @@ const openAIOAuthClientPolicyOptions = computed(() => [
   { value: 'codex_only', label: t('admin.accounts.openai.clientPolicyCodexOnly') },
   { value: 'tls_router_matched_only', label: t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly') }
 ])
-const openAIResponsesModeOptions = computed(() => [
-  { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
-  { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
-  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+const openAITextRouteModeOptions = computed(() => [
+  { value: 'preserve_client_protocol', label: t('admin.accounts.openai.textRoutePreserveClientProtocol') },
+  { value: 'force_responses', label: t('admin.accounts.openai.textRouteForceResponses') },
+  { value: 'force_chat_completions', label: t('admin.accounts.openai.textRouteForceChatCompletions') }
 ])
-const openAITextEndpointCapabilityLabel = computed(() => {
-  if (openAIResponsesMode.value === 'force_responses') {
-    return t('admin.accounts.openai.capabilityResponses')
-  }
-  if (openAIResponsesMode.value === 'force_chat_completions') {
-    return t('admin.accounts.openai.capabilityChatCompletions')
-  }
-  return t('admin.accounts.openai.capabilityTextAuto')
-})
-const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
-  { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+const openAIWorkloadCapabilityOptions = computed<{ value: OpenAIWorkloadCapability; label: string }[]>(() => [
+  { value: 'text_generation', label: t('admin.accounts.openai.workloadTextGeneration') },
+  { value: 'embeddings', label: t('admin.accounts.openai.workloadEmbeddings') }
 ])
-const openAITextGenerationCapabilityEnabled = computed(() =>
-  openAIEndpointCapabilities.value.includes('chat_completions')
-)
 
-const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
-  const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : allowed
+const normalizeOpenAIWorkloadCapabilities = (values: unknown[]) => {
+  const selected = new Set<OpenAIWorkloadCapability>()
+  for (const value of values) {
+    if (value === 'text_generation' || value === 'chat_completions') {
+      selected.add('text_generation')
+    } else if (value === 'embeddings') {
+      selected.add('embeddings')
+    }
+  }
+  return (['text_generation', 'embeddings'] as OpenAIWorkloadCapability[]).filter((value) => selected.has(value))
 }
 
-const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
-  if (openAIEndpointCapabilities.value.includes(capability)) {
-    if (openAIEndpointCapabilities.value.length <= 1) {
-      const input = event?.target as HTMLInputElement | null
-      if (input) input.checked = true
-      return
-    }
-    openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
+const toggleOpenAIWorkloadCapability = (capability: OpenAIWorkloadCapability) => {
+  if (openAIWorkloadCapabilities.value.includes(capability)) {
+    openAIWorkloadCapabilities.value = openAIWorkloadCapabilities.value.filter(
       (value) => value !== capability
     )
-    if (!openAITextGenerationCapabilityEnabled.value) {
-      openAIResponsesMode.value = 'auto'
-    }
     return
   }
-  openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
-    ...openAIEndpointCapabilities.value,
+  openAIWorkloadCapabilities.value = normalizeOpenAIWorkloadCapabilities([
+    ...openAIWorkloadCapabilities.value,
     capability
   ])
 }
 
-const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
-  const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
-  if (capabilities.length === 2) {
-    delete credentials.openai_capabilities
-    return
-  }
-  credentials.openai_capabilities = capabilities
+const applyOpenAIWorkloadCapabilities = (credentials: Record<string, unknown>) => {
+  delete credentials.openai_capabilities
+  credentials.openai_workload_capabilities = normalizeOpenAIWorkloadCapabilities(openAIWorkloadCapabilities.value)
 }
 
 function buildAntigravityExtra(): Record<string, unknown> | undefined {
@@ -5060,7 +5048,8 @@ watch(
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAITextRouteMode.value = 'preserve_client_protocol'
+      openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyAllowClaudeCodeEnabled.value = false
@@ -5555,8 +5544,8 @@ const resetForm = () => {
   openaiFlattenNamespacesEnabled.value = false
   openAICompactMode.value = 'auto'
   openAINativeCompactionV2Mode.value = 'auto'
-  openAIResponsesMode.value = 'auto'
-  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  openAITextRouteMode.value = 'preserve_client_protocol'
+  openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyAllowClaudeCodeEnabled.value = false
@@ -5751,14 +5740,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_native_compaction_v2_mode
   }
 
-  if (
-    accountCategory.value === 'apikey' &&
-    openAITextGenerationCapabilityEnabled.value &&
-    openAIResponsesMode.value !== 'auto'
-  ) {
-    extra.openai_responses_mode = openAIResponsesMode.value
-  } else {
+  if (accountCategory.value === 'apikey') {
     delete extra.openai_responses_mode
+    delete extra.openai_responses_supported
+    extra.openai_text_route_mode = openAITextRouteMode.value
+    extra.openai_responses_probe_status = 'unknown'
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -6115,7 +6101,9 @@ const handleSubmit = async () => {
     applyPersistedModelRestriction(credentials)
   }
   if (form.platform === 'openai') {
-    applyOpenAIEndpointCapabilities(credentials)
+    if (accountCategory.value === 'apikey') {
+      applyOpenAIWorkloadCapabilities(credentials)
+    }
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
       credentials.compact_model_mapping = compactModelMapping
@@ -6422,9 +6410,7 @@ const createAccountAndFinish = async (
     }
   }
   if (platform === 'openai') {
-    if (type === 'apikey') {
-      applyOpenAIEndpointCapabilities(credentials)
-    }
+    if (type === 'apikey') applyOpenAIWorkloadCapabilities(credentials)
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
       credentials.compact_model_mapping = compactModelMapping

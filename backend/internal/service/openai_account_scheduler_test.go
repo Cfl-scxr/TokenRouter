@@ -641,7 +641,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 			Concurrency: 1,
 			Priority:    0,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions"},
+				"openai_workload_capabilities": []any{"text_generation"},
 			},
 		},
 		{
@@ -653,7 +653,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 			Concurrency: 1,
 			Priority:    5,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions", "embeddings"},
+				"openai_workload_capabilities": []any{"text_generation", "embeddings"},
 			},
 		},
 	}
@@ -713,7 +713,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 	unsupported := Account{
 		ID: 37002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 		Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
-		Extra: map[string]any{"openai_responses_supported": false},
+		Extra: map[string]any{"openai_responses_probe_status": "unsupported"},
 	}
 
 	t.Run("生图意图仅选中支持 responses 的账号", func(t *testing.T) {
@@ -744,7 +744,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesCapabilityExcl
 		svc := newSvc([]Account{unsupported})
 		selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "gpt-5.1", nil,
-			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions,
+			OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityTextGeneration,
 			false, false,
 		)
 		require.NoError(t, err)
@@ -833,7 +833,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_AllowsG
 		"grok-4.3",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		false,
 		false,
 		PlatformGrok,
@@ -899,7 +899,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GrokMediaCapabilityFilt
 	t.Run("chat remains routable on media-ineligible account", func(t *testing.T) {
 		selection, _, err := newService([]Account{ineligible}).SelectAccountWithSchedulerForCapability(
 			ctx, &groupID, "", "", "grok-4.3", nil,
-			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityChatCompletions,
+			OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityTextGeneration,
 			false, false, PlatformGrok,
 		)
 
@@ -1265,7 +1265,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 		"gpt-5.1",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		false,
 		false,
 		PlatformOpenAI,
@@ -1288,7 +1288,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyWeightedPreviousR
 		"gpt-5.1",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		false,
 		true,
 		PlatformOpenAI,
@@ -1398,7 +1398,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Concurrency: 1,
 			Priority:    0,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions"},
+				"openai_workload_capabilities": []any{"text_generation"},
 			},
 		},
 		{
@@ -1410,7 +1410,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Concurrency: 1,
 			Priority:    5,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions", "embeddings"},
+				"openai_workload_capabilities": []any{"text_generation", "embeddings"},
 			},
 		},
 	}
@@ -1460,7 +1460,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Concurrency: 1,
 			Priority:    0,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions"},
+				"openai_workload_capabilities": []any{"text_generation"},
 			},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
@@ -1475,7 +1475,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_Enabled_EmbeddingsSkips
 			Concurrency: 1,
 			Priority:    5,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions", "embeddings"},
+				"openai_workload_capabilities": []any{"text_generation", "embeddings"},
 			},
 			Extra: map[string]any{
 				"openai_apikey_responses_websockets_v2_enabled": true,
@@ -3874,7 +3874,7 @@ func TestOpenAIGatewayService_MessagesRoutingModelUsesFullMappingChain(t *testin
 				"dispatch-model",
 				nil,
 				OpenAIUpstreamTransportAny,
-				OpenAIEndpointCapabilityChatCompletions,
+				OpenAIEndpointCapabilityTextGeneration,
 				false,
 				false,
 			)

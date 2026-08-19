@@ -31,7 +31,7 @@ func BenchmarkOpenAIResponsesImageIntentRouting_LargeToolsBody(b *testing.B) {
 		for range b.N {
 			imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", "gpt-5.4", body)
 			// 对照优化前路径：路由阶段会再次扫描同一份未修改的 body。
-			requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
+			requiredCapability := service.OpenAIEndpointCapabilityTextGeneration
 			if service.IsExplicitImageGenerationIntent("/v1/responses", "gpt-5.4", body) && platform == service.PlatformOpenAI {
 				requiredCapability = service.OpenAIEndpointCapabilityResponses
 			}

@@ -1241,8 +1241,8 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
-  // Extra 包含 Codex 用量、OpenAI 两类 Compact 能力和模型级限流状态等扩展字段。
-  extra?: (CodexUsageSnapshot & OpenAICompactState & OpenAINativeCompactionV2State & {
+  // Extra 包含 Codex 用量、OpenAI 文本协议、两类 Compact 能力和模型级限流状态等扩展字段。
+  extra?: (CodexUsageSnapshot & OpenAITextProtocolState & OpenAICompactState & OpenAINativeCompactionV2State & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     codex_reset_credit_snapshot?: {
@@ -1556,8 +1556,12 @@ export interface CodexUsageSnapshot {
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIOAuthClientPolicy = 'any' | 'codex_only' | 'tls_router_matched_only'
-export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAITextRouteMode =
+  | 'preserve_client_protocol'
+  | 'force_responses'
+  | 'force_chat_completions'
+export type OpenAIResponsesProbeStatus = 'supported' | 'unsupported' | 'unknown'
+export type OpenAIWorkloadCapability = 'text_generation' | 'embeddings'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -1575,9 +1579,9 @@ export interface OpenAINativeCompactionV2State {
   openai_native_compaction_v2_last_error?: string
 }
 
-export interface OpenAIResponsesState {
-  openai_responses_mode?: OpenAIResponsesMode
-  openai_responses_supported?: boolean
+export interface OpenAITextProtocolState {
+  openai_text_route_mode?: OpenAITextRouteMode
+  openai_responses_probe_status?: OpenAIResponsesProbeStatus
 }
 
 export interface CreateAccountRequest {

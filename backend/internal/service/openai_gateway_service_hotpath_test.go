@@ -212,7 +212,7 @@ func TestOpenAIGatewayService_Forward_NormalizesMaxTokensAndStripsPromptCacheOpt
 				"api_key":  "sk-test",
 				"base_url": "https://example.com",
 			},
-			Extra: map[string]any{"openai_responses_supported": true},
+			Extra: map[string]any{"openai_responses_probe_status": "supported"},
 		}
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
@@ -1034,7 +1034,7 @@ func TestOpenAIGatewayEntrypointsRejectUltraBeforeUpstream(t *testing.T) {
 	account := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{"openai_responses_mode": "force_chat_completions"},
+		Extra:    map[string]any{"openai_text_route_mode": "force_chat_completions"},
 	}
 
 	t.Run("Responses", func(t *testing.T) {

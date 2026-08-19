@@ -298,31 +298,37 @@ func TestMarshalSchedulerCacheAccountKeepsEncodingJSONWireFormat(t *testing.T) {
 	}
 }
 
-func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIAPIKeyProtocolFields(t *testing.T) {
 	account := service.Account{
 		ID:       42,
 		Platform: service.PlatformOpenAI,
-		Type:     service.AccountTypeOAuth,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"openai_workload_capabilities": []any{"text_generation"},
+			"access_token":                 "drop-me",
+		},
 		Extra: map[string]any{
-			"openai_oauth_responses_websockets_v2_enabled": true,
-			"openai_oauth_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
-			"openai_ws_force_http":                         true,
-			"openai_responses_mode":                        "force_chat_completions",
-			"openai_responses_supported":                   false,
-			"mixed_scheduling":                             true,
-			"unused_large_field":                           "drop-me",
+			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
+			"openai_ws_force_http":                          true,
+			"openai_text_route_mode":                        "force_chat_completions",
+			"openai_responses_probe_status":                 "unsupported",
+			"mixed_scheduling":                              true,
+			"unused_large_field":                            "drop-me",
 		},
 	}
 
 	got := buildSchedulerMetadataAccount(account)
 
-	require.Equal(t, true, got.Extra["openai_oauth_responses_websockets_v2_enabled"])
-	require.Equal(t, service.OpenAIWSIngressModePassthrough, got.Extra["openai_oauth_responses_websockets_v2_mode"])
+	require.Equal(t, true, got.Extra["openai_apikey_responses_websockets_v2_enabled"])
+	require.Equal(t, service.OpenAIWSIngressModePassthrough, got.Extra["openai_apikey_responses_websockets_v2_mode"])
 	require.Equal(t, true, got.Extra["openai_ws_force_http"])
-	require.Equal(t, "force_chat_completions", got.Extra["openai_responses_mode"])
-	require.Equal(t, false, got.Extra["openai_responses_supported"])
+	require.Equal(t, "force_chat_completions", got.Extra["openai_text_route_mode"])
+	require.Equal(t, "unsupported", got.Extra["openai_responses_probe_status"])
 	require.Equal(t, true, got.Extra["mixed_scheduling"])
 	require.Nil(t, got.Extra["unused_large_field"])
+	require.Equal(t, []any{"text_generation"}, got.Credentials["openai_workload_capabilities"])
+	require.Nil(t, got.Credentials["access_token"])
 }
 
 func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {

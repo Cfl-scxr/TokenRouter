@@ -52,7 +52,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		nil,
 		service.OpenAIUpstreamTransportHTTPSSE,
 		// Grok 的 HEAD 能力只声明 chat_completions 与媒体能力，此处复用聊天能力门禁。
-		service.OpenAIEndpointCapabilityChatCompletions,
+		service.OpenAIEndpointCapabilityTextGeneration,
 		false,
 		false,
 		service.PlatformGrok,
@@ -188,7 +188,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			selectionModel,
 			failed,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityTextGeneration,
 			false,
 			false,
 			service.PlatformGrok,

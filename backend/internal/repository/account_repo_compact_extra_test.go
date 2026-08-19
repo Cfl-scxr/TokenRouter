@@ -15,8 +15,8 @@ func TestShouldEnqueueSchedulerOutboxForExtraUpdates_CompactCapabilityKeysAreRel
 
 func TestShouldEnqueueSchedulerOutboxForExtraUpdates_OpenAIResponsesCapabilityKeysAreRelevant(t *testing.T) {
 	updates := map[string]any{
-		"openai_responses_mode":      "force_chat_completions",
-		"openai_responses_supported": false,
+		"openai_text_route_mode":        "force_chat_completions",
+		"openai_responses_probe_status": "unsupported",
 	}
 
 	if !shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {

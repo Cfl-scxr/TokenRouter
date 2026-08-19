@@ -16,6 +16,7 @@ import (
 
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 )
 
@@ -176,6 +177,7 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"grok_usage_snapshot":                         {},
 	"grok_billing_snapshot":                       {},
 	"openai_responses_supported":                  {},
+	"openai_responses_probe_status":               {},
 	"openai_native_compaction_v2_supported":       {},
 	"openai_native_compaction_v2_checked_at":      {},
 	"openai_native_compaction_v2_last_status":     {},
@@ -478,6 +480,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+	if err := normalizeOpenAIAPIKeyConfiguration(account); err != nil {
+		return nil, err
+	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
@@ -616,6 +621,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	originalQoderPAT := strings.TrimSpace(account.GetCredential("pat"))
 	normalizedExtra, shouldReplaceExtra := NormalizeDeprecatedAccountExtraUpdate(input.Extra)
 	if shouldReplaceExtra {
+		if isOpenAIAPIKeyAccount(account) && hasOpenAIConfigurationPatch(nil, normalizedExtra) {
+			if err := normalizeOpenAIAPIKeyConfigurationPatch(nil, normalizedExtra); err != nil {
+				return nil, err
+			}
+		}
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
 		if err != nil {
 			return nil, err
@@ -663,9 +673,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if account.IsCredentialShadow() && input.Credentials != nil {
 		account.Credentials = sanitizeSparkShadowCredentials(input.Credentials)
 	} else if len(input.Credentials) > 0 {
+		incomingCredentials := maps.Clone(input.Credentials)
+		if isOpenAIAPIKeyAccount(account) {
+			// 先规范化本次增量，确保旧客户端提交的别名能覆盖账号中已有的新键。
+			if err := normalizeOpenAIAPIKeyConfigurationPatch(incomingCredentials, nil); err != nil {
+				return nil, err
+			}
+		}
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
-		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, incomingCredentials)
 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
@@ -699,6 +716,18 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		// Responses 探测状态由探测服务维护；普通整对象编辑未携带该字段时保留现值。
+		if isOpenAIAPIKeyAccount(account) {
+			_, newProbeProvided := input.Extra[openai_compat.ExtraKeyResponsesProbeStatus]
+			_, legacyProbeProvided := input.Extra[legacyOpenAIResponsesSupportedExtraKey]
+			if !newProbeProvided && !legacyProbeProvided {
+				if value, ok := account.Extra[openai_compat.ExtraKeyResponsesProbeStatus]; ok {
+					normalizedExtra[openai_compat.ExtraKeyResponsesProbeStatus] = value
+				} else if value, ok := account.Extra[legacyOpenAIResponsesSupportedExtraKey]; ok {
+					normalizedExtra[legacyOpenAIResponsesSupportedExtraKey] = value
+				}
+			}
+		}
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
@@ -730,6 +759,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
 	DiscardDeprecatedAccountExtra(account.Extra)
+	if err := normalizeOpenAIAPIKeyConfiguration(account); err != nil {
+		return nil, err
+	}
 	if account.Extra != nil {
 		if !IsOllamaCloudUsageAccount(account) {
 			delete(account.Extra, OllamaCloudUsageSessionExtraKey)
@@ -836,6 +868,21 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
+	if hasOpenAIConfigurationPatch(nil, updates) {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !isOpenAIAPIKeyAccount(account) {
+			return infraerrors.BadRequest(
+				"OPENAI_CONFIGURATION_TARGET_INVALID",
+				"OpenAI text protocol configuration only applies to OpenAI API Key accounts",
+			)
+		}
+		if err := normalizeOpenAIAPIKeyConfigurationPatch(nil, updates); err != nil {
+			return err
+		}
+	}
 	if len(updates) == 0 {
 		return nil
 	}
@@ -878,12 +925,26 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck {
+	hasOpenAIConfigPatch := hasOpenAIConfigurationPatch(input.Credentials, input.Extra)
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasOpenAIConfigPatch {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
+	}
+	if hasOpenAIConfigPatch {
+		for _, account := range cachedTargets {
+			if !isOpenAIAPIKeyAccount(account) {
+				return nil, infraerrors.BadRequest(
+					"OPENAI_CONFIGURATION_TARGET_INVALID",
+					"OpenAI text protocol configuration can only be bulk-updated on OpenAI API Key accounts",
+				)
+			}
+		}
+		if err := normalizeOpenAIAPIKeyConfigurationPatch(input.Credentials, input.Extra); err != nil {
+			return nil, err
+		}
 	}
 	// 影子账号绝不持有凭据:批量更新携带凭据时,目标中不得含影子(外审 G5,与单账号
 	// UpdateAccount 守卫对齐)。覆盖显式 IDs 与 filter 解析出的 IDs(此处 AccountIDs 已解析完成)。

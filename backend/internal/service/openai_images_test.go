@@ -508,7 +508,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 		}
 
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 	})
@@ -519,7 +519,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Type:     AccountTypeOAuth,
 		}
 
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
 	})
@@ -550,11 +550,11 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions", "embeddings"},
+				"openai_workload_capabilities": []any{"text_generation", "embeddings"},
 			},
 		}
 
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
 	})
 
@@ -563,11 +563,11 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions"},
+				"openai_workload_capabilities": []any{"text_generation"},
 			},
 		}
 
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 		// chat 能力隐含放行 alpha search（OAuth/APIKey 语义一致）。
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
@@ -578,26 +578,23 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeOAuth,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"chat_completions"},
+				"openai_workload_capabilities": []any{"text_generation"},
 			},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 	})
 
-	t.Run("显式 map 支持单独关闭 chat 并开启 embeddings", func(t *testing.T) {
+	t.Run("显式数组支持单独关闭文本生成并开启 embeddings", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
-				"openai_capabilities": map[string]any{
-					"chat_completions": false,
-					"embeddings":       true,
-				},
+				"openai_workload_capabilities": []any{"embeddings"},
 			},
 		}
 
-		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityEmbeddings))
 	})
 
@@ -623,19 +620,19 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
-			Extra:    map[string]any{"openai_responses_supported": false},
+			Extra:    map[string]any{"openai_responses_probe_status": "unsupported"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
 		// 非生图路径仍可选中（只要求 chat_completions）。
-		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 	})
 
 	t.Run("responses 能力：探测确认支持的 APIKey 放行", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
-			Extra:    map[string]any{"openai_responses_supported": true},
+			Extra:    map[string]any{"openai_responses_probe_status": "supported"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -645,7 +642,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
-			Extra:    map[string]any{"openai_responses_mode": "force_chat_completions"},
+			Extra:    map[string]any{"openai_text_route_mode": "force_chat_completions"},
 		}
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -655,7 +652,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeOAuth,
-			Extra:    map[string]any{"openai_responses_supported": false},
+			Extra:    map[string]any{"openai_responses_probe_status": "unsupported"},
 		}
 
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
@@ -667,7 +664,7 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Type:     AccountTypeAPIKey,
 			Credentials: map[string]any{
-				"openai_capabilities": []any{"embeddings"},
+				"openai_workload_capabilities": []any{"embeddings"},
 			},
 		}
 

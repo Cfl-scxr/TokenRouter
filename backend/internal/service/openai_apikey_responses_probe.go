@@ -95,22 +95,22 @@ func selectResponsesProbeModel(account *Account) string {
 }
 
 // ProbeOpenAIAPIKeyResponsesSupport 探测 OpenAI APIKey 账号上游是否支持
-// /v1/responses 端点，并将结果持久化到 accounts.extra.openai_responses_supported。
+// /v1/responses 端点，并将结果持久化到 accounts.extra.openai_responses_probe_status。
 //
 // 调用时机：账号创建/更新后，且仅当 platform=openai && type=apikey 时。
 //
 // 探测策略（参见包文档 internal/pkg/openai_compat）：
-//   - 上游 404 / 405 → 端点不存在，写 false
-//   - 上游 2xx → 端点存在，进一步看工具能力：响应含 function_call 输出项才写 true；
-//     仅 reasoning / 无 function_call 写 false
-//   - 其他非 2xx（401/422/400/5xx 等）→ 端点存在但无法判定工具能力，保守写 true
-//   - 网络层失败（连接错误、超时）→ 不写标记，保持 unknown
-//     （后续请求仍按"现状即证据"默认走 Responses）
+//   - 上游 404 / 405 → 端点不存在，写 unsupported
+//   - 上游 2xx → 端点存在，进一步看工具能力：响应含 function_call 输出项才写 supported；
+//     仅 reasoning / 无 function_call 写 unsupported
+//   - 其他非 2xx（401/422/400/5xx 等）→ 端点存在但无法判定工具能力，保守写 supported
+//   - 网络层失败（连接错误、超时）→ 不更新，保留最近状态或 unknown
 //
 // 该方法是幂等的：重复调用会以最新探测结果覆盖标记。
 //
 // 关于失败处理：探测本身的失败不应阻塞账号创建——账号能创建/更新成功就够了，
-// 探测结果只影响后续路由优化。所有错误都仅记录日志，不向调用方传播。
+// 探测结果只影响默认模式下 Responses/Messages 是否降级。所有错误都仅记录日志，
+// 不向调用方传播，也不覆盖管理员配置的文本路由模式。
 func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Context, accountID int64) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
@@ -177,13 +177,11 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 
-	// 本次响应不足以下结论时保持 unknown，与网络层失败、响应体读取失败一致：
-	// 标记一旦写成 false 就会一直粘住（只有下次账号创建/更新才重探），网关会静默
-	// 改走 /v1/chat/completions —— 对 Codex 客户端意味着 prompt 缓存前缀被打散。
-	// 宁可不写，让请求继续走既有的 Responses 路径。
+	// 本次响应不足以下结论时保留最近状态；首次探测则继续保持 unknown。
+	// 不用一次不完整响应覆盖已有事实，也不触碰管理员路由模式。
 	if !responsesProbeVerdictIsConclusive(resp.StatusCode, bodyBytes) {
 		logger.LegacyPrintf("service.openai_probe",
-			"probe_inconclusive_keep_unknown: account_id=%d base_url=%s probe_model=%s status=%d response_status=%s reason=%s",
+			"probe_inconclusive_keep_previous: account_id=%d base_url=%s probe_model=%s status=%d response_status=%s reason=%s",
 			accountID, normalizedBaseURL, probeModel, resp.StatusCode,
 			gjson.GetBytes(bodyBytes, "status").String(),
 			gjson.GetBytes(bodyBytes, "incomplete_details.reason").String(),
@@ -192,17 +190,21 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	}
 
 	supported := decideResponsesProbeSupport(resp.StatusCode, bodyBytes)
+	probeStatus := openai_compat.ResponsesProbeStatusUnsupported
+	if supported {
+		probeStatus = openai_compat.ResponsesProbeStatusSupported
+	}
 
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
-		openai_compat.ExtraKeyResponsesSupported: supported,
+		openai_compat.ExtraKeyResponsesProbeStatus: string(probeStatus),
 	}); err != nil {
 		logger.LegacyPrintf("service.openai_probe", "probe_persist_failed: account_id=%d supported=%v err=%v", accountID, supported, err)
 		return
 	}
 
 	if !supported {
-		// 落标为不支持等于把该账号长期钉在 /v1/chat/completions 上，成本与缓存命中率
-		// 都会变化，且不会自动恢复。这条必须能被运维看到（#5371）。
+		// 不支持状态会让 Responses/Messages 默认降级到 Chat；Chat 入站本来就保留
+		// 客户端协议。该观测不会覆盖管理员显式配置的路由模式。
 		slog.Warn(
 			"openai_responses_probe_marked_unsupported",
 			"account_id", accountID,

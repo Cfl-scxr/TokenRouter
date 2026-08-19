@@ -319,7 +319,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CapabilityMismat
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"openai_capabilities": []any{"chat_completions"},
+			"openai_workload_capabilities": []any{"text_generation"},
 		},
 		Extra: map[string]any{
 			"openai_apikey_responses_websockets_v2_enabled": true,
@@ -416,7 +416,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseIDUsesResolvedRouti
 		"dispatch-model",
 		nil,
 		OpenAIUpstreamTransportResponsesWebsocketV2,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		false,
 		false,
 	)

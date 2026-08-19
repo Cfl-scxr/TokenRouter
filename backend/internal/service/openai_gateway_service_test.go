@@ -1020,7 +1020,7 @@ func TestOpenAISelectAccountWithScheduler_GroupModelUnsupportedError(t *testing.
 		"o1-preview",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityTextGeneration,
 		false,
 		false,
 	)

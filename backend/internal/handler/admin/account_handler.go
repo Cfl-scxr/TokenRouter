@@ -934,6 +934,8 @@ func (h *AccountHandler) Duplicate(c *gin.Context) {
 			if execErr != nil {
 				return nil, execErr
 			}
+			// 复制件不继承源账号的 Responses 探测事实，创建成功后重新探测。
+			h.scheduleOpenAIResponsesProbe(account)
 			return h.buildAccountResponseWithRuntime(ctx, account), nil
 		},
 	)
@@ -944,6 +946,7 @@ func (h *AccountHandler) Duplicate(c *gin.Context) {
 			if recoverErr != nil {
 				slog.Warn("account_duplicate_recovery_failed", "account_id", accountID, "actor_scope", actorScope, "reason", reason, "error", recoverErr)
 			} else if recovered != nil {
+				h.scheduleOpenAIResponsesProbe(recovered)
 				c.Header("X-Idempotency-Recovered", "true")
 				response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), recovered))
 				return
@@ -1034,8 +1037,8 @@ func (h *AccountHandler) Update(c *gin.Context) {
 //
 // 仅对 platform=openai && type=apikey 账号生效；其他账号无操作。
 // 探测本身在 goroutine 中执行（会发一次 HTTP 请求到上游），不会阻塞
-// 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
-// 网关会按"现状即证据"默认走 Responses。
+// 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时保留最近状态或
+// unknown，且不会覆盖管理员文本路由模式。
 func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
 	if account == nil || account.Platform != service.PlatformOpenAI || account.Type != service.AccountTypeAPIKey {
 		return

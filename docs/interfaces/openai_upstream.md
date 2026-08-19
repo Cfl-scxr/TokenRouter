@@ -13,7 +13,7 @@
 
 ## 账号与凭据
 
-OpenAI 正式支持 `oauth` 与 `apikey`。OAuth 账号保存 access/refresh token、账号/组织上下文和 Codex 能力元数据，后台与请求路径都可触发刷新；API Key 账号保存 key、base URL 和可探测的 endpoint capability。其它通用导入类型不构成 OpenAI 转发支持，详见[上游账号能力矩阵](upstream_account_matrix.md)。
+OpenAI 正式支持 `oauth` 与 `apikey`。OAuth 账号保存 access/refresh token、账号/组织上下文和 Codex 能力元数据，后台与请求路径都可触发刷新；API Key 账号保存 key、base URL、工作负载能力、文本协议路由和 Responses 探测事实。其它通用导入类型不构成 OpenAI 转发支持，详见[上游账号能力矩阵](upstream_account_matrix.md)。
 
 OAuth 补全账号元数据时，ID token 中的个人 `chatgpt_plan_type` 是个人套餐的权威来源。`accounts/check` 可能按 access token 的 `poid` 命中另一个 workspace；仅当该记录的账号 ID 与个人 `chatgpt_account_id` 一致时，才能把它的 `entitlement.expires_at` 与个人套餐组合。账号不一致时，到期时间必须改从个人 `/backend-api/subscriptions` 的 `active_until` 获取；若套餐本身来自 `accounts/check`，套餐和到期时间仍保持来自同一条记录。
 
@@ -30,13 +30,33 @@ OpenAI 平台拥有以下正式协议族：
 | --- | --- |
 | Responses HTTP/SSE | 原生 OAuth/API Key 转发；支持允许的 `/responses/*` 子路径 |
 | Responses WebSocket | 根据账号 transport capability 选择 WS 或兼容传输；连接建立后遵守流式不可换账号边界 |
-| Chat Completions | 可原生转发或转换到 Responses；每次 attempt 重建协议状态；响应兼容 `reasoning` 推理别名 |
+| Chat Completions | API Key 默认保留 Chat 协议原生转发；显式强制时才转换到 Responses；每次 attempt 重建协议状态 |
 | Anthropic Messages | 转换到 OpenAI 请求并把事件、工具、thinking/usage 恢复为 Anthropic 形状 |
-| Embeddings | 仅 OpenAI 分组，账号必须声明或探测到相应 endpoint capability |
+| Embeddings | 仅 OpenAI 分组，账号工作负载能力必须包含 `embeddings` |
 | Images | OpenAI 图片生成/编辑；当前网关保留同步生命周期，批量图片由 Gemini/Vertex 专题定义 |
 | Realtime/Live/sideband、Alpha Search | 仅 OpenAI 分组，并受分组开关、账号类型和 transport capability 限制 |
 
 OpenAI 分组支持 Messages、Responses 和 Chat，新建时默认启用 Responses 与 Chat；三项都可关闭。已有分组迁移时仅在旧 `allow_messages_dispatch` 开启时加入 Messages。该旧字段只作为 Messages 的弃用兼容镜像，专用 `messages_dispatch_model_config` 仍只负责 Claude 到 GPT 模型映射；系列和精确映射都只在目标值非空时生效，全部留空时不执行分组层模型映射。Responses WebSocket 是 OpenAI/Grok 的原生传输能力，不因其它平台启用兼容 Responses 而开放。
+
+### API Key 文本配置
+
+OpenAI API Key 的普通文本配置把三个概念分开持久化：
+
+- `credentials.openai_workload_capabilities` 是工作负载集合，只允许 `text_generation` 与 `embeddings`。缺失时写入两项默认值，显式空数组表示该账号不承接这两类工作负载。
+- `extra.openai_text_route_mode` 是管理员拥有的路由策略，只允许 `preserve_client_protocol`、`force_responses`、`force_chat_completions`。
+- `extra.openai_responses_probe_status` 是探测服务拥有的只读事实，只允许 `supported`、`unsupported`、`unknown`。探测更新不得改写管理员路由策略。
+
+普通文本协议按下表解析：
+
+| 路由模式 | Chat 入站 | Responses 入站 | Messages 入站 |
+| --- | --- | --- | --- |
+| `preserve_client_protocol` | Chat | Responses；探测为 `unsupported` 时转 Chat | Responses；探测为 `unsupported` 时转 Chat |
+| `force_responses` | Responses | Responses | Responses |
+| `force_chat_completions` | Chat | Chat | Chat |
+
+因此 `preserve_client_protocol` 下的 Chat 请求只访问上游 `/v1/chat/completions`，请求体保持 Chat 形状，不再先尝试 `/v1/responses` 后按 404 回退。Responses 与 Messages 没有同形 Chat 首选路径，只有探测明确不支持时才在默认模式下降级。显式强制模式始终优先于探测事实。OAuth、Grok、Images、Compact 和 WebSocket 使用各自专用路由，不套用这张普通文本矩阵。
+
+运行时与调度缓存只读取上述新键。账号创建、更新、批量更新和导入仍可接收旧 `openai_capabilities`、`openai_responses_mode`、`openai_responses_supported`，但必须在持久化前规范化并删除旧键；复制账号保留工作负载和路由策略，将探测状态重置为 `unknown` 后重新探测。
 
 OpenAI 兼容非流式响应的 usage 按 `usage`、`response.usage`、`data.usage`、`data.response.usage` 的顺序解析；前两条原生路径优先于 Cline 等兼容上游使用的 `data` envelope。同层的 hosted image usage 必须随对应路径读取，不能把不同 envelope 的 token 与图片用量混合。
 
@@ -89,7 +109,7 @@ OpenAI API Key 账号以 `force_chat_completions` 承接 `/v1/messages` 时，Ch
 
 Usage Log 中的显式 reasoning effort 以最终上游请求体为准：合法的 `reasoning.effort` 或 `reasoning_effort` 只做格式归一化，不再按模型名称过滤；协议转换或兼容策略未实际转发的字段不记录，发生档位改写时记录改写后的值。请求未显式提供 effort 时，才允许从模型名后缀推导，并继续受模型能力门槛约束，避免把第三方模型名中的普通 `-max` 后缀误记为推理档位。最终为 `high`、`xhigh`、`max` 的请求在使用首输出超时策略的链路中均选择高 effort 档；协议桥仍可按真实上游能力调整实际转发值，例如 Anthropic 兼容转换可把不支持的 `max` 降为 `xhigh`。
 
-API Key endpoint capability 可通过探测或配置表达 `responses`、`chat_completions`、`embeddings` 等能力。OAuth/Codex 账号还可能包含 Realtime、WebSocket、旧版 Compact 端点状态和客户端身份限制。未知模型可以在管理员明确配置的兼容上游中透传，但没有定价或能力证据时不能虚构价格与功能。
+API Key 的普通调度能力只表达 `text_generation` 与 `embeddings` 工作负载，不再用 `chat_completions` 同时代表工作负载和协议。Responses 生图等必须使用原生 Responses 的路径仍有独立能力门禁：以 Responses 为首选协议解析后若落到 Chat，该账号不能承接此类请求。OAuth/Codex 账号还可能包含 Realtime、WebSocket、旧版 Compact 端点状态和客户端身份限制。未知模型可以在管理员明确配置的兼容上游中透传，但没有定价或能力证据时不能虚构价格与功能。
 
 Images API 的流式与非流式上游请求都脱离客户端请求取消信号继续执行，并由上游响应超时控制最终回收。生图属于长耗时且上游可能已经产生实际成本的媒体任务；客户端中途断开不能取消上游并丢失已完成图片的计费结果。下游写失败不改变图片产出和结算事实。
 
@@ -99,7 +119,7 @@ OpenAI 是通用高级调度器的能力适配者之一，而不是该调度器�
 
 OpenAI 专属能力只在账号和请求具备对应条件时加入候选或分数：Responses transport、WebSocket、旧版 Compact、previous response、订阅优先和 Codex 额度余量都不会排除缺失这类可选信号的普通账号。OAuth 5 小时、7 天等上游窗口和自动暂停仍由 OpenAI 设置及账号运行状态控制，不随高级调度器通用化而迁移到其它平台。
 
-OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运行状态中，可触发临时限流或自动暂停；API Key endpoint capability 仍可独立探测。OpenAI 不再采集上游站点声明倍率，也不按该值进行低倍率优先或高级评分。账户本地 `rate_multiplier` 和渠道上游计费模型来源继续用于 TokenRouter 结算，但都不是用户余额、订阅、Key 限额或用户平台额度。
+OAuth 账号的 5 小时、7 天等上游窗口和重置时间保存在账号运行状态中，可触发临时限流或自动暂停；API Key 的 Responses 探测事实继续独立于工作负载能力和管理员路由策略。OpenAI 不再采集上游站点声明倍率，也不按该值进行低倍率优先或高级评分。账户本地 `rate_multiplier` 和渠道上游计费模型来源继续用于 TokenRouter 结算，但都不是用户余额、订阅、Key 限额或用户平台额度。
 
 管理 API 的 `GET /admin/openai/accounts/:id/quota` 保持只读；账号列表使用 `POST /admin/openai/accounts/:id/quota/refresh` 查询上游并把重置次数写入 `account.extra.codex_reset_credit_snapshot`。正数次数只有同时取得到期明细时才覆盖快照，前端水合时过滤已过期明细并把次数收敛到仍有效的卡片数量。该 extra 键只用于展示缓存，不触发调度 outbox；Spark 影子账号的查询可解析母账号额度，但快照仍写在被查询的行上，且列表继续只提供查询入口，不提供真实重置按钮。
 

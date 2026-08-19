@@ -221,6 +221,50 @@ describe('CreateAccountModal OpenAI account options', () => {
       .mockResolvedValue({ credentials: { model_whitelist: [] }, extra: {} })
   })
 
+  it('submits the explicit OpenAI text protocol defaults with the new configuration shape', async () => {
+    await submitApiKeyAccount('openai')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.credentials?.openai_workload_capabilities).toEqual([
+      'text_generation',
+      'embeddings',
+    ])
+    expect(payload?.credentials).not.toHaveProperty('openai_capabilities')
+    expect(payload?.extra?.openai_text_route_mode).toBe('preserve_client_protocol')
+    expect(payload?.extra?.openai_responses_probe_status).toBe('unknown')
+    expect(payload?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(payload?.extra).not.toHaveProperty('openai_responses_supported')
+  })
+
+  it('renders workload, text routing, and probe status as separate configuration sections', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    expect(wrapper.text()).toContain('admin.accounts.openai.workloadCapabilities')
+    expect(wrapper.text()).toContain('admin.accounts.openai.textRouteMode')
+    expect(wrapper.text()).toContain('admin.accounts.openai.responsesProbeStatus')
+  })
+
+  it('allows an explicit empty workload capability set independently from text routing', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    await wrapper.get('[data-testid="openai-workload-capability-text_generation"]').setValue(false)
+    await wrapper.get('[data-testid="openai-workload-capability-embeddings"]').setValue(false)
+    await wrapper.get('[data-testid="openai-text-route-mode-select"]').setValue('force_chat_completions')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.credentials?.openai_workload_capabilities).toEqual([])
+    expect(payload?.extra?.openai_text_route_mode).toBe('force_chat_completions')
+  })
+
   it('does not render or submit the removed account-level long-context setting', async () => {
     const wrapper = await submitApiKeyAccount('openai')
 

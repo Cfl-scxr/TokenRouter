@@ -141,7 +141,11 @@ func TestProbeOpenAIAPIKeyResponsesSupport_ConclusiveResponsesStillPersist(t *te
 		t.Run(tc.name, func(t *testing.T) {
 			updates := runResponsesProbe(t, tc.status, tc.body)
 			require.NotNil(t, updates, "能下结论的响应必须落标")
-			require.Equal(t, tc.want, updates[openai_compat.ExtraKeyResponsesSupported])
+			wantStatus := openai_compat.ResponsesProbeStatusUnsupported
+			if tc.want {
+				wantStatus = openai_compat.ResponsesProbeStatusSupported
+			}
+			require.Equal(t, string(wantStatus), updates[openai_compat.ExtraKeyResponsesProbeStatus])
 		})
 	}
 }

@@ -351,7 +351,7 @@ func TestAccountHandlerBulkUpdateOpenAIAPIKeyCredentialsSchedulesResponsesProbe(
 	upstream.mu.Unlock()
 
 	repo.mu.Lock()
-	require.Equal(t, false, repo.accounts[account.ID].Extra[openai_compat.ExtraKeyResponsesSupported])
+	require.Equal(t, string(openai_compat.ResponsesProbeStatusUnsupported), repo.accounts[account.ID].Extra[openai_compat.ExtraKeyResponsesProbeStatus])
 	repo.mu.Unlock()
 }
 
@@ -386,7 +386,7 @@ func (r *bulkUpdateProbeAccountRepo) UpdateExtra(ctx context.Context, id int64, 
 	}
 	r.mu.Unlock()
 
-	if _, ok := updates[openai_compat.ExtraKeyResponsesSupported]; ok && r.done != nil {
+	if _, ok := updates[openai_compat.ExtraKeyResponsesProbeStatus]; ok && r.done != nil {
 		select {
 		case r.done <- id:
 		default:

@@ -91,7 +91,7 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	source := &Account{
 		Name:                  "primary",
 		Notes:                 &notes,
-		Platform:              PlatformAnthropic,
+		Platform:              PlatformOpenAI,
 		Type:                  AccountTypeAPIKey,
 		ProxyID:               &proxyID,
 		ProxyFallbackOriginID: &originalProxyID,
@@ -105,8 +105,9 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 		ExpiresAt:             &expiresAt,
 		AutoPauseOnExpired:    false,
 		Credentials: map[string]any{
-			"api_key": "secret",
-			"nested":  map[string]any{"token": "source-token"},
+			"api_key":                      "secret",
+			"nested":                       map[string]any{"token": "source-token"},
+			"openai_workload_capabilities": []any{"text_generation"},
 		},
 		Extra: map[string]any{
 			"config":                                  map[string]any{"region": "us-east-1"},
@@ -119,7 +120,8 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 			"codex_5h_used_percent":                   80,
 			"codex_cli_only":                          true,
 			"grok_usage_snapshot":                     map[string]any{"status_code": 429},
-			"openai_responses_supported":              false,
+			"openai_responses_probe_status":           "unsupported",
+			"openai_text_route_mode":                  "force_responses",
 			"openai_native_compaction_v2_mode":        OpenAICompactModeForceOn,
 			"openai_native_compaction_v2_supported":   true,
 			"openai_native_compaction_v2_checked_at":  "2026-07-15T00:00:00Z",
@@ -162,12 +164,16 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	require.Equal(t, source.Priority, duplicate.Priority)
 	require.Equal(t, source.AutoPauseOnExpired, duplicate.AutoPauseOnExpired)
 	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
-	require.Equal(t, source.Credentials, duplicate.Credentials)
+	require.Equal(t, "secret", duplicate.Credentials["api_key"])
+	require.Equal(t, map[string]any{"token": "source-token"}, duplicate.Credentials["nested"])
+	require.Equal(t, []string{"text_generation"}, duplicate.Credentials["openai_workload_capabilities"])
 	require.Equal(t, map[string]any{
 		"config":                           map[string]any{"region": "us-east-1"},
 		"items":                            []any{map[string]any{"enabled": true}},
 		"quota_limit":                      float64(1000),
 		"codex_cli_only":                   true,
+		"openai_text_route_mode":           "force_responses",
+		"openai_responses_probe_status":    "unknown",
 		"openai_native_compaction_v2_mode": OpenAICompactModeForceOn,
 	}, duplicate.Extra)
 	require.NotNil(t, duplicate.ExpiresAt)

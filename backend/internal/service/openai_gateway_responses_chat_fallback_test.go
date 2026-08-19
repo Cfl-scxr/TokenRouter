@@ -166,8 +166,8 @@ func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *test
 	}
 	account := rawChatCompletionsTestAccount()
 	account.Extra = map[string]any{
-		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
-		openai_compat.ExtraKeyResponsesSupported: true,
+		openai_compat.ExtraKeyTextRouteMode:        string(openai_compat.TextRouteModePreserveClientProtocol),
+		openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusSupported),
 	}
 
 	result, err := svc.Forward(context.Background(), c, account, body)
@@ -184,7 +184,7 @@ func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *test
 func forceChatResponsesFallbackAccount() *Account {
 	account := rawChatCompletionsTestAccount()
 	account.Extra = map[string]any{
-		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+		openai_compat.ExtraKeyTextRouteMode: string(openai_compat.TextRouteModeForceChatCompletions),
 	}
 	return account
 }

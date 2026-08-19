@@ -98,7 +98,7 @@ func TestForwardResponsesChatCompletionsFallbackKeepsFunctionArgumentsSingle(t *
 	}}
 	account := passthroughArgsFallbackAccount()
 	account.Extra = map[string]any{
-		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+		openai_compat.ExtraKeyTextRouteMode: string(openai_compat.TextRouteModeForceChatCompletions),
 	}
 	svc := &OpenAIGatewayService{
 		cfg:          passthroughArgsTestConfig(),

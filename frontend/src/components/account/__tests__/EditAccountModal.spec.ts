@@ -737,11 +737,11 @@ describe('EditAccountModal', () => {
     expect(wrapper.find('[data-testid="openai-plan-type-select"]').exists()).toBe(false)
   })
 
-  it('submits OpenAI APIKey Responses support override mode', async () => {
+  it('submits OpenAI APIKey text route mode and keeps probe status read-only', async () => {
     const account = buildAccount()
     account.extra = {
-      openai_responses_mode: 'force_chat_completions',
-      openai_responses_supported: false
+      openai_text_route_mode: 'force_chat_completions',
+      openai_responses_probe_status: 'unsupported'
     }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -750,12 +750,14 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    await wrapper.get('[data-testid="openai-responses-mode-select"]').setValue('force_responses')
+    await wrapper.get('[data-testid="openai-text-route-mode-select"]').setValue('force_responses')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_mode).toBe('force_responses')
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_text_route_mode).toBe('force_responses')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_probe_status).toBe('unsupported')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_supported')
   })
 
   it('does not render the removed upstream billing auto-probe setting', () => {
@@ -764,7 +766,7 @@ describe('EditAccountModal', () => {
     expect(wrapper.find('[data-testid="upstream-billing-auto-probe"]').exists()).toBe(false)
   })
 
-  it('clears OpenAI APIKey Responses override when set back to auto', async () => {
+  it('hydrates legacy OpenAI text protocol fields and submits only the new shape', async () => {
     const account = buildAccount()
     account.extra = {
       openai_responses_mode: 'force_chat_completions',
@@ -777,17 +779,23 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    await wrapper.get('[data-testid="openai-responses-mode-select"]').setValue('auto')
+    const routeSelect = wrapper.get<HTMLSelectElement>('[data-testid="openai-text-route-mode-select"]')
+    expect(routeSelect.element.value).toBe('force_chat_completions')
+    expect(wrapper.get('[data-testid="openai-responses-probe-status"]').text()).toContain('Supported')
+
+    await routeSelect.setValue('preserve_client_protocol')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_text_route_mode).toBe('preserve_client_protocol')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_probe_status).toBe('supported')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_supported')
   })
 
   it('submits OpenAI APIKey endpoint capabilities from credentials', async () => {
     const account = buildAccount()
-    account.credentials.openai_capabilities = ['chat_completions']
+    account.credentials.openai_workload_capabilities = ['text_generation']
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
@@ -800,9 +808,10 @@ describe('EditAccountModal', () => {
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
-      'chat_completions'
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_workload_capabilities).toEqual([
+      'text_generation'
     ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('openai_capabilities')
   })
 
 	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
@@ -847,7 +856,7 @@ describe('EditAccountModal', () => {
 	  expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.auto_pause_7d_disabled).toBeUndefined()
 	})
 
-  it('keeps at least one OpenAI APIKey endpoint capability selected', async () => {
+  it('preserves an explicitly empty OpenAI workload capability set', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -856,35 +865,29 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    const chatCheckbox = wrapper.get<HTMLInputElement>(
-      '[data-testid="openai-endpoint-capability-chat_completions"]'
+    const textCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-workload-capability-text_generation"]'
     )
     const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
-      '[data-testid="openai-endpoint-capability-embeddings"]'
+      '[data-testid="openai-workload-capability-embeddings"]'
     )
 
-    expect(chatCheckbox.element.checked).toBe(true)
+    expect(textCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(true)
 
     await embeddingsCheckbox.setValue(false)
+    await textCheckbox.setValue(false)
 
-    expect(chatCheckbox.element.checked).toBe(true)
-    expect(embeddingsCheckbox.element.checked).toBe(false)
-
-    await chatCheckbox.setValue(false)
-
-    expect(chatCheckbox.element.checked).toBe(true)
+    expect(textCheckbox.element.checked).toBe(false)
     expect(embeddingsCheckbox.element.checked).toBe(false)
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
-      'chat_completions'
-    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_workload_capabilities).toEqual([])
   })
 
-  it('disables text generation protocol when only embeddings requests are accepted', async () => {
+  it('normalizes legacy workload fields without coupling them to text protocol routing', async () => {
     const account = buildAccount()
     account.credentials.openai_capabilities = ['embeddings']
     account.extra = {
@@ -898,21 +901,24 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    const responsesModeSelect = wrapper.get<HTMLSelectElement>(
-      '[data-testid="openai-responses-mode-select"]'
+    const routeModeSelect = wrapper.get<HTMLSelectElement>(
+      '[data-testid="openai-text-route-mode-select"]'
     )
 
-    expect(responsesModeSelect.element.disabled).toBe(true)
-    expect(wrapper.find('[data-testid="openai-responses-mode-not-applicable"]').exists()).toBe(true)
+    expect(routeModeSelect.element.disabled).toBe(false)
+    expect(routeModeSelect.element.value).toBe('force_responses')
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_workload_capabilities).toEqual([
       'embeddings'
     ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('openai_capabilities')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_text_route_mode).toBe('force_responses')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_probe_status).toBe('supported')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_supported')
   })
 
   it('submits Codex image tool force-inject mode as bridge override', async () => {

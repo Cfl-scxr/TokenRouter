@@ -35,11 +35,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	defaultMappedModel string,
 	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
 ) (*OpenAIForwardResult, error) {
-	// 入口分流：APIKey 账号 + 上游不支持 Responses API → 走 CC 直转（与
-	// ForwardAsChatCompletions 对称）。缺少此分流时，/v1/messages 入站请求
-	// 会被无条件转为 Responses 格式发往上游 /v1/responses，导致只支持
-	// /v1/chat/completions 的第三方 OpenAI 兼容上游全部 400。
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	// Messages 没有同形上游协议，默认首选 Responses；探测明确不支持或管理员
+	// 强制 Chat 时，才通过 Chat Completions 兼容桥接转发。
+	if account.Type == AccountTypeAPIKey && openai_compat.ResolveUpstreamTextProtocol(
+		account.Extra,
+		openai_compat.TextProtocolResponses,
+	) == openai_compat.TextProtocolChatCompletions {
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
 	}
 

@@ -165,7 +165,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			reqModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityTextGeneration,
 			false,
 			false,
 			requestPlatform,
@@ -413,7 +413,10 @@ func resolveOpenAIUpstreamEndpoint(c *gin.Context, account *service.Account, res
 		return endpoint
 	}
 	if account != nil && account.Type == service.AccountTypeAPIKey &&
-		!openai_compat.ShouldUseResponsesAPI(account.Extra) {
+		openai_compat.ResolveUpstreamTextProtocol(
+			account.Extra,
+			openai_compat.TextProtocolChatCompletions,
+		) == openai_compat.TextProtocolChatCompletions {
 		return EndpointChatCompletions
 	}
 	return GetUpstreamEndpoint(c, account.Platform)

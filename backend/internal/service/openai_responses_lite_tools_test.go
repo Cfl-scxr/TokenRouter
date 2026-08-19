@@ -427,8 +427,8 @@ func TestOpenAIGatewayServiceForward_DisablesResponsesLiteParallelToolCallsForAP
 				Concurrency: 1, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://example.com"},
 				Extra: map[string]any{
-					"openai_passthrough":         passthrough,
-					"openai_responses_supported": true,
+					"openai_passthrough":            passthrough,
+					"openai_responses_probe_status": "supported",
 				},
 			}
 			body := []byte(`{

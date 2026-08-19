@@ -110,7 +110,7 @@ func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {
 		Extra:       map[string]any{GrokMediaEligibleExtraKey: false},
 	}
 
-	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+	require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
 	require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
 	require.False(t, isOpenAICompatibleAccountEligibleForRequest(
 		context.Background(), account, PlatformGrok, "grok-imagine-video", false,

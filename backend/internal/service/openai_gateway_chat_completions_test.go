@@ -224,7 +224,8 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 			"api_key": "sk-compatible",
 		},
 		Extra: map[string]any{
-			"openai_responses_supported": true,
+			"openai_text_route_mode":        "force_responses",
+			"openai_responses_probe_status": "supported",
 		},
 	}
 
@@ -269,7 +270,10 @@ func TestForwardAsChatCompletions_APIKeyResponsesRecordsThirdPartyMaxEffort(t *t
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-compatible"},
-		Extra:       map[string]any{"openai_responses_supported": true},
+		Extra: map[string]any{
+			"openai_text_route_mode":        "force_responses",
+			"openai_responses_probe_status": "supported",
+		},
 	}
 
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
@@ -314,7 +318,10 @@ func TestForwardAsChatCompletions_APIKeyResponsesDoesNotRecordDroppedNestedEffor
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-compatible"},
-		Extra:       map[string]any{"openai_responses_supported": true},
+		Extra: map[string]any{
+			"openai_text_route_mode":        "force_responses",
+			"openai_responses_probe_status": "supported",
+		},
 	}
 
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
@@ -351,7 +358,8 @@ func TestForwardAsChatCompletions_TransportErrorFailsOver(t *testing.T) {
 			"api_key": "sk-compatible",
 		},
 		Extra: map[string]any{
-			"openai_responses_supported": true,
+			"openai_text_route_mode":        "force_responses",
+			"openai_responses_probe_status": "supported",
 		},
 	}
 
