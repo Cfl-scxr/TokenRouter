@@ -20,6 +20,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ip"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/TokenFlux/TokenRouter/internal/platform/liveattestation"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
@@ -313,6 +314,28 @@ func GetActualOpenAIUpstreamEndpoint(c *gin.Context) string {
 	}
 	endpoint, _ := value.(string)
 	return strings.TrimSpace(endpoint)
+}
+
+// resolveOpenAITextProtocolForAttempt 解析当前账号的实际文本协议，并在转发前
+// 覆盖 attempt 级端点元数据，避免故障转移后沿用上一账号的端点。
+func resolveOpenAITextProtocolForAttempt(
+	c *gin.Context,
+	account *Account,
+	preferred openai_compat.TextProtocol,
+) openai_compat.TextProtocol {
+	// OAuth 等专用账号始终保留既有 Responses 桥；只有 API Key 账号参与
+	// “客户端首选协议 + 路由模式 + 探测状态”的普通文本协议解析。
+	protocol := openai_compat.TextProtocolResponses
+	if account != nil && account.Type == AccountTypeAPIKey {
+		protocol = openai_compat.ResolveUpstreamTextProtocol(account.Extra, preferred)
+	}
+
+	endpoint := "/v1/responses"
+	if protocol == openai_compat.TextProtocolChatCompletions {
+		endpoint = "/v1/chat/completions"
+	}
+	SetActualOpenAIUpstreamEndpoint(c, endpoint)
+	return protocol
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {

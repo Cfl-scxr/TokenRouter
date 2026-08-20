@@ -178,6 +178,7 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 		name            string
 		account         *service.Account
 		result          *service.OpenAIForwardResult
+		inboundEndpoint string
 		runtimeEndpoint string
 		want            string
 	}{
@@ -213,20 +214,38 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 			want:    EndpointResponses,
 		},
 		{
-			name:    "openai api key preserves chat by default",
-			account: &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
-			result:  &service.OpenAIForwardResult{},
-			want:    EndpointChatCompletions,
+			name:            "openai api key chat attempt records runtime endpoint",
+			account:         &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+			result:          &service.OpenAIForwardResult{},
+			runtimeEndpoint: EndpointChatCompletions,
+			want:            EndpointChatCompletions,
 		},
 		{
-			name: "openai api key forced responses records responses",
+			name: "openai api key responses attempt records runtime endpoint",
 			account: &service.Account{
 				Platform: service.PlatformOpenAI,
 				Type:     service.AccountTypeAPIKey,
 				Extra:    map[string]any{"openai_text_route_mode": "force_responses"},
 			},
-			result: &service.OpenAIForwardResult{},
-			want:   EndpointResponses,
+			result:          &service.OpenAIForwardResult{},
+			runtimeEndpoint: EndpointResponses,
+			want:            EndpointResponses,
+		},
+		{
+			name:            "responses fallback records runtime chat endpoint",
+			account:         &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+			result:          &service.OpenAIForwardResult{},
+			inboundEndpoint: EndpointResponses,
+			runtimeEndpoint: EndpointChatCompletions,
+			want:            EndpointChatCompletions,
+		},
+		{
+			name:            "messages native path records runtime responses endpoint",
+			account:         &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+			result:          &service.OpenAIForwardResult{},
+			inboundEndpoint: EndpointMessages,
+			runtimeEndpoint: EndpointResponses,
+			want:            EndpointResponses,
 		},
 	}
 
@@ -234,8 +253,12 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
-			c.Request = httptest.NewRequest(http.MethodPost, EndpointChatCompletions, nil)
-			c.Set(ctxKeyInboundEndpoint, EndpointChatCompletions)
+			inboundEndpoint := tt.inboundEndpoint
+			if inboundEndpoint == "" {
+				inboundEndpoint = EndpointChatCompletions
+			}
+			c.Request = httptest.NewRequest(http.MethodPost, inboundEndpoint, nil)
+			c.Set(ctxKeyInboundEndpoint, inboundEndpoint)
 			service.SetActualOpenAIUpstreamEndpoint(c, tt.runtimeEndpoint)
 			require.Equal(t, tt.want, resolveOpenAIUpstreamEndpoint(c, tt.account, tt.result))
 		})

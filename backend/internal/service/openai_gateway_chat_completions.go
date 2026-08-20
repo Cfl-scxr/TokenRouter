@@ -79,8 +79,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// Chat 入站首选 Chat；管理员显式强制 Responses 时才进入下方协议转换路径。
-	if account.Type == AccountTypeAPIKey && openai_compat.ResolveUpstreamTextProtocol(
-		account.Extra,
+	if resolveOpenAITextProtocolForAttempt(
+		c,
+		account,
 		openai_compat.TextProtocolChatCompletions,
 	) == openai_compat.TextProtocolChatCompletions {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
