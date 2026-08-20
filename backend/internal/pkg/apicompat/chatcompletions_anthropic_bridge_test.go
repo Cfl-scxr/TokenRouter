@@ -791,7 +791,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion(t *testing.T) {
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
 	// 旧双转换桥结果。
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	// 比较关键字段。
@@ -1105,7 +1105,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_CacheWriteTokens(t *te
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, double.Usage.InputTokens, direct.Usage.InputTokens)
@@ -1173,7 +1173,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_EmptyChoices(t *testin
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, AnthropicStopReasonString(double.StopReason), AnthropicStopReasonString(direct.StopReason))

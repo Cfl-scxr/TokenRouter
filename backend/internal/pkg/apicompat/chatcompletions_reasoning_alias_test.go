@@ -21,7 +21,7 @@ func TestChatReasoningAliasNonStreaming(t *testing.T) {
 	require.Equal(t, "thinking", anthropic.Content[0].Type)
 	require.Equal(t, "fallback reasoning", anthropic.Content[0].Thinking)
 
-	responses := ChatCompletionsResponseToResponses(&response, "reasoning-model", nil, false, nil)
+	responses := ChatCompletionsResponseToResponses(&response, "reasoning-model", nil, nil, false, nil)
 	require.Len(t, responses.Output, 2)
 	require.Equal(t, "reasoning", responses.Output[0].Type)
 	require.Equal(t, "fallback reasoning", responses.Output[0].Summary[0].Text)
