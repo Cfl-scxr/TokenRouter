@@ -194,7 +194,7 @@ describe('admin UsageTable tooltip', () => {
     })
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+    expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('L')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {
