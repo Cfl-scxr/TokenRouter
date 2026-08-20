@@ -604,6 +604,42 @@ func openAIWSRawItemsHaveToolCallContextForOutputs(items []json.RawMessage) bool
 	return true
 }
 
+// sanitizeOpenAIWSHistoricalReplayToolCalls 清理历史中没有对应输出的工具调用，
+// 避免剥离 previous_response_id 后向上游重放无法闭合的旧调用上下文。
+func sanitizeOpenAIWSHistoricalReplayToolCalls(
+	previousItems []json.RawMessage,
+	currentItems []json.RawMessage,
+) []json.RawMessage {
+	if len(previousItems) == 0 {
+		return cloneOpenAIWSRawMessages(previousItems)
+	}
+	outputCallIDs := make(map[string]struct{})
+	collectOutputCallIDs := func(items []json.RawMessage) {
+		for _, item := range items {
+			if !isCodexToolCallOutputItemType(gjson.GetBytes(item, "type").String()) {
+				continue
+			}
+			if callID := strings.TrimSpace(gjson.GetBytes(item, "call_id").String()); callID != "" {
+				outputCallIDs[callID] = struct{}{}
+			}
+		}
+	}
+	collectOutputCallIDs(previousItems)
+	collectOutputCallIDs(currentItems)
+
+	sanitized := make([]json.RawMessage, 0, len(previousItems))
+	for _, item := range previousItems {
+		if isCodexToolCallContextItemType(gjson.GetBytes(item, "type").String()) {
+			callID := strings.TrimSpace(gjson.GetBytes(item, "call_id").String())
+			if _, paired := outputCallIDs[callID]; !paired {
+				continue
+			}
+		}
+		sanitized = append(sanitized, append(json.RawMessage(nil), item...))
+	}
+	return sanitized
+}
+
 // openAIWSRawPayloadHasToolCallOutput 判断 response.create payload 的 input 是否包含工具输出。
 func openAIWSRawPayloadHasToolCallOutput(payload []byte) bool {
 	if len(payload) == 0 {
@@ -643,6 +679,7 @@ func buildOpenAIWSReplayInputSequence(
 	if !previousFullInputExists {
 		return cloneOpenAIWSRawMessages(currentItems), currentExists, nil
 	}
+	previousFullInput = sanitizeOpenAIWSHistoricalReplayToolCalls(previousFullInput, currentItems)
 	if !currentExists || len(currentItems) == 0 {
 		return cloneOpenAIWSRawMessages(previousFullInput), true, nil
 	}
