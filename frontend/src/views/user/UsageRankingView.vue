@@ -177,6 +177,18 @@ function metricGridStyle(metricCount: number): Record<string, string> {
   return { gridTemplateColumns: `repeat(${Math.max(metricCount, 1)}, minmax(0, 1fr))` }
 }
 
+// 桌面端为每类指标保留固定列宽，避免各行因数值长度不同而横向漂移。
+function rankingMetricWidthClass(metric: UsageRankingMetric): string {
+  switch (metric) {
+    case 'requests':
+      return 'sm:w-[110px]'
+    case 'actual_cost':
+      return 'sm:w-[140px]'
+    default:
+      return 'sm:w-[130px]'
+  }
+}
+
 function orderedMetrics(metrics: UsageRankingMetric[], primary: UsageRankingMetric): UsageRankingMetric[] {
   return [primary, ...metrics.filter((metric) => metric !== primary)]
 }
@@ -348,11 +360,12 @@ const RankingRow = defineComponent({
           h(
             'div',
             {
-              class: 'col-span-2 grid gap-3 text-sm sm:col-span-1 sm:text-right',
+              'data-testid': 'usage-ranking-row-metrics',
+              class: 'col-span-2 grid gap-3 text-sm sm:col-span-1 sm:flex sm:justify-end sm:text-right',
               style: metricGridStyle(metrics.length),
             },
             metrics.map((metric) =>
-              h('div', { key: metric }, [
+              h('div', { key: metric, class: rankingMetricWidthClass(metric) }, [
                 h('p', { class: 'font-semibold text-gray-900 dark:text-white' }, metricValue(props.item, metric)),
                 h('p', { class: 'text-xs text-gray-500 dark:text-gray-400' }, metricLabel(metric)),
               ]),

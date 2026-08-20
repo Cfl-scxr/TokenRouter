@@ -96,4 +96,52 @@ describe('UsageRankingView', () => {
     expect(wrapper.text()).not.toContain('Requests')
     expect(wrapper.html()).not.toContain('370')
   })
+
+  it('keeps desktop metric columns aligned when values have different lengths', async () => {
+    getRanking.mockResolvedValue({
+      ranking: [
+        {
+          rank: 1,
+          user_id: 7,
+          display_name: 'first-user',
+          avatar_url: '',
+          requests: 8422,
+          total_tokens: 610_000_000,
+          actual_cost: 4264.3676,
+        },
+        {
+          rank: 2,
+          user_id: 8,
+          display_name: 'second-user',
+          avatar_url: '',
+          requests: 1090,
+          total_tokens: 350_000_000,
+          actual_cost: 451.3939,
+        },
+      ],
+      total_actual_cost: 4715.7615,
+      sort_by: 'total_tokens',
+      show_total_tokens: true,
+      show_requests: true,
+      show_actual_cost: true,
+      start_date: '2026-08-17',
+      end_date: '2026-08-17',
+      limit: 20,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const metricRows = wrapper.findAll('[data-testid="usage-ranking-row-metrics"]')
+    expect(metricRows).toHaveLength(2)
+
+    for (const row of metricRows) {
+      const columns = row.findAll(':scope > div')
+      expect(columns.map((column) => column.attributes('class'))).toEqual([
+        'sm:w-[130px]',
+        'sm:w-[110px]',
+        'sm:w-[140px]',
+      ])
+    }
+  })
 })
