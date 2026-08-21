@@ -74,7 +74,25 @@ func openAIModelSupportsReasoningEffort(model string, effort string) bool {
 }
 
 func openAIModelSupportsMaxReasoningEffort(model string) bool {
-	return isOpenAIModelAtLeastVersion(model, 5, 6)
+	if isOpenAIModelAtLeastVersion(model, 5, 6) {
+		return true
+	}
+
+	// 国产模型的原生 max 档位与 GPT-5.6 使用同一 usage 语义。
+	normalized := strings.ToLower(lastOpenAIModelSegment(model))
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	switch {
+	case strings.HasPrefix(normalized, "deepseek-v4"):
+		return true
+	case strings.HasPrefix(normalized, "glm-"):
+		return true
+	case strings.HasPrefix(normalized, "kimi-"), strings.HasPrefix(normalized, "moonshot-"):
+		return true
+	case normalized == "k3" || strings.HasPrefix(normalized, "k3-"):
+		return true
+	default:
+		return false
+	}
 }
 
 func isOpenAIModelAtLeastVersion(model string, minMajor, minMinor int) bool {

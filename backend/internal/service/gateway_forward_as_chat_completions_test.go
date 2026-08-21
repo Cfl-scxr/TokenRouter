@@ -30,6 +30,22 @@ func TestExtractCCReasoningEffortFromBody(t *testing.T) {
 		require.Equal(t, "xhigh", *got)
 	})
 
+	t.Run("DeepSeek V4 preserves max", func(t *testing.T) {
+		got := extractCCReasoningEffortFromBody([]byte(`{"model":"deepseek-v4-flash","reasoning_effort":"Max"}`))
+		require.NotNil(t, got)
+		require.Equal(t, "max", *got)
+	})
+
+	t.Run("mapped Kimi alias preserves max", func(t *testing.T) {
+		got := extractCCReasoningEffortFromBody(
+			[]byte(`{"model":"public-alias","reasoning_effort":"max"}`),
+			"kimi-k3",
+			"public-alias",
+		)
+		require.NotNil(t, got)
+		require.Equal(t, "max", *got)
+	})
+
 	t.Run("missing effort", func(t *testing.T) {
 		require.Nil(t, extractCCReasoningEffortFromBody([]byte(`{"model":"gpt-5"}`)))
 	})

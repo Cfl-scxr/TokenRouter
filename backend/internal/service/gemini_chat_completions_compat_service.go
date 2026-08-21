@@ -273,9 +273,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsOpenAICompat(
 
 	var reasoningEffort *string
 	if protocol == geminiOpenAICompatResponses {
-		reasoningEffort = ExtractResponsesReasoningEffortFromBody(originalBody)
+		reasoningEffort = ExtractResponsesReasoningEffortFromBody(originalBody, mappedModel)
 	} else {
-		reasoningEffort = extractCCReasoningEffortFromBody(originalBody)
+		reasoningEffort = extractCCReasoningEffortFromBody(originalBody, mappedModel)
 	}
 	// 国产模型没有显式 effort 档位时，thinking 启用后补默认展示值。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, originalBody, mappedModel)

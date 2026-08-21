@@ -594,6 +594,10 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 		return ""
 	}
 
+	// 国产模型的 max 是显式请求档位，不把同名模型后缀推导成 usage 档位。
+	if parts[len(parts)-1] == "max" && !isOpenAIModelAtLeastVersion(modelID, 5, 6) {
+		return ""
+	}
 	return normalizeOpenAIReasoningEffortForModel(parts[len(parts)-1], modelID)
 }
 

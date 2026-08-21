@@ -927,6 +927,13 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "max",
 		},
 		{
+			name:      "DeepSeek V4 保留 max 档位",
+			body:      []byte(`{"reasoning":{"effort":"max"}}`),
+			model:     "deepseek-v4-pro",
+			wantNil:   false,
+			wantValue: "max",
+		},
+		{
 			name:    "不提取 ultra 档位",
 			body:    []byte(`{"reasoning":{"effort":"ultra"}}`),
 			model:   "gpt-5.6-terra",
