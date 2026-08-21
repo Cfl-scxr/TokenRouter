@@ -5,33 +5,6 @@
         {{ t('admin.accounts.upstreamUsage.disabled') }}
       </span>
     </div>
-    <div v-else-if="loading || error || result" class="flex items-center justify-between gap-2">
-      <span class="text-[9px] font-medium uppercase text-sky-600 dark:text-sky-400">
-        {{ t('admin.accounts.upstreamUsage.source') }}
-      </span>
-      <button
-        type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-        :disabled="loading || !queryEnabled"
-        :title="t('admin.accounts.upstreamUsage.query')"
-        :aria-label="t('admin.accounts.upstreamUsage.query')"
-        @click="query(true)"
-      >
-        <Icon name="refresh" size="xs" :class="{ 'animate-spin': loading }" :stroke-width="2" />
-      </button>
-    </div>
-    <div v-else class="flex min-h-5 items-center justify-end gap-1">
-      <button
-        type="button"
-        class="inline-flex items-center rounded px-1 py-0.5 text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-        :title="t('admin.accounts.upstreamUsage.query')"
-        :aria-label="t('admin.accounts.upstreamUsage.query')"
-        @click="query(true)"
-      >
-        <Icon name="refresh" size="xs" :stroke-width="2" />
-      </button>
-    </div>
-
     <div v-if="queryEnabled && loading" class="space-y-1">
       <div class="h-3 w-28 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       <div class="h-3 w-36 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -42,7 +15,11 @@
       </span>
     </div>
     <div v-else-if="queryEnabled && normalizedUsage" class="space-y-1">
-      <div v-if="balanceLabel" class="text-[10px] text-gray-600 dark:text-gray-300">
+      <div
+        v-if="balanceLabel"
+        class="min-w-0 break-words text-[10px] leading-tight text-gray-600 dark:text-gray-300"
+        :title="balanceTitle"
+      >
         {{ balanceLabel }}
       </div>
       <div v-for="limit in visibleLimits" :key="limit.name" class="space-y-0.5">
@@ -50,9 +27,14 @@
           :label="limit.name"
           :utilization="limit.utilization"
           :resets-at="limit.resetAt"
+          :wide-label="limit.wideLabel"
           color="indigo"
         />
-        <div v-if="limit.hasAmount" class="pl-9 text-[9px] text-gray-400 dark:text-gray-500">
+        <div
+          v-if="limit.hasAmount && limit.showAmount"
+          class="min-w-0 break-words pl-9 text-[9px] leading-tight text-gray-400 dark:text-gray-500"
+          :title="limitAmountTitle(limit)"
+        >
           {{ formatAmount(limit.remaining, normalizedUsage?.unit) }} /
           {{ formatAmount(limit.limit, normalizedUsage?.unit) }}
         </div>
@@ -68,15 +50,33 @@
         {{ t('admin.accounts.upstreamUsage.observedAt') }} {{ formatObservedAt(result?.observed_at || '') }}
       </div>
     </div>
+    <div v-if="queryEnabled && showQueryButton" class="mt-0.5 flex items-center gap-1.5">
+      <button
+        type="button"
+        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        :disabled="loading"
+        :title="t('admin.accounts.upstreamUsage.query')"
+        :aria-label="t('admin.accounts.upstreamUsage.query')"
+        @click="query(true)"
+      >
+        <Icon name="refresh" size="xs" :class="{ 'animate-spin': loading }" :stroke-width="2" />
+        {{ t('admin.accounts.usageWindow.activeQuery') }}
+      </button>
+    </div>
     <!-- 无查询结果时由外层账号用量单元格提供统一占位符。 -->
-    <div v-else class="h-3" aria-hidden="true"></div>
+    <div v-if="queryEnabled && !normalizedUsage && !error && !loading && showQueryButton" class="h-3" aria-hidden="true"></div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Account, UpstreamUsageQueryError, UpstreamUsageQueryResult } from '@/types'
+import type {
+  Account,
+  UpstreamUsageLimit,
+  UpstreamUsageQueryError,
+  UpstreamUsageQueryResult
+} from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import UsageProgressBar from './UsageProgressBar.vue'
 
@@ -85,11 +85,13 @@ const props = withDefaults(defineProps<{
   result?: UpstreamUsageQueryResult | null
   error?: UpstreamUsageQueryError | null
   loading?: boolean
+  showQueryButton?: boolean
   request?: ((account: Account, options?: { force?: boolean }) => void) | null
 }>(), {
   result: null,
   error: null,
   loading: false,
+  showQueryButton: true,
   request: null
 })
 
@@ -101,15 +103,39 @@ const queryEnabled = computed(() => {
   return config?.enabled !== false
 })
 
-const formatNumber = (value: number | undefined) => {
+const formatNumber = (value: number | null | undefined, compact = true) => {
+  if (value == null || !Number.isFinite(value)) return '-'
+  const absolute = Math.abs(value)
+  if (compact && absolute >= 1_000_000) {
+    const units = [
+      { divisor: 1_000_000_000, suffix: 'B' },
+      { divisor: 1_000_000, suffix: 'M' }
+    ]
+    const unit = units.find(item => absolute >= item.divisor)
+    if (unit) {
+      const compactValue = (value / unit.divisor).toFixed(3).replace(/\.?0+$/, '')
+      return `${compactValue}${unit.suffix}`
+    }
+  }
+  const maximumFractionDigits = absolute > 0 && absolute < 0.01 ? 4 : 2
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits, minimumFractionDigits: 0 }).format(value)
+}
+
+const formatExactNumber = (value: number | null | undefined) => {
   if (value == null || !Number.isFinite(value)) return '-'
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(value)
 }
 
-const formatAmount = (value: number | undefined, unit?: string) => {
+const formatAmount = (value: number | null | undefined, unit?: string) => {
   if (value == null) return '-'
   const suffix = unit ? ` ${unit}` : ''
   return `${formatNumber(value)}${suffix}`
+}
+
+const formatExactAmount = (value: number | null | undefined, unit?: string) => {
+  if (value == null) return '-'
+  const suffix = unit ? ` ${unit}` : ''
+  return `${formatExactNumber(value)}${suffix}`
 }
 
 const normalizedUsage = computed(() => {
@@ -125,6 +151,32 @@ const normalizedUsage = computed(() => {
     expires_at: result.expires_at
   }
 })
+
+const isNewAPI = computed(() =>
+  props.result?.adapter === 'new_api' || normalizedUsage.value?.provider === 'new_api'
+)
+
+const amountsEqual = (left?: number, right?: number) => {
+  if (left == null || right == null) return false
+  return Math.abs(left - right) <= Math.max(0.000001, Math.max(Math.abs(left), Math.abs(right)) * 0.000001)
+}
+
+// New API 同时返回余额和额度条目；两者是同一组数据时只保留一组金额，避免重复渲染。
+const isDuplicateLimit = (limit: UpstreamUsageLimit) => {
+  if (!isNewAPI.value || !normalizedUsage.value?.balance) return false
+  const balance = normalizedUsage.value.balance
+  return amountsEqual(limit.used, balance.used) &&
+    amountsEqual(limit.limit, balance.total) &&
+    amountsEqual(limit.remaining, balance.remaining)
+}
+
+const limitDisplayName = (name: string) => {
+  const normalizedName = name.toLowerCase()
+  if (isNewAPI.value && (normalizedName === 'hard_limit' || normalizedName === 'token_quota')) {
+    return t('admin.accounts.upstreamUsage.totalLimit')
+  }
+  return name
+}
 
 const balanceLabel = computed(() => {
   const usage = normalizedUsage.value
@@ -143,19 +195,35 @@ const balanceLabel = computed(() => {
   })
 })
 
+const balanceTitle = computed(() => {
+  const balance = normalizedUsage.value?.balance
+  if (!balance) return ''
+  const unit = normalizedUsage.value?.unit
+  if (balance.total != null || balance.used != null) {
+    return t('admin.accounts.upstreamUsage.balanceTooltip', {
+      remaining: formatExactAmount(balance.remaining, unit),
+      used: formatExactAmount(balance.used, unit),
+      total: formatExactAmount(balance.total, unit)
+    })
+  }
+  return t('admin.accounts.upstreamUsage.remainingTooltip', {
+    remaining: formatExactAmount(balance.remaining, unit)
+  })
+})
+
 const allLimits = computed(() => {
   const usage = normalizedUsage.value
-  const limits = [...(usage?.limits ?? [])]
-  if (usage?.subscription?.limits) limits.push(...usage.subscription.limits)
-  return limits
+  return [...(usage?.limits ?? []), ...(usage?.subscription?.limits ?? [])]
 })
 
 const visibleLimits = computed(() => allLimits.value.map(limit => ({
-  name: limit.name,
+  name: limitDisplayName(limit.name),
   used: limit.used,
   limit: limit.limit,
   remaining: limit.remaining,
   hasAmount: limit.used != null || limit.limit != null || limit.remaining != null,
+  showAmount: !isDuplicateLimit(limit),
+  wideLabel: limitDisplayName(limit.name).length > 4,
   utilization: limit.limit && limit.limit > 0 && limit.used != null
     ? Math.min(100, Math.max(0, limit.used / limit.limit * 100))
     : 0,
@@ -172,10 +240,21 @@ const subscriptionLabel = computed(() => {
 const subscriptionRemainingLabel = computed(() => {
   const subscription = normalizedUsage.value?.subscription
   if (!subscription || subscription.unlimited || subscription.remaining == null) return ''
+  // New API 的 Token quota 已在“总限额”条目中展示；不要再用泛化的“剩余”
+  // 文案重复渲染，避免它被误认为用户钱包余额。
+  if (isNewAPI.value) return ''
   return t('admin.accounts.upstreamUsage.subscriptionRemaining', {
     remaining: formatAmount(subscription.remaining, normalizedUsage.value?.unit)
   })
 })
+
+const limitAmountTitle = (limit: Pick<UpstreamUsageLimit, 'remaining' | 'limit'>) => {
+  const unit = normalizedUsage.value?.unit
+  return t('admin.accounts.upstreamUsage.limitTooltip', {
+    remaining: formatExactAmount(limit.remaining, unit),
+    limit: formatExactAmount(limit.limit, unit)
+  })
+}
 
 const subscriptionExpiry = computed(() => {
   const expiresAt = normalizedUsage.value?.subscription?.expires_at || normalizedUsage.value?.expires_at

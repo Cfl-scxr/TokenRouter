@@ -114,10 +114,14 @@ describe('admin accounts API', () => {
     post.mockResolvedValueOnce({ data: single }).mockResolvedValueOnce({ data: batch })
 
     await expect(queryUpstreamUsage(42)).resolves.toEqual(single)
-    expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/42/upstream-usage/query')
+    expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/42/upstream-usage/query', undefined, {
+      timeout: 65_000
+    })
     await expect(queryBatchUpstreamUsage([42, 43])).resolves.toEqual(batch)
     expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-usage/query/batch', {
       account_ids: [42, 43]
+    }, {
+      timeout: 65_000
     })
   })
 })

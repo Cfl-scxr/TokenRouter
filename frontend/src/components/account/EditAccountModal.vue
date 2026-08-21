@@ -1780,9 +1780,13 @@
         :enabled="upstreamUsageEnabled"
         :adapter="upstreamUsageAdapter"
         :base-url="upstreamUsageBaseUrl"
+        :wallet-access-token="upstreamUsageWalletAccessToken"
+        :wallet-user-id="upstreamUsageWalletUserId"
         @update:enabled="upstreamUsageEnabled = $event"
         @update:adapter="upstreamUsageAdapter = $event"
         @update:base-url="upstreamUsageBaseUrl = $event"
+        @update:wallet-access-token="upstreamUsageWalletAccessToken = $event"
+        @update:wallet-user-id="upstreamUsageWalletUserId = $event"
       />
 
       <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
@@ -2857,6 +2861,8 @@ const editApiKey = ref('')
 const upstreamUsageEnabled = ref(true)
 const upstreamUsageAdapter = ref<UpstreamUsageAdapter>('sub2api')
 const upstreamUsageBaseUrl = ref('')
+const upstreamUsageWalletAccessToken = ref('')
+const upstreamUsageWalletUserId = ref('')
 type GeminiProviderType = 'official' | 'third_party'
 const geminiProviderType = ref<GeminiProviderType>('official')
 const geminiAIStudioTier = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
@@ -3544,12 +3550,17 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   upstreamUsageEnabled.value = true
   upstreamUsageAdapter.value = 'sub2api'
   upstreamUsageBaseUrl.value = ''
+  upstreamUsageWalletAccessToken.value = ''
+  upstreamUsageWalletUserId.value = ''
   if (newAccount.type === 'apikey') {
     const rawUsageConfig = extra?.upstream_usage_query as Record<string, unknown> | undefined
     if (rawUsageConfig && typeof rawUsageConfig === 'object') {
       upstreamUsageEnabled.value = rawUsageConfig.enabled !== false
       if (rawUsageConfig.adapter === 'new_api') upstreamUsageAdapter.value = 'new_api'
       if (typeof rawUsageConfig.base_url === 'string') upstreamUsageBaseUrl.value = rawUsageConfig.base_url
+    }
+    if (typeof credentials?.new_api_user_id === 'string' || typeof credentials?.new_api_user_id === 'number') {
+      upstreamUsageWalletUserId.value = String(credentials.new_api_user_id)
     }
   }
   mixedScheduling.value = extra?.mixed_scheduling === true
@@ -4534,6 +4545,16 @@ const handleSubmit = async () => {
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
+      }
+
+      // New API 用户访问令牌属于敏感凭据；留空表示沿用后端已保存的值。
+      if (upstreamUsageWalletAccessToken.value.trim()) {
+        newCredentials.new_api_user_access_token = upstreamUsageWalletAccessToken.value.trim()
+      }
+      if (upstreamUsageWalletUserId.value.trim()) {
+        newCredentials.new_api_user_id = upstreamUsageWalletUserId.value.trim()
+      } else {
+        delete newCredentials.new_api_user_id
       }
 
       if (props.account.platform === 'gemini') {

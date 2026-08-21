@@ -67,7 +67,10 @@ func TestAccountFromServiceShallow_RedactsOllamaCloudManagedExtra(t *testing.T) 
 	}
 	src := &service.Account{
 		ID: 9, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
-		Credentials: map[string]any{"base_url": "https://ollama.com", "api_key": "secret-key"},
+		Credentials: map[string]any{
+			"base_url": "https://ollama.com", "api_key": "secret-key",
+			service.NewAPIUserAccessTokenCredentialKey: "wallet-token-secret",
+		},
 		Extra: map[string]any{
 			service.OllamaCloudUsageSessionExtraKey:     "ciphertext-secret",
 			service.OllamaCloudUsageAutoRefreshExtraKey: true,
@@ -90,6 +93,7 @@ func TestAccountFromServiceShallow_RedactsOllamaCloudManagedExtra(t *testing.T) 
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "ciphertext-secret")
 	require.NotContains(t, string(raw), "secret-key")
+	require.NotContains(t, string(raw), "wallet-token-secret")
 	require.Contains(t, src.Extra, service.OllamaCloudUsageSessionExtraKey)
 }
 
@@ -111,7 +115,9 @@ func TestAccountFromServiceShallow_RedactsLegacyUpstreamUsageSecrets(t *testing.
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "legacy-secret")
 	// 映射层不得修改数据库对象中的历史值。
-	require.Contains(t, src.Extra[service.UpstreamUsageQueryExtraKey].(map[string]any), "api_key")
+	legacyConfig, ok := src.Extra[service.UpstreamUsageQueryExtraKey].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, legacyConfig, "api_key")
 }
 
 func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {

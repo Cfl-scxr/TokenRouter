@@ -590,16 +590,25 @@ export async function getBatchUsage(accountIds: number[], force?: boolean): Prom
 }
 
 /** 查询 API Key 账号的实时上游用量。 */
+// 后端允许上游实例最多处理 60 秒，浏览器端额外留出响应传输和拦截器处理时间。
+const UPSTREAM_USAGE_QUERY_TIMEOUT_MS = 65_000
+
 export async function queryUpstreamUsage(id: number): Promise<UpstreamUsageQueryResult> {
-  const { data } = await apiClient.post<UpstreamUsageQueryResult>(`/admin/accounts/${id}/upstream-usage/query`)
+  const { data } = await apiClient.post<UpstreamUsageQueryResult>(
+    `/admin/accounts/${id}/upstream-usage/query`,
+    undefined,
+    { timeout: UPSTREAM_USAGE_QUERY_TIMEOUT_MS }
+  )
   return data
 }
 
 /** 批量查询 API Key 账号的实时上游用量。 */
 export async function queryBatchUpstreamUsage(accountIds: number[]): Promise<BatchUpstreamUsageResponse> {
-  const { data } = await apiClient.post<BatchUpstreamUsageResponse>('/admin/accounts/upstream-usage/query/batch', {
-    account_ids: accountIds
-  })
+  const { data } = await apiClient.post<BatchUpstreamUsageResponse>(
+    '/admin/accounts/upstream-usage/query/batch',
+    { account_ids: accountIds },
+    { timeout: UPSTREAM_USAGE_QUERY_TIMEOUT_MS }
+  )
   return data
 }
 

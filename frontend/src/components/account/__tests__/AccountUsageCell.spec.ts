@@ -142,7 +142,7 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).not.toHaveBeenCalled()
     expect(requestBatchedUsage).not.toHaveBeenCalled()
-    expect(wrapper.text().trim()).toBe('-')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.activeQuery')
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
@@ -936,41 +936,90 @@ describe('AccountUsageCell', () => {
   expect(wrapper.text()).toContain('7d|100|106540000')
   })
 
-  it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3001,
-		      platform: 'anthropic',
-		      type: 'apikey'
-		    }),
-		    todayStats: {
-		      requests: 1_000_000,
-		      tokens: 1_000_000_000,
-		      cost: 12.345,
-		      standard_cost: 12.345,
-		      user_cost: 6.789
-		    }
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+	  it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
+	    const wrapper = mount(AccountUsageCell, {
+	      props: {
+	        account: makeAccount({
+	          id: 3001,
+	          platform: 'anthropic',
+	          type: 'apikey'
+	        }),
+	        todayStats: {
+	          requests: 1_000_000,
+	          tokens: 1_000_000_000,
+	          cost: 12.345,
+	          standard_cost: 12.345,
+	          user_cost: 6.789
+	        }
+	      },
+	      global: {
+	        stubs: {
+	          UsageProgressBar: true,
+	          AccountQuotaInfo: true
+	        }
+	      }
+	    })
 
-		await flushPromises()
+	    await flushPromises()
 
-		expect(wrapper.text()).toContain('1.0M req')
-		expect(wrapper.text()).toContain('1.0B')
-		expect(wrapper.text()).toContain('A $12.35')
-		expect(wrapper.text()).toContain('U $6.79')
+	    expect(wrapper.text()).toContain('1.0M req')
+	    expect(wrapper.text()).toContain('1.0B')
+	    expect(wrapper.text()).toContain('A $12.35')
+	    expect(wrapper.text()).toContain('U $6.79')
 
-		const badges = wrapper.findAll('span[title]')
-		expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
-		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
-  })
+	    const badges = wrapper.findAll('span[title]')
+	    expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
+	    expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
+
+	    const statsBadge = wrapper.findAll('span').find(node => node.text().includes('req'))
+	    const queryButton = wrapper.find('button')
+	    expect(statsBadge).toBeDefined()
+	    expect(queryButton.exists()).toBe(true)
+	    expect(
+	      statsBadge!.element.compareDocumentPosition(queryButton.element) & Node.DOCUMENT_POSITION_FOLLOWING
+	    ).toBeTruthy()
+	  })
+
+	  it('Key 账号上游查询失败时，重试按钮仍位于本地统计之后', async () => {
+	    const wrapper = mount(AccountUsageCell, {
+	      props: {
+	        account: makeAccount({
+	          id: 3004,
+	          platform: 'anthropic',
+	          type: 'apikey'
+	        }),
+	        todayStats: {
+	          requests: 2,
+	          tokens: 200,
+	          cost: 0.01,
+	          standard_cost: 0.01,
+	          user_cost: 0.01
+	        },
+	        upstreamUsageError: {
+	          code: 'UPSTREAM_USAGE_TIMEOUT',
+	          message: 'timeout'
+	        }
+	      },
+	      global: {
+	        stubs: {
+	          UsageProgressBar: true,
+	          AccountQuotaInfo: true
+	        }
+	      }
+	    })
+
+	    await flushPromises()
+
+	    const cell = wrapper.get('[data-testid="account-upstream-usage"]').element.closest('div')
+	    const descendants = Array.from(wrapper.element.querySelectorAll('*'))
+	    const statsBadge = wrapper.findAll('span').find(node => node.text().includes('req'))
+	    const queryButton = wrapper.find('button')
+	    expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.errors.UPSTREAM_USAGE_TIMEOUT')
+	    expect(statsBadge).toBeDefined()
+	    expect(queryButton.exists()).toBe(true)
+	    expect(cell).not.toBeNull()
+	    expect(descendants.indexOf(queryButton.element)).toBeGreaterThan(descendants.indexOf(statsBadge!.element))
+	  })
 
   it('Grok OAuth compact UI drops local chips and header quota bars', async () => {
     getUsage.mockResolvedValue({
@@ -1332,54 +1381,55 @@ describe('AccountUsageCell', () => {
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3002,
-		      platform: 'anthropic',
-		      type: 'apikey'
-		    }),
-		    todayStats: null,
-		    todayStatsLoading: true
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3002,
+          platform: 'anthropic',
+          type: 'apikey'
+        }),
+        todayStats: null,
+        todayStatsLoading: true
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+	    })
 
-		await flushPromises()
+	    await flushPromises()
 
-		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
+	    expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
   })
 
-  it('Key 账号在无 today stats 且无配额时显示兜底短横线', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3003,
-		      platform: 'anthropic',
-		      type: 'apikey',
-		      quota_limit: 0,
-		      quota_daily_limit: 0,
-		      quota_weekly_limit: 0
-		    }),
-		    todayStats: null,
-		    todayStatsLoading: false
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
+  it('Key 账号在无 today stats 且无配额时只显示上游查询按钮', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 3003,
+          platform: 'anthropic',
+          type: 'apikey',
+          quota_limit: 0,
+          quota_daily_limit: 0,
+          quota_weekly_limit: 0
+        }),
+        todayStats: null,
+        todayStatsLoading: false
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+	    })
 
-		await flushPromises()
+	    await flushPromises()
 
-		expect(wrapper.text().trim()).toBe('-')
+	    expect(wrapper.text()).toContain('admin.accounts.usageWindow.activeQuery')
+	    expect(wrapper.findAll('div').filter(node => node.text().trim() === '-')).toHaveLength(0)
   })
 
   it('Vertex 账号会在 Gemini 用量窗口里展示 today stats 徽章', async () => {

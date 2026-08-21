@@ -489,6 +489,7 @@
         :result="upstreamUsage"
         :error="upstreamUsageError"
         :loading="upstreamUsageLoading"
+        :show-query-button="false"
         :request="requestUpstreamUsage"
       />
       <!-- Auth Type + Tier Badge (first line) -->
@@ -541,9 +542,6 @@
           class="mb-0.5 flex items-center"
         >
           <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
-            <span v-if="account.type === 'apikey'" class="font-medium text-gray-400 dark:text-gray-500">
-              {{ t('admin.accounts.upstreamUsage.localSource') }}
-            </span>
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
               {{ formatKeyRequests }} req
             </span>
@@ -620,13 +618,11 @@
         :result="upstreamUsage"
         :error="upstreamUsageError"
         :loading="upstreamUsageLoading"
+        :show-query-button="false"
         :request="requestUpstreamUsage"
       />
       <div v-if="showGeminiTodayStats && todayStats" class="mb-0.5 flex items-center">
         <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
-          <span class="font-medium text-gray-400 dark:text-gray-500">
-            {{ t('admin.accounts.upstreamUsage.localSource') }}
-          </span>
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">{{ formatKeyRequests }} req</span>
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">{{ formatKeyTokens }}</span>
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">A {{ formatKeyCost }}</span>
@@ -643,7 +639,7 @@
         <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
       <div
-        v-else-if="account.type !== 'apikey' || (!upstreamUsage && !upstreamUsageError && !upstreamUsageLoading && !upstreamUsageDisabled)"
+        v-else-if="account.type !== 'apikey'"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -660,6 +656,7 @@
         :result="upstreamUsage"
         :error="upstreamUsageError"
         :loading="upstreamUsageLoading"
+        :show-query-button="false"
         :request="requestUpstreamUsage"
       />
       <AccountQuotaInfo
@@ -676,9 +673,6 @@
         class="mb-0.5 flex items-center"
       >
         <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
-          <span v-if="account.type === 'apikey'" class="font-medium text-gray-400 dark:text-gray-500">
-            {{ t('admin.accounts.upstreamUsage.localSource') }}
-          </span>
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
             {{ formatKeyRequests }} req
           </span>
@@ -732,10 +726,17 @@
       <!-- No data at all -->
       <div
         v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible &&
-          (account.type !== 'apikey' || (!upstreamUsage && !upstreamUsageError && !upstreamUsageLoading && !upstreamUsageDisabled))"
+          account.type !== 'apikey'"
         class="text-xs text-gray-400"
       >-</div>
     </div>
+  </div>
+  <div v-if="account.type === 'apikey'" class="mt-0.5 flex items-center gap-1.5">
+    <AccountUpstreamUsageQueryButton
+      :account="account"
+      :loading="upstreamUsageLoading"
+      :request="requestUpstreamUsage"
+    />
   </div>
 </template>
 
@@ -762,6 +763,7 @@ import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 import AccountUpstreamUsageCell from './AccountUpstreamUsageCell.vue'
+import AccountUpstreamUsageQueryButton from './AccountUpstreamUsageQueryButton.vue'
 
 // 模块级缓存供所有 AccountUsageCell 实例共享
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()

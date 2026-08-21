@@ -113,6 +113,77 @@ describe('AccountUpstreamUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.unlimited:Unlimited')
   })
 
+  it('使用 OAuth 同款查询按钮，并把 New API 钱包与 Token 限额分开展示', () => {
+    const wrapper = mountCell({
+      result: {
+        account_id: 17,
+        adapter: 'new_api',
+        observed_at: '2026-08-21T07:57:22Z',
+        provider: 'new_api',
+        mode: 'balance',
+        unit: 'USD',
+        balance: { remaining: 1264.28 },
+        limits: [
+          { name: 'token_quota', used: 3954.5655, limit: 100000000, remaining: 99996045.4345 }
+        ],
+        subscription: {
+          plan_name: 'New API',
+          unlimited: false,
+          remaining: 99996045.4345
+        }
+      }
+    })
+
+    const button = wrapper.find('button')
+    expect(button.text()).toContain('admin.accounts.usageWindow.activeQuery')
+    expect(button.classes()).toContain('font-medium')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamUsage.source')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamUsage.localSource')
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(1)
+    expect(wrapper.text()).toContain('1,264.28 USD')
+    expect(wrapper.text()).toContain('100M USD')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamUsage.subscriptionRemaining')
+    expect(wrapper.text()).not.toContain('1,264.28 USD / 100M USD')
+  })
+
+  it('New API 小额余额保留美元精度，不压缩成百万单位', () => {
+    const wrapper = mountCell({
+      result: {
+        account_id: 17,
+        adapter: 'new_api',
+        observed_at: '2026-08-21T07:57:22Z',
+        provider: 'new_api',
+        mode: 'quota',
+        unit: 'USD',
+        balance: { used: 171.76, total: 1436.04, remaining: 1264.28 },
+        limits: [{ name: 'token_quota', used: 171.76, limit: 1436.04, remaining: 1264.28 }],
+        subscription: { plan_name: 'Default Token', unlimited: false, remaining: 1264.28 }
+      }
+    })
+
+    expect(wrapper.text().replaceAll(',', '')).toContain('1264.28 USD')
+    expect(wrapper.text()).not.toContain('0.001M USD')
+  })
+
+  it('New API 无限量 Token 仍显示真实钱包余额，不显示 quota 哨兵值', () => {
+    const wrapper = mountCell({
+      result: {
+        account_id: 17,
+        adapter: 'new_api',
+        observed_at: '2026-08-21T07:57:22Z',
+        provider: 'new_api',
+        mode: 'balance',
+        unit: 'USD',
+        balance: { remaining: 1264.28 },
+        subscription: { plan_name: 'tf', unlimited: true }
+      }
+    })
+
+    expect(wrapper.text().replaceAll(',', '')).toContain('1264.28 USD')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.unlimited:tf')
+    expect(wrapper.text()).not.toContain('100000000')
+  })
+
   it('显式关闭时禁用查询按钮', () => {
     const wrapper = mountCell({ account: account({ upstream_usage_query: { enabled: false } }) })
     expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.disabled')

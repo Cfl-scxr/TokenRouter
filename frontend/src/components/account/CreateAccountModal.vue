@@ -2104,9 +2104,13 @@
         :enabled="upstreamUsageEnabled"
         :adapter="upstreamUsageAdapter"
         :base-url="upstreamUsageBaseUrl"
+        :wallet-access-token="upstreamUsageWalletAccessToken"
+        :wallet-user-id="upstreamUsageWalletUserId"
         @update:enabled="upstreamUsageEnabled = $event"
         @update:adapter="upstreamUsageAdapter = $event"
         @update:base-url="upstreamUsageBaseUrl = $event"
+        @update:wallet-access-token="upstreamUsageWalletAccessToken = $event"
+        @update:wallet-user-id="upstreamUsageWalletUserId = $event"
       />
 
       <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
@@ -4223,6 +4227,8 @@ const apiKeyValue = ref('')
 const upstreamUsageEnabled = ref(true)
 const upstreamUsageAdapter = ref<UpstreamUsageAdapter>('sub2api')
 const upstreamUsageBaseUrl = ref('')
+const upstreamUsageWalletAccessToken = ref('')
+const upstreamUsageWalletUserId = ref('')
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
   return {
@@ -5520,6 +5526,8 @@ const resetForm = () => {
   upstreamUsageEnabled.value = true
   upstreamUsageAdapter.value = 'sub2api'
   upstreamUsageBaseUrl.value = ''
+  upstreamUsageWalletAccessToken.value = ''
+  upstreamUsageWalletUserId.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -6106,6 +6114,15 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: enteredBaseUrl || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  // New API 钱包是用户级余额；访问令牌只写入 Credentials，不进入 Extra。
+  if (upstreamUsageAdapter.value === 'new_api') {
+    if (upstreamUsageWalletAccessToken.value.trim()) {
+      credentials.new_api_user_access_token = upstreamUsageWalletAccessToken.value.trim()
+    }
+    if (upstreamUsageWalletUserId.value.trim()) {
+      credentials.new_api_user_id = upstreamUsageWalletUserId.value.trim()
+    }
   }
   if (form.platform === 'gemini') {
     credentials.provider_type = geminiProviderType.value

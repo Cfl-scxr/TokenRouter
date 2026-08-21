@@ -41,6 +41,32 @@
         />
         <p class="input-hint">{{ t('admin.accounts.upstreamUsage.baseUrlHint') }}</p>
       </div>
+      <template v-if="adapterModel === 'new_api'">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.upstreamUsage.walletAccessToken') }}</label>
+          <input
+            v-model="walletAccessTokenModel"
+            type="password"
+            class="input font-mono"
+            autocomplete="new-password"
+            :placeholder="t('admin.accounts.upstreamUsage.walletAccessTokenPlaceholder')"
+            data-testid="upstream-usage-wallet-access-token"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamUsage.walletAccessTokenHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.upstreamUsage.walletUserId') }}</label>
+          <input
+            v-model="walletUserIdModel"
+            type="text"
+            inputmode="numeric"
+            class="input"
+            :placeholder="t('admin.accounts.upstreamUsage.walletUserIdPlaceholder')"
+            data-testid="upstream-usage-wallet-user-id"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamUsage.walletUserIdHint') }}</p>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -55,16 +81,22 @@ const props = withDefaults(defineProps<{
   enabled: boolean
   adapter: UpstreamUsageAdapter
   baseUrl: string
+  walletAccessToken?: string
+  walletUserId?: string
 }>(), {
   enabled: true,
   adapter: 'sub2api',
-  baseUrl: ''
+  baseUrl: '',
+  walletAccessToken: '',
+  walletUserId: ''
 })
 
 const emit = defineEmits<{
   'update:enabled': [value: boolean]
   'update:adapter': [value: UpstreamUsageAdapter]
   'update:baseUrl': [value: string]
+  'update:walletAccessToken': [value: string]
+  'update:walletUserId': [value: string]
 }>()
 
 const { t } = useI18n()
@@ -90,5 +122,15 @@ const adapterModel = computed({
 const baseUrlModel = computed({
   get: () => props.baseUrl,
   set: (value: string) => emit('update:baseUrl', value)
+})
+
+const walletAccessTokenModel = computed({
+  get: () => props.walletAccessToken,
+  set: (value: string) => emit('update:walletAccessToken', value)
+})
+
+const walletUserIdModel = computed({
+  get: () => props.walletUserId,
+  set: (value: string) => emit('update:walletUserId', value)
 })
 </script>

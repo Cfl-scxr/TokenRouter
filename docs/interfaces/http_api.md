@@ -133,7 +133,7 @@ gemini_generate_content
 - `POST /api/v1/admin/accounts/:id/upstream-usage/query`
 - `POST /api/v1/admin/accounts/upstream-usage/query/batch`，请求体 `account_ids` 最多 100 个正整数。
 
-接口只接受 `type=apikey`（Bedrock 除外），使用管理员认证和既有审计中间件。成功结果在顶层包含 `adapter`、`provider`、UTC `observed_at` 以及余额/限额/订阅字段；批量接口将每个账号的成功结果和结构化错误分开返回。错误 reason 使用 `UPSTREAM_USAGE_*` 命名空间，覆盖账号无效/禁用、协议不支持、认证失败、限流、超时、响应格式、网络和身份变更。
+接口只接受 `type=apikey`（Bedrock 除外），使用管理员认证和既有审计中间件。成功结果在顶层包含 `adapter`、`provider`、UTC `observed_at` 以及余额/限额/订阅字段；批量接口将每个账号的成功结果和结构化错误分开返回。错误 reason 使用 `UPSTREAM_USAGE_*` 命名空间，覆盖账号无效/禁用、协议不支持、认证失败、钱包不可用/钱包认证失败、限流、超时、响应格式、网络和身份变更。
 
 查询不会写账号、Extra、调度快照或计费记录，也不会把 API Key 放入响应或审计 body。前端只在行内按钮或批量操作触发请求，成功结果在管理员隔离的 `sessionStorage` 中缓存五分钟。
 

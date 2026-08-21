@@ -241,6 +241,18 @@ func TestUpstreamUsageEndpointUsesExistingVersionedBaseURLRules(t *testing.T) {
 		require.NoError(t, err, base)
 		require.Equal(t, want, got, base)
 	}
+	tokenEndpoint, err := upstreamUsageRootEndpoint("https://gateway.example/v1", "/api/usage/token")
+	require.NoError(t, err)
+	require.Equal(t, "https://gateway.example/api/usage/token", tokenEndpoint)
+	tokenEndpoint, err = upstreamUsageTokenEndpoint("https://gateway.example/v1")
+	require.NoError(t, err)
+	require.Equal(t, "https://gateway.example/api/usage/token/", tokenEndpoint)
+	walletEndpoint, err := upstreamUsageWalletEndpoint("https://gateway.example/v1")
+	require.NoError(t, err)
+	require.Equal(t, "https://gateway.example/user/balance", walletEndpoint)
+	selfEndpoint, err := upstreamUsageUserSelfEndpoint("https://gateway.example/v1")
+	require.NoError(t, err)
+	require.Equal(t, "https://gateway.example/api/user/self", selfEndpoint)
 }
 
 func TestUpstreamUsageAccountBaseURLUsesPlatformNormalization(t *testing.T) {
@@ -252,16 +264,38 @@ func TestUpstreamUsageAccountBaseURLUsesPlatformNormalization(t *testing.T) {
 	require.Equal(t, "https://gateway.example/antigravity", upstreamUsageAccountBaseURL(account))
 }
 
-func TestParseNewAPIUsageConvertsCents(t *testing.T) {
-	subscription, err := parseNewAPISubscription([]byte(`{"object":"billing_subscription","has_payment_method":true,"soft_limit_usd":10,"hard_limit_usd":20,"system_hard_limit_usd":20,"access_until":1893456000}`))
+func TestParseNewAPITokenUsageConvertsQuotaUnits(t *testing.T) {
+	response, err := parseNewAPITokenUsage([]byte(`{"code":true,"message":"ok","data":{"object":"token_usage","name":"Default Token","total_granted":632500000,"total_used":360000,"total_available":632140000,"unlimited_quota":false,"expires_at":1893456000}}`))
 	require.NoError(t, err)
-	usage, err := parseNewAPIUsage([]byte(`{"object":"list","total_usage":1250}`))
+	settings := newAPIUsageDisplaySettings{Unit: "USD", QuotaPerUnit: 500000}
+	usage, err := normalizeNewAPITokenUsage(response, settings)
 	require.NoError(t, err)
-	require.Equal(t, float64(20), *subscription.HardLimitUSD)
-	require.Equal(t, float64(1250), *usage.TotalUsage)
+	require.Nil(t, usage.Balance, "token quota must not be exposed as wallet balance")
+	require.Len(t, usage.Limits, 1)
+	require.Equal(t, 1264.28, *usage.Limits[0].Remaining)
+	require.Equal(t, "Default Token", usage.Subscription.PlanName)
+	require.Equal(t, time.Unix(1893456000, 0).UTC(), *usage.ExpiresAt)
+
+	// 无限量 token 的 quota 字段可能因上游整数溢出而出现负数；这些字段
+	// 不参与归一化，不能因此拒绝整个查询结果。
+	unlimitedResponse, err := parseNewAPITokenUsage([]byte(`{"code":true,"data":{"object":"token_usage","name":"Unlimited","total_granted":-16015,"total_used":1995297521,"total_available":-1995313536,"unlimited_quota":true,"expires_at":0}}`))
+	require.NoError(t, err)
+	unlimited, err := normalizeNewAPITokenUsage(unlimitedResponse, settings)
+	require.NoError(t, err)
+	require.True(t, unlimited.Subscription.Unlimited)
+	require.Nil(t, unlimited.Balance)
+	require.NotContains(t, string(mustJSONMarshal(t, unlimited)), "-1995313536")
+
+	_, err = parseNewAPITokenUsage([]byte(`{"success":false,"message":"token not found"}`))
+	require.ErrorIs(t, err, ErrUpstreamUsageAuthFailed)
+
+	inconsistentResponse, err := parseNewAPITokenUsage([]byte(`{"code":true,"data":{"object":"token_usage","total_granted":10,"total_used":2,"total_available":2,"unlimited_quota":false,"expires_at":0}}`))
+	require.NoError(t, err)
+	_, err = normalizeNewAPITokenUsage(inconsistentResponse, settings)
+	require.ErrorIs(t, err, ErrUpstreamUsageInvalidResponse)
 }
 
-func TestNewAPIUsageQueryPreservesOverageAndSubscriptionMetadata(t *testing.T) {
+func TestNewAPIUsageQueryUsesTokenQuotaEndpoint(t *testing.T) {
 	account := &Account{
 		ID: 11, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
 		Credentials: map[string]any{
@@ -276,23 +310,26 @@ func TestNewAPIUsageQueryPreservesOverageAndSubscriptionMetadata(t *testing.T) {
 		body   string
 		err    error
 	}{
-		{status: http.StatusOK, body: `{"object":"billing_subscription","has_payment_method":true,"soft_limit_usd":1,"hard_limit_usd":10,"system_hard_limit_usd":10,"access_until":1893456000}`},
-		{status: http.StatusOK, body: `{"object":"list","total_usage":1250}`},
-		{status: http.StatusNotFound, body: `{}`},
+		{status: http.StatusOK, body: `{"success":true,"data":{"quota_display_type":"USD","quota_per_unit":500000}}`},
+		{status: http.StatusOK, body: `{"code":true,"message":"ok","data":{"object":"token_usage","name":"Default Token","total_granted":632500000,"total_used":360000,"total_available":632140000,"unlimited_quota":false,"expires_at":1893456000}}`},
+		{status: http.StatusOK, body: `{"balance_infos":[{"currency":"USD","total_balance":"1264.28"}]}`},
 	}}
 	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
 	result, err := service.QueryAccount(context.Background(), account.ID)
 	require.NoError(t, err)
-	require.Equal(t, -2.5, *result.Usage.Balance.Remaining)
-	require.Equal(t, "New API", result.Usage.Subscription.PlanName)
-	require.Equal(t, -2.5, *result.Usage.Subscription.Remaining)
+	require.Equal(t, 1264.28, *result.Usage.Balance.Remaining)
+	require.Equal(t, 1264.28, *result.Usage.Limits[0].Remaining)
+	require.Equal(t, "Default Token", result.Usage.Subscription.PlanName)
+	require.Equal(t, 1264.28, *result.Usage.Subscription.Remaining)
 	require.NotContains(t, string(mustJSONMarshal(t, result)), "sk-new-api")
 
 	upstream.mu.Lock()
 	require.Len(t, upstream.requests, 3)
-	require.Equal(t, "Bearer sk-new-api", upstream.requests[0].Header.Get("Authorization"))
+	require.Empty(t, upstream.requests[0].Header.Get("Authorization"))
 	require.Equal(t, "Bearer sk-new-api", upstream.requests[1].Header.Get("Authorization"))
-	require.Empty(t, upstream.requests[2].Header.Get("Authorization"))
+	require.Equal(t, "/api/status", upstream.requests[0].URL.Path)
+	require.Equal(t, "/api/usage/token/", upstream.requests[1].URL.Path)
+	require.Equal(t, "/user/balance", upstream.requests[2].URL.Path)
 	for _, request := range upstream.requests {
 		require.Equal(t, "usage-query", getHeaderRaw(request.Header, "x-custom"))
 		require.True(t, HTTPUpstreamRedirectsDisabled(request.Context()))
@@ -300,7 +337,7 @@ func TestNewAPIUsageQueryPreservesOverageAndSubscriptionMetadata(t *testing.T) {
 	upstream.mu.Unlock()
 }
 
-func TestNewAPIUsageEndpointMissingIsInvalidResponse(t *testing.T) {
+func TestNewAPIUsageEndpointMissingIsUnsupported(t *testing.T) {
 	account := &Account{
 		ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
 		Credentials: map[string]any{"api_key": "sk-new-api", "base_url": "https://new-api.example/v1"},
@@ -311,12 +348,152 @@ func TestNewAPIUsageEndpointMissingIsInvalidResponse(t *testing.T) {
 		body   string
 		err    error
 	}{
-		{status: http.StatusOK, body: `{"object":"billing_subscription","has_payment_method":true,"soft_limit_usd":1,"hard_limit_usd":10,"system_hard_limit_usd":10,"access_until":1893456000}`},
+		{status: http.StatusOK, body: `{"success":true,"data":{"quota_display_type":"USD","quota_per_unit":500000}}`},
 		{status: http.StatusNotFound, body: `{}`},
 	}}
 	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
 	_, err := service.QueryAccount(context.Background(), account.ID)
+	require.ErrorIs(t, err, ErrUpstreamUsageUnsupported)
+}
+
+func TestNewAPIUsageContinuesWhenStatusProbeFails(t *testing.T) {
+	account := &Account{
+		ID: 13, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "sk-new-api", "base_url": "https://new-api.example/v1"},
+		Extra:       map[string]any{UpstreamUsageQueryExtraKey: map[string]any{"adapter": UpstreamUsageAdapterNewAPI}},
+	}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{
+		{status: http.StatusServiceUnavailable, body: `{"success":false}`},
+		{status: http.StatusOK, body: `{"code":true,"data":{"object":"token_usage","name":"Token","total_granted":632500000,"total_used":360000,"total_available":632140000,"unlimited_quota":false,"expires_at":0}}`},
+		{status: http.StatusOK, body: `{"balance_infos":[{"currency":"USD","total_balance":"1264.28"}]}`},
+	}}
+	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+	result, err := service.QueryAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1264.28, *result.Usage.Balance.Remaining)
+
+	upstream.mu.Lock()
+	require.Len(t, upstream.requests, 3)
+	require.Empty(t, upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "Bearer sk-new-api", upstream.requests[1].Header.Get("Authorization"))
+	require.Equal(t, "Bearer sk-new-api", upstream.requests[2].Header.Get("Authorization"))
+	upstream.mu.Unlock()
+}
+
+func TestParseNewAPIWalletBalanceSupportsDisplayAndQuotaUnits(t *testing.T) {
+	display, err := parseNewAPIWalletBalance([]byte(`{"balance_infos":[{"currency":"USD","total_balance":"1264.28"}]}`), newAPIUsageDisplaySettings{Unit: "USD", QuotaPerUnit: 500000})
+	require.NoError(t, err)
+	require.Equal(t, 1264.28, *display.Balance.Remaining)
+	require.Equal(t, "USD", display.Unit)
+	display, err = parseNewAPIWalletBalance([]byte(`{"balance_infos":[{"total_balance":1264.28}]}`), newAPIUsageDisplaySettings{Unit: "USD", QuotaPerUnit: 500000})
+	require.NoError(t, err)
+	require.Equal(t, 1264.28, *display.Balance.Remaining)
+
+	quota, err := parseNewAPIUserSelfWallet([]byte(`{"success":true,"data":{"id":42,"quota":632140000,"used_quota":360000}}`), newAPIUsageDisplaySettings{Unit: "USD", QuotaPerUnit: 500000}, "42")
+	require.NoError(t, err)
+	require.Equal(t, 1264.28, *quota.Balance.Remaining)
+	require.Nil(t, quota.Balance.Used)
+	require.Nil(t, quota.Balance.Total)
+
+	_, err = parseNewAPIWalletBalance([]byte(`<html>frontend</html>`), newAPIUsageDisplaySettings{Unit: "USD", QuotaPerUnit: 500000})
 	require.ErrorIs(t, err, ErrUpstreamUsageInvalidResponse)
+}
+
+func TestNormalizeNewAPIQuotaUsesConfiguredCNYExchangeRate(t *testing.T) {
+	settings := newAPIUsageDisplaySettings{Unit: "CNY", QuotaPerUnit: 500000, USDExchangeRate: 7.3}
+	require.Equal(t, 7.3, normalizeNewAPIQuota(500000, settings))
+}
+
+func TestNewAPIUsageUsesConfiguredUserWalletToken(t *testing.T) {
+	account := &Account{
+		ID: 14, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-new-api", "base_url": "https://new-api.example/v1",
+			NewAPIUserAccessTokenCredentialKey: "pat-secret", NewAPIUserIDCredentialKey: "42",
+		},
+		Extra: map[string]any{UpstreamUsageQueryExtraKey: map[string]any{"adapter": UpstreamUsageAdapterNewAPI}},
+	}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{
+		{status: http.StatusOK, body: `{"success":true,"data":{"quota_display_type":"USD","quota_per_unit":500000}}`},
+		{status: http.StatusOK, body: `{"code":true,"data":{"object":"token_usage","name":"tf","total_granted":-1,"total_used":1,"total_available":-2,"unlimited_quota":true,"expires_at":0}}`},
+		{status: http.StatusOK, body: `{"success":true,"data":{"id":42,"quota":632140000,"used_quota":360000}}`},
+	}}
+	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+	result, err := service.QueryAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1264.28, *result.Usage.Balance.Remaining)
+	require.True(t, result.Usage.Subscription.Unlimited)
+
+	upstream.mu.Lock()
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "/api/user/self", upstream.requests[2].URL.Path)
+	require.Equal(t, "Bearer pat-secret", upstream.requests[2].Header.Get("Authorization"))
+	require.Equal(t, "42", upstream.requests[2].Header.Get("New-Api-User"))
+	forbidden := string(mustJSONMarshal(t, result))
+	require.NotContains(t, forbidden, "pat-secret")
+	upstream.mu.Unlock()
+}
+
+func TestNewAPIUsageUsesWalletTokenWithoutConfiguredUserID(t *testing.T) {
+	account := &Account{
+		ID: 16, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-new-api", "base_url": "https://new-api.example/v1",
+			NewAPIUserAccessTokenCredentialKey: "pat-secret",
+		},
+		Extra: map[string]any{UpstreamUsageQueryExtraKey: map[string]any{"adapter": UpstreamUsageAdapterNewAPI}},
+	}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{
+		{status: http.StatusOK, body: `{"success":true,"data":{"quota_display_type":"USD","quota_per_unit":500000}}`},
+		{status: http.StatusOK, body: `{"code":true,"data":{"object":"token_usage","name":"tf","total_granted":-27753,"total_used":2006775843,"total_available":-2006803596,"unlimited_quota":true,"expires_at":0}}`},
+		{status: http.StatusOK, body: `{"success":true,"data":{"id":2,"quota":608218554,"used_quota":2006781446}}`},
+	}}
+	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+	result, err := service.QueryAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.InDelta(t, 1216.437108, *result.Usage.Balance.Remaining, 0.000001)
+	require.Nil(t, result.Usage.Balance.Used)
+	require.Nil(t, result.Usage.Balance.Total)
+	require.True(t, result.Usage.Subscription.Unlimited)
+
+	upstream.mu.Lock()
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "/api/user/self", upstream.requests[2].URL.Path)
+	require.Equal(t, "Bearer pat-secret", upstream.requests[2].Header.Get("Authorization"))
+	require.Empty(t, upstream.requests[2].Header.Get("New-Api-User"))
+	upstream.mu.Unlock()
+}
+
+func TestNewAPIUsageRequiresWalletInsteadOfTokenQuota(t *testing.T) {
+	account := &Account{
+		ID: 15, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "sk-new-api", "base_url": "https://new-api.example/v1"},
+		Extra:       map[string]any{UpstreamUsageQueryExtraKey: map[string]any{"adapter": UpstreamUsageAdapterNewAPI}},
+	}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{
+		{status: http.StatusOK, body: `{"success":true,"data":{"quota_display_type":"USD","quota_per_unit":500000}}`},
+		{status: http.StatusOK, body: `{"code":true,"data":{"object":"token_usage","name":"tf","total_granted":-1,"total_used":1,"total_available":-2,"unlimited_quota":true,"expires_at":0}}`},
+		{status: http.StatusOK, body: `<html>frontend</html>`},
+	}}
+	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+	_, err := service.QueryAccount(context.Background(), account.ID)
+	require.ErrorIs(t, err, ErrUpstreamUsageWalletUnavailable)
 }
 
 func mustJSONMarshal(t *testing.T, value any) []byte {

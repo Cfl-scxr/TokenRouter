@@ -1236,7 +1236,8 @@ export interface Account {
   type: AccountType
   // 后端响应里 credentials 已脱敏：access_token / refresh_token / id_token /
   // api_key / session_key / cookie / aws_secret_access_key / aws_session_token /
-  // service_account_json / service_account / private_key 不会出现，
+  // service_account_json / service_account / private_key /
+  // new_api_user_access_token 不会出现，
   // 改为通过 credentials_status.has_<key> 暴露存在性。
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
@@ -1564,6 +1565,7 @@ export interface UpstreamUsageInfo {
   provider: string
   mode: 'balance' | 'quota' | 'limits' | 'subscription' | string
   unit?: string
+  /** New API 的 balance 表示用户钱包；Token quota 通过 limits/subscription 表示。 */
   balance?: UpstreamUsageAmount
   limits?: UpstreamUsageLimit[]
   subscription?: UpstreamUsageSubscription

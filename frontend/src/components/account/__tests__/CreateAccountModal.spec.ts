@@ -237,6 +237,27 @@ describe('CreateAccountModal OpenAI account options', () => {
     expect(payload?.extra).not.toHaveProperty('openai_responses_supported')
   })
 
+  it('stores the optional New API wallet token in credentials, never in Extra', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    await wrapper.get('[data-testid="upstream-usage-adapter"]').setValue('new_api')
+    await wrapper.get('[data-testid="upstream-usage-wallet-access-token"]').setValue('wallet-pat')
+    await wrapper.get('[data-testid="upstream-usage-wallet-user-id"]').setValue('42')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI wallet account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('relay-api-key')
+    // 上面的选择器命中 API Key 输入框；钱包 PAT 单独使用 data-testid 覆盖其值。
+    await wrapper.get('[data-testid="upstream-usage-wallet-access-token"]').setValue('wallet-pat')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.credentials?.new_api_user_access_token).toBe('wallet-pat')
+    expect(payload?.credentials?.new_api_user_id).toBe('42')
+    expect(payload?.extra?.upstream_usage_query?.new_api_user_access_token).toBeUndefined()
+  })
+
   it('renders workload, text routing, and probe status as separate configuration sections', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

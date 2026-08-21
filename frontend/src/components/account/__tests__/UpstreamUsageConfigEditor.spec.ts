@@ -30,6 +30,12 @@ describe('UpstreamUsageConfigEditor', () => {
     await wrapper.find('[data-testid="upstream-usage-adapter"]').trigger('click')
     expect(wrapper.emitted('update:adapter')?.[0]).toEqual(['new_api'])
 
+    await wrapper.setProps({ adapter: 'new_api' })
+    expect(wrapper.find('[data-testid="upstream-usage-wallet-access-token"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="upstream-usage-wallet-user-id"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="upstream-usage-wallet-user-id"]').setValue('42')
+    expect(wrapper.emitted('update:walletUserId')?.at(-1)).toEqual(['42'])
+
     await wrapper.setProps({ enabled: false })
     expect(wrapper.find('[data-testid="select"]').exists()).toBe(false)
   })

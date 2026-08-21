@@ -7,8 +7,8 @@ var SensitiveCredentialKeys = []string{
 	"access_token", "refresh_token", "id_token", "agent_private_key",
 	// Qoder COSY 凭据
 	"pat", "security_oauth_token", "machine_token",
-	// API Key 类
-	"api_key", "session_key", "cookie",
+	// API Key 类及 New API 用户钱包查询凭据
+	"api_key", "session_key", "cookie", "new_api_user_access_token",
 	// Grok Web SSO 与密码在兑换 Build OAuth 后不得持久化或回显。
 	"password", "sso_token", "sso", "sso-rw", "clearTextPassword",
 	// 云服务凭据
