@@ -117,6 +117,23 @@ describe('refreshAuthTokens', () => {
     })
   })
 
+  it('does not mistake boundary timer jitter for a completed peer refresh', async () => {
+    vi.useFakeTimers()
+    seedSession({ token_expires_at: String(Date.now() + 120_001) })
+    mockedPost.mockResolvedValueOnce(refreshedResponse())
+    const request = vi.fn(async (_name: string, callback: () => Promise<unknown>) => callback())
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request }
+    })
+    const { refreshAuthTokens } = await import('@/api/tokenRefresh')
+
+    await expect(refreshAuthTokens()).resolves.toMatchObject({ access_token: 'new-access' })
+
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(mockedPost).toHaveBeenCalledTimes(1)
+  })
+
   it('无 Web Lock 时为较慢的竞争胜方保留发布窗口', async () => {
     vi.useFakeTimers()
     seedSession()
