@@ -873,7 +873,9 @@ const isValidUpstreamUsageResult = (account: Account, data: unknown): data is Up
   if (!data || typeof data !== 'object') return false
   const result = data as UpstreamUsageQueryResult
   const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
-  const expectedAdapter = rawConfig?.adapter === 'new_api' ? 'new_api' : 'sub2api'
+  const expectedAdapter = rawConfig?.adapter === 'new_api' || rawConfig?.adapter === 'zivv'
+    ? rawConfig.adapter
+    : 'sub2api'
   if (result.account_id !== account.id ||
     rawConfig?.enabled === false ||
     result.adapter !== expectedAdapter ||

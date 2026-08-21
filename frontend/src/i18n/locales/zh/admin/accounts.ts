@@ -304,7 +304,8 @@ export default {
         walletUserIdHint: '如果上游要求 New-Api-User 请求头，请填写与访问令牌对应的用户 ID。',
         adapters: {
           sub2api: 'Sub2API / TokenRouter',
-          newApi: 'New API'
+          newApi: 'New API',
+          zivv: 'Zivv'
         },
         errors: {
           UPSTREAM_USAGE_UNAVAILABLE: '上游用量查询服务不可用',

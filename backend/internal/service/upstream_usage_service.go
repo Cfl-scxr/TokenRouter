@@ -31,6 +31,7 @@ const (
 
 	UpstreamUsageAdapterSub2API = "sub2api"
 	UpstreamUsageAdapterNewAPI  = "new_api"
+	UpstreamUsageAdapterZivv    = "zivv"
 
 	// New API 钱包接口在官方部署中需要用户级访问令牌；它与转发 API Key
 	// 分开保存，避免把一个 token 的额度误当成用户钱包余额。
@@ -133,7 +134,7 @@ type UpstreamUsageInfo struct {
 	Provider string `json:"provider"`
 	Mode     string `json:"mode"`
 	Unit     string `json:"unit,omitempty"`
-	// New API 的 balance 是用户钱包；当前 API Key quota 使用 Limits/Subscription。
+	// New API/Zivv 的 balance 是用户钱包；Key quota 使用 Limits/Subscription。
 	Balance      *UpstreamUsageAmount       `json:"balance,omitempty"`
 	Limits       []UpstreamUsageLimit       `json:"limits,omitempty"`
 	Subscription *UpstreamUsageSubscription `json:"subscription,omitempty"`
@@ -186,6 +187,7 @@ type upstreamUsageAdapterRegistration struct {
 var upstreamUsageAdapterRegistry = []upstreamUsageAdapterRegistration{
 	{Name: UpstreamUsageAdapterSub2API, Label: "Sub2API / TokenRouter", Factory: func() UpstreamUsageAdapter { return &sub2APIUsageAdapter{} }},
 	{Name: UpstreamUsageAdapterNewAPI, Label: "New API", Factory: func() UpstreamUsageAdapter { return &newAPIUsageAdapter{} }},
+	{Name: UpstreamUsageAdapterZivv, Label: "Zivv", Factory: func() UpstreamUsageAdapter { return &zivvUsageAdapter{} }},
 }
 
 // UpstreamUsageAdapterOptions 返回稳定排序的内置适配器列表。
@@ -1325,6 +1327,85 @@ func validateSub2APIWindowStart(raw json.RawMessage) error {
 		return ErrUpstreamUsageInvalidResponse
 	}
 	return nil
+}
+
+// --- Zivv 适配器 ---
+
+// zivvUsageAdapter 对接 Zivv 自研网关公开给 API Key 的余额接口。
+// Zivv 的 Anthropic Base URL 通常是站点根地址，因此显式请求带版本段的
+// /v1/user/balance；已有的 URL 构造器会避免账号 Base URL 已带 /v1 时重复拼接。
+type zivvUsageAdapter struct{}
+
+func (*zivvUsageAdapter) Name() string { return UpstreamUsageAdapterZivv }
+
+type zivvUsageResponse struct {
+	Balance     *float64 `json:"balance"`
+	Currency    string   `json:"currency"`
+	IsAvailable *bool    `json:"is_available"`
+	KeyLimit    *float64 `json:"key_limit"`
+	KeyUsed     *float64 `json:"key_used"`
+	PlanName    string   `json:"plan_name"`
+	TotalUsed   *float64 `json:"total_used"`
+}
+
+func (a *zivvUsageAdapter) Query(ctx context.Context, client *upstreamUsageHTTPClient) (*UpstreamUsageInfo, error) {
+	body, status, err := client.get(ctx, "/v1/user/balance", true)
+	if err != nil {
+		return nil, err
+	}
+	if httpErr := upstreamUsageHTTPError(status, true); httpErr != nil {
+		return nil, httpErr
+	}
+	return parseZivvUsage(body)
+}
+
+func parseZivvUsage(body []byte) (*UpstreamUsageInfo, error) {
+	var response zivvUsageResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, ErrUpstreamUsageInvalidResponse.WithCause(err)
+	}
+	if response.IsAvailable == nil {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	if !*response.IsAvailable {
+		return nil, ErrUpstreamUsageAuthFailed
+	}
+	if response.Balance == nil || response.TotalUsed == nil || response.KeyLimit == nil || response.KeyUsed == nil {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	if !validFiniteNumber(*response.Balance) || !validNonNegativeNumber(*response.TotalUsed) ||
+		!validNonNegativeNumber(*response.KeyLimit) || !validNonNegativeNumber(*response.KeyUsed) {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	unit := strings.ToUpper(strings.TrimSpace(response.Currency))
+	if unit != "USD" && unit != "CNY" && unit != "TOKENS" {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	planName := strings.TrimSpace(response.PlanName)
+	if planName == "" {
+		planName = "Zivv"
+	}
+	total := *response.Balance + *response.TotalUsed
+	if !validNonNegativeNumber(total) {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	usage := &UpstreamUsageInfo{
+		Provider: UpstreamUsageAdapterZivv,
+		Mode:     "balance",
+		Unit:     unit,
+		Balance:  &UpstreamUsageAmount{Used: response.TotalUsed, Total: &total, Remaining: response.Balance},
+	}
+	if *response.KeyLimit <= 0 {
+		// Zivv 以 0 表示不设置 Key 累计限额；不要把它传成数值哨兵。
+		usage.Subscription = &UpstreamUsageSubscription{PlanName: planName, Unlimited: true}
+		return usage, nil
+	}
+	keyRemaining := math.Max(0, *response.KeyLimit-*response.KeyUsed)
+	usage.Limits = []UpstreamUsageLimit{{
+		Name: "key_quota", Used: response.KeyUsed, Limit: response.KeyLimit, Remaining: &keyRemaining,
+	}}
+	usage.Subscription = &UpstreamUsageSubscription{PlanName: planName, Remaining: &keyRemaining}
+	return usage, nil
 }
 
 // --- New API 适配器 ---

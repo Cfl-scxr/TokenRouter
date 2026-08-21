@@ -3556,7 +3556,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const rawUsageConfig = extra?.upstream_usage_query as Record<string, unknown> | undefined
     if (rawUsageConfig && typeof rawUsageConfig === 'object') {
       upstreamUsageEnabled.value = rawUsageConfig.enabled !== false
-      if (rawUsageConfig.adapter === 'new_api') upstreamUsageAdapter.value = 'new_api'
+      if (rawUsageConfig.adapter === 'new_api' || rawUsageConfig.adapter === 'zivv') {
+        upstreamUsageAdapter.value = rawUsageConfig.adapter
+      }
       if (typeof rawUsageConfig.base_url === 'string') upstreamUsageBaseUrl.value = rawUsageConfig.base_url
     }
     if (typeof credentials?.new_api_user_id === 'string' || typeof credentials?.new_api_user_id === 'number') {

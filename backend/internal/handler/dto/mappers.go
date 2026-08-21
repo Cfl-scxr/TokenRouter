@@ -545,7 +545,7 @@ func redactUpstreamUsageQuery(value any) map[string]any {
 	}
 	if adapter, ok := object["adapter"].(string); ok {
 		// 只回显已注册协议名，历史记录中的任意字符串可能包含误写入的凭据。
-		if adapter == service.UpstreamUsageAdapterSub2API || adapter == service.UpstreamUsageAdapterNewAPI {
+		if adapter == service.UpstreamUsageAdapterSub2API || adapter == service.UpstreamUsageAdapterNewAPI || adapter == service.UpstreamUsageAdapterZivv {
 			result["adapter"] = adapter
 		}
 	}

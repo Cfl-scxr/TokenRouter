@@ -1531,7 +1531,7 @@ export interface AccountUsageInfo {
 }
 
 // API Key 账号的上游用量查询协议配置与归一化结果。
-export type UpstreamUsageAdapter = 'sub2api' | 'new_api'
+export type UpstreamUsageAdapter = 'sub2api' | 'new_api' | 'zivv'
 
 export interface UpstreamUsageQueryConfig {
   enabled: boolean
@@ -1565,7 +1565,7 @@ export interface UpstreamUsageInfo {
   provider: string
   mode: 'balance' | 'quota' | 'limits' | 'subscription' | string
   unit?: string
-  /** New API 的 balance 表示用户钱包；Token quota 通过 limits/subscription 表示。 */
+  /** New API/Zivv 的 balance 表示用户钱包；Key quota 通过 limits/subscription 表示。 */
   balance?: UpstreamUsageAmount
   limits?: UpstreamUsageLimit[]
   subscription?: UpstreamUsageSubscription

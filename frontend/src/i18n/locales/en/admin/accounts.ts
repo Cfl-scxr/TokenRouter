@@ -361,7 +361,8 @@ export default {
         walletUserIdHint: 'Fill this when the upstream requires the New-Api-User header for the access token.',
         adapters: {
           sub2api: 'Sub2API / TokenRouter',
-          newApi: 'New API'
+          newApi: 'New API',
+          zivv: 'Zivv'
         },
         errors: {
           UPSTREAM_USAGE_UNAVAILABLE: 'Upstream usage query service is unavailable',

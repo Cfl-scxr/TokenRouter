@@ -54,7 +54,7 @@ OpenAI API Key 的 Responses 探测只维护 `extra.openai_responses_probe_statu
 
 API Key 上游用量由独立的 `UpstreamUsageService` 提供，和 OAuth/Setup Token 的 `AccountUsageService` 语义分离。它只服务管理员展示，不参与调度、自动暂停、倍率、本地配额或结算；列表加载、滚动和自动刷新都不会产生上游流量。管理员手动查询时，服务按账号和规范化配置指纹合并并发请求，单次约 60 秒超时、512 KiB 响应体上限、禁止重定向，并复用代理、TLS 指纹、Header Override 和既有 `HTTPUpstream`。
 
-配置缺失默认启用 Sub2API；New API 必须显式选择对应适配器。Sub2API 的钱包负余额可以展示，`remaining=-1` 只在适配器内部转换为 `unlimited=true`。New API 用 `/api/usage/token/` 读取 Key 配额，再通过固定的钱包端点或受保护的用户访问令牌查询用户钱包；只有钱包结果进入 `balance`，Token 配额进入 `limits`/`subscription`。`unlimited_quota=true` 时忽略上游可能溢出的额度字段，状态接口失败时使用默认单位比例；官方实例未配置用户访问令牌且不提供 API Key 钱包端点时返回 `UPSTREAM_USAGE_WALLET_UNAVAILABLE`，不把 Token quota 当钱包余额。查询失败不修改账号状态或旧运行快照，也不自动回退到另一个协议。
+配置缺失默认启用 Sub2API；New API 和 Zivv 必须显式选择对应适配器。Sub2API 的钱包负余额可以展示，`remaining=-1` 只在适配器内部转换为 `unlimited=true`。New API 用 `/api/usage/token/` 读取 Key 配额，再通过固定的钱包端点或受保护的用户访问令牌查询用户钱包；只有钱包结果进入 `balance`，Token 配额进入 `limits`/`subscription`。Zivv 用 `/v1/user/balance` 同时读取钱包、累计用量、Key 限额和套餐，`key_limit=0` 显示为不限量。`unlimited_quota=true` 时忽略上游可能溢出的额度字段，状态接口失败时使用默认单位比例；官方实例未配置用户访问令牌且不提供 API Key 钱包端点时返回 `UPSTREAM_USAGE_WALLET_UNAVAILABLE`，不把 Token quota 当钱包余额。查询失败不修改账号状态或旧运行快照，也不自动回退到另一个协议。
 
 浏览器只缓存成功的归一化结果五分钟，缓存键隔离管理员身份、账号 `updated_at`、代理/Base URL 和配置；失败不缓存，账号凭据、代理或配置变化立即失效。审计仅记录管理员动作和脱敏元数据，不记录 API Key 或上游原始响应。该功能与已移除的 `upstream_billing_probe` 完全不同，不恢复旧的自动倍率探测。
 

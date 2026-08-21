@@ -184,6 +184,27 @@ describe('AccountUpstreamUsageCell', () => {
     expect(wrapper.text()).not.toContain('100000000')
   })
 
+  it('展示 Zivv 钱包余额、累计用量和 Key 限额', () => {
+    const wrapper = mountCell({
+      result: {
+        account_id: 17,
+        adapter: 'zivv',
+        observed_at: '2026-08-21T16:49:46Z',
+        provider: 'zivv',
+        mode: 'balance',
+        unit: 'USD',
+        balance: { used: 22460.664473, total: 23361.154657, remaining: 900.490184 },
+        limits: [{ name: 'key_quota', used: 206.4, limit: 1000, remaining: 793.6 }],
+        subscription: { plan_name: 'cc b', unlimited: false, remaining: 793.6 }
+      }
+    })
+
+    expect(wrapper.text().replaceAll(',', '')).toContain('900.49 USD')
+    expect(wrapper.text()).toContain('cc b')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.totalLimit')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamUsage.subscriptionRemaining')
+  })
+
   it('显式关闭时禁用查询按钮', () => {
     const wrapper = mountCell({ account: account({ upstream_usage_query: { enabled: false } }) })
     expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.disabled')

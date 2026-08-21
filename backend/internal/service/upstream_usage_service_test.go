@@ -140,6 +140,7 @@ func TestEffectiveUpstreamUsageConfigDefaultsAndNormalization(t *testing.T) {
 	require.Equal(t, []UpstreamUsageAdapterOption{
 		{Name: UpstreamUsageAdapterSub2API, Label: "Sub2API / TokenRouter"},
 		{Name: UpstreamUsageAdapterNewAPI, Label: "New API"},
+		{Name: UpstreamUsageAdapterZivv, Label: "Zivv"},
 	}, UpstreamUsageAdapterOptions())
 }
 
@@ -253,6 +254,64 @@ func TestUpstreamUsageEndpointUsesExistingVersionedBaseURLRules(t *testing.T) {
 	selfEndpoint, err := upstreamUsageUserSelfEndpoint("https://gateway.example/v1")
 	require.NoError(t, err)
 	require.Equal(t, "https://gateway.example/api/user/self", selfEndpoint)
+}
+
+func TestParseZivvUsageNormalizesWalletAndKeyQuota(t *testing.T) {
+	usage, err := parseZivvUsage([]byte(`{"balance":900.490184,"currency":"USD","is_available":true,"key_limit":1000,"key_used":206.4,"plan_name":"cc b","total_used":22460.664473}`))
+	require.NoError(t, err)
+	require.Equal(t, UpstreamUsageAdapterZivv, usage.Provider)
+	require.Equal(t, "balance", usage.Mode)
+	require.Equal(t, 900.490184, *usage.Balance.Remaining)
+	require.Equal(t, 22460.664473, *usage.Balance.Used)
+	require.InDelta(t, 23361.154657, *usage.Balance.Total, 0.000001)
+	require.Len(t, usage.Limits, 1)
+	require.Equal(t, "key_quota", usage.Limits[0].Name)
+	require.Equal(t, 793.6, *usage.Limits[0].Remaining)
+	require.Equal(t, "cc b", usage.Subscription.PlanName)
+	require.False(t, usage.Subscription.Unlimited)
+	require.Equal(t, 793.6, *usage.Subscription.Remaining)
+
+	unlimited, err := parseZivvUsage([]byte(`{"balance":1,"currency":"USD","is_available":true,"key_limit":0,"key_used":20646.4,"plan_name":"cc b","total_used":2}`))
+	require.NoError(t, err)
+	require.True(t, unlimited.Subscription.Unlimited)
+	require.Nil(t, unlimited.Subscription.Remaining)
+	require.NotContains(t, string(mustJSONMarshal(t, unlimited)), `"limit":0`)
+}
+
+func TestParseZivvUsageRejectsUnavailableOrMalformedResponses(t *testing.T) {
+	_, err := parseZivvUsage([]byte(`{"balance":1,"currency":"USD","is_available":false,"key_limit":0,"key_used":0,"total_used":0}`))
+	require.ErrorIs(t, err, ErrUpstreamUsageAuthFailed)
+	_, err = parseZivvUsage([]byte(`{"balance":1,"currency":"EUR","is_available":true,"key_limit":0,"key_used":0,"total_used":0}`))
+	require.ErrorIs(t, err, ErrUpstreamUsageInvalidResponse)
+	_, err = parseZivvUsage([]byte(`{"balance":1,"currency":"USD","is_available":true,"key_limit":100,"key_used":0}`))
+	require.ErrorIs(t, err, ErrUpstreamUsageInvalidResponse)
+}
+
+func TestZivvUsageQueryUsesVersionedBalanceEndpoint(t *testing.T) {
+	account := &Account{
+		ID: 17, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-zivv", "base_url": "https://zivv.example/"},
+		Extra:       map[string]any{UpstreamUsageQueryExtraKey: map[string]any{"adapter": UpstreamUsageAdapterZivv}},
+	}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{
+		{status: http.StatusOK, body: `{"balance":900.49,"currency":"USD","is_available":true,"key_limit":0,"key_used":20646.4,"plan_name":"cc b","total_used":22460.66}`},
+	}}
+	service := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+	result, err := service.QueryAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamUsageAdapterZivv, result.Adapter)
+	require.Equal(t, 900.49, *result.Balance.Remaining)
+
+	upstream.mu.Lock()
+	defer upstream.mu.Unlock()
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "/v1/user/balance", upstream.requests[0].URL.Path)
+	require.Equal(t, "Bearer sk-zivv", upstream.requests[0].Header.Get("Authorization"))
+	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.requests[0].Context()))
 }
 
 func TestUpstreamUsageAccountBaseURLUsesPlatformNormalization(t *testing.T) {

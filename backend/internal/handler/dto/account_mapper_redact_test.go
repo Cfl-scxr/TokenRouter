@@ -120,6 +120,19 @@ func TestAccountFromServiceShallow_RedactsLegacyUpstreamUsageSecrets(t *testing.
 	require.Contains(t, legacyConfig, "api_key")
 }
 
+func TestAccountFromServiceShallow_PreservesZivvAdapterSelection(t *testing.T) {
+	src := &service.Account{
+		ID: 11, Type: service.AccountTypeAPIKey,
+		Extra: map[string]any{service.UpstreamUsageQueryExtraKey: map[string]any{
+			"enabled": true, "adapter": service.UpstreamUsageAdapterZivv,
+		}},
+	}
+	got := AccountFromServiceShallow(src)
+	require.Equal(t, map[string]any{
+		"enabled": true, "adapter": service.UpstreamUsageAdapterZivv,
+	}, got.Extra[service.UpstreamUsageQueryExtraKey])
+}
+
 func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	src := &service.Account{ID: 1, Name: "n", Platform: "anthropic", Type: "oauth"}
 	got := AccountFromServiceShallow(src)

@@ -104,7 +104,8 @@ const { t } = useI18n()
 // 前端只展示后端已注册的固定适配器，不接受任意请求模板或脚本配置。
 const adapterOptions = computed<SelectOption[]>(() => [
   { value: 'sub2api', label: t('admin.accounts.upstreamUsage.adapters.sub2api') },
-  { value: 'new_api', label: t('admin.accounts.upstreamUsage.adapters.newApi') }
+  { value: 'new_api', label: t('admin.accounts.upstreamUsage.adapters.newApi') },
+  { value: 'zivv', label: t('admin.accounts.upstreamUsage.adapters.zivv') }
 ])
 
 const enabledModel = computed({
@@ -115,7 +116,7 @@ const enabledModel = computed({
 const adapterModel = computed({
   get: () => props.adapter,
   set: (value: string | number | boolean | null) => {
-    if (value === 'sub2api' || value === 'new_api') emit('update:adapter', value)
+    if (value === 'sub2api' || value === 'new_api' || value === 'zivv') emit('update:adapter', value)
   }
 })
 

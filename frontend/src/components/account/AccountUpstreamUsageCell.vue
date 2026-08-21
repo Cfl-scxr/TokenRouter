@@ -152,8 +152,9 @@ const normalizedUsage = computed(() => {
   }
 })
 
-const isNewAPI = computed(() =>
-  props.result?.adapter === 'new_api' || normalizedUsage.value?.provider === 'new_api'
+const hasSeparateQuota = computed(() =>
+  props.result?.adapter === 'new_api' || props.result?.adapter === 'zivv' ||
+  normalizedUsage.value?.provider === 'new_api' || normalizedUsage.value?.provider === 'zivv'
 )
 
 const amountsEqual = (left?: number, right?: number) => {
@@ -161,9 +162,9 @@ const amountsEqual = (left?: number, right?: number) => {
   return Math.abs(left - right) <= Math.max(0.000001, Math.max(Math.abs(left), Math.abs(right)) * 0.000001)
 }
 
-// New API 同时返回余额和额度条目；两者是同一组数据时只保留一组金额，避免重复渲染。
+// New API/Zivv 同时返回余额和额度条目；两者是同一组数据时只保留一组金额。
 const isDuplicateLimit = (limit: UpstreamUsageLimit) => {
-  if (!isNewAPI.value || !normalizedUsage.value?.balance) return false
+  if (!hasSeparateQuota.value || !normalizedUsage.value?.balance) return false
   const balance = normalizedUsage.value.balance
   return amountsEqual(limit.used, balance.used) &&
     amountsEqual(limit.limit, balance.total) &&
@@ -172,7 +173,7 @@ const isDuplicateLimit = (limit: UpstreamUsageLimit) => {
 
 const limitDisplayName = (name: string) => {
   const normalizedName = name.toLowerCase()
-  if (isNewAPI.value && (normalizedName === 'hard_limit' || normalizedName === 'token_quota')) {
+  if (hasSeparateQuota.value && (normalizedName === 'hard_limit' || normalizedName === 'token_quota' || normalizedName === 'key_quota')) {
     return t('admin.accounts.upstreamUsage.totalLimit')
   }
   return name
@@ -240,9 +241,9 @@ const subscriptionLabel = computed(() => {
 const subscriptionRemainingLabel = computed(() => {
   const subscription = normalizedUsage.value?.subscription
   if (!subscription || subscription.unlimited || subscription.remaining == null) return ''
-  // New API 的 Token quota 已在“总限额”条目中展示；不要再用泛化的“剩余”
+  // New API/Zivv 的 Key quota 已在“总限额”条目中展示；不要再用泛化的“剩余”
   // 文案重复渲染，避免它被误认为用户钱包余额。
-  if (isNewAPI.value) return ''
+  if (hasSeparateQuota.value) return ''
   return t('admin.accounts.upstreamUsage.subscriptionRemaining', {
     remaining: formatAmount(subscription.remaining, normalizedUsage.value?.unit)
   })

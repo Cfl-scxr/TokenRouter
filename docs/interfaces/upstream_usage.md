@@ -14,7 +14,7 @@
 }
 ```
 
-缺少对象时按 `enabled=true`、`adapter=sub2api` 处理，根地址复用账号现有 API Base URL。只有显式 `enabled=false` 才关闭查询。`adapter` 只能是已注册的 `sub2api` 或 `new_api`；`base_url` 只能覆盖查询根地址，不能携带用户信息、查询串或片段。后端继续使用现有 HTTPS、allowlist、私网地址和 URL 格式校验。
+缺少对象时按 `enabled=true`、`adapter=sub2api` 处理，根地址复用账号现有 API Base URL。只有显式 `enabled=false` 才关闭查询。`adapter` 只能是已注册的 `sub2api`、`new_api` 或 `zivv`；`base_url` 只能覆盖查询根地址，不能携带用户信息、查询串或片段。后端继续使用现有 HTTPS、allowlist、私网地址和 URL 格式校验。
 
 API Key 永远从账号 `credentials` 读取。它不能写进 `extra`、接口响应、审计请求体、浏览器缓存或日志；用户也不能配置任意路径、方法、Header 模板或脚本。
 
@@ -36,6 +36,10 @@ New API 钱包若需要用户级认证，可在 `credentials` 中保存
 钱包余额按以下固定顺序查询：若 token 响应包含 fork 扩展的 `user_balance_display`/`user_balance`，直接使用；否则优先使用配置的用户访问令牌请求 `/api/user/self`（可带固定的 `New-Api-User` 用户 ID），只把当前 `quota` 归一化为钱包 `remaining`，不把生命周期 `used_quota` 拼成虚构的钱包总额；最后尝试允许 API Key 访问的 `/user/balance`，解析 `balance_infos[].total_balance`。钱包余额才进入结果的 `balance`，因此即使 Key 是无限量，也不会把 `100000000` 或整数溢出值显示成余额。官方 New API 未开放 API Key 钱包端点且未配置用户访问令牌时，返回 `UPSTREAM_USAGE_WALLET_UNAVAILABLE`，不降级为 token quota。
 
 不再请求用户级 `/v1/dashboard/billing/subscription` 或 `/v1/dashboard/billing/usage`，避免把全局额度或无限量哨兵误当作钱包；`/api/status` 失败时使用 New API 默认的 `500000` quota/单位，仅影响内部 quota 换算，不阻断钱包/Token 查询。
+
+### Zivv
+
+严格请求 `GET /v1/user/balance`，携带 `Authorization: Bearer <api_key>`。响应中的 `balance` 是钱包剩余余额，`total_used` 是累计已用金额；`key_limit`/`key_used` 归一化为 Key 限额，`key_limit=0` 表示不限量，`plan_name` 进入订阅计划展示。`currency` 目前支持 `USD`、`CNY` 和 `TOKENS`。Zivv 的公开开发者文档说明余额位于控制台钱包页面，适配器使用其前端生成的固定余额接口，不请求任意路径或脚本。参见 [Zivv 计费说明](https://docs.zivv.pro/billing/overview) 与 [API 端点](https://docs.zivv.pro/reference/endpoints)。
 
 适配器拒绝 HTTP 非成功、认证失败、限流、超时、重定向、超大响应体、缺字段或不一致数值。选择的适配器失败时不会自动回退到另一个协议，也不会修改账号配置。
 

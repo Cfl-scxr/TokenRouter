@@ -27,6 +27,7 @@ describe('UpstreamUsageConfigEditor', () => {
     })
     expect(wrapper.find('[data-testid="upstream-usage-enabled"]').element).toBeTruthy()
     expect(wrapper.find('[data-testid="upstream-usage-adapter"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="upstream-usage-adapter"]').text()).toBe('3')
     await wrapper.find('[data-testid="upstream-usage-adapter"]').trigger('click')
     expect(wrapper.emitted('update:adapter')?.[0]).toEqual(['new_api'])
 
@@ -35,6 +36,9 @@ describe('UpstreamUsageConfigEditor', () => {
     expect(wrapper.find('[data-testid="upstream-usage-wallet-user-id"]').exists()).toBe(true)
     await wrapper.find('[data-testid="upstream-usage-wallet-user-id"]').setValue('42')
     expect(wrapper.emitted('update:walletUserId')?.at(-1)).toEqual(['42'])
+
+    await wrapper.setProps({ adapter: 'zivv' })
+    expect(wrapper.find('[data-testid="upstream-usage-wallet-access-token"]').exists()).toBe(false)
 
     await wrapper.setProps({ enabled: false })
     expect(wrapper.find('[data-testid="select"]').exists()).toBe(false)
