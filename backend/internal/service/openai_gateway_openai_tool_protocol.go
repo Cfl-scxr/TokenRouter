@@ -89,6 +89,18 @@ func openAIResponsesClientToolMapping(c *gin.Context) (apicompat.ResponsesClient
 	return mapping, ok && typed && hasOpenAIResponsesClientToolMapping(mapping)
 }
 
+// setOpenAIResponsesClientToolMapping 写入本次账号尝试的工具映射；空映射会清理旧账号状态。
+func setOpenAIResponsesClientToolMapping(c *gin.Context, mapping apicompat.ResponsesClientToolMapping) {
+	if c == nil {
+		return
+	}
+	if !hasOpenAIResponsesClientToolMapping(mapping) {
+		clearOpenAIResponsesClientToolMapping(c)
+		return
+	}
+	c.Set(openAIResponsesClientToolMappingContextKey, mapping)
+}
+
 // clearOpenAIResponsesClientToolMapping 清理同一 Gin context 上一次账号尝试留下的映射。
 func clearOpenAIResponsesClientToolMapping(c *gin.Context) {
 	if c == nil {

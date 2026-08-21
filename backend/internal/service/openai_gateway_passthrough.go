@@ -133,9 +133,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, adaptErr
 		}
 		body = adaptedBody
-		if hasOpenAIResponsesClientToolMapping(mapping) && c != nil {
-			c.Set(openAIResponsesClientToolMappingContextKey, mapping)
-		}
+		setOpenAIResponsesClientToolMapping(c, mapping)
 	}
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
