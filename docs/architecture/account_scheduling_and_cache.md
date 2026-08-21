@@ -100,6 +100,12 @@ OpenAI/Grok 是通用核心的能力适配者：在高级分组中，OpenAI 额�
 
 账号 extra 的原子合并只保留仍有效的系统状态语义，例如 Ollama Cloud 管理会话和用量快照。凭据或代理变化仍按各自规则保存或失效 Ollama 状态；历史 `upstream_billing_probe` 与 `upstream_billing_probe_enabled` 在所有写入边界直接丢弃，不再触发专用 CAS、outbox 或调度快照失效。
 
+## API Key 用量展示缓存
+
+API Key 上游用量是控制面查询，不属于调度快照。`UpstreamUsageService` 在请求前后重新读取账号凭据、代理、Base URL、TLS 设置和 `extra.upstream_usage_query`；身份指纹变化时丢弃结果并返回冲突。singleflight 只合并相同账号和配置指纹，等待方取消不会取消共享查询；并发槽限制上游查询，但不会占用网关账号调度槽。
+
+前端账号列表把成功结果放入按管理员隔离的 `sessionStorage`，TTL 为五分钟。缓存键包含账号 ID、`updated_at`、代理/Base URL 和规范化适配器配置；账号保存、列表增量发现配置变化或凭据/代理变化时清除内存和浏览器条目。列表加载、虚拟滚动和自动刷新仅恢复已有缓存，不主动访问上游。结果永远不写调度缓存、数据库或 `Extra`，因此查询失败不会改变转发行为。
+
 ## 诊断不变量
 
 - “无可用账号”诊断要区分无分组关联、硬资格过滤、模型/endpoint 不匹配、临时限流、并发等待超时和快照不可用。

@@ -126,6 +126,17 @@ gemini_generate_content
 
 购买页和用户自定义页面由前端追加 `user_id`、`token`、`theme`、`lang`、`ui_mode`、`src_host` 和 `src_url`。其中 `token` 是用户 Bearer 凭据，只能发送到部署者信任且使用 HTTPS 的页面来源；接收方不得写入访问日志、分析参数或转发给第三方。完整请求示例和重试约定见 [外部支付管理 API 指南](../guides/payments/admin_integration_api.md)。
 
+## API Key 上游用量查询
+
+管理员账号列表提供两个手动、展示型接口：
+
+- `POST /api/v1/admin/accounts/:id/upstream-usage/query`
+- `POST /api/v1/admin/accounts/upstream-usage/query/batch`，请求体 `account_ids` 最多 100 个正整数。
+
+接口只接受 `type=apikey`（Bedrock 除外），使用管理员认证和既有审计中间件。成功结果在顶层包含 `adapter`、`provider`、UTC `observed_at` 以及余额/限额/订阅字段；批量接口将每个账号的成功结果和结构化错误分开返回。错误 reason 使用 `UPSTREAM_USAGE_*` 命名空间，覆盖账号无效/禁用、协议不支持、认证失败、限流、超时、响应格式、网络和身份变更。
+
+查询不会写账号、Extra、调度快照或计费记录，也不会把 API Key 放入响应或审计 body。前端只在行内按钮或批量操作触发请求，成功结果在管理员隔离的 `sessionStorage` 中缓存五分钟。
+
 ## 响应与错误
 
 面板和内部 REST 接口通常使用统一 envelope：

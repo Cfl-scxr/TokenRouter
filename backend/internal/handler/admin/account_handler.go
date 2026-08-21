@@ -57,6 +57,7 @@ type AccountHandler struct {
 	grokOAuthService        service.GrokOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
+	upstreamUsageService    *service.UpstreamUsageService
 	accountTestService      *service.AccountTestService
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
@@ -76,6 +77,14 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 // SetAdvancedSchedulerScoreDiagnosticService 注入账号高级调度评分诊断服务。
 func (h *AccountHandler) SetAdvancedSchedulerScoreDiagnosticService(diagnostics *service.AdvancedSchedulerScoreDiagnosticService) {
 	h.advancedSchedulerScores = diagnostics
+}
+
+// SetUpstreamUsageService 注入 API Key 上游用量查询服务。
+// 使用 setter 保持现有单元测试构造函数的参数兼容性。
+func (h *AccountHandler) SetUpstreamUsageService(usage *service.UpstreamUsageService) {
+	if h != nil {
+		h.upstreamUsageService = usage
+	}
 }
 
 type qoderAdminTokenRefresher interface {
@@ -2358,6 +2367,78 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	}
 
 	response.Success(c, usage)
+}
+
+// QueryUpstreamUsage 查询 API Key 账号的实时上游用量。
+// POST /api/v1/admin/accounts/:id/upstream-usage/query
+func (h *AccountHandler) QueryUpstreamUsage(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.ErrorFrom(c, service.ErrUpstreamUsageAccountInvalid)
+		return
+	}
+	if h.upstreamUsageService == nil {
+		response.ErrorFrom(c, service.ErrUpstreamUsageUnavailable)
+		return
+	}
+	result, err := h.upstreamUsageService.QueryAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// UpstreamUsageBatchRequest 是 API Key 上游用量批量查询请求。
+type UpstreamUsageBatchRequest struct {
+	AccountIDs []int64 `json:"account_ids" binding:"required"`
+}
+
+// QueryBatchUpstreamUsage 批量查询 API Key 账号的实时上游用量。
+// POST /api/v1/admin/accounts/upstream-usage/query/batch
+func (h *AccountHandler) QueryBatchUpstreamUsage(c *gin.Context) {
+	var req UpstreamUsageBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, service.ErrUpstreamUsageBatchInvalid)
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.ErrorFrom(c, service.ErrUpstreamUsageBatchInvalid)
+		return
+	}
+	if len(req.AccountIDs) > 100 {
+		response.ErrorFrom(c, service.ErrUpstreamUsageBatchTooLarge)
+		return
+	}
+	for _, accountID := range req.AccountIDs {
+		if accountID <= 0 {
+			response.ErrorFrom(c, service.ErrUpstreamUsageBatchInvalid)
+			return
+		}
+	}
+	if h.upstreamUsageService == nil {
+		response.ErrorFrom(c, service.ErrUpstreamUsageUnavailable)
+		return
+	}
+	usageByAccount, errorsByAccount, err := h.upstreamUsageService.QueryBatch(c.Request.Context(), req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	serializedErrors := make(map[string]gin.H, len(errorsByAccount))
+	for accountID, queryErr := range errorsByAccount {
+		status := infraerrors.FromError(queryErr)
+		serializedErrors[strconv.FormatInt(accountID, 10)] = gin.H{
+			"code":    status.Reason,
+			"reason":  status.Reason,
+			"message": status.Message,
+			"status":  status.Code,
+		}
+	}
+	response.Success(c, gin.H{
+		"usage":  usageByAccount,
+		"errors": serializedErrors,
+	})
 }
 
 // ClearRateLimit handles clearing account rate limit status

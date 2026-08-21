@@ -50,6 +50,14 @@ OpenAI API Key 的 Responses 探测只维护 `extra.openai_responses_probe_statu
 
 实时探测失败时保留最近成功快照并同时暴露当前错误，不把旧数据标为实时。任何配额耗尽或 capability 变化都要触发相关调度投影失效。
 
+## API Key 上游用量查询
+
+API Key 上游用量由独立的 `UpstreamUsageService` 提供，和 OAuth/Setup Token 的 `AccountUsageService` 语义分离。它只服务管理员展示，不参与调度、自动暂停、倍率、本地配额或结算；列表加载、滚动和自动刷新都不会产生上游流量。管理员手动查询时，服务按账号和规范化配置指纹合并并发请求，单次约 10 秒超时、512 KiB 响应体上限、禁止重定向，并复用代理、TLS 指纹、Header Override 和既有 `HTTPUpstream`。
+
+配置缺失默认启用 Sub2API；New API 必须显式选择对应适配器。Sub2API 的钱包负余额可以展示，`remaining=-1` 只在适配器内部转换为 `unlimited=true`；New API 的 `total_usage` 按 0.01 美元单位换算，`/api/status` 仅用于可选单位探测。查询失败不修改账号状态或旧运行快照，也不自动回退到另一个协议。
+
+浏览器只缓存成功的归一化结果五分钟，缓存键隔离管理员身份、账号 `updated_at`、代理/Base URL 和配置；失败不缓存，账号凭据、代理或配置变化立即失效。审计仅记录管理员动作和脱敏元数据，不记录 API Key 或上游原始响应。该功能与已移除的 `upstream_billing_probe` 完全不同，不恢复旧的自动倍率探测。
+
 ## 运维诊断
 
 - 观察每 provider 的候选数、刷新成功/失败、节流、超时和最长积压，而不只看总成功率。

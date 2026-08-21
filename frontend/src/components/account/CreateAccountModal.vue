@@ -2099,6 +2099,16 @@
         </div>
       </div>
 
+      <UpstreamUsageConfigEditor
+        v-if="form.type === 'apikey'"
+        :enabled="upstreamUsageEnabled"
+        :adapter="upstreamUsageAdapter"
+        :base-url="upstreamUsageBaseUrl"
+        @update:enabled="upstreamUsageEnabled = $event"
+        @update:adapter="upstreamUsageAdapter = $event"
+        @update:base-url="upstreamUsageBaseUrl = $event"
+      />
+
       <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
       <div
         v-if="form.platform === 'anthropic' && (form.type === 'apikey' || form.type === 'bedrock')"
@@ -3971,7 +3981,8 @@ import type {
   OpenAICompactMode,
   OpenAIOAuthClientPolicy,
   OpenAITextRouteMode,
-  OpenAIWorkloadCapability
+  OpenAIWorkloadCapability,
+  UpstreamUsageAdapter
 } from '@/types'
 import type { OpenAIOAuthImportDefaults } from '@/api/admin/settings'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -3986,6 +3997,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import UpstreamUsageConfigEditor from '@/components/account/UpstreamUsageConfigEditor.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -4208,6 +4220,9 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const upstreamUsageEnabled = ref(true)
+const upstreamUsageAdapter = ref<UpstreamUsageAdapter>('sub2api')
+const upstreamUsageBaseUrl = ref('')
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
   return {
@@ -5502,6 +5517,9 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  upstreamUsageEnabled.value = true
+  upstreamUsageAdapter.value = 'sub2api'
+  upstreamUsageBaseUrl.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -6405,6 +6423,16 @@ const createAccountAndFinish = async (
     }
     // Quota notify config
     writeQuotaNotifyToExtra(quotaExtra, 'create')
+    if (type === 'apikey') {
+      const upstreamConfig: Record<string, unknown> = {
+        enabled: upstreamUsageEnabled.value,
+        adapter: upstreamUsageAdapter.value
+      }
+      if (upstreamUsageBaseUrl.value.trim()) {
+        upstreamConfig.base_url = upstreamUsageBaseUrl.value.trim()
+      }
+      quotaExtra.upstream_usage_query = upstreamConfig
+    }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }

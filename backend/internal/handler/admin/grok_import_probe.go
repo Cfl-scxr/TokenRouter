@@ -212,6 +212,7 @@ func ProvideAccountHandler(
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 	grokQuotaService *service.GrokQuotaService,
+	upstreamUsageService *service.UpstreamUsageService,
 ) *AccountHandler {
 	handler := NewAccountHandler(
 		adminService,
@@ -231,6 +232,7 @@ func ProvideAccountHandler(
 		grokOAuthService,
 	)
 	handler.grokImportProber = grokQuotaService
+	handler.SetUpstreamUsageService(upstreamUsageService)
 	diagnostics := service.NewAdvancedSchedulerScoreDiagnosticService(adminService, concurrencyService, rateLimitService)
 	diagnostics.SetSchedulingServices(gatewayService, openAIGatewayService)
 	handler.SetAdvancedSchedulerScoreDiagnosticService(diagnostics)

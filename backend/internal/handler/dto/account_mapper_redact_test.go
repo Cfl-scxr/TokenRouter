@@ -93,6 +93,27 @@ func TestAccountFromServiceShallow_RedactsOllamaCloudManagedExtra(t *testing.T) 
 	require.Contains(t, src.Extra, service.OllamaCloudUsageSessionExtraKey)
 }
 
+func TestAccountFromServiceShallow_RedactsLegacyUpstreamUsageSecrets(t *testing.T) {
+	src := &service.Account{
+		ID: 10, Type: service.AccountTypeAPIKey,
+		Extra: map[string]any{
+			service.UpstreamUsageQueryExtraKey: map[string]any{
+				"enabled": true, "adapter": "legacy-secret", "base_url": "https://user:legacy-secret@gateway.example?token=legacy-secret",
+				"api_key": "legacy-secret", "headers": map[string]any{"Authorization": "Bearer legacy-secret"},
+			},
+		},
+	}
+	got := AccountFromServiceShallow(src)
+	require.Equal(t, map[string]any{
+		"enabled": true,
+	}, got.Extra[service.UpstreamUsageQueryExtraKey])
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "legacy-secret")
+	// 映射层不得修改数据库对象中的历史值。
+	require.Contains(t, src.Extra[service.UpstreamUsageQueryExtraKey].(map[string]any), "api_key")
+}
+
 func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	src := &service.Account{ID: 1, Name: "n", Platform: "anthropic", Type: "oauth"}
 	got := AccountFromServiceShallow(src)

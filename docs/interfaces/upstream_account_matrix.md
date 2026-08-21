@@ -32,6 +32,8 @@
 | Grok | 正式支持 | 兼容导入，无正式转发契约 | 正式支持 | 兼容导入，无正式转发契约 | 兼容导入，无正式转发契约 | 兼容导入，无正式转发契约 | 不支持 |
 | Qoder | 不支持 | 不支持 | 不支持 | 不支持 | 不支持 | 不支持 | 正式支持 |
 
+所有平台的 `type=apikey`（Bedrock 除外）都可以在管理员账号列表配置并手动查询上游用量。该能力不代表平台有统一账单协议：缺省配置使用 Sub2API 适配器，New API 账号必须显式选择 `new_api`；协议错误只影响展示，不改变转发资格。API Key 行同时保留 TokenRouter 本地今日统计/本地配额和上游余额/周期限额两个来源。
+
 平台专题：
 
 - [Anthropic 上游](anthropic_upstream.md)
@@ -74,7 +76,7 @@
 
 路由存在不代表任意分组或账号类型都能承接。协议门禁在账号选择前按最终分组执行；通过后，处理器仍会校验平台、模型、transport、endpoint capability、媒体资格和其它分组策略。Gemini Responses 已有正式非流和 SSE 转换，保留 reasoning、工具调用、usage、结束原因与首次 Token 指标；首个客户端字节写出后不再 failover。
 
-公开协议不再包含 Key 账单自省或上游声明倍率入口。`GET /v1/sub2api/billing` 未注册并返回普通 `404`；账户本地 `rate_multiplier` 和渠道的上游计费模型来源仍属于结算配置，不代表从上游探测到的声明倍率。
+公开协议不再包含 Key 账单自省或上游声明倍率入口。`GET /v1/sub2api/billing` 未注册并返回普通 `404`；账户本地 `rate_multiplier` 和渠道的上游计费模型来源仍属于结算配置，不代表从上游探测到的声明倍率。管理员 API Key 用量查询属于独立的手动展示接口，详见 [API Key 上游用量查询](upstream_usage.md)。
 
 ## 跨层约束
 

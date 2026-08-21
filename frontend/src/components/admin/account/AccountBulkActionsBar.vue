@@ -54,6 +54,13 @@
         >
           {{ t('admin.accounts.bulkActions.queryUsage') }}
         </button>
+        <button
+          @click="$emit('query-upstream-usage')"
+          class="btn btn-secondary btn-sm"
+          :disabled="upstreamUsageLoading"
+        >
+          {{ t('admin.accounts.bulkActions.queryUpstreamUsage') }}
+        </button>
         <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') }}</button>
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
@@ -71,6 +78,7 @@ import { useI18n } from 'vue-i18n'
 defineProps<{
   selectedIds: number[]
   usageLoading?: boolean
+  upstreamUsageLoading?: boolean
   totalResults: number
   selectingAll: boolean
   allResultsSelected: boolean
@@ -87,6 +95,7 @@ defineEmits<{
   'reset-status': []
   'refresh-token': []
   'query-usage': []
+  'query-upstream-usage': []
 }>()
 
 const { t } = useI18n()

@@ -223,6 +223,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	} else {
 		account.AutoPauseOnExpired = true
 	}
+	if err := NormalizeUpstreamUsageExtra(account.Extra); err != nil {
+		return nil, err
+	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)
@@ -314,6 +317,16 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
+		if err := NormalizeUpstreamUsageExtra(extra); err != nil {
+			return nil, err
+		}
+		if _, provided := (*req.Extra)[UpstreamUsageQueryExtraKey]; !provided && account.Extra != nil {
+			if value, exists := account.Extra[UpstreamUsageQueryExtraKey]; exists {
+				if normalized, ok := normalizedUpstreamUsageConfigValue(value); ok {
+					extra[UpstreamUsageQueryExtraKey] = normalized
+				}
+			}
+		}
 		account.Extra = extra
 	}
 

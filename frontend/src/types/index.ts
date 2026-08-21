@@ -1529,6 +1529,73 @@ export interface AccountUsageInfo {
   error?: string            // usage 获取失败时的错误信息
 }
 
+// API Key 账号的上游用量查询协议配置与归一化结果。
+export type UpstreamUsageAdapter = 'sub2api' | 'new_api'
+
+export interface UpstreamUsageQueryConfig {
+  enabled: boolean
+  adapter: UpstreamUsageAdapter
+  base_url?: string
+}
+
+export interface UpstreamUsageAmount {
+  used?: number
+  total?: number
+  remaining?: number
+}
+
+export interface UpstreamUsageLimit {
+  name: string
+  used?: number
+  limit?: number
+  remaining?: number
+  reset_at?: string | null
+}
+
+export interface UpstreamUsageSubscription {
+  plan_name: string
+  unlimited?: boolean
+  remaining?: number
+  expires_at?: string | null
+  limits?: UpstreamUsageLimit[]
+}
+
+export interface UpstreamUsageInfo {
+  provider: string
+  mode: 'balance' | 'quota' | 'limits' | 'subscription' | string
+  unit?: string
+  balance?: UpstreamUsageAmount
+  limits?: UpstreamUsageLimit[]
+  subscription?: UpstreamUsageSubscription
+  expires_at?: string | null
+}
+
+export interface UpstreamUsageQueryResult {
+  account_id: number
+  adapter: UpstreamUsageAdapter | string
+  observed_at: string
+  provider?: string
+  mode?: string
+  unit?: string
+  balance?: UpstreamUsageAmount
+  limits?: UpstreamUsageLimit[]
+  subscription?: UpstreamUsageSubscription
+  expires_at?: string | null
+  /** 兼容旧缓存读取；新接口响应使用上面的扁平字段。 */
+  usage?: UpstreamUsageInfo
+}
+
+export interface UpstreamUsageQueryError {
+  code?: string
+  message?: string
+  status?: number
+}
+
+export interface BatchUpstreamUsageResponse {
+  usage: Record<string, UpstreamUsageQueryResult>
+  errors: Record<string, UpstreamUsageQueryError>
+}
+
 // OpenAI Codex usage snapshot (from response headers)
 export interface CodexUsageSnapshot {
   // Legacy fields (kept for backwards compatibility)

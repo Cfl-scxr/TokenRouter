@@ -10,6 +10,8 @@ import type {
   UpdateAccountRequest,
   PaginatedResponse,
   AccountUsageInfo,
+  UpstreamUsageQueryResult,
+  BatchUpstreamUsageResponse,
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
@@ -583,6 +585,20 @@ export async function getBatchUsage(accountIds: number[], force?: boolean): Prom
   const { data } = await apiClient.post<BatchAccountUsageResponse>('/admin/accounts/usage/batch', {
     account_ids: accountIds,
     force: force === true
+  })
+  return data
+}
+
+/** 查询 API Key 账号的实时上游用量。 */
+export async function queryUpstreamUsage(id: number): Promise<UpstreamUsageQueryResult> {
+  const { data } = await apiClient.post<UpstreamUsageQueryResult>(`/admin/accounts/${id}/upstream-usage/query`)
+  return data
+}
+
+/** 批量查询 API Key 账号的实时上游用量。 */
+export async function queryBatchUpstreamUsage(accountIds: number[]): Promise<BatchUpstreamUsageResponse> {
+  const { data } = await apiClient.post<BatchUpstreamUsageResponse>('/admin/accounts/upstream-usage/query/batch', {
+    account_ids: accountIds
   })
   return data
 }
@@ -1216,6 +1232,8 @@ export const accountsAPI = {
   clearError,
   getUsage,
   getBatchUsage,
+  queryUpstreamUsage,
+  queryBatchUpstreamUsage,
   getTodayStats,
   getBatchTodayStats,
   clearRateLimit,

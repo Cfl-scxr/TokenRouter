@@ -244,6 +244,17 @@ func ProvideAccountUsageService(
 	return service
 }
 
+// ProvideUpstreamUsageService 创建 API Key 上游用量查询服务。
+// 该服务只返回管理员查询结果，不参与账号调度或运行态快照写入。
+func ProvideUpstreamUsageService(
+	accountRepo AccountRepository,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+	tlsFPProfileService *TLSFingerprintProfileService,
+) *UpstreamUsageService {
+	return NewUpstreamUsageService(accountRepo, httpUpstream, cfg, tlsFPProfileService)
+}
+
 // ProvideAccountTestService 为管理端账号测试复用网关的 Agent Identity 连接失效能力。
 func ProvideAccountTestService(
 	accountRepo AccountRepository,
@@ -854,6 +865,7 @@ var ProviderSet = wire.NewSet(
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
+	ProvideUpstreamUsageService,
 	ProvideAccountTestService,
 	ProvideOllamaCloudUsageService,
 	ProvideSettingService,

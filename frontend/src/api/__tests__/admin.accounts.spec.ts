@@ -12,7 +12,14 @@ vi.mock('@/api/client', () => ({
   }
 }))
 
-import { consumeCodexInviteReset, getAdvancedSchedulerScore, previewAdvancedSchedulerScore, syncFromCrs } from '@/api/admin/accounts'
+import {
+  consumeCodexInviteReset,
+  getAdvancedSchedulerScore,
+  previewAdvancedSchedulerScore,
+  queryBatchUpstreamUsage,
+  queryUpstreamUsage,
+  syncFromCrs
+} from '@/api/admin/accounts'
 
 describe('admin accounts API', () => {
   beforeEach(() => {
@@ -99,5 +106,18 @@ describe('admin accounts API', () => {
 
     expect(post).toHaveBeenCalledWith('/admin/accounts/42/codex/invite-reset/consume', {})
     expect(result).toEqual(response)
+  })
+
+  it('使用固定的 API Key 上游用量查询端点和批量请求体', async () => {
+    const single = { account_id: 42, adapter: 'sub2api', observed_at: '2026-08-20T00:00:00Z' }
+    const batch = { usage: { '42': single }, errors: {} }
+    post.mockResolvedValueOnce({ data: single }).mockResolvedValueOnce({ data: batch })
+
+    await expect(queryUpstreamUsage(42)).resolves.toEqual(single)
+    expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/42/upstream-usage/query')
+    await expect(queryBatchUpstreamUsage([42, 43])).resolves.toEqual(batch)
+    expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-usage/query/batch', {
+      account_ids: [42, 43]
+    })
   })
 })

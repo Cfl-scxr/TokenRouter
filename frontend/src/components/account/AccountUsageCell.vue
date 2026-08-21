@@ -483,6 +483,14 @@
 
     <!-- Gemini platform: show quota + local usage window -->
     <template v-else-if="account.platform === 'gemini'">
+      <AccountUpstreamUsageCell
+        v-if="account.type === 'apikey'"
+        :account="account"
+        :result="upstreamUsage"
+        :error="upstreamUsageError"
+        :loading="upstreamUsageLoading"
+        :request="requestUpstreamUsage"
+      />
       <!-- Auth Type + Tier Badge (first line) -->
       <div v-if="geminiAuthTypeLabel" class="mb-1 flex items-center gap-1">
         <span
@@ -533,6 +541,9 @@
           class="mb-0.5 flex items-center"
         >
           <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+            <span v-if="account.type === 'apikey'" class="font-medium text-gray-400 dark:text-gray-500">
+              {{ t('admin.accounts.upstreamUsage.localSource') }}
+            </span>
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
               {{ formatKeyRequests }} req
             </span>
@@ -593,17 +604,68 @@
 
     <!-- Other accounts: no usage window -->
     <template v-else>
-      <div class="text-xs text-gray-400">-</div>
+      <div
+        v-if="account.type !== 'apikey' || (!upstreamUsage && !upstreamUsageError && !upstreamUsageLoading && !upstreamUsageDisabled)"
+        class="text-xs text-gray-400"
+      >-</div>
     </template>
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else>
-    <div v-if="isGeminiThirdPartyProvider" class="text-xs text-gray-400">-</div>
-    <!-- Gemini API Key accounts: show quota info -->
-    <AccountQuotaInfo v-else-if="account.platform === 'gemini'" :account="account" />
+    <div v-if="isGeminiThirdPartyProvider" class="space-y-1">
+      <AccountUpstreamUsageCell
+        v-if="account.type === 'apikey'"
+        :account="account"
+        :result="upstreamUsage"
+        :error="upstreamUsageError"
+        :loading="upstreamUsageLoading"
+        :request="requestUpstreamUsage"
+      />
+      <div v-if="showGeminiTodayStats && todayStats" class="mb-0.5 flex items-center">
+        <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+          <span class="font-medium text-gray-400 dark:text-gray-500">
+            {{ t('admin.accounts.upstreamUsage.localSource') }}
+          </span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">{{ formatKeyRequests }} req</span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">{{ formatKeyTokens }}</span>
+          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">A {{ formatKeyCost }}</span>
+          <span
+            v-if="todayStats.user_cost != null"
+            class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+            :title="t('usage.userBilled')"
+          >U {{ formatKeyUserCost }}</span>
+        </div>
+      </div>
+      <div v-else-if="showGeminiTodayStats && todayStatsLoading" class="mb-0.5 flex items-center gap-1">
+        <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        <div class="h-3 w-8 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+      </div>
+      <div
+        v-else-if="account.type !== 'apikey' || (!upstreamUsage && !upstreamUsageError && !upstreamUsageLoading && !upstreamUsageDisabled)"
+        class="text-xs text-gray-400"
+      >-</div>
+    </div>
+    <!-- 非 API Key 的 Gemini 账号继续保留原有本地配额视图。 -->
+    <AccountQuotaInfo
+      v-else-if="account.platform === 'gemini' && account.type !== 'apikey'"
+      :account="account"
+    />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
+      <AccountUpstreamUsageCell
+        v-if="account.type === 'apikey'"
+        :account="account"
+        :result="upstreamUsage"
+        :error="upstreamUsageError"
+        :loading="upstreamUsageLoading"
+        :request="requestUpstreamUsage"
+      />
+      <AccountQuotaInfo
+        v-if="account.platform === 'gemini' && account.type === 'apikey'"
+        :account="account"
+      />
       <OllamaCloudUsageCell
         v-if="account.ollama_cloud_usage?.eligible"
         :account="account"
@@ -614,6 +676,9 @@
         class="mb-0.5 flex items-center"
       >
         <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+          <span v-if="account.type === 'apikey'" class="font-medium text-gray-400 dark:text-gray-500">
+            {{ t('admin.accounts.upstreamUsage.localSource') }}
+          </span>
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
             {{ formatKeyRequests }} req
           </span>
@@ -666,7 +731,8 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible &&
+          (account.type !== 'apikey' || (!upstreamUsage && !upstreamUsageError && !upstreamUsageLoading && !upstreamUsageDisabled))"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -678,7 +744,14 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'v
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
-import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
+import type {
+  Account,
+  AccountUsageInfo,
+  GeminiCredentials,
+  WindowStats,
+  UpstreamUsageQueryError,
+  UpstreamUsageQueryResult
+} from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
@@ -688,6 +761,7 @@ import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
+import AccountUpstreamUsageCell from './AccountUpstreamUsageCell.vue'
 
 // 模块级缓存供所有 AccountUsageCell 实例共享
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -703,6 +777,10 @@ const props = withDefaults(
     batchedUsageError?: string | null
     batchedUsageLoading?: boolean
     requestBatchedUsage?: ((account: Account, options?: { force?: boolean }) => void) | null
+    upstreamUsage?: UpstreamUsageQueryResult | null
+    upstreamUsageError?: UpstreamUsageQueryError | null
+    upstreamUsageLoading?: boolean
+    requestUpstreamUsage?: ((account: Account, options?: { force?: boolean }) => void) | null
   }>(),
   {
     todayStats: null,
@@ -711,7 +789,11 @@ const props = withDefaults(
     batchedUsage: null,
     batchedUsageError: null,
     batchedUsageLoading: false,
-    requestBatchedUsage: null
+    requestBatchedUsage: null,
+    upstreamUsage: null,
+    upstreamUsageError: null,
+    upstreamUsageLoading: false,
+    requestUpstreamUsage: null
   }
 )
 
@@ -746,11 +828,20 @@ const isGeminiThirdPartyProvider = computed(() => {
   return credentials?.provider_type === 'third_party'
 })
 
+const upstreamUsageDisabled = computed(() => {
+  if (props.account.type !== 'apikey') return false
+  const config = props.account.extra?.upstream_usage_query as Record<string, unknown> | undefined
+  return config?.enabled === false
+})
+
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
+  // API Key 的上游余额由独立子组件按需查询；不能沿用 OAuth/Gemini
+  // 用量模型在列表加载或进入视口时主动请求上游。
+  if (props.account.type === 'apikey') return false
   // 第三方 Gemini 账号没有官方等级，不能展示或请求本地模拟配额。
   if (props.account.platform === 'gemini') return !isGeminiThirdPartyProvider.value
-  if (props.account.platform === 'qoder') return true
+  if (props.account.platform === 'qoder') return props.account.type === 'cosy'
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
@@ -759,7 +850,7 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
   if (props.account.platform === 'gemini') {
-    return !isGeminiThirdPartyProvider.value
+    return props.account.type !== 'apikey' && !isGeminiThirdPartyProvider.value
   }
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
@@ -779,7 +870,8 @@ const shouldFetchUsage = computed(() => {
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
 const showGeminiTodayStats = computed(() => {
-  return props.account.platform === 'gemini' && props.account.type === 'service_account'
+  return props.account.platform === 'gemini' &&
+    (props.account.type === 'service_account' || props.account.type === 'apikey')
 })
 
 const geminiUsageAvailable = computed(() => {

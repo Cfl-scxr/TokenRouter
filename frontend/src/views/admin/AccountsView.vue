@@ -177,6 +177,7 @@
         <AccountBulkActionsBar
           :selected-ids="selIds"
           :usage-loading="bulkUsageLoading"
+          :upstream-usage-loading="upstreamUsageBulkLoading"
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
@@ -184,6 +185,7 @@
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @query-usage="handleBulkQueryUsage"
+          @query-upstream-usage="handleBulkQueryUpstreamUsage"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
@@ -333,6 +335,10 @@
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
               :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              :upstream-usage="upstreamUsageByAccountId[String(row.id)] ?? null"
+              :upstream-usage-error="upstreamUsageErrorByAccountId[String(row.id)] ?? null"
+              :upstream-usage-loading="upstreamUsageLoadingByAccountId[String(row.id)] === true"
+              :request-upstream-usage="requestUpstreamUsage"
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
@@ -451,7 +457,7 @@
     <CodexInviteResetModal :show="showInviteReset" :account="inviteResetAcc" @close="closeInviteResetModal" @updated="enterAutoRefreshSilentWindow" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @advanced-scheduler-score="handleAdvancedSchedulerScore" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @invite-reset="handleInviteReset" @create-spark-shadow="handleCreateSparkShadow" />
-    <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="handleExternalAccountsChanged" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
       :show="showBulkEdit"
@@ -528,7 +534,19 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type {
+  Account,
+  AccountPlatform,
+  AccountSchedulerGroupScore,
+  AccountType,
+  AccountUsageInfo,
+  UpstreamUsageQueryError,
+  UpstreamUsageQueryResult,
+  Proxy as AccountProxy,
+  AdminGroup,
+  WindowStats,
+  ClaudeModel
+} from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -724,6 +742,18 @@ let usageBatchFlushTimer: ReturnType<typeof setTimeout> | null = null
 let queuedUsageBatchForce = false
 let usageBatchRequestToken = 0
 
+const upstreamUsageByAccountId = ref<Record<string, UpstreamUsageQueryResult | null>>({})
+const upstreamUsageErrorByAccountId = ref<Record<string, UpstreamUsageQueryError | null>>({})
+const upstreamUsageLoadingByAccountId = ref<Record<string, boolean>>({})
+const upstreamUsageRequestTokenByAccountId = ref<Record<string, number>>({})
+const upstreamUsageBulkLoading = ref(false)
+const UPSTREAM_USAGE_CACHE_TTL = 5 * 60 * 1000
+const UPSTREAM_USAGE_BATCH_SIZE = 100
+const UPSTREAM_USAGE_BATCH_CONCURRENCY = 4
+let upstreamUsageRequestToken = 0
+let hydratedUpstreamUsageAdminID: number | null | undefined
+const UPSTREAM_USAGE_CACHE_PREFIX = 'tokenrouter:admin:upstream-usage:v1:'
+
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
   tokens: 0,
@@ -744,6 +774,391 @@ const accountSupportsBatchUsage = (account: Account) => {
   if (account.platform === 'openai') return account.type === 'oauth'
   if (account.platform === 'grok') return account.type === 'oauth'
   return false
+}
+
+const isUpstreamUsageAccount = (account: Account) => account.type === 'apikey'
+
+// 缓存键需要区分不同 Base URL，但不应把可能包含内部路径信息的原文写进浏览器存储。
+const upstreamUsageCacheIdentity = (value: string) => {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16)
+}
+
+const upstreamUsageCacheKey = (account: Account) => {
+  const adminID = typeof authStore.user?.id === 'number' && Number.isSafeInteger(authStore.user.id) && authStore.user.id > 0
+    ? String(authStore.user.id)
+    : null
+  if (!adminID) return ''
+  const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
+  const config = {
+    enabled: rawConfig?.enabled !== false,
+    adapter: typeof rawConfig?.adapter === 'string' && rawConfig.adapter.trim()
+      ? rawConfig.adapter.trim()
+      : 'sub2api',
+    base_url: upstreamUsageCacheIdentity(typeof rawConfig?.base_url === 'string' ? rawConfig.base_url.trim() : '')
+  }
+  const accountBaseURL = typeof account.credentials?.base_url === 'string'
+    ? account.credentials.base_url.trim()
+    : ''
+  const proxyUpdatedAt = account.proxy?.updated_at ?? ''
+  return `${UPSTREAM_USAGE_CACHE_PREFIX}${adminID}:${account.id}:${account.platform}:${account.type}:${account.updated_at}:${account.proxy_id ?? ''}:${proxyUpdatedAt}:${upstreamUsageCacheIdentity(accountBaseURL)}:${JSON.stringify(config)}`
+}
+
+// sessionStorage 可被浏览器扩展或旧版本页面写入任意 JSON；恢复前只接受
+// 适配器已经归一化过的有限数值、时间和模式，避免损坏快照污染账号列表。
+const isFiniteOptionalNumber = (value: unknown, nonNegative = false) =>
+  value == null || (typeof value === 'number' && Number.isFinite(value) && (!nonNegative || value >= 0))
+
+const isValidUpstreamUsageAmount = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false
+  const amount = value as Record<string, unknown>
+  return isFiniteOptionalNumber(amount.used, true) &&
+    isFiniteOptionalNumber(amount.total, true) &&
+    isFiniteOptionalNumber(amount.remaining) &&
+    [amount.used, amount.total, amount.remaining].some(item => typeof item === 'number')
+}
+
+const isValidUpstreamUsageLimit = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false
+  const limit = value as Record<string, unknown>
+  const resetAt = limit.reset_at
+  return typeof limit.name === 'string' && limit.name.trim() !== '' &&
+    isFiniteOptionalNumber(limit.used, true) && isFiniteOptionalNumber(limit.limit, true) &&
+    isFiniteOptionalNumber(limit.remaining) &&
+    [limit.used, limit.limit, limit.remaining].some(item => typeof item === 'number') &&
+    (resetAt == null || (typeof resetAt === 'string' && Number.isFinite(Date.parse(resetAt))))
+}
+
+const isValidUpstreamUsageInfo = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false
+  const usage = value as Record<string, unknown>
+  const unit = usage.unit
+  const mode = usage.mode
+  const limits = usage.limits
+  const subscription = usage.subscription
+  if (typeof usage.provider !== 'string' || usage.provider.trim() === '' || typeof mode !== 'string' ||
+    !['balance', 'quota', 'limits', 'subscription'].includes(mode) ||
+    (unit != null && !['USD', 'CNY', 'TOKENS'].includes(String(unit))) ||
+    (usage.expires_at != null && (typeof usage.expires_at !== 'string' || !Number.isFinite(Date.parse(usage.expires_at)))) ||
+    (usage.balance != null && !isValidUpstreamUsageAmount(usage.balance)) ||
+    (limits != null && (!Array.isArray(limits) || !limits.every(isValidUpstreamUsageLimit)))) return false
+  if (subscription != null) {
+    if (typeof subscription !== 'object') return false
+    const item = subscription as Record<string, unknown>
+    if (typeof item.plan_name !== 'string' || item.plan_name.trim() === '' ||
+      (item.unlimited != null && typeof item.unlimited !== 'boolean') ||
+      !isFiniteOptionalNumber(item.remaining) ||
+      (item.expires_at != null && (typeof item.expires_at !== 'string' || !Number.isFinite(Date.parse(item.expires_at)))) ||
+      (item.limits != null && (!Array.isArray(item.limits) || !item.limits.every(isValidUpstreamUsageLimit)))) return false
+    if (item.unlimited === true && (typeof item.remaining === 'number' ||
+      (Array.isArray(item.limits) && item.limits.length > 0))) return false
+    if (item.unlimited !== true && typeof item.remaining !== 'number' &&
+      (!Array.isArray(item.limits) || item.limits.length === 0)) return false
+  }
+  if ((mode === 'balance' || mode === 'quota') && !isValidUpstreamUsageAmount(usage.balance)) return false
+  if (mode === 'limits' &&
+    (!Array.isArray(limits) || limits.length === 0) &&
+    (!subscription || typeof subscription !== 'object' ||
+      !Array.isArray((subscription as Record<string, unknown>).limits) ||
+      ((subscription as Record<string, unknown>).limits as unknown[]).length === 0)) return false
+  if (mode === 'subscription' && (!subscription || typeof subscription !== 'object')) return false
+  return true
+}
+
+const isValidUpstreamUsageResult = (account: Account, data: unknown): data is UpstreamUsageQueryResult => {
+  if (!data || typeof data !== 'object') return false
+  const result = data as UpstreamUsageQueryResult
+  const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
+  const expectedAdapter = rawConfig?.adapter === 'new_api' ? 'new_api' : 'sub2api'
+  if (result.account_id !== account.id ||
+    rawConfig?.enabled === false ||
+    result.adapter !== expectedAdapter ||
+    typeof result.observed_at !== 'string' || !Number.isFinite(Date.parse(result.observed_at))) return false
+  return result.usage
+    ? isValidUpstreamUsageInfo(result.usage)
+    : isValidUpstreamUsageInfo({
+        provider: result.provider,
+        mode: result.mode,
+        unit: result.unit,
+        balance: result.balance,
+        limits: result.limits,
+        subscription: result.subscription,
+        expires_at: result.expires_at
+      })
+}
+
+const readUpstreamUsageCache = (account: Account): UpstreamUsageQueryResult | null => {
+  const key = upstreamUsageCacheKey(account)
+  if (!key) return null
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { data?: UpstreamUsageQueryResult; ts?: number }
+    const now = Date.now()
+    if (
+      !isValidUpstreamUsageResult(account, parsed.data) ||
+      typeof parsed.ts !== 'number' ||
+      !Number.isFinite(parsed.ts) ||
+      parsed.ts > now + 60 * 1000 ||
+      now - parsed.ts >= UPSTREAM_USAGE_CACHE_TTL
+    ) {
+      sessionStorage.removeItem(key)
+      return null
+    }
+    return parsed.data
+  } catch {
+    try {
+      sessionStorage.removeItem(key)
+    } catch {
+      // 浏览器存储不可用时无法继续清理。
+    }
+    return null
+  }
+}
+
+const invalidateUpstreamUsageCache = (accountID: number) => {
+  const key = String(accountID)
+  upstreamUsageRequestTokenByAccountId.value = {
+    ...upstreamUsageRequestTokenByAccountId.value,
+    [key]: ++upstreamUsageRequestToken
+  }
+  setUpstreamUsageState(accountID, null, null, false)
+  try {
+    const adminID = typeof authStore.user?.id === 'number' && Number.isSafeInteger(authStore.user.id) && authStore.user.id > 0
+      ? String(authStore.user.id)
+      : null
+    if (!adminID) return
+    const prefix = `${UPSTREAM_USAGE_CACHE_PREFIX}${adminID}:${accountID}:`
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const storageKey = sessionStorage.key(index)
+      if (storageKey?.startsWith(prefix)) sessionStorage.removeItem(storageKey)
+    }
+  } catch {
+    // 浏览器存储不可用时，内存状态已经完成失效。
+  }
+}
+
+const invalidateAllUpstreamUsageCache = () => {
+  upstreamUsageRequestToken++
+  upstreamUsageByAccountId.value = {}
+  upstreamUsageErrorByAccountId.value = {}
+  upstreamUsageLoadingByAccountId.value = {}
+  upstreamUsageRequestTokenByAccountId.value = {}
+  try {
+    const adminID = typeof authStore.user?.id === 'number' && Number.isSafeInteger(authStore.user.id) && authStore.user.id > 0
+      ? String(authStore.user.id)
+      : null
+    if (!adminID) return
+    const prefix = `${UPSTREAM_USAGE_CACHE_PREFIX}${adminID}:`
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const storageKey = sessionStorage.key(index)
+      if (storageKey?.startsWith(prefix)) sessionStorage.removeItem(storageKey)
+    }
+  } catch {
+    // 浏览器存储不可用时，内存状态已经完成失效。
+  }
+}
+
+const writeUpstreamUsageCache = (account: Account, data: UpstreamUsageQueryResult) => {
+  try {
+    if (!isValidUpstreamUsageResult(account, data)) return
+    const key = upstreamUsageCacheKey(account)
+    if (!key) return
+    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }))
+  } catch {
+    // 浏览器存储不可用时仍保留当前页面结果。
+  }
+}
+
+const normalizeUpstreamUsageError = (error: unknown): UpstreamUsageQueryError => {
+  const value = (error && typeof error === 'object') ? error as Record<string, unknown> : {}
+  return {
+    code: typeof value.reason === 'string' ? value.reason : typeof value.code === 'string' ? value.code : undefined,
+    message: typeof value.message === 'string' ? value.message : undefined,
+    status: typeof value.status === 'number' ? value.status : undefined
+  }
+}
+
+const setUpstreamUsageState = (
+  accountID: number,
+  result: UpstreamUsageQueryResult | null,
+  error: UpstreamUsageQueryError | null,
+  loadingState: boolean
+) => {
+  const key = String(accountID)
+  upstreamUsageByAccountId.value = { ...upstreamUsageByAccountId.value, [key]: result }
+  upstreamUsageErrorByAccountId.value = { ...upstreamUsageErrorByAccountId.value, [key]: error }
+  upstreamUsageLoadingByAccountId.value = { ...upstreamUsageLoadingByAccountId.value, [key]: loadingState }
+}
+
+const hydrateUpstreamUsageCache = () => {
+  const adminID = authStore.user?.id ?? null
+  if (hydratedUpstreamUsageAdminID !== adminID) {
+    upstreamUsageByAccountId.value = {}
+    upstreamUsageErrorByAccountId.value = {}
+    upstreamUsageLoadingByAccountId.value = {}
+    upstreamUsageRequestTokenByAccountId.value = {}
+    upstreamUsageRequestToken++
+    hydratedUpstreamUsageAdminID = adminID
+  }
+  for (const account of accounts.value) {
+    if (!isUpstreamUsageAccount(account)) continue
+    const cached = readUpstreamUsageCache(account)
+    if (cached) {
+      setUpstreamUsageState(account.id, cached, null, false)
+    } else if (!upstreamUsageLoadingByAccountId.value[String(account.id)]) {
+      setUpstreamUsageState(account.id, null, null, false)
+    }
+  }
+}
+
+const requestUpstreamUsage = async (account: Account, options?: { force?: boolean }) => {
+  if (!isUpstreamUsageAccount(account)) return
+  const key = String(account.id)
+  const force = options?.force === true
+  if (!force) {
+    const cached = readUpstreamUsageCache(account)
+    if (cached) {
+      setUpstreamUsageState(account.id, cached, null, false)
+      return
+    }
+  }
+  const requestToken = ++upstreamUsageRequestToken
+  upstreamUsageRequestTokenByAccountId.value = {
+    ...upstreamUsageRequestTokenByAccountId.value,
+    [key]: requestToken
+  }
+  setUpstreamUsageState(account.id, null, null, true)
+  try {
+    const result = await adminAPI.accounts.queryUpstreamUsage(account.id)
+    if (upstreamUsageRequestTokenByAccountId.value[key] !== requestToken) return
+    if (!isValidUpstreamUsageResult(account, result)) {
+      setUpstreamUsageState(account.id, null, { code: 'UPSTREAM_USAGE_INVALID_RESPONSE' }, false)
+      return
+    }
+    writeUpstreamUsageCache(account, result)
+    setUpstreamUsageState(account.id, result, null, false)
+  } catch (error) {
+    if (upstreamUsageRequestTokenByAccountId.value[key] !== requestToken) return
+    setUpstreamUsageState(account.id, null, normalizeUpstreamUsageError(error), false)
+  }
+}
+
+const queryUpstreamUsageChunk = async (selectedAccounts: Account[]) => {
+  const ids = selectedAccounts.map(account => account.id)
+  if (ids.length === 0) return { success: 0, failed: 0 }
+  const tokens = new Map(selectedAccounts.map(account => [account.id, upstreamUsageRequestTokenByAccountId.value[String(account.id)] ?? 0]))
+  let success = 0
+  let failed = 0
+  let result: Awaited<ReturnType<typeof adminAPI.accounts.queryBatchUpstreamUsage>>
+  try {
+    result = await adminAPI.accounts.queryBatchUpstreamUsage(ids)
+  } catch (error) {
+    for (const account of selectedAccounts) {
+      const key = String(account.id)
+      if (upstreamUsageRequestTokenByAccountId.value[key] !== tokens.get(account.id)) continue
+      setUpstreamUsageState(account.id, null, normalizeUpstreamUsageError(error), false)
+      failed++
+    }
+    return { success, failed }
+  }
+  for (const account of selectedAccounts) {
+    const key = String(account.id)
+    if (upstreamUsageRequestTokenByAccountId.value[key] !== tokens.get(account.id)) continue
+    const data = result.usage?.[key]
+    const queryError = result.errors?.[key]
+    if (data) {
+      if (!isValidUpstreamUsageResult(account, data)) {
+        setUpstreamUsageState(account.id, null, { code: 'UPSTREAM_USAGE_INVALID_RESPONSE' }, false)
+        failed++
+        continue
+      }
+      writeUpstreamUsageCache(account, data)
+      setUpstreamUsageState(account.id, data, null, false)
+      success++
+    } else {
+      setUpstreamUsageState(account.id, null, queryError ?? { code: 'UPSTREAM_USAGE_REQUEST_FAILED' }, false)
+      failed++
+    }
+  }
+  return { success, failed }
+}
+
+const queryUpstreamUsageChunks = async (selectedAccounts: Account[]) => {
+  const chunks: Account[][] = []
+  for (let index = 0; index < selectedAccounts.length; index += UPSTREAM_USAGE_BATCH_SIZE) {
+    chunks.push(selectedAccounts.slice(index, index + UPSTREAM_USAGE_BATCH_SIZE))
+  }
+  let nextChunk = 0
+  let success = 0
+  let failed = 0
+  // 每个后端批量请求最多携带 100 个 ID，同时最多发出 4 个请求。
+  // 后端仍以全局并发槽位限制真正访问上游的账号数。
+  const worker = async () => {
+    while (nextChunk < chunks.length) {
+      const chunkIndex = nextChunk
+      nextChunk += 1
+      const chunkResult = await queryUpstreamUsageChunk(chunks[chunkIndex])
+      success += chunkResult.success
+      failed += chunkResult.failed
+    }
+  }
+  const workers = Array.from(
+    { length: Math.min(UPSTREAM_USAGE_BATCH_CONCURRENCY, chunks.length) },
+    () => worker()
+  )
+  await Promise.all(workers)
+  return { success, failed }
+}
+
+const handleBulkQueryUpstreamUsage = async () => {
+  if (upstreamUsageBulkLoading.value || selIds.value.length === 0) return
+  upstreamUsageBulkLoading.value = true
+  try {
+    const currentAccountsById = new Map(accounts.value.map(account => [account.id, account]))
+    const selectedAccountResults = await Promise.allSettled(
+      selIds.value.map(id => currentAccountsById.get(id) ? Promise.resolve(currentAccountsById.get(id)!) : adminAPI.accounts.getById(id))
+    )
+    const selectedAccounts = selectedAccountResults
+      .filter((item): item is PromiseFulfilledResult<Account> => item.status === 'fulfilled')
+      .map(item => item.value)
+      .filter(isUpstreamUsageAccount)
+    if (selectedAccounts.length === 0) {
+      appStore.showWarning(t('admin.accounts.upstreamUsage.noSupportedSelection'))
+      return
+    }
+    for (const account of selectedAccounts) {
+      const key = String(account.id)
+      upstreamUsageRequestTokenByAccountId.value = {
+        ...upstreamUsageRequestTokenByAccountId.value,
+        [key]: ++upstreamUsageRequestToken
+      }
+      setUpstreamUsageState(account.id, null, null, true)
+    }
+    let failed = selectedAccountResults.filter(item => item.status === 'rejected').length
+    const chunkResult = await queryUpstreamUsageChunks(selectedAccounts)
+    const success = chunkResult.success
+    failed += chunkResult.failed
+    if (failed > 0) {
+      appStore.showError(t('admin.accounts.upstreamUsage.partialSuccess', { success, failed }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.upstreamUsage.success', { count: success }))
+    }
+  } catch (error) {
+    console.error('Failed to bulk query upstream usage:', error)
+    for (const accountID of selIds.value) {
+      if (upstreamUsageLoadingByAccountId.value[String(accountID)]) {
+        setUpstreamUsageState(accountID, null, normalizeUpstreamUsageError(error), false)
+      }
+    }
+    appStore.showError(t('admin.accounts.upstreamUsage.queryFailed'))
+  } finally {
+    upstreamUsageBulkLoading.value = false
+  }
 }
 
 const setUsageBatchLoading = (accountID: number, loadingState: boolean) => {
@@ -1223,6 +1638,7 @@ const load = async () => {
     isFirstLoad.value = false
     delete requestParams.lite
   }
+  hydrateUpstreamUsageCache()
   await refreshTodayStatsBatch()
 }
 
@@ -1232,6 +1648,7 @@ const reload = async () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
+  hydrateUpstreamUsageCache()
   await refreshTodayStatsBatch()
 }
 
@@ -1314,6 +1731,13 @@ const inAutoRefreshSilentWindow = () => {
 }
 
 const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
+  const upstreamConnectionChanged = isUpstreamUsageAccount(current) || isUpstreamUsageAccount(next)
+    ? current.type !== next.type || current.platform !== next.platform ||
+      current.proxy_id !== next.proxy_id ||
+      current.proxy?.updated_at !== next.proxy?.updated_at ||
+      current.credentials?.base_url !== next.credentials?.base_url ||
+      JSON.stringify(current.extra?.upstream_usage_query ?? null) !== JSON.stringify(next.extra?.upstream_usage_query ?? null)
+    : false
   return (
     current.updated_at !== next.updated_at ||
     current.current_concurrency !== next.current_concurrency ||
@@ -1324,6 +1748,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
+    current.proxy?.updated_at !== next.proxy?.updated_at ||
+    upstreamConnectionChanged ||
     buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
     buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
@@ -1340,6 +1766,13 @@ const syncAccountRefs = (nextAccount: Account) => {
 const mergeAccountsIncrementally = (nextRows: Account[]) => {
   const currentRows = accounts.value
   const currentByID = new Map(currentRows.map(row => [row.id, row]))
+  const nextIDs = new Set(nextRows.map(row => row.id))
+  for (const currentRow of currentRows) {
+    if (isUpstreamUsageAccount(currentRow) && !nextIDs.has(currentRow.id)) {
+      // 自动刷新发现账号已从列表消失时，立即删除对应浏览器快照。
+      invalidateUpstreamUsageCache(currentRow.id)
+    }
+  }
   let changed = nextRows.length !== currentRows.length
   const mergedRows = nextRows.map((nextRow) => {
     const currentRow = currentByID.get(nextRow.id)
@@ -1348,6 +1781,10 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
       return nextRow
     }
     if (shouldReplaceAutoRefreshRow(currentRow, nextRow)) {
+      if ((isUpstreamUsageAccount(currentRow) || isUpstreamUsageAccount(nextRow)) &&
+        upstreamUsageCacheKey(currentRow) !== upstreamUsageCacheKey(nextRow)) {
+        invalidateUpstreamUsageCache(nextRow.id)
+      }
       changed = true
       syncAccountRefs(nextRow)
       return nextRow
@@ -1399,6 +1836,8 @@ const refreshAccountsIncrementally = async () => {
       hasPendingListSync.value = false
     }
 
+    // 自动刷新只恢复当前页面已有的成功缓存，不触发任何上游请求。
+    hydrateUpstreamUsageCache()
     await refreshTodayStatsBatch()
   } catch (error) {
     console.error('Auto refresh failed:', error)
@@ -1834,6 +2273,7 @@ const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
   if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
   try {
+    for (const accountID of accountIds) invalidateUpstreamUsageCache(accountID)
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
@@ -1870,6 +2310,7 @@ const handleBulkResetStatus = async () => {
 const handleBulkRefreshToken = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
+    for (const accountID of selIds.value) invalidateUpstreamUsageCache(accountID)
     const result = await adminAPI.accounts.batchRefresh(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -1888,7 +2329,7 @@ const canQueryAccountUsage = (account: Account) => {
   return (
     (account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')) ||
     (account.platform === 'openai' && account.type === 'oauth') ||
-    account.platform === 'gemini' ||
+    (account.platform === 'gemini' && account.type !== 'apikey') ||
     (account.platform === 'antigravity' && account.type === 'oauth') ||
     (account.platform === 'qoder' && account.type === 'cosy')
   )
@@ -2135,12 +2576,21 @@ const openBulkEditFiltered = async () => {
 }
 
 const handleBulkUpdated = () => {
+  invalidateAllUpstreamUsageCache()
   showBulkEdit.value = false
   bulkEditTarget.value = null
   clearSelection()
   reload()
 }
-const handleDataImported = () => { showImportData.value = false; reload() }
+const handleExternalAccountsChanged = () => {
+  invalidateAllUpstreamUsageCache()
+  reload()
+}
+const handleDataImported = () => {
+  invalidateAllUpstreamUsageCache()
+  showImportData.value = false
+  reload()
+}
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
@@ -2237,6 +2687,7 @@ const patchAccountInList = (updatedAccount: Account) => {
   syncAccountRefs(mergedAccount)
 }
 const handleAccountUpdated = (updatedAccount: Account) => {
+  invalidateUpstreamUsageCache(updatedAccount.id)
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
 }
@@ -2334,6 +2785,7 @@ const handleDuplicateAccount = async (a: Account) => {
 }
 const handleRefresh = async (a: Account) => {
   try {
+    invalidateUpstreamUsageCache(a.id)
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
@@ -2427,7 +2879,19 @@ const confirmCreateSparkShadow = async () => {
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => {
+  if (!deletingAcc.value) return
+  const accountID = deletingAcc.value.id
+  try {
+    invalidateUpstreamUsageCache(accountID)
+    await adminAPI.accounts.delete(accountID)
+    showDeleteDialog.value = false
+    deletingAcc.value = null
+    reload()
+  } catch (error) {
+    console.error('Failed to delete account:', error)
+  }
+}
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id

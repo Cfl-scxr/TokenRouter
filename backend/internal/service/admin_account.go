@@ -464,6 +464,9 @@ func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAcc
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	// 受管会话状态由系统维护，废弃字段不得通过通用账号接口写入。
 	DiscardDeprecatedAccountExtra(accountExtra)
+	if err := NormalizeUpstreamUsageExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -532,6 +535,9 @@ func validateGeminiThirdPartyBaseURL(account *Account) error {
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	accountExtra := maps.Clone(input.Extra)
 	DiscardDeprecatedAccountExtra(accountExtra)
+	if err := NormalizeUpstreamUsageExtra(accountExtra); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeGrokMediaEligibilityExtra(input.Platform, accountExtra)
 	if err != nil {
 		return nil, err
@@ -697,6 +703,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库；只有废弃键时则不替换。
 	if shouldReplaceExtra {
 		DiscardDeprecatedAccountExtra(normalizedExtra)
+		if err := NormalizeUpstreamUsageExtra(normalizedExtra); err != nil {
+			return nil, err
+		}
+		// 旧版编辑器可能未携带该键；整份 Extra 替换时仍保留已有查询配置。
+		if _, provided := input.Extra[UpstreamUsageQueryExtraKey]; !provided {
+			if value, exists := account.Extra[UpstreamUsageQueryExtraKey]; exists {
+				if normalized, ok := normalizedUpstreamUsageConfigValue(value); ok {
+					normalizedExtra[UpstreamUsageQueryExtraKey] = normalized
+				}
+			}
+		}
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -865,6 +882,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对账号 Extra JSONB 做 key 级合并，避免覆盖运行态或持久化配置键。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
 	DiscardDeprecatedAccountExtra(updates)
+	if err := NormalizeUpstreamUsageExtra(updates); err != nil {
+		return err
+	}
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
@@ -894,6 +914,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	// 受管会话状态只能通过专用类型接口更新，废弃账号扩展字段直接丢弃。
 	DiscardDeprecatedAccountExtra(input.Extra)
+	if err := NormalizeUpstreamUsageExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)

@@ -2,7 +2,10 @@
 package dto
 
 import (
+	"encoding/json"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/domain"
@@ -514,11 +517,46 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 			service.OllamaCloudUsageAutoRefreshExtraKey,
 			service.OllamaCloudUsageSnapshotExtraKey:
 			continue
+		case service.UpstreamUsageQueryExtraKey:
+			// Extra 可能来自历史数据库记录；即使旧数据曾把凭据写进
+			// 查询配置，也只能向浏览器返回允许的三项非敏感字段。
+			redacted[key] = redactUpstreamUsageQuery(value)
 		default:
 			redacted[key] = value
 		}
 	}
 	return redacted
+}
+
+func redactUpstreamUsageQuery(value any) map[string]any {
+	object, ok := value.(map[string]any)
+	if !ok {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return map[string]any{}
+		}
+		if err := json.Unmarshal(payload, &object); err != nil || object == nil {
+			return map[string]any{}
+		}
+	}
+	result := make(map[string]any, 3)
+	if enabled, ok := object["enabled"].(bool); ok {
+		result["enabled"] = enabled
+	}
+	if adapter, ok := object["adapter"].(string); ok {
+		// 只回显已注册协议名，历史记录中的任意字符串可能包含误写入的凭据。
+		if adapter == service.UpstreamUsageAdapterSub2API || adapter == service.UpstreamUsageAdapterNewAPI {
+			result["adapter"] = adapter
+		}
+	}
+	if baseURL, ok := object["base_url"].(string); ok {
+		if parsed, err := url.Parse(strings.TrimSpace(baseURL)); err == nil && parsed.Scheme != "" && parsed.Host != "" &&
+			parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" &&
+			(strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https")) {
+			result["base_url"] = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		}
+	}
+	return result
 }
 
 func AccountFromService(a *service.Account) *Account {

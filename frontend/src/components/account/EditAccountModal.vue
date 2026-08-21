@@ -1775,6 +1775,16 @@
         </div>
       </div>
 
+      <UpstreamUsageConfigEditor
+        v-if="account?.type === 'apikey'"
+        :enabled="upstreamUsageEnabled"
+        :adapter="upstreamUsageAdapter"
+        :base-url="upstreamUsageBaseUrl"
+        @update:enabled="upstreamUsageEnabled = $event"
+        @update:adapter="upstreamUsageAdapter = $event"
+        @update:base-url="upstreamUsageBaseUrl = $event"
+      />
+
       <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock')"
@@ -2720,7 +2730,8 @@ import type {
   OpenAITextRouteMode,
   OpenAIResponsesProbeStatus,
   OpenAIWorkloadCapability,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  UpstreamUsageAdapter
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2736,6 +2747,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import UpstreamUsageConfigEditor from '@/components/account/UpstreamUsageConfigEditor.vue'
 import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
   applyAntigravityProjectID,
@@ -2842,6 +2854,9 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const upstreamUsageEnabled = ref(true)
+const upstreamUsageAdapter = ref<UpstreamUsageAdapter>('sub2api')
+const upstreamUsageBaseUrl = ref('')
 type GeminiProviderType = 'official' | 'third_party'
 const geminiProviderType = ref<GeminiProviderType>('official')
 const geminiAIStudioTier = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
@@ -3525,13 +3540,24 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-	const extra = newAccount.extra as Record<string, unknown> | undefined
-	mixedScheduling.value = extra?.mixed_scheduling === true
-	allowOverages.value = extra?.allow_overages === true
-	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
-	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
-	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
-	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
+  const extra = newAccount.extra as Record<string, unknown> | undefined
+  upstreamUsageEnabled.value = true
+  upstreamUsageAdapter.value = 'sub2api'
+  upstreamUsageBaseUrl.value = ''
+  if (newAccount.type === 'apikey') {
+    const rawUsageConfig = extra?.upstream_usage_query as Record<string, unknown> | undefined
+    if (rawUsageConfig && typeof rawUsageConfig === 'object') {
+      upstreamUsageEnabled.value = rawUsageConfig.enabled !== false
+      if (rawUsageConfig.adapter === 'new_api') upstreamUsageAdapter.value = 'new_api'
+      if (typeof rawUsageConfig.base_url === 'string') upstreamUsageBaseUrl.value = rawUsageConfig.base_url
+    }
+  }
+  mixedScheduling.value = extra?.mixed_scheduling === true
+  allowOverages.value = extra?.allow_overages === true
+  autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
+  autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
+  autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
+  autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 
   // 加载 OpenAI OAuth、SetupToken 和 API Key 账号的透传设置。
   openaiPassthroughEnabled.value = false
@@ -5127,6 +5153,16 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      if (props.account.type === 'apikey') {
+        const upstreamConfig: Record<string, unknown> = {
+          enabled: upstreamUsageEnabled.value,
+          adapter: upstreamUsageAdapter.value
+        }
+        if (upstreamUsageBaseUrl.value.trim()) {
+          upstreamConfig.base_url = upstreamUsageBaseUrl.value.trim()
+        }
+        newExtra.upstream_usage_query = upstreamConfig
+      }
       updatePayload.extra = newExtra
     }
 
