@@ -384,6 +384,29 @@ gateway:
     client_first_message_timeout_seconds: 30
 ```
 
+### 强制 OpenAI 上游使用 HTTP/SSE
+
+当出站代理或网络导致 OpenAI Responses 上游 WebSocket 反复重连时，可以在持久化
+`config.yaml` 中启用全局回退：
+
+```yaml
+gateway:
+  openai_ws:
+    force_http: true
+```
+
+Docker Compose 和 Apple `container` 共用的 `.env` 也可以设置：
+
+```bash
+GATEWAY_OPENAI_WS_FORCE_HTTP=true
+```
+
+该开关只改变网关到 OpenAI 上游的传输为 HTTP/SSE，不改变客户端协议，也不会强制
+使用 HTTP/1.1。若代理不兼容 HTTP/2，需要另行设置
+`gateway.openai_http2.enabled: false` 或 `GATEWAY_OPENAI_HTTP2_ENABLED=false`。
+配置应写入持久化的 `.env` 或 `config.yaml`，不要只在运行中的容器内临时修改，
+以便镜像更新或容器重建后仍然生效。
+
 `config.yaml` 还支持以下安全相关配置：
 
 - `cors.allowed_origins` 配置 CORS 白名单
