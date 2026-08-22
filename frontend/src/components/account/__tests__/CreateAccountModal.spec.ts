@@ -243,6 +243,7 @@ describe('CreateAccountModal OpenAI account options', () => {
     await selectButtonByText(wrapper, 'API Key')
 
     await wrapper.get('[data-testid="upstream-usage-adapter"]').setValue('new_api')
+    await wrapper.get('[data-testid="upstream-usage-base-url"]').setValue('https://usage.example.test')
     await wrapper.get('[data-testid="upstream-usage-wallet-access-token"]').setValue('wallet-pat')
     await wrapper.get('[data-testid="upstream-usage-wallet-user-id"]').setValue('42')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI wallet account')
@@ -255,6 +256,11 @@ describe('CreateAccountModal OpenAI account options', () => {
     const payload = createAccountMock.mock.calls[0]?.[0]
     expect(payload?.credentials?.new_api_user_access_token).toBe('wallet-pat')
     expect(payload?.credentials?.new_api_user_id).toBe('42')
+    expect(payload?.extra?.upstream_usage_query).toEqual({
+      enabled: true,
+      adapter: 'new_api',
+      base_url: 'https://usage.example.test'
+    })
     expect(payload?.extra?.upstream_usage_query?.new_api_user_access_token).toBeUndefined()
   })
 

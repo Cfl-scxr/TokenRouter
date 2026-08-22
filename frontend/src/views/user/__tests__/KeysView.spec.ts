@@ -615,7 +615,7 @@ describe('user KeysView column settings', () => {
     await getButtonByText(wrapper, 'Edit').trigger('click')
     await nextTick()
 
-    expect(wrapper.get('[data-test="key-status-select"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="key-status-toggle"]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('Only the team administrator can enable this key again.')
 
     await wrapper.get('form#key-form').trigger('submit')
@@ -624,6 +624,26 @@ describe('user KeysView column settings', () => {
     expect(toggleStatus).not.toHaveBeenCalled()
     expect(updateKey).toHaveBeenCalledTimes(1)
     expect(updateKey.mock.calls[0][1]).not.toHaveProperty('status')
+  })
+
+  it('updates the key status through the edit switch', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), group_id: 42 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = await mountView()
+
+    await getButtonByText(wrapper, 'Edit').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-test="key-status-toggle"]').trigger('click')
+    await wrapper.get('form#key-form').trigger('submit')
+    await flushPromises()
+
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ status: 'inactive' }))
   })
 
   it('marks current concurrency as sortable', async () => {

@@ -79,11 +79,14 @@ describe('AccountUpstreamUsageCell', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.balanceLine:75 USD|25 USD|100 USD')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.remainingLine:75 USD')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamUsage.balanceLine')
     expect(wrapper.text()).toContain('5h|20|2026-08-20T05:00:00Z')
     expect(wrapper.findAll('.usage-bar')).toHaveLength(6)
     expect(wrapper.text()).toContain('Pro')
     expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.expiresAt')
+    expect(wrapper.get('[data-testid="upstream-subscription-row"]').classes()).toContain('justify-end')
+    expect(wrapper.get('[data-testid="upstream-subscription-row"]').classes()).toContain('md:justify-start')
   })
 
   it('把无限量和错误状态分别显示，并保留重试按钮', async () => {

@@ -949,6 +949,11 @@
 }
 
 @layer utilities {
+  /* 分组页面所有开关的启用态统一使用品牌蓝。 */
+  .group-switch-active {
+    background-color: rgb(18, 167, 232);
+  }
+
   /* 浅色主题统一加深常规次级文字，暗色主题继续使用各组件原有的颜色。 */
   html:not(.dark) :is(
     .text-gray-500,

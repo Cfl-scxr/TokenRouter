@@ -6174,19 +6174,12 @@ const handleSubmit = async () => {
   }
 
   applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-  if (!applyTempUnschedConfig(credentials)) {
-    return
-  }
 
   form.credentials = credentials
   const extra = buildAnthropicExtra(buildOpenAIExtra())
 
-  await doCreateAccount({
-    ...form,
-    group_ids: form.group_ids,
-    extra,
-    auto_pause_on_expired: autoPauseOnExpired.value
-  })
+  // API Key 统一经过构造器，确保配额和上游用量查询配置一起写入请求。
+  await createAccountAndFinish(form.platform, 'apikey', credentials, extra)
 }
 
 const goBackToBasicInfo = () => {

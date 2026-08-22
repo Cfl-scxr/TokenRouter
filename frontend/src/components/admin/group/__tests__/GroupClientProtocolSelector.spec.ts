@@ -43,6 +43,22 @@ describe('GroupClientProtocolSelector', () => {
     )
   })
 
+  it('uses the shared enabled switch color', () => {
+    const wrapper = mount(GroupClientProtocolSelector, {
+      props: {
+        platform: 'openai',
+        modelValue: ['openai_responses']
+      }
+    })
+
+    expect(wrapper.get('[data-protocol="openai_responses"]').classes()).toContain(
+      'group-switch-active'
+    )
+    expect(wrapper.get('[data-protocol="openai_chat_completions"]').classes()).not.toContain(
+      'group-switch-active'
+    )
+  })
+
   it('allows default protocols to be disabled', async () => {
     const wrapper = mount(GroupClientProtocolSelector, {
       props: {

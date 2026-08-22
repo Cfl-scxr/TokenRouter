@@ -35,7 +35,7 @@
           :aria-checked="isEnabled(protocol)"
           :aria-label="t(`admin.groups.clientProtocols.labels.${protocol}`)"
           class="relative inline-flex h-6 w-12 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-          :class="isEnabled(protocol) ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
+          :class="isEnabled(protocol) ? 'group-switch-active' : 'bg-gray-300 dark:bg-dark-600'"
           @click="toggle(protocol)"
         >
           <span

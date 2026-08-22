@@ -39,7 +39,7 @@
           {{ formatAmount(limit.limit, normalizedUsage?.unit) }}
         </div>
       </div>
-      <div v-if="subscriptionLabel || subscriptionExpiry" class="flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+      <div v-if="subscriptionLabel || subscriptionExpiry" data-testid="upstream-subscription-row" class="flex flex-wrap items-center justify-end gap-1 text-[10px] text-gray-500 dark:text-gray-400 md:justify-start">
         <span v-if="subscriptionLabel" class="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
           {{ subscriptionLabel }}
         </span>
@@ -184,13 +184,6 @@ const balanceLabel = computed(() => {
   if (!usage?.balance) return ''
   const balance = usage.balance
   const unit = usage.unit
-  if (balance.total != null || balance.used != null) {
-    return t('admin.accounts.upstreamUsage.balanceLine', {
-      remaining: formatAmount(balance.remaining, unit),
-      used: formatAmount(balance.used, unit),
-      total: formatAmount(balance.total, unit)
-    })
-  }
   return t('admin.accounts.upstreamUsage.remainingLine', {
     remaining: formatAmount(balance.remaining, unit)
   })
@@ -200,13 +193,6 @@ const balanceTitle = computed(() => {
   const balance = normalizedUsage.value?.balance
   if (!balance) return ''
   const unit = normalizedUsage.value?.unit
-  if (balance.total != null || balance.used != null) {
-    return t('admin.accounts.upstreamUsage.balanceTooltip', {
-      remaining: formatExactAmount(balance.remaining, unit),
-      used: formatExactAmount(balance.used, unit),
-      total: formatExactAmount(balance.total, unit)
-    })
-  }
   return t('admin.accounts.upstreamUsage.remainingTooltip', {
     remaining: formatExactAmount(balance.remaining, unit)
   })

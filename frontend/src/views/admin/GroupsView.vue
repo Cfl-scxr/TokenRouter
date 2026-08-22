@@ -609,7 +609,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.is_exclusive
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -642,7 +642,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.is_default
-                  ? 'bg-emerald-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -690,7 +690,7 @@
               @click="createForm.data_sharing_enabled = !createForm.data_sharing_enabled"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                createForm.data_sharing_enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-dark-600',
+                createForm.data_sharing_enabled ? 'group-switch-active' : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
               <span
@@ -727,7 +727,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.session_isolation_enabled
-                  ? 'bg-blue-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -767,7 +767,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
                 createModelsListState.enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -870,7 +870,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
                 createForm.availability_probe_enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -1386,7 +1386,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.mcp_xml_inject
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -1446,7 +1446,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.claude_code_only
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -1618,7 +1618,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 createForm.allow_live
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -1865,7 +1865,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 createForm.require_oauth_only
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -1902,7 +1902,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 createForm.require_privacy_set
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -1979,7 +1979,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 createForm.model_routing_enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -2403,7 +2403,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.is_exclusive
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -2425,7 +2425,36 @@
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
-          <Select v-model="editForm.status" :options="editStatusOptions" />
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              data-testid="edit-group-status-toggle"
+              :aria-label="t('admin.groups.form.status')"
+              :aria-checked="editForm.status === 'active'"
+              @click="editForm.status = editForm.status === 'active' ? 'inactive' : 'active'"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.status === 'active'
+                  ? 'group-switch-active'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.status === 'active' ? 'translate-x-6' : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.status === 'active'
+                  ? t("admin.accounts.status.active")
+                  : t("admin.accounts.status.inactive")
+              }}
+            </span>
+          </div>
         </div>
         <div>
           <div class="mb-1.5 flex items-center gap-1">
@@ -2441,7 +2470,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.is_default
-                  ? 'bg-emerald-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
                 editForm.status !== 'active' ? 'cursor-not-allowed opacity-60' : '',
               ]"
@@ -2494,7 +2523,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.data_sharing_enabled
-                  ? 'bg-blue-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -2534,7 +2563,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.session_isolation_enabled
-                  ? 'bg-blue-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -2574,7 +2603,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
                 editModelsListState.enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -2677,7 +2706,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
                 editForm.availability_probe_enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -3194,7 +3223,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.mcp_xml_inject
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -3252,7 +3281,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.claude_code_only
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -3422,7 +3451,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 editForm.allow_live
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -3669,7 +3698,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 editForm.require_oauth_only
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -3706,7 +3735,7 @@
               class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
               :class="
                 editForm.require_privacy_set
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600'
               "
             >
@@ -3782,7 +3811,7 @@
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                 editForm.model_routing_enabled
-                  ? 'bg-primary-500'
+                  ? 'group-switch-active'
                   : 'bg-gray-300 dark:bg-dark-600',
               ]"
             >
@@ -4523,11 +4552,6 @@ const platformFilterOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "qoder", label: "Qoder" },
   { value: "grok", label: "Grok" },
-]);
-
-const editStatusOptions = computed(() => [
-  { value: "active", label: t("admin.accounts.status.active") },
-  { value: "inactive", label: t("admin.accounts.status.inactive") },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组

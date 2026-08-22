@@ -739,16 +739,18 @@
           </div>
         </div>
 
-        <div v-if="showEditModal">
-          <label class="input-label">{{ t('keys.statusLabel') }}</label>
-          <Select
-            v-model="formData.status"
-            :options="statusOptions"
-            :placeholder="t('keys.selectStatus')"
-            :disabled="Boolean(selectedKey?.team_owner_disabled)"
-            :aria-describedby="selectedKey?.team_owner_disabled ? 'team-owner-disabled-hint' : undefined"
-            data-test="key-status-select"
-          />
+        <div v-if="showEditModal" class="space-y-3">
+          <div class="flex items-center justify-between gap-4">
+            <label class="input-label mb-0">{{ t('keys.statusLabel') }}</label>
+            <Toggle
+              :model-value="formData.status === 'active'"
+              :disabled="Boolean(selectedKey?.team_owner_disabled)"
+              :aria-label="t('keys.statusLabel')"
+              :aria-describedby="selectedKey?.team_owner_disabled ? 'team-owner-disabled-hint' : undefined"
+              data-test="key-status-toggle"
+              @update:model-value="onStatusToggle"
+            />
+          </div>
           <p
             v-if="selectedKey?.team_owner_disabled"
             id="team-owner-disabled-hint"
@@ -1780,11 +1782,6 @@ const customKeyError = computed(() => {
   return ''
 })
 
-const statusOptions = computed(() => [
-  { value: 'active', label: t('common.active') },
-  { value: 'inactive', label: t('common.inactive') }
-])
-
 // 单 Key Fast 策略选项；Select 组件负责键盘与弹层交互。
 const fastModePolicyOptions = computed(() => [
   { value: 'follow_request', label: t('keys.fastModePolicy.followRequest') },
@@ -2237,6 +2234,12 @@ const editKey = (key: ApiKey) => {
   formGroups.value = []
   showEditModal.value = true
   void Promise.all([loadBillingOptions(), loadFormGroups()])
+}
+
+// 状态开关只维护编辑表单的 active/inactive 两种可提交值。
+const onStatusToggle = (enabled: boolean) => {
+  if (selectedKey.value?.team_owner_disabled) return
+  formData.value.status = enabled ? 'active' : 'inactive'
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
