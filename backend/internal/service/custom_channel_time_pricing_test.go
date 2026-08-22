@@ -68,6 +68,31 @@ func TestChannelTimePricingMultiplierAt(t *testing.T) {
 	require.Equal(t, 2.0, newYork.MultiplierAt(time.Date(2026, 6, 29, 14, 0, 0, 0, time.UTC)))
 }
 
+func TestChannelTimePricingMultiplierAtWeekdaysOnly(t *testing.T) {
+	config := &ChannelTimePricing{
+		Timezone:     "Asia/Shanghai",
+		WeekdaysOnly: true,
+		Periods: []ChannelTimePricingPeriod{{
+			StartTime: "09:00", EndTime: "12:00", Multiplier: 2,
+		}},
+	}
+
+	tests := []struct {
+		name string
+		at   time.Time
+		want float64
+	}{
+		{name: "Monday in configured timezone", at: time.Date(2026, 6, 29, 1, 0, 0, 0, time.UTC), want: 2},
+		{name: "Saturday in configured timezone", at: time.Date(2026, 7, 4, 1, 0, 0, 0, time.UTC), want: 1},
+		{name: "Sunday in configured timezone", at: time.Date(2026, 7, 5, 1, 0, 0, 0, time.UTC), want: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, config.MultiplierAt(tt.at))
+		})
+	}
+}
+
 func TestChannelTimePricingMultiplierAtMidnightSplit(t *testing.T) {
 	config := channelTimePricingTestConfig(
 		ChannelTimePricingPeriod{StartTime: "22:00", EndTime: "00:00", Multiplier: 2},

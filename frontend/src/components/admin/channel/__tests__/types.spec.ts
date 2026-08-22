@@ -184,6 +184,7 @@ describe('tier multipliers', () => {
 describe('time pricing', () => {
   it('默认关闭并可往返转换旧分钟精度配置', () => {
     const empty = createDefaultTimePricingForm()
+    expect(empty).toEqual({ timezone: 'Asia/Shanghai', weekdays_only: false, periods: [] })
     expect(formTimePricingToAPI(empty)).toBeNull()
 
     const form = apiTimePricingToForm({
@@ -196,6 +197,26 @@ describe('time pricing', () => {
       multiplier: '2.00',
     })
     expect(formTimePricingToAPI(form)?.periods[0].multiplier).toBe(2)
+  })
+
+  it('兼容缺省并往返工作日范围', () => {
+    const legacy = apiTimePricingToForm({
+      timezone: 'Asia/Shanghai',
+      periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 }],
+    })
+    expect(legacy.weekdays_only).toBe(false)
+
+    const weekdays = apiTimePricingToForm({
+      timezone: 'Asia/Shanghai',
+      weekdays_only: true,
+      periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 }],
+    })
+    expect(weekdays.weekdays_only).toBe(true)
+    expect(formTimePricingToAPI(weekdays)).toEqual({
+      timezone: 'Asia/Shanghai',
+      weekdays_only: true,
+      periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: 2 }],
+    })
   })
 
   it.each([

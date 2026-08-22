@@ -57,7 +57,8 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 				CacheReadPrice:     float64Ptr(0.002),
 				PerRequestPrice:    float64Ptr(0.5),
 				TimePricing: &service.ChannelTimePricing{
-					Timezone: "Asia/Shanghai",
+					Timezone:     "Asia/Shanghai",
+					WeekdaysOnly: true,
 					Periods: []service.ChannelTimePricingPeriod{{
 						StartTime: "09:00", EndTime: "12:00", Multiplier: 2,
 					}},
@@ -104,6 +105,7 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Empty(t, p.Intervals)
 	require.NotNil(t, p.TimePricing)
 	require.Equal(t, "Asia/Shanghai", p.TimePricing.Timezone)
+	require.True(t, p.TimePricing.WeekdaysOnly)
 	require.Equal(t, 2.0, p.TimePricing.Periods[0].Multiplier)
 }
 
@@ -112,7 +114,8 @@ func TestPricingRequestToServiceTimePricing(t *testing.T) {
 		Platform: "openai",
 		Models:   []string{"gpt-5"},
 		TimePricing: &channelTimePricingRequest{
-			Timezone: "Asia/Tokyo",
+			Timezone:     "Asia/Tokyo",
+			WeekdaysOnly: true,
 			Periods: []channelTimePricingPeriodRequest{{
 				StartTime: "10:00:00", EndTime: "11:00:00", Multiplier: 1.25,
 			}},
@@ -120,6 +123,7 @@ func TestPricingRequestToServiceTimePricing(t *testing.T) {
 	}})
 	require.Len(t, pricing, 1)
 	require.Equal(t, "Asia/Tokyo", pricing[0].TimePricing.Timezone)
+	require.True(t, pricing[0].TimePricing.WeekdaysOnly)
 	require.Equal(t, 1.25, pricing[0].TimePricing.Periods[0].Multiplier)
 }
 
