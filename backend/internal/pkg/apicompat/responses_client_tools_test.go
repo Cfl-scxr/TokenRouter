@@ -66,6 +66,109 @@ func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(
 	require.Equal(t, "team__send", namespaceCall["name"])
 }
 
+func TestAdaptResponsesClientTools_RemovesDeferredFlagsWhenToolSearchIsLowered(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "tool_search"},
+			map[string]any{"type": "function", "name": "shell", "defer_loading": true},
+			map[string]any{"type": "function", "name": "apply_patch"},
+		},
+	}
+
+	_, changed, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	tools := requireResponsesClientToolValue[[]any](t, req["tools"])
+	require.Equal(t, toolSearchProxyName, requireResponsesClientToolValue[map[string]any](t, tools[0])["name"])
+	require.NotContains(t, requireResponsesClientToolValue[map[string]any](t, tools[1]), "defer_loading")
+}
+
+func TestStripResponsesDeferredToolFlags_PreservesFlagsWithBuiltInToolSearch(t *testing.T) {
+	tools := []any{
+		map[string]any{"type": "tool_search"},
+		map[string]any{"type": "function", "name": "shell", "defer_loading": true},
+	}
+
+	require.False(t, stripResponsesDeferredToolFlags(tools))
+	require.Equal(t, true, requireResponsesClientToolValue[map[string]any](t, tools[1])["defer_loading"])
+}
+
+func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
+	requestJSON := `{
+		"tools":[{"type":"tool_search"}],
+		"input":[
+			{"type":"tool_search_call","id":"tsc_client","call_id":"call_search","arguments":{"query":"codex app"},"execution":"client","status":"completed"},
+			{"type":"tool_search_output","id":"tso_client","call_id":"call_search","execution":"client","status":"completed","tools":[
+				{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{},"additionalProperties":false}}]},
+				{"type":"namespace","name":"multi_agent_v1","tools":[
+					{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false}},
+					{"type":"function","name":"wait_agent","description":"Wait for agents","parameters":{"type":"object","properties":{},"additionalProperties":false}}
+				]}
+			]}
+		]
+	}`
+
+	type adaptedRequest struct {
+		req     map[string]any
+		mapping ResponsesClientToolMapping
+	}
+	adapt := func() adaptedRequest {
+		var req map[string]any
+		require.NoError(t, json.Unmarshal([]byte(requestJSON), &req))
+		mapping, changed, err := AdaptResponsesClientTools(req)
+		require.NoError(t, err)
+		require.True(t, changed)
+		return adaptedRequest{req: req, mapping: mapping}
+	}
+
+	first := adapt()
+	second := adapt()
+	firstInput := requireResponsesClientToolValue[[]any](t, first.req["input"])
+	secondInput := requireResponsesClientToolValue[[]any](t, second.req["input"])
+
+	tools := requireResponsesClientToolValue[[]any](t, first.req["tools"])
+	require.Len(t, tools, 4)
+	require.Equal(t, []string{
+		"tool_search",
+		"codex_app__load_workspace_dependencies",
+		"multi_agent_v1__spawn_agent",
+		"multi_agent_v1__wait_agent",
+	}, responsesClientToolNames(t, tools))
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "spawn_agent"}, first.mapping.NamespaceTools["multi_agent_v1__spawn_agent"])
+	require.Equal(t, ResponsesNamespaceName{Namespace: "multi_agent_v1", Name: "wait_agent"}, first.mapping.NamespaceTools["multi_agent_v1__wait_agent"])
+
+	call := requireResponsesClientToolValue[map[string]any](t, firstInput[0])
+	require.Equal(t, "function_call", call["type"])
+	require.Equal(t, toolSearchProxyName, call["name"])
+	require.JSONEq(t, `{"query":"codex app"}`, requireResponsesClientToolValue[string](t, call["arguments"]))
+	require.NotContains(t, call, "execution")
+
+	output := requireResponsesClientToolValue[map[string]any](t, firstInput[1])
+	require.Equal(t, map[string]any{
+		"type":    "function_call_output",
+		"call_id": "call_search",
+		"output":  output["output"],
+	}, output)
+	outputText := requireResponsesClientToolValue[string](t, output["output"])
+	require.JSONEq(t, `[
+		{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{},"additionalProperties":false}}]},
+		{"type":"namespace","name":"multi_agent_v1","tools":[
+			{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false}},
+			{"type":"function","name":"wait_agent","description":"Wait for agents","parameters":{"type":"object","properties":{},"additionalProperties":false}}
+		]}
+	]`, outputText)
+	secondOutput := requireResponsesClientToolValue[map[string]any](t, secondInput[1])
+	require.Equal(t, outputText, secondOutput["output"], "tool discovery output encoding must be deterministic")
+
+	restored, changed, err := RestoreResponsesClientToolPayload(
+		[]byte(`{"output":[{"type":"function_call","name":"multi_agent_v1__spawn_agent","call_id":"call_spawn","arguments":"{\"message\":\"work\"}"}]}`),
+		first.mapping,
+	)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"output":[{"type":"function_call","name":"spawn_agent","namespace":"multi_agent_v1","call_id":"call_spawn","arguments":"{\"message\":\"work\"}"}]}`, string(restored))
+}
+
 func TestAdaptResponsesClientTools_LowersToolSearchDiscoveryPayloadWithoutOutput(t *testing.T) {
 	req := map[string]any{
 		"tools": []any{map[string]any{"type": "tool_search"}},

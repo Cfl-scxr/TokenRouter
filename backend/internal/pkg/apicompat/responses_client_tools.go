@@ -117,6 +117,9 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 			lowered = append(lowered, raw)
 		}
 	}
+	if stripResponsesDeferredToolFlags(lowered) {
+		changed = true
+	}
 	if changed {
 		req["tools"] = lowered
 	}
@@ -137,6 +140,26 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 		adapter.NamespaceTools = nil
 	}
 	return adapter, changed, nil
+}
+
+// stripResponsesDeferredToolFlags 在最终声明列表不再包含其所需的内置
+// tool_search 时移除 defer_loading 标志。
+func stripResponsesDeferredToolFlags(tools []any) bool {
+	if hasResponsesToolSearchDeclaration(tools) {
+		return false
+	}
+	changed := false
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, exists := tool["defer_loading"]; exists {
+			delete(tool, "defer_loading")
+			changed = true
+		}
+	}
+	return changed
 }
 
 // AdaptResponsesClientToolsWithInheritedMapping 处理省略 tools 声明的后续请求。
