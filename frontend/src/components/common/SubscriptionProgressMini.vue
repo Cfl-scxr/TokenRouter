@@ -30,7 +30,7 @@
     <transition name="dropdown">
       <div
         v-if="tooltipOpen"
-        class="subscription-progress-popover absolute right-0 z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-dark-700 dark:bg-dark-800"
+        class="subscription-progress-popover absolute right-0 z-50 mt-2 w-[340px] overflow-hidden rounded-control border border-gray-200 bg-white shadow-xl dark:border-dark-700 dark:bg-dark-800"
       >
         <div class="border-b border-gray-100 p-3 dark:border-dark-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -137,7 +137,7 @@ const triggerClass = computed(() => {
   if (variant.value === 'status') {
     return 'flex h-8 min-w-[50px] items-center justify-center gap-1.5 rounded-lg border border-primary-200/70 bg-primary-100/80 px-2.5 shadow-sm transition-colors hover:bg-primary-100 disabled:cursor-default disabled:hover:bg-primary-100/80 dark:border-transparent dark:bg-dark-800/80 dark:shadow-none dark:hover:bg-dark-700 dark:disabled:hover:bg-dark-800/80'
   }
-  return 'flex cursor-pointer items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 transition-colors hover:bg-primary-100 dark:bg-primary-900/20 dark:hover:bg-primary-900/30'
+  return 'flex cursor-pointer items-center gap-2 rounded-control bg-primary-50 px-3 py-1.5 transition-colors hover:bg-primary-100 dark:bg-primary-900/20 dark:hover:bg-primary-900/30'
 })
 
 const displaySubscriptions = computed(() =>

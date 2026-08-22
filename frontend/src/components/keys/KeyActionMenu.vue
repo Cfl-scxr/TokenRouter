@@ -3,7 +3,7 @@
     <div v-if="show && apiKey && position">
       <div class="fixed inset-0 z-[9998]" @click="emit('close')"></div>
       <div
-        class="fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="fixed z-[9999] w-48 overflow-hidden rounded-control bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
         :style="{ top: `${position.top}px`, left: `${position.left}px` }"
         @click.stop
       >

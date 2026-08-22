@@ -10,7 +10,7 @@
           role="dialog"
           aria-modal="true"
           :aria-label="displayedAnnouncement.title"
-          class="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl shadow-black/20 dark:border-dark-600 dark:bg-dark-900 dark:shadow-black/50 sm:max-h-[calc(100dvh-3rem)]"
+          class="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-surface border border-gray-200 bg-white shadow-2xl shadow-black/20 dark:border-dark-600 dark:bg-dark-900 dark:shadow-black/50 sm:max-h-[calc(100dvh-3rem)] sm:rounded-dialog"
           @click.stop
         >
           <!-- 头部仅保留公告类型、标题和元信息，维持站内通知的轻量层级。 -->

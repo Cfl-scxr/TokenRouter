@@ -268,7 +268,7 @@
   /* ============ 按钮样式 ============ */
   .btn {
     @apply inline-flex items-center justify-center gap-2;
-    @apply rounded-xl px-4 py-2.5 text-sm font-medium;
+    @apply rounded-control px-4 py-2.5 text-sm font-medium;
     @apply shadow-none;
     @apply transition-all duration-200 ease-out;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
@@ -342,24 +342,24 @@
   }
 
   .btn-sm {
-    @apply rounded-lg px-3 py-1.5 text-xs;
+    @apply rounded-control px-3 py-1.5 text-xs;
   }
 
   .btn-md {
-    @apply rounded-xl px-4 py-2 text-sm;
+    @apply rounded-control px-4 py-2 text-sm;
   }
 
   .btn-lg {
-    @apply rounded-2xl px-6 py-3 text-base;
+    @apply rounded-control px-6 py-3 text-base;
   }
 
   .btn-icon {
-    @apply rounded-xl p-2.5;
+    @apply rounded-control p-2.5;
   }
 
   /* ============ 输入框样式 ============ */
   .input {
-    @apply w-full rounded-xl px-4 py-2.5 text-sm;
+    @apply w-full rounded-control px-4 py-2.5 text-sm;
     @apply bg-white dark:bg-dark-950;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply text-dark-950 dark:text-dark-50;
@@ -404,7 +404,7 @@
   .glass-card {
     @apply bg-white/75 dark:bg-dark-900;
     @apply backdrop-blur-xl;
-    @apply rounded-2xl;
+    @apply rounded-surface;
     @apply border border-primary-900/10 dark:border-dark-600/80;
     @apply shadow-none;
     @apply transition-all duration-300;
@@ -413,7 +413,7 @@
   /* ============ 卡片样式 ============ */
   .card {
     @apply bg-white dark:bg-dark-900/95;
-    @apply rounded-2xl;
+    @apply rounded-surface;
     @apply border border-primary-900/10 dark:border-dark-600/80;
     @apply shadow-none;
     @apply transition-all duration-300;
@@ -452,7 +452,7 @@
   }
 
   .stat-icon {
-    @apply h-12 w-12 rounded-xl;
+    @apply h-12 w-12 rounded-control;
     @apply flex items-center justify-center;
     @apply text-xl;
   }
@@ -495,7 +495,7 @@
 
   /* ============ 表格样式 ============ */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-primary-900/10 dark:border-dark-600;
+    @apply overflow-x-auto rounded-surface border border-primary-900/10 dark:border-dark-600;
   }
 
   .table {
@@ -558,7 +558,7 @@
   .dropdown {
     @apply absolute z-50;
     @apply bg-white dark:bg-dark-900;
-    @apply rounded-xl;
+    @apply rounded-control;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply shadow-lg;
     @apply py-1;
@@ -584,7 +584,7 @@
     @apply w-full;
     @apply max-h-[95vh] sm:max-h-[90vh];
     @apply bg-white dark:bg-dark-900;
-    @apply rounded-2xl shadow-2xl;
+    @apply rounded-surface shadow-2xl sm:rounded-dialog;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply flex flex-col;
   }
@@ -676,7 +676,7 @@
   .dialog-container {
     @apply flex w-full flex-col;
     @apply max-h-[90vh];
-    @apply rounded-2xl bg-white dark:bg-dark-900;
+    @apply rounded-surface bg-white dark:bg-dark-900 sm:rounded-dialog;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply shadow-xl;
   }
@@ -702,7 +702,7 @@
     @apply min-w-[320px] max-w-md;
     @apply bg-white dark:bg-dark-900;
     @apply dark:border dark:border-dark-600;
-    @apply rounded-xl shadow-lg;
+    @apply rounded-surface shadow-lg;
     @apply border-l-4;
     @apply p-4;
     @apply animate-slide-in-right;
@@ -748,7 +748,7 @@
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-xl py-2.5;
+    @apply flex items-center gap-3 rounded-control py-2.5;
     @apply overflow-hidden;
     @apply text-sm font-medium;
     @apply text-primary-900 dark:text-dark-100;
@@ -826,11 +826,11 @@
   /* ============ 标签页 ============ */
   .tabs {
     @apply flex gap-1 p-1;
-    @apply rounded-xl bg-primary-100/80 dark:bg-dark-950;
+    @apply rounded-control bg-primary-100/80 dark:bg-dark-950;
   }
 
   .tab {
-    @apply rounded-lg px-4 py-2 text-sm font-medium;
+    @apply rounded-compact px-4 py-2 text-sm font-medium;
     @apply text-primary-900/90 dark:text-dark-100/80;
     @apply transition-all duration-200;
     @apply hover:text-primary-900 dark:hover:text-white;
@@ -888,7 +888,7 @@
   .code-block {
     @apply font-mono text-sm;
     @apply bg-gray-900 text-gray-100;
-    @apply overflow-x-auto rounded-xl p-4;
+    @apply overflow-x-auto rounded-surface p-4;
   }
 
   /* ============ Tour Description ============ */

@@ -3,6 +3,23 @@ export default {
   content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
+    // 对齐 OpenRouter 的圆角层级：紧凑元素、控件、内容表面和桌面弹窗。
+    borderRadius: {
+      none: '0px',
+      sm: '4px',
+      DEFAULT: '4px',
+      md: '6px',
+      lg: '6px',
+      xl: '8px',
+      '2xl': '8px',
+      '3xl': '8px',
+      '4xl': '8px',
+      full: '9999px',
+      compact: '4px',
+      control: '6px',
+      surface: '8px',
+      dialog: '12px'
+    },
     extend: {
       colors: {
         // 主色调 - Blue Archive 蓝白主题
@@ -156,9 +173,6 @@ export default {
       },
       backdropBlur: {
         xs: '2px'
-      },
-      borderRadius: {
-        '4xl': '2rem'
       }
     }
   },

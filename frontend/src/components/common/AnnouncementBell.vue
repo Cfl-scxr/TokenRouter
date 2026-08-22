@@ -34,7 +34,7 @@
             aria-modal="true"
             :aria-label="t('announcements.title')"
             data-testid="announcement-list-dialog"
-            class="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl shadow-black/20 dark:border-dark-600 dark:bg-dark-900 dark:shadow-black/50 sm:max-h-[calc(100dvh-3rem)]"
+            class="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-surface border border-gray-200 bg-white shadow-2xl shadow-black/20 dark:border-dark-600 dark:bg-dark-900 dark:shadow-black/50 sm:max-h-[calc(100dvh-3rem)] sm:rounded-dialog"
             @click.stop
           >
             <header class="flex shrink-0 items-center justify-between gap-3 px-4 py-4 sm:px-6">
@@ -205,7 +205,7 @@ const unreadCount = computed(() => announcementStore.unreadCount)
 const displayedAnnouncements = computed(() => announcements.value.slice(0, 20))
 const triggerClass = computed(() => {
   if (props.variant === 'status') {
-    return 'relative flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/70 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white'
+    return 'relative flex h-10 w-10 items-center justify-center rounded-control text-primary-900/70 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white'
   }
   return 'relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800'
 })

@@ -415,11 +415,11 @@ onBeforeUnmount(() => {
 }
 
 .header-status-icon-button {
-  @apply flex h-10 w-10 items-center justify-center rounded-xl text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
+  @apply flex h-10 w-10 items-center justify-center rounded-control text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
 }
 
 .header-status-balance {
-  @apply h-8 min-w-[104px] items-center justify-center rounded-lg border border-primary-200/70 bg-primary-100/80 px-3 shadow-sm dark:border-transparent dark:bg-dark-800/80 dark:shadow-none;
+  @apply h-8 min-w-[104px] items-center justify-center rounded-control border border-primary-200/70 bg-primary-100/80 px-3 shadow-sm dark:border-transparent dark:bg-dark-800/80 dark:shadow-none;
 }
 
 .header-status-user-button {

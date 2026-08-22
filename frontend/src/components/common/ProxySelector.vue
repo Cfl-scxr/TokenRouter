@@ -322,7 +322,7 @@ onUnmounted(() => {
 .select-trigger {
   /* 普通选择器在浅色模式使用中性描边，暗色模式继续使用品牌强调。 */
   @apply flex w-full items-center justify-between gap-2;
-  @apply rounded-xl px-4 py-2.5 text-sm;
+  @apply rounded-control px-4 py-2.5 text-sm;
   @apply bg-white dark:bg-dark-950;
   @apply border border-primary-900/10 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
@@ -351,7 +351,7 @@ onUnmounted(() => {
 .select-dropdown {
   @apply absolute z-[100] mt-2 w-full;
   @apply bg-white dark:bg-dark-900;
-  @apply rounded-xl;
+  @apply rounded-control;
   @apply border border-primary-900/10 dark:border-dark-600;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
@@ -374,7 +374,7 @@ onUnmounted(() => {
 }
 
 .batch-test-btn {
-  @apply flex-shrink-0 rounded-lg p-1.5;
+  @apply flex-shrink-0 rounded-control p-1.5;
   @apply text-primary-900/90 hover:text-emerald-600 dark:hover:text-emerald-400;
   @apply hover:bg-emerald-50 dark:hover:bg-emerald-900/20;
   @apply transition-colors disabled:cursor-not-allowed disabled:opacity-50;

@@ -71,7 +71,8 @@ describe('AnnouncementBell', () => {
     )
 
     expect(dialog?.classList).toContain('max-w-[640px]')
-    expect(dialog?.classList).toContain('rounded-xl')
+    expect(dialog?.classList).toContain('rounded-surface')
+    expect(dialog?.classList).toContain('sm:rounded-dialog')
     expect(dialog?.classList).toContain('dark:bg-dark-900')
     expect(dialog?.querySelector('[class*="bg-gradient"]')).toBeNull()
     expect(items).toHaveLength(2)

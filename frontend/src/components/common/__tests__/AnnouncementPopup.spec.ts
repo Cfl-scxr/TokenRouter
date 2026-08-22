@@ -132,7 +132,8 @@ describe('AnnouncementPopup', () => {
     const status = document.body.querySelector('[data-testid="announcement-popup-status"]')
 
     expect(dialog?.classList).toContain('max-w-[640px]')
-    expect(dialog?.classList).toContain('rounded-xl')
+    expect(dialog?.classList).toContain('rounded-surface')
+    expect(dialog?.classList).toContain('sm:rounded-dialog')
     expect(document.body.textContent).toContain('announcements.title')
     expect(document.body.textContent).toContain('announcements.read')
     expect(document.body.textContent?.match(/announcements\.read/g)).toHaveLength(1)
