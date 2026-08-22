@@ -59,14 +59,15 @@ func TestDeepseekPeakMultiplierAt(t *testing.T) {
 func TestIsDeepSeekOfficialModel(t *testing.T) {
 	official := []string{
 		"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp",
-		"deepseek-chat", "deepseek-reasoner",
-		"DEEPSEEK-V4-PRO", " deepseek-chat ",
+		"DEEPSEEK-V4-PRO", " deepseek-v4-flash ",
 	}
 	for _, m := range official {
 		require.True(t, isDeepSeekOfficialModel(m), "model %q should be official", m)
 	}
 
 	nonOfficial := []string{
+		// deepseek-chat / deepseek-reasoner 已停止服务，不再是官方别名。
+		"deepseek-chat", "deepseek-reasoner",
 		"deepseek-v3-2-251201", "deepseek-v4-flash-free", "deepseek-coder",
 		"deepseek-foo", "gpt-5.4", "",
 	}
@@ -212,6 +213,8 @@ func TestCalculateCostUnified_DeepseekPricingAtZeroFallsBackToNow(t *testing.T) 
 
 func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 	// JSON 给任意价（模拟远端旧价/占位价），官方模型必须被强制覆盖为官方低谷价。
+	// deepseek-chat / deepseek-reasoner 已停止服务：即使远端 JSON 仍残留旧条目，
+	// 也会被 GetModelPricing 的「非官方 deepseek-* 跳过 JSON」逻辑 fail-closed。
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
 		"deepseek-v4-flash":            {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
 		"deepseek-v4-pro":              {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
@@ -228,8 +231,6 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 		{"deepseek-v4-flash", 2.2e-7, 6.6e-7, 7e-9},
 		{"deepseek-v4-flash-vision-exp", 2.2e-7, 6.6e-7, 7e-9},
 		{"deepseek-v4-pro", 6.6e-7, 1.98e-6, 2.2e-8},
-		{"deepseek-chat", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-reasoner", 2.2e-7, 6.6e-7, 7e-9},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
@@ -239,6 +240,15 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 			require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-15)
 			require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-15)
 			require.True(t, bs.HasIdentifiedTokenPricing(tt.model))
+		})
+	}
+
+	// 已停止服务的 chat/reasoner：即使 JSON 有旧条目也必须 fail-closed。
+	for _, m := range []string{"deepseek-chat", "deepseek-reasoner"} {
+		t.Run(m, func(t *testing.T) {
+			_, err := bs.GetModelPricing(m)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.False(t, bs.HasIdentifiedTokenPricing(m))
 		})
 	}
 }
@@ -252,10 +262,14 @@ func TestGetModelPricing_DeepseekNonOfficialFailsClosed(t *testing.T) {
 	}}
 	bs := NewBillingService(&config.Config{}, pricingSvc)
 
-	_, err := bs.GetModelPricing("deepseek-v3-2-251201")
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrModelPricingUnavailable)
-	require.False(t, bs.HasIdentifiedTokenPricing("deepseek-v3-2-251201"))
+	for _, m := range []string{"deepseek-v3-2-251201", "deepseek-chat", "deepseek-reasoner"} {
+		t.Run(m, func(t *testing.T) {
+			_, err := bs.GetModelPricing(m)
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.False(t, bs.HasIdentifiedTokenPricing(m))
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +286,10 @@ func TestDeepseekPricingFileMatchesOfficialRates(t *testing.T) {
 
 	_, ok := pricingData["deepseek-v3-2-251201"]
 	require.False(t, ok, "deepseek-v3-2-251201（$0 占位条目）必须从价格表中移除")
+	for _, discontinued := range []string{"deepseek-chat", "deepseek-reasoner"} {
+		_, ok := pricingData[discontinued]
+		require.False(t, ok, "%s 已停止服务，必须从价格表中移除", discontinued)
+	}
 
 	tests := []struct {
 		model                    string
@@ -280,8 +298,6 @@ func TestDeepseekPricingFileMatchesOfficialRates(t *testing.T) {
 		{"deepseek-v4-flash", 2.2e-7, 6.6e-7, 7e-9},
 		{"deepseek-v4-flash-vision-exp", 2.2e-7, 6.6e-7, 7e-9},
 		{"deepseek-v4-pro", 6.6e-7, 1.98e-6, 2.2e-8},
-		{"deepseek-chat", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-reasoner", 2.2e-7, 6.6e-7, 7e-9},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {

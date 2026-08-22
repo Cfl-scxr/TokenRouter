@@ -509,18 +509,15 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedCacheRead: floatPtr(7e-9),
 		},
 		{
-			name:              "deepseek chat alias → flash",
-			model:             "deepseek-chat",
-			expectedInput:     2.2e-7,
-			expectedOutput:    floatPtr(6.6e-7),
-			expectedCacheRead: floatPtr(7e-9),
+			// deepseek-chat / deepseek-reasoner 已停止服务，不再作为 v4-flash 别名计价。
+			name:             "deepseek chat discontinued no pricing",
+			model:            "deepseek-chat",
+			expectNilPricing: true,
 		},
 		{
-			name:              "deepseek reasoner alias → flash",
-			model:             "deepseek-reasoner",
-			expectedInput:     2.2e-7,
-			expectedOutput:    floatPtr(6.6e-7),
-			expectedCacheRead: floatPtr(7e-9),
+			name:             "deepseek reasoner discontinued no pricing",
+			model:            "deepseek-reasoner",
+			expectNilPricing: true,
 		},
 
 		// ---- 智谱 GLM（z.ai USD 口径）----

@@ -245,13 +245,13 @@ const (
 )
 
 // isDeepSeekOfficialModel 判断模型名是否为 DeepSeek 官方模型（大小写不敏感）。
-// 官方模型：deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-flash-vision-exp，
-// 以及已弃用兼容别名 deepseek-chat / deepseek-reasoner（按 flash 计价）。
-// 未知 deepseek-* 型号不属于官方模型：不采信 JSON 占位价（如 $0 条目），走 fail-closed。
+// 官方模型仅三个：deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-flash-vision-exp。
+// deepseek-chat / deepseek-reasoner 已停止服务（不再作为 v4-flash 别名计价），
+// 与其他未知 deepseek-* 型号一样不属于官方模型：不采信 JSON 占位价（如 $0 条目），
+// 走 fail-closed。
 func isDeepSeekOfficialModel(model string) bool {
 	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp",
-		"deepseek-chat", "deepseek-reasoner":
+	case "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp":
 		return true
 	}
 	return false
@@ -514,8 +514,8 @@ func (s *BillingService) initFallbackPricing() {
 	// Source: https://api-docs.deepseek.com/quick_start/pricing
 	// 官方口径（2026-08-23 起生效）：现行模型为 deepseek-v4-flash /
 	// deepseek-v4-pro / deepseek-v4-flash-vision-exp；deepseek-chat /
-	// deepseek-reasoner 为 deepseek-v4-flash 的已弃用兼容别名（2026/07/24 弃用），
-	// 按 flash 计价。以下均为官方低谷价；高峰价 = 2× 低谷价（高峰时段 01:00–04:00
+	// deepseek-reasoner 已停止服务，不再作为 v4-flash 别名计价（请求 fail-closed）。
+	// 以下均为官方低谷价；高峰价 = 2× 低谷价（高峰时段 01:00–04:00
 	// 与 06:00–10:00 UTC，仅工作日；北京时间周六/周日全天低谷），见 deepseekPeakMultiplierAt。
 	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
 		InputPricePerToken:     deepseekProOffPeakInputPrice,  // $0.66 per MTok (cache miss, off-peak)
@@ -850,8 +850,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["gemini-3.6-flash"]
 	}
 
-	// DeepSeek V4 系列：仅匹配已知 V4 Pro/Flash（含 vision-exp）与官方兼容别名
-	// （deepseek-chat / deepseek-reasoner → V4 Flash），未知 deepseek-* 型号不回退，避免误计价。
+	// DeepSeek V4 系列：仅匹配现行官方模型 V4 Pro/Flash（含 vision-exp）。
+	// deepseek-chat / deepseek-reasoner 已停止服务，不再按 flash 别名计价，
+	// 与未知 deepseek-* 型号一样不回退（fail-closed），避免误计价。
 	// "deepseek-v4-flash-vision-exp" 含 "deepseek-v4-flash" 子串，显式分支置于 flash 之前，语义清晰。
 	if strings.Contains(modelLower, "deepseek-v4-flash-vision-exp") {
 		return s.fallbackPrices["deepseek-v4-flash-vision-exp"]
@@ -861,9 +862,6 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "deepseek-v4-pro") {
 		return s.fallbackPrices["deepseek-v4-pro"]
-	}
-	if strings.Contains(modelLower, "deepseek-chat") || strings.Contains(modelLower, "deepseek-reasoner") {
-		return s.fallbackPrices["deepseek-v4-flash"]
 	}
 
 	// ---- 国产 LLM 兜底匹配 ----
@@ -1607,8 +1605,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 			cloned.OutputPricePerToken = deepseekProOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekProOffPeakCacheRead
 		} else {
-			// deepseek-v4-flash / deepseek-v4-flash-vision-exp 与
-			// 兼容别名 deepseek-chat / deepseek-reasoner 共用 flash 价。
+			// deepseek-v4-flash 与 deepseek-v4-flash-vision-exp 共用 flash 价。
 			cloned.InputPricePerToken = deepseekFlashOffPeakInputPrice
 			cloned.OutputPricePerToken = deepseekFlashOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekFlashOffPeakCacheRead
