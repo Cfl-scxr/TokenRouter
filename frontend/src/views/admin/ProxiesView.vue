@@ -1279,7 +1279,8 @@ const handleDataImported = () => {
   loadProxies()
 }
 
-// Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
+// 解析代理 URL：protocol://user:pass@host:port 或 protocol://host:port。
+// host 可以是域名、IPv4 或带方括号的 IPv6（例如 [2001:db8::1]）。
 const parseProxyUrl = (
   line: string
 ): {
@@ -1292,20 +1293,25 @@ const parseProxyUrl = (
   const trimmed = line.trim()
   if (!trimmed) return null
 
-  // Regex to parse proxy URL (supports http, https, socks5, socks5h)
-  const regex = /^(https?|socks5h?):\/\/(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$/i
+  // 代理 URL 正则（支持 http、https、socks5、socks5h）。
+  // host 分为带方括号的 IPv6，或不含冒号的域名/IPv4；后者会在最后的 :port 前停止匹配。
+  const regex =
+    /^(https?|socks5h?):\/\/(?:([^:@\[\]]+):([^@\[\]]+)@)?(\[[0-9a-f:.]+\]|[^:\[\]]+):(\d+)$/i
   const match = trimmed.match(regex)
 
   if (!match) return null
 
-  const [, protocol, username, password, host, port] = match
+  const [, protocol, username, password, rawHost, port] = match
   const portNum = parseInt(port, 10)
 
   if (portNum < 1 || portNum > 65535) return null
 
+  // 去掉 IPv6 字面量的方括号；后端构造 URL 时会通过 net.JoinHostPort 重新补回。
+  const host = rawHost.replace(/^\[|\]$/g, '').trim()
+
   return {
     protocol: protocol.toLowerCase() as ProxyProtocol,
-    host: host.trim(),
+    host,
     port: portNum,
     username: username?.trim() || '',
     password: password?.trim() || ''
