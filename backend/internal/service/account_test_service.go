@@ -409,10 +409,11 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	// 图片测试仅允许支持图像接口的平台，Antigravity 仅开放 API Key 账号。
 	if explicitTestType && testType == AccountTestTypeImage &&
 		!account.IsOpenAI() && !account.IsGemini() &&
 		account.Platform != PlatformGrok &&
-		!(account.Platform == PlatformAntigravity && account.Type == AccountTypeAPIKey) {
+		(account.Platform != PlatformAntigravity || account.Type != AccountTypeAPIKey) {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Image tests are not supported for platform %s", account.Platform))
 	}
 
