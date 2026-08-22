@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -15,6 +16,10 @@ import (
 )
 
 const upstreamModelsBodyLimit int64 = 8 << 20
+
+// ChatGPT Codex 模型清单地址仅供管理员手动同步 OAuth 账号模型使用；
+// fork 已移除独立的 manifest 网关透传服务，不在此恢复任何代理路由。
+var chatgptCodexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
 // UpstreamModelSyncErrorKind 对模型同步失败类型做分类，便于安全映射到 HTTP 状态码。
 type UpstreamModelSyncErrorKind string
@@ -340,6 +345,9 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 }
 
 func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	if account.IsOpenAIOAuth() {
+		return s.buildOpenAIOAuthUpstreamModelsRequest(ctx, account)
+	}
 	if account.Type != AccountTypeAPIKey {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", account.Type), nil,
@@ -369,6 +377,71 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	return req, nil
+}
+
+// buildOpenAIOAuthUpstreamModelsRequest 使用 ChatGPT Codex 模型清单。
+// OAuth 订阅不提供公开的 Platform API /v1/models 端点，按 API Key 账号处理会导致
+// 管理员同步按钮在本地直接失败。
+func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
+	credentialAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Failed to resolve OpenAI account credentials", err)
+	}
+	if credentialAccount == nil {
+		return nil, newUpstreamModelSyncConfigError("OpenAI account credentials are unavailable", nil)
+	}
+	if !credentialAccount.IsOpenAIOAuth() {
+		return nil, newUpstreamModelSyncUnsupportedError(
+			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", credentialAccount.Type), nil,
+		)
+	}
+
+	modelsURL, err := buildCodexModelsManifestURL(
+		chatgptCodexModelsURL,
+		false,
+		CodexCanonicalClientVersion(),
+	)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI Codex model list URL", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL.String(), nil)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI Codex model list request", err)
+	}
+
+	if credentialAccount.IsOpenAIAgentIdentity() {
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(
+			ctx,
+			s.accountRepo,
+			s.agentIdentityWS,
+			&s.agentIdentityTaskMu,
+			credentialAccount,
+		)
+		if authErr != nil {
+			return nil, newUpstreamModelSyncUpstreamError("Failed to build OpenAI Agent Identity authentication", authErr)
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		accessToken := strings.TrimSpace(credentialAccount.GetOpenAIAccessToken())
+		if accessToken == "" {
+			return nil, newUpstreamModelSyncConfigError("No OpenAI access token is available", nil)
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+
+	identity := resolveCodexOutboundIdentity(credentialAccount.GetOpenAIUserAgent())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Originator", identity.originator)
+	req.Header.Set("User-Agent", identity.userAgent)
+	req.Header.Set("Version", identity.version)
+	setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
+	credentialAccount.ApplyHeaderOverrides(req.Header)
+	enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
 	return req, nil
 }
 
@@ -495,6 +568,7 @@ func buildGeminiModelsURL(base string) string {
 
 type upstreamModelEntry struct {
 	ID           string          `json:"id"`
+	Slug         string          `json:"slug"`
 	Model        string          `json:"model"`
 	ModelID      string          `json:"modelId"`
 	ModelIDSnake string          `json:"model_id"`
@@ -559,6 +633,9 @@ func extractUpstreamModelIDsWithSelector(body []byte, selectID func(upstreamMode
 func upstreamModelEntryID(entry upstreamModelEntry) string {
 	modelID := strings.TrimSpace(entry.ID)
 	if modelID == "" {
+		modelID = strings.TrimSpace(entry.Slug)
+	}
+	if modelID == "" {
 		modelID = strings.TrimSpace(entry.Name)
 	}
 	return strings.TrimPrefix(modelID, "models/")
@@ -610,4 +687,28 @@ func dedupeAndSortModelIDs(models []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// buildCodexModelsManifestURL 为手动模型同步构造带 client_version 的清单 URL。
+// appendModelsPath 仅保留兼容调用方的参数，当前 OAuth 同步固定使用 false。
+func buildCodexModelsManifestURL(endpoint string, appendModelsPath bool, clientVersion string) (*url.URL, error) {
+	requestURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	if requestURL.Fragment != "" {
+		return nil, fmt.Errorf("URL fragments are not supported")
+	}
+	query := requestURL.Query()
+	requestURL.RawQuery = ""
+	requestURL.ForceQuery = false
+	if appendModelsPath {
+		requestURL, err = url.Parse(buildOpenAIModelsURL(requestURL.String()))
+		if err != nil {
+			return nil, err
+		}
+	}
+	query.Set("client_version", clientVersion)
+	requestURL.RawQuery = query.Encode()
+	return requestURL, nil
 }
