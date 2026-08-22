@@ -7,6 +7,10 @@ import { useAppStore } from '@/stores/app'
 import { initTheme } from '@/composables/useTheme'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
+// 在全局样式前加载自托管字体，确保 Tailwind 字体栈首次渲染即可命中。
+import '@fontsource-variable/plus-jakarta-sans'
+import '@fontsource-variable/plus-jakarta-sans/wght-italic.css'
+import '@fontsource-variable/geist-mono'
 import './style.css'
 
 function initIOSViewportZoomFix() {

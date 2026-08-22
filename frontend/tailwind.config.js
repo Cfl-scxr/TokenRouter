@@ -95,7 +95,9 @@ export default {
         }
       },
       fontFamily: {
+        // 英文使用 OpenRouter 的开源字体，中文继续按现有系统字体顺序回退。
         sans: [
+          '"Plus Jakarta Sans Variable"',
           'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
@@ -108,7 +110,15 @@ export default {
           'Microsoft YaHei',
           'sans-serif'
         ],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+        mono: [
+          '"Geist Mono Variable"',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Monaco',
+          'Consolas',
+          'monospace'
+        ]
       },
       boxShadow: {
         // 普通控件和结构表面只用边框分层；浮层、弹窗和品牌发光仍保留较强投影。
