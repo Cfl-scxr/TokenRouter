@@ -70,9 +70,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, body)
 		if liteErr != nil {
+			param := "tools"
+			var validationErr *openAIResponsesLiteValidationError
+			if errors.As(liteErr, &validationErr) {
+				param = validationErr.param
+			}
 			setOpsUpstreamError(c, http.StatusBadRequest, liteErr.Error(), "")
 			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
-				"type": "invalid_request_error", "message": liteErr.Error(), "param": "tools",
+				"type": "invalid_request_error", "message": liteErr.Error(), "param": param,
 			}})
 			return nil, liteErr
 		}

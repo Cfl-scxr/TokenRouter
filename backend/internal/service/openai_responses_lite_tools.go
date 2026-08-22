@@ -11,6 +11,18 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+// openAIResponsesLiteValidationError 记录 Responses Lite 校验失败对应的请求字段。
+type openAIResponsesLiteValidationError struct {
+	param   string
+	message string
+}
+
+func (e *openAIResponsesLiteValidationError) Error() string { return e.message }
+
+func newOpenAIResponsesLiteValidationError(param, format string, args ...any) error {
+	return &openAIResponsesLiteValidationError{param: param, message: fmt.Sprintf(format, args...)}
+}
+
 // normalizeOpenAIResponsesLiteTools 应用 Responses Lite 请求契约：reasoning 必须覆盖所有轮次，
 // 顶层并行工具调用必须关闭，私有 namespace 声明则移入 input.additional_tools 容器。其它顶层
 // 工具必须属于 Lite 接口支持的有限集合；拒绝不支持的 hosted 工具是有意为之，静默丢弃会改变客户端请求语义。
@@ -18,9 +30,14 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	if reqBody == nil {
 		return false, nil
 	}
+	if parallel, exists := reqBody["parallel_tool_calls"]; exists {
+		if _, ok := parallel.(bool); !ok {
+			return false, newOpenAIResponsesLiteValidationError("parallel_tool_calls", "responses Lite requires parallel_tool_calls to be a boolean")
+		}
+	}
 	if rawReasoning, exists := reqBody["reasoning"]; exists && rawReasoning != nil {
 		if _, ok := rawReasoning.(map[string]any); !ok {
-			return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+			return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
 		}
 	}
 	rawTools, exists := reqBody["tools"]
@@ -29,7 +46,7 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	}
 	tools, ok := rawTools.([]any)
 	if !ok {
-		return false, fmt.Errorf("responses Lite requires tools to be an array")
+		return false, newOpenAIResponsesLiteValidationError("tools", "responses Lite requires tools to be an array")
 	}
 
 	topLevelTools := make([]any, 0, len(tools))
@@ -75,7 +92,15 @@ func normalizeOpenAIResponsesLiteTools(reqBody map[string]any) (bool, error) {
 	} else {
 		reqBody["tools"] = topLevelTools
 	}
-	return true, nil
+	return ensureOpenAIResponsesLiteParallelToolCalls(reqBody, true)
+}
+
+// ensureOpenAIResponsesLiteParallelToolCalls 保留 fork 的全量串行策略，统一关闭并行工具调用。
+func ensureOpenAIResponsesLiteParallelToolCalls(reqBody map[string]any, changed bool) (bool, error) {
+	if ensureOpenAIResponsesLiteParallelToolCallsDisabled(reqBody) {
+		return true, nil
+	}
+	return changed, nil
 }
 
 // ensureOpenAIResponsesLiteRequestFields 统一补齐 Lite 请求的跨工具字段约束。
@@ -97,7 +122,7 @@ func ensureOpenAIResponsesLiteReasoningContext(reqBody map[string]any) (bool, er
 	}
 	reasoning, ok := rawReasoning.(map[string]any)
 	if !ok {
-		return false, fmt.Errorf("responses Lite requires reasoning to be an object")
+		return false, newOpenAIResponsesLiteValidationError("reasoning", "responses Lite requires reasoning to be an object")
 	}
 	if context, ok := reasoning["context"].(string); ok && context == "all_turns" {
 		return false, nil
