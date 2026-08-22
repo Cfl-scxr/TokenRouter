@@ -608,13 +608,9 @@ func openAIImagesUpstreamErrorFromSSEPayload(payload []byte) *OpenAIImagesUpstre
 	}
 }
 
-// extractOpenAIImagesModelRefusal 从上游 SSE 响应体提取「模型未出图、改用文字拒绝」
-// 的拒绝文本（内容审核场景）。
-//
-// 上游 response.completed 无图时，模型常以 output_text / message 形式输出拒绝说明。
-// 这类失败是内容策略拦截，重试或换账号均无效，应把文本作为内容策略错误透传给客户端。
-// 返回空串表示无文字输出（真空响应）。
-func extractOpenAIImagesModelRefusal(body []byte) string {
+// extractOpenAIImagesModelText 提取图片请求终态中的文本输出；有文本但没有图片
+// 表明 image tool 没有执行，后续需再按内容策略或能力失败分类。
+func extractOpenAIImagesModelText(body []byte) string {
 	var b strings.Builder
 	collect := func(s string) {
 		if s = strings.TrimSpace(s); s != "" {
@@ -624,16 +620,14 @@ func extractOpenAIImagesModelRefusal(body []byte) string {
 			_, _ = b.WriteString(s)
 		}
 	}
-	forEachOpenAISSEDataPayload(string(body), func(payload []byte) {
+	consumePayload := func(payload []byte) {
 		if !gjson.ValidBytes(payload) {
 			return
 		}
 		switch gjson.GetBytes(payload, "type").String() {
 		case "response.output_text.delta":
-			// 流式文本增量。
 			collect(gjson.GetBytes(payload, "delta").String())
 		case "response.completed", "response.output_item.done":
-			// 终态里的 message/output_text。
 			gjson.GetBytes(payload, "response.output").ForEach(func(_, item gjson.Result) bool {
 				if item.Get("type").String() == "message" {
 					item.Get("content").ForEach(func(_, part gjson.Result) bool {
@@ -654,13 +648,67 @@ func extractOpenAIImagesModelRefusal(body []byte) string {
 				})
 			}
 		}
-	})
-	refusal := strings.TrimSpace(b.String())
-	const maxRefusal = 600
-	if len(refusal) > maxRefusal {
-		refusal = refusal[:maxRefusal]
 	}
-	return refusal
+	if gjson.ValidBytes(body) {
+		consumePayload(body)
+	} else {
+		forEachOpenAISSEDataPayload(string(body), consumePayload)
+	}
+	text := strings.TrimSpace(b.String())
+	const maxText = 600
+	if len(text) > maxText {
+		return text[:maxText]
+	}
+	return text
+}
+
+func isOpenAIImagesContentPolicyRefusal(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{
+		"content policy", "content_policy", "content filter", "content_filter",
+		"safety system", "safety policy", "safety violation", "moderation",
+		"安全系统", "安全策略", "安全政策", "内容政策", "内容审核", "违规内容", "不适合生成",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractOpenAIImagesModelRefusal 仅返回带明确安全/审核信号的文本；普通提示建议
+// 属于上游能力失败，应保持可重试。
+func extractOpenAIImagesModelRefusal(body []byte) string {
+	text := extractOpenAIImagesModelText(body)
+	if !isOpenAIImagesContentPolicyRefusal(text) {
+		return ""
+	}
+	return text
+}
+
+func openAIImagesTextFallbackError(body []byte) *OpenAIImagesUpstreamError {
+	return openAIImagesTextFallbackErrorForText(extractOpenAIImagesModelText(body))
+}
+
+func openAIImagesTextFallbackErrorForText(text string) *OpenAIImagesUpstreamError {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if isOpenAIImagesContentPolicyRefusal(text) {
+		return &OpenAIImagesUpstreamError{
+			StatusCode: http.StatusBadRequest,
+			ErrorType:  "image_generation_user_error",
+			Code:       "content_policy_violation",
+			Message:    sanitizeUpstreamErrorMessage(text),
+		}
+	}
+	return &OpenAIImagesUpstreamError{
+		StatusCode: http.StatusBadGateway,
+		ErrorType:  "upstream_error",
+		Code:       "image_generation_unavailable",
+		Message:    "Upstream did not execute image generation",
+	}
 }
 
 // summarizeOpenAIImagesNoOutputBody 从上游 SSE 响应体提取诊断摘要，用于软失败时
@@ -1291,24 +1339,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			}
 			return OpenAIUsage{}, 0, nil, upstreamErr
 		}
-		// 软失败兜底：上游无图。先区分内容审核拒绝和真空响应：
-		// ① 内容审核拒绝：模型未出图，但输出了文字拒绝；这是内容策略拦截，
-		//    换账号或重试均无效，应作为 400 透传给客户端。
-		// ② 真空响应：既无图也无文字输出，才按上游概率性失败触发重试。
-		if refusal := extractOpenAIImagesModelRefusal(body); refusal != "" {
-			refusalErr := &OpenAIImagesUpstreamError{
-				StatusCode: http.StatusBadRequest,
-				ErrorType:  "image_generation_user_error",
-				Code:       "content_policy_violation",
-				Message:    sanitizeUpstreamErrorMessage(refusal),
+		if textFallbackErr := openAIImagesTextFallbackError(body); textFallbackErr != nil {
+			setOpsUpstreamError(c, textFallbackErr.clientStatusCode(), textFallbackErr.clientMessage(), s.summarizeOpenAIImagesNoOutputBody(body))
+			if !IsOpenAIImagesRetryableUpstreamError(textFallbackErr) {
+				writeOpenAIImagesUpstreamErrorResponse(c, textFallbackErr)
 			}
-			setOpsUpstreamError(c, http.StatusBadRequest, refusalErr.clientMessage(), s.summarizeOpenAIImagesNoOutputBody(body))
-			writeOpenAIImagesUpstreamErrorResponse(c, refusalErr)
-			return OpenAIUsage{}, 0, nil, refusalErr
+			return OpenAIUsage{}, 0, nil, textFallbackErr
 		}
-		// 真空响应：记录上游诊断摘要到 ops（last_event/status/model/body 片段）便于排查；
-		// 返回 UpstreamFailoverError 触发重试。因实测为「同账号概率性失败」，优先同账号
-		// 快速重试，用尽后由 handler 自然换账号 failover。
+		// 真空响应：既无图也无文字输出，保持短暂可重试语义并优先同账号重试。
 		setOpsUpstreamError(c, http.StatusBadGateway, "upstream did not return image output", s.summarizeOpenAIImagesNoOutputBody(body))
 		return OpenAIUsage{}, 0, nil, &UpstreamFailoverError{
 			StatusCode:             http.StatusBadGateway,
@@ -1361,6 +1399,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	pendingResults := make([]openAIResponsesImageResult, 0, 1)
 	pendingSeen := make(map[string]struct{})
 	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
+	var fallbackText strings.Builder
+	appendFallbackText := func(text string) {
+		if text == "" || fallbackText.Len() >= 600 {
+			return
+		}
+		remaining := 600 - fallbackText.Len()
+		if len(text) > remaining {
+			text = text[:remaining]
+		}
+		_, _ = fallbackText.WriteString(text)
+	}
 	var createdAt int64
 	clientDisconnected := false
 	lastDownstreamWriteAt := time.Now()
@@ -1386,6 +1435,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			if eventCreatedAt > 0 {
 				createdAt = eventCreatedAt
 			}
+		}
+		if gjson.GetBytes(dataBytes, "type").String() == "response.output_text.delta" {
+			appendFallbackText(gjson.GetBytes(dataBytes, "delta").String())
 		}
 		switch gjson.GetBytes(dataBytes, "type").String() {
 		case "response.image_generation_call.partial_image":
@@ -1451,9 +1503,22 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
 			if len(finalResults) == 0 {
+				textFallbackErr := openAIImagesTextFallbackErrorForText(fallbackText.String())
+				if textFallbackErr == nil {
+					textFallbackErr = openAIImagesTextFallbackError(dataBytes)
+				}
+				if textFallbackErr != nil {
+					retryable := IsOpenAIImagesRetryableUpstreamError(textFallbackErr)
+					setOpsUpstreamError(c, textFallbackErr.clientStatusCode(), textFallbackErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(dataBytes))
+					if !retryable && !clientDisconnected {
+						s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBodyFromUpstream(textFallbackErr))
+					}
+					processDataErr = textFallbackErr
+					processDataDone = true
+					return
+				}
 				outputErr := fmt.Errorf("upstream did not return image output")
-				// 软失败：response.completed 事件里没有图片。记录上游诊断摘要到 ops，
-				// 与非流式路径保持一致，避免上游响应信息丢失。
+				// 软失败：终态没有图片且没有可分类文本时，记录诊断摘要并返回可重试错误。
 				setOpsUpstreamError(c, http.StatusBadGateway, "upstream did not return image output", s.summarizeOpenAIImagesNoOutputBody(dataBytes))
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(outputErr.Error()))
 				processDataErr = outputErr
@@ -1741,6 +1806,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "text/event-stream")
+	upstreamReq.Header.Set("OpenAI-Beta", "responses=experimental")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1887,6 +1953,25 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	}, nil
 }
 
+const (
+	openAIImagesOAuthUnavailableCooldown = 30 * time.Minute
+	openAIImagesOAuthUnavailableReason   = "openai_images_oauth_tool_unavailable"
+)
+
+func (s *OpenAIGatewayService) coolOpenAIImagesOAuthTool(ctx context.Context, account *Account) {
+	if s == nil || s.accountRepo == nil || account == nil || account.Platform != PlatformOpenAI {
+		return
+	}
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	resetAt := time.Now().Add(openAIImagesOAuthUnavailableCooldown)
+	if err := s.accountRepo.SetModelRateLimit(stateCtx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImagesOAuthUnavailableReason); err != nil {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool cooldown write failed account_id=%d error=%v", account.ID, err)
+		return
+	}
+	logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images OAuth tool unavailable account_id=%d reset_in=%s", account.ID, time.Until(resetAt).Truncate(time.Second))
+}
+
 func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	ctx context.Context,
 	c *gin.Context,
@@ -1973,14 +2058,32 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 		Message:            upstreamErr.clientMessage(),
 	})
 
+	if upstreamErr.Code == "image_generation_unavailable" {
+		s.coolOpenAIImagesOAuthTool(ctx, account)
+		if responseWritten {
+			return err
+		}
+		return s.newOpenAIAccountFailoverError(
+			account,
+			upstreamErr.StatusCode,
+			headers,
+			responseBody,
+			upstreamErr.clientMessage(),
+			false,
+			false,
+		)
+	}
 	if !retryable || responseWritten {
 		return err
 	}
-
-	return &UpstreamFailoverError{
-		StatusCode:             upstreamErr.StatusCode,
-		ResponseBody:           responseBody,
-		ResponseHeaders:        headers,
-		RetryableOnSameAccount: decision.RetryableOnSameAccount(account, upstreamErr.StatusCode),
-	}
+	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
+	return s.newOpenAIAccountFailoverError(
+		account,
+		upstreamErr.StatusCode,
+		headers,
+		responseBody,
+		upstreamErr.clientMessage(),
+		shouldDisable,
+		!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
+	)
 }
