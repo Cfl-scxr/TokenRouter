@@ -70,9 +70,9 @@ const user: AdminUser = {
   updated_at: '2026-07-23T00:00:00Z'
 }
 
-function mountModal() {
+function mountModal(concurrency = user.concurrency) {
   return mount(UserEditModal, {
-    props: { show: true, user },
+    props: { show: true, user: { ...user, concurrency } },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -85,7 +85,7 @@ function mountModal() {
   })
 }
 
-describe('UserEditModal API Key 上限', () => {
+describe('UserEditModal API Key 上限与并发', () => {
   beforeEach(() => {
     updateUser.mockReset()
     updateUserAttributes.mockReset()
@@ -108,7 +108,7 @@ describe('UserEditModal API Key 上限', () => {
     expect(updateUser).toHaveBeenCalledWith(9, expect.objectContaining({ api_key_limit: 0 }))
   })
 
-  it('拒绝负数', async () => {
+  it('拒绝负数 API Key 上限', async () => {
     const wrapper = mountModal()
     await wrapper.get('[data-test="api-key-limit-input"]').setValue('-1')
 
@@ -119,7 +119,7 @@ describe('UserEditModal API Key 上限', () => {
     expect(showError).toHaveBeenCalledWith('admin.users.form.apiKeyLimitInvalid')
   })
 
-  it('拒绝超过数据库范围的值', async () => {
+  it('拒绝超过数据库范围的 API Key 上限', async () => {
     const wrapper = mountModal()
     await wrapper.get('[data-test="api-key-limit-input"]').setValue('2147483648')
 
@@ -128,5 +128,27 @@ describe('UserEditModal API Key 上限', () => {
 
     expect(updateUser).not.toHaveBeenCalled()
     expect(showError).toHaveBeenCalledWith('admin.users.form.apiKeyLimitInvalid')
+  })
+
+  it('允许用零保存不限制并发，而不会阻止其他字段保存', async () => {
+    const wrapper = mountModal(0)
+
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).not.toHaveBeenCalled()
+    expect(updateUser).toHaveBeenCalledWith(9, expect.objectContaining({ concurrency: 0 }))
+    expect(wrapper.emitted('success')).toBeTruthy()
+  })
+
+  it('仍然拒绝负数并发', async () => {
+    const wrapper = mountModal()
+
+    await wrapper.get('[data-test="concurrency-input"]').setValue('-1')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.users.concurrencyNonNegative')
+    expect(updateUser).not.toHaveBeenCalled()
   })
 })
