@@ -34,6 +34,9 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 	if s == nil || c == nil || account == nil {
 		return nil, fmt.Errorf("service, context, and account are required")
 	}
+	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
+		return nil, err
+	}
 	modelResult := gjson.GetBytes(body, "model")
 	requestedModel := strings.TrimSpace(modelResult.String())
 	if modelResult.Type != gjson.String || requestedModel == "" {
@@ -262,12 +265,13 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(c
 	req.Header.Set("Originator", resolveOpenAIUpstreamOriginator(c, true, tlsRouterMatch...))
 	apiKeyID := getAPIKeyIDFromContext(c)
 	if sessionID := strings.TrimSpace(gjson.GetBytes(alphaBody, "id").String()); sessionID != "" {
-		isolated := isolateOpenAISessionID(apiKeyID, sessionID)
+		isolated := isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), sessionID)
 		req.Header.Set("Session_ID", isolated)
 		req.Header.Set("Conversation_ID", isolated)
 	}
 	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, true, tlsRouterMatch...)
-	enforceCodexIdentityHeaders(req.Header)
+	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), apiKeyID)
+	enforceCodexIdentityHeadersWithUA(req.Header, "")
 	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
@@ -392,6 +396,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(
 		if turnMetadata := openAIAlphaSearchInboundHeader(c, "X-Codex-Turn-Metadata"); turnMetadata != "" {
 			req.Header.Set("X-Codex-Turn-Metadata", turnMetadata)
 		}
+		applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if version := openAIAlphaSearchInboundHeader(c, "Version"); version != "" {
 			req.Header.Set("Version", version)
 		} else {
@@ -399,7 +404,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(
 		}
 		req.Header.Set("Originator", resolveOpenAIUpstreamOriginator(c, true, tlsRouterMatch...))
 		s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, true, tlsRouterMatch...)
-		enforceCodexIdentityHeaders(req.Header)
+		enforceCodexIdentityHeadersWithUA(req.Header, "")
 	}
 
 	account.ApplyHeaderOverrides(req.Header)

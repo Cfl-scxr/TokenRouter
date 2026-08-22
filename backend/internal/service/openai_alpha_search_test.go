@@ -65,6 +65,7 @@ func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	c.Request.Header.Set("User-Agent", codexCLIUserAgent)
 	c.Request.Header.Set("Originator", "codex_cli_rs")
 	c.Request.Header.Set("Version", "0.144.1")
+	c.Request.Header.Set("X-Codex-Turn-Metadata", `{"session_id":"search-session","turn_id":"search-turn"}`)
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
@@ -113,6 +114,14 @@ func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.NotNil(t, upstream.lastTLSProfile)
 	require.Equal(t, "Built-in Default (Node.js 24.x)", upstream.lastTLSProfile.Name)
+	require.Equal(t,
+		scopeCodexAccountIdentityValue(account, 0, "session", "search-session"),
+		gjson.Get(upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"), "session_id").String(),
+	)
+	require.Equal(t,
+		scopeCodexAccountIdentityValue(account, 0, "turn", "search-turn"),
+		gjson.Get(upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"), "turn_id").String(),
+	)
 	require.JSONEq(t, string(body), string(upstream.lastBody))
 }
 
@@ -188,11 +197,18 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
 	require.Equal(t, "responses=experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.Equal(t, "0.144.1", upstream.lastReq.Header.Get("Version"))
-	require.Equal(t, `{"turn_id":"turn-1"}`, upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"))
+	require.Equal(t,
+		scopeCodexAccountIdentityValue(account, 0, "turn", "turn-1"),
+		gjson.Get(upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"), "turn_id").String(),
+	)
 	require.Equal(t, routedUA, upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "codex-tui", upstream.lastReq.Header.Get("Originator"))
 	require.NotNil(t, upstream.lastTLSProfile)
 	require.Equal(t, "Built-in Default (Node.js 24.x)", upstream.lastTLSProfile.Name)
+	require.Equal(t,
+		scopeCodexAccountIdentityValue(account, 0, "turn", "turn-1"),
+		gjson.Get(upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"), "turn_id").String(),
+	)
 	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Beta-Features"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Turn-State"))
 	require.Empty(t, upstream.lastReq.Header.Get(responsesLiteHeaderKey))
