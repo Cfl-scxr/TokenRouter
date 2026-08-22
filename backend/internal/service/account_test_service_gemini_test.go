@@ -38,6 +38,22 @@ func TestCreateGeminiTestPayload_ImageModel(t *testing.T) {
 	require.Equal(t, "1:1", parsed.GenerationConfig.ImageConfig.AspectRatio)
 }
 
+func TestCreateGeminiTestPayload_ExplicitTypeOverridesModelName(t *testing.T) {
+	t.Parallel()
+
+	textPayload := createGeminiTestPayload("gemini-2.5-flash-image", "reply briefly", AccountTestTypeText)
+	var textParsed map[string]any
+	require.NoError(t, json.Unmarshal(textPayload, &textParsed))
+	require.NotContains(t, textParsed, "generationConfig")
+	require.Equal(t, "reply briefly", textParsed["contents"].([]any)[0].(map[string]any)["parts"].([]any)[0].(map[string]any)["text"])
+
+	imagePayload := createGeminiTestPayload("gemini-2.5-flash", "draw a tiny robot", AccountTestTypeImage)
+	var imageParsed map[string]any
+	require.NoError(t, json.Unmarshal(imagePayload, &imageParsed))
+	config := imageParsed["generationConfig"].(map[string]any)
+	require.Equal(t, []any{"TEXT", "IMAGE"}, config["responseModalities"])
+}
+
 func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)

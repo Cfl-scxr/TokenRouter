@@ -137,6 +137,8 @@ describe('AccountTestModal', () => {
     await flushPromises()
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'compact'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="account-test-prompt"]').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 
@@ -144,6 +146,8 @@ describe('AccountTestModal', () => {
     const [, options] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(options.body)).toMatchObject({
       model_id: 'gpt-5.4',
+      prompt: '',
+      test_type: 'text',
       mode: 'compact'
     })
   })
@@ -167,11 +171,13 @@ describe('AccountTestModal', () => {
     await flushPromises()
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'legacy_compact'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="account-test-prompt"]').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 
     const [, options] = (global.fetch as any).mock.calls[0]
-    expect(JSON.parse(options.body)).toMatchObject({ mode: 'legacy_compact' })
+    expect(JSON.parse(options.body)).toMatchObject({ mode: 'legacy_compact', prompt: '', test_type: 'text' })
   })
 
   it('renders Chat Completions path status from test SSE', async () => {
@@ -214,5 +220,35 @@ describe('AccountTestModal', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('已通过 /v1/chat/completions 验证')
+  })
+
+  it('posts a custom text prompt with an explicit test type', async () => {
+    const wrapper = mount(AccountTestModal, {
+      props: {
+        show: true,
+        account: buildAccount()
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          TextArea: TextAreaStub,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
+    await wrapper.find('[data-testid="account-test-prompt"]').setValue('reply briefly')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, options] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(options.body)).toMatchObject({
+      model_id: 'gpt-5.4',
+      prompt: 'reply briefly',
+      test_type: 'text'
+    })
   })
 })

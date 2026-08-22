@@ -114,7 +114,58 @@ const (
 	defaultGeminiTextTestPrompt  = "hi"
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultGrokImageTestPrompt   = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+
+	// AccountTestTypeText 和 AccountTestTypeImage 是管理端账号测试的显式类型。
+	AccountTestTypeText  = "text"
+	AccountTestTypeImage = "image"
 )
+
+// normalizeAccountTestType 统一管理端传入的测试类型；空值由调用方视为旧版请求。
+func normalizeAccountTestType(testType string) string {
+	switch strings.ToLower(strings.TrimSpace(testType)) {
+	case AccountTestTypeImage:
+		return AccountTestTypeImage
+	case AccountTestTypeText:
+		return AccountTestTypeText
+	default:
+		return AccountTestTypeText
+	}
+}
+
+// accountTestTypeFromArgs 返回类型以及是否由调用方明确指定。
+// 旧版调用不传类型时保留按模型名兼容判断，新的管理端请求始终传入 text/image。
+func accountTestTypeFromArgs(testTypes ...string) (string, bool) {
+	if len(testTypes) == 0 || strings.TrimSpace(testTypes[0]) == "" {
+		return AccountTestTypeText, false
+	}
+	return normalizeAccountTestType(testTypes[0]), true
+}
+
+// resolveAccountTestModeAndType 兼容少量旧调用把 text/image 放在 mode 字段的情况。
+func resolveAccountTestModeAndType(mode string, testTypes ...string) (string, string, bool) {
+	// 兼容新调用方把参数顺序写成 testType、mode 的形式。
+	if len(testTypes) > 0 {
+		rawMode := strings.ToLower(strings.TrimSpace(mode))
+		rawTypeOrMode := strings.ToLower(strings.TrimSpace(testTypes[0]))
+		if (rawMode == AccountTestTypeText || rawMode == AccountTestTypeImage) &&
+			(rawTypeOrMode == AccountTestModeDefault || rawTypeOrMode == AccountTestModeCompact || rawTypeOrMode == AccountTestModeLegacyCompact) {
+			return normalizeAccountTestMode(testTypes[0]), normalizeAccountTestType(mode), true
+		}
+	}
+	testType, explicit := accountTestTypeFromArgs(testTypes...)
+	normalizedMode := normalizeAccountTestMode(mode)
+	if !explicit {
+		switch strings.ToLower(strings.TrimSpace(mode)) {
+		case AccountTestTypeText, AccountTestTypeImage:
+			return AccountTestModeDefault, normalizeAccountTestType(mode), true
+		}
+	}
+	if !explicit {
+		testType = ""
+	}
+	return normalizedMode, testType, explicit
+}
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
 func isOpenAIImageModel(model string) bool {
@@ -344,13 +395,25 @@ func createTestPayloadWithPrompt(modelID string, prompt string) (map[string]any,
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode 是可选的："compact" 探测原生 V2，"legacy_compact" 仅探测旧端点兼容性。
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
+// testTypes 为可选的显式测试类型；不传时保留旧版按模型名判断的兼容行为。
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, testTypes ...string) error {
 	ctx := c.Request.Context()
+	mode, testType, explicitTestType := resolveAccountTestModeAndType(mode, testTypes...)
+	// 图片测试与 Compact 探测不是同一条协议；显式图片选择优先使用普通图片路径。
+	if explicitTestType && testType == AccountTestTypeImage {
+		mode = AccountTestModeDefault
+	}
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
+	}
+	if explicitTestType && testType == AccountTestTypeImage &&
+		!account.IsOpenAI() && !account.IsGemini() &&
+		account.Platform != PlatformGrok &&
+		!(account.Platform == PlatformAntigravity && account.Type == AccountTypeAPIKey) {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Image tests are not supported for platform %s", account.Platform))
 	}
 
 	// Route to platform-specific test method
@@ -358,19 +421,19 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		if err := s.prepareOpenAIAutomaticProbe(c, account); err != nil {
 			return s.sendErrorAndEnd(c, err.Error())
 		}
-		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), testType)
 	}
 
 	if account.IsGemini() {
-		return s.testGeminiAccountConnection(c, account, modelID, prompt)
+		return s.testGeminiAccountConnection(c, account, modelID, prompt, testType)
 	}
 
 	if account.Platform == PlatformGrok {
-		return s.testGrokAccountConnection(c, account, modelID)
+		return s.testGrokAccountConnection(c, account, modelID, prompt, testType)
 	}
 
 	if account.Platform == PlatformAntigravity {
-		return s.routeAntigravityTest(c, account, modelID, prompt)
+		return s.routeAntigravityTest(c, account, modelID, prompt, testType)
 	}
 
 	if account.Platform == PlatformQoder {
@@ -378,6 +441,11 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID, prompt)
+}
+
+// TestAccountConnectionWithType 提供参数顺序明确的新调用入口，旧入口继续兼容历史调用方。
+func (s *AccountTestService) TestAccountConnectionWithType(c *gin.Context, accountID int64, modelID string, prompt string, testType string, mode string) error {
+	return s.TestAccountConnection(c, accountID, modelID, prompt, mode, testType)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -682,9 +750,9 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 }
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, testTypes ...string) error {
 	ctx := c.Request.Context()
-	mode = normalizeAccountTestMode(mode)
+	mode, testType, explicitTestType := resolveAccountTestModeAndType(mode, testTypes...)
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID
@@ -703,8 +771,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.testOpenAILegacyCompactConnection(c, account, testModelID)
 	}
 
-	// Route to image generation test if an image model is selected
-	if isOpenAIImageModel(testModelID) {
+	// 显式类型优先于模型名；未指定类型时才保留旧版图片模型兼容判断。
+	if (explicitTestType && testType == AccountTestTypeImage) ||
+		(!explicitTestType && isOpenAIImageModel(testModelID)) {
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultOpenAIImageTestPrompt
@@ -859,7 +928,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
 			}
 			c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
-			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode)
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode, testType)
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
@@ -877,8 +946,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 }
 
 // testGrokAccountConnection 通过 xAI Responses API 测试 Grok OAuth 或 API-key 账号。
-func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string, testArgs ...string) error {
 	ctx := c.Request.Context()
+	prompt := ""
+	testType, explicitTestType := AccountTestTypeText, false
+	if len(testArgs) > 0 {
+		prompt = testArgs[0]
+	}
+	if len(testArgs) > 1 {
+		testType, explicitTestType = accountTestTypeFromArgs(testArgs[1])
+	}
 
 	if s.httpUpstream == nil {
 		return s.sendErrorAndEnd(c, "HTTP upstream not configured")
@@ -911,6 +988,21 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	default:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Grok account type: %s", account.Type))
 	}
+	if explicitTestType && testType == AccountTestTypeImage {
+		imageModel := strings.TrimSpace(modelID)
+		if imageModel == "" {
+			imageModel = "grok-imagine-image"
+		}
+		if mapped := strings.TrimSpace(account.GetMappedModel(imageModel)); mapped != "" {
+			imageModel = mapped
+		}
+		imageModel = NormalizeGrokMediaModelForEndpoint(GrokMediaEndpointImagesGenerations, imageModel, false)
+		imagePrompt := strings.TrimSpace(prompt)
+		if imagePrompt == "" {
+			imagePrompt = defaultGrokImageTestPrompt
+		}
+		return s.testGrokImageGeneration(c, ctx, account, authToken, imageModel, imagePrompt)
+	}
 
 	apiURL, err := buildGrokResponsesURL(account, s.cfg, s.settingService)
 	if err != nil {
@@ -923,7 +1015,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
+	payloadBytes, err := buildGrokAccountTestBody(testModelID, prompt)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 	}
@@ -939,7 +1031,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	if account.IsGrokOAuth() {
+	if account.IsGrokOAuth() && isGrokCLIProxyTarget(apiURL) {
 		applyGrokCLIHeaders(req.Header)
 	}
 	// 连通性测试与真实转发保持同一套账号级请求头覆写。
@@ -1002,6 +1094,108 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	}
 
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+// testGrokImageGeneration 使用账号凭据直接调用 xAI 图片端点并回传预览事件。
+func (s *AccountTestService) testGrokImageGeneration(c *gin.Context, ctx context.Context, account *Account, authToken, modelID, prompt string) error {
+	apiURL, err := buildGrokMediaURL(account, s.cfg, GrokMediaEndpointImagesGenerations, "")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok image base URL: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	payloadBytes, err := json.Marshal(map[string]any{
+		"model":           modelID,
+		"prompt":          prompt,
+		"n":               1,
+		"response_format": "b64_json",
+	})
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok image test payload")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok image request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	if account.IsGrokOAuth() && isGrokCLIProxyTarget(apiURL) {
+		applyGrokCLIHeaders(req.Header)
+	}
+	account.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok image request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Grok image response: %s", err.Error()))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok image API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	var result struct {
+		Data []struct {
+			B64JSON       string `json:"b64_json"`
+			URL           string `json:"url"`
+			RevisedPrompt string `json:"revised_prompt"`
+			MimeType      string `json:"mime_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Grok image response: %s", err.Error()))
+	}
+	if len(result.Data) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from Grok API")
+	}
+	for _, item := range result.Data {
+		if item.RevisedPrompt != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		}
+		mimeType := strings.TrimSpace(item.MimeType)
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		switch {
+		case strings.TrimSpace(item.B64JSON) != "":
+			s.sendEvent(c, TestEvent{Type: "image", ImageURL: "data:" + mimeType + ";base64," + item.B64JSON, MimeType: mimeType})
+		case strings.TrimSpace(item.URL) != "":
+			s.sendEvent(c, TestEvent{Type: "image", ImageURL: item.URL, MimeType: mimeType})
+		}
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// buildGrokAccountTestBody 保留 Responses 探测所需字段，同时使用管理端自定义提示词。
+func buildGrokAccountTestBody(model, prompt string) ([]byte, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = grokDefaultResponsesModel
+	}
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		prompt = grokQuotaProbeInput
+	}
+	return json.Marshal(map[string]any{
+		"model":  model,
+		"input":  prompt,
+		"stream": true,
+	})
 }
 
 // testOpenAIChatCompletionsConnection 通过原始 /v1/chat/completions 端点测试 OpenAI 兼容 API Key 账号。
@@ -1414,7 +1608,7 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 }
 
 // testGeminiAccountConnection tests a Gemini account's connection
-func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, testTypes ...string) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -1441,7 +1635,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create test payload (Gemini format)
-	payload := createGeminiTestPayload(testModelID, prompt)
+	payload := createGeminiTestPayload(testModelID, prompt, testTypes...)
 
 	// Build request based on account type
 	var req *http.Request
@@ -1488,14 +1682,18 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 // routeAntigravityTest 路由 Antigravity 账号的测试请求。
 // APIKey 类型走原生协议（与 gateway_handler 路由一致），OAuth/Upstream 走 CRS 中转。
-func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string, testTypes ...string) error {
+	testType, explicitTestType := accountTestTypeFromArgs(testTypes...)
 	if account.Type == AccountTypeAPIKey {
-		if strings.HasPrefix(modelID, "gemini-") {
-			return s.testGeminiAccountConnection(c, account, modelID, prompt)
+		if (explicitTestType && testType == AccountTestTypeImage) || strings.HasPrefix(strings.ToLower(modelID), "gemini-") {
+			return s.testGeminiAccountConnection(c, account, modelID, prompt, testTypes...)
 		}
 		return s.testClaudeAccountConnection(c, account, modelID, prompt)
 	}
-	return s.testAntigravityAccountConnection(c, account, modelID)
+	if explicitTestType && testType == AccountTestTypeImage {
+		return s.sendErrorAndEnd(c, "Image tests are not supported for this Antigravity account type")
+	}
+	return s.testAntigravityAccountConnection(c, account, modelID, prompt)
 }
 
 func (s *AccountTestService) testQoderAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
@@ -1658,7 +1856,7 @@ func (s *AccountTestService) getQoderUserInfoForAccount(ctx context.Context, acc
 
 // testAntigravityAccountConnection tests an Antigravity account's connection
 // 支持 Claude 和 Gemini 两种协议，使用非流式请求
-func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string, prompt ...string) error {
 	ctx := c.Request.Context()
 
 	// 默认模型：Claude 使用 claude-sonnet-4-5，Gemini 使用 gemini-3-pro-preview
@@ -1682,7 +1880,7 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
 	// 调用 AntigravityGatewayService.TestConnection（复用协议转换逻辑）
-	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID)
+	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID, prompt...)
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
@@ -1828,9 +2026,12 @@ func (s *AccountTestService) buildCodeAssistRequest(ctx context.Context, accessT
 }
 
 // createGeminiTestPayload creates a minimal test payload for Gemini API.
-// Image models use the image-generation path so the frontend can preview the returned image.
-func createGeminiTestPayload(modelID string, prompt string) []byte {
-	if isImageGenerationModel(modelID) {
+// 显式图片类型使用图片生成配置；未指定类型时保留旧模型名兼容判断。
+func createGeminiTestPayload(modelID string, prompt string, testTypes ...string) []byte {
+	testType, explicitTestType := accountTestTypeFromArgs(testTypes...)
+	useImageTest := (explicitTestType && testType == AccountTestTypeImage) ||
+		(!explicitTestType && isImageGenerationModel(modelID))
+	if useImageTest {
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultGeminiImageTestPrompt

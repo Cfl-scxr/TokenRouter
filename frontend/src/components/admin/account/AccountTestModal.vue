@@ -55,6 +55,18 @@
         />
       </div>
 
+      <div class="space-y-1.5">
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.testType') }}
+        </label>
+        <Select
+          v-model="testType"
+          :options="testTypeOptions"
+          :disabled="status === 'connecting'"
+          data-testid="account-test-type"
+        />
+      </div>
+
       <div v-if="isOpenAIAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
@@ -62,17 +74,18 @@
         <Select
           v-model="testMode"
           :options="openAITestModeOptions"
-          :disabled="status === 'connecting'"
+          :disabled="status === 'connecting' || testType === 'image'"
         />
       </div>
 
-      <div v-if="supportsImageTest" class="space-y-1.5">
+      <div v-if="!isCompactTestMode" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.imagePromptLabel')"
-          :placeholder="t('admin.accounts.imagePromptPlaceholder')"
-          :hint="t('admin.accounts.imageTestHint')"
+          :label="promptInputLabel"
+          :placeholder="promptInputPlaceholder"
+          :hint="promptInputHint"
           :disabled="status === 'connecting'"
+          data-testid="account-test-prompt"
           rows="3"
         />
       </div>
@@ -186,11 +199,7 @@
         </div>
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
-          {{
-            supportsImageTest
-              ? t('admin.accounts.imageTestMode')
-              : t('admin.accounts.testPrompt')
-          }}
+          {{ testTypeSummary }}
         </span>
       </div>
     </div>
@@ -284,32 +293,55 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+let lastDefaultPrompt = ''
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact' | 'legacy_compact'>('default')
+const testType = ref<'text' | 'image'>('text')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+// Compact 探测使用固定探针载荷，不显示可编辑提示词输入框。
+const isCompactTestMode = computed(() => isOpenAIAccount.value && testMode.value !== 'default')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
   { value: 'compact', label: t('admin.accounts.openai.testModeCompact') },
   { value: 'legacy_compact', label: t('admin.accounts.openai.testModeLegacyCompact') }
 ])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
-const supportsGeminiImageTest = computed(() => {
-  const modelID = selectedModelId.value.toLowerCase()
-  if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
-
-  return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+// 图片/文字请求类型完全由管理员选择，不再从模型名称推断。
+const supportsImageTest = computed(() => testType.value === 'image')
+const imageTestAvailable = computed(() => {
+  const platform = props.account?.platform
+  return platform === 'openai' || platform === 'gemini' || platform === 'grok' ||
+    (platform === 'antigravity' && props.account?.type === 'apikey')
 })
 
-const supportsOpenAIImageTest = computed(() => {
-  const modelID = selectedModelId.value.toLowerCase()
-  if (!modelID.startsWith('gpt-image-')) return false
-  return props.account?.platform === 'openai'
-})
+const testTypeOptions = computed(() => [
+  { value: 'text', label: t('admin.accounts.testTypeText') },
+  { value: 'image', label: t('admin.accounts.testTypeImage'), disabled: !imageTestAvailable.value }
+])
 
-const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const promptInputLabel = computed(() =>
+  testType.value === 'image'
+    ? t('admin.accounts.imagePromptLabel')
+    : t('admin.accounts.textPromptLabel')
+)
+const promptInputPlaceholder = computed(() =>
+  testType.value === 'image'
+    ? t('admin.accounts.imagePromptPlaceholder')
+    : t('admin.accounts.textPromptPlaceholder')
+)
+const promptInputHint = computed(() =>
+  testType.value === 'image'
+    ? t('admin.accounts.imageTestHint')
+    : t('admin.accounts.textTestHint')
+)
+const testTypeSummary = computed(() =>
+  testType.value === 'image'
+    ? t('admin.accounts.imageTestMode')
+    : t('admin.accounts.textTestMode')
+)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -328,7 +360,9 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      lastDefaultPrompt = ''
       testMode.value = 'default'
+      testType.value = 'text'
       resetState()
       await loadAvailableModels()
     } else {
@@ -337,9 +371,19 @@ watch(
   }
 )
 
-watch(selectedModelId, () => {
-  if (supportsImageTest.value && !testPrompt.value.trim()) {
-    testPrompt.value = t('admin.accounts.imagePromptDefault')
+watch([selectedModelId, testType], () => {
+  const nextDefaultPrompt = testType.value === 'image'
+    ? t('admin.accounts.imagePromptDefault')
+    : t('admin.accounts.textPromptDefault')
+  if (!testPrompt.value.trim() || testPrompt.value === lastDefaultPrompt) {
+    testPrompt.value = nextDefaultPrompt
+    lastDefaultPrompt = nextDefaultPrompt
+  }
+})
+
+watch(testType, (nextType) => {
+  if (nextType === 'image') {
+    testMode.value = 'default'
   }
 })
 
@@ -423,10 +467,12 @@ const startTest = async () => {
     const requestBody: {
       model_id: string
       prompt: string
+      test_type: 'text' | 'image'
       mode?: 'default' | 'compact' | 'legacy_compact'
     } = {
       model_id: selectedModelId.value,
-      prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+      prompt: isCompactTestMode.value ? '' : testPrompt.value.trim(),
+      test_type: testType.value
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value

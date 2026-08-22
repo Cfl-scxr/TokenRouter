@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -84,6 +85,74 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	require.NotContains(t, rec.Body.String(), "claude")
 	require.Contains(t, rec.Body.String(), `"model":"grok-4.5"`)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
+}
+
+func TestAccountTestService_TestAccountConnection_GrokUsesCustomTextPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{
+		ID:          17,
+		Name:        "grok-custom-prompt",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":  "grok-access-token",
+			"refresh_token": "grok-refresh-token",
+			"expires_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n")),
+	}}
+	svc := &AccountTestService{
+		accountRepo:       repo,
+		grokTokenProvider: NewGrokTokenProvider(repo, nil),
+		httpUpstream:      upstream,
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/17/test", nil)
+
+	err := svc.TestAccountConnection(c, account.ID, "grok-4.5", "describe this account in one sentence", AccountTestModeDefault, AccountTestTypeText)
+	require.NoError(t, err)
+	require.Equal(t, "describe this account in one sentence", gjson.GetBytes(upstream.lastBody, "input").String())
+}
+
+func TestAccountTestService_TestAccountConnection_GrokExplicitImageUsesMediaEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := &Account{
+		ID:          18,
+		Name:        "grok-image-api-key",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "grok-api-key"},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8=","mime_type":"image/png"}]}`)),
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/18/test", nil)
+
+	err := svc.TestAccountConnection(c, account.ID, "custom-image-alias", "draw a lighthouse", AccountTestModeDefault, AccountTestTypeImage)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.x.ai/v1/images/generations", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer grok-api-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "custom-image-alias", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "draw a lighthouse", gjson.GetBytes(upstream.lastBody, "prompt").String())
+	require.Contains(t, recorder.Body.String(), "data:image/png;base64,aGVsbG8=")
 }
 
 func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *testing.T) {

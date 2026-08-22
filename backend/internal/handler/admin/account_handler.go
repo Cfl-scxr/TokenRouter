@@ -1119,6 +1119,10 @@ type TestAccountRequest struct {
 	ModelID string `json:"model_id"`
 	Prompt  string `json:"prompt"`
 	Mode    string `json:"mode"`
+	// TestType 由管理端明确指定测试文字或图片，避免服务端猜测模型能力。
+	TestType string `json:"test_type"`
+	// TestMode 兼容早期客户端使用的字段名，优先级低于 test_type。
+	TestMode string `json:"test_mode"`
 }
 
 type SyncFromCRSRequest struct {
@@ -1149,7 +1153,11 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
+	testType := req.TestType
+	if testType == "" {
+		testType = req.TestMode
+	}
+	if err := h.accountTestService.TestAccountConnectionWithType(c, accountID, req.ModelID, req.Prompt, testType, req.Mode); err != nil {
 		// Error already sent via SSE, just log
 		return
 	}

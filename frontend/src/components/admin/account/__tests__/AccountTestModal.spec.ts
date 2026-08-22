@@ -24,7 +24,8 @@ vi.mock('@/composables/useClipboard', () => ({
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   const messages: Record<string, string> = {
-    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.'
+    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+    'admin.accounts.textPromptDefault': 'hi'
   }
   return {
     ...actual,
@@ -121,6 +122,8 @@ describe('AccountTestModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
 
+    ;(wrapper.vm as any).testType = 'image'
+
     const promptInput = wrapper.find('textarea.textarea-stub')
     expect(promptInput.exists()).toBe(true)
     await promptInput.setValue('draw a tiny orange cat astronaut')
@@ -137,7 +140,8 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'gemini-3.1-flash-image',
-      prompt: 'draw a tiny orange cat astronaut'
+      prompt: 'draw a tiny orange cat astronaut',
+      test_type: 'image'
     })
 
     const preview = wrapper.find('img[alt="test-image-1"]')
@@ -179,7 +183,8 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'grok-4.3',
-      prompt: ''
+      prompt: 'hi',
+      test_type: 'text'
     })
   })
 
@@ -205,6 +210,8 @@ describe('AccountTestModal', () => {
 
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'compact'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="account-test-prompt"]').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 
@@ -213,6 +220,7 @@ describe('AccountTestModal', () => {
     expect(JSON.parse(request.body)).toMatchObject({
       model_id: 'gpt-5.4',
       prompt: '',
+      test_type: 'text',
       mode: 'compact'
     })
   })
@@ -239,10 +247,35 @@ describe('AccountTestModal', () => {
 
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'legacy_compact'
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="account-test-prompt"]').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 
     const [, request] = (global.fetch as any).mock.calls[0]
-    expect(JSON.parse(request.body)).toMatchObject({ mode: 'legacy_compact' })
+    expect(JSON.parse(request.body)).toMatchObject({ mode: 'legacy_compact', prompt: '', test_type: 'text' })
+  })
+
+  it('文字测试会发送自定义提示词和显式类型', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gemini-custom-text', display_name: 'Custom text model' }])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse(['data: {"type":"test_complete","success":true}\n'])
+    ) as any
+
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await wrapper.find('textarea.textarea-stub').setValue('say hello in one sentence')
+
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gemini-custom-text',
+      prompt: 'say hello in one sentence',
+      test_type: 'text'
+    })
   })
 })
