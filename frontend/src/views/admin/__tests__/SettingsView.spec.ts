@@ -290,6 +290,11 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.scheduling.quotaHeadroomWeight": "额度余量",
     "admin.settings.scheduling.previousResponseWeight": "上一响应粘性",
     "admin.settings.scheduling.sessionStickyWeight": "会话粘性",
+    "admin.settings.openaiFastPolicy.summaryTargetModels": "目标模型",
+    "admin.settings.openaiFastPolicy.summaryAllModels": "全部模型",
+    "admin.settings.openaiFastPolicy.summaryOtherModels": "其他模型",
+    "admin.settings.openaiFastPolicy.summaryAction.filter": "过滤",
+    "admin.settings.openaiFastPolicy.summaryAction.pass": "透传",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -1479,6 +1484,43 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateProvider).toHaveBeenCalledWith(7, { enabled: true });
     expect(getProviders).toHaveBeenCalledTimes(2);
+  });
+
+  it("summarizes target and other-model actions, then switches to all models", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_fast_policy_settings: {
+        rules: [
+          {
+            service_tier: "all",
+            action: "filter",
+            scope: "all",
+            model_whitelist: ["gpt-5.6-sol"],
+            fallback_action: "pass",
+          },
+        ],
+      },
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const summary = wrapper.get('[data-testid="openai-fast-policy-summary-0"]');
+    expect(summary.text()).toContain("目标模型");
+    expect(summary.text()).toContain("过滤");
+    expect(summary.text()).toContain("其他模型");
+    expect(summary.text()).toContain("透传");
+
+    await wrapper
+      .get(
+        '[role="group"][aria-labelledby="openai-fast-policy-models-label-0"] input[type="text"]',
+      )
+      .setValue("");
+    expect(summary.text()).toContain("全部模型");
+    expect(summary.text()).toContain("过滤");
+    expect(summary.text()).not.toContain("其他模型");
+    expect(summary.text()).not.toContain("透传");
   });
 
   it("normalizes null provider supported types from API", async () => {
