@@ -4237,6 +4237,9 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  GROUP_PLATFORM_OPTIONS,
+} from "@/constants/platforms";
+import {
   normalizeReasoningEffortForPlatform,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
@@ -4509,17 +4512,7 @@ const statusOptions = computed(() => [
   { value: "inactive", label: t("admin.accounts.status.inactive") },
 ]);
 
-const platformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-  { value: "qoder", label: "Qoder" },
-  { value: "grok", label: "Grok" },
-  { value: "kimi", label: "Kimi" },
-  { value: "zhipu", label: "Zhipu" },
-  { value: "deepseek", label: "DeepSeek" },
-]);
+const platformOptions = computed(() => [...GROUP_PLATFORM_OPTIONS]);
 
 const schedulerTypeOptions = computed(() => [
   { value: "basic", label: t("admin.groups.scheduler.basic") },
@@ -4565,15 +4558,7 @@ const saveAdvancedSchedulerOverrides = (value: GroupAdvancedSchedulerOverrides) 
 
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-  { value: "qoder", label: "Qoder" },
-  { value: "grok", label: "Grok" },
-  { value: "kimi", label: "Kimi" },
-  { value: "zhipu", label: "Zhipu" },
-  { value: "deepseek", label: "DeepSeek" },
+  ...GROUP_PLATFORM_OPTIONS,
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组

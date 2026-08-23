@@ -1,20 +1,11 @@
 import type { SelectOption } from '@/components/common/Select.vue'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 
 interface OpsPlatformGroup {
   platform: string
 }
 
-const BUILTIN_PLATFORM_OPTIONS: SelectOption[] = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'qoder', label: 'Qoder' },
-  { value: 'grok', label: 'Grok' },
-  { value: 'kimi', label: 'Kimi' },
-  { value: 'zhipu', label: 'Zhipu' },
-  { value: 'deepseek', label: 'DeepSeek' }
-]
+const BUILTIN_PLATFORM_OPTIONS: SelectOption[] = [...CONCRETE_PLATFORM_OPTIONS]
 
 // 内置平台保持稳定顺序，同时从分组数据补充后续新增的平台。
 export function buildOpsPlatformOptions(groups: OpsPlatformGroup[], allLabel: string): SelectOption[] {

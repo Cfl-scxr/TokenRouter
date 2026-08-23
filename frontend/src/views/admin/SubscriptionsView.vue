@@ -764,6 +764,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 import {
   getRemainingDurationParts,
   getRemainingExpiryDuration,
@@ -1008,15 +1009,7 @@ const planOptions = computed(() => [
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'qoder', label: 'Qoder' },
-  { value: 'grok', label: 'Grok' },
-  { value: 'kimi', label: 'Kimi' },
-  { value: 'zhipu', label: 'Zhipu' },
-  { value: 'deepseek', label: 'DeepSeek' }
+  ...GROUP_PLATFORM_OPTIONS
 ])
 
 const subscriptionPlanOptions = computed<PlanOption[]>(() =>
