@@ -284,6 +284,17 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsOpenAICompat(
 		respBody := s.readUpstreamErrorBody(resp)
 		decision := s.applyGeminiUpstreamErrorPolicy(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
 		evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
+		if decision.Policy == ErrorPolicyCustomSkipped || decision.Policy == ErrorPolicyPoolBypassed {
+			if failoverErr := s.skippedErrorPolicyFailoverError(c, account, resp.StatusCode, respBody, requestID); failoverErr != nil {
+				return nil, failoverErr
+			}
+			if decision.Policy == ErrorPolicyCustomSkipped {
+				return nil, s.writeGeminiCustomCodeSkippedError(c, account, resp.StatusCode, requestID, respBody, func() {
+					_ = s.writeChatCompletionsError(c, http.StatusInternalServerError, "api_error", geminiCustomCodeSkippedClientMessage)
+				})
+			}
+			return nil, s.writeGeminiOpenAICompatMappedError(c, account, resp.StatusCode, requestID, evBody, protocol)
+		}
 		if decision.ShouldReturnGenericError() {
 			genericBody := []byte(`{"error":{"message":"Upstream gateway error"}}`)
 			return nil, s.writeGeminiOpenAICompatMappedError(c, account, http.StatusInternalServerError, requestID, genericBody, protocol)
