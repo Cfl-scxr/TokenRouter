@@ -400,7 +400,6 @@ type PublicSettings struct {
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
 	GoogleOneTapEnabled                 bool                     `json:"google_one_tap_enabled"`
 	GoogleOAuthClientID                 string                   `json:"google_oauth_client_id"`
-	SoraClientEnabled                   bool                     `json:"sora_client_enabled"`
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
 	TeamEnabled                         bool                     `json:"team_enabled"`
