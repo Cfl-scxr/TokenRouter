@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
@@ -191,4 +192,56 @@ func forceChatResponsesFallbackAccount() *Account {
 		openai_compat.ExtraKeyTextRouteMode: string(openai_compat.TextRouteModeForceChatCompletions),
 	}
 	return account
+}
+
+type reasoningCacheStub struct {
+	stubGatewayCache
+	sets    map[string]string
+	getResp map[string]string
+}
+
+func (c *reasoningCacheStub) SetReasoningContent(_ context.Context, itemID, content string, _ time.Duration) error {
+	if c.sets == nil {
+		c.sets = make(map[string]string)
+	}
+	c.sets[itemID] = content
+	return nil
+}
+
+func (c *reasoningCacheStub) GetReasoningContent(_ context.Context, itemID string) (string, error) {
+	if content, ok := c.getResp[itemID]; ok {
+		return content, nil
+	}
+	return "", ErrReasoningContentNotFound
+}
+
+func TestForwardResponsesChatFallbackRestoresEncryptedReasoningFromCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"deepseek-reasoner","stream":false,"input":[
+		{"type":"reasoning","id":"item_plain","summary":[{"type":"summary_text","text":"plain thinking"}]},
+		{"type":"function_call","call_id":"call_0","name":"get_value","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_0","output":"ok"},
+		{"type":"reasoning","id":"item_enc","summary":[],"encrypted_content":"opaque"},
+		{"type":"function_call","call_id":"call_1","name":"get_value","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_1","output":"ok"},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"go on"}]}
+	]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_restore","object":"chat.completion","model":"deepseek-reasoner","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)),
+	}}
+	cache := &reasoningCacheStub{getResp: map[string]string{"item_enc": "cached thinking"}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream, cache: cache}
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "plain thinking", gjson.GetBytes(upstream.lastBody, "messages.0.reasoning_content").String())
+	require.Equal(t, "cached thinking", gjson.GetBytes(upstream.lastBody, "messages.2.reasoning_content").String())
+	require.Equal(t, "plain thinking", cache.sets["item_plain"])
 }

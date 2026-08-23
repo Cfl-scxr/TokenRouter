@@ -20,6 +20,7 @@ const (
 	stickySessionOwnerPrefix      = "sticky_session_owner:"
 	grokVideoPendingBillingPrefix = "grok_video_pending:"
 	grokVideoBilledPrefix         = "grok_video_billed:"
+	reasoningContentPrefix        = "reasoning_content:"
 	cyberSessionBlockPrefix       = "cyber_session_block:"
 	liveCallPrefix                = "live:call:"
 )
@@ -30,6 +31,41 @@ type gatewayCache struct {
 
 func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
+}
+
+// SetReasoningContent 按 reasoning item id 缓存明文推理内容。
+// 空 id 或空内容视为没有可缓存数据，直接成功返回。
+func (c *gatewayCache) SetReasoningContent(ctx context.Context, itemID string, content string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" || content == "" {
+		return nil
+	}
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
+	}
+	return c.rdb.Set(ctx, reasoningContentPrefix+itemID, content, ttl).Err()
+}
+
+// GetReasoningContent 读取 reasoning item 的缓存文本；未命中返回统一哨兵错误。
+func (c *gatewayCache) GetReasoningContent(ctx context.Context, itemID string) (string, error) {
+	if c == nil || c.rdb == nil {
+		return "", errors.New("gateway cache unavailable")
+	}
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" {
+		return "", service.ErrReasoningContentNotFound
+	}
+	value, err := c.rdb.Get(ctx, reasoningContentPrefix+itemID).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", service.ErrReasoningContentNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
@@ -87,6 +123,7 @@ func (c *gatewayCache) RefreshSessionOwnerTTL(ctx context.Context, userID int64,
 }
 
 var _ service.GrokVideoBillingCache = (*gatewayCache)(nil)
+var _ service.ReasoningContentCache = (*gatewayCache)(nil)
 
 // SetGrokVideoPendingBilling 保存视频创建成功时的计费快照，供后续状态轮询使用。
 func (c *gatewayCache) SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error {

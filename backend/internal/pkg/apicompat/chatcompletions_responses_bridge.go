@@ -17,14 +17,28 @@ const (
 
 type toolOutputMediaByCallID map[string][]ChatContentPart
 
+// ResponsesToChatOptions 为 Responses→Chat 桥接提供可选的 reasoning 回查钩子。
+// 所有字段均可为空；传入 nil 或空选项时保持原有转换行为。
+type ResponsesToChatOptions struct {
+	// ReasoningContentByID 按 reasoning item id 返回缓存的明文推理内容。
+	// 客户端回放 encrypted-only item 时可借此恢复 DeepSeek thinking 所需的
+	// reasoning_content；缓存未命中应返回空字符串，桥接继续 fail-open。
+	ReasoningContentByID func(itemID string) string
+}
+
 // ResponsesToChatCompletionsRequest 将 Responses API 请求转换为 Chat Completions 请求，
 // 供只实现 `/v1/chat/completions` 的上游使用。
 func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsRequest, error) {
+	return ResponsesToChatCompletionsRequestWithOptions(req, nil)
+}
+
+// ResponsesToChatCompletionsRequestWithOptions 在默认转换上增加可选的 reasoning 回查。
+func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *ResponsesToChatOptions) (*ChatCompletionsRequest, error) {
 	if req == nil {
 		return nil, fmt.Errorf("responses request is nil")
 	}
 
-	messages, err := responsesInputToChatMessages(req.Instructions, req.Input)
+	messages, err := responsesInputToChatMessagesWithOptions(req.Instructions, req.Input, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +208,10 @@ func HasToolSearchTool(tools []ResponsesTool) bool {
 // build + normalize 的拆分把协议规则集中在少数入口里，避免未来 Codex 新增
 // item type 时被泛化路径误传给上游。
 func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
+	return responsesInputToChatMessagesWithOptions(instructions, inputRaw, nil)
+}
+
+func responsesInputToChatMessagesWithOptions(instructions string, inputRaw json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := json.Marshal(instructions)
@@ -218,7 +236,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 		return nil, fmt.Errorf("parse responses input: %w", err)
 	}
 
-	built, mediaByCallID, err := buildChatMessagesFromItems(messages, rawItems)
+	built, mediaByCallID, err := buildChatMessagesFromItems(messages, rawItems, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -226,12 +244,21 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 }
 
 // buildChatMessagesFromItems 遍历 Responses input items，并追加对应的 Chat message。
-func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage) ([]ChatMessage, toolOutputMediaByCallID, error) {
+func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, toolOutputMediaByCallID, error) {
 	// pendingReasoning 暂存 reasoning item 的文本，直到写出它归属的 assistant
 	// message。DeepSeek thinking 模式要求产生工具调用的 reasoning_content 随同
 	// assistant tool_calls 回传；丢失后上游会返回 400。它只允许跨过同回合的
 	// assistant message，其它角色会结束当前 thinking 片段。
 	var pendingReasoning string
+	// lastTurnReasoning 记录本轮最近一次 reasoning，跨越 tool output 保留，
+	// 供链式工具调用在没有重复 reasoning item 时回放；用户输入开启新一轮。
+	var lastTurnReasoning string
+	reasoningForAssistant := func() string {
+		if pendingReasoning != "" {
+			return pendingReasoning
+		}
+		return lastTurnReasoning
+	}
 	mediaByCallID := make(toolOutputMediaByCallID)
 
 	for _, raw := range rawItems {
@@ -247,6 +274,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				content, _ := json.Marshal(text)
 				messages = append(messages, ChatMessage{Role: "user", Content: content})
 				pendingReasoning = ""
+				lastTurnReasoning = ""
 				continue
 			}
 			return nil, nil, fmt.Errorf("parse responses input item: %w", err)
@@ -258,6 +286,17 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		case "reasoning":
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
+			} else if opts != nil && opts.ReasoningContentByID != nil {
+				// 远程压缩后可能只剩 opaque encrypted_content；按 item id 回查
+				// 网关缓存，命中时恢复后续工具调用所需的 reasoning_content。
+				if id := rawString(item["id"]); id != "" {
+					if cached := opts.ReasoningContentByID(id); cached != "" {
+						pendingReasoning = cached
+					}
+				}
+			}
+			if pendingReasoning != "" {
+				lastTurnReasoning = pendingReasoning
 			}
 			continue
 		case "function_call":
@@ -279,7 +318,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					Arguments: arguments,
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "tool_search_call":
@@ -300,7 +339,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					Arguments: arguments,
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "custom_tool_call":
@@ -316,7 +355,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 					Arguments: string(arguments),
 				},
 			}
-			messages = appendAssistantToolCall(messages, toolCall, pendingReasoning)
+			messages = appendAssistantToolCall(messages, toolCall, reasoningForAssistant())
 			pendingReasoning = ""
 			continue
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
@@ -348,6 +387,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			content, _ := json.Marshal(rawString(item["text"]))
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
 			pendingReasoning = ""
+			lastTurnReasoning = ""
 			continue
 		case "input_image":
 			content, err := chatContentFromSingleResponsesPart(itemType, item)
@@ -356,6 +396,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			}
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
 			pendingReasoning = ""
+			lastTurnReasoning = ""
 			continue
 		}
 
@@ -378,11 +419,15 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		if err != nil {
 			return nil, nil, err
 		}
-		messages = append(messages, ChatMessage{Role: role, Content: chatContent})
-		// reasoning 只允许跨过 assistant 文本消息。
-		if role != "assistant" {
+		message := ChatMessage{Role: role, Content: chatContent}
+		if role == "assistant" {
+			message.ReasoningContent = reasoningForAssistant()
 			pendingReasoning = ""
+		} else {
+			pendingReasoning = ""
+			lastTurnReasoning = ""
 		}
+		messages = append(messages, message)
 	}
 
 	return messages, mediaByCallID, nil
@@ -658,6 +703,21 @@ func extractResponsesReasoningText(item map[string]json.RawMessage) string {
 		collect(item["content"])
 	}
 	return strings.Join(parts, "\n")
+}
+
+// ExtractResponsesReasoningItem 解析原始 Responses input item，并返回 reasoning
+// item 的 id 与可提取明文。它供网关缓存层刷新带明文的历史推理；非 reasoning
+// item 或格式无效时返回 ok=false。
+func ExtractResponsesReasoningItem(raw json.RawMessage) (id string, text string, ok bool) {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", "", false
+	}
+	var item map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &item); err != nil || rawString(item["type"]) != "reasoning" {
+		return "", "", false
+	}
+	return rawString(item["id"]), extractResponsesReasoningText(item), true
 }
 
 func chatCompletionsBridgeRole(role string) string {

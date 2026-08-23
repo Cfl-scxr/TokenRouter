@@ -448,6 +448,9 @@ var allowedHeaders = map[string]bool{
 	"x-client-request-id":                       true,
 }
 
+// ErrReasoningContentNotFound 表示按 reasoning item id 查询缓存时未命中。
+var ErrReasoningContentNotFound = errors.New("reasoning content not found")
+
 // GatewayCache 定义网关服务的缓存操作接口。
 // 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
 //
@@ -472,6 +475,13 @@ type GatewayCache interface {
 	GetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string) (int64, error)
 	// RefreshSessionOwnerTTL 刷新显式会话归属记录的过期时间。
 	RefreshSessionOwnerTTL(ctx context.Context, userID int64, source, sessionHash string, ttl time.Duration) error
+}
+
+// ReasoningContentCache 是 Responses→Chat 桥接使用的可选缓存能力。
+// 与 GatewayCache 分离，避免不需要 reasoning 回放的缓存实现被迫扩展接口。
+type ReasoningContentCache interface {
+	SetReasoningContent(ctx context.Context, itemID string, content string, ttl time.Duration) error
+	GetReasoningContent(ctx context.Context, itemID string) (string, error)
 }
 
 // GrokVideoBillingCache 为异步视频任务保存创建时定价快照，并跨实例防止轮询重复扣费。
