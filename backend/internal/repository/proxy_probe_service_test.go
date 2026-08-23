@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -164,6 +165,32 @@ func (s *ProxyProbeServiceSuite) TestParseIPify_NoIP() {
 	_, _, err := s.prober.parseIPify(body, 50)
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "no IP found")
+}
+
+func (s *ProxyProbeServiceSuite) TestParseChatGPTTrace_Success() {
+	body := []byte("fl=abc\nh=chatgpt.com\nip=203.0.113.5\nts=1700000000\nloc=US\ntz=UTC\n")
+	info, latencyMs, err := s.prober.parseChatGPTTrace(body, 320)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), int64(320), latencyMs)
+	require.Equal(s.T(), "203.0.113.5", info.IP)
+	require.Equal(s.T(), "US", info.CountryCode)
+}
+
+func (s *ProxyProbeServiceSuite) TestParseChatGPTTrace_NoIP() {
+	body := []byte("fl=abc\nh=chatgpt.com\nloc=US\n")
+	_, _, err := s.prober.parseChatGPTTrace(body, 100)
+	require.Error(s.T(), err)
+	require.ErrorContains(s.T(), err, "chatgpt-trace: no ip= found")
+}
+
+func TestNewProxyExitInfoProberUsesConfiguredTargets(t *testing.T) {
+	prober := NewProxyExitInfoProber(&config.Config{Security: config.SecurityConfig{
+		ProxyProbe: config.ProxyProbeConfig{URLs: []config.ProbeURLConfig{{URL: "https://example.com", Parser: "ipify"}}},
+	}})
+	service, ok := prober.(*proxyProbeService)
+	require.True(t, ok)
+	require.Len(t, service.configuredProbeURLs, 1)
+	require.Equal(t, "https://example.com", service.configuredProbeURLs[0].url)
 }
 
 func TestProxyProbeServiceSuite(t *testing.T) {

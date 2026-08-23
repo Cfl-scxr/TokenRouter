@@ -43,6 +43,16 @@ func collectMapstructureKeys(t reflect.Type, prefix string, out map[string]strin
 			// map 无法用单个环境变量表达，因此不在本测试范围内，仍需通过配置文件设置。
 			continue
 		}
+		if ft.Kind() == reflect.Slice {
+			elem := ft.Elem()
+			for elem.Kind() == reflect.Ptr {
+				elem = elem.Elem()
+			}
+			if elem.Kind() == reflect.Struct {
+				// 结构体切片只能由配置文件解码，不能安全地从单个环境变量展开。
+				continue
+			}
+		}
 		out[strings.ToLower(key)] = ft.String()
 	}
 }
@@ -55,7 +65,8 @@ func collectMapstructureKeys(t reflect.Type, prefix string, out map[string]strin
 // 因此没有注册默认值、且不在 config.yaml 中的字段无法由环境变量配置：加载器会
 // 丢弃运维已设置的值，表现得像从未配置。
 //
-// 测试失败时，应在 setEnvReachableDefaults 中为报告的键注册零值默认项。
+// 测试失败时，应在 setEnvReachableDefaults 中为报告的标量键注册零值默认项；
+// map 和结构体切片保持配置文件专用。
 func TestConfigKeysAreEnvReachable(t *testing.T) {
 	bound := map[string]string{}
 	collectMapstructureKeys(reflect.TypeOf(Config{}), "", bound)
