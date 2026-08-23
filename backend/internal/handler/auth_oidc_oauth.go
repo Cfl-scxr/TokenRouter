@@ -1140,7 +1140,7 @@ func (k oidcJWK) publicKey() (any, error) {
 		if !curve.IsOnCurve(x, y) {
 			return nil, errors.New("ec point is not on curve")
 		}
-		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+		return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil //nolint:staticcheck // JWK 使用裸坐标；迁移到 ecdsa.ParseUncompressedPublicKey 需改变点编码
 	default:
 		return nil, fmt.Errorf("unsupported jwk kty: %s", k.Kty)
 	}
