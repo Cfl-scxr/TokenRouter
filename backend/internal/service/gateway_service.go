@@ -1316,6 +1316,20 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
+	// OpenAI 透传账号不依赖 model_mapping；旧映射不能限制公开模型列表。
+	if platform == PlatformOpenAI {
+		for i := range accounts {
+			if accounts[i].Platform != PlatformOpenAI || !accounts[i].IsOpenAIPassthroughEnabled() {
+				continue
+			}
+			if s.modelsListCache != nil {
+				s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
+				modelsListCacheStoreTotal.Add(1)
+			}
+			return nil
+		}
+	}
+
 	models := configuredRequestModelsFromAccounts(accounts, platform)
 	// 没有账号显式模型范围时返回 nil，由调用方使用平台默认模型。
 	if len(models) == 0 {
