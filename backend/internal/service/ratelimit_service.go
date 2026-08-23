@@ -34,6 +34,10 @@ type RateLimitService struct {
 	usageCache             map[int64]*geminiUsageCacheEntry
 	advancedSchedulerMu    sync.Mutex
 	advancedSchedulerStats *advancedAccountRuntimeStats
+
+	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
+	openaiTeamLinkedMu     sync.Mutex
+	openaiTeamLinkedRecent map[string]time.Time
 }
 
 type AccountRuntimeBlocker interface {
@@ -379,6 +383,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 // ApplyUpstreamError 先执行显式策略，再在非池模式下执行平台默认账号状态处理。
 func (s *RateLimitService) ApplyUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) UpstreamErrorDecision {
+	// Team 联动熔断必须先于池模式、自定义错误码和临时不可调度的各类早退；
+	// fastpath 入口的重复调用由方法内去重吸收。
+	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	policy := ErrorPolicyNone
 	// 非池账号未启用自定义错误码时，模型不存在和官方硬窗口等精确状态必须
 	// 先于宽泛的临时不可调度规则；池模式和自定义错误码仍作为前置显式策略。
