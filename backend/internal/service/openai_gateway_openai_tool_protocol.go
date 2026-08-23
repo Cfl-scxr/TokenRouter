@@ -24,6 +24,15 @@ func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesCl
 	if !needsOpenAIResponsesClientToolAdaptation(body) {
 		return body, apicompat.ResponsesClientToolMapping{}, nil
 	}
+	return adaptOpenAIResponsesClientToolsWithMapping(body, apicompat.ResponsesClientToolMapping{})
+}
+
+// adaptOpenAIResponsesClientToolsWithMapping 支持在 bridge 多轮请求中继承工具映射。
+// body 已由上游请求解析过，但仍严格拒绝尾随 JSON，避免静默丢弃请求内容。
+func adaptOpenAIResponsesClientToolsWithMapping(
+	body []byte,
+	inherited apicompat.ResponsesClientToolMapping,
+) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var requestBody map[string]any
@@ -37,7 +46,7 @@ func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesCl
 		}
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode OpenAI Responses client tools trailing data: %w", err)
 	}
-	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
+	mapping, changed, err := apicompat.AdaptResponsesClientToolsWithInheritedMapping(requestBody, inherited)
 	if err != nil || !changed {
 		return body, mapping, err
 	}

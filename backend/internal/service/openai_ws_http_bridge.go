@@ -15,6 +15,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -22,6 +23,31 @@ const (
 	openAIWSHTTPBridgeThresholdBytesDefault int64 = 15 * 1024 * 1024
 	openAIWSHTTPBridgeErrorBodyLimitBytes         = 64 * 1024
 )
+
+const openAIWSHTTPBridgeToolStateContextKey = "openai_ws_http_bridge_tool_state"
+
+// openAIWSHTTPBridgeToolState 保存 bridge 会话内可跨轮次复用的客户端工具降级状态。
+type openAIWSHTTPBridgeToolState struct {
+	ClientMapping apicompat.ResponsesClientToolMapping
+	LoweredTools  json.RawMessage
+}
+
+func openAIWSHTTPBridgeToolStateFromContext(c *gin.Context) (openAIWSHTTPBridgeToolState, bool) {
+	if c == nil {
+		return openAIWSHTTPBridgeToolState{}, false
+	}
+	value, ok := c.Get(openAIWSHTTPBridgeToolStateContextKey)
+	state, typed := value.(openAIWSHTTPBridgeToolState)
+	return state, ok && typed
+}
+
+func setOpenAIWSHTTPBridgeToolState(c *gin.Context, state openAIWSHTTPBridgeToolState) {
+	if c == nil {
+		return
+	}
+	state.LoweredTools = append(json.RawMessage(nil), state.LoweredTools...)
+	c.Set(openAIWSHTTPBridgeToolStateContextKey, state)
+}
 
 // ResolveOpenAIWSClientFirstMessageTimeout 返回生效的客户端入站首消息截止时间。
 func ResolveOpenAIWSClientFirstMessageTimeout(cfg *config.Config) time.Duration {
@@ -212,11 +238,26 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
 	clientToolMapping := apicompat.ResponsesClientToolMapping{}
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey && needsOpenAIResponsesClientToolAdaptation(body) {
-		body, clientToolMapping, err = adaptOpenAIResponsesClientTools(body)
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		inheritedState, _ := openAIWSHTTPBridgeToolStateFromContext(c)
+		toolsPresent := gjson.GetBytes(body, "tools").Exists()
+		body, clientToolMapping, err = adaptOpenAIResponsesClientToolsWithMapping(body, inheritedState.ClientMapping)
 		if err != nil {
 			return nil, fmt.Errorf("adapt OpenAI WS HTTP bridge client tools: %w", err)
 		}
+		loweredTools := inheritedState.LoweredTools
+		if toolsPresent {
+			loweredTools = json.RawMessage(gjson.GetBytes(body, "tools").Raw)
+		} else if len(loweredTools) > 0 {
+			body, err = sjson.SetRawBytes(body, "tools", loweredTools)
+			if err != nil {
+				return nil, fmt.Errorf("inherit OpenAI WS HTTP bridge tools: %w", err)
+			}
+		}
+		setOpenAIWSHTTPBridgeToolState(c, openAIWSHTTPBridgeToolState{
+			ClientMapping: clientToolMapping,
+			LoweredTools:  loweredTools,
+		})
 	}
 	responsesLite := account.Platform == PlatformOpenAI && isOpenAIResponsesLiteWebSocketPayload(payload)
 	if responsesLite {
