@@ -599,6 +599,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	account := input.Account
 	subscription := input.Subscription
 	ApplyForwardImageBillingResolution(result)
+	logServiceTierBillingDowngrade("service.gateway", account, result.RequestID, ApplyForwardServiceTierBillingResolution(result))
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -921,7 +922,7 @@ func (s *GatewayService) calculateTokenCost(
 	multiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
-	serviceTier := claudeUsageServiceTier(result.Usage.Speed)
+	serviceTier := forwardResultServiceTier(result)
 	tokens := UsageTokens{
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
@@ -1023,7 +1024,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalTrimmedStringPtr(result.UpstreamModel),
 		ReasoningEffort:       result.ReasoningEffort,
-		ServiceTier:           optionalTrimmedStringPtr(claudeUsageServiceTier(result.Usage.Speed)),
+		ServiceTier:           optionalTrimmedStringPtr(forwardResultServiceTier(result)),
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:           result.Usage.InputTokens,
@@ -1079,6 +1080,17 @@ func claudeUsageServiceTier(speed string) string {
 		return OpenAIFastTierPriority
 	}
 	return ""
+}
+
+// forwardResultServiceTier 统一通用网关结果的请求/实际档位来源。
+func forwardResultServiceTier(result *ForwardResult) string {
+	if result == nil {
+		return ""
+	}
+	if tier := strings.TrimSpace(optionalStringValue(result.ServiceTier)); tier != "" {
+		return tier
+	}
+	return claudeUsageServiceTier(result.Usage.Speed)
 }
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。

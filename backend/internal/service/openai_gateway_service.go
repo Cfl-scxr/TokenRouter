@@ -233,6 +233,8 @@ type OpenAIForwardResult struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Empty when no mapping was applied (requested model was used as-is).
 	UpstreamModel string
+	// UpstreamResponseServiceTier 是上游响应声明的实际服务档位，供计费只降档使用。
+	UpstreamResponseServiceTier string
 	// UpstreamEndpoint 是该请求实际使用的上游 API 路径，避免同一下游协议可选择
 	// 多个上游端点时只能依赖推断。
 	UpstreamEndpoint string

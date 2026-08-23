@@ -543,14 +543,15 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		ResponseBody:  cloneDataSharingRequestBody(chatRespBody),
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ResponseBody:                cloneDataSharingRequestBody(chatRespBody),
+		Stream:                      false,
+		Duration:                    time.Since(startTime),
 	}, nil
 }
 
@@ -656,15 +657,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			responseBody = streamAccumulator.ResponseBody(&usage)
 		}
 		out := &OpenAIForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
-			ResponseBody:  responseBody,
+			RequestID:                   requestID,
+			Usage:                       usage,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+			FirstTokenMs:                firstTokenMs,
+			ResponseBody:                responseBody,
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -691,6 +693,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			)
 			return false
 		}
+		observeOpenAIServiceTierInContext(c, []byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)

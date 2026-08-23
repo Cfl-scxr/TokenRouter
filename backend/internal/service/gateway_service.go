@@ -600,7 +600,11 @@ type ForwardResult struct {
 	FirstTokenMs     *int // 首字时间（流式请求）
 	ClientDisconnect bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort  *string
-	ResponseBody     []byte // 成功响应体，用于数据共享提取 assistant 输出
+	// UpstreamResponseServiceTier 是上游响应声明的实际服务档位；空值表示未声明或无法确认。
+	UpstreamResponseServiceTier string
+	// ServiceTier 是请求侧声明的服务档位；计费时只允许按上游实际档位降档。
+	ServiceTier  *string
+	ResponseBody []byte // 成功响应体，用于数据共享提取 assistant 输出
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量

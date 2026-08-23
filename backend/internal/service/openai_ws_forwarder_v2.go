@@ -552,6 +552,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if eventType == "" {
 			continue
 		}
+		observeOpenAIServiceTierInContext(c, message, eventType)
 		eventCount++
 		if firstEventType == "" {
 			firstEventType = eventType
@@ -879,22 +880,23 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	return &OpenAIForwardResult{
-		RequestID:             responseID,
-		Usage:                 *usage,
-		Model:                 originalModel,
-		UpstreamModel:         mappedModel,
-		ImageCount:            imageCounter.Count(),
-		ImageOutputSizes:      imageCounter.Sizes(),
-		ServiceTier:           extractOpenAIServiceTier(reqBody),
-		ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel), payloadAsJSONBytes(payload), mappedModel),
-		Stream:                reqStream,
-		OpenAIWSMode:          true,
-		UpstreamTerminalEvent: upstreamTerminalEvent,
-		ResponseHeaders:       lease.HandshakeHeaders(),
-		ResponseBody:          cloneDataSharingRequestBody(finalResponse),
-		Duration:              time.Since(startTime),
-		FirstTokenMs:          firstTokenMs,
-		UpstreamWarning:       upstreamWarning,
+		RequestID:                   responseID,
+		Usage:                       *usage,
+		Model:                       originalModel,
+		UpstreamModel:               mappedModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ImageCount:                  imageCounter.Count(),
+		ImageOutputSizes:            imageCounter.Sizes(),
+		ServiceTier:                 extractOpenAIServiceTier(reqBody),
+		ReasoningEffort:             ApplyThinkingEnabledFallback(extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel), payloadAsJSONBytes(payload), mappedModel),
+		Stream:                      reqStream,
+		OpenAIWSMode:                true,
+		UpstreamTerminalEvent:       upstreamTerminalEvent,
+		ResponseHeaders:             lease.HandshakeHeaders(),
+		ResponseBody:                cloneDataSharingRequestBody(finalResponse),
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                firstTokenMs,
+		UpstreamWarning:             upstreamWarning,
 	}, nil
 }
 

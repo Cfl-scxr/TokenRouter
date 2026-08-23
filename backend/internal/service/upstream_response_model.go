@@ -20,10 +20,15 @@ const (
 // channel explicitly configured with billing_model_source = response_model,
 // where a conflict flag makes billing fall back to the baseline model
 // (see responseModelBillingDeclaration).
+// 同一个 observer 也记录上游实际使用的 service tier，供计费只降档使用。
 type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
 	conflict bool
+
+	firstTier         string
+	firstTierConflict bool
+	terminalTier      string
 }
 
 func (o *upstreamResponseModelObserver) Observe(model string, terminal bool) {
@@ -58,12 +63,79 @@ func normalizeObservedUpstreamResponseModel(model string) string {
 
 func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType string) {
 	model := firstValidTrimmedGJSONModel(payload, "response.model", "model")
-	o.Observe(model, isUpstreamResponseModelTerminalEvent(eventType))
+	terminal := isUpstreamResponseModelTerminalEvent(eventType)
+	if model != "" {
+		o.Observe(model, terminal)
+	}
+	// Responses 的非终止事件通常只是回显请求档位，只有终止事件和无类型的
+	// Chat Completions/非流式 JSON 才能作为实际处理档位的证据。
+	if !terminal && strings.TrimSpace(eventType) != "" {
+		return
+	}
+	tier := normalizeObservedOpenAIServiceTier(firstValidTrimmedGJSONModel(payload, "response.service_tier", "service_tier"))
+	o.ObserveServiceTier(tier, terminal)
 }
 
 func (o *upstreamResponseModelObserver) ObserveAnthropic(payload []byte) {
 	model := firstValidTrimmedGJSONModel(payload, "message.model", "model")
-	o.Observe(model, false)
+	if model != "" {
+		o.Observe(model, false)
+	}
+	tier := normalizeObservedAnthropicSpeed(firstValidTrimmedGJSONModel(payload, "message.usage.speed", "usage.speed"))
+	o.ObserveServiceTier(tier, false)
+}
+
+// ObserveServiceTier 记录上游声明的服务档位；终止事件优先，互相矛盾的非终止
+// 声明全部作废，避免把不确定的档位用于计费。
+func (o *upstreamResponseModelObserver) ObserveServiceTier(tier string, terminal bool) {
+	if o == nil || tier == "" {
+		return
+	}
+	if terminal {
+		o.terminalTier = tier
+		return
+	}
+	if o.firstTier == "" {
+		o.firstTier = tier
+		return
+	}
+	if o.firstTier != tier {
+		o.firstTierConflict = true
+	}
+}
+
+// ServiceTier 返回无歧义的上游实际服务档位；没有声明或声明冲突时返回空。
+func (o *upstreamResponseModelObserver) ServiceTier() string {
+	if o == nil {
+		return ""
+	}
+	if o.terminalTier != "" {
+		return o.terminalTier
+	}
+	if o.firstTierConflict {
+		return ""
+	}
+	return o.firstTier
+}
+
+func normalizeObservedOpenAIServiceTier(raw string) string {
+	switch value := strings.ToLower(strings.TrimSpace(raw)); value {
+	case "priority", "fast":
+		return OpenAIFastTierPriority
+	case "default", "flex", "scale":
+		return value
+	default:
+		return ""
+	}
+}
+
+func normalizeObservedAnthropicSpeed(raw string) string {
+	switch value := strings.ToLower(strings.TrimSpace(raw)); value {
+	case "fast", "standard":
+		return value
+	default:
+		return ""
+	}
 }
 
 func (o *upstreamResponseModelObserver) ObserveGemini(payload []byte) {
@@ -110,6 +182,50 @@ func upstreamResponseModelObserverFromContext(c *gin.Context) *upstreamResponseM
 	}
 	observer, _ := value.(*upstreamResponseModelObserver)
 	return observer
+}
+
+func observedUpstreamResponseServiceTier(c *gin.Context) string {
+	return upstreamResponseModelObserverFromContext(c).ServiceTier()
+}
+
+// observeOpenAIServiceTierInContext 将原始 OpenAI 响应事件写入当前请求的
+// observer；模型审计字段仍保持 fork 既有关闭状态。
+func observeOpenAIServiceTierInContext(c *gin.Context, payload []byte, eventType string) {
+	if c == nil || len(payload) == 0 {
+		return
+	}
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
+	observer.ObserveOpenAI(payload, eventType)
+}
+
+// observeOpenAISSEBody 逐帧记录 Responses SSE 中的实际服务档位。
+func observeOpenAISSEBody(c *gin.Context, body string) {
+	if c == nil || strings.TrimSpace(body) == "" {
+		return
+	}
+	forEachOpenAISSEFrame(body, func(eventType string, payload []byte) {
+		observeOpenAIServiceTierInContext(c, payload, eventType)
+	})
+}
+
+// openAIChatCompletionServiceTierEventType 为 Chat Completions 的结束 chunk
+// 补出终止事件语义，使终态实际档位可以覆盖早期请求档位回显。
+func openAIChatCompletionServiceTierEventType(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	if isOpenAIChatUsageOnlyStreamChunk(string(payload)) {
+		return "response.completed"
+	}
+	for _, choice := range gjson.GetBytes(payload, "choices").Array() {
+		if strings.TrimSpace(choice.Get("finish_reason").String()) != "" {
+			return "response.completed"
+		}
+	}
+	return ""
 }
 
 func firstValidTrimmedGJSONModel(payload []byte, paths ...string) string {

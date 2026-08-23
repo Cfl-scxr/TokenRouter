@@ -248,6 +248,8 @@ type ccStreamScanState struct {
 	Usage OpenAIUsage
 	// FirstTokenMs 为首个实际输出 chunk（排除 usage-only chunk）的到达时延。
 	FirstTokenMs *int
+	// ServiceTier 为 SSE chunk 中无歧义的上游实际档位。
+	ServiceTier string
 	// SawDone 表示上游发出了 [DONE] 哨兵。
 	SawDone bool
 	// Err 为 scanner 读错误（客户端 context 取消不属于此类，会原样带出）。
@@ -268,6 +270,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 	emit func(*apicompat.ChatCompletionsChunk),
 ) ccStreamScanState {
 	var st ccStreamScanState
+	tierObserver := &upstreamResponseModelObserver{}
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 	for scanner.Scan() {
@@ -284,6 +287,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 			st.SawDone = true
 			break
 		}
+		tierObserver.ObserveOpenAI([]byte(payload), openAIChatCompletionServiceTierEventType([]byte(payload)))
 
 		if u := extractCCStreamUsage(payload); u != nil {
 			st.Usage = *u
@@ -305,6 +309,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 		}
 		emit(&chunk)
 	}
+	st.ServiceTier = tierObserver.ServiceTier()
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -345,6 +350,7 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 		writeError(c, http.StatusBadGateway, "api_error", "Failed to parse upstream response")
 		return nil, OpenAIUsage{}, fmt.Errorf("parse chat completions response: %w", err)
 	}
+	observeOpenAIServiceTierInContext(c, respBody, "response.completed")
 
 	usage := OpenAIUsage{}
 	if parsed, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {

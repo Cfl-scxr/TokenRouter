@@ -700,3 +700,57 @@ func TestObserveUpstreamMessage_ResponseIDFallbackPolicy(t *testing.T) {
 	require.True(t, observed.terminal)
 	require.Equal(t, "resp_fallback", observed.responseID)
 }
+
+func TestObserveUpstreamMessage_ResponseServiceTierOnlyFromTerminalEvents(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{requestModel: "gpt-5.6-sol"}
+	startAt := time.Unix(0, 0)
+	now := startAt
+	nowFn := func() time.Time {
+		now = now.Add(5 * time.Millisecond)
+		return now
+	}
+
+	created := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.created","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"priority"}}`),
+		startAt,
+		nowFn,
+		nil,
+		nil,
+	)
+	require.False(t, created.terminal)
+	require.Equal(t, "", created.responseServiceTier)
+
+	completed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.6-sol","service_tier":"default","usage":{"input_tokens":1,"output_tokens":2}}}`),
+		startAt,
+		nowFn,
+		nil,
+		nil,
+	)
+	require.True(t, completed.terminal)
+	require.Equal(t, "default", completed.responseServiceTier, "终止事件档位应覆盖早期回显的 priority")
+
+	var turn RelayTurnResult
+	emitTurnComplete(func(result RelayTurnResult) { turn = result }, state, completed)
+	require.Equal(t, "default", turn.ResponseServiceTier)
+
+	var result RelayResult
+	enrichResult(&result, state, now.Sub(startAt))
+	require.Equal(t, "default", result.ResponseServiceTier)
+
+	// 后续未声明档位的 turn 不应继承上一轮结果。
+	observeUpstreamMessage(state, []byte(`{"type":"response.created","response":{"id":"resp_2","model":"gpt-5.6-sol"}}`), startAt, nowFn, nil, nil)
+	second := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_2","model":"gpt-5.6-sol","usage":{"input_tokens":3,"output_tokens":4}}}`),
+		startAt,
+		nowFn,
+		nil,
+		nil,
+	)
+	require.Equal(t, "", second.responseServiceTier)
+}

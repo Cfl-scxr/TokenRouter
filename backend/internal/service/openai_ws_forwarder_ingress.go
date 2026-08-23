@@ -974,6 +974,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
+			observeOpenAIServiceTierInContext(c, upstreamMessage, eventType)
 			if responseID == "" && eventResponseID != "" {
 				responseID = eventResponseID
 			}
@@ -1193,19 +1194,20 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:             responseID,
-					Usage:                 usage,
-					Model:                 originalModel,
-					UpstreamModel:         mappedModel,
-					ServiceTier:           extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
-					Stream:                reqStream,
-					OpenAIWSMode:          true,
-					UpstreamTerminalEvent: terminalPolicy.TerminalEvent,
-					ResponseHeaders:       lease.HandshakeHeaders(),
-					ResponseBody:          cloneDataSharingRequestBody(terminalResponseBody),
-					Duration:              time.Since(turnStart),
-					FirstTokenMs:          firstTokenMs,
+					RequestID:                   responseID,
+					Usage:                       usage,
+					Model:                       originalModel,
+					UpstreamModel:               mappedModel,
+					UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+					ServiceTier:                 extractOpenAIServiceTierFromBody(payload),
+					ReasoningEffort:             ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					Stream:                      reqStream,
+					OpenAIWSMode:                true,
+					UpstreamTerminalEvent:       terminalPolicy.TerminalEvent,
+					ResponseHeaders:             lease.HandshakeHeaders(),
+					ResponseBody:                cloneDataSharingRequestBody(terminalResponseBody),
+					Duration:                    time.Since(turnStart),
+					FirstTokenMs:                firstTokenMs,
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput

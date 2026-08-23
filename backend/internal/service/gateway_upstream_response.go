@@ -723,14 +723,14 @@ func partialStreamUsageResult(
 		requestID = resp.Header.Get("x-request-id")
 	}
 	return &ForwardResult{
-		RequestID:        requestID,
-		Usage:            usage,
-		Model:            model,
-		UpstreamModel:    upstreamModel,
-		Stream:           true,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     streamResult.firstTokenMs,
-		ClientDisconnect: streamResult.clientDisconnect,
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       model,
+		UpstreamModel:               upstreamModel,
+		Stream:                      true,
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                streamResult.firstTokenMs,
+		ClientDisconnect:            streamResult.clientDisconnect,
 	}
 }
 

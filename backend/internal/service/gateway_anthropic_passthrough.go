@@ -305,15 +305,16 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            *usage,
-		Model:            input.OriginalModel,
-		UpstreamModel:    input.RequestModel,
-		Stream:           input.RequestStream,
-		Duration:         time.Since(input.StartTime),
-		FirstTokenMs:     firstTokenMs,
-		ClientDisconnect: clientDisconnect,
-		ResponseBody:     cloneDataSharingRequestBody(responseBody),
+		RequestID:                   resp.Header.Get("x-request-id"),
+		Usage:                       *usage,
+		Model:                       input.OriginalModel,
+		UpstreamModel:               input.RequestModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		Stream:                      input.RequestStream,
+		Duration:                    time.Since(input.StartTime),
+		FirstTokenMs:                firstTokenMs,
+		ClientDisconnect:            clientDisconnect,
+		ResponseBody:                cloneDataSharingRequestBody(responseBody),
 	}, nil
 }
 

@@ -836,15 +836,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            *usage,
-		Model:            originalModel,
-		UpstreamModel:    mappedModel,
-		Stream:           reqStream,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
-		ClientDisconnect: clientDisconnect,
-		ResponseBody:     cloneDataSharingRequestBody(responseBody),
+		RequestID:                   resp.Header.Get("x-request-id"),
+		Usage:                       *usage,
+		Model:                       originalModel,
+		UpstreamModel:               mappedModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		Stream:                      reqStream,
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                firstTokenMs,
+		ClientDisconnect:            clientDisconnect,
+		ResponseBody:                cloneDataSharingRequestBody(responseBody),
 	}, nil
 }
 

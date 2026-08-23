@@ -323,6 +323,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
+				observeOpenAIServiceTierInContext(c, []byte(trimmedPayload), openAIChatCompletionServiceTierEventType([]byte(trimmedPayload)))
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
@@ -379,17 +380,18 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
-		ResponseBody:    streamAccumulator.ResponseBody(&usage),
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ReasoningEffort:             reasoningEffort,
+		ServiceTier:                 serviceTier,
+		Stream:                      true,
+		Duration:                    time.Since(startTime),
+		FirstTokenMs:                firstTokenMs,
+		ResponseBody:                streamAccumulator.ResponseBody(&usage),
 	}, nil
 }
 
@@ -641,6 +643,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
+	observeOpenAIServiceTierInContext(c, respBody, "response.completed")
 	responseModel := gjson.GetBytes(respBody, "model").String()
 	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) &&
 		!hasBillableGrokChatUsage(usage) {
@@ -661,16 +664,17 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	_, _ = c.Writer.Write(respBody)
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
-		ResponseBody:    cloneDataSharingRequestBody(respBody),
+		RequestID:                   requestID,
+		Usage:                       usage,
+		Model:                       originalModel,
+		BillingModel:                billingModel,
+		UpstreamModel:               upstreamModel,
+		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+		ReasoningEffort:             reasoningEffort,
+		ServiceTier:                 serviceTier,
+		Stream:                      false,
+		Duration:                    time.Since(startTime),
+		ResponseBody:                cloneDataSharingRequestBody(respBody),
 	}, nil
 }
 
