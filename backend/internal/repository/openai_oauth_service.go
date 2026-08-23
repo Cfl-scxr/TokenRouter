@@ -80,13 +80,17 @@ func (s *openaiOAuthService) postTokenForm(ctx context.Context, formData url.Val
 	}
 
 	var tokenResp openai.TokenResponse
+	userAgent, originator := resolveOpenAIOAuthTokenIdentity(option)
 
-	resp, err := client.R().
+	request := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", resolveOpenAIOAuthTokenUserAgent(option)).
+		SetHeader("User-Agent", userAgent).
 		SetFormDataFromValues(formData).
-		SetSuccessResult(&tokenResp).
-		Post(s.tokenURL)
+		SetSuccessResult(&tokenResp)
+	if originator != "" {
+		request.SetHeader("originator", originator)
+	}
+	resp, err := request.Post(s.tokenURL)
 
 	if err != nil {
 		if shouldReturnOpenAINoProxyHint(ctx, proxyURL, err) {
@@ -112,7 +116,11 @@ func (s *openaiOAuthService) postTokenFormWithTLS(ctx context.Context, formData 
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", resolveOpenAIOAuthTokenUserAgent(option))
+	userAgent, originator := resolveOpenAIOAuthTokenIdentity(option)
+	req.Header.Set("User-Agent", userAgent)
+	if originator != "" {
+		req.Header.Set("originator", originator)
+	}
 	req = req.WithContext(service.WithHTTPUpstreamProfile(req.Context(), service.HTTPUpstreamProfileOpenAI))
 
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, option.AccountID, option.AccountConcurrency, option.TLSProfile)
@@ -157,7 +165,14 @@ func resolveOpenAIOAuthTokenUserAgent(option service.OpenAIOAuthTokenRequestOpti
 	if ua := strings.TrimSpace(option.UserAgent); ua != "" {
 		return ua
 	}
-	return "codex-cli/0.91.0"
+	return service.CodexCanonicalUserAgent()
+}
+
+func resolveOpenAIOAuthTokenIdentity(option service.OpenAIOAuthTokenRequestOptions) (string, string) {
+	if ua := strings.TrimSpace(option.UserAgent); ua != "" {
+		return ua, ""
+	}
+	return service.CodexCanonicalAuthIdentity()
 }
 
 func shouldReturnOpenAINoProxyHint(ctx context.Context, proxyURL string, err error) bool {

@@ -144,3 +144,29 @@ func TestEnforceCodexIdentityHeaders_NoOriginatorIsNoop(t *testing.T) {
 	require.Empty(t, h.Get("originator"))
 	require.Equal(t, "third-party-client/1.0.0", h.Get("user-agent"))
 }
+
+func TestCodexCanonicalAuthIdentityFollowsResolver(t *testing.T) {
+	SetCodexCanonicalUserAgentResolver(func() string {
+		return "codex_cli_rs/0.200.1 (Linux; x86_64) terminal"
+	})
+	t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(nil) })
+
+	userAgent, originator := CodexCanonicalAuthIdentity()
+	require.Equal(t, "codex_cli_rs", originator)
+	require.Equal(t, "codex_cli_rs/0.200.1 (Linux; x86_64) terminal", userAgent)
+	require.Equal(t, "0.200.1", CodexCanonicalClientVersion())
+
+	h := make(http.Header)
+	ApplyCodexCanonicalAuthIdentity(h)
+	require.Equal(t, userAgent, h.Get("user-agent"))
+	require.Equal(t, originator, h.Get("originator"))
+	require.Empty(t, h.Get("version"))
+}
+
+func TestCodexCanonicalIdentityFallsBackForInvalidResolverValue(t *testing.T) {
+	SetCodexCanonicalUserAgentResolver(func() string { return "not-a-codex-client" })
+	t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(nil) })
+
+	require.Equal(t, codexCLIUserAgent, CodexCanonicalUserAgent())
+	require.Equal(t, codexCLIVersion, CodexCanonicalClientVersion())
+}

@@ -258,7 +258,7 @@ func (s *AccountTestService) prepareOpenAIAutomaticProbe(c *gin.Context, account
 		}
 		userAgent = strings.TrimSpace(credentialAccount.GetOpenAIUserAgent())
 		if userAgent == "" {
-			userAgent = codexCLIUserAgent
+			userAgent = CodexCanonicalUserAgent()
 		}
 	}
 
@@ -1014,11 +1014,11 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		req.Host = "chatgpt.com"
 		req.Header.Set("accept", "text/event-stream")
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
-		req.Header.Set("Originator", openai.CodexDefaultOriginator)
+		req.Header.Set("Originator", resolveCodexOutboundIdentity("").originator)
 		if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
 			req.Header.Set("User-Agent", customUA)
 		} else {
-			req.Header.Set("User-Agent", codexCLIUserAgent)
+			req.Header.Set("User-Agent", CodexCanonicalUserAgent())
 		}
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 	}
@@ -1473,9 +1473,10 @@ func (s *AccountTestService) testOpenAINativeCompactionV2Connection(c *gin.Conte
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", openai.CodexDefaultOriginator)
-	req.Header.Set("User-Agent", codexCLIUserAgent)
-	req.Header.Set("Version", codexCLIVersion)
+	canonical := resolveCodexOutboundIdentity("")
+	req.Header.Set("Originator", canonical.originator)
+	req.Header.Set("User-Agent", canonical.userAgent)
+	req.Header.Set("Version", canonical.version)
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)
@@ -1630,9 +1631,10 @@ func (s *AccountTestService) testOpenAILegacyCompactConnection(c *gin.Context, a
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("Originator", openai.CodexDefaultOriginator)
-	req.Header.Set("User-Agent", codexCLIUserAgent)
-	req.Header.Set("Version", codexCLIVersion)
+	canonical := resolveCodexOutboundIdentity("")
+	req.Header.Set("Originator", canonical.originator)
+	req.Header.Set("User-Agent", canonical.userAgent)
+	req.Header.Set("Version", canonical.version)
 	probeSessionID := legacyCompactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)
@@ -2728,11 +2730,11 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("originator", openai.CodexDefaultOriginator)
+	req.Header.Set("originator", resolveCodexOutboundIdentity("").originator)
 	if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
 		req.Header.Set("User-Agent", customUA)
 	} else {
-		req.Header.Set("User-Agent", codexCLIUserAgent)
+		req.Header.Set("User-Agent", CodexCanonicalUserAgent())
 	}
 	s.applyOpenAIAccountTestRouting(c, account, req, true)
 	setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)

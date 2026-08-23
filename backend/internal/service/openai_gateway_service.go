@@ -1353,14 +1353,14 @@ func (s *OpenAIGatewayService) applyOpenAIUpstreamUserAgent(
 		}
 	}
 	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
-		req.Header.Set("user-agent", codexCLIUserAgent)
+		req.Header.Set("user-agent", CodexCanonicalUserAgent())
 		return
 	}
 	wasBrowserUA := account != nil && account.Type == AccountTypeOAuth && openai.IsBrowserUserAgent(req.Header.Get("user-agent"))
 	s.overrideBrowserUserAgent(ctx, account, req)
 	if passthrough && account != nil && account.Type == AccountTypeOAuth && !wasBrowserUA && !openai.IsCodexOfficialClientRequest(req.Header.Get("user-agent")) {
 		// OAuth 安全透传：非浏览器、非官方 Codex UA 使用标准 Codex TUI 兜底。
-		req.Header.Set("user-agent", codexCLIUserAgent)
+		req.Header.Set("user-agent", CodexCanonicalUserAgent())
 	}
 }
 

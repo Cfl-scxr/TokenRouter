@@ -254,7 +254,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(
 	if version := openAIAlphaSearchInboundHeader(c, "Version"); version != "" {
 		req.Header.Set("Version", version)
 	} else {
-		req.Header.Set("Version", codexCLIVersion)
+		req.Header.Set("Version", CodexCanonicalClientVersion())
 	}
 	req.Header.Set("Originator", resolveOpenAIUpstreamOriginator(c, true, tlsRouterMatch...))
 	apiKeyID := getAPIKeyIDFromContext(c)
@@ -392,7 +392,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(
 		if version := openAIAlphaSearchInboundHeader(c, "Version"); version != "" {
 			req.Header.Set("Version", version)
 		} else {
-			req.Header.Set("Version", codexCLIVersion)
+			req.Header.Set("Version", CodexCanonicalClientVersion())
 		}
 		req.Header.Set("Originator", resolveOpenAIUpstreamOriginator(c, true, tlsRouterMatch...))
 		s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, true, tlsRouterMatch...)
