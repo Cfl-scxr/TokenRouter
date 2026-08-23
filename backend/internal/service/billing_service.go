@@ -244,17 +244,14 @@ const (
 	deepseekProOffPeakCacheRead     = 2.2e-8  // $0.022 per MTok (cache hit)
 )
 
-// isDeepSeekOfficialModel 判断模型名是否为 DeepSeek 官方模型（大小写不敏感）。
-// 官方模型仅三个：deepseek-v4-flash / deepseek-v4-pro / deepseek-v4-flash-vision-exp。
-// deepseek-chat / deepseek-reasoner 已停止服务（不再作为 v4-flash 别名计价），
-// 与其他未知 deepseek-* 型号一样不属于官方模型：不采信 JSON 占位价（如 $0 条目），
-// 走 fail-closed。
-func isDeepSeekOfficialModel(model string) bool {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp":
-		return true
-	}
-	return false
+// isDeepSeekModel 判断模型名是否为 DeepSeek 模型（大小写不敏感）。
+// 任意 deepseek- 前缀均视为 DeepSeek 模型：官方模型（v4-flash / v4-pro /
+// v4-flash-vision-exp）按各自价卡计价，其余 deepseek-*（含已停服的
+// deepseek-chat / deepseek-reasoner 与未知型号）统一按 flash 价兜底，
+// 避免计费中断；新名字由 fallback warn 日志（每模型每进程一条）暴露，
+// 运营者据此更新价卡。
+func isDeepSeekModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "deepseek-")
 }
 
 // deepseekPeakMultiplierAt 返回指定时刻的 DeepSeek 官方峰谷定价因子。
@@ -510,11 +507,12 @@ func (s *BillingService) initFallbackPricing() {
 	// 覆盖逻辑见同文件 getFallbackPricing()
 	// ============================================================
 
-	// ---- DeepSeek V4 系列 ----
+	// ---- DeepSeek 系列 ----
 	// Source: https://api-docs.deepseek.com/quick_start/pricing
 	// 官方口径（2026-08-23 起生效）：现行模型为 deepseek-v4-flash /
 	// deepseek-v4-pro / deepseek-v4-flash-vision-exp；deepseek-chat /
-	// deepseek-reasoner 已停止服务，不再作为 v4-flash 别名计价（请求 fail-closed）。
+	// deepseek-reasoner 已停止服务，其余 deepseek-*（含未知型号）统一按
+	// flash 价兜底（见 getFallbackPricing），避免计费中断。
 	// 以下均为官方低谷价；高峰价 = 2× 低谷价（高峰时段 01:00–04:00
 	// 与 06:00–10:00 UTC，仅工作日；北京时间周六/周日全天低谷），见 deepseekPeakMultiplierAt。
 	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
@@ -850,9 +848,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["gemini-3.6-flash"]
 	}
 
-	// DeepSeek V4 系列：仅匹配现行官方模型 V4 Pro/Flash（含 vision-exp）。
-	// deepseek-chat / deepseek-reasoner 已停止服务，不再按 flash 别名计价，
-	// 与未知 deepseek-* 型号一样不回退（fail-closed），避免误计价。
+	// DeepSeek 系列：官方模型 V4 Pro/Flash（含 vision-exp）按各自价卡；
+	// 其余 deepseek-*（含已停服的 deepseek-chat / deepseek-reasoner 与未知型号）
+	// 统一按 flash 价兜底，避免计费中断。新名字由 fallback warn 日志
+	// （每模型每进程一条）暴露，运营者据此更新价卡。
 	// "deepseek-v4-flash-vision-exp" 含 "deepseek-v4-flash" 子串，显式分支置于 flash 之前，语义清晰。
 	if strings.Contains(modelLower, "deepseek-v4-flash-vision-exp") {
 		return s.fallbackPrices["deepseek-v4-flash-vision-exp"]
@@ -862,6 +861,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "deepseek-v4-pro") {
 		return s.fallbackPrices["deepseek-v4-pro"]
+	}
+	if strings.HasPrefix(modelLower, "deepseek-") {
+		return s.fallbackPrices["deepseek-v4-flash"]
 	}
 
 	// ---- 国产 LLM 兜底匹配 ----
@@ -1077,11 +1079,6 @@ func (s *BillingService) HasIdentifiedTokenPricing(model string) bool {
 	if model == "" {
 		return false
 	}
-	// DeepSeek 非官方型号（含 JSON 里的 $0 占位条目，如 deepseek-v3-2-251201）
-	// 不视为"已识别"，防止响应模型计费路径把零价条目当有价处理（与 GetModelPricing 一致）。
-	if strings.HasPrefix(model, "deepseek-") && !isDeepSeekOfficialModel(model) {
-		return false
-	}
 	if s.pricingService != nil {
 		// 仅有图片价的条目不能用于 token 计费，口径与 GetModelPricing 保持一致。
 		if pricing := s.pricingService.GetIdentifiedModelPricing(model); pricing != nil && !pricing.TokenPricingAbsent {
@@ -1106,12 +1103,6 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 		// 图片计费路径（getDefaultImagePrice / getImageUnitPrice）直接读
 		// PricingService，不受影响。
 		if litellmPricing != nil && litellmPricing.TokenPricingAbsent {
-			litellmPricing = nil
-		}
-		// DeepSeek 非官方模型（如 deepseek-v3-2-251201 的 $0 占位条目）不采信
-		// JSON 价格：置 nil 走 Go 兜底；Go 兜底对未知 deepseek-* 不回退 → fail-closed，
-		// 封死零价计费漏洞。
-		if litellmPricing != nil && strings.HasPrefix(model, "deepseek-") && !isDeepSeekOfficialModel(model) {
 			litellmPricing = nil
 		}
 		if litellmPricing != nil {
@@ -1317,12 +1308,12 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// 内部已强制过）；分组/渠道自定义定价保留运营者配置，不强制覆盖官方价。
 	pricing = s.applyModelSpecificPricingPolicyEx(input.Model, pricing, resolved.Source == PricingSourceLiteLLM)
 
-	// DeepSeek 官方模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
+	// DeepSeek 模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
 	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
 	// 自定义定价保持运营者语义，不叠加。PricingAt 为零值时回退当前时刻。
 	// 先克隆再乘，避免污染共享 fallbackPrices 指针。
-	if resolved.Source == PricingSourceLiteLLM && isDeepSeekOfficialModel(input.Model) {
+	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
 		pricingAt := input.PricingAt
 		if pricingAt.IsZero() {
 			pricingAt = timezone.Now()
@@ -1593,19 +1584,21 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	if pricing == nil {
 		return nil
 	}
-	// DeepSeek 官方模型：无论 JSON/远端价格表给什么价，一律强制官方低谷价
+	// DeepSeek 模型：无论 JSON/远端价格表给什么价，一律强制官方低谷价
 	// （2026-08-23 起生效）。这是覆盖远端旧价的关键——远端仓库不可改，生产会先
 	// 拉到旧价，必须在此兜底修正；克隆后再覆盖，避免污染共享 fallbackPrices 指针。
+	// 档位判定：含 "deepseek-v4-pro" 的版本化名称（如 deepseek-v4-pro-0813）归 pro 档，
+	// 其余 deepseek-*（含已停服的 chat/reasoner 与未知型号）统一归 flash 档。
 	// 高峰时段倍率不在本函数处理，由 calculateTokenCost 按 deepseekPeakMultiplierAt
 	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
-	if forceDeepSeekRates && isDeepSeekOfficialModel(model) {
+	if forceDeepSeekRates && isDeepSeekModel(model) {
 		cloned := *pricing
-		if strings.EqualFold(strings.TrimSpace(model), "deepseek-v4-pro") {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(model)), "deepseek-v4-pro") {
 			cloned.InputPricePerToken = deepseekProOffPeakInputPrice
 			cloned.OutputPricePerToken = deepseekProOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekProOffPeakCacheRead
 		} else {
-			// deepseek-v4-flash 与 deepseek-v4-flash-vision-exp 共用 flash 价。
+			// deepseek-v4-flash / deepseek-v4-flash-vision-exp 与其余 deepseek-* 共用 flash 价。
 			cloned.InputPricePerToken = deepseekFlashOffPeakInputPrice
 			cloned.OutputPricePerToken = deepseekFlashOffPeakOutputPrice
 			cloned.CacheReadPricePerToken = deepseekFlashOffPeakCacheRead
