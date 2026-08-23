@@ -205,7 +205,7 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 				if adapter.ToolSearch {
 					typed["type"] = "function_call_output"
 					dropInvalidLoweredFunctionItemID(typed)
-					normalizeClientToolOutput(typed)
+					normalizeToolSearchOutput(typed)
 					changed = true
 				}
 			}
@@ -245,6 +245,44 @@ func normalizeClientToolOutput(item map[string]any) {
 		return
 	}
 	item["output"] = string(encoded)
+}
+
+// normalizeToolSearchOutput 将两种 tool_search 输出线格式统一为
+// function_call_output 要求的字符串。旧客户端直接发送 output，新版 Codex
+// 在顶层 tools 中返回发现定义；后者的值就是工具输出，不能再额外包一层对象。
+func normalizeToolSearchOutput(item map[string]any) {
+	if output, hasOutput := item["output"]; hasOutput {
+		switch typed := output.(type) {
+		case string:
+			item["output"] = typed
+		case nil:
+			item["output"] = ""
+		default:
+			encoded, err := json.Marshal(typed)
+			if err != nil {
+				return
+			}
+			item["output"] = string(encoded)
+		}
+		dropToolSearchOutputPrivateFields(item)
+		return
+	}
+	tools, hasTools := item["tools"]
+	if !hasTools {
+		return
+	}
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return
+	}
+	item["output"] = string(encoded)
+	dropToolSearchOutputPrivateFields(item)
+}
+
+func dropToolSearchOutputPrivateFields(item map[string]any) {
+	delete(item, "tools")
+	delete(item, "status")
+	delete(item, "execution")
 }
 
 func rewriteClientToolChoice(req map[string]any, adapter *ResponsesClientToolMapping) bool {
