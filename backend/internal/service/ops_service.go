@@ -438,23 +438,8 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
-		logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch failed, fallback to single inserts: %v", err)
-		if isContextDoneError(ctx, err) {
-			return err
-		}
-		var firstErr error
-		for _, entry := range prepared {
-			if _, insertErr := s.opsRepo.InsertErrorLog(ctx, entry); insertErr != nil {
-				logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
-				if firstErr == nil {
-					firstErr = insertErr
-				}
-				if isContextDoneError(ctx, insertErr) {
-					break
-				}
-			}
-		}
-		return firstErr
+		logOpsErrorBatchWriteFailure(ctx, "[Ops] RecordErrorBatch failed: %v", err)
+		return err
 	}
 	return nil
 }
