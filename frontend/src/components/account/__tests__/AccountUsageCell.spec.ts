@@ -1142,6 +1142,90 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('2M|')
   })
 
+  it('Grok paid usage bars expose local 7d and 30d window statistics', async () => {
+    getUsage.mockResolvedValue({
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 37,
+        used_percent: 12,
+        monthly_limit_cents: 150_000,
+        period_end: '2026-07-16T03:25:00Z',
+        plan: 'SuperGrok'
+      },
+      grok_local_usage_7d: { requests: 8, tokens: 2_200_000, cost: 4.42, standard_cost: 4.42 },
+      grok_local_usage_monthly: { requests: 20, tokens: 8_000_000, cost: 18.5, standard_cost: 18.5 }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4410, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'windowStats'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('7d|37|2200000')
+    expect(wrapper.text()).toContain('30d|12|8000000')
+  })
+
+  it('Grok paid usage falls back to official window statistics', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'SuperGrok',
+      grok_billing: { period_type: 'weekly', usage_percent: 20, used_percent: 8, monthly_limit_cents: 25_000, plan: 'SuperGrok' },
+      seven_day: { utilization: 20, window_stats: { requests: 6, tokens: 1_500_000, cost: 3.1, standard_cost: 3.1 } },
+      thirty_day: { utilization: 8, window_stats: { requests: 14, tokens: 4_400_000, cost: 9.2, standard_cost: 9.2 } }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 4411, platform: 'grok', type: 'oauth', extra: {} }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'windowStats'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ windowStats?.tokens }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('7d|20|1500000')
+    expect(wrapper.text()).toContain('30d|8|4400000')
+  })
+
+  it('Grok paid hides zero prepaid and zero monthly limit details', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'SuperGrok',
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 20,
+        prepaid_balance: 0,
+        monthly_limit: 0,
+        monthly_used: 3.5,
+        plan: 'SuperGrok'
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 4412, platform: 'grok', type: 'oauth', extra: {} }) },
+      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokPrepaid')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokUsed')
+    expect(wrapper.text()).not.toContain('3.5/0')
+  })
+
   it.each([
     { tokens: 0, expected: 0 },
     { tokens: 500_000, expected: 50 },
@@ -1221,8 +1305,8 @@ describe('AccountUsageCell', () => {
       global: {
         stubs: {
           UsageProgressBar: {
-            props: ['label', 'utilization', 'title'],
-            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ title }}</div>'
+            props: ['label', 'utilization', 'title', 'windowStats'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ title }}|{{ windowStats?.tokens }}</div>'
           },
           AccountQuotaInfo: true,
         }
@@ -1232,6 +1316,7 @@ describe('AccountUsageCell', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('24h|75|admin.accounts.usageWindow.grokFreeQuota24hHint')
+    expect(wrapper.text()).toContain('|750000')
     expect(wrapper.text()).not.toContain('7d|')
     expect(wrapper.text()).not.toContain('200.0K')
     expect(wrapper.text()).not.toContain('250.0K')
