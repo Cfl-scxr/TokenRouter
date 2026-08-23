@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	subscriptionExpiryUpdateTimeout       = 10 * time.Second
-	subscriptionExpiryReminderListTimeout = 10 * time.Second
-	subscriptionExpiryReminderSendTimeout = emailSendTimeout
-
-	subscriptionExpiryReminderLeaderLockKey = "subscription:expiry:reminder:leader"
+	subscriptionExpiryUpdateTimeout               = 10 * time.Second
+	subscriptionExpiryReminderListTimeout         = 10 * time.Second
+	subscriptionExpiryReminderSendTimeout         = emailSendTimeout
+	subscriptionExpiryReminderSMTPWarningInterval = time.Minute
+	subscriptionExpiryReminderLeaderLockKey       = "subscription:expiry:reminder:leader"
 	// 提醒扫描可能分页遍历大量订阅，锁存活时间需要明显长于单轮扫描时间。
 	subscriptionExpiryReminderLeaderLockTTL = 5 * time.Minute
 )
@@ -43,6 +43,8 @@ type SubscriptionExpiryService struct {
 	lockCache                LeaderLockCache
 	db                       *sql.DB
 	instanceID               string
+	smtpWarningMu            sync.Mutex
+	lastSMTPWarning          time.Time
 }
 
 func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interval time.Duration) *SubscriptionExpiryService {
@@ -126,10 +128,15 @@ func (s *SubscriptionExpiryService) sendExpiryReminders() {
 	}
 	settingCtx, settingCancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
 	enabled := s.expiryReminderEnabled(settingCtx)
-	settingCancel()
 	if !enabled {
+		settingCancel()
 		return
 	}
+	if !s.smtpConfigured(settingCtx) {
+		settingCancel()
+		return
+	}
+	settingCancel()
 	lockCtx, lockCancel := context.WithTimeout(context.Background(), s.expiryReminderListTimeout())
 	release, ok := tryAcquireSingletonLeaderLock(lockCtx, s.lockCache, s.db, subscriptionExpiryReminderLeaderLockKey, s.instanceID, subscriptionExpiryReminderLeaderLockTTL)
 	lockCancel()
@@ -168,6 +175,36 @@ func (s *SubscriptionExpiryService) expiryReminderEnabled(ctx context.Context) b
 		return false
 	}
 	return !isFalseSettingValue(value)
+}
+
+func (s *SubscriptionExpiryService) smtpConfigured(ctx context.Context) bool {
+	if s == nil || s.notificationEmailService == nil {
+		return false
+	}
+	// 生产路径使用 NotificationEmailService；注入自定义发送器时保留其独立传输语义。
+	notificationService, ok := s.notificationEmailService.(*NotificationEmailService)
+	if !ok {
+		return true
+	}
+	if notificationService == nil || notificationService.emailService == nil {
+		return false
+	}
+	_, err := notificationService.emailService.GetSMTPConfig(ctx)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, ErrEmailNotConfigured) {
+		s.smtpWarningMu.Lock()
+		defer s.smtpWarningMu.Unlock()
+		now := time.Now()
+		if s.lastSMTPWarning.IsZero() || now.Sub(s.lastSMTPWarning) >= subscriptionExpiryReminderSMTPWarningInterval {
+			log.Printf("[SubscriptionExpiry] SMTP is not configured; skipping expiry reminders")
+			s.lastSMTPWarning = now
+		}
+		return false
+	}
+	log.Printf("[SubscriptionExpiry] Read SMTP configuration failed; skipping expiry reminders: %v", err)
+	return false
 }
 
 func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(sub *UserSubscription) {
