@@ -1821,6 +1821,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	var finalResponseBody []byte
 	responseAccumulator := apicompat.NewBufferedResponseAccumulator()
+	streamDoneItems := newResponsesStreamOutputItems()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
@@ -1985,7 +1986,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if imageOutput, ok := extractImageGenerationOutputFromSSEData(dataBytes, streamSeenImages); ok {
 				streamImageOutputs = append(streamImageOutputs, imageOutput)
 			}
-			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, responseAccumulator, streamImageOutputs); normalized {
+			streamDoneItems.Observe(dataBytes)
+			if normalizedData, normalized := normalizeResponsesStreamingTerminalOutput(dataBytes, responseAccumulator, streamDoneItems, streamImageOutputs); normalized {
 				dataBytes = normalizedData
 				data = string(normalizedData)
 				trimmedData = strings.TrimSpace(data)
@@ -1997,7 +1999,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					finalResponseBody = []byte(response.Raw)
 
 					if len(gjson.GetBytes(finalResponseBody, "output").Array()) == 0 {
-						if outputJSON, reconstructed := buildResponsesOutputJSON(responseAccumulator, streamImageOutputs); reconstructed {
+						outputJSON, reconstructed := streamDoneItems.BuildOutput()
+						if !reconstructed {
+							outputJSON, reconstructed = buildResponsesOutputJSON(responseAccumulator, streamImageOutputs)
+						}
+						if reconstructed {
 							if patched, err := sjson.SetRawBytes(finalResponseBody, "output", outputJSON); err == nil {
 								finalResponseBody = patched
 							}
