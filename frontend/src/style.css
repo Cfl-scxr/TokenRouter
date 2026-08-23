@@ -9,6 +9,7 @@
 
   html {
     @apply scroll-smooth font-sans antialiased;
+    color-scheme: light;
     scrollbar-color: rgba(18, 167, 232, 0.26) transparent;
     scrollbar-width: thin;
     background: #FCFCFE;
@@ -16,6 +17,7 @@
   }
 
   html.dark {
+    color-scheme: dark;
     scrollbar-color: rgba(166, 166, 175, 0.45) #0A0A0C;
     background: linear-gradient(180deg, #111113 0%, #0A0A0C 100%);
     background-attachment: fixed;
