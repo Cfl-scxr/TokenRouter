@@ -4,6 +4,9 @@ import {
   createDefaultTimePricingForm,
   formTimePricingToAPI,
   hasExplicitPricing,
+  isValidPositiveMultiplier,
+  apiIntervalsToForm,
+  formIntervalsToAPI,
   validateIntervals,
   validateTimePricing,
   type IntervalFormEntry,
@@ -20,6 +23,10 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
     output_price: null,
     cache_write_price: null,
     cache_read_price: null,
+    input_multiplier: null,
+    output_multiplier: null,
+    cache_write_multiplier: null,
+    cache_read_multiplier: null,
     per_request_price: null,
     sort_order: 0,
     ...over,
@@ -32,6 +39,8 @@ function makePricingEntry(over: Partial<PricingFormEntry>): PricingFormEntry {
     billing_mode: 'token',
     price_multiplier: null,
     fast_mode_multiplier: null,
+    fast_multiplier: null,
+    flex_multiplier: null,
     input_price: null,
     output_price: null,
     cache_write_price: null,
@@ -126,6 +135,12 @@ describe('hasExplicitPricing', () => {
     }))).toBe(true)
   })
 
+  it('把倍率-only token 区间视为有效定价', () => {
+    expect(hasExplicitPricing(makePricingEntry({
+      intervals: [makeInterval({ input_multiplier: 1.2 })],
+    }))).toBe(true)
+  })
+
   it('不把当前计费模式无关的价格字段视为有效定价', () => {
     expect(hasExplicitPricing(makePricingEntry({
       billing_mode: 'image',
@@ -135,6 +150,34 @@ describe('hasExplicitPricing', () => {
       billing_mode: 'token',
       per_request_price: 1,
     }))).toBe(false)
+  })
+})
+
+describe('tier multipliers', () => {
+  it('只接受正数或空值', () => {
+    expect(isValidPositiveMultiplier(null)).toBe(true)
+    expect(isValidPositiveMultiplier('')).toBe(true)
+    expect(isValidPositiveMultiplier(1.25)).toBe(true)
+    expect(isValidPositiveMultiplier(0)).toBe(false)
+    expect(isValidPositiveMultiplier(-1)).toBe(false)
+  })
+
+  it('区间倍率可在 API 与表单之间往返', () => {
+    const api = formIntervalsToAPI([makeInterval({
+      input_price: 2,
+      input_multiplier: '1.2',
+      cache_read_multiplier: 0.8,
+    })])
+    expect(api[0]).toMatchObject({
+      input_price: 2e-6,
+      input_multiplier: 1.2,
+      cache_read_multiplier: 0.8,
+    })
+    expect(apiIntervalsToForm(api)[0]).toMatchObject({
+      input_price: 2,
+      input_multiplier: 1.2,
+      cache_read_multiplier: 0.8,
+    })
   })
 })
 

@@ -240,6 +240,12 @@ func TestGetRequestTierPrice_NilPerRequestPrice(t *testing.T) {
 // newResolverWithChannel 创建带指定渠道定价的解析器，分组平台跟随首条定价配置。
 func newResolverWithChannel(t *testing.T, pricing []ChannelModelPricing) *ModelPricingResolver {
 	t.Helper()
+	return newResolverWithBillingService(t, newTestBillingServiceForResolver(), pricing)
+}
+
+// newResolverWithBillingService 使用指定的基础定价构造渠道解析器。
+func newResolverWithBillingService(t *testing.T, bs *BillingService, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
 	const groupID = 100
 	platform := PlatformAnthropic
 	if len(pricing) > 0 && pricing[0].Platform != "" {
@@ -260,7 +266,6 @@ func newResolverWithChannel(t *testing.T, pricing []ChannelModelPricing) *ModelP
 		},
 	}
 	cs := NewChannelService(repo, nil)
-	bs := newTestBillingServiceForResolver()
 	return NewModelPricingResolver(cs, bs)
 }
 
@@ -290,9 +295,36 @@ func TestResolve_WithChannelOverride_TokenFlat(t *testing.T) {
 	require.Equal(t, "channel", resolved.Source)
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
+	// claude-sonnet-4 没有目录 priority 价，渠道覆盖不能凭空制造 tier 价格。
+	require.Zero(t, resolved.BasePricing.InputPricePerTokenPriority)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
-	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.Zero(t, resolved.BasePricing.OutputPricePerTokenPriority)
+}
+
+func TestResolve_WithChannelOverride_TokenFlatPreservesNativeTierRatio(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["gpt-5.4"] = &ModelPricing{
+		InputPricePerToken:             2e-6,
+		InputPricePerTokenPriority:     4e-6,
+		OutputPricePerToken:            10e-6,
+		OutputPricePerTokenPriority:    20e-6,
+		CacheReadPricePerToken:         0.5e-6,
+		CacheReadPricePerTokenPriority: 1e-6,
+	}
+	r := newResolverWithBillingService(t, bs, []ChannelModelPricing{{
+		Platform:       "openai",
+		Models:         []string{"gpt-5.4"},
+		BillingMode:    BillingModeToken,
+		InputPrice:     testPtrFloat64(7e-6),
+		OutputPrice:    testPtrFloat64(30e-6),
+		CacheReadPrice: testPtrFloat64(2e-6),
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{Model: "gpt-5.4", GroupID: groupIDPtr()})
+	require.NotNil(t, resolved)
+	require.InDelta(t, 14e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 60e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 4e-6, resolved.BasePricing.CacheReadPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
@@ -1152,6 +1184,13 @@ func TestFilterValidTokenIntervals(t *testing.T) {
 			wantLen: 1,
 		},
 		{
+			name: "interval with only InputMultiplier kept",
+			intervals: []PricingInterval{
+				{MinTokens: 0, InputMultiplier: testPtrFloat64(1.2)},
+			},
+			wantLen: 1,
+		},
+		{
 			name: "interval with only PerRequestPrice filtered out for token mode",
 			intervals: []PricingInterval{
 				{TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.04)},
@@ -1252,6 +1291,11 @@ func TestChannelModelPricingHasEffectivePricingIsModeAware(t *testing.T) {
 		BillingMode: BillingModeToken,
 		InputPrice:  testPtrFloat64(0),
 	}).HasEffectivePricing())
+
+	require.True(t, (&ChannelModelPricing{
+		BillingMode:    BillingModeToken,
+		FastMultiplier: testPtrFloat64(1.5),
+	}).HasEffectivePricing())
 }
 
 // ===========================================================================
@@ -1322,6 +1366,43 @@ func TestIntervalToModelPricingWithBaseClearsUnsetChannelImageInputPrice(t *test
 	)
 
 	require.Zero(t, pricing.ImageInputPricePerToken)
+}
+
+func TestIntervalToModelPricingWithBaseAppliesMultipliersAndPreservesTierRatio(t *testing.T) {
+	base := &ModelPricing{
+		InputPricePerToken:                 2e-6,
+		InputPricePerTokenPriority:         4e-6,
+		OutputPricePerToken:                10e-6,
+		OutputPricePerTokenPriority:        20e-6,
+		CacheCreationPricePerToken:         3e-6,
+		CacheCreationPricePerTokenPriority: 6e-6,
+		CacheReadPricePerToken:             0.5e-6,
+		CacheReadPricePerTokenPriority:     1e-6,
+	}
+	pricing := intervalToModelPricingWithBase(
+		&PricingInterval{
+			InputMultiplier:      testPtrFloat64(1.5),
+			OutputMultiplier:     testPtrFloat64(0.5),
+			CacheWriteMultiplier: testPtrFloat64(2),
+			CacheReadMultiplier:  testPtrFloat64(0.25),
+		},
+		false,
+		&ChannelModelPricing{BillingMode: BillingModeToken, FastMultiplier: testPtrFloat64(2), FlexMultiplier: testPtrFloat64(0.25)},
+		base,
+	)
+
+	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 6e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 5e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 10e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 6e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 12e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.125e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 0.25e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+	require.NotNil(t, pricing.FastMultiplier)
+	require.NotNil(t, pricing.FlexMultiplier)
+	require.InDelta(t, 2, *pricing.FastMultiplier, 1e-12)
+	require.InDelta(t, 0.25, *pricing.FlexMultiplier, 1e-12)
 }
 
 func TestApplyTokenOverrides_IntervalSetsImageOutputPriceExplicit(t *testing.T) {

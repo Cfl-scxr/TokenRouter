@@ -20,6 +20,8 @@ function makeEntry(overrides: Partial<PricingFormEntry> = {}): PricingFormEntry 
     billing_mode: 'token',
     price_multiplier: null,
     fast_mode_multiplier: 2,
+    fast_multiplier: null,
+    flex_multiplier: null,
     input_price: 1,
     output_price: 2,
     cache_write_price: null,
@@ -71,5 +73,18 @@ describe('PricingEntryCard', () => {
       intervals: [],
       time_pricing: createDefaultTimePricingForm(),
     })
+  })
+
+  it('启用渠道层级倍率时展示 Fast 与 Flex 输入', () => {
+    const wrapper = mount(PricingEntryCard, {
+      props: {
+        entry: makeEntry(),
+        platform: 'anthropic',
+        enableTierMultipliers: true,
+      },
+      global: { stubs: { Icon: true, IntervalRow: true, ModelTagInput: true, Select: true } },
+    })
+    expect(wrapper.find('[data-testid="fast-multiplier"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="flex-multiplier"]').exists()).toBe(true)
   })
 })

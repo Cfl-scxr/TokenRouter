@@ -49,6 +49,8 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 				BillingMode:        service.BillingModeToken,
 				PriceMultiplier:    float64Ptr(1.5),
 				FastModeMultiplier: float64Ptr(2),
+				FastMultiplier:     float64Ptr(2.5),
+				FlexMultiplier:     float64Ptr(0.5),
 				InputPrice:         float64Ptr(0.01),
 				OutputPrice:        float64Ptr(0.03),
 				CacheWritePrice:    float64Ptr(0.005),
@@ -92,6 +94,8 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, "token", p.BillingMode)
 	require.Equal(t, float64Ptr(1.5), p.PriceMultiplier)
 	require.Equal(t, float64Ptr(2), p.FastModeMultiplier)
+	require.Equal(t, float64Ptr(2.5), p.FastMultiplier)
+	require.Equal(t, float64Ptr(0.5), p.FlexMultiplier)
 	require.Equal(t, float64Ptr(0.01), p.InputPrice)
 	require.Equal(t, float64Ptr(0.03), p.OutputPrice)
 	require.Equal(t, float64Ptr(0.005), p.CacheWritePrice)
@@ -183,16 +187,20 @@ func TestChannelToResponse_WithIntervals(t *testing.T) {
 				BillingMode: service.BillingModePerRequest,
 				Intervals: []service.PricingInterval{
 					{
-						ID:              100,
-						MinTokens:       0,
-						MaxTokens:       channelIntPtr(1000),
-						TierLabel:       "1K",
-						InputPrice:      float64Ptr(0.01),
-						OutputPrice:     float64Ptr(0.02),
-						CacheWritePrice: float64Ptr(0.003),
-						CacheReadPrice:  float64Ptr(0.001),
-						PerRequestPrice: float64Ptr(0.1),
-						SortOrder:       1,
+						ID:                   100,
+						MinTokens:            0,
+						MaxTokens:            channelIntPtr(1000),
+						TierLabel:            "1K",
+						InputPrice:           float64Ptr(0.01),
+						OutputPrice:          float64Ptr(0.02),
+						CacheWritePrice:      float64Ptr(0.003),
+						CacheReadPrice:       float64Ptr(0.001),
+						InputMultiplier:      float64Ptr(1.1),
+						OutputMultiplier:     float64Ptr(1.2),
+						CacheWriteMultiplier: float64Ptr(1.3),
+						CacheReadMultiplier:  float64Ptr(1.4),
+						PerRequestPrice:      float64Ptr(0.1),
+						SortOrder:            1,
 					},
 					{
 						ID:        101,
@@ -220,6 +228,10 @@ func TestChannelToResponse_WithIntervals(t *testing.T) {
 	require.Equal(t, float64Ptr(0.02), iv0.OutputPrice)
 	require.Equal(t, float64Ptr(0.003), iv0.CacheWritePrice)
 	require.Equal(t, float64Ptr(0.001), iv0.CacheReadPrice)
+	require.Equal(t, float64Ptr(1.1), iv0.InputMultiplier)
+	require.Equal(t, float64Ptr(1.2), iv0.OutputMultiplier)
+	require.Equal(t, float64Ptr(1.3), iv0.CacheWriteMultiplier)
+	require.Equal(t, float64Ptr(1.4), iv0.CacheReadMultiplier)
 	require.Equal(t, float64Ptr(0.1), iv0.PerRequestPrice)
 	require.Equal(t, 1, iv0.SortOrder)
 
@@ -373,6 +385,29 @@ func TestPricingRequestToService_WithFastModeMultiplier(t *testing.T) {
 	result := pricingRequestToService(reqs)
 	require.Len(t, result, 1)
 	require.Equal(t, float64Ptr(2), result[0].FastModeMultiplier)
+}
+
+func TestPricingRequestToService_WithTierMultipliers(t *testing.T) {
+	result := pricingRequestToService([]channelModelPricingRequest{{
+		Platform:       service.PlatformAnthropic,
+		Models:         []string{"claude-opus-4-8"},
+		BillingMode:    string(service.BillingModeToken),
+		FastMultiplier: float64Ptr(2),
+		FlexMultiplier: float64Ptr(0.5),
+		Intervals: []pricingIntervalRequest{{
+			InputMultiplier:      float64Ptr(1.1),
+			OutputMultiplier:     float64Ptr(1.2),
+			CacheWriteMultiplier: float64Ptr(1.3),
+			CacheReadMultiplier:  float64Ptr(1.4),
+		}},
+	}})
+
+	require.Len(t, result, 1)
+	require.Equal(t, float64Ptr(2), result[0].FastMultiplier)
+	require.Equal(t, float64Ptr(0.5), result[0].FlexMultiplier)
+	require.Len(t, result[0].Intervals, 1)
+	require.Equal(t, float64Ptr(1.1), result[0].Intervals[0].InputMultiplier)
+	require.Equal(t, float64Ptr(1.4), result[0].Intervals[0].CacheReadMultiplier)
 }
 
 func TestPricingRequestToService_WithIntervals(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 )
 
 var channelPricingTimeColumns = []string{
-	"id", "channel_id", "platform", "models", "billing_mode", "price_multiplier", "fast_mode_multiplier",
+	"id", "channel_id", "platform", "models", "billing_mode", "price_multiplier", "fast_mode_multiplier", "fast_multiplier", "flex_multiplier",
 	"input_price", "output_price", "cache_write_price", "cache_read_price", "image_input_price", "image_output_price",
 	"per_request_price", "time_pricing", "created_at", "updated_at",
 }
@@ -33,7 +33,7 @@ func TestChannelPricingTimeRoundTrip(t *testing.T) {
 	mock.ExpectQuery(`(?s)SELECT .*per_request_price, time_pricing, created_at, updated_at.*FROM channel_model_pricing.*channel_id = \$1`).
 		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows(channelPricingTimeColumns).AddRow(
-			int64(11), int64(7), "openai", `["gpt-5"]`, service.BillingModeToken, nil, nil,
+			int64(11), int64(7), "openai", `["gpt-5"]`, service.BillingModeToken, nil, nil, nil, nil,
 			nil, nil, nil, nil, nil, nil, nil, `{"timezone":"Asia/Shanghai","periods":[{"start_time":"09:00","end_time":"12:00","multiplier":2}]}`,
 			created, created,
 		))
@@ -60,8 +60,8 @@ func TestChannelPricingTimeCreateWritesJSON(t *testing.T) {
 			Periods:  []service.ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
 		},
 	}
-	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, price_multiplier, fast_mode_multiplier, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, time_pricing)")).
-		WithArgs(int64(7), "openai", []byte(`["gpt-5"]`), service.BillingModeToken, nil, nil, nil, nil, nil, nil, nil, nil, nil, `{"timezone":"Asia/Shanghai","periods":[{"start_time":"09:00","end_time":"12:00","multiplier":2}]}`).
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, price_multiplier, fast_mode_multiplier, fast_multiplier, flex_multiplier, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, time_pricing)")).
+		WithArgs(int64(7), "openai", []byte(`["gpt-5"]`), service.BillingModeToken, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, `{"timezone":"Asia/Shanghai","periods":[{"start_time":"09:00","end_time":"12:00","multiplier":2}]}`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(int64(11), time.Time{}, time.Time{}))
 
 	require.NoError(t, repo.CreateModelPricing(context.Background(), pricing))

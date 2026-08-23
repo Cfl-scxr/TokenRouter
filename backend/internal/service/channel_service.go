@@ -733,7 +733,7 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 			)
 		}
 	}
-	if p.PriceMultiplier != nil && !p.HasEffectivePricing() {
+	if p.PriceMultiplier != nil && !hasExplicitPricingPrice(p) {
 		return infraerrors.BadRequest(
 			"PRICE_MULTIPLIER_MISSING_PRICE",
 			"price_multiplier requires at least one explicit price",
@@ -756,14 +756,67 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 				"fast_mode_multiplier is only supported for token billing mode",
 			)
 		}
-		if !p.HasEffectivePricing() {
+		if !hasExplicitPricingPrice(p) {
 			return infraerrors.BadRequest(
 				"FAST_MODE_MULTIPLIER_MISSING_PRICE",
 				"fast_mode_multiplier requires at least one explicit price",
 			)
 		}
 	}
+	for _, c := range []struct {
+		field string
+		val   *float64
+	}{
+		{"fast_multiplier", p.FastMultiplier},
+		{"flex_multiplier", p.FlexMultiplier},
+	} {
+		if c.val != nil && *c.val <= 0 {
+			return infraerrors.BadRequest("INVALID_MULTIPLIER", fmt.Sprintf("%s must be > 0", c.field))
+		}
+	}
+	if p.FastMultiplier != nil || p.FlexMultiplier != nil {
+		mode := p.BillingMode
+		if mode == "" {
+			mode = BillingModeToken
+		}
+		if mode != BillingModeToken {
+			return infraerrors.BadRequest(
+				"TIER_MULTIPLIER_UNSUPPORTED_BILLING_MODE",
+				"fast_multiplier and flex_multiplier are only supported for token billing mode",
+			)
+		}
+	}
 	return nil
+}
+
+// hasExplicitPricingPrice 判断是否配置了实际价格，不把层级倍率当作基础价格。
+// 这样 price_multiplier 与旧版 fast_mode_multiplier 仍不能单独改变默认定价。
+func hasExplicitPricingPrice(p ChannelModelPricing) bool {
+	mode := p.BillingMode
+	if mode == "" {
+		mode = BillingModeToken
+	}
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+		if p.PerRequestPrice != nil {
+			return true
+		}
+		for _, iv := range p.Intervals {
+			if iv.PerRequestPrice != nil {
+				return true
+			}
+		}
+		return false
+	}
+	if p.InputPrice != nil || p.OutputPrice != nil || p.CacheWritePrice != nil ||
+		p.CacheReadPrice != nil || p.ImageInputPrice != nil || p.ImageOutputPrice != nil {
+		return true
+	}
+	for _, iv := range p.Intervals {
+		if iv.InputPrice != nil || iv.OutputPrice != nil || iv.CacheWritePrice != nil || iv.CacheReadPrice != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func checkPricesNotNegative(p ChannelModelPricing) error {
@@ -798,6 +851,12 @@ func validateAccountStatsPricingEntries(pricing []ChannelModelPricing) error {
 				"fast_mode_multiplier is not supported for account stats pricing",
 			)
 		}
+		if p.FastMultiplier != nil || p.FlexMultiplier != nil {
+			return infraerrors.BadRequest(
+				"ACCOUNT_STATS_TIER_MULTIPLIER_UNSUPPORTED",
+				"service tier multipliers are not supported for account stats pricing",
+			)
+		}
 		if p.TimePricing != nil && len(p.TimePricing.Periods) > 0 {
 			return infraerrors.BadRequest(
 				"ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED",
@@ -812,7 +871,9 @@ func checkIntervalsHavePrices(p ChannelModelPricing) error {
 	for _, iv := range p.Intervals {
 		if iv.InputPrice == nil && iv.OutputPrice == nil &&
 			iv.CacheWritePrice == nil && iv.CacheReadPrice == nil &&
-			iv.PerRequestPrice == nil {
+			iv.PerRequestPrice == nil && iv.InputMultiplier == nil &&
+			iv.OutputMultiplier == nil && iv.CacheWriteMultiplier == nil &&
+			iv.CacheReadMultiplier == nil {
 			return infraerrors.BadRequest(
 				"INTERVAL_MISSING_PRICE",
 				fmt.Sprintf("interval [%d, %s] has no price fields set for model %v",

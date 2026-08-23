@@ -10,6 +10,10 @@ export interface IntervalFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_read_price: number | string | null
+  input_multiplier: number | string | null
+  output_multiplier: number | string | null
+  cache_write_multiplier: number | string | null
+  cache_read_multiplier: number | string | null
   per_request_price: number | string | null
   sort_order: number
 }
@@ -21,6 +25,9 @@ export interface PricingFormEntry {
   price_multiplier: number | string | null
   // OpenAI Fast 模式按最终普通价格收取的倍率。
   fast_mode_multiplier: number | string | null
+  // 通用 Fast/priority 与 Flex 服务层级倍率。
+  fast_multiplier?: number | string | null
+  flex_multiplier?: number | string | null
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
@@ -162,6 +169,13 @@ export function toNullableNumber(val: number | string | null | undefined): numbe
   return isNaN(num) ? null : num
 }
 
+/** 校验服务层级倍率；空值表示沿用默认配置。 */
+export function isValidPositiveMultiplier(val: number | string | null | undefined): boolean {
+  if (val === null || val === undefined || val === '') return true
+  const multiplier = Number(val)
+  return Number.isFinite(multiplier) && multiplier > 0
+}
+
 /** 前端显示值($/MTok) → 后端存储值(per-token) */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
@@ -202,6 +216,10 @@ export function hasExplicitPricing(entry: PricingFormEntry): boolean {
     iv.output_price,
     iv.cache_write_price,
     iv.cache_read_price,
+    iv.input_multiplier,
+    iv.output_multiplier,
+    iv.cache_write_multiplier,
+    iv.cache_read_multiplier,
   ].some(hasConfiguredPrice))
 }
 
@@ -214,6 +232,10 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
+    input_multiplier: iv.input_multiplier,
+    output_multiplier: iv.output_multiplier,
+    cache_write_multiplier: iv.cache_write_multiplier,
+    cache_read_multiplier: iv.cache_read_multiplier,
     per_request_price: iv.per_request_price,
     sort_order: iv.sort_order
   }))
@@ -228,6 +250,10 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
+    input_multiplier: toNullableNumber(iv.input_multiplier),
+    output_multiplier: toNullableNumber(iv.output_multiplier),
+    cache_write_multiplier: toNullableNumber(iv.cache_write_multiplier),
+    cache_read_multiplier: toNullableNumber(iv.cache_read_multiplier),
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order
   }))
@@ -358,6 +384,20 @@ function validateIntervalPrices(iv: IntervalFormEntry, idx: number, t: Translate
         'negativePrice',
         { index, field },
       )
+    }
+  }
+  const multipliers: [string, number | string | null][] = [
+    ['inputMultiplier', iv.input_multiplier],
+    ['outputMultiplier', iv.output_multiplier],
+    ['cacheWriteMultiplier', iv.cache_write_multiplier],
+    ['cacheReadMultiplier', iv.cache_read_multiplier],
+  ]
+  for (const [key, value] of multipliers) {
+    if (!isValidPositiveMultiplier(value)) {
+      return intervalValidationMessage(t, 'multiplierPositive', {
+        index,
+        field: intervalPriceLabel(t, key),
+      })
     }
   }
   return null

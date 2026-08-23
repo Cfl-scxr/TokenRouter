@@ -83,24 +83,28 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID                 int64               `json:"id,omitempty"`
-	ChannelID          int64               `json:"channel_id,omitempty"`
-	Platform           string              `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
-	Models             []string            `json:"models"`
-	BillingMode        BillingMode         `json:"billing_mode"`
-	PriceMultiplier    *float64            `json:"price_multiplier"`     // 最终定价倍率；nil 表示不调整价格
-	FastModeMultiplier *float64            `json:"fast_mode_multiplier"` // OpenAI Fast 模式收费倍率；nil 表示沿用模型默认 Fast 定价
-	InputPrice         *float64            `json:"input_price"`
-	OutputPrice        *float64            `json:"output_price"`
-	CacheWritePrice    *float64            `json:"cache_write_price"`
-	CacheReadPrice     *float64            `json:"cache_read_price"`
-	ImageInputPrice    *float64            `json:"image_input_price"`
-	ImageOutputPrice   *float64            `json:"image_output_price"`
-	PerRequestPrice    *float64            `json:"per_request_price"`
-	Intervals          []PricingInterval   `json:"intervals"`
-	TimePricing        *ChannelTimePricing `json:"time_pricing,omitempty"`
-	CreatedAt          time.Time           `json:"created_at,omitempty"`
-	UpdatedAt          time.Time           `json:"updated_at,omitempty"`
+	ID                 int64       `json:"id,omitempty"`
+	ChannelID          int64       `json:"channel_id,omitempty"`
+	Platform           string      `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models             []string    `json:"models"`
+	BillingMode        BillingMode `json:"billing_mode"`
+	PriceMultiplier    *float64    `json:"price_multiplier"`     // 最终定价倍率；nil 表示不调整价格
+	FastModeMultiplier *float64    `json:"fast_mode_multiplier"` // OpenAI Fast 模式收费倍率；nil 表示沿用模型默认 Fast 定价
+	// FastMultiplier 是新的通用 Fast/priority 倍率；为空时兼容旧字段。
+	FastMultiplier *float64 `json:"fast_multiplier,omitempty"`
+	// FlexMultiplier 是渠道级 Flex 倍率；为空时使用系统默认 0.5。
+	FlexMultiplier   *float64            `json:"flex_multiplier,omitempty"`
+	InputPrice       *float64            `json:"input_price"`
+	OutputPrice      *float64            `json:"output_price"`
+	CacheWritePrice  *float64            `json:"cache_write_price"`
+	CacheReadPrice   *float64            `json:"cache_read_price"`
+	ImageInputPrice  *float64            `json:"image_input_price"`
+	ImageOutputPrice *float64            `json:"image_output_price"`
+	PerRequestPrice  *float64            `json:"per_request_price"`
+	Intervals        []PricingInterval   `json:"intervals"`
+	TimePricing      *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt        time.Time           `json:"created_at,omitempty"`
+	UpdatedAt        time.Time           `json:"updated_at,omitempty"`
 }
 
 // ChannelTimePricing 渠道模型定价的分时倍率配置。
@@ -118,19 +122,23 @@ type ChannelTimePricingPeriod struct {
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
 type PricingInterval struct {
-	ID              int64     `json:"id,omitempty"`
-	PricingID       int64     `json:"pricing_id,omitempty"`
-	MinTokens       int       `json:"min_tokens"`
-	MaxTokens       *int      `json:"max_tokens"`
-	TierLabel       string    `json:"tier_label"`
-	InputPrice      *float64  `json:"input_price"`
-	OutputPrice     *float64  `json:"output_price"`
-	CacheWritePrice *float64  `json:"cache_write_price"`
-	CacheReadPrice  *float64  `json:"cache_read_price"`
-	PerRequestPrice *float64  `json:"per_request_price"`
-	SortOrder       int       `json:"sort_order"`
-	CreatedAt       time.Time `json:"created_at,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	ID                   int64     `json:"id,omitempty"`
+	PricingID            int64     `json:"pricing_id,omitempty"`
+	MinTokens            int       `json:"min_tokens"`
+	MaxTokens            *int      `json:"max_tokens"`
+	TierLabel            string    `json:"tier_label"`
+	InputPrice           *float64  `json:"input_price"`
+	OutputPrice          *float64  `json:"output_price"`
+	CacheWritePrice      *float64  `json:"cache_write_price"`
+	CacheReadPrice       *float64  `json:"cache_read_price"`
+	InputMultiplier      *float64  `json:"input_multiplier,omitempty"`
+	OutputMultiplier     *float64  `json:"output_multiplier,omitempty"`
+	CacheWriteMultiplier *float64  `json:"cache_write_multiplier,omitempty"`
+	CacheReadMultiplier  *float64  `json:"cache_read_multiplier,omitempty"`
+	PerRequestPrice      *float64  `json:"per_request_price"`
+	SortOrder            int       `json:"sort_order"`
+	CreatedAt            time.Time `json:"created_at,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at,omitempty"`
 }
 
 // IsActive 判断渠道是否启用
@@ -211,7 +219,9 @@ func (p *ChannelModelPricing) HasEffectivePricing() bool {
 			p.CacheWritePrice != nil ||
 			p.CacheReadPrice != nil ||
 			p.ImageInputPrice != nil ||
-			p.ImageOutputPrice != nil {
+			p.ImageOutputPrice != nil ||
+			p.FastMultiplier != nil ||
+			p.FlexMultiplier != nil {
 			return true
 		}
 		for i := range p.Intervals {
@@ -219,7 +229,11 @@ func (p *ChannelModelPricing) HasEffectivePricing() bool {
 			if iv.InputPrice != nil ||
 				iv.OutputPrice != nil ||
 				iv.CacheWritePrice != nil ||
-				iv.CacheReadPrice != nil {
+				iv.CacheReadPrice != nil ||
+				iv.InputMultiplier != nil ||
+				iv.OutputMultiplier != nil ||
+				iv.CacheWriteMultiplier != nil ||
+				iv.CacheReadMultiplier != nil {
 				return true
 			}
 		}
@@ -414,6 +428,20 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	for _, p := range prices {
 		if p.val != nil && *p.val < 0 {
 			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
+		}
+	}
+	multipliers := []struct {
+		name string
+		val  *float64
+	}{
+		{"input_multiplier", iv.InputMultiplier},
+		{"output_multiplier", iv.OutputMultiplier},
+		{"cache_write_multiplier", iv.CacheWriteMultiplier},
+		{"cache_read_multiplier", iv.CacheReadMultiplier},
+	}
+	for _, multiplier := range multipliers {
+		if multiplier.val != nil && *multiplier.val <= 0 {
+			return fmt.Errorf("interval #%d: %s must be > 0", idx+1, multiplier.name)
 		}
 	}
 	return nil
