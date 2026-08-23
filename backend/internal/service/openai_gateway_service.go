@@ -274,8 +274,9 @@ type OpenAIForwardResult struct {
 	// AudioUsage 在有值时携带 Voice 计费单位。
 	AudioUsage *AudioUsage
 
-	wsReplayInput       []json.RawMessage
-	wsReplayInputExists bool
+	wsReplayInput                []json.RawMessage
+	wsReplayInputExists          bool
+	wsAccountFailoverReplayInput []json.RawMessage
 }
 
 // SucceededForScheduling 判断转发结果能否作为上游调度成功，并清除模型级短暂状态。

@@ -99,6 +99,42 @@ type openAIWSIngressTurnError struct {
 	wroteDownstream bool
 }
 
+// openAIWSCurrentTurnFailoverError 携带可在替换账号上重放的当前回合请求。
+type openAIWSCurrentTurnFailoverError struct {
+	cause        error
+	retryPayload []byte
+}
+
+func (e *openAIWSCurrentTurnFailoverError) Error() string {
+	if e == nil || e.cause == nil {
+		return "openai websocket current-turn failover"
+	}
+	return e.cause.Error()
+}
+
+func (e *openAIWSCurrentTurnFailoverError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func newOpenAIWSCurrentTurnFailoverError(cause error, retryPayload []byte) error {
+	return &openAIWSCurrentTurnFailoverError{
+		cause:        cause,
+		retryPayload: append([]byte(nil), retryPayload...),
+	}
+}
+
+// OpenAIWSCurrentTurnRetryPayload 返回替换账号可安全重放的当前回合请求副本。
+func OpenAIWSCurrentTurnRetryPayload(err error) ([]byte, bool) {
+	var retryErr *openAIWSCurrentTurnFailoverError
+	if !errors.As(err, &retryErr) || retryErr == nil {
+		return nil, false
+	}
+	return append([]byte(nil), retryErr.retryPayload...), true
+}
+
 // openAIWSGenericPolicyError 表示自定义错误码已开启但当前状态未命中。
 // HTTP 入站路径据此返回统一 500，避免把不可信的握手或事件错误透传给客户端。
 type openAIWSGenericPolicyError struct {
