@@ -181,6 +181,44 @@ func TestResponsesStreamingFromNativeAnthropic_HangTimesOut(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamingFromNativeAnthropicClientDisconnectDrainsUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Writer = &failingGinWriter{ResponseWriter: c.Writer, failAfter: 0}
+
+	resp, pr, pw := newHangingUpstreamResponse()
+	go func() {
+		_, _ = pw.Write([]byte(miniAnthropicSSEStream()))
+		_ = pw.Close()
+	}()
+	defer func() { _ = pr.Close() }()
+
+	res, err := svc.handleResponsesStreamingFromNativeAnthropic(
+		resp,
+		c,
+		"glm-4.7",
+		"glm-4.7",
+		"glm-4.7",
+		nil,
+		time.Now(),
+		apicompat.ResponsesClientToolMapping{},
+	)
+
+	if err != nil {
+		t.Fatalf("断开后排水不应失败：%v", err)
+	}
+	if res == nil || !res.ClientDisconnect {
+		t.Fatalf("expected disconnected result, got %+v", res)
+	}
+	if res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 5 {
+		t.Fatalf("expected drained usage 10/5, got %+v", res.Usage)
+	}
+}
+
 func TestCCStreamingFromNativeAnthropic_HappyPathStillConverts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := newNativeAnthropicHangTestService(5)

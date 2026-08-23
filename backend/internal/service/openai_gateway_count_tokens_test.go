@@ -85,6 +85,56 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesI
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
+func TestOpenAIGatewayServiceForwardCountTokensCNProvidersAlwaysEstimateLocally(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}]}`)
+	tests := []struct {
+		name     string
+		platform string
+		mode     string
+		protocol string
+	}{
+		{name: "kimi_payg_chat", platform: PlatformKimi, mode: AccountModePayG, protocol: APIProtocolChatCompletions},
+		{name: "kimi_coding_anthropic", platform: PlatformKimi, mode: AccountModeCoding, protocol: APIProtocolAnthropic},
+		{name: "zhipu_payg_anthropic", platform: PlatformZhipu, mode: AccountModePayG, protocol: APIProtocolAnthropic},
+		{name: "zhipu_coding_chat", platform: PlatformZhipu, mode: AccountModeCoding, protocol: APIProtocolChatCompletions},
+		{name: "deepseek_responses", platform: PlatformDeepseek, mode: AccountModePayG, protocol: APIProtocolResponses},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body))
+
+			upstream := &httpUpstreamRecorder{}
+			repo := &countTokensRuntimeStateRepo{}
+			svc := &OpenAIGatewayService{
+				httpUpstream:     upstream,
+				rateLimitService: &RateLimitService{accountRepo: repo, cfg: &config.Config{}},
+			}
+			account := &Account{
+				ID:       301,
+				Platform: tt.platform,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":      "sk-test",
+					"account_mode": tt.mode,
+					"api_protocol": tt.protocol,
+				},
+			}
+
+			err := svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Positive(t, gjson.GetBytes(rec.Body.Bytes(), "input_tokens").Int())
+			require.Nil(t, upstream.lastReq, "本地估算不得访问上游")
+			require.Zero(t, repo.tempUnschedCalls)
+			require.Zero(t, repo.setErrorCalls)
+		})
+	}
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPlatformEndpointUnsupported(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

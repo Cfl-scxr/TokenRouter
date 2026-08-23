@@ -149,7 +149,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
-	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
+	if s.rateLimitService != nil && input.Account != nil &&
+		(input.Account.Platform == PlatformOpenAI || input.Account.IsCNProvider()) {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
 
@@ -228,6 +229,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamModel,
 		result.Model,
 	)
+	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -564,7 +566,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	if tokenCost == nil {
 		if tokenBillingAttempted {
 			if lastErr == nil {
-				lastErr = errors.New("no non-empty billing model candidates")
+				lastErr = fmt.Errorf("%w: no non-empty billing model candidates", ErrModelPricingUnavailable)
 			}
 			return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 		}
@@ -573,7 +575,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 			return searchCost, nil
 		}
 		if lastErr == nil {
-			lastErr = errors.New("openai usage billing model is empty")
+			lastErr = fmt.Errorf("%w: openai usage billing model is empty", ErrModelPricingUnavailable)
 		}
 		return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 	}
@@ -813,6 +815,42 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 	}
 	return group.ImagePrice1K == nil && group.ImagePrice2K == nil && group.ImagePrice4K == nil &&
 		group.VideoPrice480P == nil && group.VideoPrice720P == nil && group.VideoPrice1080P == nil
+}
+
+// filterCNProviderBillingModelCandidates 防止国产供应商把客户端 claude 模型名
+// 落入全局 Claude/Sonnet 兜底价。管理员显式配置的分组或渠道价格仍然有效。
+func (s *OpenAIGatewayService) filterCNProviderBillingModelCandidates(
+	ctx context.Context,
+	account *Account,
+	apiKey *APIKey,
+	candidates []string,
+) []string {
+	if account == nil || !account.IsCNProvider() {
+		return candidates
+	}
+	filtered := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if isCNProviderClaudeFallbackCandidate(candidate) &&
+			s.resolveOpenAIChannelPricing(ctx, candidate, apiKey) == nil {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+	return filtered
+}
+
+// isCNProviderClaudeFallbackCandidate 与全局 Claude 系列 fallback 的触发词保持
+// 对齐，避免裸 opus/sonnet/haiku 别名绕过 CN 计费保护。
+func isCNProviderClaudeFallbackCandidate(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(model, "claude") ||
+		strings.Contains(model, "opus") ||
+		strings.Contains(model, "sonnet") ||
+		strings.Contains(model, "haiku")
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {

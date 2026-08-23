@@ -91,15 +91,8 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 		return fmt.Errorf("count_tokens: missing account")
 	}
 
-	// 国产供应商 Anthropic 协议：上游有原生 /v1/messages/count_tokens 端点，
-	// 直接透传（仅模型名映射），不走 /v1/responses/input_tokens 估算。
-	if account.IsAnthropicProtocol() {
-		return s.forwardCountTokensViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
-	}
-
-	// 国产供应商其余协议（chat_completions / responses）：三家上游均无
-	// OpenAI 兼容的 /v1/responses/input_tokens 端点，与 Grok 一样本地估算，
-	// 不发上游请求（Claude Code 客户端会高频调用 count_tokens）。
+	// 三家国产供应商的兼容层都没有可依赖的 count_tokens 端点；无论账号使用
+	// Chat、Anthropic 还是 Responses 上游协议，都只做本地估算且不改变账号状态。
 	if account.IsCNProvider() {
 		estimated, err := estimateAnthropicCountTokensLocally(body)
 		if err != nil {

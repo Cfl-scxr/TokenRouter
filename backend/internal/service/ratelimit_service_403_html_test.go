@@ -88,6 +88,35 @@ func TestHandleUpstreamError_OpenAIHTML403DoesNotPenalizeAccount(t *testing.T) {
 	}
 }
 
+func TestHandleUpstreamErrorCNProviderHTML403DoesNotPenalizeAccount(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			h := newOpenAI403TestHarness(t, 507, 1)
+			h.account.Platform = platform
+			h.account.Type = AccountTypeAPIKey
+
+			require.False(t, h.handle(openAI403HTMLBody))
+			h.requireNoAccountPenalty(t)
+		})
+	}
+}
+
+func TestHandleUpstreamErrorCNProviderStructured403UsesCumulativeCooldown(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			h := newOpenAI403TestHarness(t, 508, 1)
+			h.account.Platform = platform
+			h.account.Type = AccountTypeAPIKey
+
+			require.True(t, h.handle(`{"error":{"message":"forbidden"}}`))
+			require.Equal(t, 1, h.counter.increments)
+			require.Equal(t, 1, h.repo.tempCalls)
+			require.Zero(t, h.repo.setErrorCalls)
+			require.Contains(t, h.repo.lastTempReason, "(1/3)")
+		})
+	}
+}
+
 // TestHandleUpstreamError_OpenAIHTML403RepeatedNeverEscalates 验证重复错误不会积累到永久禁用阈值。
 func TestHandleUpstreamError_OpenAIHTML403RepeatedNeverEscalates(t *testing.T) {
 	h := newOpenAI403TestHarness(t, 502, 1, 2, 3, 4, 5)
@@ -128,7 +157,7 @@ func TestHandleUpstreamError_OpenAIStructured403StillPenalizes(t *testing.T) {
 	})
 }
 
-// TestHandleUpstreamError_HTML403OnOtherPlatformsUnchanged 验证豁免只作用于 OpenAI。
+// TestHandleUpstreamError_HTML403OnOtherPlatformsUnchanged 验证豁免不扩散到其它平台。
 func TestHandleUpstreamError_HTML403OnOtherPlatformsUnchanged(t *testing.T) {
 	for _, platform := range []string{PlatformAnthropic, PlatformGemini} {
 		t.Run(platform, func(t *testing.T) {

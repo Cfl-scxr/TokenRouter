@@ -641,13 +641,21 @@ func TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths(t *testing.T)
 	}
 }
 
-func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
-	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+func TestGatewayRoutesOpenAICompatibleCountTokensPathIsRegistered(t *testing.T) {
+	for _, platform := range []string{
+		service.PlatformOpenAI,
+		service.PlatformKimi,
+		service.PlatformZhipu,
+		service.PlatformDeepseek,
+	} {
+		t.Run(platform, func(t *testing.T) {
+			router := newGatewayRoutesTestRouter(platform)
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-	require.NotEqual(t, http.StatusNotFound, w.Code)
+			router.ServeHTTP(w, req)
+			require.NotEqual(t, http.StatusNotFound, w.Code)
+		})
+	}
 }

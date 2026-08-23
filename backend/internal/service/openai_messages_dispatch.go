@@ -73,6 +73,12 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 		return xai.ModelMappingWithOptions(opts)["claude-*"]
 	}
 
+	// 国产供应商不使用 OpenAI Messages 的分组级模型映射；模型改写由渠道与
+	// 账号 model_mapping 完成，避免历史脏配置把 GPT 模型发送给 CN 上游。
+	if IsCNProvider(g.Platform) {
+		return ""
+	}
+
 	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
 	if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
 		return mappedModel

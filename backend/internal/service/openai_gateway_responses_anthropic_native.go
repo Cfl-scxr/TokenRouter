@@ -377,7 +377,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 	}
 
-	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	// 客户端断开后不再写出，但继续推进状态机并排水上游；最终 output_tokens
+	// 位于末尾 message_delta，提前退出会漏记上游已经产生的用量。
+	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -392,6 +394,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
+		if clientDisconnected {
+			return
+		}
 		for _, evt := range events {
 			payload, err := json.Marshal(evt)
 			if err != nil {
@@ -406,14 +411,13 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true
-					return true
+					return
 				}
 			}
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()
 		}
-		return false
 	}
 
 	for {
@@ -447,21 +451,37 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			continue
 		}
 
-		if processAnthropicEvent(&event) {
-			return resultWithUsage(), nil
-		}
+		processAnthropicEvent(&event)
 	}
 
-	// Finalize state machine（客户端已断开时仍执行，保证 usage 汇总完整）。
-	if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
+	// 终态在断开后仍计算，但只在客户端连接存在时写出；工具名恢复与普通事件一致。
+	if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 && !clientDisconnected {
+		wrote := false
 		for _, evt := range finalEvents {
-			sse, err := apicompat.ResponsesEventToSSE(evt)
+			payload, err := json.Marshal(evt)
 			if err != nil {
 				continue
 			}
-			fmt.Fprint(c.Writer, sse) //nolint:errcheck
+			payload = reverseToolNamesIfPresent(c, payload)
+			payloads, _, err := clientToolRestorer.RestoreEvent(payload)
+			if err != nil {
+				continue
+			}
+			for _, restored := range payloads {
+				eventType := gjson.GetBytes(restored, "type").String()
+				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
+					clientDisconnected = true
+					break
+				}
+				wrote = true
+			}
+			if clientDisconnected {
+				break
+			}
 		}
-		c.Writer.Flush()
+		if wrote {
+			c.Writer.Flush()
+		}
 	}
 
 	return resultWithUsage(), nil

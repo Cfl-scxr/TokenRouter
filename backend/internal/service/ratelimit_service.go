@@ -1005,13 +1005,13 @@ func buildForbiddenErrorMessage(prefix string, upstreamMsg string, responseBody 
 
 // handle403 处理 403 Forbidden 错误
 // Antigravity 平台区分 validation/violation/generic 三种类型，均 SetError 永久禁用；
-// OpenAI OAuth（ChatGPT）账号的 403 视为临时错误，转为临时不可调度；
+// OpenAI 与国产供应商账号的 403 使用 HTML 豁免和累计冷却；
 // 其他平台保持原有 SetError 行为。
 func (s *RateLimitService) handle403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
-	if account.Platform == PlatformOpenAI {
+	if account.Platform == PlatformOpenAI || account.IsCNProvider() {
 		return s.handleOpenAI403(ctx, account, upstreamMsg, responseBody)
 	}
 	// 非 Antigravity 平台：保持原有行为
@@ -1090,9 +1090,13 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 	}
 
 	until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
-	reason := fmt.Sprintf("OpenAI 403 temporary cooldown: %s", msg)
+	platformLabel := "OpenAI"
+	if account.IsCNProvider() {
+		platformLabel = account.Platform
+	}
+	reason := fmt.Sprintf("%s 403 temporary cooldown: %s", platformLabel, msg)
 	if settings.ErrorOnThresholdEnabled {
-		reason = fmt.Sprintf("OpenAI 403 temporary cooldown (%d/%d): %s", count, thresholdCount, msg)
+		reason = fmt.Sprintf("%s 403 temporary cooldown (%d/%d): %s", platformLabel, count, thresholdCount, msg)
 	}
 	s.notifyAccountSchedulingBlocked(account, until, "openai_403_temp")
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
