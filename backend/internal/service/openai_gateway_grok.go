@@ -496,6 +496,10 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
+	out, err = stripRedundantGrokViewImageTool(out)
+	if err != nil {
+		return nil, err
+	}
 	out, err = sanitizeGrokReasoningNullContent(out)
 	if err != nil {
 		return nil, err
@@ -766,6 +770,69 @@ func sanitizeGrokResponsesInput(body []byte) ([]byte, error) {
 		return nil, err
 	}
 	return sjson.SetRawBytes(body, "tools", encodedTools)
+}
+
+// 当前轮的内联 input_image 已由 Grok 直接读取；同时保留本地 view_image
+// 可能让 Grok 只宣告工具调用而不继续作答，因此只移除该冗余自动工具。
+func stripRedundantGrokViewImageTool(body []byte) ([]byte, error) {
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return body, nil
+	}
+	items := input.Array()
+	if len(items) == 0 {
+		return body, nil
+	}
+	current := items[len(items)-1]
+	if strings.TrimSpace(current.Get("role").String()) != "user" ||
+		!openAIJSONValueMayContainImageInput(current) {
+		return body, nil
+	}
+
+	toolChoice := gjson.GetBytes(body, "tool_choice")
+	if toolChoice.IsObject() && strings.TrimSpace(toolChoice.Get("type").String()) == "function" {
+		choiceName := strings.TrimSpace(toolChoice.Get("name").String())
+		if choiceName == "" {
+			choiceName = strings.TrimSpace(toolChoice.Get("function.name").String())
+		}
+		if choiceName == "view_image" {
+			return body, nil
+		}
+	}
+
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body, nil
+	}
+	filtered := make([]json.RawMessage, 0, len(tools.Array()))
+	changed := false
+	for _, tool := range tools.Array() {
+		if strings.TrimSpace(tool.Get("type").String()) == "function" &&
+			strings.TrimSpace(tool.Get("name").String()) == "view_image" {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, json.RawMessage(tool.Raw))
+	}
+	if !changed {
+		return body, nil
+	}
+	if len(filtered) == 0 && strings.TrimSpace(toolChoice.String()) == "required" {
+		return body, nil
+	}
+
+	if len(filtered) == 0 {
+		out, err := sjson.DeleteBytes(body, "tools")
+		if err != nil {
+			return nil, err
+		}
+		return sjson.DeleteBytes(out, "parallel_tool_calls")
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "tools", encoded)
 }
 
 func grokResponsesToolDedupKey(tool gjson.Result) string {

@@ -100,6 +100,13 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, policyErr
 	}
 	upstreamBody = updatedBody
+	if account.Platform == PlatformGrok {
+		strippedBody, stripErr := stripRedundantGrokChatViewImageTool(upstreamBody)
+		if stripErr != nil {
+			return nil, fmt.Errorf("strip redundant Grok Chat view_image tool: %w", stripErr)
+		}
+		upstreamBody = strippedBody
+	}
 	// GLM 归一化和 fast policy 都可能改写上游请求，Usage Log 必须读取最终值。
 	reasoningEffort := extractEffectiveOpenAIReasoningEffortFromBody(upstreamBody, body, upstreamModel, billingModel, originalModel)
 	// 国产模型没有显式 effort 档位时，thinking 启用后补默认展示值。
