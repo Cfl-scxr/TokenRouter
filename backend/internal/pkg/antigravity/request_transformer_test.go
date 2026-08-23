@@ -564,6 +564,47 @@ func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions
 	require.Len(t, req.Request.Tools[0].FunctionDeclarations, 1)
 	require.Equal(t, "get_weather", req.Request.Tools[0].FunctionDeclarations[0].Name)
 	require.NotNil(t, req.Request.Tools[1].GoogleSearch)
+	require.NotNil(t, req.Request.ToolConfig)
+	require.NotNil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+	require.True(t, *req.Request.ToolConfig.IncludeServerSideToolInvocations)
+}
+
+func TestTransformClaudeToGeminiWithOptions_ToolInvocationFlagOnlyForMixedTools(t *testing.T) {
+	functionTool := ClaudeTool{
+		Name:        "get_weather",
+		Description: "Get weather information",
+		InputSchema: map[string]any{"type": "object"},
+	}
+	webSearchTool := ClaudeTool{Type: "web_search_20250305", Name: "web_search"}
+
+	transform := func(t *testing.T, tools []ClaudeTool) *V1InternalRequest {
+		t.Helper()
+		body, err := TransformClaudeToGeminiWithOptions(&ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{{
+				Role:    "user",
+				Content: json.RawMessage(`[ {"type":"text","text":"hello"} ]`),
+			}},
+			Tools: tools,
+		}, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+		require.NoError(t, err)
+		var request V1InternalRequest
+		require.NoError(t, json.Unmarshal(body, &request))
+		return &request
+	}
+
+	functionOnly := transform(t, []ClaudeTool{functionTool})
+	require.NotNil(t, functionOnly.Request.ToolConfig)
+	require.Nil(t, functionOnly.Request.ToolConfig.IncludeServerSideToolInvocations)
+
+	searchOnly := transform(t, []ClaudeTool{webSearchTool})
+	require.NotNil(t, searchOnly.Request.ToolConfig)
+	require.Nil(t, searchOnly.Request.ToolConfig.IncludeServerSideToolInvocations)
+
+	mixed := transform(t, []ClaudeTool{functionTool, webSearchTool})
+	require.NotNil(t, mixed.Request.ToolConfig)
+	require.NotNil(t, mixed.Request.ToolConfig.IncludeServerSideToolInvocations)
+	require.True(t, *mixed.Request.ToolConfig.IncludeServerSideToolInvocations)
 }
 
 func TestTransformClaudeToGeminiWithOptions_GeminiReasoningSkipsInvalidArguments(t *testing.T) {
