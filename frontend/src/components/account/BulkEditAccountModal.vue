@@ -165,6 +165,101 @@
         </div>
       </div>
 
+      <!-- OpenAI API Key 工作负载能力 -->
+      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <div class="flex-1">
+            <label
+              id="bulk-edit-openai-endpoint-capabilities-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-endpoint-capabilities-enabled"
+            >
+              {{ t('admin.accounts.openai.workloadCapabilities') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.workloadCapabilitiesDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIWorkloadCapabilities"
+            id="bulk-edit-openai-endpoint-capabilities-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-endpoint-capabilities-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-endpoint-capabilities-body"
+          :class="!enableOpenAIWorkloadCapabilities && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-endpoint-capabilities-label"
+        >
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in openAIWorkloadCapabilityOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                :disabled="!enableOpenAIWorkloadCapabilities"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :data-testid="`bulk-edit-openai-endpoint-capability-${option.value === 'text_generation' ? 'chat_completions' : option.value}`"
+                :checked="openAIWorkloadCapabilities.includes(option.value)"
+                @change="toggleOpenAIWorkloadCapability(option.value, $event)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- OpenAI API Key 文本协议路由 -->
+      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <div class="flex-1">
+            <label
+              id="bulk-edit-openai-responses-mode-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-responses-mode-enabled"
+            >
+              {{ t('admin.accounts.openai.textRouteMode') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.textRouteModeDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAITextRouteMode"
+            id="bulk-edit-openai-responses-mode-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-responses-mode-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-responses-mode-body"
+          :class="!enableOpenAITextRouteMode && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-responses-mode-label"
+        >
+          <Select
+            v-model="openAITextRouteMode"
+            :disabled="!enableOpenAITextRouteMode || !openAITextRouteModeApplicable"
+            data-testid="bulk-edit-openai-responses-mode-select"
+            :options="openAITextRouteModeOptions"
+            aria-labelledby="bulk-edit-openai-responses-mode-label"
+          />
+          <p
+            v-if="enableOpenAIWorkloadCapabilities && !openAITextGenerationEnabled"
+            class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+            data-testid="bulk-edit-openai-responses-mode-not-applicable"
+          >
+            {{ t('admin.accounts.openai.textRouteTextDisabledHint') }}
+          </p>
+        </div>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1578,7 +1673,17 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, Account, OpenAICompactMode, OpenAIOAuthClientPolicy } from '@/types'
+import type {
+  Proxy as ProxyConfig,
+  AdminGroup,
+  AccountPlatform,
+  AccountType,
+  Account,
+  OpenAICompactMode,
+  OpenAIOAuthClientPolicy,
+  OpenAITextRouteMode,
+  OpenAIWorkloadCapability
+} from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -1777,6 +1882,8 @@ const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIFlattenNamespaces = ref(false)
 const enableCodexImageToolMode = ref(false)
+const enableOpenAIWorkloadCapabilities = ref(false)
+const enableOpenAITextRouteMode = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableCodexCLIOnly = ref(false)
@@ -1816,6 +1923,11 @@ const openaiPassthroughEnabled = ref(false)
 // OpenAI OAuth namespace 工具摊平兼容开关，缺省关闭即原样保留。
 const openaiFlattenNamespacesEnabled = ref(false)
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
+const openAIWorkloadCapabilities = ref<OpenAIWorkloadCapability[]>([
+  'text_generation',
+  'embeddings'
+])
+const openAITextRouteMode = ref<OpenAITextRouteMode>('preserve_client_protocol')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openAIOAuthClientPolicy = ref<OpenAIOAuthClientPolicy>('any')
@@ -1897,11 +2009,68 @@ const openAIOAuthClientPolicyOptions = computed(() => [
   { value: 'codex_only', label: t('admin.accounts.openai.clientPolicyCodexOnly') },
   { value: 'tls_router_matched_only', label: t('admin.accounts.openai.clientPolicyTLSRouterMatchedOnly') }
 ])
+const openAIWorkloadCapabilityOptions = computed(() => [
+  {
+    value: 'text_generation' as OpenAIWorkloadCapability,
+    label: t('admin.accounts.openai.workloadTextGeneration')
+  },
+  {
+    value: 'embeddings' as OpenAIWorkloadCapability,
+    label: t('admin.accounts.openai.workloadEmbeddings')
+  }
+])
+const openAITextRouteModeOptions = computed(() => [
+  {
+    value: 'preserve_client_protocol' as OpenAITextRouteMode,
+    label: t('admin.accounts.openai.textRoutePreserveClientProtocol')
+  },
+  {
+    value: 'force_responses' as OpenAITextRouteMode,
+    label: t('admin.accounts.openai.textRouteForceResponses')
+  },
+  {
+    value: 'force_chat_completions' as OpenAITextRouteMode,
+    label: t('admin.accounts.openai.textRouteForceChatCompletions')
+  }
+])
+const openAITextGenerationEnabled = computed(() =>
+  openAIWorkloadCapabilities.value.includes('text_generation')
+)
+const openAITextRouteModeApplicable = computed(() =>
+  !enableOpenAIWorkloadCapabilities.value || openAITextGenerationEnabled.value
+)
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
+
+const toggleOpenAIWorkloadCapability = (
+  capability: OpenAIWorkloadCapability,
+  event: Event
+) => {
+  const checked = (event.target as HTMLInputElement).checked
+  const index = openAIWorkloadCapabilities.value.indexOf(capability)
+  if (!checked && openAIWorkloadCapabilities.value.length <= 1) {
+    // 至少保留一项能力，避免批量编辑产生无法调度的空配置。
+    const input = event.target as HTMLInputElement
+    input.checked = true
+    return
+  }
+  if (checked && index === -1) {
+    openAIWorkloadCapabilities.value = [
+      ...openAIWorkloadCapabilities.value,
+      capability
+    ]
+  } else if (!checked && index !== -1) {
+    openAIWorkloadCapabilities.value = openAIWorkloadCapabilities.value.filter(
+      (item) => item !== capability
+    )
+  }
+  if (!openAITextGenerationEnabled.value) {
+    openAITextRouteMode.value = 'preserve_client_protocol'
+  }
+}
 const openAINativeCompactionV2ModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.nativeCompactV2ModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.nativeCompactV2ModeForceOn') },
@@ -2236,6 +2405,29 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     applyCodexImageToolMode(extra, codexImageToolMode.value, 'null')
   }
 
+  if (enableOpenAIWorkloadCapabilities.value && allOpenAIAPIKey.value) {
+    // 空数组不是有效配置；全选时写 null 让后端清除账号级覆盖并回退默认能力。
+    credentials.openai_workload_capabilities =
+      openAIWorkloadCapabilities.value.length === openAIWorkloadCapabilityOptions.value.length
+        ? null
+        : [...openAIWorkloadCapabilities.value]
+    credentialsChanged = true
+  }
+
+  if (
+    allOpenAIAPIKey.value &&
+    (enableOpenAITextRouteMode.value ||
+      (enableOpenAIWorkloadCapabilities.value && !openAITextGenerationEnabled.value))
+  ) {
+    const extra = ensureExtra()
+    // 文本能力关闭时由后端强制恢复 preserve，避免写入不适用的强制协议。
+    extra.openai_text_route_mode =
+      openAITextRouteModeApplicable.value &&
+      openAITextRouteMode.value !== 'preserve_client_protocol'
+        ? openAITextRouteMode.value
+        : null
+  }
+
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
     // Antigravity 账号仍使用 mapping-only 语义，批量修改不能给它写入普通账号的独立白名单字段。
     if (targetSelectedPlatforms.value.length === 1 && targetSelectedPlatforms.value[0] === 'antigravity') {
@@ -2444,6 +2636,8 @@ const handleSubmit = async () => {
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     enableCodexImageToolMode.value ||
+    enableOpenAIWorkloadCapabilities.value ||
+    enableOpenAITextRouteMode.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
@@ -2593,6 +2787,8 @@ const resetBulkEditFormState = () => {
   enableOpenAIPassthrough.value = false
   enableOpenAIFlattenNamespaces.value = false
   enableCodexImageToolMode.value = false
+  enableOpenAIWorkloadCapabilities.value = false
+  enableOpenAITextRouteMode.value = false
   enableOpenAIWSMode.value = false
   enableOpenAIAPIKeyWSMode.value = false
   enableCodexCLIOnly.value = false
@@ -2612,6 +2808,8 @@ const resetBulkEditFormState = () => {
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   codexImageToolMode.value = 'inherit'
+  openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
+  openAITextRouteMode.value = 'preserve_client_protocol'
   resetModelRestrictionDraft()
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null

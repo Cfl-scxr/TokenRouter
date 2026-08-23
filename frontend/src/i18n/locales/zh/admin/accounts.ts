@@ -817,6 +817,7 @@ export default {
         textRoutePreserveClientProtocol: '保留客户端协议',
         textRouteForceResponses: '强制 Responses',
         textRouteForceChatCompletions: '强制 Chat Completions',
+        textRouteTextDisabledHint: '关闭文本生成能力后，文本协议路由设置不适用。',
         responsesProbeStatus: 'Responses 探测状态',
         responsesProbeStatusDesc: '只读展示最近一次 Responses 自动能力探测结果。',
         responsesProbeSupported: '支持',

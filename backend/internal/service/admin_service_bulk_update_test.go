@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 
+	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -81,6 +83,65 @@ func TestAdminServiceBulkUpdateAccountsNormalizesLegacyOpenAIConfiguration(t *te
 	require.Equal(t, "unsupported", repo.lastBulkUpdate.Extra["openai_responses_probe_status"])
 	require.NotContains(t, repo.lastBulkUpdate.Extra, legacyOpenAIResponsesModeExtraKey)
 	require.NotContains(t, repo.lastBulkUpdate.Extra, legacyOpenAIResponsesSupportedExtraKey)
+}
+
+func TestAdminServiceBulkUpdateAccountsNormalizesOpenAIWorkloadAndTextRoute(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			openAIWorkloadCapabilitiesCredentialKey: []any{"text_generation", "embeddings"},
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyTextRouteMode: "force_responses"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, []string{"text_generation", "embeddings"}, repo.lastBulkUpdate.Credentials[openAIWorkloadCapabilitiesCredentialKey])
+	require.Equal(t, "force_responses", repo.lastBulkUpdate.Extra[openai_compat.ExtraKeyTextRouteMode])
+}
+
+func TestAdminServiceBulkUpdateAccountsRejectsInvalidOpenAITargetBeforeWrite(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Extra:      map[string]any{openai_compat.ExtraKeyTextRouteMode: "force_responses"},
+	})
+
+	require.Nil(t, result)
+	var appErr *infraerrors.ApplicationError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, "OPENAI_CONFIGURATION_TARGET_INVALID", appErr.Reason)
+	require.Empty(t, repo.bulkUpdateIDs)
+}
+
+func TestAdminServiceBulkUpdateAccountsRejectsForcedTextRouteWithoutWorkload(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			openAIWorkloadCapabilitiesCredentialKey: []any{"embeddings"},
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyTextRouteMode: "force_responses"},
+	})
+
+	require.Nil(t, result)
+	var appErr *infraerrors.ApplicationError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, "OPENAI_TEXT_ROUTE_MODE_INVALID", appErr.Reason)
+	require.Empty(t, repo.bulkUpdateIDs)
 }
 
 func TestAdminServiceBulkUpdateAccountsRejectsInvalidCNProviderCombination(t *testing.T) {

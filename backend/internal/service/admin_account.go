@@ -1015,6 +1015,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 	}
+	openAISettings, err := normalizeBulkOpenAISettings(input)
+	if err != nil {
+		return nil, err
+	}
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
@@ -1029,13 +1033,26 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		cachedTargets = loaded
 	}
 	if hasOpenAIConfigPatch {
+		targetsByID := make(map[int64]*Account, len(cachedTargets))
 		for _, account := range cachedTargets {
+			if account != nil {
+				targetsByID[account.ID] = account
+			}
+		}
+		for _, accountID := range input.AccountIDs {
+			account, ok := targetsByID[accountID]
+			if !ok || account == nil {
+				return nil, invalidBulkOpenAITarget(accountID, "account does not exist")
+			}
 			if !isOpenAIAPIKeyAccount(account) {
 				return nil, infraerrors.BadRequest(
 					"OPENAI_CONFIGURATION_TARGET_INVALID",
 					"OpenAI text protocol configuration can only be bulk-updated on OpenAI API Key accounts",
 				)
 			}
+		}
+		if err := validateBulkOpenAISettingsTargets(input, openAISettings, targetsByID); err != nil {
+			return nil, err
 		}
 		if err := normalizeOpenAIAPIKeyConfigurationPatch(input.Credentials, input.Extra); err != nil {
 			return nil, err

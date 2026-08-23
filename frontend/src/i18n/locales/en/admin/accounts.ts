@@ -747,6 +747,8 @@ export default {
         textRoutePreserveClientProtocol: 'Preserve client protocol',
         textRouteForceResponses: 'Force Responses',
         textRouteForceChatCompletions: 'Force Chat Completions',
+        textRouteTextDisabledHint:
+          'Text protocol routing is not applicable when text generation is disabled.',
         responsesProbeStatus: 'Responses probe status',
         responsesProbeStatusDesc: 'Read-only result from the latest automatic Responses capability probe.',
         responsesProbeSupported: 'Supported',
