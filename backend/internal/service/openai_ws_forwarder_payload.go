@@ -96,7 +96,13 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 			}
 		}
 		// 仅转发 Codex 明确使用的窗口与安装身份提示，不开放任意客户端头透传。
-		for _, name := range [...]string{"x-codex-window-id", "x-codex-installation-id"} {
+		for _, name := range [...]string{
+			"x-codex-window-id",
+			"x-codex-installation-id",
+			"session-id",
+			"thread-id",
+			"x-client-request-id",
+		} {
 			if value := strings.TrimSpace(c.Request.Header.Get(name)); value != "" {
 				headers.Set(name, value)
 			}
@@ -125,6 +131,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if metadata := strings.TrimSpace(turnMetadata); metadata != "" {
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
 	}
+	applyStagedCodexFingerprintHeaders(c, account, headers)
 
 	if account != nil && account.Type == AccountTypeOAuth {
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {

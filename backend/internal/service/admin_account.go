@@ -166,6 +166,8 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"quota_weekly_start":    {},
 	"quota_daily_reset_at":  {},
 	"quota_weekly_reset_at": {},
+	// Codex 收敛 seed 由系统按账号生成，复制账号时必须重新生成。
+	codexFingerprintSeedExtraKey: {},
 	// 上游观测、能力探测与临时调度状态不属于可复制配置。
 	"model_rate_limits":                           {},
 	"session_window_utilization":                  {},
@@ -519,6 +521,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	delete(accountExtra, CNUsageMonitorSnapshotExtraKey)
+	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -800,6 +803,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				}
 			}
 		}
+		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
@@ -818,6 +822,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
+	}
+	if input.Extra == nil {
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
@@ -942,6 +949,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 
 // UpdateAccountExtra 仅对账号 Extra JSONB 做 key 级合并，避免覆盖运行态或持久化配置键。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	DiscardDeprecatedAccountExtra(updates)
 	if err := NormalizeUpstreamUsageExtra(updates); err != nil {
 		return err
@@ -975,6 +983,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // 凭据和 extra 使用键级合并，不覆盖整个对象。
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	// 受管会话状态只能通过专用类型接口更新，废弃账号扩展字段直接丢弃。
+	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
 	DiscardDeprecatedAccountExtra(input.Extra)
 	if err := NormalizeUpstreamUsageExtra(input.Extra); err != nil {
 		return nil, err
@@ -1116,8 +1125,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Credentials:                input.Credentials,
+		Extra:                      input.Extra,
+		EnsureCodexFingerprintSeed: ShouldEnsureCodexFingerprintSeedForExtraUpdates(input.Extra),
 	}
 	if input.Name != "" {
 		repoUpdates.Name = &input.Name

@@ -84,6 +84,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		reqStream = gjson.GetBytes(body, "stream").Bool()
 
+		stageCodexFingerprintIDs(c, nil)
 		// 透传与普通转换路径共享指纹收敛语义。只局部改写 client_metadata，
 		// 避免为大请求体做整包反序列化。
 		if !isOpenAIResponsesCompactPath(c) {

@@ -430,6 +430,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// 指纹收敛 ID 只在本次 Forward 内共享，避免跨账号 failover 复用 Gin context 中的旧值。
+		stageCodexFingerprintIDs(c, nil)
 		if !isCompactRequest {
 			fingerprintAccount, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account)
 			if resolveErr != nil {
@@ -451,7 +452,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 		}
-		if codexResult.PromptCacheKey != "" {
+		if currentPromptCacheKey, ok := decoded["prompt_cache_key"].(string); ok && currentPromptCacheKey != "" {
+			promptCacheKey = currentPromptCacheKey
+		} else if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
 	}
