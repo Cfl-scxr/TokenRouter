@@ -20,16 +20,59 @@
       color="emerald"
       data-testid="ollama-cloud-seven-day"
     />
+    <div v-if="state.configured" class="flex items-center pt-0.5">
+      <button
+        type="button"
+        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        :disabled="refreshing"
+        :title="t('admin.accounts.usageWindow.activeQuery')"
+        :aria-label="t('admin.accounts.usageWindow.activeQuery')"
+        data-testid="ollama-cloud-usage-query"
+        @click="refreshUsage"
+      >
+        <Icon
+          name="refresh"
+          size="xs"
+          :class="{ 'animate-spin': refreshing }"
+          :stroke-width="2"
+        />
+        {{ t('admin.accounts.usageWindow.activeQuery') }}
+      </button>
+    </div>
   </div>
   <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { Account } from '@/types'
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { adminAPI } from '@/api/admin'
+import type { Account, OllamaCloudUsageState } from '@/types'
+import Icon from '@/components/icons/Icon.vue'
 import UsageProgressBar from './UsageProgressBar.vue'
 
 const props = defineProps<{ account: Account }>()
-const state = computed(() => props.account.ollama_cloud_usage)
+const emit = defineEmits<{ updated: [state: OllamaCloudUsageState] }>()
+const { t } = useI18n()
+const state = ref(props.account.ollama_cloud_usage)
+const refreshing = ref(false)
 const snapshot = computed(() => state.value?.snapshot)
+
+watch(() => props.account.ollama_cloud_usage, (next) => {
+  state.value = next
+})
+
+const refreshUsage = async () => {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    const next = await adminAPI.accounts.refreshOllamaCloudUsage(props.account.id)
+    state.value = next
+    emit('updated', next)
+  } catch (error) {
+    console.error('Failed to refresh Ollama Cloud usage:', error)
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>

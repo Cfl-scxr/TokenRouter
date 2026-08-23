@@ -682,6 +682,7 @@
       <OllamaCloudUsageCell
         v-if="account.ollama_cloud_usage?.eligible"
         :account="account"
+        @updated="handleOllamaCloudUsageUpdated"
       />
       <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
@@ -814,6 +815,10 @@ const props = withDefaults(
     requestUpstreamUsage: null
   }
 )
+
+const emit = defineEmits<{
+  'account-updated': [account: Account]
+}>()
 
 const { t } = useI18n()
 const { formatBalanceAmount, formatUsdAmount } = useBalanceDisplay()
@@ -1704,6 +1709,10 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
   if (limit <= 0) return null
   return makeQuotaBar(props.account.quota_used ?? 0, limit)
 })
+
+const handleOllamaCloudUsageUpdated = (state: NonNullable<Account['ollama_cloud_usage']>) => {
+  emit('account-updated', { ...props.account, ollama_cloud_usage: state })
+}
 
 // ===== Key account today stats formatters =====
 
