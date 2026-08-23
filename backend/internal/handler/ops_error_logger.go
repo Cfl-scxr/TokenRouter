@@ -1257,7 +1257,8 @@ func isCountTokensRequest(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
 	}
-	return strings.Contains(c.Request.URL.Path, "/count_tokens")
+	return strings.Contains(c.Request.URL.Path, "/count_tokens") ||
+		service.IsOpenAIResponsesInputTokensRequestPath(c)
 }
 
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {

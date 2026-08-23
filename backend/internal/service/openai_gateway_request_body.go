@@ -414,6 +414,11 @@ func IsForwardableOpenAIResponsesRequestPath(c *gin.Context) bool {
 	return ok
 }
 
+// IsOpenAIResponsesInputTokensRequestPath 判断请求是否指向原生 Responses 输入 token 预检端点。
+func IsOpenAIResponsesInputTokensRequestPath(c *gin.Context) bool {
+	return openAIResponsesRequestPathSuffix(c) == "/input_tokens"
+}
+
 // rawOpenAIResponsesRequestPathSuffix 仅做提取，不做任何安全判断。
 func rawOpenAIResponsesRequestPathSuffix(c *gin.Context) string {
 	if c == nil || c.Request == nil || c.Request.URL == nil {

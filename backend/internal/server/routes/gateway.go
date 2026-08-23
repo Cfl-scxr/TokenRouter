@@ -144,6 +144,19 @@ func RegisterGatewayRoutes(
 			return false
 		}
 	}
+	responsesInputTokensHandler := func(c *gin.Context) {
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			h.OpenAIGateway.ResponsesInputTokens(c)
+			return
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": "Responses input token counting is not supported for this platform",
+			},
+		})
+	}
 	// count_tokens 需要识别强制平台别名，避免把 Antigravity 当成分组原平台处理。
 	countTokensPlatform := func(c *gin.Context) string {
 		if platform, ok := middleware.GetForcePlatformFromContext(c); ok && strings.TrimSpace(platform) != "" {
@@ -359,6 +372,10 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(withGroupClientProtocol(service.GroupClientProtocolOpenAIResponses, groupClientProtocolErrorOpenAI, func(c *gin.Context) {
+			if service.IsOpenAIResponsesInputTokensRequestPath(c) {
+				responsesInputTokensHandler(c)
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -494,6 +511,10 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
+		if service.IsOpenAIResponsesInputTokensRequestPath(c) {
+			responsesInputTokensHandler(c)
+			return
+		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.Responses(c)
 			return
