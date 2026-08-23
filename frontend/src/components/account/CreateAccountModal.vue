@@ -1971,7 +1971,7 @@
           </div>
         </div>
 
-        <!-- Header Override Section (anthropic/openai apikey only) -->
+        <!-- 请求头覆写区域（支持的平台 API Key 账号） -->
         <div
           v-if="isHeaderOverrideCapable(form.platform, 'apikey')"
           class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -6404,7 +6404,7 @@ const handleSubmit = async () => {
     credentials.custom_error_codes = [...selectedErrorCodes.value]
   }
 
-  // 为支持该功能的 Anthropic、OpenAI 与 Grok API Key 账号写入请求头覆写。
+  // 为支持该功能的平台 API Key 账号写入请求头覆写。
   if (isHeaderOverrideCapable(form.platform, 'apikey')) {
     if (headerOverrideEnabled.value) {
       const headerError = validateHeaderOverrideRows(headerOverrideRows.value)

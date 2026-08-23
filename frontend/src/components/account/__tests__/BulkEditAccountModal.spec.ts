@@ -233,6 +233,24 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.text()).not.toContain('GPT-5.3 Codex Spark')
   })
 
+  it.each(['kimi', 'zhipu', 'deepseek'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
+  })
+
+  it.each(['kimi', 'zhipu', 'deepseek'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['oauth']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(false)
+  })
+
   it('仅勾选模型限制且白名单留空时，应清空 model_mapping 和 model_whitelist 以支持所有模型', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['anthropic'],

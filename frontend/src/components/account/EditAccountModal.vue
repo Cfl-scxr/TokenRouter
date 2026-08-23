@@ -603,7 +603,7 @@
         </div>
       </div>
 
-      <!-- 请求头覆写区域（Anthropic/OpenAI API Key 与 Grok API Key/OAuth） -->
+      <!-- 请求头覆写区域（支持的平台 API Key 与 Grok OAuth） -->
       <div v-if="headerOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -3864,7 +3864,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadTempUnschedRules(credentials)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
-  // 加载 Anthropic/OpenAI API Key 与 Grok API Key/OAuth 账号的请求头覆写状态。
+  // 加载支持的平台 API Key 与 Grok API Key/OAuth 账号的请求头覆写状态。
   headerOverrideEnabled.value = false
   headerOverrideRows.value = []
   if (newAccount.credentials && isHeaderOverrideCapable(newAccount.platform, newAccount.type)) {
@@ -4773,7 +4773,7 @@ const handleSubmit = async () => {
         delete newCredentials.custom_error_codes
       }
 
-      // 为支持该功能的 Anthropic、OpenAI 与 Grok API Key 账号写入请求头覆写。
+      // 为支持该功能的平台 API Key 账号写入请求头覆写。
       if (isHeaderOverrideCapable(props.account.platform, 'apikey')) {
         if (headerOverrideEnabled.value) {
           const headerError = validateHeaderOverrideRows(headerOverrideRows.value)

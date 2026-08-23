@@ -31,6 +31,8 @@ func TestIsHeaderOverrideEligible(t *testing.T) {
 		{"zhipu apikey", PlatformZhipu, AccountTypeAPIKey, true},
 		{"deepseek apikey", PlatformDeepseek, AccountTypeAPIKey, true},
 		{"kimi oauth", PlatformKimi, AccountTypeOAuth, false},
+		{"zhipu oauth", PlatformZhipu, AccountTypeOAuth, false},
+		{"deepseek oauth", PlatformDeepseek, AccountTypeOAuth, false},
 		{"anthropic oauth", PlatformAnthropic, AccountTypeOAuth, false},
 		{"openai oauth", PlatformOpenAI, AccountTypeOAuth, false},
 		{"gemini apikey", PlatformGemini, AccountTypeAPIKey, false},
