@@ -508,6 +508,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		var bridgeReplayInput []json.RawMessage
 		bridgeReplayInputExists := false
 		for turn := 1; ; turn++ {
+			turnStartedAt := time.Now()
+			if hooks != nil && hooks.TurnStarted != nil {
+				hooks.TurnStarted(turn, turnStartedAt)
+			}
 			if turn > 1 && hooks != nil && hooks.BeforeRequest != nil {
 				updatedPayload, err := hooks.BeforeRequest(turn, currentBridgePayload.payloadRaw, currentBridgePayload.originalModel, currentBridgePayload.previousResponseID)
 				if err != nil {
@@ -586,6 +590,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if hooks != nil && hooks.AfterTurn != nil {
 				hooks.AfterTurn(OpenAIWSTurnCapture{
 					Turn:               turn,
+					StartedAt:          turnStartedAt,
 					RequestBody:        append([]byte(nil), bridgePayloadRaw...),
 					OriginalModel:      currentBridgePayload.originalModel,
 					PreviousResponseID: currentBridgePayload.previousResponseID,
@@ -1337,6 +1342,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return true
 	}
 	for {
+		turnStartedAt := time.Now()
+		if hooks != nil && hooks.TurnStarted != nil {
+			hooks.TurnStarted(turn, turnStartedAt)
+		}
 		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
 			currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
 			updatedPayload, err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel, currentPreviousResponseID)
@@ -1666,6 +1675,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if hooks != nil && hooks.AfterTurn != nil {
 				hooks.AfterTurn(OpenAIWSTurnCapture{
 					Turn:               turn,
+					StartedAt:          turnStartedAt,
 					RequestBody:        append([]byte(nil), currentPayload...),
 					OriginalModel:      currentOriginalModel,
 					PreviousResponseID: currentPreviousResponseID,
@@ -1683,6 +1693,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if hooks != nil && hooks.AfterTurn != nil {
 			hooks.AfterTurn(OpenAIWSTurnCapture{
 				Turn:               turn,
+				StartedAt:          turnStartedAt,
 				RequestBody:        append([]byte(nil), currentPayload...),
 				OriginalModel:      currentOriginalModel,
 				PreviousResponseID: currentPreviousResponseID,

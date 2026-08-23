@@ -34,10 +34,12 @@ type OpenAIRecordUsageInput struct {
 	RequestBody        []byte // 原始请求体，用于数据共享 session 归一化采集
 	SessionID          string // 当前请求的会话标识，用于数据共享聚合
 	Turn               int
-	CaptureIncomplete  bool
-	APIKeyService      APIKeyQuotaUpdater
-	QuotaPlatform      string // user×platform 配额计量平台，由 handler 在请求 ctx 内算定后传入。
-	CyberBlocked       bool
+	// PricingAt 是 WS turn 开始时刻；普通 HTTP 调用留空并在记录时取当前时间。
+	PricingAt         time.Time
+	CaptureIncomplete bool
+	APIKeyService     APIKeyQuotaUpdater
+	QuotaPlatform     string // user×platform 配额计量平台，由 handler 在请求 ctx 内算定后传入。
+	CyberBlocked      bool
 	ChannelUsageFields
 }
 
@@ -209,6 +211,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if s.usageBillingNow != nil {
 		rateNow = s.usageBillingNow()
 	}
+	if !input.PricingAt.IsZero() {
+		rateNow = input.PricingAt
+	}
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, rateNow)
 	subscriptionMultiplier, _ = computePeakAwareMultipliers(apiKey, subscriptionMultiplier, rateNow)
 	balanceMultiplier, _ = computePeakAwareMultipliers(apiKey, balanceMultiplier, rateNow)
@@ -234,7 +239,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
-	cost, err = s.calculateOpenAIRecordUsageCost(
+	cost, err = s.calculateOpenAIRecordUsageCostAt(
 		ctx,
 		result,
 		apiKey,
@@ -245,6 +250,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		baseMultiplier,
 		tokens,
 		serviceTier,
+		rateNow,
 	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
@@ -477,6 +483,7 @@ func (s *OpenAIGatewayService) captureOpenAIDataSharingBestEffort(input *OpenAIR
 	})
 }
 
+// calculateOpenAIRecordUsageCost 保留旧测试和内部调用的兼容入口。
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	ctx context.Context,
 	result *OpenAIForwardResult,
@@ -488,6 +495,23 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	webSearchMultiplier float64,
 	tokens UsageTokens,
 	serviceTier string,
+) (*CostBreakdown, error) {
+	return s.calculateOpenAIRecordUsageCostAt(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier, webSearchMultiplier, tokens, serviceTier, time.Time{})
+}
+
+// calculateOpenAIRecordUsageCostAt 使用固定请求时刻计算费用，确保渠道分时倍率与高峰倍率同刻。
+func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCostAt(
+	ctx context.Context,
+	result *OpenAIForwardResult,
+	apiKey *APIKey,
+	billingModels []string,
+	multiplier float64,
+	imageMultiplier float64,
+	videoMultiplier float64,
+	webSearchMultiplier float64,
+	tokens UsageTokens,
+	serviceTier string,
+	pricingAt time.Time,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
@@ -532,11 +556,12 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 			if candidate == "" {
 				continue
 			}
-			cost, err := s.calculateOpenAIRecordUsageTokenCost(
+			cost, err := s.calculateOpenAIRecordUsageTokenCostAt(
 				ctx,
 				apiKey,
 				candidate,
 				multiplier,
+				pricingAt,
 				tokens,
 				serviceTier,
 			)
@@ -630,6 +655,18 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	tokens UsageTokens,
 	serviceTier string,
 ) (*CostBreakdown, error) {
+	return s.calculateOpenAIRecordUsageTokenCostAt(ctx, apiKey, billingModel, multiplier, time.Time{}, tokens, serviceTier)
+}
+
+func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCostAt(
+	ctx context.Context,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+	pricingAt time.Time,
+	tokens UsageTokens,
+	serviceTier string,
+) (*CostBreakdown, error) {
 	if s.resolver != nil && apiKey.Group != nil {
 		gid := apiKey.Group.ID
 		return s.billingService.CalculateCostUnified(CostInput{
@@ -640,6 +677,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 			Tokens:         tokens,
 			RequestCount:   1,
 			RateMultiplier: multiplier,
+			PricingAt:      pricingAt,
 			ServiceTier:    serviceTier,
 			Resolver:       s.resolver,
 		})

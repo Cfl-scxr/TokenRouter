@@ -488,6 +488,8 @@ type recordUsageOpts struct {
 	// 长上下文计费（仅 Gemini 路径需要）
 	LongContextThreshold  int
 	LongContextMultiplier float64
+	// PricingAt 固定本次请求的计费时刻，供渠道分时倍率和高峰倍率共用。
+	PricingAt time.Time
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -588,6 +590,9 @@ type recordUsageCoreInput struct {
 // LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 // @project-doc docs/domains/routing_and_billing.md#usage_settlement
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
+	if opts == nil {
+		opts = &recordUsageOpts{}
+	}
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -639,6 +644,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if s.usageBillingNow != nil {
 		rateNow = s.usageBillingNow()
 	}
+	opts.PricingAt = rateNow
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, rateNow)
 	subscriptionMultiplier, _ = computePeakAwareMultipliers(apiKey, subscriptionMultiplier, rateNow)
 	balanceMultiplier, _ = computePeakAwareMultipliers(apiKey, balanceMultiplier, rateNow)
@@ -753,14 +759,17 @@ func (s *GatewayService) calculateRecordUsageCost(
 	imageMultiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
+	if opts == nil {
+		opts = &recordUsageOpts{}
+	}
 	// 图片生成：渠道定价为令牌计费时走令牌路径，否则走图片计费
 	if result.ImageCount > 0 {
 		if resolved, pricingModel := s.resolveChannelPricingForUsage(ctx, billingModel, requestedModel, billingModelSource, channelMappedModel, result.UpstreamModel, apiKey, account); resolved != nil && resolved.Mode == BillingModeToken {
 			return s.calculateTokenCost(ctx, result, apiKey, account, billingModel, requestedModel, billingModelSource, channelMappedModel, multiplier, opts)
 		} else if resolved != nil {
-			return s.calculateImageCost(ctx, result, apiKey, account, billingModel, requestedModel, billingModelSource, channelMappedModel, pricingModel, resolved, imageMultiplier)
+			return s.calculateImageCost(ctx, result, apiKey, account, billingModel, requestedModel, billingModelSource, channelMappedModel, pricingModel, resolved, imageMultiplier, opts.PricingAt)
 		}
-		return s.calculateImageCost(ctx, result, apiKey, account, billingModel, requestedModel, billingModelSource, channelMappedModel, billingModel, nil, imageMultiplier)
+		return s.calculateImageCost(ctx, result, apiKey, account, billingModel, requestedModel, billingModelSource, channelMappedModel, billingModel, nil, imageMultiplier, opts.PricingAt)
 	}
 
 	// 语音用量优先按分组模型的连续单位价格结算，未配置时沿用分组通用音频价。
@@ -779,6 +788,7 @@ func (s *GatewayService) calculateRecordUsageCost(
 				UsageUnits:     result.AudioUsage.DurationOrUnits,
 				SizeTier:       result.AudioUsage.Mode,
 				RateMultiplier: multiplier,
+				PricingAt:      opts.PricingAt,
 				Resolver:       s.resolver,
 				Resolved:       resolved,
 			})
@@ -830,6 +840,7 @@ func (s *GatewayService) calculateImageCost(
 	resolvedModel string,
 	resolved *ResolvedPricing,
 	multiplier float64,
+	pricingAt time.Time,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	if resolved == nil {
@@ -845,6 +856,7 @@ func (s *GatewayService) calculateImageCost(
 			RequestCount:   result.ImageCount,
 			SizeTier:       sizeTier,
 			RateMultiplier: multiplier,
+			PricingAt:      pricingAt,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
 		})
@@ -874,6 +886,7 @@ func (s *GatewayService) calculateImageCost(
 			RequestCount:   result.ImageCount,
 			SizeTier:       sizeTier,
 			RateMultiplier: multiplier,
+			PricingAt:      pricingAt,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
 		})
@@ -936,6 +949,7 @@ func (s *GatewayService) calculateTokenCost(
 			Tokens:         tokens,
 			RequestCount:   1,
 			RateMultiplier: multiplier,
+			PricingAt:      opts.PricingAt,
 			ServiceTier:    serviceTier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
@@ -963,6 +977,7 @@ func (s *GatewayService) calculateTokenCost(
 				Tokens:         tokens,
 				RequestCount:   1,
 				RateMultiplier: multiplier,
+				PricingAt:      opts.PricingAt,
 				ServiceTier:    serviceTier,
 				Resolver:       s.resolver,
 			})

@@ -229,6 +229,8 @@ type OpenAIWSIngressHooks struct {
 	// InitialRequestModel 是首帧渠道映射前的请求模型，只用于 usage metadata
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
+	// InitialTurnStartedAt 是首轮 response.create 被接受时的时间快照。
+	InitialTurnStartedAt time.Time
 	// MaxReasoningEffort 限制当前 WS 会话中显式指定的推理强度。
 	MaxReasoningEffort string
 	// ReasoningEffortMappings 在当前 WS 会话中改写显式指定的推理强度。
@@ -238,8 +240,10 @@ type OpenAIWSIngressHooks struct {
 	ResolveRoutingModel func(turn int, requestedModel string, payload []byte) (string, error)
 	// ResolveFastModePolicy 逐轮刷新 API Key Fast 策略，避免长连接永久沿用握手快照。
 	ResolveFastModePolicy func(turn int) string
-	BeforeTurn            func(turn int) error
-	BeforeRequest         func(turn int, payload []byte, originalModel, previousResponseID string) ([]byte, error)
+	// TurnStarted 报告每轮 response.create 的开始时刻；时间值应在策略处理前捕获。
+	TurnStarted   func(turn int, startedAt time.Time)
+	BeforeTurn    func(turn int) error
+	BeforeRequest func(turn int, payload []byte, originalModel, previousResponseID string) ([]byte, error)
 	// OnUpstreamError 在上游 WS 返回 error/failed 类事件时触发，用于记录 OpenAI cyber 等上游风控信号。
 	OnUpstreamError func(turn int, originalModel string, statusCode int, responseBody []byte, message string)
 	AfterTurn       func(capture OpenAIWSTurnCapture)
@@ -545,6 +549,7 @@ func openAIWSTerminalEventResponseBody(message []byte) []byte {
 // OpenAIWSTurnCapture 描述一次 WS turn 完成后用于 usage 和数据共享采集的上下文。
 type OpenAIWSTurnCapture struct {
 	Turn               int
+	StartedAt          time.Time
 	RequestBody        []byte
 	OriginalModel      string
 	PreviousResponseID string

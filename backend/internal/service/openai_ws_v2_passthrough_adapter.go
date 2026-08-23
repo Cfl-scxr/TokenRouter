@@ -48,6 +48,7 @@ type openAIWSPolicyEnforcingFrameConn struct {
 var _ openaiwsv2.FrameConn = (*openAIWSPolicyEnforcingFrameConn)(nil)
 
 type openAIWSTurnPayload struct {
+	StartedAt          time.Time
 	RequestBody        []byte
 	OriginalModel      string
 	RoutingModel       string
@@ -732,6 +733,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	firstTurnStartedAt := time.Now()
+	if hooks != nil && !hooks.InitialTurnStartedAt.IsZero() {
+		firstTurnStartedAt = hooks.InitialTurnStartedAt
+	}
+	if hooks != nil && hooks.TurnStarted != nil {
+		hooks.TurnStarted(1, firstTurnStartedAt)
+	}
 	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, firstClientMessage)
 		if liteErr != nil {
@@ -837,6 +845,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 	turnPayloads := newOpenAIWSTurnPayloadQueue()
 	turnPayloads.Push(openAIWSTurnPayload{
+		StartedAt:          firstTurnStartedAt,
 		RequestBody:        firstClientMessage,
 		OriginalModel:      requestModel,
 		RoutingModel:       firstRoutingModel,
@@ -1003,6 +1012,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	var acceptedTurnStartedAt atomic.Pointer[time.Time]
 	var terminalWritePayload atomic.Pointer[openAIWSTurnPayload]
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	clientFrameConn := &openAIWSClientFrameConn{
@@ -1016,13 +1026,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		// filter 仅在 runClientToUpstream 这一条 goroutine 中执行；
 		// 会话模型还会被上游回调读取，因此通过上方原子快照同步。
 		filter: func(msgType coderws.MessageType, payload []byte) (out []byte, blocked *OpenAIFastBlockedError, filterErr error) {
-			if msgType != coderws.MessageText {
+			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
 			// 后续 response.create 帧在策略过滤和上游转发前执行同一套用户提示词替换。
 			payload = s.ApplyUserPromptReplacement(ctx, payload, "openai_responses")
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
+			responseCreateAt := time.Time{}
+			if isResponseCreate {
+				responseCreateAt = time.Now()
+			}
 			acceptedTurn := false
 			if isResponseCreate {
 				if !turnLifecycle.beginResponseCreate(clientFrameConn.markTurnStarted) {
@@ -1127,6 +1141,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				turnPayloads.Push(openAIWSTurnPayload{
+					StartedAt:          responseCreateAt,
 					RequestBody:        out,
 					OriginalModel:      requestModelForThisFrame,
 					RoutingModel:       routingModel,
@@ -1136,6 +1151,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					PreviousResponseID: strings.TrimSpace(gjson.GetBytes(out, "previous_response_id").String()),
 					Source:             "passthrough",
 				})
+				responseCreateAtCopy := responseCreateAt
+				acceptedTurnStartedAt.Store(&responseCreateAtCopy)
+				if hooks != nil && hooks.TurnStarted != nil {
+					hooks.TurnStarted(turnNo, responseCreateAt)
+				}
 				acceptedTurn = true
 			}
 			return out, blocked, policyErr
@@ -1199,7 +1219,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if readErr != nil {
 				return msgType, payload, readErr
 			}
-			if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
+			if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
 				return msgType, payload, nil
 			}
 			if writeErr := upstreamFrameConn.WriteFrame(readCtx, msgType, payload); writeErr != nil {
@@ -1214,7 +1234,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		UpstreamConn:       relayUpstreamFrameConn,
 		FirstClientMessage: firstClientMessage,
 		Options: openaiwsv2.RelayOptions{
-			WriteTimeout: s.openAIWSWriteTimeout(),
+			WriteTimeout:       s.openAIWSWriteTimeout(),
+			FirstTurnStartedAt: firstTurnStartedAt,
+			TakeNextTurnStartedAt: func() time.Time {
+				startedAt := acceptedTurnStartedAt.Swap(nil)
+				if startedAt == nil {
+					return time.Time{}
+				}
+				return *startedAt
+			},
 			// passthrough 的空闲超时仅由 clientFrameConn 在一轮完成后检测；
 			// relay 全局活动看门狗会误终止仍在正常处理的上游轮次。
 			IdleTimeout:                     0,
@@ -1243,6 +1271,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
 				turnNo := int(completedTurns.Add(1))
 				turnPayload := turnPayloads.Pop()
+				if !turn.StartedAt.IsZero() {
+					turnPayload.StartedAt = turn.StartedAt
+				}
 				turnPayloadForWrite := turnPayload
 				terminalWritePayload.Store(&turnPayloadForWrite)
 				turnOriginalModel := strings.TrimSpace(turnPayload.OriginalModel)
@@ -1285,6 +1316,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if hooks != nil && hooks.AfterTurn != nil {
 					hooks.AfterTurn(OpenAIWSTurnCapture{
 						Turn:               turnNo,
+						StartedAt:          turnPayload.StartedAt,
 						RequestBody:        turnPayload.RequestBody,
 						OriginalModel:      turnPayload.OriginalModel,
 						PreviousResponseID: turnPayload.PreviousResponseID,
@@ -1447,6 +1479,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			turnPayload := turnPayloads.Pop()
 			hooks.AfterTurn(OpenAIWSTurnCapture{
 				Turn:               1,
+				StartedAt:          turnPayload.StartedAt,
 				RequestBody:        turnPayload.RequestBody,
 				OriginalModel:      turnPayload.OriginalModel,
 				PreviousResponseID: turnPayload.PreviousResponseID,
@@ -1520,6 +1553,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		turnPayload := turnPayloads.Pop()
 		hooks.AfterTurn(OpenAIWSTurnCapture{
 			Turn:               turnCount + 1,
+			StartedAt:          turnPayload.StartedAt,
 			RequestBody:        turnPayload.RequestBody,
 			OriginalModel:      turnPayload.OriginalModel,
 			PreviousResponseID: turnPayload.PreviousResponseID,

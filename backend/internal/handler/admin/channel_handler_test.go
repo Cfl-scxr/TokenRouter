@@ -54,6 +54,12 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 				CacheWritePrice:    float64Ptr(0.005),
 				CacheReadPrice:     float64Ptr(0.002),
 				PerRequestPrice:    float64Ptr(0.5),
+				TimePricing: &service.ChannelTimePricing{
+					Timezone: "Asia/Shanghai",
+					Periods: []service.ChannelTimePricingPeriod{{
+						StartTime: "09:00", EndTime: "12:00", Multiplier: 2,
+					}},
+				},
 			},
 		},
 		ModelMapping: map[string]map[string]string{
@@ -92,6 +98,25 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, float64Ptr(0.002), p.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.5), p.PerRequestPrice)
 	require.Empty(t, p.Intervals)
+	require.NotNil(t, p.TimePricing)
+	require.Equal(t, "Asia/Shanghai", p.TimePricing.Timezone)
+	require.Equal(t, 2.0, p.TimePricing.Periods[0].Multiplier)
+}
+
+func TestPricingRequestToServiceTimePricing(t *testing.T) {
+	pricing := pricingRequestToService([]channelModelPricingRequest{{
+		Platform: "openai",
+		Models:   []string{"gpt-5"},
+		TimePricing: &channelTimePricingRequest{
+			Timezone: "Asia/Tokyo",
+			Periods: []channelTimePricingPeriodRequest{{
+				StartTime: "10:00:00", EndTime: "11:00:00", Multiplier: 1.25,
+			}},
+		},
+	}})
+	require.Len(t, pricing, 1)
+	require.Equal(t, "Asia/Tokyo", pricing[0].TimePricing.Timezone)
+	require.Equal(t, 1.25, pricing[0].TimePricing.Periods[0].Multiplier)
 }
 
 func TestChannelToResponse_EmptyDefaults(t *testing.T) {

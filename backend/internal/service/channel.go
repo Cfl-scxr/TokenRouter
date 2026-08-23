@@ -83,23 +83,37 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID                 int64             `json:"id,omitempty"`
-	ChannelID          int64             `json:"channel_id,omitempty"`
-	Platform           string            `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
-	Models             []string          `json:"models"`
-	BillingMode        BillingMode       `json:"billing_mode"`
-	PriceMultiplier    *float64          `json:"price_multiplier"`     // 最终定价倍率；nil 表示不调整价格
-	FastModeMultiplier *float64          `json:"fast_mode_multiplier"` // OpenAI Fast 模式收费倍率；nil 表示沿用模型默认 Fast 定价
-	InputPrice         *float64          `json:"input_price"`
-	OutputPrice        *float64          `json:"output_price"`
-	CacheWritePrice    *float64          `json:"cache_write_price"`
-	CacheReadPrice     *float64          `json:"cache_read_price"`
-	ImageInputPrice    *float64          `json:"image_input_price"`
-	ImageOutputPrice   *float64          `json:"image_output_price"`
-	PerRequestPrice    *float64          `json:"per_request_price"`
-	Intervals          []PricingInterval `json:"intervals"`
-	CreatedAt          time.Time         `json:"created_at,omitempty"`
-	UpdatedAt          time.Time         `json:"updated_at,omitempty"`
+	ID                 int64               `json:"id,omitempty"`
+	ChannelID          int64               `json:"channel_id,omitempty"`
+	Platform           string              `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models             []string            `json:"models"`
+	BillingMode        BillingMode         `json:"billing_mode"`
+	PriceMultiplier    *float64            `json:"price_multiplier"`     // 最终定价倍率；nil 表示不调整价格
+	FastModeMultiplier *float64            `json:"fast_mode_multiplier"` // OpenAI Fast 模式收费倍率；nil 表示沿用模型默认 Fast 定价
+	InputPrice         *float64            `json:"input_price"`
+	OutputPrice        *float64            `json:"output_price"`
+	CacheWritePrice    *float64            `json:"cache_write_price"`
+	CacheReadPrice     *float64            `json:"cache_read_price"`
+	ImageInputPrice    *float64            `json:"image_input_price"`
+	ImageOutputPrice   *float64            `json:"image_output_price"`
+	PerRequestPrice    *float64            `json:"per_request_price"`
+	Intervals          []PricingInterval   `json:"intervals"`
+	TimePricing        *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt          time.Time           `json:"created_at,omitempty"`
+	UpdatedAt          time.Time           `json:"updated_at,omitempty"`
+}
+
+// ChannelTimePricing 渠道模型定价的分时倍率配置。
+type ChannelTimePricing struct {
+	Timezone string                     `json:"timezone"`
+	Periods  []ChannelTimePricingPeriod `json:"periods"`
+}
+
+// ChannelTimePricingPeriod 是秒级左闭右开区间，并兼容历史 HH:mm 数据。
+type ChannelTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -213,7 +227,7 @@ func (p *ChannelModelPricing) HasEffectivePricing() bool {
 	return false
 }
 
-// Clone 返回 ChannelModelPricing 的拷贝（切片独立，指针字段共享，调用方只读安全）
+// Clone 返回 ChannelModelPricing 的拷贝；模型、区间和分时配置切片彼此独立。
 func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	cp := p
 	if p.Models != nil {
@@ -223,6 +237,12 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 	if p.Intervals != nil {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
+	}
+	if p.TimePricing != nil {
+		cp.TimePricing = &ChannelTimePricing{Timezone: p.TimePricing.Timezone}
+		if p.TimePricing.Periods != nil {
+			cp.TimePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
+		}
 	}
 	return cp
 }

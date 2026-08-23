@@ -679,7 +679,33 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 	}
-	return validatePricingBillingMode(pricing)
+	if err := validatePricingBillingMode(pricing); err != nil {
+		return err
+	}
+	return validatePricingTimePricing(pricing)
+}
+
+// validatePricingTimePricing 校验每日分时倍率只能用于 token 渠道定价。
+func validatePricingTimePricing(pricing []ChannelModelPricing) error {
+	for i := range pricing {
+		config := pricing[i].TimePricing
+		if config == nil {
+			continue
+		}
+		if len(config.Periods) == 0 {
+			pricing[i].TimePricing = nil
+			continue
+		}
+		mode := pricing[i].BillingMode
+		if mode != "" && mode != BillingModeToken {
+			return infraerrors.BadRequest("TIME_PRICING_UNSUPPORTED_MODE", "time pricing only supports token billing mode")
+		}
+		if err := validateChannelTimePricing(config); err != nil {
+			return infraerrors.BadRequest("INVALID_TIME_PRICING", fmt.Sprintf(
+				"invalid time pricing for platform '%s' models %v: %v", pricing[i].Platform, pricing[i].Models, err))
+		}
+	}
+	return nil
 }
 
 // validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格和倍率不能为负，区间至少有一个价格字段。
@@ -770,6 +796,12 @@ func validateAccountStatsPricingEntries(pricing []ChannelModelPricing) error {
 			return infraerrors.BadRequest(
 				"ACCOUNT_STATS_FAST_MODE_MULTIPLIER_UNSUPPORTED",
 				"fast_mode_multiplier is not supported for account stats pricing",
+			)
+		}
+		if p.TimePricing != nil && len(p.TimePricing.Periods) > 0 {
+			return infraerrors.BadRequest(
+				"ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED",
+				"account stats pricing does not support time pricing",
 			)
 		}
 	}

@@ -368,6 +368,13 @@ riskControl: {
           perRequestPrice: '单次价格'
         }
       },
+      timePricingValidation: {
+        timezone: '请选择有效的 IANA 时区',
+        format: '开始和结束时间必须使用 HH:mm:ss 格式',
+        range: '开始时间必须早于结束时间，跨午夜区间请拆分配置',
+        multiplier: '倍率不得低于 0.01，且最多保留两位小数',
+        overlap: '分时倍率区间不能重叠'
+      },
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
@@ -415,6 +422,13 @@ riskControl: {
         pricePlaceholder: '默认',
         intervals: '上下文区间定价（可选）',
         addInterval: '添加区间',
+        timePricing: '分时倍率',
+        timezone: '时区',
+        addTimePeriod: '添加时段',
+        removeTimePeriod: '删除时段',
+        startTime: '开始时间',
+        endTime: '结束时间',
+        multiplier: '倍率',
         requestTiers: '按次计费层级',
         imageTiers: '图片计费层级（按次）',
         videoTiers: '视频分辨率层级（按秒）',

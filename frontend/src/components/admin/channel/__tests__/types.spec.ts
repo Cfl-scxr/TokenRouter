@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { hasExplicitPricing, validateIntervals, type IntervalFormEntry, type PricingFormEntry } from '../types'
+import {
+  apiTimePricingToForm,
+  createDefaultTimePricingForm,
+  formTimePricingToAPI,
+  hasExplicitPricing,
+  validateIntervals,
+  validateTimePricing,
+  type IntervalFormEntry,
+  type PricingFormEntry,
+  type TimePricingPeriodFormEntry,
+} from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -30,6 +40,7 @@ function makePricingEntry(over: Partial<PricingFormEntry>): PricingFormEntry {
     image_output_price: null,
     per_request_price: null,
     intervals: [],
+    time_pricing: createDefaultTimePricingForm(),
     ...over,
   }
 }
@@ -124,5 +135,47 @@ describe('hasExplicitPricing', () => {
       billing_mode: 'token',
       per_request_price: 1,
     }))).toBe(false)
+  })
+})
+
+describe('time pricing', () => {
+  it('默认关闭并可往返转换旧分钟精度配置', () => {
+    const empty = createDefaultTimePricingForm()
+    expect(formTimePricingToAPI(empty)).toBeNull()
+
+    const form = apiTimePricingToForm({
+      timezone: 'Asia/Shanghai',
+      periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 }],
+    })
+    expect(form.periods[0]).toEqual({
+      start_time: '09:00:00',
+      end_time: '12:00:00',
+      multiplier: '2.00',
+    })
+    expect(formTimePricingToAPI(form)?.periods[0].multiplier).toBe(2)
+  })
+
+  it.each([
+    ['相邻区间', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' }, { start_time: '12:00:00', end_time: '14:00:00', multiplier: '1.50' }], null],
+    ['午夜拆分', [{ start_time: '22:00:00', end_time: '00:00:00', multiplier: '2.00' }, { start_time: '00:00:00', end_time: '02:00:00', multiplier: '2.00' }], null],
+    ['重叠一秒', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' }, { start_time: '11:59:59', end_time: '14:00:00', multiplier: '2.00' }], 'overlap'],
+    ['跨午夜', [{ start_time: '22:00:00', end_time: '02:00:00', multiplier: '2.00' }], 'range'],
+    ['缺少秒', [{ start_time: '09:00', end_time: '12:00', multiplier: '2.00' }], 'format'],
+    ['倍率过小', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '0.001' }], 'multiplier'],
+    ['倍率三位小数', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '1.001' }], 'multiplier'],
+  ])('%s', (_name, periods, errorKey) => {
+    const result = validateTimePricing({
+      timezone: 'Asia/Shanghai',
+      periods: periods as TimePricingPeriodFormEntry[],
+    }, t)
+    if (errorKey === null) expect(result).toBeNull()
+    else expect(result).toContain(String(errorKey))
+  })
+
+  it('拒绝非 IANA 时区', () => {
+    expect(validateTimePricing({
+      timezone: 'UTC+8',
+      periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' }],
+    }, t)).toContain('timezone')
   })
 })

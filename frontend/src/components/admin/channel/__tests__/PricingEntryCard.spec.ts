@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import PricingEntryCard from '../PricingEntryCard.vue'
-import type { PricingFormEntry } from '../types'
+import { createDefaultTimePricingForm, type PricingFormEntry } from '../types'
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -28,6 +28,7 @@ function makeEntry(overrides: Partial<PricingFormEntry> = {}): PricingFormEntry 
     image_output_price: null,
     per_request_price: null,
     intervals: [],
+    time_pricing: createDefaultTimePricingForm(),
     ...overrides,
   }
 }
@@ -68,6 +69,7 @@ describe('PricingEntryCard', () => {
       billing_mode: 'image',
       fast_mode_multiplier: null,
       intervals: [],
+      time_pricing: createDefaultTimePricingForm(),
     })
   })
 })

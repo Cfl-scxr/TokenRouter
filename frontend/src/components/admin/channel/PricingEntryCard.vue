@@ -202,6 +202,12 @@
               />
             </div>
           </div>
+
+          <TimePricingSection
+            v-if="enableTimePricing"
+            :model-value="entry.time_pricing"
+            @update:model-value="emit('update', { ...entry, time_pricing: $event })"
+          />
         </div>
 
         <!-- Per-request mode -->
@@ -288,6 +294,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
+import TimePricingSection from './TimePricingSection.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
@@ -300,9 +307,11 @@ const props = withDefaults(defineProps<{
   platform?: string
   showFastModeMultiplier?: boolean
   hideTokenIntervals?: boolean
+  enableTimePricing?: boolean
 }>(), {
   showFastModeMultiplier: false,
   hideTokenIntervals: false,
+  enableTimePricing: false,
 })
 
 const emit = defineEmits<{
@@ -336,6 +345,9 @@ function onBillingModeUpdate(billingMode: BillingMode) {
     billing_mode: billingMode,
     fast_mode_multiplier: billingMode === 'token' ? props.entry.fast_mode_multiplier : null,
     intervals: [],
+    time_pricing: billingMode === 'token'
+      ? props.entry.time_pricing
+      : { ...props.entry.time_pricing, periods: [] },
   })
 }
 

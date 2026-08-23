@@ -368,6 +368,13 @@ riskControl: {
           perRequestPrice: 'per-request price'
         }
       },
+      timePricingValidation: {
+        timezone: 'Select a valid IANA timezone',
+        format: 'Start and end times must use HH:mm:ss',
+        range: 'Start time must be earlier than end time; split ranges that cross midnight',
+        multiplier: 'Multiplier must be at least 0.01 with no more than two decimal places',
+        overlap: 'Time pricing periods cannot overlap'
+      },
       deleteConfirm: 'Are you sure you want to delete channel "{name}"? This cannot be undone.',
       columns: {
         name: 'Name',
@@ -415,6 +422,13 @@ riskControl: {
         pricePlaceholder: 'Default',
         intervals: 'Context Intervals (optional)',
         addInterval: 'Add Interval',
+        timePricing: 'Time-based Multiplier',
+        timezone: 'Timezone',
+        addTimePeriod: 'Add Period',
+        removeTimePeriod: 'Remove period',
+        startTime: 'Start',
+        endTime: 'End',
+        multiplier: 'Multiplier',
         requestTiers: 'Request Tiers',
         imageTiers: 'Image Tiers (Per Request)',
         videoTiers: 'Video Resolution Tiers (Per Second)',

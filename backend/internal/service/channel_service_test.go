@@ -2565,6 +2565,32 @@ func TestValidateAccountStatsPricingEntries_RejectsFastModeMultiplier(t *testing
 	require.Contains(t, err.Error(), "fast_mode_multiplier is not supported for account stats pricing")
 }
 
+func TestValidatePricingEntries_RejectsTimePricingForNonTokenMode(t *testing.T) {
+	err := validatePricingEntries([]ChannelModelPricing{{
+		Platform:        PlatformOpenAI,
+		BillingMode:     BillingModePerRequest,
+		PerRequestPrice: testPtrFloat64(0.05),
+		TimePricing: &ChannelTimePricing{
+			Timezone: "Asia/Shanghai",
+			Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
+		},
+	}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "TIME_PRICING_UNSUPPORTED_MODE")
+}
+
+func TestNormalizeGroupModelPricingRejectsTimePricing(t *testing.T) {
+	_, err := normalizeGroupModelPricing(PlatformOpenAI, []ChannelModelPricing{{
+		Models: []string{"gpt-5"},
+		TimePricing: &ChannelTimePricing{
+			Timezone: "Asia/Shanghai",
+			Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
+		},
+	}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "GROUP_MODEL_TIME_PRICING_UNSUPPORTED")
+}
+
 // ---------------------------------------------------------------------------
 // 12. Antigravity wildcard mapping isolation
 // ---------------------------------------------------------------------------
