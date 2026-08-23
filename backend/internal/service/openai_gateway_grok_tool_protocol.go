@@ -83,12 +83,12 @@ func restoreGrokResponsesClientToolPayload(c *gin.Context, payload []byte) ([]by
 	return restored, err
 }
 
-type grokResponsesClientToolStreamBody struct {
+type responsesClientToolStreamBody struct {
 	*io.PipeReader
 	source io.Closer
 }
 
-func (b *grokResponsesClientToolStreamBody) Close() error {
+func (b *responsesClientToolStreamBody) Close() error {
 	readerErr := b.PipeReader.Close()
 	sourceErr := b.source.Close()
 	if readerErr != nil {
@@ -97,18 +97,26 @@ func (b *grokResponsesClientToolStreamBody) Close() error {
 	return sourceErr
 }
 
-func newGrokResponsesClientToolStreamBody(
+func newResponsesClientToolStreamBody(
 	source io.ReadCloser,
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
 ) io.ReadCloser {
 	reader, writer := io.Pipe()
-	body := &grokResponsesClientToolStreamBody{PipeReader: reader, source: source}
-	go transformGrokResponsesClientToolStream(source, writer, mapping, maxLineSize)
+	body := &responsesClientToolStreamBody{PipeReader: reader, source: source}
+	go transformResponsesClientToolStream(source, writer, mapping, maxLineSize)
 	return body
 }
 
-func transformGrokResponsesClientToolStream(
+func newGrokResponsesClientToolStreamBody(
+	source io.ReadCloser,
+	mapping apicompat.ResponsesClientToolMapping,
+	maxLineSize int,
+) io.ReadCloser {
+	return newResponsesClientToolStreamBody(source, mapping, maxLineSize)
+}
+
+func transformResponsesClientToolStream(
 	source io.ReadCloser,
 	destination *io.PipeWriter,
 	mapping apicompat.ResponsesClientToolMapping,
@@ -192,7 +200,7 @@ func transformGrokResponsesClientToolStream(
 				payloads, _, err = restorer.RestoreEvent(payload)
 				if err != nil {
 					_ = buffered.Flush()
-					_ = destination.CloseWithError(fmt.Errorf("restore Grok Responses client tool event: %w", err))
+					_ = destination.CloseWithError(fmt.Errorf("restore Responses client tool event: %w", err))
 					return
 				}
 			}

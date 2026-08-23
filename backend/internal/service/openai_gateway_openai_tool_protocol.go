@@ -105,5 +105,5 @@ func newOpenAIResponsesClientToolStreamBody(
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
 ) io.ReadCloser {
-	return newGrokResponsesClientToolStreamBody(source, mapping, maxLineSize)
+	return newResponsesClientToolStreamBody(source, mapping, maxLineSize)
 }
