@@ -128,6 +128,11 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamErrorInternal(
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	}
+	// 容量降载只描述当前请求，不代表账号健康异常；交给请求级重试预算恢复，
+	// 保持账号可调度，避免误写账号冷却状态。
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
+	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 

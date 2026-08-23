@@ -100,6 +100,11 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 		(account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, respBody)) {
 		return nil
 	}
+	// 没有 gin 上下文时无法安全评估请求级临时规则；保持上游语义，
+	// 仅让默认已判定为可故障转移的错误继续进入账号策略管线。
+	if c == nil && !shouldFailover && (account == nil || account.Platform != PlatformGrok) {
+		return nil
+	}
 	var decision UpstreamErrorDecision
 	if account != nil && account.Platform == PlatformGrok {
 		decision = s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)

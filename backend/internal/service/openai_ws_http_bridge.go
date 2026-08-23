@@ -349,6 +349,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	upstreamTerminalEvent := ""
 	sawDone := false
 	wroteDownstream := false
+	pendingClientMessages := make([][]byte, 0, 4)
+	pendingClientMessageBytes := int64(0)
+	capacityFailoverSuppressedLogged := false
 	clientDisconnected := false
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
@@ -447,11 +450,14 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
+		requestScopedCapacity := account.Platform == PlatformOpenAI &&
+			(eventType == "error" || eventType == "response.failed") &&
+			isOpenAIUpstreamCapacityShedEvent(upstreamMessage)
 		terminalPolicy := openAIWSTerminalPolicyDecision{
 			TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
 			Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
 		}
-		if isOpenAIWSTerminalEvent(eventType) {
+		if isOpenAIWSTerminalEvent(eventType) && !requestScopedCapacity {
 			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(
 				ctx,
 				account,
@@ -461,22 +467,33 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			)
 		}
 		if eventType == "response.failed" {
-			if terminalPolicy.Decision.ShouldReturnGenericError() {
+			errMessage := extractOpenAISSEErrorMessage(upstreamMessage)
+			if errMessage == "" {
+				errMessage = "upstream error event"
+			}
+			shouldFailover := requestScopedCapacity
+			if terminalPolicy.Decision.ShouldReturnGenericError() && !requestScopedCapacity {
 				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
 				upstreamEventErr = errors.New("upstream response failed with status not in custom error codes")
-			} else if turn == 1 && !wroteDownstream && terminalPolicy.Decision.ShouldFailoverWithDefaults(
-				account,
-				terminalPolicy.StatusCode,
-				false,
-				s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, upstreamMessage),
-			) {
-				return nil, newOpenAIUpstreamFailoverError(
+			} else if !requestScopedCapacity {
+				shouldFailover = terminalPolicy.Decision.ShouldFailoverWithDefaults(
+					account,
 					terminalPolicy.StatusCode,
-					resp.Header,
-					upstreamMessage,
-					extractOpenAISSEErrorMessage(upstreamMessage),
-					terminalPolicy.Decision.RetryableOnSameAccount(account, terminalPolicy.StatusCode),
+					false,
+					s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, upstreamMessage),
 				)
+			}
+			if turn == 1 && !wroteDownstream && shouldFailover {
+				statusCode := terminalPolicy.StatusCode
+				if statusCode == 0 {
+					statusCode = http.StatusServiceUnavailable
+				}
+				retrySame := requestScopedCapacity || terminalPolicy.Decision.RetryableOnSameAccount(account, statusCode)
+				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, statusCode, upstreamMessage, errMessage, retrySame)
+			}
+			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
+				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
+				capacityFailoverSuppressedLogged = true
 			}
 		}
 		if eventType == "error" {
@@ -490,7 +507,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			requestScopedError := detectOpenAIWSHTTPBridgeRequestScopedError(account, statusCode, errMessage, upstreamMessage)
 			decision := UpstreamErrorDecision{Policy: ErrorPolicyNone}
 			defaultFailover := s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
-			if account.Platform == PlatformGrok {
+			if requestScopedCapacity {
+				requestScopedError = true
+				defaultFailover = true
+			} else if account.Platform == PlatformGrok {
 				// SSE 错误事件不携带 HTTP 状态码，本地映射会把未知 xAI 错误码
 				//（例如 new_sensitive）默认映射为 502；应用基于状态码的故障转移或
 				// 账号状态变更前，先按请求级 403 内容拒绝检查响应体。
@@ -505,17 +525,16 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				defaultFailover = s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
 				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, resp.Header, upstreamMessage, mappedModel)
 			}
-			if decision.ShouldReturnGenericError() {
+			if decision.ShouldReturnGenericError() && !requestScopedCapacity {
 				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
 				upstreamEventErr = errors.New("upstream error not in custom error codes")
-			} else if turn == 1 && !wroteDownstream && !requestScopedError && decision.ShouldFailover(account, policyStatus, defaultFailover) {
-				return nil, newOpenAIUpstreamFailoverError(
-					policyStatus,
-					resp.Header,
-					upstreamMessage,
-					errMessage,
-					decision.RetryableOnSameAccount(account, policyStatus),
-				)
+			} else if turn == 1 && !wroteDownstream && (requestScopedCapacity || (!requestScopedError && decision.ShouldFailover(account, policyStatus, defaultFailover))) {
+				retrySame := requestScopedCapacity || decision.RetryableOnSameAccount(account, policyStatus)
+				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, policyStatus, upstreamMessage, errMessage, retrySame)
+			}
+			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
+				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
+				capacityFailoverSuppressedLogged = true
 			}
 			if upstreamEventErr == nil {
 				upstreamEventErr = errors.New(errMessage)
@@ -533,26 +552,52 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			}
 		}
 		if !clientDisconnected {
-			if err := writeClientMessage(clientMessage); err != nil {
-				if isOpenAIWSClientDisconnectError(err) {
-					clientDisconnected = true
-					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
-					logOpenAIWSModeInfo(
-						"ingress_ws_http_bridge_client_disconnected_drain account_id=%d turn=%d close_status=%s close_reason=%s",
-						account.ID,
-						turn,
-						closeStatus,
-						truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
-					)
-				} else {
-					return nil, wrapOpenAIWSIngressTurnError(
-						"write_client",
-						fmt.Errorf("write client websocket event: %w", err),
-						wroteDownstream,
+			stageBeforeSemanticOutput := turn == 1 && account.Platform == PlatformOpenAI && !wroteDownstream
+			commitStagedMessages := !stageBeforeSemanticOutput ||
+				openAIStreamDataStartsClientOutput(string(clientMessage), eventType) ||
+				isOpenAIWSTerminalEvent(eventType)
+			if stageBeforeSemanticOutput && !commitStagedMessages {
+				if pendingClientMessageBytes+int64(len(clientMessage)) > openAIFirstOutputStageMaxBytes {
+					return nil, s.newOpenAIStreamPolicyFailoverError(
+						c,
+						account,
+						true,
+						resp.Header.Get("x-request-id"),
+						resp.Header,
+						http.StatusBadGateway,
+						nil,
+						"OpenAI WS HTTP bridge first-output staging limit exceeded",
+						false,
 					)
 				}
+				pendingClientMessages = append(pendingClientMessages, append([]byte(nil), clientMessage...))
+				pendingClientMessageBytes += int64(len(clientMessage))
 			} else {
-				wroteDownstream = true
+				messages := append(pendingClientMessages, clientMessage)
+				pendingClientMessages = nil
+				pendingClientMessageBytes = 0
+				for _, message := range messages {
+					if err := writeClientMessage(message); err != nil {
+						if isOpenAIWSClientDisconnectError(err) {
+							clientDisconnected = true
+							closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
+							logOpenAIWSModeInfo(
+								"ingress_ws_http_bridge_client_disconnected_drain account_id=%d turn=%d close_status=%s close_reason=%s",
+								account.ID,
+								turn,
+								closeStatus,
+								truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
+							)
+							break
+						}
+						return nil, wrapOpenAIWSIngressTurnError(
+							"write_client",
+							fmt.Errorf("write client websocket event: %w", err),
+							wroteDownstream,
+						)
+					}
+					wroteDownstream = true
+				}
 			}
 		}
 
