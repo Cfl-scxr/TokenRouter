@@ -106,6 +106,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
+		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+		if adaptErr != nil {
+			return nil, adaptErr
+		}
+		body = adaptedBody
+		if hasOpenAIResponsesClientToolMapping(mapping) && c != nil {
+			c.Set(openAIResponsesClientToolMappingContextKey, mapping)
+		}
+	}
+
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
 	if err != nil {
 		return nil, err
@@ -251,6 +263,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if mapping, ok := openAIResponsesClientToolMapping(c); ok && isEventStreamResponse(resp.Header) {
+		maxLineSize := defaultMaxLineSize
+		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+			maxLineSize = s.cfg.Gateway.MaxLineSize
+		}
+		resp.Body = newOpenAIResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+	}
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 	// 仅在成功响应确定会写回客户端后记录签发账号。
@@ -1660,6 +1679,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
 	}
+	body, err = restoreOpenAIResponsesClientToolPayload(c, body)
+	if err != nil {
+		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
+	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1706,6 +1729,10 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(ctx context.Context, r
 			return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
 		}
 		body = restoredBody
+		body, restoreErr = restoreOpenAIResponsesClientToolPayload(c, body)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", restoreErr)
+		}
 	} else {
 		terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 		if terminalOK && terminalType == "response.failed" {
