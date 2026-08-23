@@ -178,6 +178,108 @@ func TestUpstreamUsageBaseURLUsesStrictDefaultsWithoutConfig(t *testing.T) {
 	require.Equal(t, "https://gateway.example/v1", value)
 }
 
+func TestCNUpstreamUsageAdaptersPreserveConfiguredHostAndNormalizeResults(t *testing.T) {
+	tests := []struct {
+		name        string
+		account     *Account
+		response    string
+		wantAdapter string
+		wantPath    string
+		wantAuth    string
+		assert      func(*testing.T, *UpstreamUsageQueryResult)
+	}{
+		{
+			name: "Kimi Coding 百分比窗口",
+			account: &Account{ID: 11, Platform: PlatformKimi, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "kimi-key", "account_mode": AccountModeCoding, "base_url": "https://relay.example/coding/v1"}},
+			response:    `{"limits":[{"detail":{"limit":100,"remaining":25,"resetTime":"2026-08-24T00:00:00Z"}}],"usage":{"limit":1000,"remaining":800,"resetTime":"2026-08-30T00:00:00Z"}}`,
+			wantAdapter: UpstreamUsageAdapterKimiCoding,
+			wantPath:    "/coding/v1/usages",
+			wantAuth:    "Bearer kimi-key",
+			assert: func(t *testing.T, result *UpstreamUsageQueryResult) {
+				require.Equal(t, "PERCENT", result.Unit)
+				require.Len(t, result.Limits, 2)
+				require.InDelta(t, 75, *result.Limits[0].Used, 1e-9)
+			},
+		},
+		{
+			name: "智谱 Coding 裸密钥",
+			account: &Account{ID: 12, Platform: PlatformZhipu, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "zhipu-key", "account_mode": AccountModeCoding, "base_url": "https://relay.example/api/coding/paas/v4"}},
+			response:    `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":32,"nextResetTime":1787529600000}]}}`,
+			wantAdapter: UpstreamUsageAdapterZhipuCoding,
+			wantPath:    "/api/monitor/usage/quota/limit",
+			wantAuth:    "zhipu-key",
+			assert: func(t *testing.T, result *UpstreamUsageQueryResult) {
+				require.Len(t, result.Limits, 1)
+				require.InDelta(t, 32, *result.Limits[0].Used, 1e-9)
+			},
+		},
+		{
+			name: "Kimi 按量余额",
+			account: &Account{ID: 13, Platform: PlatformKimi, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "kimi-payg", "base_url": "https://relay.example/v1"}},
+			response:    `{"code":0,"data":{"available_balance":"6.25"}}`,
+			wantAdapter: UpstreamUsageAdapterKimiBalance,
+			wantPath:    "/v1/users/me/balance",
+			wantAuth:    "Bearer kimi-payg",
+			assert: func(t *testing.T, result *UpstreamUsageQueryResult) {
+				require.Equal(t, "CNY", result.Unit)
+				require.InDelta(t, 6.25, *result.Balance.Remaining, 1e-9)
+			},
+		},
+		{
+			name: "DeepSeek 多币种余额",
+			account: &Account{ID: 14, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "deepseek-key", "base_url": "https://relay.example/anthropic", "api_protocol": APIProtocolAnthropic}},
+			response:    `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"3.5"},{"currency":"USD","total_balance":"1.25"}]}`,
+			wantAdapter: UpstreamUsageAdapterDeepseekBalance,
+			wantPath:    "/user/balance",
+			wantAuth:    "Bearer deepseek-key",
+			assert: func(t *testing.T, result *UpstreamUsageQueryResult) {
+				require.Len(t, result.Balances, 2)
+				require.NotNil(t, result.Available)
+				require.True(t, *result.Available)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &upstreamUsageAccountRepoStub{account: test.account}
+			upstream := &upstreamUsageHTTPStub{responses: []struct {
+				status int
+				body   string
+				err    error
+			}{{status: http.StatusOK, body: test.response}}}
+			service := NewUpstreamUsageService(repo, upstream, testUpstreamUsageConfig(), nil)
+			result, err := service.QueryAccount(context.Background(), test.account.ID)
+			require.NoError(t, err)
+			require.Equal(t, test.wantAdapter, result.Adapter)
+			require.Len(t, upstream.requests, 1)
+			request := upstream.requests[0]
+			require.Equal(t, "relay.example", request.URL.Hostname())
+			require.Equal(t, test.wantPath, request.URL.Path)
+			require.Equal(t, test.wantAuth, request.Header.Get("Authorization"))
+			require.True(t, HTTPUpstreamRedirectsDisabled(request.Context()))
+			test.assert(t, result)
+		})
+	}
+}
+
+func TestCNUpstreamUsageUnsupportedPayGDoesNotSendRequest(t *testing.T) {
+	account := &Account{
+		ID: 15, Platform: PlatformZhipu, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "zhipu-key", "account_mode": AccountModePayG},
+	}
+	repo := &upstreamUsageAccountRepoStub{account: account}
+	upstream := &upstreamUsageHTTPStub{}
+	service := NewUpstreamUsageService(repo, upstream, testUpstreamUsageConfig(), nil)
+	_, err := service.QueryAccount(context.Background(), account.ID)
+	require.ErrorIs(t, err, ErrUpstreamUsageUnsupported)
+	require.Empty(t, upstream.requests)
+}
+
 func TestParseSub2APIUsageModes(t *testing.T) {
 	balance, err := parseSub2APIUsage([]byte(`{"isValid":true,"mode":"unrestricted","unit":"USD","planName":"payg","remaining":12.5,"balance":12.5}`))
 	require.NoError(t, err)

@@ -21,7 +21,7 @@
       </label>
     </div>
 
-    <div v-if="enabledModel" class="mt-3 space-y-3">
+    <div v-if="enabledModel && !automaticAdapter" class="mt-3 space-y-3">
       <div>
         <label class="input-label">{{ t('admin.accounts.upstreamUsage.adapter') }}</label>
         <Select
@@ -83,12 +83,14 @@ const props = withDefaults(defineProps<{
   baseUrl: string
   walletAccessToken?: string
   walletUserId?: string
+  automaticAdapter?: boolean
 }>(), {
   enabled: true,
   adapter: 'sub2api',
   baseUrl: '',
   walletAccessToken: '',
-  walletUserId: ''
+  walletUserId: '',
+  automaticAdapter: false
 })
 
 const emit = defineEmits<{

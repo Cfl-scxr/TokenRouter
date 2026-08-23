@@ -71,6 +71,12 @@
 
 升级前先创建并实际验证 PostgreSQL 备份，同时保存 Redis/对象存储中业务要求恢复的数据。后台备份服务可把数据库 dump 流式写入本地或 S3 兼容存储，并用维护锁串行化备份/恢复；敏感存储配置需要稳定的安全密钥。备份内容策略可能排除大体量历史表，恢复目标必须先核对备份范围。
 
+### 国产供应商用户平台额度约束
+
+迁移 `248_allow_cn_user_platform_quotas.sql` 由上游迁移 224 按本 fork 当时最大编号 247 递增而来；仓库不保留上游原文件名。它只替换 `user_platform_quotas.platform` 的 CHECK 约束，把 `kimi`、`zhipu`、`deepseek` 加入原有六个平台，并与应用层九平台 allowlist 对齐。
+
+该迁移不回填已有用户的 CN 额度行。已有用户缺失行时继续按领域既有语义视为无限额，管理员显式保存九平台配置后才创建对应记录；新注册用户会在单次批量写入中创建全部九个平台的默认快照。升级后至少验证迁移可重复执行、新用户九行均写入、已有额度记录不变，以及 Kimi/Zhipu/DeepSeek 的日周月限额更新、预检查和结算归属。
+
 ### Grok 媒体、搜索与 Voice 定价迁移
 
 迁移 `242_group_video_model_prices.sql` 为分组增加可空 JSONB `video_model_prices`，按 Grok 视频模型族和分辨率保存每秒价格；`243_group_audio_voice_pricing.sql` 增加 Realtime 每分钟、TTS 每百万字符和 STT 每小时价格；`244_group_search_price_per_1k.sql` 增加搜索每千次价格。三类价格均以 `NULL` 表示使用代码默认值，显式 `0` 表示免费。管理端和服务层会规范化模型族、拒绝负价，并保持旧 `video_price_*` 作为视频回退层。
@@ -109,7 +115,7 @@
 
 ### 分组客户端协议迁移
 
-迁移 `235_add_group_allowed_client_protocols.sql` 为 Group 增加非空 JSONB `allowed_client_protocols`，按六个平台在升级前的实际路由行为回填。OpenAI 是否加入 Messages 取自旧 `allow_messages_dispatch`；其它已有平台按各自迁移矩阵回填。旧列作为弃用管理 API 字段的数据库镜像保留，不用于支持新旧二进制共存。
+迁移 `235_add_group_allowed_client_protocols.sql` 为 Group 增加非空 JSONB `allowed_client_protocols`，按当时六个平台在升级前的实际路由行为回填。OpenAI 是否加入 Messages 取自旧 `allow_messages_dispatch`；其它已有平台按各自迁移矩阵回填。后续新增的 Kimi、Zhipu、DeepSeek 不需要历史回填，新建分组默认启用 Messages、Responses 和 Chat。旧列作为弃用管理 API 字段的数据库镜像保留，不用于支持新旧二进制共存。
 
 数据库默认值是空数组，作为绕过管理服务直接写 Group 时的 fail-closed 默认值。空数组对所有平台都是明确且有效的策略，新代码不会按旧矩阵恢复或自动补协议；管理 API 创建字段缺省时仍使用各平台的新建默认值。
 

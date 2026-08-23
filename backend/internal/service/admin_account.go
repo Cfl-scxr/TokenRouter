@@ -188,6 +188,7 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"openai_compact_last_error":                   {},
 	"qoder_quota_snapshot":                        {},
 	"qoder_quota_updated_at":                      {},
+	CNUsageMonitorSnapshotExtraKey:                {},
 	"antigravity_credits_overages":                {},
 	"antigravity_force_token_refresh":             {},
 	"antigravity_force_token_refresh_at":          {},
@@ -404,6 +405,53 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 	return concurrency
 }
 
+// normalizeCNProviderCredentials 校验国产供应商账号组合，并为新账号补齐历史默认值。
+// 旧记录缺少 mode/protocol 时由 Account 方法按 payg + chat_completions 读取，避免无关编辑
+// 把兼容数据强制改写；新建记录则显式保存默认值，方便前端和监控选择适配器。
+func normalizeCNProviderCredentials(account *Account, isCreate bool) error {
+	if account == nil || !IsCNProvider(account.Platform) {
+		return nil
+	}
+	if account.Type != AccountTypeAPIKey {
+		return infraerrors.BadRequest("CN_PROVIDER_ACCOUNT_TYPE_INVALID", "CN provider accounts must use API Key credentials")
+	}
+	if account.Credentials == nil {
+		account.Credentials = make(map[string]any)
+	}
+	mode, _ := account.Credentials["account_mode"].(string)
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		mode = AccountModePayG
+		if isCreate {
+			account.Credentials["account_mode"] = mode
+		}
+	}
+	if mode != AccountModePayG && mode != AccountModeCoding {
+		return infraerrors.BadRequest("CN_PROVIDER_ACCOUNT_MODE_INVALID", "account_mode must be payg or coding")
+	}
+	protocol, _ := account.Credentials["api_protocol"].(string)
+	protocol = strings.TrimSpace(protocol)
+	if protocol == "" {
+		protocol = APIProtocolChatCompletions
+		if isCreate {
+			account.Credentials["api_protocol"] = protocol
+		}
+	}
+	switch protocol {
+	case APIProtocolChatCompletions, APIProtocolAnthropic:
+	case APIProtocolResponses:
+		if account.Platform != PlatformDeepseek {
+			return infraerrors.BadRequest("CN_PROVIDER_PROTOCOL_INVALID", "only DeepSeek supports Responses protocol")
+		}
+	default:
+		return infraerrors.BadRequest("CN_PROVIDER_PROTOCOL_INVALID", "api_protocol is unsupported")
+	}
+	if mode == AccountModeCoding && account.Platform == PlatformDeepseek {
+		return infraerrors.BadRequest("CN_PROVIDER_MODE_INVALID", "DeepSeek does not support coding plan mode")
+	}
+	return nil
+}
+
 // ValidateGrokMediaEligibilityExtra 校验可选的媒体调度覆盖；null 表示删除覆盖，
 // 让账号恢复为根据上游观测自动判断。
 func ValidateGrokMediaEligibilityExtra(platform string, extra map[string]any) error {
@@ -470,6 +518,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
+	delete(accountExtra, CNUsageMonitorSnapshotExtraKey)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -482,6 +531,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if err := normalizeCNProviderCredentials(account, true); err != nil {
+		return nil, err
 	}
 	if err := normalizeOpenAIAPIKeyConfiguration(account); err != nil {
 		return nil, err
@@ -623,6 +675,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	previousCNUsageIdentity := cnUsageMonitorIdentityFingerprint(account)
 	originalQoderSite, originalQoderSiteErr := qoderSiteForAccount(account)
 	originalQoderPAT := strings.TrimSpace(account.GetCredential("pat"))
 	normalizedExtra, shouldReplaceExtra := NormalizeDeprecatedAccountExtraUpdate(input.Extra)
@@ -717,6 +770,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
+		delete(normalizedExtra, CNUsageMonitorSnapshotExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -728,6 +782,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
+			CNUsageMonitorSnapshotExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
@@ -776,6 +831,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
 	DiscardDeprecatedAccountExtra(account.Extra)
+	if err := normalizeCNProviderCredentials(account, false); err != nil {
+		return nil, err
+	}
 	if err := normalizeOpenAIAPIKeyConfiguration(account); err != nil {
 		return nil, err
 	}
@@ -849,6 +907,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 	s.attachAccountProxyForValidation(ctx, account)
+	if previousCNUsageIdentity != cnUsageMonitorIdentityFingerprint(account) && account.Extra != nil {
+		delete(account.Extra, CNUsageMonitorSnapshotExtraKey)
+	}
 	if err := validateQoderCosyCredentialsWithOptions(ctx, account, s.httpUpstream, s.tlsFPProfileService, deferQoderPATValidation); err != nil {
 		return nil, err
 	}
@@ -888,6 +949,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
+	delete(updates, CNUsageMonitorSnapshotExtraKey)
 	if hasOpenAIConfigurationPatch(nil, updates) {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -920,6 +982,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	delete(input.Extra, CNUsageMonitorSnapshotExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -1041,6 +1104,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			}
 			for key, value := range input.Credentials {
 				prospective.Credentials[key] = value
+			}
+			if err := normalizeCNProviderCredentials(&prospective, false); err != nil {
+				return nil, err
 			}
 			if err := validateGeminiThirdPartyBaseURL(&prospective); err != nil {
 				return nil, err

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	dbent "github.com/TokenFlux/TokenRouter/ent"
@@ -14,6 +15,58 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
+
+func TestUpdateCNUsageMonitorSnapshotCASWritesSnapshotAndOutboxAtomically(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	expectedUpdatedAt := time.Date(2026, 8, 23, 2, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)WITH updated AS \(.*updated_at = \$5.*INSERT INTO scheduler_outbox`).
+		WithArgs("", service.CNUsageMonitorSnapshotExtraKey, sqlmock.AnyArg(), int64(27), expectedUpdatedAt, service.SchedulerOutboxEventAccountChanged).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+	written, err := repo.UpdateCNUsageMonitorSnapshotCAS(context.Background(), 27, expectedUpdatedAt, &service.CNUsageMonitorSnapshot{
+		Version:       1,
+		Adapter:       service.UpstreamUsageAdapterKimiBalance,
+		IdentityHash:  "identity",
+		LastAttemptAt: expectedUpdatedAt,
+	}, "")
+	require.NoError(t, err)
+	require.True(t, written)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateCNUsageMonitorSnapshotCASRejectsStaleUpdatedAt(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	expectedUpdatedAt := time.Date(2026, 8, 23, 2, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)WITH updated AS \(.*updated_at = \$5.*INSERT INTO scheduler_outbox`).
+		WithArgs("", service.CNUsageMonitorSnapshotExtraKey, sqlmock.AnyArg(), int64(27), expectedUpdatedAt, service.SchedulerOutboxEventAccountChanged).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+	written, err := repo.UpdateCNUsageMonitorSnapshotCAS(context.Background(), 27, expectedUpdatedAt, &service.CNUsageMonitorSnapshot{
+		Version:       1,
+		Adapter:       service.UpstreamUsageAdapterKimiBalance,
+		IdentityHash:  "stale",
+		LastAttemptAt: expectedUpdatedAt,
+	}, "")
+	require.NoError(t, err)
+	require.False(t, written)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestLockAndMergeAccountManagedExtraProtectsOllamaFields(t *testing.T) {
 	tests := []struct {

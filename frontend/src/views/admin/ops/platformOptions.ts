@@ -10,7 +10,10 @@ const BUILTIN_PLATFORM_OPTIONS: SelectOption[] = [
   { value: 'gemini', label: 'Gemini' },
   { value: 'antigravity', label: 'Antigravity' },
   { value: 'qoder', label: 'Qoder' },
-  { value: 'grok', label: 'Grok' }
+  { value: 'grok', label: 'Grok' },
+  { value: 'kimi', label: 'Kimi' },
+  { value: 'zhipu', label: 'Zhipu' },
+  { value: 'deepseek', label: 'DeepSeek' }
 ]
 
 // 内置平台保持稳定顺序，同时从分组数据补充后续新增的平台。

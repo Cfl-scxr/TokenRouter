@@ -776,7 +776,23 @@ const accountSupportsBatchUsage = (account: Account) => {
   return false
 }
 
-const isUpstreamUsageAccount = (account: Account) => account.type === 'apikey'
+const isUpstreamUsageAccount = (account: Account) =>
+  account.type === 'apikey' &&
+  !(account.platform === 'zhipu' && account.credentials?.account_mode !== 'coding')
+
+const effectiveUpstreamUsageAdapter = (account: Account) => {
+  if (account.platform === 'kimi') {
+    return account.credentials?.account_mode === 'coding' ? 'kimi_coding' : 'kimi_balance'
+  }
+  if (account.platform === 'zhipu') {
+    return account.credentials?.account_mode === 'coding' ? 'zhipu_coding' : ''
+  }
+  if (account.platform === 'deepseek') return 'deepseek_balance'
+  const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
+  return rawConfig?.adapter === 'new_api' || rawConfig?.adapter === 'zivv'
+    ? rawConfig.adapter
+    : 'sub2api'
+}
 
 // 缓存键需要区分不同 Base URL，但不应把可能包含内部路径信息的原文写进浏览器存储。
 const upstreamUsageCacheIdentity = (value: string) => {
@@ -796,9 +812,10 @@ const upstreamUsageCacheKey = (account: Account) => {
   const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
   const config = {
     enabled: rawConfig?.enabled !== false,
-    adapter: typeof rawConfig?.adapter === 'string' && rawConfig.adapter.trim()
-      ? rawConfig.adapter.trim()
-      : 'sub2api',
+    adapter: effectiveUpstreamUsageAdapter(account) ||
+      (typeof rawConfig?.adapter === 'string' && rawConfig.adapter.trim()
+        ? rawConfig.adapter.trim()
+        : 'sub2api'),
     base_url: upstreamUsageCacheIdentity(typeof rawConfig?.base_url === 'string' ? rawConfig.base_url.trim() : '')
   }
   const accountBaseURL = typeof account.credentials?.base_url === 'string'
@@ -842,9 +859,15 @@ const isValidUpstreamUsageInfo = (value: unknown) => {
   const subscription = usage.subscription
   if (typeof usage.provider !== 'string' || usage.provider.trim() === '' || typeof mode !== 'string' ||
     !['balance', 'quota', 'limits', 'subscription'].includes(mode) ||
-    (unit != null && !['USD', 'CNY', 'TOKENS'].includes(String(unit))) ||
+    (unit != null && !['USD', 'CNY', 'TOKENS', 'PERCENT'].includes(String(unit))) ||
     (usage.expires_at != null && (typeof usage.expires_at !== 'string' || !Number.isFinite(Date.parse(usage.expires_at)))) ||
     (usage.balance != null && !isValidUpstreamUsageAmount(usage.balance)) ||
+    (usage.balances != null && (!Array.isArray(usage.balances) || !usage.balances.every(item => {
+      if (!item || typeof item !== 'object') return false
+      const balance = item as Record<string, unknown>
+      return typeof balance.currency === 'string' && balance.currency.trim() !== '' &&
+        typeof balance.remaining === 'number' && Number.isFinite(balance.remaining)
+    }))) ||
     (limits != null && (!Array.isArray(limits) || !limits.every(isValidUpstreamUsageLimit)))) return false
   if (subscription != null) {
     if (typeof subscription !== 'object') return false
@@ -873,9 +896,7 @@ const isValidUpstreamUsageResult = (account: Account, data: unknown): data is Up
   if (!data || typeof data !== 'object') return false
   const result = data as UpstreamUsageQueryResult
   const rawConfig = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
-  const expectedAdapter = rawConfig?.adapter === 'new_api' || rawConfig?.adapter === 'zivv'
-    ? rawConfig.adapter
-    : 'sub2api'
+  const expectedAdapter = effectiveUpstreamUsageAdapter(account)
   if (result.account_id !== account.id ||
     rawConfig?.enabled === false ||
     result.adapter !== expectedAdapter ||
@@ -887,6 +908,8 @@ const isValidUpstreamUsageResult = (account: Account, data: unknown): data is Up
         mode: result.mode,
         unit: result.unit,
         balance: result.balance,
+        balances: result.balances,
+        available: result.available,
         limits: result.limits,
         subscription: result.subscription,
         expires_at: result.expires_at

@@ -36,7 +36,7 @@
 | 上游账号刷新、测试、配额探测和自动恢复 | [账号维护](account_maintenance.md) |
 | 分组内容轨迹采集、质量、导出和对象存储 | [数据共享](data_sharing.md) |
 | 内容审核日志、风险命中和自动处置 | [内容审核与风险处置](../domains/content_moderation.md) |
-| 用户六平台额度的 Redis/DB 同步 | [用户平台额度](../domains/platform_quotas.md) |
+| 用户九平台额度的 Redis/DB 同步 | [用户平台额度](../domains/platform_quotas.md) |
 
 ## 关联与脱敏
 

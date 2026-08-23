@@ -98,6 +98,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // tlsFingerprintCollector
 		nil, // ollamaCloudUsage
 		nil, // auditLog
+		nil, // 国产供应商用量监控
 	)
 
 	require.NotPanics(t, func() {

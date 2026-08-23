@@ -31,6 +31,22 @@ const (
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
 	PlatformQoder       = "qoder"
+	PlatformKimi        = "kimi"
+	PlatformZhipu       = "zhipu"
+	PlatformDeepseek    = "deepseek"
+)
+
+// 国产供应商账号模式决定默认端点与主动用量适配器。
+const (
+	AccountModePayG   = "payg"
+	AccountModeCoding = "coding"
+)
+
+// 国产供应商上游协议与账号模式正交，决定实际 wire protocol。
+const (
+	APIProtocolChatCompletions = "chat_completions"
+	APIProtocolAnthropic       = "anthropic"
+	APIProtocolResponses       = "responses"
 )
 
 // Account type constants

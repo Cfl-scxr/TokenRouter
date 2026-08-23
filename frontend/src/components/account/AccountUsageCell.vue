@@ -174,6 +174,22 @@
       </div>
     </template>
 
+    <!-- 国产供应商 API Key：复用统一的显式上游用量查询与会话缓存。 -->
+    <template
+      v-else-if="
+        account.type === 'apikey' &&
+        (account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek')
+      "
+    >
+      <AccountUpstreamUsageCell
+        :account="account"
+        :result="upstreamUsage"
+        :error="upstreamUsageError"
+        :loading="upstreamUsageLoading"
+        :request="requestUpstreamUsage"
+      />
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -838,6 +854,10 @@ const upstreamUsageDisabled = computed(() => {
 
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
+  if (
+    props.account.type === 'apikey' &&
+    (props.account.platform === 'kimi' || props.account.platform === 'zhipu' || props.account.platform === 'deepseek')
+  ) return true
   // API Key 的上游余额由独立子组件按需查询；不能沿用 OAuth/Gemini
   // 用量模型在列表加载或进入视口时主动请求上游。
   if (props.account.type === 'apikey') return false

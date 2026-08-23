@@ -117,6 +117,7 @@ func provideCleanup(
 	tlsFingerprintCollector *service.TLSFingerprintCollectorService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
+	cnUsageMonitor *service.CNProviderBalanceCheckService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -129,6 +130,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行；数据共享采集需先 drain worker 再 flush 缓冲池。
 		parallelSteps := []cleanupStep{
+			{"CNUsageMonitor", func() error {
+				if cnUsageMonitor != nil {
+					cnUsageMonitor.Stop()
+				}
+				return nil
+			}},
 			{"OpsIngressRejectAggregator", func() error {
 				if opsIngressReject != nil {
 					opsIngressReject.Stop()

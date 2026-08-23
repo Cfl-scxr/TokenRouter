@@ -988,6 +988,9 @@ type GatewayConfig struct {
 
 	// Grok 保存 Grok/xAI 网关调度与免费层软门禁配置。
 	Grok GatewayGrokConfig `mapstructure:"grok"`
+
+	// CNProviders 配置国产 OpenAI 兼容供应商的独立用量监控。
+	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
 }
 
 // GatewayGrokConfig 保存 Grok 专用的网关调度参数。
@@ -1014,6 +1017,18 @@ type GatewayGrokConfig struct {
 	// FreeQuotaStatsCacheSeconds 是软门禁统计缓存 TTL；热路径不等待 usage_logs，
 	// 未命中时放行并异步刷新。
 	FreeQuotaStatsCacheSeconds int `mapstructure:"free_quota_stats_cache_seconds"`
+}
+
+// GatewayCNProvidersConfig 配置国产供应商的周期性余额/额度探测。
+// 该任务默认关闭；开启后只处理活动的 API Key 账号，不改变管理员手动查询语义。
+type GatewayCNProvidersConfig struct {
+	// MonitorEnabled 显式开启后才运行后台周期探测；手动查询不受此开关影响。
+	MonitorEnabled      bool    `mapstructure:"monitor_enabled"`
+	BalanceThreshold    float64 `mapstructure:"balance_threshold"`
+	IntervalMinutes     int     `mapstructure:"interval_minutes"`
+	Concurrency         int     `mapstructure:"concurrency"`
+	ProbeTimeoutSeconds int     `mapstructure:"probe_timeout_seconds"`
+	RoundTimeoutSeconds int     `mapstructure:"round_timeout_seconds"`
 }
 
 // GatewayLiveConfig 定义 ChatGPT Frameless Live 会话限制。
@@ -1975,6 +1990,8 @@ func setDefaults() {
 		"api.moonshot.ai",
 		"api.moonshot.cn",
 		"open.bigmodel.cn",
+		"api.z.ai",
+		"api.deepseek.com",
 		"api.minimaxi.com",
 		"generativelanguage.googleapis.com",
 		"cloudcode-pa.googleapis.com",
@@ -2354,6 +2371,13 @@ func setDefaults() {
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
 	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
+	// 国产供应商用量监控默认关闭；管理员手动查询不受该开关影响。
+	viper.SetDefault("gateway.cn_providers.monitor_enabled", false)
+	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
+	viper.SetDefault("gateway.cn_providers.interval_minutes", 10)
+	viper.SetDefault("gateway.cn_providers.concurrency", 4)
+	viper.SetDefault("gateway.cn_providers.probe_timeout_seconds", 20)
+	viper.SetDefault("gateway.cn_providers.round_timeout_seconds", 300)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)

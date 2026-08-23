@@ -1011,7 +1011,12 @@ const platformFilterOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' }
+  { value: 'antigravity', label: 'Antigravity' },
+  { value: 'qoder', label: 'Qoder' },
+  { value: 'grok', label: 'Grok' },
+  { value: 'kimi', label: 'Kimi' },
+  { value: 'zhipu', label: 'Zhipu' },
+  { value: 'deepseek', label: 'DeepSeek' }
 ])
 
 const subscriptionPlanOptions = computed<PlanOption[]>(() =>

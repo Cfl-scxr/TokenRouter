@@ -59,6 +59,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_reset_credit_",
 	"passive_usage_",
 	"ollama_cloud_usage",
+	"cn_usage_monitor",
 }
 
 const (
@@ -75,11 +76,12 @@ func discardDeprecatedAccountExtra(extra map[string]any) {
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
-	"codex_usage_updated_at":     {},
-	"grok_billing_snapshot":      {},
-	"qoder_quota_snapshot":       {},
-	"qoder_quota_updated_at":     {},
-	"session_window_utilization": {},
+	"codex_usage_updated_at":               {},
+	"grok_billing_snapshot":                {},
+	"qoder_quota_snapshot":                 {},
+	"qoder_quota_updated_at":               {},
+	"session_window_utilization":           {},
+	service.CNUsageMonitorSnapshotExtraKey: {},
 }
 
 const postgresParameterBatchSize = 50000
@@ -699,10 +701,20 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 					- 'ollama_cloud_usage_session'
 					- 'ollama_cloud_usage_auto_refresh'
 					- 'ollama_cloud_usage_snapshot'
-				ELSE COALESCE(extra, '{}'::jsonb)
-					- 'upstream_billing_probe'
-					- 'upstream_billing_probe_enabled'
-					- 'openai_long_context_billing_enabled'
+				ELSE CASE
+					WHEN platform IN ('kimi', 'zhipu', 'deepseek')
+						AND type = 'apikey'
+						AND credentials IS DISTINCT FROM $1::jsonb
+					THEN (COALESCE(extra, '{}'::jsonb)
+							- 'upstream_billing_probe'
+							- 'upstream_billing_probe_enabled'
+							- 'openai_long_context_billing_enabled')
+						- 'cn_usage_monitor_snapshot'
+					ELSE COALESCE(extra, '{}'::jsonb)
+						- 'upstream_billing_probe'
+						- 'upstream_billing_probe_enabled'
+						- 'openai_long_context_billing_enabled'
+				END
 			END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
@@ -2402,6 +2414,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	extraExpression := "(COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled' - 'openai_long_context_billing_enabled') || $1::jsonb"
+	if cnUsageMonitorIdentityExtraPatch(updates) {
+		extraExpression = "(" + extraExpression + ") - '" + service.CNUsageMonitorSnapshotExtraKey + "'"
+	}
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
@@ -2440,6 +2455,76 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	return nil
+}
+
+// UpdateCNUsageMonitorSnapshotCAS 仅在账号 updated_at 仍与探测身份快照一致时写入。
+// 快照会影响调度阈值，因此写入与 scheduler outbox 事件处于同一事务。
+func (r *accountRepository) UpdateCNUsageMonitorSnapshotCAS(
+	ctx context.Context,
+	accountID int64,
+	expectedUpdatedAt time.Time,
+	snapshot *service.CNUsageMonitorSnapshot,
+	clearExtraKey string,
+) (bool, error) {
+	if snapshot == nil {
+		return false, nil
+	}
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return false, err
+	}
+
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if contextTx == nil {
+		tx, err = r.client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return false, err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+	result, err := client.ExecContext(ctx, `
+		WITH updated AS (
+			UPDATE accounts
+			SET extra = CASE
+					WHEN $1 = '' THEN COALESCE(extra, '{}'::jsonb) || jsonb_build_object($2, $3::jsonb)
+					ELSE (COALESCE(extra, '{}'::jsonb) || jsonb_build_object($2, $3::jsonb)) - $1
+				END,
+				updated_at = NOW()
+			WHERE id = $4
+				AND deleted_at IS NULL
+				AND updated_at = $5
+			RETURNING id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $6, updated.id, NULL, NULL FROM updated
+	`, strings.TrimSpace(clearExtraKey), service.CNUsageMonitorSnapshotExtraKey, string(payload),
+		accountID, expectedUpdatedAt, service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+	}
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, accountID)
+	}
+	return true, nil
 }
 
 func lockAndMatchAccountProxyIdentity(ctx context.Context, client *dbent.Client, account *service.Account) (bool, error) {
@@ -2495,6 +2580,20 @@ func isSchedulerNeutralExtraKey(key string) bool {
 	}
 	for _, prefix := range schedulerNeutralExtraKeyPrefixes {
 		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func cnUsageMonitorIdentityExtraPatch(updates map[string]any) bool {
+	for _, key := range []string{
+		service.UpstreamUsageQueryExtraKey,
+		"enable_tls_fingerprint",
+		"tls_fingerprint_profile_id",
+		"tls_fingerprint_router_id",
+	} {
+		if _, ok := updates[key]; ok {
 			return true
 		}
 	}
@@ -2592,7 +2691,8 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
+	cnUsageIdentityChanged := len(updates.Credentials) > 0 || updates.ProxyID != nil || cnUsageMonitorIdentityExtraPatch(updates.Extra)
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || cnUsageIdentityChanged {
 		extraExpression := "COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'upstream_billing_probe_enabled' - 'openai_long_context_billing_enabled'"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -2627,6 +2727,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" ELSE " + extraExpression + " END"
 		} else if snapshotIdentityChanged != "" {
 			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		}
+		if cnUsageIdentityChanged {
+			extraExpression = "CASE WHEN platform IN ('kimi', 'zhipu', 'deepseek') AND type = 'apikey'" +
+				" THEN (" + extraExpression + ") - '" + service.CNUsageMonitorSnapshotExtraKey + "' ELSE " + extraExpression + " END"
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
 	}

@@ -230,4 +230,84 @@ describe('AccountUpstreamUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.upstreamUsage.disabled')
     expect(wrapper.text()).not.toContain('10 USD')
   })
+
+  it('展示 CN 百分比窗口和 DeepSeek 多币种余额', async () => {
+    const wrapper = mountCell({
+      account: {
+        ...account(),
+        platform: 'kimi',
+        credentials: { account_mode: 'coding' }
+      },
+      result: {
+        account_id: 17,
+        adapter: 'kimi_coding',
+        observed_at: '2026-08-23T00:00:00Z',
+        provider: 'kimi',
+        mode: 'limits',
+        unit: 'PERCENT',
+        limits: [{ name: '5h', used: 75, limit: 100, remaining: 25 }]
+      }
+    })
+    expect(wrapper.text()).toContain('5h|75|')
+    expect(wrapper.text()).toContain('25 PERCENT / 100 PERCENT')
+
+    await wrapper.setProps({
+      account: {
+        ...account(),
+        platform: 'deepseek',
+        credentials: { account_mode: 'payg' }
+      },
+      result: {
+        account_id: 17,
+        adapter: 'deepseek_balance',
+        observed_at: '2026-08-23T00:00:00Z',
+        provider: 'deepseek',
+        mode: 'balance',
+        unit: 'CNY',
+        balance: { remaining: 12.5 },
+        balances: [
+          { currency: 'CNY', remaining: 12.5 },
+          { currency: 'USD', remaining: 1.25 }
+        ]
+      }
+    })
+    expect(wrapper.text()).toContain('CNY 12.5 · USD 1.25')
+  })
+
+  it('仅展示监控快照且不会在挂载时查询上游', () => {
+    const request = vi.fn()
+    const wrapper = mountCell({
+      request,
+      account: {
+        ...account(),
+        platform: 'kimi',
+        credentials: { account_mode: 'payg' },
+        extra: {
+          cn_usage_monitor_snapshot: {
+            version: 1,
+            adapter: 'kimi_balance',
+            provider: 'kimi',
+            mode: 'balance',
+            unit: 'CNY',
+            balance: { remaining: 9.5 },
+            observed_at: '2026-08-23T00:00:00Z'
+          }
+        }
+      }
+    })
+    expect(wrapper.text()).toContain('9.5 CNY')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('智谱 payg 明确显示不支持且不提供查询按钮', () => {
+    const wrapper = mountCell({
+      account: {
+        ...account(),
+        platform: 'zhipu',
+        credentials: { account_mode: 'payg' }
+      }
+    })
+    expect(wrapper.text()).toContain('admin.accounts.cnProviders.noBalanceEndpoint')
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
 })

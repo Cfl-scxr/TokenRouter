@@ -1,6 +1,11 @@
 <template>
   <div class="space-y-1" data-testid="account-upstream-usage">
-    <div v-if="!queryEnabled" class="flex min-h-5 items-center justify-end gap-1">
+    <div v-if="unsupportedCNQuery" class="flex min-h-5 items-center justify-end gap-1">
+      <span class="text-[9px] text-gray-400 dark:text-gray-500">
+        {{ t('admin.accounts.cnProviders.noBalanceEndpoint') }}
+      </span>
+    </div>
+    <div v-else-if="!queryEnabled" class="flex min-h-5 items-center justify-end gap-1">
       <span class="text-[9px] text-gray-400 dark:text-gray-500">
         {{ t('admin.accounts.upstreamUsage.disabled') }}
       </span>
@@ -46,8 +51,8 @@
         <span v-if="subscriptionRemainingLabel">{{ subscriptionRemainingLabel }}</span>
         <span v-if="subscriptionExpiry">{{ subscriptionExpiry }}</span>
       </div>
-      <div class="text-[9px] text-gray-400 dark:text-gray-500" :title="result?.observed_at || ''">
-        {{ t('admin.accounts.upstreamUsage.observedAt') }} {{ formatObservedAt(result?.observed_at || '') }}
+      <div class="text-[9px] text-gray-400 dark:text-gray-500" :title="effectiveResult?.observed_at || ''">
+        {{ t('admin.accounts.upstreamUsage.observedAt') }} {{ formatObservedAt(effectiveResult?.observed_at || '') }}
       </div>
     </div>
     <div v-if="queryEnabled && showQueryButton" class="mt-0.5 flex items-center gap-1.5">
@@ -98,10 +103,41 @@ const props = withDefaults(defineProps<{
 const { t } = useI18n()
 
 // 查询按钮只负责发出管理员显式操作，组件挂载和滚动不会触发请求。
+const unsupportedCNQuery = computed(() =>
+  props.account.platform === 'zhipu' && props.account.credentials?.account_mode !== 'coding'
+)
+
 const queryEnabled = computed(() => {
+  if (unsupportedCNQuery.value) return false
   const config = props.account.extra?.upstream_usage_query as Record<string, unknown> | undefined
   return config?.enabled !== false
 })
+
+// 未执行本次会话的手动查询时，可展示后台监控最近一次成功快照；组件挂载不会发请求。
+const monitorResult = computed<UpstreamUsageQueryResult | null>(() => {
+  if (!['kimi', 'zhipu', 'deepseek'].includes(props.account.platform)) return null
+  const raw = props.account.extra?.cn_usage_monitor_snapshot
+  if (!raw || typeof raw !== 'object') return null
+  const snapshot = raw as Record<string, unknown>
+  if (snapshot.version !== 1 || typeof snapshot.adapter !== 'string' ||
+    typeof snapshot.observed_at !== 'string' || !Number.isFinite(Date.parse(snapshot.observed_at))) return null
+  return {
+    account_id: props.account.id,
+    adapter: snapshot.adapter,
+    observed_at: snapshot.observed_at,
+    provider: typeof snapshot.provider === 'string' ? snapshot.provider : props.account.platform,
+    mode: typeof snapshot.mode === 'string' ? snapshot.mode : '',
+    unit: typeof snapshot.unit === 'string' ? snapshot.unit : undefined,
+    balance: snapshot.balance as UpstreamUsageQueryResult['balance'],
+    balances: snapshot.balances as UpstreamUsageQueryResult['balances'],
+    available: typeof snapshot.available === 'boolean' ? snapshot.available : undefined,
+    limits: snapshot.limits as UpstreamUsageQueryResult['limits'],
+    subscription: snapshot.subscription as UpstreamUsageQueryResult['subscription'],
+    expires_at: typeof snapshot.expires_at === 'string' ? snapshot.expires_at : undefined
+  }
+})
+
+const effectiveResult = computed(() => props.result ?? monitorResult.value)
 
 const formatNumber = (value: number | null | undefined, compact = true) => {
   if (value == null || !Number.isFinite(value)) return '-'
@@ -139,13 +175,15 @@ const formatExactAmount = (value: number | null | undefined, unit?: string) => {
 }
 
 const normalizedUsage = computed(() => {
-  const result = props.result
+  const result = effectiveResult.value
   if (!result) return null
   return result.usage ?? {
     provider: result.provider || '',
     mode: result.mode || '',
     unit: result.unit,
     balance: result.balance,
+    balances: result.balances,
+    available: result.available,
     limits: result.limits,
     subscription: result.subscription,
     expires_at: result.expires_at
@@ -179,9 +217,17 @@ const limitDisplayName = (name: string) => {
   return name
 }
 
+const balanceEntries = computed(() => normalizedUsage.value?.balances ?? [])
+
 const balanceLabel = computed(() => {
   const usage = normalizedUsage.value
-  if (!usage?.balance) return ''
+  if (!usage) return ''
+  if (balanceEntries.value.length > 0) {
+    return balanceEntries.value
+      .map(entry => `${entry.currency} ${formatNumber(entry.remaining, false)}`)
+      .join(' · ')
+  }
+  if (!usage.balance) return ''
   const balance = usage.balance
   const unit = usage.unit
   return t('admin.accounts.upstreamUsage.remainingLine', {
@@ -190,6 +236,11 @@ const balanceLabel = computed(() => {
 })
 
 const balanceTitle = computed(() => {
+  if (balanceEntries.value.length > 0) {
+    return balanceEntries.value
+      .map(entry => `${entry.currency} ${formatExactNumber(entry.remaining)}`)
+      .join(' · ')
+  }
   const balance = normalizedUsage.value?.balance
   if (!balance) return ''
   const unit = normalizedUsage.value?.unit

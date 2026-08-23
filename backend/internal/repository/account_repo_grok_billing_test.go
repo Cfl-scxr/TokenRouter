@@ -23,3 +23,11 @@ func TestOpenAIResetCreditSnapshotIsSchedulerNeutral(t *testing.T) {
 		"codex_reset_credit_snapshot": map[string]any{"available_count": 1},
 	}))
 }
+
+func TestCNUsageMonitorSnapshotIsSchedulerNeutralForGenericUpdates(t *testing.T) {
+	t.Parallel()
+	require.True(t, isSchedulerNeutralExtraKey("cn_usage_monitor_snapshot"))
+	require.False(t, shouldEnqueueSchedulerOutboxForExtraUpdates(map[string]any{
+		"cn_usage_monitor_snapshot": map[string]any{"version": 1},
+	}))
+}

@@ -14,7 +14,10 @@ const (
 
 // GetAnthropicAPIKeyAuthScheme 返回 Anthropic API Key 账号转发上游时使用的认证头方案。
 func (a *Account) GetAnthropicAPIKeyAuthScheme() string {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
+	if a == nil || a.Type != AccountTypeAPIKey {
+		return AnthropicAPIKeyAuthSchemeXAPIKey
+	}
+	if a.Platform != PlatformAnthropic && !a.IsCNProvider() {
 		return AnthropicAPIKeyAuthSchemeXAPIKey
 	}
 

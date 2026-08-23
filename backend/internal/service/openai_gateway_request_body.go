@@ -45,6 +45,30 @@ func buildOpenAIResponsesURL(base string) string {
 	return buildOpenAIEndpointURL(base, "/v1/responses")
 }
 
+// buildOpenAIResponsesURLForPlatform 组装平台对应的 Responses 端点。
+// DeepSeek 原生 Responses 使用 /responses，其它 OpenAI 兼容平台沿用 /v1/responses。
+func buildOpenAIResponsesURLForPlatform(platform, base string) string {
+	if platform == PlatformDeepseek {
+		return buildOpenAIEndpointURL(base, "/responses")
+	}
+	return buildOpenAIResponsesURL(base)
+}
+
+// normalizeDeepSeekResponsesRequestBody 清除 DeepSeek 无状态 Responses 不接受的状态字段。
+func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
+	if account == nil || account.Platform != PlatformDeepseek || account.GetAPIProtocol() != APIProtocolResponses {
+		return body
+	}
+	normalized, err := sjson.SetBytes(body, "store", false)
+	if err != nil {
+		return body
+	}
+	if stripped, err := sjson.DeleteBytes(normalized, "previous_response_id"); err == nil {
+		normalized = stripped
+	}
+	return normalized
+}
+
 // trimOpenAIEncryptedReasoningItems 清理一次性解密错误恢复中的账号绑定状态：
 // reasoning 保留可复用骨架，加密 compaction 则必须整项删除。
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {

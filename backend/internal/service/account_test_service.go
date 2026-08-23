@@ -416,6 +416,9 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		(account.Platform != PlatformAntigravity || account.Type != AccountTypeAPIKey) {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Image tests are not supported for platform %s", account.Platform))
 	}
+	if account.IsCNProvider() {
+		return s.testCNProviderAccountConnection(c, account, modelID, prompt)
+	}
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -442,6 +445,133 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID, prompt)
+}
+
+func defaultCNProviderTestModel(platform string) string {
+	switch platform {
+	case PlatformKimi:
+		return "kimi-k2.5"
+	case PlatformZhipu:
+		return "glm-4.7"
+	case PlatformDeepseek:
+		return "deepseek-chat"
+	default:
+		return ""
+	}
+}
+
+// testCNProviderAccountConnection 按账号真实上游协议选择测试端点，避免把 Chat 或
+// Responses 账号错误地当作 Anthropic API Key 测试。
+func (s *AccountTestService) testCNProviderAccountConnection(
+	c *gin.Context,
+	account *Account,
+	modelID string,
+	prompt string,
+) error {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return s.sendErrorAndEnd(c, "CN provider tests require an API Key account")
+	}
+	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = defaultCNProviderTestModel(account.Platform)
+	}
+	testModelID = account.GetMappedModel(testModelID)
+	if testModelID == "" {
+		return s.sendErrorAndEnd(c, "No test model available")
+	}
+
+	ctx := c.Request.Context()
+	protocol := account.GetAPIProtocol()
+	var (
+		apiURL  string
+		payload any
+	)
+	switch protocol {
+	case APIProtocolAnthropic:
+		baseURL, err := s.validateUpstreamBaseURL(account.GetAnthropicProtocolBaseURL())
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		apiURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+		payload, err = createTestPayloadWithPrompt(testModelID, prompt)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to create test payload")
+		}
+	case APIProtocolResponses:
+		baseURL, err := s.validateUpstreamBaseURL(account.GetOpenAIBaseURL())
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		apiURL = buildOpenAIResponsesURLForPlatform(account.Platform, baseURL)
+		responsesPayload := createOpenAITestPayload(testModelID, prompt, false)
+		responsesPayload["store"] = false
+		payload = responsesPayload
+	default:
+		baseURL, err := s.validateUpstreamBaseURL(account.GetOpenAIBaseURL())
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		apiURL = buildOpenAIChatCompletionsURL(baseURL)
+		payload = createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	if protocol == APIProtocolAnthropic {
+		req.Header.Set("anthropic-version", "2023-06-01")
+		setAnthropicAPIKeyAuthHeader(req.Header, account, apiKey)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	account.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.DoWithTLS(
+		req,
+		proxyURL,
+		account.ID,
+		account.Concurrency,
+		s.resolveTLSProfile(account),
+	)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+	switch protocol {
+	case APIProtocolAnthropic:
+		return s.processClaudeStream(c, resp.Body)
+	case APIProtocolResponses:
+		return s.processOpenAIStream(c, resp.Body)
+	default:
+		return s.processOpenAIChatCompletionsStream(c, resp.Body)
+	}
 }
 
 // TestAccountConnectionWithType 提供参数顺序明确的新调用入口，旧入口继续兼容历史调用方。

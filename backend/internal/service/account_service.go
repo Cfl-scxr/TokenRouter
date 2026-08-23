@@ -119,6 +119,18 @@ type AccountRepository interface {
 	ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error)
 }
 
+// CNUsageMonitorSnapshotRepository 提供国产供应商监控快照的仓储级 CAS 写入。
+// 该能力保持为窄接口，避免所有 AccountRepository 测试替身被迫实现后台任务细节。
+type CNUsageMonitorSnapshotRepository interface {
+	UpdateCNUsageMonitorSnapshotCAS(
+		ctx context.Context,
+		accountID int64,
+		expectedUpdatedAt time.Time,
+		snapshot *CNUsageMonitorSnapshot,
+		clearExtraKey string,
+	) (bool, error)
+}
+
 type AccountDuplicateRepository interface {
 	// CreateWithAccountGroups 原子持久化账号、分组绑定与新路由快照的调度 outbox 事件。
 	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
@@ -499,6 +511,9 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 		return nil
 	case PlatformGrok:
 		// Grok OAuth 凭证通过 token 兑换、刷新和请求路径探测校验。
+		return nil
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		// 国产 OpenAI 兼容供应商：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)

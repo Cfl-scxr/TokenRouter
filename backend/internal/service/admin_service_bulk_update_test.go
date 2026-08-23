@@ -83,6 +83,28 @@ func TestAdminServiceBulkUpdateAccountsNormalizesLegacyOpenAIConfiguration(t *te
 	require.NotContains(t, repo.lastBulkUpdate.Extra, legacyOpenAIResponsesSupportedExtraKey)
 }
 
+func TestAdminServiceBulkUpdateAccountsRejectsInvalidCNProviderCombination(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{
+			ID:       9,
+			Platform: PlatformDeepseek,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"api_key":      "sk-test",
+				"account_mode": AccountModePayG,
+			},
+		}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+	_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{9},
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "DeepSeek does not support coding")
+	require.Empty(t, repo.bulkUpdateIDs)
+}
+
 func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {
 	s.bindGroupsCalls = append(s.bindGroupsCalls, accountID)
 	if err, ok := s.bindGroupErrByID[accountID]; ok {

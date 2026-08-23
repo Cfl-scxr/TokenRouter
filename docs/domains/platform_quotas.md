@@ -1,6 +1,6 @@
 # 用户平台额度
 
-本文描述用户在六个平台上的日、周、月 USD 额度，从注册默认值、请求预检查、成功结算到 Redis/数据库同步的完整语义。它不描述上游账号套餐额度、订阅计划窗口或 API Key 自身限速。
+本文描述用户在九个平台上的日、周、月 USD 额度，从注册默认值、请求预检查、成功结算到 Redis/数据库同步的完整语义。它不描述上游账号套餐额度、订阅计划窗口或 API Key 自身限速。
 
 ## 章节导航
 
@@ -12,7 +12,7 @@
 
 ## 额度模型
 
-每个用户和平台最多一条 `user_platform_quotas` 活跃记录。允许的平台为 Anthropic、OpenAI、Gemini、Antigravity、Grok 和 Qoder。每条记录分别保存日/周/月 limit、usage 和 window start。
+每个用户和平台最多一条 `user_platform_quotas` 活跃记录。允许的平台为 Anthropic、OpenAI、Gemini、Antigravity、Grok、Qoder、Kimi、Zhipu 和 DeepSeek。每条记录分别保存日/周/月 limit、usage 和 window start。国产供应商的 payg/coding 只是上游账号模式，用户额度仍按 Kimi、Zhipu 或 DeepSeek 平台归属，不拆成额外平台。
 
 limit 的三态语义是领域不变量：
 
@@ -44,7 +44,7 @@ Flusher 每批 Pop dirty key、批量读取 Redis、写入绝对 usage/window sn
 
 ## 默认值与管理操作
 
-注册时把全局默认和认证来源默认合并为用户快照；后续修改站点默认值不追溯覆盖已有用户。管理员读取、全量替换一个用户的六平台配置，或显式重置某个平台的指定窗口。更新与重置后要失效所有相关 Redis entry；失效失败意味着新 limit/reset 最长可能延迟到缓存 TTL，应产生告警。
+注册时把全局默认和认证来源默认合并为用户快照；后续修改站点默认值不追溯覆盖已有用户。管理员读取、全量替换一个用户的九平台配置，或显式重置某个平台的指定窗口。更新与重置后要失效所有相关 Redis entry；失效失败意味着新 limit/reset 最长可能延迟到缓存 TTL，应产生告警。迁移只扩展数据库平台约束，不为已有用户回填 CN 行；缺失行继续沿用既有无限额语义，只有显式管理更新才创建对应记录。
 
 管理更新不能用缺失字段表达 `0`：JSON `null` 是无限额，显式数值 `0` 是禁用。全量替换需要审计新增、修改和移除的平台，避免未提交的平台静默保留旧限制。
 

@@ -554,7 +554,16 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
+export type GroupPlatform =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'antigravity'
+  | 'qoder'
+  | 'grok'
+  | 'kimi'
+  | 'zhipu'
+  | 'deepseek'
 export type GroupSchedulerType = 'basic' | 'advanced'
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -1046,7 +1055,16 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'qoder' | 'grok'
+export type AccountPlatform =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'antigravity'
+  | 'qoder'
+  | 'grok'
+  | 'kimi'
+  | 'zhipu'
+  | 'deepseek'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account' | 'cosy'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1531,7 +1549,14 @@ export interface AccountUsageInfo {
 }
 
 // API Key 账号的上游用量查询协议配置与归一化结果。
-export type UpstreamUsageAdapter = 'sub2api' | 'new_api' | 'zivv'
+export type UpstreamUsageAdapter =
+  | 'sub2api'
+  | 'new_api'
+  | 'zivv'
+  | 'kimi_balance'
+  | 'kimi_coding'
+  | 'zhipu_coding'
+  | 'deepseek_balance'
 
 export interface UpstreamUsageQueryConfig {
   enabled: boolean
@@ -1543,6 +1568,11 @@ export interface UpstreamUsageAmount {
   used?: number
   total?: number
   remaining?: number
+}
+
+export interface UpstreamUsageBalanceEntry {
+  currency: string
+  remaining: number
 }
 
 export interface UpstreamUsageLimit {
@@ -1567,6 +1597,8 @@ export interface UpstreamUsageInfo {
   unit?: string
   /** New API/Zivv 的 balance 表示用户钱包；Key quota 通过 limits/subscription 表示。 */
   balance?: UpstreamUsageAmount
+  balances?: UpstreamUsageBalanceEntry[]
+  available?: boolean
   limits?: UpstreamUsageLimit[]
   subscription?: UpstreamUsageSubscription
   expires_at?: string | null
@@ -1580,6 +1612,8 @@ export interface UpstreamUsageQueryResult {
   mode?: string
   unit?: string
   balance?: UpstreamUsageAmount
+  balances?: UpstreamUsageBalanceEntry[]
+  available?: boolean
   limits?: UpstreamUsageLimit[]
   subscription?: UpstreamUsageSubscription
   expires_at?: string | null

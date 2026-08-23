@@ -298,6 +298,20 @@ func ProvideGrokQuotaService(
 	return service
 }
 
+// ProvideCNProviderBalanceCheckService 构造并启动国产供应商独立用量监控。
+func ProvideCNProviderBalanceCheckService(
+	accountRepo AccountRepository,
+	usageService *UpstreamUsageService,
+	cfg *config.Config,
+	lockCache LeaderLockCache,
+	db *sql.DB,
+) *CNProviderBalanceCheckService {
+	svc := NewCNProviderBalanceCheckService(accountRepo, usageService, cfg)
+	svc.SetLeaderLock(lockCache, db)
+	svc.Start()
+	return svc
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -861,6 +875,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideGrokQuotaService,
+	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,

@@ -29,9 +29,13 @@ const (
 	// UpstreamUsageQueryExtraKey 是 API Key 账号用量查询的持久化配置键。
 	UpstreamUsageQueryExtraKey = "upstream_usage_query"
 
-	UpstreamUsageAdapterSub2API = "sub2api"
-	UpstreamUsageAdapterNewAPI  = "new_api"
-	UpstreamUsageAdapterZivv    = "zivv"
+	UpstreamUsageAdapterSub2API         = "sub2api"
+	UpstreamUsageAdapterNewAPI          = "new_api"
+	UpstreamUsageAdapterZivv            = "zivv"
+	UpstreamUsageAdapterKimiCoding      = "kimi_coding"
+	UpstreamUsageAdapterZhipuCoding     = "zhipu_coding"
+	UpstreamUsageAdapterKimiBalance     = "kimi_balance"
+	UpstreamUsageAdapterDeepseekBalance = "deepseek_balance"
 
 	// New API 钱包接口在官方部署中需要用户级访问令牌；它与转发 API Key
 	// 分开保存，避免把一个 token 的额度误当成用户钱包余额。
@@ -111,6 +115,12 @@ type UpstreamUsageAmount struct {
 	Remaining *float64 `json:"remaining,omitempty"`
 }
 
+// UpstreamUsageBalanceEntry 表示多币种余额中的一项。
+type UpstreamUsageBalanceEntry struct {
+	Currency  string  `json:"currency"`
+	Remaining float64 `json:"remaining"`
+}
+
 // UpstreamUsageLimit 表示上游返回的某个周期限额，不使用 OAuth 的窗口命名。
 type UpstreamUsageLimit struct {
 	Name      string     `json:"name"`
@@ -135,24 +145,28 @@ type UpstreamUsageInfo struct {
 	Mode     string `json:"mode"`
 	Unit     string `json:"unit,omitempty"`
 	// New API/Zivv 的 balance 是用户钱包；Key quota 使用 Limits/Subscription。
-	Balance      *UpstreamUsageAmount       `json:"balance,omitempty"`
-	Limits       []UpstreamUsageLimit       `json:"limits,omitempty"`
-	Subscription *UpstreamUsageSubscription `json:"subscription,omitempty"`
-	ExpiresAt    *time.Time                 `json:"expires_at,omitempty"`
+	Balance      *UpstreamUsageAmount        `json:"balance,omitempty"`
+	Balances     []UpstreamUsageBalanceEntry `json:"balances,omitempty"`
+	Available    *bool                       `json:"available,omitempty"`
+	Limits       []UpstreamUsageLimit        `json:"limits,omitempty"`
+	Subscription *UpstreamUsageSubscription  `json:"subscription,omitempty"`
+	ExpiresAt    *time.Time                  `json:"expires_at,omitempty"`
 }
 
 // UpstreamUsageQueryResult 是管理员查询接口的成功响应。
 type UpstreamUsageQueryResult struct {
-	AccountID    int64                      `json:"account_id"`
-	Adapter      string                     `json:"adapter"`
-	ObservedAt   time.Time                  `json:"observed_at"`
-	Provider     string                     `json:"provider,omitempty"`
-	Mode         string                     `json:"mode,omitempty"`
-	Unit         string                     `json:"unit,omitempty"`
-	Balance      *UpstreamUsageAmount       `json:"balance,omitempty"`
-	Limits       []UpstreamUsageLimit       `json:"limits,omitempty"`
-	Subscription *UpstreamUsageSubscription `json:"subscription,omitempty"`
-	ExpiresAt    *time.Time                 `json:"expires_at,omitempty"`
+	AccountID    int64                       `json:"account_id"`
+	Adapter      string                      `json:"adapter"`
+	ObservedAt   time.Time                   `json:"observed_at"`
+	Provider     string                      `json:"provider,omitempty"`
+	Mode         string                      `json:"mode,omitempty"`
+	Unit         string                      `json:"unit,omitempty"`
+	Balance      *UpstreamUsageAmount        `json:"balance,omitempty"`
+	Balances     []UpstreamUsageBalanceEntry `json:"balances,omitempty"`
+	Available    *bool                       `json:"available,omitempty"`
+	Limits       []UpstreamUsageLimit        `json:"limits,omitempty"`
+	Subscription *UpstreamUsageSubscription  `json:"subscription,omitempty"`
+	ExpiresAt    *time.Time                  `json:"expires_at,omitempty"`
 	// Usage 仅供服务内部复用归一化对象，不暴露到管理员响应，避免把协议内部模型
 	// 再套一层 API Key 的“窗口”语义。
 	Usage *UpstreamUsageInfo `json:"-"`
@@ -177,9 +191,10 @@ type UpstreamUsageAdapterOption struct {
 }
 
 type upstreamUsageAdapterRegistration struct {
-	Name    string
-	Label   string
-	Factory func() UpstreamUsageAdapter
+	Name      string
+	Label     string
+	Automatic bool
+	Factory   func() UpstreamUsageAdapter
 }
 
 // upstreamUsageAdapterRegistry 是协议实现的唯一注册表。
@@ -188,12 +203,19 @@ var upstreamUsageAdapterRegistry = []upstreamUsageAdapterRegistration{
 	{Name: UpstreamUsageAdapterSub2API, Label: "Sub2API / TokenRouter", Factory: func() UpstreamUsageAdapter { return &sub2APIUsageAdapter{} }},
 	{Name: UpstreamUsageAdapterNewAPI, Label: "New API", Factory: func() UpstreamUsageAdapter { return &newAPIUsageAdapter{} }},
 	{Name: UpstreamUsageAdapterZivv, Label: "Zivv", Factory: func() UpstreamUsageAdapter { return &zivvUsageAdapter{} }},
+	{Name: UpstreamUsageAdapterKimiCoding, Label: "Kimi Coding Plan", Automatic: true, Factory: func() UpstreamUsageAdapter { return &kimiCodingUsageAdapter{} }},
+	{Name: UpstreamUsageAdapterZhipuCoding, Label: "Zhipu Coding Plan", Automatic: true, Factory: func() UpstreamUsageAdapter { return &zhipuCodingUsageAdapter{} }},
+	{Name: UpstreamUsageAdapterKimiBalance, Label: "Kimi Balance", Automatic: true, Factory: func() UpstreamUsageAdapter { return &kimiBalanceUsageAdapter{} }},
+	{Name: UpstreamUsageAdapterDeepseekBalance, Label: "DeepSeek Balance", Automatic: true, Factory: func() UpstreamUsageAdapter { return &deepseekBalanceUsageAdapter{} }},
 }
 
 // UpstreamUsageAdapterOptions 返回稳定排序的内置适配器列表。
 func UpstreamUsageAdapterOptions() []UpstreamUsageAdapterOption {
 	options := make([]UpstreamUsageAdapterOption, 0, len(upstreamUsageAdapterRegistry))
 	for _, registration := range upstreamUsageAdapterRegistry {
+		if registration.Automatic {
+			continue
+		}
 		options = append(options, UpstreamUsageAdapterOption{Name: registration.Name, Label: registration.Label})
 	}
 	return options
@@ -287,6 +309,9 @@ func (s *UpstreamUsageService) SnapshotMetrics() UpstreamUsageMetrics {
 // EffectiveUpstreamUsageConfig 解析账号的生效配置。缺少配置时使用安全的默认适配器。
 func EffectiveUpstreamUsageConfig(account *Account) (UpstreamUsageQueryConfig, error) {
 	config := UpstreamUsageQueryConfig{Enabled: true, Adapter: upstreamUsageDefaultAdapter}
+	if adapter := cnUpstreamUsageAdapterName(account); adapter != "" {
+		config.Adapter = adapter
+	}
 	if account == nil || account.Extra == nil {
 		return config, nil
 	}
@@ -310,7 +335,9 @@ func EffectiveUpstreamUsageConfig(account *Account) (UpstreamUsageQueryConfig, e
 		if !ok || strings.TrimSpace(parsed) == "" {
 			return UpstreamUsageQueryConfig{}, ErrUpstreamUsageConfigInvalid
 		}
-		config.Adapter = strings.TrimSpace(parsed)
+		if !account.IsCNProvider() {
+			config.Adapter = strings.TrimSpace(parsed)
+		}
 	}
 	if value, exists := object["base_url"]; exists {
 		parsed, ok := value.(string)
@@ -471,6 +498,14 @@ func (s *UpstreamUsageService) QueryAccount(ctx context.Context, accountID int64
 	if !queryConfig.Enabled {
 		return nil, ErrUpstreamUsageDisabled
 	}
+	// 国产供应商不允许管理员把协议适配器误选成通用站点适配器；按平台和
+	// account_mode 自动选择只读适配器，保留现有查询开关与身份指纹语义。
+	if account.IsCNProvider() {
+		queryConfig.Adapter = cnUpstreamUsageAdapterName(account)
+		if queryConfig.Adapter == "" {
+			return nil, ErrUpstreamUsageUnsupported
+		}
+	}
 	if s.adapter(queryConfig.Adapter) == nil {
 		return nil, ErrUpstreamUsageUnsupported
 	}
@@ -495,6 +530,31 @@ func (s *UpstreamUsageService) QueryAccount(ctx context.Context, accountID int64
 			return nil, ErrUpstreamUsageInvalidResponse
 		}
 		return queryResult, nil
+	}
+}
+
+func cnUpstreamUsageAdapterName(account *Account) string {
+	if account == nil || !account.IsCNProvider() {
+		return ""
+	}
+	if account.IsCodingPlan() {
+		switch account.Platform {
+		case PlatformKimi:
+			return UpstreamUsageAdapterKimiCoding
+		case PlatformZhipu:
+			return UpstreamUsageAdapterZhipuCoding
+		default:
+			return ""
+		}
+	}
+	switch account.Platform {
+	case PlatformKimi:
+		return UpstreamUsageAdapterKimiBalance
+	case PlatformDeepseek:
+		return UpstreamUsageAdapterDeepseekBalance
+	default:
+		// 智谱 payg 没有公开余额协议，手动查询保持明确“不支持”而不发请求。
+		return ""
 	}
 }
 
@@ -618,6 +678,8 @@ func (s *UpstreamUsageService) queryAccount(ctx context.Context, accountID int64
 		Mode:         usage.Mode,
 		Unit:         usage.Unit,
 		Balance:      usage.Balance,
+		Balances:     usage.Balances,
+		Available:    usage.Available,
 		Limits:       usage.Limits,
 		Subscription: usage.Subscription,
 		ExpiresAt:    usage.ExpiresAt,
@@ -746,6 +808,9 @@ func upstreamUsageAccountBaseURL(account *Account) string {
 		return account.GetGeminiBaseURL("https://generativelanguage.googleapis.com")
 	case PlatformAntigravity:
 		return account.GetGeminiBaseURL("https://generativelanguage.googleapis.com")
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		// 用量端点只替换路径并保留账号主机；缺少自定义地址时使用平台默认值。
+		return account.GetOpenAIBaseURL()
 	default:
 		// 未知平台没有平台专用的 URL 归一化规则，仍允许复用凭据中的根地址。
 		return strings.TrimSpace(account.GetCredential("base_url"))
@@ -934,8 +999,13 @@ func validateNormalizedUsage(usage *UpstreamUsageInfo) error {
 			return errors.New("missing normalized subscription")
 		}
 	}
-	if usage.Unit != "" && usage.Unit != "USD" && usage.Unit != "CNY" && usage.Unit != "TOKENS" {
+	if usage.Unit != "" && usage.Unit != "USD" && usage.Unit != "CNY" && usage.Unit != "TOKENS" && usage.Unit != "PERCENT" {
 		return errors.New("unknown usage unit")
+	}
+	for _, balance := range usage.Balances {
+		if strings.TrimSpace(balance.Currency) == "" || !validFiniteNumber(balance.Remaining) {
+			return errors.New("invalid usage balance entry")
+		}
 	}
 	if usage.Balance != nil {
 		if err := validateUsageAmount(usage.Balance); err != nil {
@@ -2047,6 +2117,44 @@ func (c *upstreamUsageHTTPClient) getURL(ctx context.Context, endpoint string, a
 		token = c.apiKey
 	}
 	return c.getURLWithBearer(ctx, endpoint, token, "")
+}
+
+// getURLWithHeader 请求固定的认证头；仅由内置适配器调用，调用方不能注入任意路径或头模板。
+func (c *upstreamUsageHTTPClient) getURLWithHeader(ctx context.Context, endpoint, headerName, headerValue string) ([]byte, int, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, 0, ErrUpstreamUsageConfigInvalid
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, 0, ErrUpstreamUsageRequestFailed
+	}
+	reqCtx := WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI)
+	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
+	req.Header.Set("Accept", "application/json")
+	c.account.ApplyHeaderOverrides(req.Header)
+	// 账号级覆写不得改变内置适配器的认证身份。
+	req.Header.Del("Authorization")
+	req.Header.Del("api-key")
+	if strings.TrimSpace(headerName) != "" && strings.TrimSpace(headerValue) != "" {
+		req.Header.Set(headerName, headerValue)
+	}
+	resp, err := c.upstream.DoWithTLS(req, c.proxyURL, c.account.ID, c.account.Concurrency, c.tlsProfile)
+	if err != nil {
+		return nil, 0, upstreamUsageOperationError(ctx, err)
+	}
+	if resp == nil || resp.Body == nil {
+		return nil, 0, ErrUpstreamUsageInvalidResponse
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, upstreamUsageMaxBodyBytes+1))
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return nil, 0, upstreamUsageOperationError(ctx, readErr)
+	}
+	if int64(len(body)) > upstreamUsageMaxBodyBytes {
+		return nil, 0, ErrUpstreamUsageInvalidResponse
+	}
+	return body, resp.StatusCode, nil
 }
 
 // getURLWithBearer 使用固定的 Bearer 令牌和可选用户 ID 请求管理端点。

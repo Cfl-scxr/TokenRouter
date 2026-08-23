@@ -14,7 +14,10 @@ describe('groupClientProtocols', () => {
     ['gemini', ['anthropic_messages', 'openai_responses', 'openai_chat_completions', 'gemini_generate_content'], ['gemini_generate_content']],
     ['antigravity', ['anthropic_messages', 'openai_responses', 'openai_chat_completions', 'gemini_generate_content'], ['anthropic_messages', 'gemini_generate_content']],
     ['qoder', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], []],
-    ['grok', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], ['openai_responses', 'openai_chat_completions']]
+    ['grok', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], ['openai_responses', 'openai_chat_completions']],
+    ['kimi', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], ['anthropic_messages', 'openai_responses', 'openai_chat_completions']],
+    ['zhipu', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], ['anthropic_messages', 'openai_responses', 'openai_chat_completions']],
+    ['deepseek', ['anthropic_messages', 'openai_responses', 'openai_chat_completions'], ['anthropic_messages', 'openai_responses', 'openai_chat_completions']]
   ])('returns the %s protocol policy', (platform, supported, defaults) => {
     expect(supportedGroupClientProtocols(platform)).toEqual(supported)
     expect(defaultGroupClientProtocols(platform)).toEqual(defaults)

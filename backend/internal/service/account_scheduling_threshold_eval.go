@@ -57,6 +57,10 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
+	case PlatformKimi:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
+	case PlatformZhipu:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
 	default:
 		return decision
 	}
@@ -294,6 +298,31 @@ func grokThresholdCandidates(account *Account) []*accountSchedulingThresholdCand
 			until:       parseSchedulingResetAt(account.Extra["grok_sched_reset_at"]),
 		},
 	}
+}
+
+// cnProviderThresholdCandidates 读取独立监控保存的统一窗口快照。快照身份必须与
+// 当前凭据、地址、代理和 TLS 设置一致，避免旧身份结果参与调度。
+func cnProviderThresholdCandidates(account *Account, provider string) []*accountSchedulingThresholdCandidate {
+	if account == nil || account.Platform != provider || !account.IsCodingPlan() {
+		return nil
+	}
+	snapshot := validCNUsageMonitorSnapshot(account)
+	if snapshot == nil || snapshot.Mode != "limits" || snapshot.ObservedAt == nil {
+		return nil
+	}
+	candidates := make([]*accountSchedulingThresholdCandidate, 0, len(snapshot.Limits))
+	for _, limit := range snapshot.Limits {
+		if limit.Used == nil || limit.ResetAt == nil {
+			continue
+		}
+		candidates = append(candidates, &accountSchedulingThresholdCandidate{
+			window:      limit.Name,
+			scope:       provider,
+			usedPercent: *limit.Used,
+			until:       cloneTimePtr(limit.ResetAt),
+		})
+	}
+	return candidates
 }
 
 func pickLatestResetSchedulingCandidate(candidates []*accountSchedulingThresholdCandidate, threshold int, now time.Time) *accountSchedulingThresholdCandidate {
