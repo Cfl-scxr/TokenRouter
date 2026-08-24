@@ -290,8 +290,10 @@ func (s *OpenAIGatewayService) scanCCStream(
 		}
 		tierObserver.ObserveOpenAI([]byte(payload), openAIChatCompletionServiceTierEventType([]byte(payload)))
 		// 观察上游 CC chunk 回显的 model / service_tier（计费以回显为准）。
+		// CC chunk 无 type 字段，按 untyped payload 观察（上游约束：只有终止
+		// 事件与无类型 body 报告实际处理档位）。
 		if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
-			observer.ObserveOpenAI([]byte(payload), "chat.completion.chunk")
+			observer.ObserveOpenAI([]byte(payload), "")
 		}
 
 		if u := extractCCStreamUsage(payload); u != nil {
@@ -357,8 +359,9 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 	}
 	observeOpenAIServiceTierInContext(c, respBody, "response.completed")
 	// 观察上游 CC JSON 回显的 model / service_tier（计费以回显为准）。
+	// CC JSON 无 type 字段，按 untyped payload 观察（上游约束）。
 	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
-		observer.ObserveOpenAI(respBody, "chat.completion")
+		observer.ObserveOpenAI(respBody, "")
 	}
 
 	usage := OpenAIUsage{}
