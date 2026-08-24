@@ -122,8 +122,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 
 		// xAI 可能拒绝从其他账号或缓存标识响应中复制的加密 reasoning。
-		// 仅移除被拒绝的加密 reasoning 载荷后，使用相同路由与凭据重试一次。
-		if attempt > 0 || resp.StatusCode != http.StatusBadRequest {
+		// 仅移除被拒绝的加密 reasoning 或 compaction 载荷后，使用相同路由与凭据重试一次。
+		if attempt > 0 || (resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity) {
 			break
 		}
 		respBody := s.readUpstreamErrorBody(resp)
