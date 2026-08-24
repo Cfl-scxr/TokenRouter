@@ -160,6 +160,12 @@ func AnthropicStopReasonString(p *string) string {
 	return *p
 }
 
+// AnthropicPromptTokensDetails 保存兼容 Anthropic 的 provider 偶尔附带的
+// OpenAI 风格 prompt token 明细。
+type AnthropicPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
@@ -168,6 +174,13 @@ type AnthropicUsage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	// Speed 为 Claude 实际处理速度：fast 或 standard。
 	Speed string `json:"speed,omitempty"`
+	// 兼容 Anthropic 的 provider 可能附带 OpenAI 风格的总量/缓存字段，保留后由
+	// 调用方归一化为互斥的计费桶。
+	PromptTokens          int                           `json:"prompt_tokens,omitempty"`
+	CachedTokens          int                           `json:"cached_tokens,omitempty"`
+	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
