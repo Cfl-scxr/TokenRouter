@@ -356,8 +356,7 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, er
 	if !parallel.Exists() {
 		return body, false, nil
 	}
-	tools := gjson.GetBytes(body, "tools")
-	if tools.IsArray() && len(tools.Array()) > 0 {
+	if openAIRequestBodyHasTools(body) {
 		return body, false, nil
 	}
 	normalized, err := sjson.DeleteBytes(body, "parallel_tool_calls")
@@ -365,6 +364,28 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte) ([]byte, bool, er
 		return body, false, fmt.Errorf("normalize parallel_tool_calls without tools: %w", err)
 	}
 	return normalized, true, nil
+}
+
+// openAIRequestBodyHasTools 与 openAIResponsesLiteHasTools 使用相同的工具判定规则，
+// 同时识别顶层 tools 数组和 Responses Lite 的工具承载结构。
+// normalizeOpenAIResponsesLiteTools 会把命名空间工具移入 type 为
+// "additional_tools" 的 input 项并删除顶层 tools，但请求仍然携带工具。
+// 如果只检查顶层字段，会误判为无工具并删除
+// ensureOpenAIResponsesLiteParallelToolCalls 设置的 parallel_tool_calls:false，
+// 使 OpenAI 回退到 true 后拒绝请求（400 unsupported_value）。
+func openAIRequestBodyHasTools(body []byte) bool {
+	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() && len(tools.Array()) > 0 {
+		return true
+	}
+	for _, item := range gjson.GetBytes(body, "input").Array() {
+		if strings.TrimSpace(item.Get("type").String()) != "additional_tools" {
+			continue
+		}
+		if tools := item.Get("tools"); tools.IsArray() && len(tools.Array()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
