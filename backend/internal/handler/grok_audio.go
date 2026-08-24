@@ -43,52 +43,60 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		return
 	}
 
-	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-		c.Request.Context(),
-		apiKey.GroupID,
-		"",
-		"",
-		"grok-4.5",
-		nil,
-		service.OpenAIUpstreamTransportHTTPSSE,
-		// Grok 的 HEAD 能力只声明 chat_completions 与媒体能力，此处复用聊天能力门禁。
-		service.OpenAIEndpointCapabilityTextGeneration,
-		false,
-		false,
-		service.PlatformGrok,
-	)
-	if err != nil || selection == nil || selection.Account == nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
-		return
-	}
-
-	var streamStarted bool
 	reqLog := requestLogger(c, "handler.openai_gateway.grok_realtime")
-	release, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, true, &streamStarted, reqLog)
-	if !acquired {
-		return
-	}
-	defer release()
-
-	token, _, err := h.gatewayService.GetRequestCredential(c.Request.Context(), c, selection.Account)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok credential unavailable")
-		return
-	}
 	model := c.Query("model")
 	if strings.TrimSpace(model) == "" {
 		model = "grok-voice-latest"
 	}
-	// Complete the upstream handshake before sending HTTP 101. This keeps
-	// pre-accept failures representable as normal JSON errors to the client.
-	probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	probeErr := h.gatewayService.ProbeGrokRealtime(probeCtx, selection.Account, token, model)
-	cancelProbe()
-	if probeErr != nil {
-		reqLog.Warn("grok_realtime.pre_accept_failed", zap.Error(probeErr))
+	// 在账号选择和预握手完成前保持 HTTP 响应未提交，避免 WebSocket 失败后无法返回 JSON 错误。
+	failed := map[int64]struct{}{}
+	var selection *service.AccountSelectionResult
+	var release func()
+	var token string
+	for attempts := 0; attempts < 4; attempts++ {
+		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(), apiKey.GroupID, "", "", "grok-4.6", failed,
+			service.OpenAIUpstreamTransportHTTPSSE,
+			// Grok 的 HEAD 能力复用文本生成门禁，兼容 fork 的能力枚举。
+			service.OpenAIEndpointCapabilityTextGeneration,
+			false, false, service.PlatformGrok,
+		)
+		if selectErr != nil || candidate == nil || candidate.Account == nil {
+			break
+		}
+		account := candidate.Account
+		var streamStarted bool
+		var acquired bool
+		release, acquired = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
+		if !acquired {
+			return
+		}
+		var credErr error
+		token, _, credErr = h.gatewayService.GetRequestCredential(c.Request.Context(), c, account)
+		if credErr != nil {
+			release()
+			release = nil
+			failed[account.ID] = struct{}{}
+			continue
+		}
+		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		probeErr := h.gatewayService.ProbeGrokRealtime(probeCtx, account, token, model)
+		cancelProbe()
+		if probeErr != nil {
+			reqLog.Warn("grok_realtime.pre_accept_failed", zap.Int64("account_id", account.ID), zap.Error(probeErr))
+			release()
+			release = nil
+			failed[account.ID] = struct{}{}
+			continue
+		}
+		selection = candidate
+		break
+	}
+	if selection == nil || selection.Account == nil || release == nil {
 		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
 		return
 	}
+	defer release()
 
 	conn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
 	if err != nil {
