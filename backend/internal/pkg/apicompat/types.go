@@ -303,9 +303,14 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Type     string `json:"type"` // input_text、output_text、input_image 或 input_file
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+
+	// input_file 字段。
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI 格式的文件内容
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -680,15 +685,23 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url"
+	Type     string        `json:"type"` // text、image_url 或 file
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	File     *ChatFile     `json:"file,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.
 type ChatImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// ChatFile 保存 "file" 内容 part 的载荷（例如 PDF 输入）。
+type ChatFile struct {
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI 格式的文件内容
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ChatTool describes a tool available to the model.

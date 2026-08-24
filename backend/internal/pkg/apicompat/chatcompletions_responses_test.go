@@ -433,6 +433,78 @@ func TestChatCompletionsToResponses_WhitespaceOnlyBase64ImageURLSkipped(t *testi
 	assert.Equal(t, "Describe this", parts[0].Text)
 }
 
+func TestChatCompletionsToResponses_FilePartFileData(t *testing.T) {
+	content := `[{"type":"text","text":"Summarize the attached document"},{"type":"file","file":{"filename":"document.pdf","file_data":"data:application/pdf;base64,JVBERi0xLjQ="}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Summarize the attached document", parts[0].Text)
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "document.pdf", parts[1].Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0xLjQ=", parts[1].FileData)
+	assert.Empty(t, parts[1].FileID)
+}
+
+func TestChatCompletionsToResponses_FilePartFileID(t *testing.T) {
+	content := `[{"type":"file","file":{"file_id":"file-abc123"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "file-abc123", parts[0].FileID)
+	assert.Empty(t, parts[0].FileData)
+}
+
+func TestChatCompletionsToResponses_EmptyFilePartSkipped(t *testing.T) {
+	// 同时缺少 file_data 和 file_id 的文件 part 没有可供 Responses 使用的内容；
+	// 与空图片 URL 一样丢弃，避免空 input_file 导致上游 400。
+	content := `[{"type":"text","text":"Describe this"},{"type":"file","file":{"filename":"empty.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+}
+
 func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 	// 回归覆盖 #2515：上游 Responses API 会拒绝 content 为 JSON null 的
 	// input item。任何无法产生可用 content parts 的 chat-completions 消息，
