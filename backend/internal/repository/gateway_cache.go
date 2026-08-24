@@ -16,6 +16,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const stickySessionOwnerPrefix = "sticky_session_owner:"
 const openAIResponsesSessionWindowPrefix = "openai_responses_session_window:"
 const liveCallPrefix = "live:call:"
 
@@ -27,45 +28,16 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
 }
 
-// SetReasoningContent 按 reasoning item id 缓存明文推理内容。
-// 空 id 或空内容视为没有可缓存数据，直接成功返回。
-func (c *gatewayCache) SetReasoningContent(ctx context.Context, itemID string, content string, ttl time.Duration) error {
-	if c == nil || c.rdb == nil {
-		return errors.New("gateway cache unavailable")
-	}
-	itemID = strings.TrimSpace(itemID)
-	if itemID == "" || content == "" {
-		return nil
-	}
-	if ttl <= 0 {
-		ttl = 7 * 24 * time.Hour
-	}
-	return c.rdb.Set(ctx, reasoningContentPrefix+itemID, content, ttl).Err()
-}
-
-// GetReasoningContent 读取 reasoning item 的缓存文本；未命中返回统一哨兵错误。
-func (c *gatewayCache) GetReasoningContent(ctx context.Context, itemID string) (string, error) {
-	if c == nil || c.rdb == nil {
-		return "", errors.New("gateway cache unavailable")
-	}
-	itemID = strings.TrimSpace(itemID)
-	if itemID == "" {
-		return "", service.ErrReasoningContentNotFound
-	}
-	value, err := c.rdb.Get(ctx, reasoningContentPrefix+itemID).Result()
-	if errors.Is(err, redis.Nil) {
-		return "", service.ErrReasoningContentNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {
 	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
+}
+
+// buildSessionOwnerKey 构建显式会话归属 key，按用户和来源隔离避免跨用户误撞。
+// 格式: sticky_session_owner:{userID}:{source}:{sessionHash}
+func buildSessionOwnerKey(userID int64, source, sessionHash string) string {
+	return fmt.Sprintf("%s%d:%s:%s", stickySessionOwnerPrefix, userID, source, sessionHash)
 }
 
 func buildOpenAIResponsesSessionWindowKey(groupID int64, sessionHash string) string {
@@ -97,6 +69,12 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+// SetSessionOwnerGroupID 仅在首次写入时绑定显式会话的分组归属。
+func (c *gatewayCache) SetSessionOwnerGroupID(ctx context.Context, userID int64, source, sessionHash string, groupID int64, ttl time.Duration) (bool, error) {
+	key := buildSessionOwnerKey(userID, source, sessionHash)
+	return c.rdb.SetNX(ctx, key, groupID, ttl).Result()
 }
 
 var claimOpenAIResponsesSessionWindowScript = redis.NewScript(`

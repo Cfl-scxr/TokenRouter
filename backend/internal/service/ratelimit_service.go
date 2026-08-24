@@ -267,6 +267,8 @@ const (
 	ErrorPolicyPoolBypassed                             // 池模式跳过默认本地状态，继续响应分类
 	// ErrorPolicyMatched 保留旧测试与外部调用方的枚举别名。
 	ErrorPolicyMatched = ErrorPolicyCustomMatched
+	// ErrorPolicySkipped 保留旧测试与外部调用方的枚举别名。
+	ErrorPolicySkipped = ErrorPolicyCustomSkipped
 )
 
 // UpstreamErrorDecision 汇总显式策略和默认账号状态处理结果。

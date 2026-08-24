@@ -135,6 +135,18 @@ func requireResponsesClientToolValue[T any](t *testing.T, value any) T {
 	return typed
 }
 
+// responsesClientToolNames 提取测试工具声明名称，避免每个断言重复解包 map。
+func responsesClientToolNames(t *testing.T, tools []any) []string {
+	t.Helper()
+	names := make([]string, 0, len(tools))
+	for _, raw := range tools {
+		tool := requireResponsesClientToolValue[map[string]any](t, raw)
+		name, _ := tool["name"].(string)
+		names = append(names, name)
+	}
+	return names
+}
+
 func TestAdaptResponsesClientTools_RejectsAmbiguousNames(t *testing.T) {
 	cases := []map[string]any{
 		{"tools": []any{map[string]any{"type": "custom", "name": "same"}, map[string]any{"type": "function", "name": "same"}}},

@@ -81,7 +81,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
-			expected:   ErrorPolicySkipped,
+			expected:   ErrorPolicyCustomSkipped,
 		},
 		{
 			name: "pool_mode_skips_global_529_cooldown",
@@ -95,7 +95,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
-			expected:   ErrorPolicySkipped,
+			expected:   ErrorPolicyPoolBypassed,
 		},
 		{
 			name: "ordinary_account_uses_global_529_cooldown",
