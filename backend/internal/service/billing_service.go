@@ -93,6 +93,7 @@ type ModelPricing struct {
 	CacheCreationPricePerToken         float64  // 缓存创建每token价格 (USD)
 	CacheCreationPricePerTokenPriority float64  // priority service tier 下缓存创建每token价格 (USD)
 	CacheCreationPriceExplicit         bool     // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	cacheCreationPriorityDerived       bool     // priority 缓存写价是否由 Fast 兜底策略推导
 	CacheReadPricePerToken             float64  // 缓存读取每token价格 (USD)
 	CacheReadPricePerTokenPriority     float64  // priority service tier 下缓存读取每token价格 (USD)
 	CacheCreation5mPrice               float64  // 5分钟缓存创建每token价格 (USD)
@@ -1109,10 +1110,17 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 		pricing.OutputPricePerTokenPriority = priority
 	}
 	if channelPricing.CacheWritePrice != nil {
-		priority := channelTierOverridePrice(pricing.CacheCreationPricePerToken, pricing.CacheCreationPricePerTokenPriority, *channelPricing.CacheWritePrice)
+		basePriority := pricing.CacheCreationPricePerTokenPriority
+		if pricing.cacheCreationPriorityDerived {
+			// 兜底推导的 priority 价不代表模型原生目录配置；渠道显式
+			// 覆盖缓存写价时，应继续保持“未配置 priority”的 fork 语义。
+			basePriority = 0
+		}
+		priority := channelTierOverridePrice(pricing.CacheCreationPricePerToken, basePriority, *channelPricing.CacheWritePrice)
 		pricing.CacheCreationPricePerToken = *channelPricing.CacheWritePrice
 		pricing.CacheCreationPricePerTokenPriority = priority
 		pricing.CacheCreationPriceExplicit = true
+		pricing.cacheCreationPriorityDerived = false
 		pricing.CacheCreation5mPrice = *channelPricing.CacheWritePrice
 		pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
 	}
@@ -1496,8 +1504,12 @@ func enforceOpenAIFastPricingRatio(pricing *ModelPricing, ratio float64) {
 	if pricing.CacheReadPricePerToken > 0 {
 		pricing.CacheReadPricePerTokenPriority = pricing.CacheReadPricePerToken * ratio
 	}
-	if pricing.CacheCreationPricePerToken > 0 {
+	// 渠道显式覆盖缓存写价格时，保留其是否配置 priority 的原语义，
+	// 不因模型 Fast 兜底倍率凭空生成未配置的档位价。
+	if !pricing.CacheCreationPriceExplicit && pricing.CacheCreationPricePerToken > 0 {
+		hadNativePriority := pricing.CacheCreationPricePerTokenPriority > 0
 		pricing.CacheCreationPricePerTokenPriority = pricing.CacheCreationPricePerToken * ratio
+		pricing.cacheCreationPriorityDerived = !hadNativePriority && pricing.CacheCreationPricePerTokenPriority > 0
 	}
 }
 

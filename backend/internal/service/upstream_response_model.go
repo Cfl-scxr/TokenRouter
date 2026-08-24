@@ -65,9 +65,12 @@ func normalizeObservedUpstreamResponseModel(model string) string {
 func (o *upstreamResponseModelObserver) ObserveOpenAI(payload []byte, eventType string) {
 	model := firstValidTrimmedGJSONModel(payload, "response.model", "model")
 	terminal := isUpstreamResponseModelTerminalEvent(eventType)
-	if model != "" {
-		o.Observe(model, terminal)
+	// 上游只有携带 model 的事件才同时提供可信的 service_tier；无 model 的
+	// 增量帧不能作为计费依据。
+	if model == "" {
+		return
 	}
+	o.Observe(model, terminal)
 	// Responses 的非终止事件通常只是回显请求档位，只有终止事件和无类型的
 	// Chat Completions/非流式 JSON 才能作为实际处理档位的证据。
 	if !terminal && strings.TrimSpace(eventType) != "" {

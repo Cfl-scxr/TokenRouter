@@ -646,7 +646,21 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
-	observeOpenAIServiceTierInContext(c, respBody, "response.completed")
+	if isEventStreamResponse(resp.Header) || bodyHasSSEFraming(respBody) {
+		// 某些兼容上游在 stream=false 时仍返回 SSE；逐帧观察才能拿到
+		// response.completed 的实际 service_tier，而不是回退到请求档位。
+		observeOpenAISSEBody(c, string(respBody))
+		forEachOpenAISSEFrame(string(respBody), func(_ string, payload []byte) {
+			if parsed, ok := extractOpenAIUsageFromJSONBytes(payload); ok {
+				usage = parsed
+			}
+			if parsed := extractCCStreamUsage(string(payload)); parsed != nil {
+				usage = *parsed
+			}
+		})
+	} else {
+		observeOpenAIServiceTierInContext(c, respBody, "response.completed")
+	}
 	responseModel := gjson.GetBytes(respBody, "model").String()
 	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) &&
 		!hasBillableGrokChatUsage(usage) {
