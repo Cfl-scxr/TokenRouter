@@ -68,9 +68,10 @@ const DefaultTextModel = "grok-4.5"
 const (
 	DefaultImagineImageQualityModel  = "grok-imagine-image-quality"
 	DefaultImagineImageFastModel     = "grok-imagine-image"
+	DefaultImagineImage20Model       = "grok-imagine-image-2.0"
 	DefaultImagineVideoModel         = "grok-imagine-video"
-	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5"
-	DefaultImagineVideo15Model       = "grok-imagine-video-1.5-preview"
+	DefaultImagineVideo15Model       = "grok-imagine-video-1.5"
+	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5-preview"
 )
 
 // ModelMappingOptions 控制默认映射的可选扩展。
@@ -95,8 +96,6 @@ var defaultModels = []Model{
 	{ID: "grok-4.6", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.6"},
 	{ID: "grok-4.5", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.5"},
 	{ID: "grok-4.3", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.3"},
-	{ID: "grok-3-mini", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini"},
-	{ID: "grok-3-mini-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini Fast"},
 	{ID: "grok-build-0.1", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Build 0.1"},
 	{ID: "grok-composer-2.5-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Composer 2.5 Fast"},
 	{ID: "grok-4.20-0309-reasoning", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Reasoning"},
@@ -105,9 +104,9 @@ var defaultModels = []Model{
 	// Imagine 媒体模型。
 	{ID: DefaultImagineImageQualityModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image Quality"},
 	{ID: DefaultImagineImageFastModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image"},
+	{ID: DefaultImagineImage20Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image 2.0"},
 	{ID: DefaultImagineVideoModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video"},
-	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Preview"},
-	{ID: DefaultImagineVideo15LegacyModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Legacy"},
+	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5"},
 }
 
 // grokTextResponsesModelAliases 是 Responses 路径接受的 Grok 文本模型权威映射，
@@ -117,8 +116,8 @@ var grokTextResponsesModelAliases = map[string]string{
 	"grok-latest":                  DefaultTextModel,
 	"grok-4.6":                     "grok-4.6",
 	"grok-4.6-latest":              "grok-4.6",
-	"grok-4.5":                     DefaultTextModel,
-	"grok-4.5-latest":              DefaultTextModel,
+	"grok-4.5":                     "grok-4.5",
+	"grok-4.5-latest":              "grok-4.5",
 	"grok-4.3":                     "grok-4.3",
 	"grok-4.3-latest":              "grok-4.3",
 	"grok-3-mini":                  "grok-3-mini",
@@ -179,7 +178,7 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 	mapping["grok-imagine-image"] = DefaultImagineImageFastModel
 	mapping["grok-imagine-image-quality"] = DefaultImagineImageQualityModel
 	mapping["grok-imagine-video"] = DefaultImagineVideoModel
-	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15LegacyModel
+	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15Model
 	mapping["grok-imagine-video-1.5-preview"] = DefaultImagineVideo15Model
 	mapping["grok-video-1.5"] = DefaultImagineVideo15Model
 
@@ -281,7 +280,7 @@ func ResolveGrokTextResponsesModelID(model string, defaultText ...string) string
 	}
 	normalized := strings.ToLower(StripGrokProviderPrefix(trimmed))
 	if canonical, ok := grokTextResponsesModelAliases[normalized]; ok {
-		if canonical == DefaultTextModel {
+		if (normalized == "grok" || normalized == "grok-latest" || normalized == "grok-build-latest") && canonical == DefaultTextModel {
 			return fallback
 		}
 		return canonical

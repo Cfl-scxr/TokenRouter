@@ -748,6 +748,20 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:    2,
 		LongContextOutputMultiplier:   2,
 	}
+
+	// Grok 3 Mini 保留独立历史价格，避免按 Grok 4.5 通用回退价计费。
+	s.fallbackPrices["grok-3-mini"] = &ModelPricing{
+		InputPricePerToken:     0.30e-6,
+		OutputPricePerToken:    0.50e-6,
+		CacheReadPricePerToken: 0.075e-6,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["grok-3-mini-fast"] = &ModelPricing{
+		InputPricePerToken:     0.60e-6,
+		OutputPricePerToken:    4e-6,
+		CacheReadPricePerToken: 0.15e-6,
+		SupportsCacheBreakdown: false,
+	}
 	// xAI Grok Build 0.1 官方价格为输入 $1、缓存输入 $0.20、输出 $2/百万 token。
 	// Composer 仅通过 Grok Build 提供且没有独立公开价格，因此其别名沿用该编程模型价格，
 	// 避免被静默按零费用结算。
@@ -937,6 +951,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["grok-4.5"]
 	case "grok-4.6", "grok-4.6-latest":
 		return s.fallbackPrices["grok-4.6"]
+	case "grok-3-mini":
+		return s.fallbackPrices["grok-3-mini"]
+	case "grok-3-mini-fast":
+		return s.fallbackPrices["grok-3-mini-fast"]
 	case "grok-4.3",
 		"grok-4.20-0309-reasoning",
 		"grok-4.20-0309-non-reasoning",
