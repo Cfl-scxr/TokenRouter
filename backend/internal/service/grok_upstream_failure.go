@@ -384,12 +384,6 @@ func grokRetryableOnSameAccount(account *Account, statusCode int, responseBody [
 		if statusCode == http.StatusTooManyRequests {
 			return true
 		}
-	case GrokFailureRateLimit:
-		// 瞬时 429 不能说明凭据异常；所有 Grok 账号先使用有限的同账号重试窗口，
-		// failover 循环仍限制总次数，耗尽后再向客户端返回 429。
-		if statusCode == http.StatusTooManyRequests {
-			return true
-		}
 	}
 	return account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 }
@@ -399,7 +393,7 @@ func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody
 		return false, 0, time.Time{}
 	}
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
-	if decision.Class != GrokFailureModelCapacity && decision.Class != GrokFailureRateLimit {
+	if decision.Class != GrokFailureModelCapacity {
 		return true, 0, time.Time{}
 	}
 	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second)

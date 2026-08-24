@@ -35,6 +35,7 @@ func grokStreamIdleFailoverError(account *Account, idle time.Duration) *Upstream
 		RequestScopedTransient: true,
 		// 空闲失败后最多允许一次同账号重放；截止时间从失败时刻计算，避免
 		// 长时间挂起的流耗尽正常的三次重试预算后才切换账号。
+		SameAccountRetryMax:      1,
 		SameAccountRetryDeadline: time.Now().Add(idle),
 	}
 }
