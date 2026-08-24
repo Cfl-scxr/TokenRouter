@@ -334,16 +334,6 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	}
 }
 
-// parseAnthropicSSEField 解析形如 "field:value" 或 "field: value" 的 SSE 字段行。
-// 按 SSE 规范，冒号后的空格是可选的，两种格式都需要支持。
-func parseAnthropicSSEField(line, field string) (string, bool) {
-	prefix := field + ":"
-	if !strings.HasPrefix(line, prefix) {
-		return "", false
-	}
-	return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
-}
-
 // handleResponsesBufferedStreamingResponse reads all Anthropic SSE events from
 // the upstream streaming response, assembles them into a complete Anthropic
 // response, converts to Responses API JSON format, and writes it to the client.
