@@ -48,13 +48,10 @@ const (
 // sameAccountRetryDelayFor 为请求级瞬时错误计算有上限的指数退避；
 // 其它同账号错误继续使用固定 500ms，保持既有重试时延。
 func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryCount int) time.Duration {
-	if failoverErr == nil {
-		return sameAccountRetryDelay
-	}
-	if failoverErr.SameAccountRetryDelay > 0 {
+	if failoverErr != nil && failoverErr.SameAccountRetryDelay > 0 {
 		return failoverErr.SameAccountRetryDelay
 	}
-	if !failoverErr.RequestScopedTransient || retryCount <= 1 {
+	if failoverErr == nil || !failoverErr.RequestScopedTransient || retryCount <= 1 {
 		return sameAccountRetryDelay
 	}
 
@@ -68,22 +65,33 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 	return delay
 }
 
-// sameAccountRetryDeadlineAllows prevents a retry from starting after the
-// service-provided same-account retry window has elapsed.
-func sameAccountRetryDeadlineAllows(failoverErr *service.UpstreamFailoverError) bool {
-	return failoverErr == nil || failoverErr.SameAccountRetryDeadline.IsZero() || time.Now().Before(failoverErr.SameAccountRetryDeadline)
+func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCount, retryLimit int) bool {
+	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
+		return false
+	}
+	if !failoverErr.SameAccountRetryDeadline.IsZero() {
+		return time.Now().Before(failoverErr.SameAccountRetryDeadline)
+	}
+	return retryCount < retryLimit
 }
 
-// effectiveSameAccountRetryLimit 应用错误级重试上限，但不覆盖账号显式设置的零值（零值表示禁用重试）。
+// effectiveSameAccountRetryLimit 合并账号默认预算与错误级别的更小上限。
+// 兼容仍使用该辅助函数的媒体与测试路径，零值表示沿用账号配置。
 func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, account *service.Account) int {
 	if account == nil {
 		return 0
 	}
 	limit := account.GetPoolModeRetryCount()
-	if limit > 0 && failoverErr != nil && failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < limit {
+	if limit > 0 && failoverErr != nil && failoverErr.SameAccountRetryMax > 0 &&
+		failoverErr.SameAccountRetryMax < limit {
 		return failoverErr.SameAccountRetryMax
 	}
 	return limit
+}
+
+// sameAccountRetryDeadlineAllows 保证服务层提供的重试窗口未过期。
+func sameAccountRetryDeadlineAllows(failoverErr *service.UpstreamFailoverError) bool {
+	return failoverErr == nil || failoverErr.SameAccountRetryDeadline.IsZero() || time.Now().Before(failoverErr.SameAccountRetryDeadline)
 }
 
 // FailoverState 跨循环迭代共享的 failover 状态
@@ -128,22 +136,14 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
-	retryCount := s.SameAccountRetryCount[accountID]
-	if failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < retryLimit {
-		retryLimit = failoverErr.SameAccountRetryMax
-	}
-	sameAccountRetryAllowed := failoverErr.RetryableOnSameAccount && retryLimit > 0 && retryCount < retryLimit
-	if sameAccountRetryAllowed && !failoverErr.SameAccountRetryDeadline.IsZero() {
-		sameAccountRetryAllowed = time.Now().Before(failoverErr.SameAccountRetryDeadline)
-	}
-	sameAccountRetry := sameAccountRetryAllowed
+	sameAccountRetry := sameAccountRetryAllowed(failoverErr, s.SameAccountRetryCount[accountID], retryLimit)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
 
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试。
 	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
-	if sameAccountRetryAllowed {
+	if sameAccountRetryAllowed(failoverErr, s.SameAccountRetryCount[accountID], retryLimit) {
 		s.SameAccountRetryCount[accountID]++
 		retryDelay := sameAccountRetryDelayFor(failoverErr, s.SameAccountRetryCount[accountID])
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",

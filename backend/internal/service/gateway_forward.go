@@ -784,7 +784,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				decision := semanticDecision
 				if semanticStatus != 529 {
 					decision = upstreamErrorDecisionWithoutPersistence(account, http.StatusForbidden)
-					if s.rateLimitService != nil {
+					// 已经写出部分响应后不能再改变账号调度状态；避免把一个
+					// 无法重试的流内错误写入持久化错误策略。
+					if c.Writer.Size() == writerSizeBeforeStream && s.rateLimitService != nil {
 						decision = s.rateLimitService.ApplyUpstreamError(ctx, account, http.StatusForbidden, resp.Header, body, reqModel)
 					}
 				}

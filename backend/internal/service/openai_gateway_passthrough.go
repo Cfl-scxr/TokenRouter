@@ -569,7 +569,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
 	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。
 	if account.UsesOpenAICodexProtocol() {
-		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
+		enforceCodexIdentityHeaders(req.Header)
 	}
 
 	if req.Header.Get("content-type") == "" {
@@ -768,6 +768,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 	})
+	shouldDisable := decision.StopScheduling
 	return s.newOpenAIAccountFailoverError(
 		account,
 		resp.StatusCode,
@@ -1479,7 +1480,21 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	}
 }
 
-func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
+// openAIStreamFailedEventRetryableOnSameAccount 兼容旧调用点和带策略决策的测试入口。
+// 两种入口最终都按账号池模式与事件语义判断同账号重试，决策参数仅用于保持旧 API 兼容。
+func openAIStreamFailedEventRetryableOnSameAccount(args ...any) bool {
+	var account *Account
+	var payload []byte
+	var message string
+	if len(args) == 3 {
+		account, _ = args[0].(*Account)
+		payload, _ = args[1].([]byte)
+		message, _ = args[2].(string)
+	} else if len(args) >= 5 {
+		account, _ = args[1].(*Account)
+		payload, _ = args[3].([]byte)
+		message, _ = args[4].(string)
+	}
 	if account == nil {
 		return false
 	}
@@ -1488,11 +1503,29 @@ func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []b
 	if isOpenAIUpstreamCapacityShedEvent(payload) {
 		return true
 	}
-	if decision.Policy != ErrorPolicyPoolBypassed {
+	if !account.IsPoolMode() {
 		return false
 	}
-	return account.IsPoolModeRetryableStatus(statusCode) ||
+	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
+	return account.IsPoolModeRetryableStatus(semanticStatus) ||
 		isOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
+}
+
+// applyOpenAIStreamFailedAccountPolicy 将 HTTP 200 流内的 response.failed
+// 统一映射到现有账号策略管线，避免各协议入口重复推导状态码。
+func (s *OpenAIGatewayService) applyOpenAIStreamFailedAccountPolicy(
+	ctx context.Context,
+	account *Account,
+	model string,
+	headers http.Header,
+	payload []byte,
+	message string,
+) (int, UpstreamErrorDecision) {
+	status := openAIStreamFailedEventSemanticStatus(payload, message)
+	if status < http.StatusBadRequest {
+		status = http.StatusBadGateway
+	}
+	return status, s.applyOpenAIAccountStreamRateLimitError(ctx, account, status, headers, payload, model)
 }
 
 func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
@@ -1545,9 +1578,14 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	upstreamRequestID string,
 	payload []byte,
 	message string,
+	responseHeaders ...http.Header,
 ) *UpstreamFailoverError {
+	var headers http.Header
+	if len(responseHeaders) > 0 {
+		headers = responseHeaders[0]
+	}
 	return s.newOpenAIStreamPolicyFailoverError(
-		c, account, passthrough, upstreamRequestID, nil, http.StatusBadGateway, payload, message, false,
+		c, account, passthrough, upstreamRequestID, headers, http.StatusBadGateway, payload, message, false,
 	)
 }
 
@@ -1569,8 +1607,8 @@ func (s *OpenAIGatewayService) newOpenAIStreamPolicyFailoverError(
 		message = "OpenAI stream disconnected before completion"
 	}
 	var headers http.Header
-	if len(responseHeaders) > 0 && responseHeaders[0] != nil {
-		headers = responseHeaders[0].Clone()
+	if len(responseHeaders) > 0 {
+		headers = responseHeaders.Clone()
 	}
 	statusCode, shouldDisable := s.handleOpenAIStreamTerminalAccountSideEffects(c, account, payload, message, headers)
 	// 流内 failed 事件承载于 HTTP 200；使用事件的语义状态更新账号健康，
@@ -1586,7 +1624,7 @@ func (s *OpenAIGatewayService) newOpenAIStreamPolicyFailoverError(
 			"message": message,
 		},
 	})
-	retryableOnSameAccount := openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
+	retryableOnSameAccount = openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
 	failoverErr := s.newOpenAIAccountFailoverError(account, statusCode, headers, payload, message, shouldDisable, retryableOnSameAccount)
 	if failoverErr.IsCredentialFailure() || failoverErr.RequestScopedTransient {
 		return failoverErr
@@ -1729,7 +1767,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
-			observer.ObserveOpenAI(dataBytes, rawEventType)
 			if needModelReplace && strings.Contains(data, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
@@ -1826,7 +1863,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					}
 					if shouldFailover {
 						return resultWithUsage(),
-							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 					}
 					if !cyberHit && !sawBareError {
 						if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {

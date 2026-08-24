@@ -13,8 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// GrokCountTokens 在本地处理 Anthropic 兼容的 count_tokens 请求。路由中间件已完成
-// API Key 认证和分组解析，因此此处理器不选择账号，也不执行计费检查。
+// GrokCountTokens handles Anthropic-compatible count_tokens requests locally.
+// The route middleware already authenticates the API key and resolves the
+// group; this handler intentionally does not select an account or check billing.
 func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
@@ -54,8 +55,8 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
 }
 
-// CountTokens 处理 OpenAI 分组的 Anthropic 兼容 POST /v1/messages/count_tokens。
-// 它校验计费并转到 OpenAI token-count bridge，不占用并发槽位，也不记录用量。
+// CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups.
+// It validates billing and routes to an OpenAI token-count bridge without recording usage.
 func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	requestStart := time.Now()
 
@@ -238,4 +239,42 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		}
 		switchCount++
 	}
+}
+
+func (h *OpenAIGatewayHandler) acquireCountTokensAccountSlot(
+	c *gin.Context,
+	groupID *int64,
+	sessionHash string,
+	selection *service.AccountSelectionResult,
+	anthropicResponse bool,
+	reqLog *zap.Logger,
+) (func(), bool) {
+	writeError := func(status int, errType, message string) {
+		if anthropicResponse {
+			h.anthropicErrorResponse(c, status, errType, message)
+			return
+		}
+		h.errorResponse(c, status, errType, message)
+	}
+	streamStarted := false
+	release, result := h.acquireOpenAIAccountSlot(
+		c,
+		groupID,
+		sessionHash,
+		selection,
+		false,
+		&streamStarted,
+		reqLog,
+		writeError,
+	)
+	if result == openAISlotAcquireOK {
+		return release, true
+	}
+	// Token-count requests suppress the profit gate before selection, so this
+	// is defensive only. Never forward without a slot if a stale gate appears.
+	if result == openAISlotAcquireProfitVetoed {
+		markOpsRoutingCapacityLimited(c)
+		writeError(http.StatusServiceUnavailable, "api_error", "No available accounts")
+	}
+	return nil, false
 }

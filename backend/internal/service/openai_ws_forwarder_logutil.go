@@ -162,14 +162,23 @@ func openAIWSEventMayContainToolCalls(eventType string) bool {
 
 func openAIWSEventShouldParseUsage(eventType string) bool {
 	eventType = strings.TrimSpace(eventType)
-	if eventType == "error" || openAIStreamEventTypeIsTerminal(eventType) {
+	if eventType == "error" || isOpenAIWSTerminalEvent(eventType) {
 		return true
 	}
 	return strings.HasPrefix(eventType, "response.") && !strings.HasSuffix(eventType, ".delta")
 }
 
+// openAIWSMessageShouldParseUsage 只在事件声明可能携带 usage 且消息确实含有
+// usage 字段时进入 JSON 用量解析，减少高频 delta 事件的热路径开销。
 func openAIWSMessageShouldParseUsage(eventType string, message []byte) bool {
-	return openAIWSEventShouldParseUsage(eventType) && bytes.Contains(message, []byte(`"usage"`))
+	if !bytes.Contains(message, []byte(`"usage"`)) {
+		return false
+	}
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "error" || isOpenAIWSTerminalEvent(eventType) {
+		return true
+	}
+	return strings.HasPrefix(eventType, "response.") && !strings.HasSuffix(eventType, ".delta")
 }
 
 func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID string, response gjson.Result) {

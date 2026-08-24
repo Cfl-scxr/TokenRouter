@@ -161,7 +161,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	compatPromptCacheInjected := false
-	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+	if promptCacheKey == "" && account.UsesOpenAICodexProtocol() && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
 		promptCacheKey = deriveCompatPromptCacheKey(&chatReq, upstreamModel)
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
@@ -239,7 +239,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
 
-	if account.Type == AccountTypeOAuth {
+	if account.UsesOpenAICodexProtocol() {
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
@@ -384,7 +384,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
 	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
-	if handleErr == nil && account.Type == AccountTypeOAuth && !account.IsShadow() {
+	if handleErr == nil && account.UsesOpenAICodexProtocol() && !account.IsShadow() {
 		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 		}
@@ -498,7 +498,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
 			return nil, s.newOpenAIStreamPolicyFailoverError(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
-				openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payload, message),
+				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
 			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -706,7 +706,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				finalResponseBody = responseBody
 			}
 		}
-		if strings.TrimSpace(event.Type) == "response.failed" {
+		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
@@ -738,10 +738,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				c.Request.Context(), account, upstreamModel, resp.Header, payloadBytes, message,
 			)
 			policyGeneric := decision.ShouldReturnGenericError()
-			if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
+			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
 				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
-					openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payloadBytes, message),
+					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message),
 				)
 				return true
 			}

@@ -437,6 +437,11 @@ func (s *RateLimitService) handleDefaultUpstreamError(ctx context.Context, accou
 		}
 	}
 
+	// 529 表示全局上游过载，必须先记录全局过载冷却，不能被账号级临时规则抢先消费。
+	if statusCode == 529 {
+		s.handle529(ctx, account)
+		return false
+	}
 	// 非池账号保留既有精确状态优先级；401 继续进入认证刷新与默认冷却逻辑。
 	if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return true

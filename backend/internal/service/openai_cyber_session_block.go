@@ -20,6 +20,49 @@ type CyberSessionBlockStore interface {
 	FindCyberSessionBlocked(ctx context.Context, keys []string) (string, error)
 }
 
+// legacyCyberSessionBlockStore 兼容迁移前缓存接口，避免旧部署在升级后静默失去会话屏蔽。
+type legacyCyberSessionBlockStore interface {
+	SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error
+	IsCyberSessionBlocked(ctx context.Context, key string) (bool, error)
+}
+
+type legacyCyberSessionBlockStoreAdapter struct{ legacy legacyCyberSessionBlockStore }
+
+func (a legacyCyberSessionBlockStoreAdapter) SetCyberSessionBlocked(ctx context.Context, scopeKey string, keys []string, ttl time.Duration) error {
+	key := strings.TrimSpace(scopeKey)
+	if key == "" && len(keys) > 0 {
+		key = strings.TrimSpace(keys[0])
+	}
+	if key == "" {
+		return nil
+	}
+	return a.legacy.SetCyberSessionBlocked(ctx, key, ttl)
+}
+
+func (a legacyCyberSessionBlockStoreAdapter) IsCyberSessionScopeActive(ctx context.Context, scopeKey string) (bool, error) {
+	if strings.TrimSpace(scopeKey) == "" {
+		return false, nil
+	}
+	return a.legacy.IsCyberSessionBlocked(ctx, scopeKey)
+}
+
+func (a legacyCyberSessionBlockStoreAdapter) FindCyberSessionBlocked(ctx context.Context, keys []string) (string, error) {
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		blocked, err := a.legacy.IsCyberSessionBlocked(ctx, key)
+		if err != nil {
+			return "", err
+		}
+		if blocked {
+			return key, nil
+		}
+	}
+	return "", nil
+}
+
 // CyberSessionExplicitBlockKey returns an inexpensive exact key when the
 // client supplies a stable session signal.
 func CyberSessionExplicitBlockKey(apiKeyID int64, c *gin.Context, body []byte) string {
@@ -72,11 +115,13 @@ func (s *OpenAIGatewayService) cyberSessionBlockStore() CyberSessionBlockStore {
 	if s == nil || s.cache == nil {
 		return nil
 	}
-	store, ok := s.cache.(CyberSessionBlockStore)
-	if !ok {
-		return nil
+	if store, ok := s.cache.(CyberSessionBlockStore); ok {
+		return store
 	}
-	return store
+	if legacy, ok := s.cache.(legacyCyberSessionBlockStore); ok {
+		return legacyCyberSessionBlockStoreAdapter{legacy: legacy}
+	}
+	return nil
 }
 
 // CyberSessionBlockRuntime 返回会话屏蔽开关和 TTL，默认关闭。

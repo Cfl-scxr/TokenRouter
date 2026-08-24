@@ -272,7 +272,7 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.
-	if hit, _, _ := detectOpenAICyberPolicy(upstreamBody); hit {
+	if IsOpenAICyberWarningPayload(upstreamBody, upstreamMsg) {
 		return false
 	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {

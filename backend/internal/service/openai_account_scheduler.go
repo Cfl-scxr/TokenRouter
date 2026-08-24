@@ -1852,9 +1852,58 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 }
 
-func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, model string, success bool, firstTokenMs *int) {
-	// 旧调用点不携带本次选择模式，不能据此写入高级统计；成功结果仍需清理模型临时状态。
-	s.reportOpenAIAccountScheduleResult(false, accountID, model, success, firstTokenMs)
+func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountOrID any, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	var account *Account
+	var accountID int64
+	switch value := accountOrID.(type) {
+	case *Account:
+		account = value
+		if account != nil {
+			accountID = account.ID
+		}
+	case int64:
+		accountID = value
+	case int:
+		accountID = int64(value)
+	}
+	if account == nil && accountID == 0 {
+		return false
+	}
+
+	healthTripped := false
+	if account != nil && s != nil && s.rateLimitService != nil {
+		if success {
+			s.rateLimitService.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), account)
+		} else if len(observedErr) > 0 && observedErr[0] != nil {
+			healthTripped = s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(context.Background(), account, observedErr[0])
+		}
+	}
+	if success {
+		s.openaiOAuth429RetryStartedAt.Delete(accountID)
+		s.clearOpenAIAccountModelTransientState(accountID, normalizeOpenAIAccountModelTransientModel(model))
+	}
+	if account == nil {
+		// 旧调用点不携带本次选择模式，不能据此写入高级统计。
+		s.reportOpenAIAccountScheduleResult(false, accountID, model, success, firstTokenMs)
+		return healthTripped
+	}
+	if s == nil || s.rateLimitService == nil {
+		return healthTripped
+	}
+	scheduler := s.ensureOpenAIAccountScheduler()
+	if scheduler == nil {
+		return healthTripped
+	}
+	scheduler.ReportResult(accountID, success, firstTokenMs)
+	return healthTripped
+}
+
+// ObserveOpenAIAccountHealthFailure 记录已经写出响应后无法进入调度反馈的失败。
+func (s *OpenAIGatewayService) ObserveOpenAIAccountHealthFailure(ctx context.Context, account *Account, observedErr error) bool {
+	if s == nil || s.rateLimitService == nil || account == nil || observedErr == nil {
+		return false
+	}
+	return s.rateLimitService.ObserveOpenAIAPIKeyHealthFailure(ctx, account, observedErr)
 }
 
 // ReportOpenAIAccountScheduleResultForSelection 按本次实际选择模式写入反馈。
@@ -1878,8 +1927,14 @@ func (s *OpenAIGatewayService) reportOpenAIAccountScheduleResult(advanced bool, 
 }
 
 func (s *OpenAIGatewayService) RecordOpenAIAccountSwitch() {
-	// 没有选择结果时无法判断所属分组，避免把基础调度的切换误记为高级调度事件。
-	s.recordOpenAIAccountSwitch(false)
+	// 旧调用点没有分组上下文，仅在高级调度依赖已装配时记录，避免空服务污染指标。
+	if s == nil || s.rateLimitService == nil {
+		return
+	}
+	scheduler := s.ensureOpenAIAccountScheduler()
+	if scheduler != nil {
+		scheduler.ReportSwitch()
+	}
 }
 
 // RecordOpenAIAccountSwitchForSelection 只记录高级调度请求的账号切换。

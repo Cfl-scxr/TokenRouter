@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,20 @@ func newOpenAIUpstreamClientErrorResponse(statusCode int, body string) *http.Res
 
 func newOpenAIUpstreamClientErrorTestAccount() *Account {
 	return &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acct"}
+}
+
+// 兼容上游新增测试使用的命名，复用 fork 原有测试夹具。
+func newOpenAIUpstreamErrorTestContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	return newOpenAIUpstreamClientErrorTestContext()
+}
+
+func newOpenAIUpstreamErrorResponse(statusCode int, body string) *http.Response {
+	return newOpenAIUpstreamClientErrorResponse(statusCode, body)
+}
+
+func newOpenAIUpstreamErrorTestAccount() *Account {
+	return newOpenAIUpstreamClientErrorTestAccount()
 }
 
 func TestHandleErrorResponse_Deterministic400IsNotRewrappedAs502(t *testing.T) {
@@ -187,7 +202,7 @@ func TestHandleErrorResponse_PassthroughRuleStillWinsOver400Branch(t *testing.T)
 	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{
 		newNonFailoverPassthroughRule(http.StatusBadRequest, "automation_update", http.StatusTeapot, "自定义文案"),
 	})
-	BindErrorPassthroughService(c, ruleService)
+	BindErrorPassthroughService(c, ruleSvc)
 	svc := &OpenAIGatewayService{}
 
 	_, err := svc.handleErrorResponse(
@@ -197,8 +212,8 @@ func TestHandleErrorResponse_PassthroughRuleStillWinsOver400Branch(t *testing.T)
 	)
 
 	require.Error(t, err)
-	require.Equal(t, http.StatusTeapot, recorder.Code)
-	require.Equal(t, "自定义文案", gjson.Get(recorder.Body.String(), "error.message").String())
+	require.Equal(t, http.StatusTeapot, rec.Code)
+	require.Equal(t, "自定义文案", gjson.Get(rec.Body.String(), "error.message").String())
 }
 
 func TestWriteOpenAIUpstreamClientError_UsesSafeFallbacks(t *testing.T) {

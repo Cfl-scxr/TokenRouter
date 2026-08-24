@@ -1273,7 +1273,13 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 }
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
-	if account == nil || account.UsesOpenAICodexProtocol() {
+	if account == nil {
+		return strings.TrimSpace(model)
+	}
+	if account.IsGrok() {
+		return xai.NormalizeModelID(model)
+	}
+	if account.UsesOpenAICodexProtocol() {
 		return normalizeCodexModel(model)
 	}
 	return strings.TrimSpace(model)

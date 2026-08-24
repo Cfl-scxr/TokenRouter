@@ -161,10 +161,12 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if c != nil && c.Request != nil {
 		reqCtx = c.Request.Context()
 	}
-	// 终态收口：WS 握手与 HTTP 出站共用同一套身份语义，账号级自定义 UA 同样作为
-	// 管理员显式配置传入（上面写进 headers 的值只在强制统一被关闭时才参与配对）。
+	s.applyOpenAIUpstreamUserAgentHeader(reqCtx, c, account, headers, true, routerMatch...)
+
+	// 终态收口：originator 必须与最终 user-agent 首段配套且为官方身份，非官方 UA 整体回退为
+	// 默认 Codex TUI 身份，同时避免 originator 与 UA 首段错配导致上游 404，详见 issue #3901。
 	if account != nil && account.UsesOpenAICodexProtocol() {
-		enforceCodexIdentityHeadersWithUA(headers, s.codexIdentityOverrideUA(account))
+		enforceCodexIdentityHeaders(headers)
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
@@ -357,7 +359,7 @@ func setPreviousResponseIDToRawPayload(payload []byte, previousResponseID string
 	}
 
 	var reqBody map[string]any
-	if unmarshalErr := decodeOpenAIJSONUseNumber(payload, &reqBody); unmarshalErr != nil {
+	if unmarshalErr := json.Unmarshal(payload, &reqBody); unmarshalErr != nil {
 		return nil, err
 	}
 	reqBody["previous_response_id"] = normalizedPrevID
@@ -451,7 +453,7 @@ func normalizeOpenAIWSJSONForCompare(raw []byte) ([]byte, error) {
 		return nil, errors.New("json is empty")
 	}
 	var decoded any
-	if err := decodeOpenAIJSONUseNumber(trimmed, &decoded); err != nil {
+	if err := json.Unmarshal(trimmed, &decoded); err != nil {
 		return nil, err
 	}
 	return json.Marshal(decoded)
@@ -470,7 +472,7 @@ func normalizeOpenAIWSPayloadWithoutInputAndPreviousResponseID(payload []byte) (
 		return nil, errors.New("payload is empty")
 	}
 	var decoded map[string]any
-	if err := decodeOpenAIJSONUseNumber(payload, &decoded); err != nil {
+	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return nil, err
 	}
 	delete(decoded, "input")

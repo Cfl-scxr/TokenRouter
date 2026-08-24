@@ -616,7 +616,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
 			return nil, s.newOpenAIStreamPolicyFailoverError(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
-				openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payload, message),
+				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
 			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -983,7 +983,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			)
 			return false
 		}
-		observer.ObserveOpenAI([]byte(payload), event.Type)
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
 		eventType := strings.TrimSpace(event.Type)
@@ -1007,55 +1006,15 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			payloadBytes := []byte(payload)
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
-			if eventType == "response.failed" || isBareErrorEvent {
-				payloadBytes := []byte(payload)
-				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
-					MarkOpsCyberPolicy(c, CyberPolicyMark{
-						Code:           code,
-						Message:        msg,
-						Body:           truncateString(payload, 4096),
-						UpstreamStatus: http.StatusOK,
-						UpstreamInTok:  usage.InputTokens,
-						UpstreamOutTok: usage.OutputTokens,
-					})
-					if !clientDisconnected {
-						writeStreamHeaders()
-						clientMsg := msg
-						if clientMsg == "" {
-							clientMsg = "Request blocked by upstream cyber-security policy"
-						}
-						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("invalid_request_error", clientMsg)); err == nil {
-							c.Writer.Flush()
-						}
-						clientDisconnected = true
-					}
-					return true
-				}
-				message := extractOpenAISSEErrorMessage(payloadBytes)
-				// Once Anthropic output has started, switching accounts would splice
-				// two model streams together. Surface a proper Anthropic error event
-				// instead of returning a failover error that the handler cannot retry.
-				shouldFailover := openAIStreamFailedEventShouldFailover(payloadBytes, message)
-				if isBareErrorEvent {
-					shouldFailover = openAIStreamErrorEventShouldFailover(payloadBytes, message)
-				}
-				if !clientOutputStarted && shouldFailover {
-					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message, resp.Header)
-					return true
-				}
-				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
-				errStatus, errType, errMsg := http.StatusBadGateway, "api_error", message
-				// 统一走语义状态推断 + body 归一化（与 /v1/responses 路径一致），
-				// 使按错误码配置的透传规则可命中。
-				if status, et, em, matched := applyOpenAIStreamFailedErrorPassthroughRule(
-					c, account.Platform, payloadBytes, message,
-				); matched {
-					if em == "" {
-						em = errMsg
-					}
-					errStatus, errType, errMsg = status, et, em
-					MarkResponseCommitted(c)
-				}
+			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
+				MarkOpsCyberPolicy(c, CyberPolicyMark{
+					Code:           code,
+					Message:        msg,
+					Body:           truncateString(payload, 4096),
+					UpstreamStatus: http.StatusOK,
+					UpstreamInTok:  usage.InputTokens,
+					UpstreamOutTok: usage.OutputTokens,
+				})
 				if !clientDisconnected {
 					writeStreamHeaders()
 					clientMsg := msg
@@ -1065,6 +1024,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("invalid_request_error", clientMsg)); err == nil {
 						c.Writer.Flush()
 					}
+					clientDisconnected = true
 				}
 				cyberPolicyErr = errOpenAICyberPolicyForwarded
 				return true
@@ -1079,7 +1039,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
 				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
-					openAIStreamFailedEventRetryableOnSameAccount(decision, account, policyStatus, payloadBytes, message),
+					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message),
 				)
 				return true
 			}

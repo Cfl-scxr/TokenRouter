@@ -200,6 +200,11 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	if isGrokDecoderCompatibilityError(statusCode, responseBody) {
 		return true
 	}
+	// xAI 某些兼容端点用 405 表示当前账号不支持该接口；切换账号后仍可能
+	// 命中另一种能力配置，因此不能沿用 OpenAI 通用状态码集合将其留在原账号。
+	if statusCode == http.StatusMethodNotAllowed {
+		return true
+	}
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	switch decision.Class {
 	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:

@@ -92,7 +92,8 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		upstreamMessage := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		if isOpenAIAlphaSearchEndpointUnsupported(account, resp.StatusCode) {
+		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody) ||
+			isOpenAIAlphaSearchEndpointUnsupported(account, resp.StatusCode) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 			// alpha/search 是独立的工具端点，单次 401 不能证明账号的模型调用
 			// 凭据全局失效。若沿用通用 401 逻辑，PAT 会因没有 refresh_token

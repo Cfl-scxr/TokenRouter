@@ -93,6 +93,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	compactPath := isOpenAIResponsesCompactPath(c)
+	if compactPath {
+		// compact 端点只接受压缩请求字段，避免把普通 Responses 控制字段带到上游。
+		if compactBody, compactChanged, compactErr := normalizeOpenAICompactRequestBody(body); compactErr != nil {
+			return nil, compactErr
+		} else if compactChanged {
+			body = compactBody
+		}
+		if account.IsOpenAIApiKey() {
+			if replayBody, replayChanged, replayErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, true); replayErr != nil {
+				return nil, replayErr
+			} else if replayChanged {
+				body = replayBody
+			}
+		}
+	}
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled, compactPath) {
 		body, err = flattenOpenAIResponsesNamespaces(c, body)
 		if err != nil {
@@ -321,35 +336,26 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 	}
 
-	billingModel := account.GetMappedModel(reqModel)
-	if billingModel != reqModel {
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, billingModel, account.Name, isCodexCLI)
-		reqModel = billingModel
-		markPatchSet("model", billingModel)
-	}
-	upstreamModel := billingModel
 	isCompactRequest := compactPath
-	compactMapped := false
+	requestedModel := reqModel
+	billingModel, upstreamModel := resolveOpenAIForwardMappedModels(account, requestedModel, isCompactRequest)
 	if isCompactRequest {
-		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
-		if compactMappedModel != "" && compactMappedModel != billingModel {
-			compactMapped = true
-			upstreamModel = compactMappedModel
-			reqModel = compactMappedModel
-			markPatchSet("model", compactMappedModel)
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", billingModel, compactMappedModel, account.Name, isCodexCLI)
+		if compactModel := s.resolveOpenAICompactFallbackModel(account, requestedModel); compactModel != "" {
+			upstreamModel = compactModel
 		}
 	}
-	if !compactMapped {
-		modelForNormalize := reqModel
-		if modelForNormalize == "" {
-			modelForNormalize = requestView.Model
-		}
-		upstreamModel = normalizeOpenAIModelForUpstream(account, modelForNormalize)
-		if upstreamModel != "" && upstreamModel != modelForNormalize {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)", modelForNormalize, upstreamModel, account.Name, account.Type, isCodexCLI)
-			reqModel = upstreamModel
-			markPatchSet("model", upstreamModel)
+	if billingModel != requestedModel {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", requestedModel, billingModel, account.Name, isCodexCLI)
+	}
+	reqModel = billingModel
+	if upstreamModel != requestedModel {
+		markPatchSet("model", upstreamModel)
+	}
+	if upstreamModel != billingModel {
+		if isCompactRequest {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", requestedModel, upstreamModel, account.Name, isCodexCLI)
+		} else {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)", billingModel, upstreamModel, account.Name, account.Type, isCodexCLI)
 		}
 	}
 	if strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()) == "minimal" {
@@ -542,7 +548,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 	}
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && gjson.GetBytes(body, "previous_response_id").Exists() {
+	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 && !account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
@@ -611,6 +617,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			requestView = newOpenAIRequestView(body)
 		}
 	}
+	// 在所有请求体重建完成后排序压缩触发器，确保它始终位于历史输入末尾。
+	if normalizedBody, changed, normalizeErr := NormalizeCompactionTriggerInputOrder(body); normalizeErr != nil {
+		return nil, fmt.Errorf("normalize compaction trigger order: %w", normalizeErr)
+	} else if changed {
+		body = normalizedBody
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
+	}
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
@@ -636,6 +650,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if err != nil {
 		return nil, err
 	}
+	SetOpsUpstreamModel(c, upstreamModel)
 
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
 
@@ -873,6 +888,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
+	compactModelFallbackRetried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(body)
 	for {
@@ -974,6 +990,23 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request after %s (account: %s)", reason, account.Name)
 				continue
 			}
+			if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
+				c, account, requestedModel, body, resp.StatusCode, upstreamMsg, respBody, compactModelFallbackRetried,
+			); retry {
+				fromModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+				body = retryBody
+				requestView = newOpenAIRequestView(body)
+				reqBody = nil
+				upstreamModel = fallbackModel
+				compactModelFallbackRetried = true
+				SetOpsUpstreamModel(c, fallbackModel)
+				logger.LegacyPrintf(
+					"service.openai_gateway",
+					"[OpenAI] Retrying explicit compact request once with fallback model (account: %s, from: %s, to: %s, upstream_code: %s)",
+					account.Name, fromModel, fallbackModel, upstreamCode,
+				)
+				continue
+			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -1024,6 +1057,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
+				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
+					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
+						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
+					); retry {
+						_ = resp.Body.Close()
+						body = retryBody
+						requestView = newOpenAIRequestView(body)
+						upstreamModel = fallbackModel
+						compactModelFallbackRetried = true
+						SetOpsUpstreamModel(c, fallbackModel)
+						continue
+					}
+				}
 				return nil, err
 			}
 			usage = streamResult.usage
@@ -1035,6 +1081,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
+				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
+					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
+						c, account, requestedModel, body, http.StatusBadRequest, signal.message, signal.payload, compactModelFallbackRetried,
+					); retry {
+						_ = resp.Body.Close()
+						body = retryBody
+						requestView = newOpenAIRequestView(body)
+						upstreamModel = fallbackModel
+						compactModelFallbackRetried = true
+						SetOpsUpstreamModel(c, fallbackModel)
+						continue
+					}
+				}
 				return nil, err
 			}
 			usage = nonStreamResult.usage
@@ -1091,6 +1150,11 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
 	}
+	if account.Extra != nil {
+		if supported, ok := account.Extra["openai_responses_supported"].(bool); ok && !supported {
+			return true
+		}
+	}
 	if account.IsCNProvider() {
 		// CN 的显式协议配置优先于异步探针 Extra；adaptive 仅 DeepSeek 有原生
 		// Responses，Kimi/GLM 回退 Chat Completions。
@@ -1110,7 +1174,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {
-	case AccountTypeOAuth:
+	case AccountTypeOAuth, AccountTypeSetupToken:
 		// OAuth accounts use ChatGPT internal API
 		targetURL = chatgptCodexURL
 	case AccountTypeAPIKey:
@@ -1155,7 +1219,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	// Set headers specific to OAuth accounts (ChatGPT internal API)
-	if account.Type == AccountTypeOAuth {
+	if account.UsesOpenAICodexProtocol() {
 		// Required: set Host for ChatGPT API (must use req.Host, not Header.Set)
 		req.Host = "chatgpt.com"
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
@@ -1174,7 +1238,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	// 故障转移换号后，不能把已知由旧账号签发的回合状态继续送往新账号。
 	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
-	if account.Type == AccountTypeOAuth {
+	if account.UsesOpenAICodexProtocol() {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))

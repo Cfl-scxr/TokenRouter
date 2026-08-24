@@ -63,35 +63,13 @@ func explicitOpenAISessionID(c *gin.Context, body []byte) string {
 
 	sessionID := explicitOpenAIHeaderSessionID(c)
 	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 	}
 	return sessionID
 }
 
-// openAIRequestPayloadView unwraps Responses WebSocket event envelopes while
-// leaving ordinary HTTP objects untouched even when they contain a response
-// field for another purpose.
-func openAIRequestPayloadView(body []byte) gjson.Result {
-	root := parseRawJSONView(body)
-	eventType := strings.ToLower(strings.TrimSpace(root.Get("type").String()))
-	if strings.HasPrefix(eventType, "response.") {
-		if response := root.Get("response"); response.Exists() && response.IsObject() {
-			return response
-		}
-	}
-	return root
-}
-
-// explicitOpenAIRequestSessionID extends the common OpenAI session signals
-// with Grok's native conversation header only for requests authenticated to a
-// Grok group. This keeps an unrelated x-grok-conv-id header from changing
-// scheduling or upstream session behavior for non-Grok groups.
-//
-// For Grok groups only, previous_response_id is a last-resort sticky seed so
-// multi-turn Responses chains stay on the same OAuth account when no explicit
-// session/conversation/prompt_cache_key is present. Non-Grok groups omit this
-// so HTTP OpenAI paths that delete previous_response_id before upstream are
-// unchanged.
+// explicitOpenAIRequestSessionID 仅对认证到 Grok 分组的请求，将 Grok 原生会话头加入
+// 通用 OpenAI 会话信号，避免无关的 x-grok-conv-id 改变非 Grok 分组的调度或上游会话行为。
 func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
@@ -102,7 +80,7 @@ func explicitOpenAIRequestSessionID(c *gin.Context, body []byte) string {
 		sessionID = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
 	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 	}
 	if sessionID == "" && isGrokRequestContext(c) && len(body) > 0 {
 		sessionID = grokPreviousResponseSessionSeed(body)
@@ -780,30 +758,34 @@ func openAIHTTPPassthroughRoutingFromContext(ctx context.Context) bool {
 
 // resolveOpenAIAccountUpstreamModelForRequest 按真实转发顺序解析 OpenAI 最终上游模型。
 // HTTP 自动透传只执行 compact 专属映射；其它入口依次执行账号映射、compact 映射和 OAuth 模型归一化。
-func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool, allowHTTPPassthrough bool) string {
+func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool, passthrough ...bool) string {
 	requestedModel = strings.TrimSpace(requestedModel)
 	if requestedModel == "" {
 		return ""
 	}
-	if allowHTTPPassthrough && account != nil && account.IsOpenAIPassthroughEnabled() {
+	allowHTTPPassthrough := len(passthrough) > 0 && passthrough[0]
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
+		return normalizeOpenAIModelForUpstream(account, upstreamModel)
+	}
+	if account != nil && account.IsOpenAIPassthroughEnabled() {
 		if requireCompact {
-			return strings.TrimSpace(resolveOpenAICompactForwardModel(account, requestedModel))
+			return resolveOpenAICompactForwardModel(account, requestedModel)
 		}
 		return requestedModel
 	}
-
-	// Compact mappings are keyed by the client-visible model. Prefer an exact
-	// compact rule before ordinary account mapping; otherwise a normal alias can
-	// hide the compact-specific rule and make scheduling disagree with Forward.
+	if allowHTTPPassthrough && account != nil && account.IsOpenAIPassthroughEnabled() {
+		return requestedModel
+	}
 	if requireCompact && account != nil {
-		if compactModel, matched := account.ResolveCompactMappedModel(strings.TrimSpace(requestedModel)); matched {
+		if compactModel, matched := account.ResolveCompactMappedModel(requestedModel); matched {
 			if compactModel = strings.TrimSpace(compactModel); compactModel != "" {
 				return compactModel
 			}
 		}
 	}
 
-	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
+	upstreamModel := strings.TrimSpace(resolveOpenAIForwardModel(account, requestedModel, ""))
 	if upstreamModel == "" {
 		return ""
 	}
@@ -816,15 +798,12 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 	return strings.TrimSpace(normalizeOpenAIModelForUpstream(account, upstreamModel))
 }
 
-// ResolveOpenAIAccountUpstreamModelForRequest exposes the scheduler's exact
-// account mapping chain to handler-side outcome reporting.
+// ResolveOpenAIAccountUpstreamModelForRequest 暴露调度层实际采用的账号模型。
 func ResolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
 	return resolveOpenAIAccountUpstreamModelForRequest(account, requestedModel, requireCompact)
 }
 
-// resolveOpenAIForwardMappedModels is the shared account mapping chain for
-// Forward callers. billingModel retains the ordinary mapping used for usage
-// accounting, while upstreamModel is the model the scheduler has admitted.
+// resolveOpenAIForwardMappedModels 返回计费模型与最终上游模型，保持两条链路一致。
 func resolveOpenAIForwardMappedModels(account *Account, requestedModel string, requireCompact bool) (billingModel, upstreamModel string) {
 	requestedModel = strings.TrimSpace(requestedModel)
 	if account != nil && account.IsOpenAIPassthroughEnabled() {
@@ -842,14 +821,21 @@ func resolveOpenAIForwardMappedModels(account *Account, requestedModel string, r
 	return billingModel, upstreamModel
 }
 
+// resolveOpenAIErrorSchedulingModel 优先使用已观测的真实上游模型。
 func resolveOpenAIErrorSchedulingModel(billingModel, upstreamModel string) string {
-	if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
-		return upstreamModel
+	if upstream := strings.TrimSpace(upstreamModel); upstream != "" {
+		return upstream
 	}
 	return strings.TrimSpace(billingModel)
 }
 
-func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, error) {
+func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability) (*Account, error) {
+	routingModel := s.resolveChannelRoutingModel(ctx, groupID, requestedModel)
+	return s.selectAccountForModelWithExclusionsForRouting(ctx, groupID, platform, sessionHash, requestedModel, routingModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability)
+}
+
+// selectAccountForModelWithExclusionsForRouting 使用已解析的账号层模型执行旧版调度。
+func (s *OpenAIGatewayService) selectAccountForModelWithExclusionsForRouting(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, routingModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability) (*Account, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",

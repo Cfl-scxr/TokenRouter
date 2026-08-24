@@ -249,6 +249,8 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 	return body
 }
 
+// buildOpenAIWSHTTPBridgeFailedEvent 将没有正式 response.failed 事件的上游错误
+// 封装成客户端可消费的 Responses 终止事件，并保留上游错误码和消息。
 func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte, fallbackMessage string) []byte {
 	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
 	if errorType == "" {
@@ -286,6 +288,21 @@ func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte,
 	return body
 }
 
+// detectOpenAIWSHTTPBridgeRequestScopedError 识别只与当前请求有关的错误。
+// 这类错误既不修改账号状态，也不能因为池模式配置而回放当前 turn。
+func detectOpenAIWSHTTPBridgeRequestScopedError(account *Account, statusCode int, message string, body []byte) bool {
+	if hit, _, _ := detectOpenAICyberPolicy(body); hit {
+		return true
+	}
+	if IsOpenAICyberWarningPayload(body, message) ||
+		isOpenAIClientInvalidRequestError(statusCode, message, body) ||
+		isOpenAIContextWindowError(message, body) {
+		return true
+	}
+	return account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, body)
+}
+
+// proxyOpenAIWSHTTPBridgeTurn 使用 HTTP Responses 上游完成一个 WS ingress turn，并把 SSE 事件转回 WS 消息。
 func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	ctx context.Context,
 	c *gin.Context,
@@ -294,15 +311,34 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	payload []byte,
 	payloadBytes int,
 	originalModel string,
-	routingModel string,
-	imageBillingModel string,
-	imageSizeTier string,
-	imageInputSize string,
-	grokCacheIdentity string,
-	turn int,
-	writeClientMessage func([]byte) error,
-	routerMatch ...TLSFingerprintRouterMatchResult,
+	args ...any,
 ) (*OpenAIForwardResult, error) {
+	var routingModel, imageBillingModel, imageSizeTier, imageInputSize, grokCacheIdentity string
+	var turn int
+	var writeClientMessage func([]byte) error
+	var routerMatch []TLSFingerprintRouterMatchResult
+	var stringArgs []string
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case string:
+			stringArgs = append(stringArgs, value)
+		case int:
+			turn = value
+		case func([]byte) error:
+			writeClientMessage = value
+		case TLSFingerprintRouterMatchResult:
+			routerMatch = append(routerMatch, value)
+		case []TLSFingerprintRouterMatchResult:
+			routerMatch = append(routerMatch, value...)
+		}
+	}
+	if len(stringArgs) >= 5 {
+		routingModel, imageBillingModel, imageSizeTier, imageInputSize, grokCacheIdentity = stringArgs[0], stringArgs[1], stringArgs[2], stringArgs[3], stringArgs[4]
+	} else if len(stringArgs) == 4 {
+		imageBillingModel, imageSizeTier, imageInputSize, grokCacheIdentity = stringArgs[0], stringArgs[1], stringArgs[2], stringArgs[3]
+	} else {
+		return nil, errors.New("invalid websocket HTTP bridge arguments")
+	}
 	if s == nil {
 		return nil, errors.New("service is nil")
 	}
@@ -382,24 +418,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		mappedModelBytes = []byte(mappedModel)
 	}
 
-	buildUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
-		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		defer releaseUpstreamCtx()
-		var upstreamReq *http.Request
-		var buildErr error
-		if account.Platform == PlatformGrok {
-			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg, s.settingService)
-		} else {
-			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, requestBody, token)
-		}
-		if buildErr != nil {
-			return nil, buildErr
-		}
-		if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
-			upstreamReq.Header.Set(responsesLiteHeader, "true")
-		}
-		return upstreamReq, nil
-	}
 	if account.Platform == PlatformGrok {
 		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
 		body, err = patchGrokResponsesBody(body, upstreamModel)
@@ -420,7 +438,33 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if actualModel == "" {
 		actualModel = canonicalOpenAIAccountSchedulingModel(account, originalModel)
 	}
+	if actualModel != "" {
+		mappedModel = actualModel
+	}
 	SetOpsUpstreamModel(c, actualModel)
+	needModelReplace = originalModel != "" && mappedModel != "" && mappedModel != originalModel
+	if needModelReplace {
+		mappedModelBytes = []byte(mappedModel)
+	}
+
+	buildUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		defer releaseUpstreamCtx()
+		var upstreamReq *http.Request
+		var buildErr error
+		if account.Platform == PlatformGrok {
+			upstreamReq, buildErr = buildGrokResponsesRequest(upstreamCtx, c, account, requestBody, token, grokCacheIdentity, s.cfg, s.settingService)
+		} else {
+			upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, requestBody, token, routerMatch...)
+		}
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		if account.Platform != PlatformGrok && responsesLite {
+			upstreamReq.Header.Set(responsesLiteHeader, "true")
+		}
+		return upstreamReq, nil
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -439,7 +483,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if buildErr != nil {
 			return nil, buildErr
 		}
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.resolveOpenAITLSProfile(account, routerMatch...))
 		if err != nil {
 			if turn == 1 {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
@@ -483,8 +527,26 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if account.Platform == PlatformGrok {
 			defaultFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 		}
-		if account.Platform != PlatformGrok && (shouldFailover || shouldCooldownOpenAITransientUpstreamError(resp.StatusCode, respBody)) {
-			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, actualModel)
+		if !requestScopedError {
+			if account.Platform == PlatformGrok {
+				decision = s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
+			} else {
+				decision = s.applyOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
+			}
+		}
+		if decision.ShouldReturnGenericError() {
+			_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error"))
+			return nil, fmt.Errorf("upstream http bridge error: status=%d (not in custom error codes)", resp.StatusCode)
+		}
+		if !requestScopedError && decision.ShouldFailover(account, resp.StatusCode, defaultFailover) &&
+			(turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
+			return nil, newOpenAIUpstreamFailoverError(
+				resp.StatusCode,
+				resp.Header,
+				respBody,
+				upstreamMsg,
+				decision.RetryableOnSameAccount(account, resp.StatusCode),
+			)
 		}
 		clientError := buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg)
 		if writeErr := writeClientMessage(clientError); writeErr == nil {
@@ -521,16 +583,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	var bareErrorPayload []byte
 	bareErrorMessage := ""
 	failureAccountSideEffectsApplied := false
-	mappedModel := actualModel
-	needModelReplace := false
-	var mappedModelBytes []byte
-	if originalModel != "" {
-		needModelReplace = mappedModel != "" && mappedModel != originalModel
-		if needModelReplace {
-			mappedModelBytes = []byte(mappedModel)
-		}
-	}
-
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
@@ -608,6 +660,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		markOpenAIWSClientVisibleFailure(c, "response.failed", clientMessage)
 		return nil
 	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if eventType, ok := extractOpenAISSEEventLine(line); ok {
@@ -670,57 +723,109 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 		var upstreamEventErr error
 		suppressClientMessage := bareErrorPending && eventType != "response.failed"
-		if eventType == "error" || eventType == "response.failed" {
+		requestScopedCapacity := account.Platform == PlatformOpenAI &&
+			(eventType == "error" || eventType == "response.failed") &&
+			isOpenAIUpstreamCapacityShedEvent(upstreamMessage)
+		terminalPolicy := openAIWSTerminalPolicyDecision{
+			TerminalEvent: normalizeOpenAIWSTerminalEvent(eventType),
+			Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
+		}
+		if isOpenAIWSTerminalEvent(eventType) && !requestScopedCapacity &&
+			!(eventType == "response.failed" && failureAccountSideEffectsApplied) {
+			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(
+				ctx,
+				account,
+				mappedModel,
+				resp.Header,
+				upstreamMessage,
+			)
+		}
+		if eventType == "response.failed" {
 			errMessage := extractOpenAISSEErrorMessage(upstreamMessage)
 			if errMessage == "" {
 				errMessage = "upstream error event"
 			}
-			statusCode := openAIStreamFailureStatus(upstreamMessage, errMessage)
-			shouldFailover := openAIStreamFailedEventShouldFailover(upstreamMessage, errMessage)
-			if eventType == "error" {
-				errCodeRaw, errTypeRaw, _ := parseOpenAIWSErrorEventFields(upstreamMessage)
-				shouldFailover = openAIStreamErrorEventShouldFailover(upstreamMessage, errMessage)
-				if account.Platform == PlatformGrok {
-					statusCode = openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
-				}
+			shouldFailover := requestScopedCapacity
+			if terminalPolicy.Decision.ShouldReturnGenericError() && !requestScopedCapacity {
+				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
+				upstreamEventErr = errors.New("upstream response failed with status not in custom error codes")
+			} else if !requestScopedCapacity {
+				shouldFailover = terminalPolicy.Decision.ShouldFailoverWithDefaults(
+					account,
+					terminalPolicy.StatusCode,
+					false,
+					s.shouldFailoverOpenAIWSError(account, terminalPolicy.StatusCode, upstreamMessage),
+				)
 			}
-			requestScopedCapacity := isOpenAIUpstreamCapacityShedEvent(upstreamMessage)
-			if account.Platform == PlatformGrok && eventType == "error" {
-				// SSE error events do not carry an HTTP status. The local status
-				// mapper therefore defaults unknown xAI codes (for example
-				// new_sensitive) to 502; classify the body as a request-scoped
-				// 403 before applying status-based failover or account state.
-				if isGrokContentPolicyRejection(http.StatusForbidden, upstreamMessage) {
-					shouldFailover = false
-				} else {
-					shouldFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
-					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
-				}
+			statusCode := terminalPolicy.StatusCode
+			if statusCode == 0 {
+				statusCode = http.StatusServiceUnavailable
 			}
 			if !wroteDownstream && shouldFailover &&
 				(turn == 1 || statusCode == http.StatusTooManyRequests) {
 				retrySame := requestScopedCapacity || terminalPolicy.Decision.RetryableOnSameAccount(account, statusCode)
 				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, statusCode, upstreamMessage, errMessage, retrySame)
 			}
-			if account.Platform != PlatformGrok && !failureAccountSideEffectsApplied {
-				if eventType == "response.failed" || (shouldFailover && !requestScopedCapacity) {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, upstreamMessage)
+			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
+				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
+				capacityFailoverSuppressedLogged = true
+			}
+		}
+		if eventType == "error" {
+			_, _, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
+			errMessage := strings.TrimSpace(errMsgRaw)
+			if errMessage == "" {
+				errMessage = "upstream error event"
+			}
+			statusCode := openAIWSErrorPolicyStatus(upstreamMessage)
+			policyStatus := statusCode
+			requestScopedError := detectOpenAIWSHTTPBridgeRequestScopedError(account, statusCode, errMessage, upstreamMessage)
+			decision := UpstreamErrorDecision{Policy: ErrorPolicyNone}
+			defaultFailover := s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
+			if requestScopedCapacity {
+				requestScopedError = true
+				defaultFailover = true
+			} else if account.Platform == PlatformGrok {
+				// SSE 错误事件不携带 HTTP 状态码，本地映射会把未知 xAI 错误码
+				//（例如 new_sensitive）默认映射为 502；应用基于状态码的故障转移或
+				// 账号状态变更前，先按请求级 403 内容拒绝检查响应体。
+				if isGrokContentPolicyRejection(http.StatusForbidden, upstreamMessage) {
+					requestScopedError = true
+					defaultFailover = false
+				} else {
+					defaultFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
+					decision = s.applyGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage, mappedModel)
 				}
+			} else if !requestScopedError {
+				defaultFailover = s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
+				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, resp.Header, upstreamMessage, mappedModel)
+			}
+			if decision.StopScheduling {
+				failureAccountSideEffectsApplied = true
+			}
+			if decision.ShouldReturnGenericError() && !requestScopedCapacity {
+				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
+				upstreamEventErr = errors.New("upstream error not in custom error codes")
+			} else if !wroteDownstream && (requestScopedCapacity || (!requestScopedError && decision.ShouldFailover(account, policyStatus, defaultFailover))) &&
+				(turn == 1 || policyStatus == http.StatusTooManyRequests) {
+				retrySame := requestScopedCapacity || decision.RetryableOnSameAccount(account, policyStatus)
+				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, policyStatus, upstreamMessage, errMessage, retrySame)
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
 				capacityFailoverSuppressedLogged = true
 			}
-			if eventType == "error" && account.Platform == PlatformGrok {
+			if account.Platform == PlatformGrok {
 				upstreamEventErr = errors.New(errMessage)
-			} else if eventType == "error" {
+			} else {
 				bareErrorPending = true
 				bareErrorPayload = append(bareErrorPayload[:0], upstreamMessage...)
 				bareErrorMessage = errMessage
 				suppressClientMessage = true
-			} else {
-				bareErrorPending = false
 			}
+		}
+		if eventType == "response.failed" {
+			bareErrorPending = false
 		}
 
 		// 客户端写出副本改写容量降载码：Codex 对 error/response.failed 中的
@@ -790,11 +895,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			return resultWithUsage(), upstreamEventErr
 		}
 		if isOpenAIWSTerminalEvent(eventType) && !bareErrorPending {
-			if eventType == "response.failed" {
-				upstreamTerminalEvent = "response.failed"
-			} else {
-				upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, resp.Header, upstreamMessage)
-			}
+			upstreamTerminalEvent = terminalPolicy.TerminalEvent
 			terminalEventCount++
 			firstTokenMsValue := -1
 			if firstTokenMs != nil {

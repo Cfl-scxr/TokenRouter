@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
@@ -24,7 +26,31 @@ type noAccountErrorClassification struct {
 	ModelNotFound bool // true 表示本次应返回 404 model_not_found
 }
 
-// classifyNoAccountError 在“无可用账号”场景下区分 404 model_not_found 与 503 api_error。
+var selectionModelRateLimitedPattern = regexp.MustCompile(`(?:model_rate_limited|rate_limited)=(\d+)`)
+
+// classifySelectionFailureError preserves the scheduler's compact reason when
+// every model-capable account is temporarily rate limited.
+func classifySelectionFailureError(err error, fallback noAccountErrorClassification) noAccountErrorClassification {
+	if err == nil {
+		return fallback
+	}
+	match := selectionModelRateLimitedPattern.FindStringSubmatch(strings.ToLower(err.Error()))
+	if len(match) != 2 {
+		return fallback
+	}
+	count, parseErr := strconv.Atoi(match[1])
+	if parseErr != nil || count <= 0 {
+		return fallback
+	}
+	return noAccountErrorClassification{
+		Status:  http.StatusTooManyRequests,
+		ErrType: "rate_limit_error",
+		Message: "All available accounts are currently rate-limited. Please retry later.",
+	}
+}
+
+// classifyNoAccountError decides between 404 model_not_found and 503
+// api_error for "no available accounts" failures.
 //
 // 选择层不会明确告诉调用方账号池为空的具体原因：限流和模型不支持都可能包装成
 // ErrNoAvailableAccounts。因此这里通过专用数据库查询重新检查账号池，只考虑 active、
