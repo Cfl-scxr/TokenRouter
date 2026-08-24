@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -78,8 +79,9 @@ func TestAccountTestServiceCNProviderUsesConfiguredProtocol(t *testing.T) {
 			name: "DeepSeek Responses",
 			account: &Account{ID: 3, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Concurrency: 1,
 				Credentials: map[string]any{"api_key": "deepseek-key", "api_protocol": APIProtocolResponses, "base_url": "https://relay.example"}},
-			wantPath:   "/responses",
-			wantModel:  "deepseek-chat",
+			wantPath: "/v1/responses",
+			// Responses 账号走 OpenAI 探针，空模型沿用 OpenAI 默认探针模型。
+			wantModel:  openai.DefaultTestModel,
 			wantHeader: "Authorization",
 		},
 	}
