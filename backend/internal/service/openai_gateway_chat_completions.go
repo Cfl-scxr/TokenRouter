@@ -48,10 +48,7 @@ var cursorResponsesUnsupportedFields = []string{
 // 正确的，但 sub2api 接入 DeepSeek/Kimi/GLM 等第三方 OpenAI 兼容上游后假设破裂：
 // 这些上游普遍只支持 /v1/chat/completions，无 /v1/responses 端点。
 //
-// 当前路由策略由客户端首选协议、管理员路由模式和 Responses 探测状态共同决定：
-//   - APIKey 默认保留 Chat 协议，直转上游 /v1/chat/completions
-//   - 仅 force_responses 把 Chat 请求转换为 Responses
-//   - OAuth 继续使用既有 Responses 桥接路径
+// 当前路由策略由客户端首选协议、账号协议配置和 Responses 探测状态共同决定。
 func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	ctx context.Context,
 	c *gin.Context,
@@ -79,8 +76,47 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, err
 	}
 
-	// Chat 入站首选 Chat；管理员显式强制 Responses 时才进入下方协议转换路径。
-	if resolveOpenAITextProtocolForAttempt(
+	// 某些客户端会把 Responses 形状请求发送到 Chat Completions URL；必须先于
+	// 自适应协议分流识别，否则会把 input 原样发给只接受 messages 的上游。
+	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+
+	// 自适应账号的标准 Chat 入站使用供应商原生 CC 端点；Responses 形状下，
+	// DeepSeek 保留原生 Responses，Kimi/智谱先转换为 Chat。
+	if account.IsAdaptiveAPIProtocol() {
+		if !isResponsesShape {
+			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
+		}
+		if account.Platform != PlatformDeepseek {
+			var responsesReq apicompat.ResponsesRequest
+			if err := json.Unmarshal(body, &responsesReq); err != nil {
+				return nil, fmt.Errorf("parse responses-shaped chat completions request: %w", err)
+			}
+			chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(
+				&responsesReq,
+				&apicompat.ResponsesToChatOptions{ReasoningContentByID: s.reasoningContentByID},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("convert responses-shaped chat completions request: %w", err)
+			}
+			chatBody, err := json.Marshal(chatReq)
+			if err != nil {
+				return nil, fmt.Errorf("marshal converted chat completions request: %w", err)
+			}
+			return s.forwardAsRawChatCompletions(ctx, c, account, chatBody, defaultMappedModel, tlsRouterMatch...)
+		}
+	}
+
+	// 固定 Anthropic 协议走原生 Anthropic 端点。
+	if account.IsAnthropicProtocol() {
+		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
+	// 固定 Chat 协议的 CN 账号，以及其他 APIKey 账号在探测/管理员策略要求
+	// Chat 时，均走 CC 直转。
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
+	}
+	if !account.IsCNProvider() && resolveOpenAITextProtocolForAttempt(
 		c,
 		account,
 		openai_compat.TextProtocolChatCompletions,
@@ -119,11 +155,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	// and produce `input: null`, which Codex upstreams reject with
 	// "Invalid type for 'input': expected a string, but got an object".
 	//
-	// Detect that shape and forward the raw body as-is, only rewriting `model`
+	// Forward that shape as-is, only rewriting `model`
 	// to the resolved upstream model. The downstream codex OAuth transform will
 	// still normalize store/stream/instructions/etc.
-	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
-
 	var (
 		responsesReq  *apicompat.ResponsesRequest
 		responsesBody []byte

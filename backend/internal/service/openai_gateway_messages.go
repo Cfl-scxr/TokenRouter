@@ -35,9 +35,19 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	defaultMappedModel string,
 	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
 ) (*OpenAIForwardResult, error) {
-	// Messages 没有同形上游协议，默认首选 Responses；探测明确不支持或管理员
-	// 强制 Chat 时，才通过 Chat Completions 兼容桥接转发。
-	if resolveOpenAITextProtocolForAttempt(
+	// 国产供应商 Anthropic / adaptive 协议使用原生 Messages 端点，
+	// /v1/messages 请求零转换直通（仅模型名映射 + 少量 body 清洗），完整保留
+	// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
+	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
+		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
+	}
+
+	// 固定 Chat 协议的 CN 账号，以及其他 APIKey 账号在探测/管理员策略要求
+	// Chat 时，将 Messages 转为 Chat Completions。
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
+	}
+	if !account.IsCNProvider() && resolveOpenAITextProtocolForAttempt(
 		c,
 		account,
 		openai_compat.TextProtocolResponses,

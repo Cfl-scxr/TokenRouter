@@ -53,17 +53,19 @@ func TestProbeOpenAIAPIKeyResponsesSupportUsesCodexProbeHeaders(t *testing.T) {
 	require.Equal(t, string(openai_compat.ResponsesProbeStatusSupported), updates[openai_compat.ExtraKeyResponsesProbeStatus])
 }
 
-func TestProbeOpenAIAPIKeyResponsesSupportAdaptiveCNProviders(t *testing.T) {
+func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 	tests := []struct {
 		name       string
 		id         int64
 		platform   string
+		protocol   string
 		wantStatus string
 		wantMode   string
 	}{
-		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, wantStatus: string(openai_compat.ResponsesProbeStatusSupported), wantMode: string(openai_compat.TextRouteModeForceResponses)},
-		{name: "kimi adaptive falls back to chat", id: 202, platform: PlatformKimi, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModeForceChatCompletions)},
-		{name: "zhipu adaptive falls back to chat", id: 203, platform: PlatformZhipu, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModeForceChatCompletions)},
+		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, protocol: APIProtocolAdaptive, wantStatus: string(openai_compat.ResponsesProbeStatusSupported), wantMode: string(openai_compat.TextRouteModeForceResponses)},
+		{name: "deepseek chat clears forced responses", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModePreserveClientProtocol)},
+		{name: "kimi adaptive falls back to chat", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModePreserveClientProtocol)},
+		{name: "zhipu adaptive falls back to chat", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModePreserveClientProtocol)},
 	}
 
 	for _, tc := range tests {
@@ -71,7 +73,8 @@ func TestProbeOpenAIAPIKeyResponsesSupportAdaptiveCNProviders(t *testing.T) {
 			updateCalls := make(chan map[string]any, 1)
 			account := Account{
 				ID: tc.id, Platform: tc.platform, Type: AccountTypeAPIKey,
-				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": APIProtocolAdaptive},
+				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": tc.protocol},
+				Extra:       map[string]any{openai_compat.ExtraKeyTextRouteMode: string(openai_compat.TextRouteModeForceResponses)},
 			}
 			repo := &snapshotUpdateAccountRepo{
 				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},

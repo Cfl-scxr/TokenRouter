@@ -417,7 +417,14 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Image tests are not supported for platform %s", account.Platform))
 	}
 	if account.IsCNProvider() {
-		return s.testCNProviderAccountConnection(c, account, modelID, prompt)
+		switch account.GetAPIProtocol() {
+		case APIProtocolAdaptive:
+			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+		case APIProtocolChatCompletions:
+			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+		default:
+			return s.testCNProviderAccountConnection(c, account, modelID, prompt)
+		}
 	}
 
 	// Route to platform-specific test method
@@ -572,6 +579,17 @@ func (s *AccountTestService) testCNProviderAccountConnection(
 	default:
 		return s.processOpenAIChatCompletionsStream(c, resp.Body)
 	}
+}
+
+// testCNProviderChatCompletionsConnection 保留上游自适应测试使用的 Chat 探测入口，
+// 具体请求仍复用 fork 已有的国产供应商测试实现（含请求头覆写、代理和 TLS 指纹）。
+func (s *AccountTestService) testCNProviderChatCompletionsConnection(
+	c *gin.Context,
+	account *Account,
+	modelID string,
+	prompt string,
+) error {
+	return s.testCNProviderAccountConnection(c, account, modelID, prompt)
 }
 
 // TestAccountConnectionWithType 提供参数顺序明确的新调用入口，旧入口继续兼容历史调用方。
@@ -2795,6 +2813,13 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "test_complete" {
+		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
+			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
+				return
+			}
+		}
+	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
