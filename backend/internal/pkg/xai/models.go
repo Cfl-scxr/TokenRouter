@@ -43,7 +43,7 @@ var modelIDAliases = map[string]string{
 	"grok-latest":             DefaultResponsesModel,
 	"grok-4.5-latest":         DefaultResponsesModel,
 	"grok-build":              "grok-build-0.1",
-	"grok-build-latest":       DefaultResponsesModel,
+	"grok-build-latest":       "grok-build-0.1",
 	"grok-composer":           "grok-composer-2.5-fast",
 	"composer-2.5":            "grok-composer-2.5-fast",
 	"grok-4.20-reasoning":     "grok-4.20-0309-reasoning",
@@ -62,7 +62,7 @@ type Model struct {
 
 // DefaultTextModel 是空模型字段和 Grok 文本别名的内置回退目标，
 // 运维可通过设置键 grok_default_text_model 覆盖运行时默认值。
-const DefaultTextModel = "grok-4.5"
+const DefaultTextModel = "grok-4.6"
 
 // 以下为官方 Imagine 模型 ID。
 const (
@@ -123,7 +123,7 @@ var grokTextResponsesModelAliases = map[string]string{
 	"grok-3-mini":                  "grok-3-mini",
 	"grok-3-mini-fast":             "grok-3-mini-fast",
 	"grok-build":                   "grok-build-0.1",
-	"grok-build-latest":            DefaultTextModel,
+	"grok-build-latest":            "grok-build-0.1",
 	"grok-build-0.1":               "grok-build-0.1",
 	"grok-composer-2.5-fast":       "grok-composer-2.5-fast",
 	"grok-composer":                "grok-composer-2.5-fast",
@@ -280,7 +280,7 @@ func ResolveGrokTextResponsesModelID(model string, defaultText ...string) string
 	}
 	normalized := strings.ToLower(StripGrokProviderPrefix(trimmed))
 	if canonical, ok := grokTextResponsesModelAliases[normalized]; ok {
-		if (normalized == "grok" || normalized == "grok-latest" || normalized == "grok-build-latest") && canonical == DefaultTextModel {
+		if (normalized == "grok" || normalized == "grok-latest") && canonical == DefaultTextModel {
 			return fallback
 		}
 		return canonical
