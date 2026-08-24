@@ -61,6 +61,7 @@ func (s *OpenAIGatewayService) ForwardGrokVoice(ctx context.Context, c *gin.Cont
 	}
 	upstreamCtx, release := detachUpstreamContext(ctx)
 	defer release()
+	upstreamCtx = WithHTTPUpstreamProfile(upstreamCtx, HTTPUpstreamProfileGrok)
 	method := http.MethodPost
 	if c != nil && c.Request != nil && strings.TrimSpace(c.Request.Method) != "" {
 		method = c.Request.Method
@@ -202,6 +203,44 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 	}()
 
 	return awaitGrokRealtimeAudioObserved(errCh, &audioObserved)
+}
+
+// ProbeGrokRealtime 在下游 WebSocket 升级前完成上游握手，不向客户端发送事件，
+// 使认证和端点失败仍能以普通 HTTP 错误返回。
+func (s *OpenAIGatewayService) ProbeGrokRealtime(ctx context.Context, account *Account, token, model string) error {
+	if s == nil || account == nil {
+		return fmt.Errorf("realtime service and account are required")
+	}
+	if account.Platform != PlatformGrok {
+		return fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
+	}
+	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return err
+	}
+	u.Scheme = "wss"
+	q := u.Query()
+	q.Set("model", firstNonEmpty(model, "grok-voice-latest"))
+	u.RawQuery = q.Encode()
+	headers := http.Header{"Authorization": []string{"Bearer " + token}}
+	if account.IsGrokOAuth() && isGrokCLIProxyTarget(u.String()) {
+		applyGrokCLIHeaders(headers)
+	}
+	account.ApplyHeaderOverrides(headers)
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	dialer := s.getOpenAIWSPassthroughDialer()
+	conn, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL, s.resolveOpenAITLSProfile(account))
+	if err != nil {
+		return err
+	}
+	return conn.Close()
 }
 
 // awaitGrokRealtimeAudioObserved 在任一中继方向结束时返回本次会话是否真正传输过音频。

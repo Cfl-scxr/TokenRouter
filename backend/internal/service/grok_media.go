@@ -717,6 +717,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
+	upstreamCtx = WithHTTPUpstreamProfile(upstreamCtx, HTTPUpstreamProfileGrok)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, endpoint.httpMethod(), targetURL, bodyReader)
 	if err != nil {
 		return nil, err
@@ -1334,11 +1335,14 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		Detail:             upstreamDetail,
 	})
 	if kind == "failover" {
+		retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
 		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
+			StatusCode:               resp.StatusCode,
+			ResponseBody:             body,
+			ResponseHeaders:          resp.Header.Clone(),
+			RetryableOnSameAccount:   retryable || decision.RetryableOnSameAccount(account, resp.StatusCode),
+			SameAccountRetryDelay:    retryDelay,
+			SameAccountRetryDeadline: retryDeadline,
 		}
 	}
 
