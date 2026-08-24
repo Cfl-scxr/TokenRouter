@@ -597,6 +597,79 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 	})
 
+	// OAuth 历史数据可能保留空能力容器，应与缺失字段一样不阻断文本调度。
+	for _, emptyCapabilities := range []struct {
+		name  string
+		value any
+	}{
+		{name: "map[string]any", value: map[string]any{}},
+		{name: "[]any", value: []any{}},
+		{name: "[]string", value: []string{}},
+	} {
+		t.Run("OAuth 空能力 "+emptyCapabilities.name, func(t *testing.T) {
+			account := &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					openAIWorkloadCapabilitiesCredentialKey: emptyCapabilities.value,
+				},
+			}
+
+			require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
+			require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+		})
+	}
+
+	t.Run("API Key 空能力仍表示显式禁用", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				openAIWorkloadCapabilitiesCredentialKey: []any{},
+			},
+		}
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
+	})
+
+	t.Run("SetupToken 空能力与 OAuth 一样回退为未配置", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeSetupToken,
+			Credentials: map[string]any{
+				openAIWorkloadCapabilitiesCredentialKey: map[string]any{},
+			},
+		}
+
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
+	})
+
+	t.Run("非空全 false 能力仍按显式禁用处理", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				openAIWorkloadCapabilitiesCredentialKey: map[string]any{
+					string(OpenAIEndpointCapabilityTextGeneration): false,
+				},
+			},
+		}
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
+	})
+
+	t.Run("类型异常仍按已配置但不含能力处理", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				openAIWorkloadCapabilitiesCredentialKey: "text_generation",
+			},
+		}
+
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityTextGeneration))
+	})
+
 	t.Run("显式数组支持单独关闭文本生成并开启 embeddings", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformOpenAI,

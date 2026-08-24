@@ -2137,18 +2137,28 @@ func (a *Account) openAIWorkloadCapabilitySet() (map[string]bool, bool) {
 		result[value] = true
 	}
 
+	// OAuth/SetupToken 的空容器视为历史未配置；API Key 空集合仍表示显式禁用。
 	switch capabilities := raw.(type) {
 	case []any:
+		if len(capabilities) == 0 && a.IsOpenAIOAuthLike() {
+			return nil, false
+		}
 		for _, item := range capabilities {
 			if value, ok := item.(string); ok {
 				add(value)
 			}
 		}
 	case []string:
+		if len(capabilities) == 0 && a.IsOpenAIOAuthLike() {
+			return nil, false
+		}
 		for _, value := range capabilities {
 			add(value)
 		}
 	case map[string]any:
+		if len(capabilities) == 0 && a.IsOpenAIOAuthLike() {
+			return nil, false
+		}
 		for key, value := range capabilities {
 			enabled, ok := value.(bool)
 			if ok && enabled {
@@ -2156,6 +2166,9 @@ func (a *Account) openAIWorkloadCapabilitySet() (map[string]bool, bool) {
 			}
 		}
 	case map[string]bool:
+		if len(capabilities) == 0 && a.IsOpenAIOAuthLike() {
+			return nil, false
+		}
 		for key, enabled := range capabilities {
 			if enabled {
 				add(key)
