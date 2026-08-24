@@ -579,6 +579,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	pendingClientMessageBytes := int64(0)
 	capacityFailoverSuppressedLogged := false
 	clientDisconnected := false
+	officialOpenAIResponses := account != nil && account.Platform == PlatformOpenAI
 	bareErrorPending := false
 	var bareErrorPayload []byte
 	bareErrorMessage := ""
@@ -722,6 +723,12 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
+		if officialOpenAIResponses && bareErrorPending && (eventType == "response.completed" || eventType == "response.done") {
+			// 成功终态优先于此前可恢复的裸错误，避免合成失败并保留旧副作用。
+			bareErrorPending = false
+			bareErrorPayload = nil
+			bareErrorMessage = ""
+		}
 		suppressClientMessage := bareErrorPending && eventType != "response.failed"
 		requestScopedCapacity := account.Platform == PlatformOpenAI &&
 			(eventType == "error" || eventType == "response.failed") &&

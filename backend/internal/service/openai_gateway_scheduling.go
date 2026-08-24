@@ -63,7 +63,8 @@ func explicitOpenAISessionID(c *gin.Context, body []byte) string {
 
 	sessionID := explicitOpenAIHeaderSessionID(c)
 	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+		// WS response.create 将会话字段包在 response 内，先解包再读取统一信号。
+		sessionID = strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String())
 	}
 	return sessionID
 }
