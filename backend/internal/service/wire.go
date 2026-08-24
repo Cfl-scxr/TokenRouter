@@ -727,6 +727,9 @@ func ProvideSettingService(settingRepo SettingRepository, paymentConfigService *
 	if err := svc.LoadForwardedClientIPSettings(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load forwarded client IP settings failed: %v", err)
 	}
+	if err := svc.MigrateGrokDefaultTextModel(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: migrate Grok default text model failed: %v", err)
+	}
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
 	// 无账号句柄的 OAuth/PAT/用量探针路径也必须复用后台配置的 Codex 身份。
 	SetCodexCanonicalUserAgentResolver(func() string {
