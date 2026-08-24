@@ -20,8 +20,6 @@ import (
 )
 
 const (
-	// grokGatewayUserAgent 标识本服务转发到 xAI/Grok 上游的网关请求。
-	grokGatewayUserAgent = "tokenrouter-grok/1.0"
 	// Composer 图片桥接使用 Grok Build 生成简洁描述，限制输出长度以控制额外用量。
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
@@ -1547,8 +1545,11 @@ func applyGrokCLIHeaders(headers http.Header) {
 	if headers == nil {
 		return
 	}
-	headers.Set("User-Agent", grokGatewayUserAgent)
-	headers.Set("X-Grok-Client-Version", grokCLIVersion)
+	version := xai.ResolveCLIVersion()
+	headers.Set("User-Agent", xai.CLIUserAgent(version))
+	headers.Set("X-Grok-Client-Version", version)
+	headers.Set("x-grok-client-version", version)
+	headers.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
 	headers.Set("X-Grok-Client-Mode", "interactive")
 }
 

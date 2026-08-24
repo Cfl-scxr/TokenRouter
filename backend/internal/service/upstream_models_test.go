@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -323,7 +324,7 @@ func TestBuildUpstreamModelsRequestSupportsGrokOAuth(t *testing.T) {
 	require.Equal(t, "Bearer oauth-access-token", req.Header.Get("Authorization"))
 	require.Equal(t, grokCLIVersion, req.Header.Get("X-Grok-Client-Version"))
 	require.Equal(t, "interactive", req.Header.Get("X-Grok-Client-Mode"))
-	require.Equal(t, grokGatewayUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), req.Header.Get("User-Agent"))
 	require.Equal(t, "grok-user-id", req.Header.Get("X-UserID"))
 	require.Equal(t, "grok-user@example.com", req.Header.Get("X-Email"))
 	require.NotContains(t, req.Header.Get("Authorization"), "oauth-refresh-token")

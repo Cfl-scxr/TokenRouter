@@ -10,10 +10,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 )
 
-// grokUpstreamUserAgent 为兼容旧版 Grok 请求测试而保留。
-// 当前请求使用此包固定的默认用户代理。
-const grokUpstreamUserAgent = "sub2api-grok/1.0"
-
 // 固定的 CLI 身份别名，唯一数据源为 internal/pkg/xai。
 const (
 	grokClientVersionHeader    = xai.CLIStableVersion
