@@ -909,6 +909,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, routingModel string, imageBillingModel string, imageSizeTier string, imageInputSize string) (*OpenAIForwardResult, error) {
+		responseModelObserver := upstreamResponseModelObserverFromContext(c)
+		if responseModelObserver == nil {
+			responseModelObserver = beginUpstreamResponseModelObservation(c)
+		}
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 		}
@@ -974,7 +978,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
-			observeOpenAIServiceTierInContext(c, upstreamMessage, eventType)
+			responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 			if responseID == "" && eventResponseID != "" {
 				responseID = eventResponseID
 			}
@@ -1198,8 +1202,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					Usage:                       usage,
 					Model:                       originalModel,
 					UpstreamModel:               mappedModel,
-					UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-					ServiceTier:                 extractOpenAIServiceTierFromBody(payload),
+					UpstreamResponseServiceTier: responseModelObserver.ServiceTier(),
+					ServiceTier:                 resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTierFromBody(payload)),
 					ReasoningEffort:             ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
 					Stream:                      reqStream,
 					OpenAIWSMode:                true,
