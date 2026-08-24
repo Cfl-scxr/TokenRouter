@@ -24,7 +24,7 @@ func setOpenAICodexRoutingHint(headers http.Header, account *Account, model stri
 	// Provider 凭证路径透传调用方或账号头覆盖注入的提示；Header.Del 只会
 	// 删除规范化键，而入站映射可能保留原始小写键。
 	deleteOpenAIHeaderEqualFold(headers, openAICodexRoutingHintHeader)
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || !account.IsOpenAIOAuthLike() {
 		return
 	}
 

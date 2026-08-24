@@ -599,7 +599,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			}
 			message = restoreCodexToolNamesFromContext(c, message)
 		}
-		if openAIWSEventShouldParseUsage(eventType) {
+		if openAIWSMessageShouldParseUsage(eventType, message) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		if eventType == "response.failed" {
@@ -800,9 +800,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if isTerminalEvent {
-			upstreamTerminalEvent = terminalPolicy.TerminalEvent
-			// 终止事件必须是当前 WS 消息中的最后一个 JSON 文档；尾随文档不再写给已完成的
-			// 客户端请求，同时禁止复用语义不明确的上游连接。
+			if !clientDisconnected {
+				markOpenAIWSClientVisibleFailure(c, eventType, message)
+			}
+			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			// A terminal event must be the final JSON document in its WS message.
+			// Ignore any tail for the completed client turn, but never reuse the
+			// ambiguous upstream connection for another request.
 			cleanExit = len(pendingJSONDocuments) == 0
 			break
 		}

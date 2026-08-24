@@ -230,9 +230,7 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) (b
 					}
 					typed["type"] = "function_call_output"
 					dropInvalidLoweredFunctionItemID(typed)
-					if err := normalizeToolSearchOutput(typed); err != nil {
-						return err
-					}
+					normalizeToolSearchOutput(typed)
 					changed = true
 				}
 			}
@@ -279,40 +277,15 @@ func normalizeClientToolOutput(item map[string]any) {
 	item["output"] = string(encoded)
 }
 
-// normalizeToolSearchOutput 将两种 tool_search 输出线格式统一为
-// function_call_output 要求的字符串。旧客户端直接发送 output，新版 Codex
-// 在顶层 tools 中返回发现定义；后者的值就是工具输出，不能再额外包一层对象。
-func normalizeToolSearchOutput(item map[string]any) error {
-	if output, hasOutput := item["output"]; hasOutput {
-		switch typed := output.(type) {
-		case string:
-			item["output"] = typed
-		case nil:
-			item["output"] = ""
-		default:
-			encoded, err := json.Marshal(typed)
-			if err != nil {
-				return fmt.Errorf("tool_search_output output cannot be encoded as function_call_output output: %w", err)
-			}
-			item["output"] = string(encoded)
+func normalizeToolSearchOutput(item map[string]any) {
+	if _, exists := item["output"]; !exists {
+		if tools, hasTools := item["tools"]; hasTools {
+			item["output"] = tools
+		} else {
+			return
 		}
-		dropToolSearchOutputPrivateFields(item)
-		return nil
 	}
-	tools, hasTools := item["tools"]
-	if !hasTools {
-		return fmt.Errorf("tool_search_output requires output or tools before it can be lowered to function_call_output")
-	}
-	encoded, err := json.Marshal(tools)
-	if err != nil {
-		return fmt.Errorf("tool_search_output tools cannot be encoded as function_call_output output: %w", err)
-	}
-	item["output"] = string(encoded)
-	dropToolSearchOutputPrivateFields(item)
-	return nil
-}
-
-func dropToolSearchOutputPrivateFields(item map[string]any) {
+	normalizeClientToolOutput(item)
 	delete(item, "tools")
 	delete(item, "status")
 	delete(item, "execution")

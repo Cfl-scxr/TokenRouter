@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // isGrokContentPolicyRejection 识别 xAI 针对单次请求的内容安全拒绝。
@@ -192,18 +194,76 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
-	if decision := classifyGrokUpstreamFailure(statusCode, responseBody, ""); decision.ShouldFailover {
+	// A 422 emitted by xAI's ModelInput decoder is account/runtime compatibility,
+	// not quota exhaustion. Another account may run a different upstream build,
+	// so fail over without applying an account cooldown.
+	if isGrokDecoderCompatibilityError(statusCode, responseBody) {
 		return true
 	}
-	// Grok 兼容上游可能只实现部分端点，405 应切换账号以解除会话粘性。
-	if statusCode == http.StatusMethodNotAllowed {
-		return true
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	switch decision.Class {
+	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
+		return decision.ShouldFailover
 	}
 	return s.shouldFailoverUpstreamError(statusCode)
 }
 
-// applyGrokForbiddenPolicy 将管理员配置的临时不可调度规则应用到非内容类 403。
-// 仅在规则命中时返回 true；未命中的响应继续使用原有权益冷却时间。
+func isGrokDecoderCompatibilityError(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusUnprocessableEntity || len(responseBody) == 0 {
+		return false
+	}
+	for _, candidate := range grokStructuredErrorMessageCandidates(responseBody) {
+		message := strings.ToLower(candidate)
+		decoderSignal := strings.Contains(message, "untagged enum") ||
+			strings.Contains(message, "decode") ||
+			strings.Contains(message, "deserialize") ||
+			strings.Contains(message, "deserializ") ||
+			strings.Contains(message, "decoder")
+		inputSignal := strings.Contains(message, "modelinput") ||
+			strings.Contains(message, "model input") ||
+			strings.Contains(message, "input[") ||
+			strings.Contains(message, "input.")
+		messageContentSignal := (strings.Contains(message, "messages[") ||
+			strings.Contains(message, "messages.")) &&
+			strings.Contains(message, "content") &&
+			strings.Contains(message, "did not match any variant")
+		if decoderSignal && (inputSignal || messageContentSignal) {
+			return true
+		}
+	}
+	return false
+}
+
+func grokStructuredErrorMessageCandidates(body []byte) []string {
+	candidates := make([]string, 0, 6)
+	appendCandidate := func(result gjson.Result) {
+		if !result.Exists() {
+			return
+		}
+		value := strings.TrimSpace(result.String())
+		if value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	appendCandidate(gjson.GetBytes(body, "error.message"))
+	appendCandidate(gjson.GetBytes(body, "error.error"))
+	errorNode := gjson.GetBytes(body, "error")
+	if errorNode.Type == gjson.String {
+		appendCandidate(errorNode)
+	}
+	appendCandidate(gjson.GetBytes(body, "message"))
+	appendCandidate(gjson.GetBytes(body, "detail"))
+	if !json.Valid(body) {
+		if plaintext := strings.TrimSpace(string(body)); plaintext != "" {
+			candidates = append(candidates, plaintext)
+		}
+	}
+	return candidates
+}
+
+// applyGrokForbiddenPolicy applies an administrator's existing temporary
+// unschedulable rules to a non-content 403. It reports true only when a rule
+// matched; unmatched responses retain the legacy entitlement cooldown.
 func (s *OpenAIGatewayService) applyGrokForbiddenPolicy(ctx context.Context, account *Account, responseBody []byte) bool {
 	if account == nil || !account.IsTempUnschedulableEnabled() {
 		return false

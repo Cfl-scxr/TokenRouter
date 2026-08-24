@@ -24,7 +24,7 @@ func shouldFlattenOpenAIResponsesNamespaces(
 	passthroughEnabled bool,
 	compactPath bool,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || !account.IsOpenAIOAuthLike() {
 		return false
 	}
 	if !compactPath && !account.IsOpenAIResponsesFlattenNamespacesEnabled() {
@@ -36,16 +36,43 @@ func shouldFlattenOpenAIResponsesNamespaces(
 	return true
 }
 
-// shouldKeepOpenAIResponsesToolCallNamespaces 判定清理 input 残留 namespace 时，
-// 是否保留工具调用项上的 namespace。OAuth 普通 Responses 上游需要该字段来解析
-// 历史调用；compact、API Key 与已摊平请求都必须移除。
+// shouldStripOpenAIResponsesInputNamespaces removes residual input item
+// namespaces for OpenAI OAuth and API Key HTTP forwarding. Native WSv2 keeps
+// namespaces because that protocol supports them and does not restore payloads.
+func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
+	if account == nil || (!account.IsOpenAIOAuthLike() && !account.IsOpenAIApiKey()) {
+		return false
+	}
+	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {
+		return false
+	}
+	return true
+}
+
+// shouldKeepOpenAIResponsesToolCallNamespaces 判定清理 input 残留 namespace 时是否
+// 保留工具调用项上的 namespace。
+//
+// 上游对这个字段有两套互斥要求，判定按「出口 + 端点」而非工具声明内容：
+//   - /backend-api/codex/responses 会按 namespace 解析历史调用，缺字段直接 400
+//     `Missing namespace for function_call '...'. Round-trip the model's
+//     function_call item with its namespace field included.`（issue #4761 回帖），
+//     故 OAuth 非 compact 请求必须保留。
+//   - compact 端点的 schema 不含该字段，携带即 400 `Unknown parameter:
+//     input[N].namespace`（issue #4761 正文），故 compact 一律清理。
+//   - API Key 出口是标准 Responses API（api.openai.com 或自定义 base_url），同样
+//     不认识该字段，维持全量清理；否则只能退化成
+//     openai_responses_rejected_field_retry 的逐项删除，6 次上限根本盖不住长历史。
+//   - 摊平模式下调用项已被改写成平名，残留 namespace 指向的声明已不存在，一律清理。
 func shouldKeepOpenAIResponsesToolCallNamespaces(
 	account *Account,
 	transport OpenAIUpstreamTransport,
 	passthroughEnabled bool,
 	compactPath bool,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuth() || compactPath {
+	if account == nil || !account.IsOpenAIOAuthLike() {
+		return false
+	}
+	if compactPath {
 		return false
 	}
 	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
@@ -61,19 +88,6 @@ var openAIResponsesToolCallItemTypes = map[string]bool{
 
 func isOpenAIResponsesToolCallItemType(itemType string) bool {
 	return openAIResponsesToolCallItemTypes[strings.ToLower(strings.TrimSpace(itemType))]
-}
-
-// shouldStripOpenAIResponsesInputNamespaces 判定是否需要在 OpenAI OAuth 与 API Key
-// 的 HTTP 转发前移除 input 直接子项中残留的 namespace。原生 WSv2 支持该字段，且
-// 不经过响应还原流程，因此保持原样。
-func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
-	if account == nil || (!account.IsOpenAIOAuth() && !account.IsOpenAIApiKey()) {
-		return false
-	}
-	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {
-		return false
-	}
-	return true
 }
 
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {

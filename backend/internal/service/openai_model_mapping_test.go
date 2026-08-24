@@ -222,105 +222,123 @@ func TestResolveOpenAICompactForwardModel(t *testing.T) {
 	}
 }
 
-// TestResolveOpenAIAccountUpstreamModelForRequestMatchesForwardModes 验证限制检查与真实转发使用同一模型解析顺序。
-func TestResolveOpenAIAccountUpstreamModelForRequestMatchesForwardModes(t *testing.T) {
+func TestResolveOpenAIForwardMappedModels_CompactMappingPrecedence(t *testing.T) {
+	conflictingMappings := map[string]any{
+		"model_mapping":         map[string]any{"gpt-5.5": "gpt-5.4"},
+		"compact_model_mapping": map[string]any{"gpt-5.5": "gpt-5.5-openai-compact"},
+	}
+	mappedOnlyCompact := map[string]any{
+		"model_mapping":         map[string]any{"gpt-5.5": "gpt-5.4"},
+		"compact_model_mapping": map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"},
+	}
 	tests := []struct {
-		name             string
-		account          *Account
-		model            string
-		requireCompact   bool
-		allowPassthrough bool
-		want             string
+		name           string
+		account        *Account
+		requireCompact bool
+		wantBilling    string
+		wantUpstream   string
 	}{
 		{
-			name:    "OAuth 普通请求执行模型归一化",
-			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
-			model:   "gpt-5.6",
-			want:    "gpt-5.6-sol",
-		},
-		{
-			name: "OAuth 账号映射后执行模型归一化",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeOAuth,
-				Credentials: map[string]any{
-					"model_mapping": map[string]any{"client-alias": "gpt-5.4-high"},
-				},
-			},
-			model: "client-alias",
-			want:  "gpt-5.4",
-		},
-		{
-			name: "compact 专属映射优先于 OAuth 归一化",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeOAuth,
-				Credentials: map[string]any{
-					"compact_model_mapping": map[string]any{"gpt-5.6": "gpt-5.6-openai-compact"},
-				},
-			},
-			model:          "gpt-5.6",
+			name: "compact uses client-visible model before ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings},
 			requireCompact: true,
-			want:           "gpt-5.6-openai-compact",
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.5-openai-compact",
 		},
 		{
-			name:           "compact 未映射时继续执行 OAuth 归一化",
-			account:        &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
-			model:          "gpt-5.6",
+			name: "non-compact uses ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings},
+			wantBilling:  "gpt-5.4",
+			wantUpstream: "gpt-5.4",
+		},
+		{
+			name: "compact falls back to ordinary mapped model",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: mappedOnlyCompact},
 			requireCompact: true,
-			want:           "gpt-5.6-sol",
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.4-openai-compact",
 		},
 		{
-			name: "自动透传忽略普通账号映射",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeOAuth,
-				Extra:    map[string]any{"openai_passthrough": true},
-				Credentials: map[string]any{
-					"model_mapping": map[string]any{"client-alias": "gpt-5.5"},
-				},
-			},
-			model:            "client-alias",
-			allowPassthrough: true,
-			want:             "client-alias",
+			name: "passthrough ignores ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings, Extra: map[string]any{"openai_passthrough": true}},
+			requireCompact: true,
+			wantBilling:    "gpt-5.5",
+			wantUpstream:   "gpt-5.5-openai-compact",
 		},
 		{
-			name: "自动透传仍执行 compact 专属映射",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeOAuth,
-				Extra:    map[string]any{"openai_passthrough": true},
-				Credentials: map[string]any{
-					"model_mapping":         map[string]any{"client-alias": "gpt-5.5"},
-					"compact_model_mapping": map[string]any{"client-alias": "gpt-5.5-openai-compact"},
-				},
-			},
-			model:            "client-alias",
-			requireCompact:   true,
-			allowPassthrough: true,
-			want:             "gpt-5.5-openai-compact",
-		},
-		{
-			name: "非 Responses 入口不套用自动透传规则",
-			account: &Account{
-				Platform: PlatformOpenAI,
-				Type:     AccountTypeOAuth,
-				Extra:    map[string]any{"openai_passthrough": true},
-				Credentials: map[string]any{
-					"model_mapping": map[string]any{"client-alias": "gpt-5.4-high"},
-				},
-			},
-			model: "client-alias",
-			want:  "gpt-5.4",
+			name: "raw chat fallback never applies compact mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: conflictingMappings, Extra: map[string]any{"openai_responses_supported": false}},
+			requireCompact: true,
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.4",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := resolveOpenAIAccountUpstreamModelForRequest(tt.account, tt.model, tt.requireCompact, tt.allowPassthrough); got != tt.want {
-				t.Fatalf("resolveOpenAIAccountUpstreamModelForRequest(...) = %q, want %q", got, tt.want)
+			billing, upstream := resolveOpenAIForwardMappedModels(tt.account, "gpt-5.5", tt.requireCompact)
+			if billing != tt.wantBilling {
+				t.Fatalf("billing model = %q, want %q", billing, tt.wantBilling)
+			}
+			if upstream != tt.wantUpstream {
+				t.Fatalf("upstream model = %q, want %q", upstream, tt.wantUpstream)
+			}
+			if scheduler := resolveOpenAIAccountUpstreamModelForRequest(tt.account, "gpt-5.5", tt.requireCompact); scheduler != upstream {
+				t.Fatalf("scheduler model %q disagrees with Forward model %q", scheduler, upstream)
 			}
 		})
+	}
+}
+
+func TestCanonicalOpenAIAccountSchedulingModelMatchesForwardSemantics(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		model   string
+		want    string
+	}{
+		{
+			name:    "OpenAI OAuth applies Codex alias normalization",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			model:   "gpt-5.6",
+			want:    "gpt-5.6-sol",
+		},
+		{
+			name: "OpenAI passthrough ignores ordinary account mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"model_mapping": map[string]any{"public": "private"}},
+				Extra:       map[string]any{"openai_passthrough": true}},
+			model: "public",
+			want:  "public",
+		},
+		{
+			name:    "Grok OAuth does not inherit OpenAI Codex aliases",
+			account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth},
+			model:   "gpt-5.6",
+			want:    "gpt-5.6",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canonicalOpenAIAccountSchedulingModel(tt.account, tt.model); got != tt.want {
+				t.Fatalf("canonical scheduling model = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveOpenAIErrorSchedulingModelPrefersActualUpstreamModel(t *testing.T) {
+	if got := resolveOpenAIErrorSchedulingModel("gpt-5.4", "gpt-5.5-openai-compact"); got != "gpt-5.5-openai-compact" {
+		t.Fatalf("error scheduling model = %q, want compact upstream model", got)
+	}
+	if got := resolveOpenAIErrorSchedulingModel("gpt-5.4", ""); got != "gpt-5.4" {
+		t.Fatalf("empty upstream fallback = %q, want billing model", got)
 	}
 }
 

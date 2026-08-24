@@ -1887,9 +1887,60 @@ func TestIsInstructionsEmpty(t *testing.T) {
 	}
 }
 
-func TestFilterCodexInput_PreservesReasoningItems(t *testing.T) {
-	// HTTP 非透传路径需要把 reasoning item 继续传给上游，保持 Codex CLI
-	// 多轮上下文行为；非续链场景仍沿用原有策略移除普通 item id。
+// TestFilterCodexInput_PreservesReasoningStripsID covers the core OAuth-path
+// reasoning contract (replaces the earlier "drops reasoning" test, whose
+// premise was wrong). A reasoning item carrying encrypted_content is the
+// official channel for replaying reasoning context across turns under
+// store=false, so it must survive the filter with encrypted_content intact;
+// only its rs_* id is stripped (always, independent of PreserveReferences)
+// because a bare rs_* id replayed under store=false 404s upstream. Contracts
+// 1/2/3, verified end-to-end against chatgpt.com codex (gpt-5.5). See issue
+// #1957.
+func TestFilterCodexInput_PreservesReasoningStripsID(t *testing.T) {
+	build := func() []any {
+		return []any{
+			map[string]any{
+				"type":              "reasoning",
+				"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+				"call_id":           "remove_non_pair_call_id",
+				"encrypted_content": "gAAAAAB-enc-payload",
+				"summary":           []any{},
+			},
+		}
+	}
+
+	for _, preserve := range []bool{true, false} {
+		preserve := preserve
+		t.Run(fmt.Sprintf("preserveReferences=%v", preserve), func(t *testing.T) {
+			filtered := filterCodexInput(build(), preserve)
+			require.Len(t, filtered, 1)
+
+			item, ok := filtered[0].(map[string]any)
+			require.True(t, ok)
+			// Contract 2: the reasoning item survives the filter.
+			require.Equal(t, "reasoning", item["type"])
+			// Contract 2: encrypted_content (cross-turn channel) preserved verbatim.
+			require.Equal(t, "gAAAAAB-enc-payload", item["encrypted_content"])
+			// Contract 1/3: rs_* id stripped unconditionally, even when
+			// PreserveReferences=true (id lookup, not the item, triggers the 404).
+			_, hasID := item["id"]
+			require.False(t, hasID)
+			_, hasCallID := item["call_id"]
+			require.False(t, hasCallID)
+			// summary passed through untouched.
+			summary, ok := item["summary"].([]any)
+			require.True(t, ok)
+			require.Len(t, summary, 0)
+		})
+	}
+}
+
+// TestFilterCodexInput_BareReasoningStripsIDBackfillsSummary covers contract 1
+// plus 5: a reasoning item carrying only an rs_* id (no encrypted_content) is
+// kept as an empty shell with the id stripped, and a missing summary is
+// backfilled to [] so upstream does not reject it with 400 "Missing required
+// parameter 'input[N].summary'". Verified against chatgpt.com codex (gpt-5.5).
+func TestFilterCodexInput_BareReasoningStripsIDBackfillsSummary(t *testing.T) {
 	input := []any{
 		map[string]any{"type": "message", "id": "msg_0", "role": "user", "content": "hi"},
 		map[string]any{

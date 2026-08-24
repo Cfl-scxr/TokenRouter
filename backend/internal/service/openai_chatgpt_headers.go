@@ -7,7 +7,7 @@ import (
 
 // setOpenAIChatGPTAccountHeaders 统一补齐 ChatGPT internal API 需要的账号级请求头。
 func setOpenAIChatGPTAccountHeaders(headers http.Header, account *Account) {
-	if headers == nil || account == nil || !account.IsOpenAIOAuth() {
+	if headers == nil || account == nil || !account.IsOpenAIOAuthLike() {
 		return
 	}
 	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {

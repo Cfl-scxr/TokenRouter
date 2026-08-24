@@ -62,6 +62,7 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 	if err := s.ensureOpenAIAlphaSearchAuthMetadata(ctx, account, token, proxyURL); err != nil {
 		return nil, err
 	}
+	SetOpsUpstreamModel(c, upstreamModel)
 
 	// Codex Personal Access Token（at-...）目前可访问 ChatGPT Codex
 	// /responses，但会被 standalone /alpha/search 的 access enforcement
@@ -93,22 +94,23 @@ func (s *OpenAIGatewayService) ForwardAlphaSearch(
 		upstreamMessage := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 		if isOpenAIAlphaSearchEndpointUnsupported(account, resp.StatusCode) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
-			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+			// alpha/search 是独立的工具端点，单次 401 不能证明账号的模型调用
+			// 凭据全局失效。若沿用通用 401 逻辑，PAT 会因没有 refresh_token
+			// 被永久标记为 error；历史导入且缺少 auth_mode 标记的 at- token 也会
+			// 漏过 PAT 类型判断。这里仍允许本次请求换号，但不修改任何账号状态；
+			// 真正的凭据失效由普通 Responses 请求或 whoami 校验判定。
+			shouldDisable := false
+			if shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(resp.StatusCode) {
+				shouldDisable = s.handleFailoverSideEffects(ctx, resp, account, respBody, openAIAlphaSearchSchedulingModel(account, requestedModel))
 			}
-		}
-		decision := s.applyOpenAIAlphaSearchErrorPolicy(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
-		if decision.ShouldReturnGenericError() {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "upstream_error", "message": "Upstream gateway error"}})
-			return nil, fmt.Errorf("alpha search upstream error: %d (not in custom error codes)", resp.StatusCode)
-		}
-		if decision.ShouldFailover(account, resp.StatusCode, s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody)) {
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
+			retryableOnSameAccount := !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)
+			if account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests {
+				return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMessage, shouldDisable, retryableOnSameAccount)
 			}
+			if isOpenAIUpstreamAccessStateError(upstreamMessage, respBody) {
+				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMessage, retryableOnSameAccount)
+			}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: retryableOnSameAccount}
 		}
 	}
 
@@ -173,17 +175,21 @@ func (s *OpenAIGatewayService) forwardAlphaSearchViaResponsesWebSearch(
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		upstreamMessage := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		decision := s.applyOpenAIAlphaSearchErrorPolicy(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
-		if decision.ShouldReturnGenericError() {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "upstream_error", "message": "Upstream gateway error"}})
-			return nil, fmt.Errorf("alpha search upstream error: %d (not in custom error codes)", resp.StatusCode)
-		}
-		if decision.ShouldFailover(account, resp.StatusCode, s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody)) {
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
+		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMessage, respBody) {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			// 仍按 alpha/search 工具请求处理：PAT 的工具链路失败不能直接永久置错。
+			shouldDisable := false
+			if shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(resp.StatusCode) {
+				shouldDisable = s.handleFailoverSideEffects(ctx, resp, account, respBody, openAIAlphaSearchSchedulingModel(account, requestedModel))
 			}
+			retryableOnSameAccount := !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)
+			if account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests {
+				return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMessage, shouldDisable, retryableOnSameAccount)
+			}
+			if isOpenAIUpstreamAccessStateError(upstreamMessage, respBody) {
+				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMessage, retryableOnSameAccount)
+			}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: retryableOnSameAccount}
 		}
 	}
 
@@ -216,15 +222,11 @@ func (s *OpenAIGatewayService) forwardAlphaSearchViaResponsesWebSearch(
 	}, nil
 }
 
-func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	alphaBody []byte,
-	body []byte,
-	token string,
-	tlsRouterMatch ...TLSFingerprintRouterMatchResult,
-) (*http.Request, error) {
+func openAIAlphaSearchSchedulingModel(account *Account, requestedModel string) string {
+	return canonicalOpenAIAccountSchedulingModel(account, requestedModel)
+}
+
+func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(ctx context.Context, c *gin.Context, account *Account, alphaBody []byte, body []byte, token string, tlsRouterMatch ...TLSFingerprintRouterMatchResult) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -682,7 +684,7 @@ func (s *OpenAIGatewayService) openAIAlphaSearchURL(account *Account) (string, e
 		return "", fmt.Errorf("account is required")
 	}
 	switch account.Type {
-	case AccountTypeOAuth:
+	case AccountTypeOAuth, AccountTypeSetupToken:
 		return chatgptCodexAlphaSearchURL, nil
 	case AccountTypeAPIKey:
 		baseURL := account.GetOpenAIBaseURL()

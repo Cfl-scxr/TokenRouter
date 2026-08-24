@@ -128,10 +128,63 @@ func TestHandleErrorResponse_PoolRetryable400StillFailsOver(t *testing.T) {
 	require.Empty(t, recorder.Body.String())
 }
 
-func TestHandleErrorResponse_PassthroughRuleWinsOverDeterministic400(t *testing.T) {
-	c, recorder := newOpenAIUpstreamClientErrorTestContext()
-	ruleService := &ErrorPassthroughService{}
-	ruleService.setLocalCache([]*model.ErrorPassthroughRule{
+// 作用域守卫：本次只放行 400。其余落到 default 的状态码必须维持原样，
+// 避免后续有人顺手把 404/422/5xx 一起改掉。
+func TestHandleErrorResponse_NonDeterministicStatusesKeepGeneric502(t *testing.T) {
+	cases := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantStatus int
+		wantType   string
+		wantMsg    string
+	}{
+		// 404/405 可能是上游 base_url 配错（运营方问题），不当成客户端错误暴露。
+		{"not_found", http.StatusNotFound, `{"error":{"message":"Unknown request URL"}}`,
+			http.StatusBadGateway, "upstream_error", "Upstream request failed"},
+		{"unprocessable", http.StatusUnprocessableEntity, `{"error":{"message":"Invalid schema for field messages"}}`,
+			http.StatusBadGateway, "upstream_error", "Upstream request failed"},
+		// 401/402/403 是网关运营方的凭据/账单问题，必须继续对客户端屏蔽上游账号状态。
+		{"unauthorized", http.StatusUnauthorized, `{"error":{"message":"Incorrect API key provided: sk-abc"}}`,
+			http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"},
+		{"forbidden", http.StatusForbidden, `{"error":{"message":"Your account is deactivated"}}`,
+			http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"},
+		// 429 保持独立映射。
+		{"rate_limited", http.StatusTooManyRequests, `{"error":{"message":"Rate limit reached"}}`,
+			http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newOpenAIUpstreamErrorTestContext(t)
+			svc := &OpenAIGatewayService{cfg: &config.Config{}}
+
+			_, err := svc.handleErrorResponse(
+				context.Background(),
+				newOpenAIUpstreamErrorResponse(tc.statusCode, tc.body),
+				c, newOpenAIUpstreamErrorTestAccount(), nil,
+			)
+			if tc.name == "forbidden" {
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				require.Equal(t, http.StatusForbidden, failoverErr.StatusCode)
+				require.False(t, c.Writer.Written())
+				return
+			}
+
+			require.Error(t, err)
+			require.Equal(t, tc.wantStatus, rec.Code)
+			require.Equal(t, tc.wantType, gjson.Get(rec.Body.String(), "error.type").String())
+			require.Equal(t, tc.wantMsg, gjson.Get(rec.Body.String(), "error.message").String())
+		})
+	}
+}
+
+// 顺序守卫：管理员配置的错误透传规则在更上游命中，新分支不得抢在它前面。
+func TestHandleErrorResponse_PassthroughRuleStillWinsOver400Branch(t *testing.T) {
+	c, rec := newOpenAIUpstreamErrorTestContext(t)
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{
 		newNonFailoverPassthroughRule(http.StatusBadRequest, "automation_update", http.StatusTeapot, "自定义文案"),
 	})
 	BindErrorPassthroughService(c, ruleService)

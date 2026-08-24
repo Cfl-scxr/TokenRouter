@@ -19,6 +19,7 @@ import (
 type gatewayForwardErrorPolicyRepoStub struct {
 	AccountRepository
 	tempCalls           int
+	overloadCalls       int
 	modelRateLimitCalls []gatewayForwardModelRateLimitCall
 }
 
@@ -37,11 +38,14 @@ func (r *gatewayForwardErrorPolicyRepoStub) SetModelRateLimit(_ context.Context,
 	return nil
 }
 
-func (r *gatewayForwardErrorPolicyRepoStub) SetError(context.Context, int64, string) error {
+func (r *gatewayForwardErrorPolicyRepoStub) SetOverloaded(context.Context, int64, time.Time) error {
+	r.overloadCalls++
 	return nil
 }
 
-// 本文件覆盖流式转发中途出错时的部分 usage 保留不变式。
+// 本文件覆盖 issue #5148：流式转发中途出错（缺失 terminal 事件、读错误等）时，
+// 已观测到的上游 usage 不得随错误一起被丢弃，Forward 必须把部分结果与错误一同
+// 返回，供 handler 照常提交 usage 记录。
 
 func newForwardPartialUsageServiceForTest(upstream *anthropicHTTPUpstreamRecorder) *GatewayService {
 	cfg := &config.Config{
@@ -267,10 +271,9 @@ func TestGatewayService_Forward_PreOutputSSEOverloadedErrorUsesSemantic529(t *te
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, 529, failoverErr.StatusCode)
 	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
-	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, account.ID, repo.modelRateLimitCalls[0].accountID)
-	require.Equal(t, parsed.Model, repo.modelRateLimitCalls[0].scope)
-	require.Empty(t, rec.Body.String())
+	require.Equal(t, 1, repo.overloadCalls, "synthetic 529 must apply global overload cooldown")
+	require.Empty(t, repo.modelRateLimitCalls, "global 529 cooldown must take precedence over custom model rules")
+	require.Empty(t, rec.Body.String(), "pre-output overload must remain eligible for account failover")
 }
 
 func TestGatewayService_Forward_PostOutputSSEOverloadedErrorKeepsExistingStatus(t *testing.T) {

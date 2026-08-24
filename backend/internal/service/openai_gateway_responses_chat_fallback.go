@@ -98,6 +98,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", clientStream),
 	)
+	SetOpsUpstreamModel(c, upstreamModel)
 
 	// 通过共享 CC 管线构造并发送上游请求。
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
