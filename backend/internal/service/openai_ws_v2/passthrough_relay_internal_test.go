@@ -420,6 +420,7 @@ func TestObserveUpstreamMessageBareErrorClearsTurnStateAndFinalizesUsageOnce(t *
 		now.Add(-3*time.Second),
 		func() time.Time { return now },
 		nil,
+		nil,
 	)
 
 	require.False(t, observed.terminal, "bare error settlement is deferred in case response.failed follows")
@@ -431,10 +432,12 @@ func TestObserveUpstreamMessageBareErrorClearsTurnStateAndFinalizesUsageOnce(t *
 	require.Equal(t, Usage{}, state.turnUsage)
 	require.Nil(t, state.activeTurn)
 	require.Empty(t, state.turnTimingByID)
-	require.True(t, state.consumePendingTurnStartedAt().IsZero())
+	// The error is bound to the active turn id, so settlement must not consume a
+	// later pending start that belongs to the next turn.
+	require.Equal(t, now.Add(-500*time.Millisecond), state.consumePendingTurnStartedAt())
 
 	// Re-observing and settling a later terminal without usage must not re-add the prior turn.
-	observeUpstreamMessage(state, []byte(`{"type":"error","error":{"message":"again"}}`), now, func() time.Time { return now }, nil)
+	observeUpstreamMessage(state, []byte(`{"type":"error","error":{"message":"again"}}`), now, func() time.Time { return now }, nil, nil)
 	finalizePendingBareError(state, now)
 	require.Equal(t, Usage{InputTokens: 3, OutputTokens: 1}, state.usage)
 }
@@ -454,6 +457,7 @@ func TestObserveUpstreamMessageErrorThenFailedSettlesUsageOnce(t *testing.T) {
 		now,
 		func() time.Time { return now },
 		nil,
+		nil,
 	)
 	require.False(t, errorObserved.terminal)
 	require.NotNil(t, state.pendingBareError)
@@ -464,6 +468,7 @@ func TestObserveUpstreamMessageErrorThenFailedSettlesUsageOnce(t *testing.T) {
 		[]byte(`{"type":"response.failed","response":{"id":"resp_1","usage":{"input_tokens":7,"output_tokens":2}}}`),
 		now,
 		func() time.Time { return now },
+		nil,
 		nil,
 	)
 	require.True(t, failedObserved.terminal)
@@ -484,6 +489,7 @@ func TestObserveUpstreamMessageBareErrorBeforeNextCompletedKeepsBothTurns(t *tes
 		now,
 		func() time.Time { return now },
 		nil,
+		nil,
 	)
 	require.False(t, bare.terminal)
 	bare = finalizePendingBareError(state, now)
@@ -495,6 +501,7 @@ func TestObserveUpstreamMessageBareErrorBeforeNextCompletedKeepsBothTurns(t *tes
 		[]byte(`{"type":"response.completed","response":{"id":"resp_next","usage":{"input_tokens":3,"output_tokens":2}}}`),
 		now,
 		func() time.Time { return now },
+		nil,
 		nil,
 	)
 	require.True(t, completed.terminal)
