@@ -22,5 +22,22 @@ var DefaultModels = []Model{
 	{ID: "gemini-3.1-flash-image", Type: "model", DisplayName: "Gemini 3.1 Flash Image", CreatedAt: ""},
 }
 
+// GoogleOneModels 是旧版 Google One OAuth 通道对外暴露的保守模型集合。
+// 新版订阅模型通过 Antigravity OAuth 提供，不由已退役的消费者通道承载。
+var GoogleOneModels = []Model{
+	{ID: "gemini-2.5-flash", Type: "model", DisplayName: "Gemini 2.5 Flash", CreatedAt: ""},
+	{ID: "gemini-2.5-pro", Type: "model", DisplayName: "Gemini 2.5 Pro", CreatedAt: ""},
+	{ID: "gemini-2.0-flash", Type: "model", DisplayName: "Gemini 2.0 Flash", CreatedAt: ""},
+}
+
+// GoogleOneModelMapping 为每个账号返回新的白名单映射，避免调用方修改包级目录。
+func GoogleOneModelMapping() map[string]string {
+	mapping := make(map[string]string, len(GoogleOneModels))
+	for _, model := range GoogleOneModels {
+		mapping[model.ID] = model.ID
+	}
+	return mapping
+}
+
 // DefaultTestModel is the default model to preselect in test flows.
 const DefaultTestModel = "gemini-2.0-flash"
