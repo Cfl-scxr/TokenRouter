@@ -136,6 +136,15 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 
 type GrokRealtimeUpstream struct{ conn openAIWSClientConn }
 
+// GrokRealtimeDialError 保留 WebSocket 升级前返回的 HTTP 状态，供处理器复用 Grok 账号策略。
+type GrokRealtimeDialError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *GrokRealtimeDialError) Error() string { return e.Err.Error() }
+func (e *GrokRealtimeDialError) Unwrap() error { return e.Err }
+
 func (u *GrokRealtimeUpstream) Close() error {
 	if u == nil || u.conn == nil {
 		return nil
@@ -170,11 +179,19 @@ func (s *OpenAIGatewayService) OpenGrokRealtime(ctx context.Context, account *Ac
 		proxyURL = account.Proxy.URL()
 	}
 	dialer := s.getOpenAIWSPassthroughDialer()
-	conn, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL, s.resolveOpenAITLSProfile(account))
+	conn, status, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL, s.resolveOpenAITLSProfile(account))
 	if err != nil {
-		return nil, err
+		return nil, &GrokRealtimeDialError{StatusCode: status, Err: err}
 	}
 	return &GrokRealtimeUpstream{conn: conn}, nil
+}
+
+// HandleGrokRealtimeUpstreamError 为下游升级前失败的 WebSocket 握手应用共享 Grok 账号策略。
+func (s *OpenAIGatewayService) HandleGrokRealtimeUpstreamError(ctx context.Context, account *Account, statusCode int, body []byte) {
+	if statusCode <= 0 {
+		statusCode = http.StatusBadGateway
+	}
+	_ = s.applyGrokAccountUpstreamError(ctx, account, statusCode, nil, body)
 }
 
 func (s *OpenAIGatewayService) ProxyGrokRealtimeConn(ctx context.Context, c *gin.Context, client *coderws.Conn, upstream *GrokRealtimeUpstream) (bool, error) {
