@@ -130,7 +130,7 @@ func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Con
 	if err != nil {
 		return false, err
 	}
-	defer upstream.Close()
+	defer func() { _ = upstream.Close() }()
 	return s.ProxyGrokRealtimeConn(ctx, c, client, upstream)
 }
 
