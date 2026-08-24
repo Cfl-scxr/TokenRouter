@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
+	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -101,6 +103,51 @@ func TestWriteOpenAIPassthroughResponseHeadersRelaysTurnState(t *testing.T) {
 	require.Empty(t, destination.Get("X-Codex-Turn-State"))
 }
 
+func TestWriteOpenAIPassthroughResponseHeaders_RelaysReasoningIncluded(t *testing.T) {
+	dst := http.Header{}
+	src := http.Header{}
+	src.Set("X-Reasoning-Included", "1")
+
+	writeOpenAIPassthroughResponseHeaders(
+		dst,
+		src,
+		responseheaders.CompileHeaderFilter(config.ResponseHeaderConfig{}),
+	)
+	require.Equal(t, "1", dst.Get("X-Reasoning-Included"))
+}
+
+func TestEnsureOpenAIRemoteCompactionV2BetaFeature(t *testing.T) {
+	t.Run("absent_sets_feature", func(t *testing.T) {
+		h := http.Header{}
+		ensureOpenAIRemoteCompactionV2BetaFeature(h)
+		require.Equal(t, "remote_compaction_v2", h.Get("x-codex-beta-features"))
+	})
+
+	t.Run("present_unchanged", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("x-codex-beta-features", "responses_websockets_v2, remote_compaction_v2")
+		ensureOpenAIRemoteCompactionV2BetaFeature(h)
+		require.Equal(t, "responses_websockets_v2, remote_compaction_v2", h.Get("x-codex-beta-features"))
+	})
+
+	t.Run("other_tokens_merged", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("x-codex-beta-features", "responses_websockets_v2")
+		ensureOpenAIRemoteCompactionV2BetaFeature(h)
+		require.Equal(t, "responses_websockets_v2,remote_compaction_v2", h.Get("x-codex-beta-features"))
+	})
+
+	t.Run("multi_line_values_merged_single_line", func(t *testing.T) {
+		h := http.Header{}
+		h.Add("x-codex-beta-features", "feature_a")
+		h.Add("x-codex-beta-features", "feature_b")
+		ensureOpenAIRemoteCompactionV2BetaFeature(h)
+		require.Equal(t, []string{"feature_a,feature_b,remote_compaction_v2"}, h.Values("x-codex-beta-features"))
+	})
+}
+
+// 对齐真实 Codex：该头是会话级常量，挂在 OAuth 的每个请求上，而不是只在
+// 压缩回合出现（codex-rs build_model_client_beta_features_header）。
 func TestApplyOpenAICodexBetaFeatures(t *testing.T) {
 	oauthAccount := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	apiKeyAccount := &Account{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

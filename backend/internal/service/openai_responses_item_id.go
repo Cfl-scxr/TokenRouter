@@ -8,22 +8,45 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// 回放请求中的无效 ID 必须删除而不是改写，因为伪造的 msg/fc ID 可能会指向
-// 另一个上游对象。
+func openAIResponsesInputItemIDPrefix(itemType string) (string, bool) {
+	switch strings.TrimSpace(itemType) {
+	case "message":
+		return "msg", true
+	case "reasoning":
+		return "rs", true
+	case "custom_tool_call":
+		return openAIResponsesToolCallIDPrefix(itemType), true
+	case "tool_search_call":
+		return openAIResponsesToolCallIDPrefix(itemType), true
+	default:
+		if isCodexToolCallInputType(itemType) {
+			return openAIResponsesToolCallIDPrefix(itemType), true
+		}
+		return "", false
+	}
+}
+
+func openAIResponsesToolCallIDPrefix(itemType string) string {
+	switch strings.TrimSpace(itemType) {
+	case "custom_tool_call", "custom_tool_call_output":
+		return "ctc"
+	case "tool_search_call", "tool_search_output":
+		return "tsc"
+	default:
+		return "fc"
+	}
+}
+
+// 回放请求中的无效 ID 必须删除而不是改写，因为伪造的 ID 可能会指向另一个上游对象。
 func shouldStripOpenAIResponsesInputItemID(itemType, id string) bool {
 	if id == "" {
 		return false
 	}
-	if itemType == "message" {
-		return !strings.HasPrefix(id, "msg")
+	prefix, constrained := openAIResponsesInputItemIDPrefix(itemType)
+	if !constrained {
+		return false
 	}
-	if itemType == "reasoning" {
-		return !strings.HasPrefix(id, "rs")
-	}
-	if isCodexToolCallInputType(itemType) {
-		return !strings.HasPrefix(id, "fc")
-	}
-	return false
+	return !strings.HasPrefix(id, prefix)
 }
 
 func sanitizeOpenAIResponsesInputItemIDs(body []byte) ([]byte, bool, error) {

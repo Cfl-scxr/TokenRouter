@@ -27,6 +27,10 @@ type openAIWSClientFrameConn struct {
 	interTurnIdleTimeout time.Duration
 	interTurnStarted     chan struct{}
 	waitingForNextTurn   atomic.Bool
+	// The relay observes upstream payloads, while clients must keep seeing the
+	// model identifier they supplied for the current turn.
+	restoreResponseModel func([]byte) []byte
+	restoreToolNames     func([]byte) []byte
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -688,6 +692,12 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
 			payload = normalized
 		}
+		if c.restoreResponseModel != nil {
+			payload = c.restoreResponseModel(payload)
+		}
+		if c.restoreToolNames != nil {
+			payload = c.restoreToolNames(payload)
+		}
 	}
 	// 控制面取消必须由读路径发送带原因的关闭帧；若直接继承父取消，coder/websocket
 	// 可能在当前帧已经到达客户端但 Write 尚未返回时硬关 TCP。这里保留原 deadline，
@@ -804,6 +814,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	firstClientMessage, resolveModelErr = replaceOpenAIWSPassthroughRequestModel(firstClientMessage, "response.create", firstUpstreamModel)
 	if resolveModelErr != nil {
 		return resolveModelErr
+	}
+	if account.IsOpenAIOAuth() {
+		aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(firstClientMessage)
+		if aliasErr != nil {
+			return aliasErr
+		}
+		setCodexToolNameReverse(c, reverse)
+		if aliased {
+			firstClientMessage = aliasedBody
+		}
+	}
+	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account); normalizeErr != nil {
+		return fmt.Errorf("normalize first websocket response.create: %w", normalizeErr)
+	} else if compatibilityChanged {
+		firstClientMessage = normalized
 	}
 	firstPolicyCtx := openAIWSFastModePolicyContext(ctx, hooks, 1)
 	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(firstPolicyCtx, account, firstUpstreamModel, firstClientMessage)
@@ -1020,6 +1045,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		controlCtx:           ctx,
 		interTurnIdleTimeout: s.openAIWSIngressInterTurnIdleTimeout(),
 		interTurnStarted:     make(chan struct{}, 1),
+		restoreResponseModel: func(payload []byte) []byte {
+			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+			if !openAIWSEventMayContainModel(eventType) {
+				return payload
+			}
+			requestModel := usageMeta.requestModelForFrame(nil)
+			upstreamModel := loadCapturedModel(&capturedSessionUpstreamModel)
+			if upstreamModel == "" {
+				upstreamModel = requestModel
+			}
+			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
+		},
+		restoreToolNames: func(payload []byte) []byte {
+			return restoreCodexToolNamesFromContext(c, payload)
+		},
 	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
@@ -1049,12 +1089,29 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					}
 				}()
 			}
-			if isResponseCreate && isOpenAIResponsesLiteWebSocketPayload(payload) {
-				litePayload, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, payload)
-				if liteErr != nil {
-					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
+			if isResponseCreate {
+				if account.IsOpenAIOAuth() {
+					aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(payload)
+					if aliasErr != nil {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, aliasErr.Error(), aliasErr)
+					}
+					setCodexToolNameReverse(c, reverse)
+					if aliased {
+						payload = aliasedBody
+					}
 				}
-				payload = litePayload
+				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account); normalizeErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
+				} else if compatibilityChanged {
+					payload = normalized
+				}
+				if isOpenAIResponsesLiteWebSocketPayload(payload) {
+					litePayload, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, payload)
+					if liteErr != nil {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)
+					}
+					payload = litePayload
+				}
 			}
 			if isResponseCreate && hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 				if capped, changed := ApplyOpenAIReasoningEffortPolicy(payload, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
