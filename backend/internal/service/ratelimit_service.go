@@ -265,6 +265,8 @@ const (
 	ErrorPolicyCustomMatched                            // 自定义错误码命中，停止调度
 	ErrorPolicyTempUnscheduled                          // 临时不可调度规则命中
 	ErrorPolicyPoolBypassed                             // 池模式跳过默认本地状态，继续响应分类
+	// ErrorPolicyMatched 保留旧测试与外部调用方的枚举别名。
+	ErrorPolicyMatched = ErrorPolicyCustomMatched
 )
 
 // UpstreamErrorDecision 汇总显式策略和默认账号状态处理结果。
@@ -363,6 +365,11 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		}
 		return ErrorPolicyPoolBypassed
 	}
+	// The global overload cooldown is the default for ordinary accounts. Explicit
+	// account policies above retain precedence over this fallback.
+	if statusCode == 529 {
+		return ErrorPolicyCustomMatched
+	}
 	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return ErrorPolicyTempUnscheduled
 	}
@@ -419,6 +426,11 @@ func (s *RateLimitService) handleDefaultUpstreamError(ctx context.Context, accou
 		return false
 	}
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+
+	if statusCode == 529 {
+		s.handle529(ctx, account)
+		return false
+	}
 
 	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
 		return true

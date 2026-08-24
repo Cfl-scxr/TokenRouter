@@ -2427,7 +2427,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			)
 		}
 
+		if preemptCtx, cleanupPreempt, armed := h.gatewayService.BeginOpenAIWSIngressSessionPreemption(ctx, c, account, wsFirstMessage); armed {
+			ctx = preemptCtx
+			defer cleanupPreempt()
+		}
+
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
+			if service.IsOpenAIWSSessionPreemptedError(err) {
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				retryPayload, retryCurrentTurn := service.OpenAIWSCurrentTurnRetryPayload(err)

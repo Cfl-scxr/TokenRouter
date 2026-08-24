@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -147,134 +146,37 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	}
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
-	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
-	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
-	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
-	var lastFailoverErr *service.UpstreamFailoverError
-	switchCount := 0
-
-	for {
-		routingStart := time.Now()
-		selection, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapabilityAndRoutingModel(
-			c.Request.Context(),
-			apiKey.GroupID,
-			"",
-			sessionHash,
-			reqModel,
-			accountLayerModel,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
-			service.OpenAIEndpointCapabilityTextGeneration,
-			false,
-			false,
-			requestPlatform,
-		)
-		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
-		if selectErr != nil {
-			reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(selectErr, requestPlatform)))
-			if lastFailoverErr != nil {
-				h.handleAnthropicFailoverExhausted(c, lastFailoverErr, false)
-				return
-			}
-			if h.handleOpenAISelectionBusinessError(c, selectErr, false) {
-				return
-			}
-			cls := classifyOpenAICompatibleResolvedRoutingNoAccountErrorFromGin(c, h.gatewayService, apiKey, accountLayerModel, reqModel)
-			if !cls.ModelNotFound {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, selectErr)
-			}
-			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
-			return
-		}
-		if selection == nil || selection.Account == nil {
-			if lastFailoverErr != nil {
-				h.handleAnthropicFailoverExhausted(c, lastFailoverErr, false)
-				return
-			}
-			cls := classifyOpenAICompatibleResolvedRoutingNoAccountErrorFromGin(c, h.gatewayService, apiKey, accountLayerModel, reqModel)
-			if !cls.ModelNotFound {
-				markOpsRoutingCapacityLimited(c)
-			}
-			h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
-			return
-		}
-
-		account := selection.Account
-		setOpsSelectedAccount(c, account.ID, account.Platform)
-		forwardStart := time.Now()
-		forwardErr := func() error {
-			if selection.Acquired && selection.ReleaseFunc != nil {
-				defer selection.ReleaseFunc()
-			}
-			return h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, accountLayerModel)
-		}()
-		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, time.Since(forwardStart).Milliseconds())
-		if forwardErr == nil {
-			return
-		}
-		var failoverErr *service.UpstreamFailoverError
-		if !errors.As(forwardErr, &failoverErr) {
-			reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(forwardErr))
-			return
-		}
-		if !failoverErr.ShouldRetryNextAccount() {
-			h.handleAnthropicFailoverExhausted(c, failoverErr, false)
-			return
-		}
-		if failoverErr.RetryableOnSameAccount && sameAccountRetryCount[account.ID] < account.GetPoolModeRetryCount() {
-			sameAccountRetryCount[account.ID]++
-			select {
-			case <-c.Request.Context().Done():
-				return
-			case <-time.After(sameAccountRetryDelay):
-			}
-			continue
-		}
-		failedAccountIDs[account.ID] = struct{}{}
-		lastFailoverErr = failoverErr
-		if switchCount >= h.maxAccountSwitches {
-			h.handleAnthropicFailoverExhausted(c, failoverErr, false)
-			return
-		}
-		switchCount++
-	}
-}
-
-func (h *OpenAIGatewayHandler) acquireCountTokensAccountSlot(
-	c *gin.Context,
-	groupID *int64,
-	sessionHash string,
-	selection *service.AccountSelectionResult,
-	anthropicResponse bool,
-	reqLog *zap.Logger,
-) (func(), bool) {
-	writeError := func(status int, errType, message string) {
-		if anthropicResponse {
-			h.anthropicErrorResponse(c, status, errType, message)
-			return
-		}
-		h.errorResponse(c, status, errType, message)
-	}
-	streamStarted := false
-	release, result := h.acquireOpenAIAccountSlot(
-		c,
-		groupID,
+	// count_tokens 不计费：显式豁免利润门，避免高倍率账号池被门排除。
+	account, err := h.gatewayService.SelectAccountForTokenCount(
+		c.Request.Context(),
+		apiKey.GroupID,
 		sessionHash,
-		selection,
-		false,
-		&streamStarted,
-		reqLog,
-		writeError,
+		accountLayerModel,
+		service.OpenAIEndpointCapabilityTextGeneration,
+		requestPlatform,
 	)
-	if result == openAISlotAcquireOK {
-		return release, true
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	if err != nil {
+		reqLog.Warn("openai_count_tokens.account_select_failed", zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)))
+		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, accountLayerModel, reqModel)
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+		}
+		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+		return
 	}
-	// Token-count requests suppress the profit gate before selection, so this
-	// is defensive only. Never forward without a slot if a stale gate appears.
-	if result == openAISlotAcquireProfitVetoed {
-		markOpsRoutingCapacityLimited(c)
-		writeError(http.StatusServiceUnavailable, "api_error", "No available accounts")
+	if account == nil {
+		cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, accountLayerModel, reqModel)
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimited(c)
+		}
+		h.anthropicErrorResponse(c, cls.Status, cls.ErrType, cls.Message)
+		return
 	}
-	return nil, false
+
+	setOpsSelectedAccount(c, account.ID, account.Platform)
+	forwardBody := mappedBodyForMessages(channelMapping.Mapped, channelMapping.MappedModel)
+	if err := h.gatewayService.ForwardCountTokensAsAnthropic(c.Request.Context(), c, account, forwardBody, accountLayerModel); err != nil {
+		reqLog.Error("openai_count_tokens.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+	}
 }

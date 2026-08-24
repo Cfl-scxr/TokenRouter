@@ -61,7 +61,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	token string,
 	firstClientMessage []byte,
 	hooks *OpenAIWSIngressHooks,
-) error {
+) (returnErr error) {
 	if s == nil {
 		return errors.New("service is nil")
 	}
@@ -74,6 +74,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	// 复用 Gin 上下文时清理上一个账号留下的工具名称映射。
+	setCodexToolNameReverse(c, nil)
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
@@ -87,6 +89,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if settings, err := s.settingService.GetOpenAIFastPolicySettings(ctx); err == nil && settings != nil {
 			ctx = withOpenAIFastPolicyContext(ctx, settings)
 		}
+	}
+
+	// The handler normally owns this registration across retry attempts. Direct
+	// callers still get the same session-scoped preemption behavior here.
+	if preemptCtx, cleanupPreempt, armed := s.BeginOpenAIWSIngressSessionPreemption(ctx, c, account, firstClientMessage); armed {
+		ctx = preemptCtx
+		defer cleanupPreempt()
+		defer func() {
+			if isOpenAIWSSessionPreempted(ctx) {
+				returnErr = errOpenAIWSSessionPreempted
+			}
+		}()
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
