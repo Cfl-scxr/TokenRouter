@@ -543,6 +543,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	excludedIDs map[int64]struct{},
 	requireCompact bool,
 ) (*AccountSelectionResult, error) {
+	ctx = s.withOpenAIGroupPrivacyRequirement(ctx, groupID)
 	routingModel := s.resolveChannelRoutingModel(ctx, groupID, requestedModel)
 	return s.selectAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, routingModel, excludedIDs, "", requireCompact)
 }
@@ -613,6 +614,7 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	requiredCapability OpenAIEndpointCapability,
 	requireCompact bool,
 ) int64 {
+	ctx = s.withOpenAIGroupPrivacyRequirement(ctx, groupID)
 	accountID, _, _, _ := s.resolveAccountByPreviousResponseIDForCapability(
 		ctx,
 		groupID,
@@ -672,6 +674,9 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
+	if (hasOpenAIAccountGroupMetadata(account) && !s.openAIAccountMatchesSchedulingGroup(account, groupID)) || !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, account) {
+		return 0, nil, "", nil
+	}
 	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
@@ -695,6 +700,9 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		}
 		if shouldClearStickySession(latest, routingModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return 0, nil, "", nil
+		}
+		if (hasOpenAIAccountGroupMetadata(latest) && !s.openAIAccountMatchesSchedulingGroup(latest, groupID)) || !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, latest) {
 			return 0, nil, "", nil
 		}
 		if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {

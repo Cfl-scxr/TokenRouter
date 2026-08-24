@@ -207,6 +207,9 @@ func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *i
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}
+	if preserveOpenAIGuardianParentBinding(ctx, sessionHash) {
+		return nil
+	}
 	ttl := openaiStickySessionTTL
 	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
 		ttl = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
@@ -943,6 +946,9 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, routingModel, false, requiredCapability) {
 		return nil
 	}
+	if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, account) {
+		return nil
+	}
 	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
@@ -997,6 +1003,9 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, groupID, platform, routingModel, false, requiredCapability)
 		if fresh == nil {
+			continue
+		}
+		if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, fresh) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamRoutingModelRestrictedByChannel(ctx, *groupID, fresh, routingModel, requireCompact) {
@@ -1094,6 +1103,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 		if err != nil {
 			return nil, err
 		}
+		if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, account) {
+			return nil, noAvailableOpenAISelectionErrorForRouting(ctx, requestedModel, routingModel, false, nil)
+		}
 		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
 		if err == nil && result != nil && result.Acquired {
 			return s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
@@ -1142,7 +1154,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
-				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, routingModel, false, requiredCapability) {
+				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, routingModel, false, requiredCapability) && s.openAIAccountPassesPrivacyRequirement(ctx, groupID, account) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, routingModel, requireCompact, requiredCapability)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1201,6 +1213,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwarenessForRouting(ctx cont
 		}
 
 		if !isOpenAICompatibleAccountEligibleForRequest(ctx, acc, platform, routingModel, false, requiredCapability) {
+			continue
+		}
+		if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, acc) {
 			continue
 		}
 		if !parentHealthyForShadow(acc, parentLookupL2) {
@@ -1483,6 +1498,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+		if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, account) {
+			return nil
+		}
 		if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, requireCompact, requiredCapability) {
 			return nil
 		}
@@ -1503,6 +1521,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
+		return nil
+	}
+	if !s.openAIAccountPassesPrivacyRequirement(ctx, groupID, latest) {
 		return nil
 	}
 	if !isOpenAICompatibleAccountEligibleForRequest(ctx, latest, platform, requestedModel, requireCompact, requiredCapability) {
@@ -1528,6 +1549,11 @@ func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Acco
 		return account != nil
 	}
 	return openAIStickyAccountMatchesGroup(account, groupID)
+}
+
+// openAIAccountPassesPrivacyRequirement 判断账号是否满足当前分组的隐私资格。
+func (s *OpenAIGatewayService) openAIAccountPassesPrivacyRequirement(ctx context.Context, groupID *int64, account *Account) bool {
+	return account != nil && (!s.openAIGroupRequiresPrivacySet(ctx, groupID) || account.IsPrivacySet())
 }
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
