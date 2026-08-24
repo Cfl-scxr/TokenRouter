@@ -173,6 +173,12 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if decision.ShouldReturnGenericError() {
 			return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 		}
+		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
+		s.applyGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		// 配额/限流响应写入团队模型覆盖层；容量属于请求压力，不应隐藏健康账号。
+		if shouldMarkGrokTeamModelRateLimit(resp.StatusCode, respBody) {
+			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))
+		}
 		if kind == "failover" {
 			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return nil, &UpstreamFailoverError{
@@ -180,6 +186,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 				ResponseBody:             respBody,
 				ResponseHeaders:          resp.Header.Clone(),
 				RetryableOnSameAccount:   retryable || decision.RetryableOnSameAccount(account, resp.StatusCode),
+				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
 			}
@@ -1193,6 +1200,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 				ResponseBody:             respBody,
 				ResponseHeaders:          resp.Header.Clone(),
 				RetryableOnSameAccount:   retryable || decision.RetryableOnSameAccount(account, resp.StatusCode),
+				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
 				SameAccountRetryDelay:    retryDelay,
 				SameAccountRetryDeadline: retryDeadline,
 			}
@@ -1737,7 +1745,7 @@ func persistGrokTransientModelCooldown(account *Account, decision GrokUpstreamFa
 		return false
 	}
 	model := strings.TrimSpace(decision.Model)
-	if model == "" || !isGrokHeavyTransientModel(model) {
+	if model == "" {
 		return false
 	}
 	cooldown := decision.Cooldown

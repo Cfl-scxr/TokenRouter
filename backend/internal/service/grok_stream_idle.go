@@ -29,7 +29,9 @@ func grokStreamIdleFailoverError(account *Account, idle time.Duration) *Upstream
 		StatusCode:               502,
 		ResponseBody:             []byte(`{"error":{"code":"empty_upstream","message":"` + strings.ReplaceAll(msg, `"`, `'`) + `"}}`),
 		SafeToFailoverAfterWrite: true,
-		// 公共池模式允许同账号重试，普通 OAuth 由 handler 切换账号。
-		RetryableOnSameAccount: account != nil && account.IsPoolMode(),
+		// 空闲上游流属于瞬时故障，先使用同账号重试预算再切换凭据；
+		// handler 仍负责执行请求级重试上限。
+		RetryableOnSameAccount: account != nil && account.Platform == PlatformGrok,
+		RequestScopedTransient: true,
 	}
 }
