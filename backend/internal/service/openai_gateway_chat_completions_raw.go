@@ -101,6 +101,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, policyErr
 	}
 	upstreamBody = updatedBody
+	// 计费兜底 tier = 最终出站 body（policy filter/force 后）里的 tier；
+	// 最终值由 resolvedOpenAIUpstreamServiceTier 决定（上游回显优先）。
+	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 	if account.Platform == PlatformGrok {
 		strippedBody, stripErr := stripRedundantGrokChatViewImageTool(upstreamBody)
 		if stripErr != nil {
@@ -112,7 +115,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	reasoningEffort := extractEffectiveOpenAIReasoningEffortFromBody(upstreamBody, body, upstreamModel, billingModel, originalModel)
 	// 国产模型没有显式 effort 档位时，thinking 启用后补默认展示值。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, upstreamBody, billingModel)
-	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 
 	// Grok Composer 不直接接受 image_url；仅在该场景通过 Grok Build 生成图片描述后转发纯文本。
 	token, tokenKind, err := s.getRequestCredential(ctx, c, account)
@@ -388,7 +390,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		UpstreamModel:               upstreamModel,
 		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
 		ReasoningEffort:             reasoningEffort,
-		ServiceTier:                 serviceTier,
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      true,
 		Duration:                    time.Since(startTime),
 		FirstTokenMs:                firstTokenMs,
@@ -672,7 +674,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		UpstreamModel:               upstreamModel,
 		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
 		ReasoningEffort:             reasoningEffort,
-		ServiceTier:                 serviceTier,
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      false,
 		Duration:                    time.Since(startTime),
 		ResponseBody:                cloneDataSharingRequestBody(respBody),

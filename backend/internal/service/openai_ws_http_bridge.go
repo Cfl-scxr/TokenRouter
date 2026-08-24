@@ -313,6 +313,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	originalModel string,
 	args ...any,
 ) (*OpenAIForwardResult, error) {
+	responseModelObserver := upstreamResponseModelObserverFromContext(c)
+	if responseModelObserver == nil {
+		responseModelObserver = beginUpstreamResponseModelObservation(c)
+	}
 	var routingModel, imageBillingModel, imageSizeTier, imageInputSize, grokCacheIdentity string
 	var turn int
 	var writeClientMessage func([]byte) error
@@ -593,8 +597,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			Model:                       originalModel,
 			BillingModel:                billingModel,
 			UpstreamModel:               mappedModel,
-			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-			ServiceTier:                 extractOpenAIServiceTierFromBody(body),
+			UpstreamResponseServiceTier: responseModelObserver.ServiceTier(),
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTierFromBody(body)),
 			ReasoningEffort:             ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
 			Stream:                      reqStream,
 			OpenAIWSMode:                true,
@@ -691,7 +695,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			upstreamMessage = normalized
 		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
-		observeOpenAIServiceTierInContext(c, upstreamMessage, eventType)
+		responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
 		}

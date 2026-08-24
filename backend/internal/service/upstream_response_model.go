@@ -20,7 +20,8 @@ const (
 // channel explicitly configured with billing_model_source = response_model,
 // where a conflict flag makes billing fall back to the baseline model
 // (see responseModelBillingDeclaration).
-// 同一个 observer 也记录上游实际使用的 service tier，供计费只降档使用。
+// 同一个 observer 也记录上游实际使用的 service tier，供计费只降档使用；当上游
+// 未回显时，计费回退到最终出站请求体中的档位。
 type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
@@ -186,6 +187,23 @@ func upstreamResponseModelObserverFromContext(c *gin.Context) *upstreamResponseM
 
 func observedUpstreamResponseServiceTier(c *gin.Context) string {
 	return upstreamResponseModelObserverFromContext(c).ServiceTier()
+}
+
+// resolvedOpenAIUpstreamServiceTierFromObserver 返回计费实际使用的 service tier。
+// 上游明确回显时优先使用回显；没有回显时才回退到最终出站请求体的档位。
+func resolvedOpenAIUpstreamServiceTierFromObserver(observer *upstreamResponseModelObserver, outboundBodyTier *string) *string {
+	if observer != nil {
+		if tier := strings.TrimSpace(observer.ServiceTier()); tier != "" {
+			return normalizeOpenAIServiceTier(tier)
+		}
+	}
+	return outboundBodyTier
+}
+
+// resolvedOpenAIUpstreamServiceTier 读取当前请求 observer，并统一处理无 observer
+// 的调用方（例如测试或提前失败的路径）。
+func resolvedOpenAIUpstreamServiceTier(c *gin.Context, outboundBodyTier *string) *string {
+	return resolvedOpenAIUpstreamServiceTierFromObserver(upstreamResponseModelObserverFromContext(c), outboundBodyTier)
 }
 
 // observeOpenAIServiceTierInContext 将原始 OpenAI 响应事件写入当前请求的

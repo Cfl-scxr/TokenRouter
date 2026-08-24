@@ -162,7 +162,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		UpstreamModel:               upstreamModel,
 		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
 		ReasoningEffort:             reasoningEffort,
-		ServiceTier:                 serviceTier,
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      false,
 		Duration:                    time.Since(startTime),
 	}, nil
@@ -218,7 +218,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		c.Writer.Flush()
 	}
 
-	scan := s.scanCCStream(resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
 		events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
 		s.cacheReasoningItemsFromEvents(events)
 		writeEvents(events)
@@ -233,7 +233,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			UpstreamModel:               upstreamModel,
 			UpstreamResponseServiceTier: normalizeObservedOpenAIServiceTier(scan.ServiceTier),
 			ReasoningEffort:             reasoningEffort,
-			ServiceTier:                 serviceTier,
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
@@ -248,7 +248,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			UpstreamModel:               upstreamModel,
 			UpstreamResponseServiceTier: normalizeObservedOpenAIServiceTier(scan.ServiceTier),
 			ReasoningEffort:             reasoningEffort,
-			ServiceTier:                 serviceTier,
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 			Stream:                      true,
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
@@ -279,7 +279,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		UpstreamModel:               upstreamModel,
 		UpstreamResponseServiceTier: normalizeObservedOpenAIServiceTier(scan.ServiceTier),
 		ReasoningEffort:             reasoningEffort,
-		ServiceTier:                 serviceTier,
+		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
 		Stream:                      true,
 		Duration:                    time.Since(startTime),
 		FirstTokenMs:                scan.FirstTokenMs,
