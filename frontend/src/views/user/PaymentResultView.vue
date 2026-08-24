@@ -116,6 +116,7 @@ import {
   readPaymentRecoverySnapshot,
 } from '@/components/payment/paymentFlow'
 import { usePaymentStore } from '@/stores/payment'
+import { useAuthStore } from '@/stores/auth'
 import { paymentAPI } from '@/api/payment'
 import type { PublicOrderVerifyResult } from '@/api/payment'
 import type { OrderStatus, PaymentOrder, PublicPaymentOrder } from '@/types/payment'
@@ -128,6 +129,7 @@ const { formatBalanceAmount } = useBalanceDisplay()
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
+const authStore = useAuthStore()
 
 type PaymentResultOrder = PaymentOrder | PublicPaymentOrder | PublicOrderVerifyResult
 
@@ -150,6 +152,7 @@ const PROCESSING_REFRESH_INTERVAL_MS = 15000
 const STATUS_REFRESH_MAX_ATTEMPTS = 15
 
 let statusRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let userBalanceRefreshStarted = false
 const refreshAttempts = ref(0)
 
 /** 基础金额优先使用订单原始金额；旧订单缺少拆分字段时按历史费率兜底。 */
@@ -210,6 +213,21 @@ function setResolvedOrder(nextOrder: PaymentResultOrder | null): void {
   if (nextOrder && 'currency' in nextOrder && nextOrder.currency) {
     currency.value = normalizePaymentCurrency(nextOrder.currency)
   }
+  refreshUserBalanceForSuccessfulOrder(nextOrder)
+}
+
+function refreshUserBalanceForSuccessfulOrder(nextOrder: PaymentResultOrder | null): void {
+  if (!nextOrder || userBalanceRefreshStarted || normalizeOrderStatus(nextOrder.status) !== 'COMPLETED') {
+    return
+  }
+  if ('order_type' in nextOrder && nextOrder.order_type !== 'balance') {
+    return
+  }
+
+  userBalanceRefreshStarted = true
+  void authStore.refreshUser().catch(() => {
+    // 即使用户资料刷新失败，订单结果仍是当前页面的权威状态。
+  })
 }
 
 function hasOrderId(nextOrder: PaymentResultOrder | null): nextOrder is PaymentOrder {
