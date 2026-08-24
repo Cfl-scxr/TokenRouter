@@ -101,7 +101,7 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 	// HTTP 200 空输出或模型空输出，代理可能将其改写为合成 502。
 	// Responses replay/compaction 载荷可能只在某个 Grok 部署上失败；将这些
 	// 精确的解码/内容形状错误视为账号无关的兼容性故障，不持久封禁账号。
-	if isGrokCompatibilityError(low, code) {
+	if isGrokCompatibilityError(statusCode, low, code) {
 		return GrokUpstreamFailureDecision{
 			Class:          GrokFailureCompatibility,
 			Model:          model,
@@ -365,11 +365,8 @@ func isGrokBillingQuotaText(low string) bool {
 	return false
 }
 
-// grokRetryableOnSameAccount marks transient 429 classes for the shared
-// failover loop. Capacity and ordinary throttles are request/model pressure,
-// not evidence that the credential is invalid, so a bounded retry on the same
-// account is preferable before switching accounts. Free-usage and billing
-// exhaustion deliberately skip same-account retry and fail over immediately.
+// grokRetryableOnSameAccount 标记共享 failover 循环可在同账号重试的瞬态错误。
+// 模型容量压力允许有限重试；免费额度和计费耗尽属于账号状态，应立即切换账号。
 func grokRetryableOnSameAccount(account *Account, statusCode int, responseBody []byte) bool {
 	if account == nil || !account.IsGrok() {
 		return false
@@ -388,15 +385,17 @@ func grokRetryableOnSameAccount(account *Account, statusCode int, responseBody [
 	return account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 }
 
-func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody []byte) (bool, time.Duration, time.Time) {
+func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody []byte) (bool, time.Duration, time.Time, int) {
 	if !grokRetryableOnSameAccount(account, statusCode, responseBody) {
-		return false, 0, time.Time{}
+		return false, 0, time.Time{}, 0
 	}
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	if decision.Class != GrokFailureModelCapacity {
-		return true, 0, time.Time{}
+		return true, 0, time.Time{}, 0
 	}
-	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second)
+	// 每次上游尝试都会重新构造错误，因此错误上的截止时间不能覆盖整个请求；
+	// 对容量错误显式限制为一次重放，即使第一次尝试超过名义 30 秒窗口也仍然生效。
+	return true, 500 * time.Millisecond, time.Now().Add(30 * time.Second), 1
 }
 
 // shouldMarkGrokTeamModelRateLimit controls the process-local sibling-account
@@ -412,7 +411,10 @@ func shouldMarkGrokTeamModelRateLimit(statusCode int, responseBody []byte) bool 
 	return statusCode == http.StatusTooManyRequests || decision.Class == GrokFailureFreeUsage
 }
 
-func isGrokCompatibilityError(low, code string) bool {
+func isGrokCompatibilityError(statusCode int, low, code string) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
 	combined := strings.ToLower(strings.TrimSpace(low + " " + code))
 	// Compaction blobs are account/session-bound and frequently fail with 400
 	// or 422 after a reconnect. Also cover xAI's JSON decoder shape errors.
