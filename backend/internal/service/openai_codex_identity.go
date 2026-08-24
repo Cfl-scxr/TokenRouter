@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/google/uuid"
 )
 
 // codexUpstreamMinVersion 上游 /backend-api/codex 接受的最低 version 头：
@@ -149,6 +150,15 @@ func ensureCodexIdentityHeaders(h http.Header) {
 		h.Set("version", identity.version)
 	}
 	h.Set("OpenAI-Beta", "responses=experimental")
+}
+
+// applyOpenAICodexProbeHeaders 为合成 Responses 探测请求补齐 Codex 身份和窗口标识。
+func applyOpenAICodexProbeHeaders(h http.Header) {
+	if h == nil {
+		return
+	}
+	ensureCodexIdentityHeaders(h)
+	h.Set("X-Codex-Window-ID", uuid.NewString())
 }
 
 // enforceCodexIdentityHeaders 收口 OAuth（ChatGPT 内部接口）出站请求的客户端身份头。

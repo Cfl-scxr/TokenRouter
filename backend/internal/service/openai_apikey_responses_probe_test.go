@@ -1,11 +1,92 @@
 package service
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/openai"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/openai_compat"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProbeOpenAIAPIKeyResponsesSupportUsesCodexProbeHeaders(t *testing.T) {
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"output":[{"type":"function_call","name":"probe_ping"}]}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("Originator"))
+	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("Version"))
+	require.Equal(t, "responses=experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("X-Codex-Window-ID"))
+	updates := <-updateCalls
+	require.Equal(t, string(openai_compat.ResponsesProbeStatusSupported), updates[openai_compat.ExtraKeyResponsesProbeStatus])
+}
+
+func TestProbeOpenAIAPIKeyResponsesSupportAdaptiveCNProviders(t *testing.T) {
+	tests := []struct {
+		name       string
+		id         int64
+		platform   string
+		wantStatus string
+		wantMode   string
+	}{
+		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, wantStatus: string(openai_compat.ResponsesProbeStatusSupported), wantMode: string(openai_compat.TextRouteModeForceResponses)},
+		{name: "kimi adaptive falls back to chat", id: 202, platform: PlatformKimi, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModeForceChatCompletions)},
+		{name: "zhipu adaptive falls back to chat", id: 203, platform: PlatformZhipu, wantStatus: string(openai_compat.ResponsesProbeStatusUnsupported), wantMode: string(openai_compat.TextRouteModeForceChatCompletions)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalls := make(chan map[string]any, 1)
+			account := Account{
+				ID: tc.id, Platform: tc.platform, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": APIProtocolAdaptive},
+			}
+			repo := &snapshotUpdateAccountRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+				updateExtraCalls:      updateCalls,
+			}
+			svc := &AccountTestService{accountRepo: repo}
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			updates := <-updateCalls
+			require.Equal(t, tc.wantStatus, updates[openai_compat.ExtraKeyResponsesProbeStatus])
+			require.Equal(t, tc.wantMode, updates[openai_compat.ExtraKeyTextRouteMode])
+		})
+	}
+}
 
 func TestDecideResponsesProbeSupport(t *testing.T) {
 	fnCall := []byte(`{"output":[{"type":"reasoning"},{"type":"function_call","name":"probe_ping"}]}`)

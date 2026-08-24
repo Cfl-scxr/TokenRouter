@@ -123,7 +123,9 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	if account.IsCNProvider() {
 		// 国产供应商协议由 credentials.api_protocol 明确配置，无需网络探测。
 		// 写入当前 fork 的文本路由配置，让所有客户端入口使用同一协议决策。
-		if account.GetAPIProtocol() == APIProtocolResponses {
+		// 自适应 DeepSeek 还需要原生 Responses 端点，其余国产供应商回落 Chat。
+		if account.GetAPIProtocol() == APIProtocolResponses ||
+			(account.Platform == PlatformDeepseek && account.IsAdaptiveAPIProtocol()) {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				openai_compat.ExtraKeyTextRouteMode:        string(openai_compat.TextRouteModeForceResponses),
 				openai_compat.ExtraKeyResponsesProbeStatus: string(openai_compat.ResponsesProbeStatusSupported),
@@ -171,6 +173,7 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
+	applyOpenAICodexProbeHeaders(req.Header)
 
 	// 账号级请求头覆写：能力探测与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)

@@ -56,7 +56,8 @@ func buildOpenAIResponsesURLForPlatform(platform, base string) string {
 
 // normalizeDeepSeekResponsesRequestBody 清除 DeepSeek 无状态 Responses 不接受的状态字段。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
-	if account == nil || account.Platform != PlatformDeepseek || account.GetAPIProtocol() != APIProtocolResponses {
+	if account == nil || account.Platform != PlatformDeepseek ||
+		(account.GetAPIProtocol() != APIProtocolResponses && !account.IsAdaptiveAPIProtocol()) {
 		return body
 	}
 	normalized, err := sjson.SetBytes(body, "store", false)

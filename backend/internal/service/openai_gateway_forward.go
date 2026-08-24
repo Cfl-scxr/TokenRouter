@@ -120,6 +120,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		return nil, err
 	}
+	if account.IsAdaptiveAPIProtocol() &&
+		(account.Platform != PlatformDeepseek || isOpenAIResponsesCompactPath(c)) {
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+	}
 
 	if resolveOpenAITextProtocolForAttempt(
 		c,
@@ -1039,6 +1043,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	case AccountTypeAPIKey:
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
+		if account.Platform == PlatformDeepseek && account.IsAdaptiveAPIProtocol() {
+			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
+		}
 		if baseURL == "" {
 			targetURL = openaiPlatformAPIURL
 		} else {

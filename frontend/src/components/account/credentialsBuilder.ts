@@ -259,8 +259,9 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 
-/** 仅 deepseek 支持 responses 协议（官方原生 /responses 端点，适配 Codex）。 */
-export type CnApiProtocol = 'chat_completions' | 'anthropic' | 'responses'
+/** 仅 deepseek 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
+export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
+export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
@@ -324,6 +325,29 @@ export function defaultCNBaseUrl(
   }
 }
 
+/** 返回自适应模式下需要配置的原生协议及其默认端点。 */
+export function defaultCNAdaptiveBaseUrls(
+  platform: 'kimi' | 'zhipu' | 'deepseek',
+  mode: CnAccountMode
+): Record<CnNativeApiProtocol, string> {
+  return {
+    chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
+    anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
+    responses: platform === 'deepseek' ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+  }
+}
+
+// ===== 国产供应商用量单元格可见性（单一事实源） =====
+// CNProviderQuotaCell / CNProviderBalanceCell 与 AccountUsageCell 的占位符判定
+// 共用，避免多处复制条件后一处改另一处漏改。
+
+export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
+  return (platform === 'kimi' || platform === 'zhipu') && accountMode === 'coding'
+}
+
+export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
+  return (platform === 'kimi' || platform === 'deepseek') && accountMode !== 'coding'
+}
 /**
  * 将请求头覆写写入 credentials。
  * create 模式：关闭时不写入任何字段；edit 模式：关闭时删除字段（全量替换语义）。
