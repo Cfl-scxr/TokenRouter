@@ -15,7 +15,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 const (
@@ -47,6 +46,33 @@ func setOpenAIWSHTTPBridgeToolState(c *gin.Context, state openAIWSHTTPBridgeTool
 	}
 	state.LoweredTools = append(json.RawMessage(nil), state.LoweredTools...)
 	c.Set(openAIWSHTTPBridgeToolStateContextKey, state)
+}
+
+func decodeOpenAIWSHTTPBridgeLoweredTools(raw json.RawMessage) []any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var tools []any
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil
+	}
+	return tools
+}
+
+func openAIWSHTTPBridgeRawField(body []byte, name string) (json.RawMessage, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, false
+	}
+	raw, present := fields[name]
+	return append(json.RawMessage(nil), raw...), present
+}
+
+func openAIWSHTTPBridgeToolUpstreamName(account *Account) string {
+	if account != nil && account.Platform == PlatformGrok {
+		return "Grok WS HTTP bridge"
+	}
+	return "OpenAI WS HTTP bridge"
 }
 
 // ResolveOpenAIWSClientFirstMessageTimeout 返回生效的客户端入站首消息截止时间。
@@ -272,22 +298,37 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
-	clientToolMapping := apicompat.ResponsesClientToolMapping{}
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+	grokIntentSourceBody := append([]byte(nil), body...)
+	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
+	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)
+	var clientToolMapping apicompat.ResponsesClientToolMapping
+	functionToolUpstream := (account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey) || account.Platform == PlatformGrok
+	if functionToolUpstream {
+		if account.Platform == PlatformGrok {
+			body, err = sanitizeGrokResponsesInput(body)
+			if err != nil {
+				return nil, fmt.Errorf("sanitize Grok WS HTTP bridge input: %w", err)
+			}
+		}
 		inheritedState, _ := openAIWSHTTPBridgeToolStateFromContext(c)
-		toolsPresent := gjson.GetBytes(body, "tools").Exists()
-		body, clientToolMapping, err = adaptOpenAIResponsesClientToolsWithMapping(body, inheritedState.ClientMapping)
+		inheritedLoweredTools := decodeOpenAIWSHTTPBridgeLoweredTools(inheritedState.LoweredTools)
+		body, clientToolMapping, err = adaptResponsesClientToolsForFunctionUpstreamWithMapping(
+			body,
+			openAIWSHTTPBridgeToolUpstreamName(account),
+			inheritedState.ClientMapping,
+			inheritedLoweredTools,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("adapt OpenAI WS HTTP bridge client tools: %w", err)
+			return nil, fmt.Errorf("adapt %s client tools: %w", openAIWSHTTPBridgeToolUpstreamName(account), err)
+		}
+		if account.Platform == PlatformGrok && !grokExplicitToolsField && !grokExplicitToolIntent && len(inheritedLoweredTools) > 0 && hasGrokResponsesToolIntent(body) {
+			// 本轮省略 tools 时，缓存路由也必须看到继承后的有效声明，
+			// 否则会把客户端函数误判为无工具请求。
+			grokIntentSourceBody = append(grokIntentSourceBody[:0], body...)
 		}
 		loweredTools := inheritedState.LoweredTools
-		if toolsPresent {
-			loweredTools = json.RawMessage(gjson.GetBytes(body, "tools").Raw)
-		} else if len(loweredTools) > 0 {
-			body, err = sjson.SetRawBytes(body, "tools", loweredTools)
-			if err != nil {
-				return nil, fmt.Errorf("inherit OpenAI WS HTTP bridge tools: %w", err)
-			}
+		if currentTools, present := openAIWSHTTPBridgeRawField(body, "tools"); present {
+			loweredTools = currentTools
 		}
 		setOpenAIWSHTTPBridgeToolState(c, openAIWSHTTPBridgeToolState{
 			ClientMapping: clientToolMapping,
@@ -322,8 +363,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
-		grokIntentSourceBody := body
-		body, err = patchGrokResponsesBody(body, mappedModel)
+		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
+		body, err = patchGrokResponsesBody(body, upstreamModel)
 		if err != nil {
 			releaseUpstreamCtx()
 			return nil, err

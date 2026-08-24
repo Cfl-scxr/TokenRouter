@@ -15,15 +15,28 @@ import (
 
 const grokResponsesClientToolMappingContextKey = "grok_responses_client_tool_mapping"
 
-func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+func adaptResponsesClientToolsForFunctionUpstream(body []byte, upstream string) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	return adaptResponsesClientToolsForFunctionUpstreamWithMapping(
+		body,
+		upstream,
+		apicompat.ResponsesClientToolMapping{},
+	)
+}
+
+func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
+	body []byte,
+	upstream string,
+	inherited apicompat.ResponsesClientToolMapping,
+	inheritedLoweredTools ...[]any,
+) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var requestBody map[string]any
 	if err := decoder.Decode(&requestBody); err != nil {
-		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode Grok Responses client tools: %w", err)
+		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode %s Responses client tools: %w", upstream, err)
 	}
 
-	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
+	mapping, changed, err := apicompat.AdaptResponsesClientToolsWithInheritedMapping(requestBody, inherited, inheritedLoweredTools...)
 	if err != nil {
 		return body, apicompat.ResponsesClientToolMapping{}, err
 	}
@@ -32,9 +45,14 @@ func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClie
 	}
 	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
 	if err != nil {
-		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode Grok Responses client tools: %w", err)
+		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode %s Responses client tools: %w", upstream, err)
 	}
 	return rebuilt, mapping, nil
+}
+
+// adaptGrokResponsesClientTools 保留 Grok 专用调用方的兼容入口。
+func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	return adaptResponsesClientToolsForFunctionUpstream(body, "Grok")
 }
 
 func hasGrokResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
