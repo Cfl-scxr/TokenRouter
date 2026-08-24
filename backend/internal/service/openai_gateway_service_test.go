@@ -3616,6 +3616,15 @@ func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *te
 	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":20,"output_tokens":2,"cache_read_input_tokens":19,"input_tokens_details":{"cached_tokens":0}}}`))
 	require.True(t, ok)
 	require.Zero(t, usage.CacheReadInputTokens, "官方嵌套缓存读取字段显式为零时仍应优先于兼容顶层别名")
+
+	// xAI 可能在可见 output_tokens 外单独返回 reasoning_tokens；仅算术一致的
+	// 形态视为独立字段，OpenAI 标准形态已将推理 token 纳入 completion/output。
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":10000,"output_tokens":500,"total_tokens":10800,"output_tokens_details":{"reasoning_tokens":300}}}`))
+	require.True(t, ok)
+	require.Equal(t, 800, usage.OutputTokens)
+	usage, ok = extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"input_tokens":10000,"output_tokens":500,"total_tokens":10500,"output_tokens_details":{"reasoning_tokens":300}}}`))
+	require.True(t, ok)
+	require.Equal(t, 500, usage.OutputTokens)
 }
 
 func TestExtractOpenAIUsageFromJSONBytes_IncludesGrokReasoningTokens(t *testing.T) {

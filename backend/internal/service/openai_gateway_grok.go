@@ -658,7 +658,7 @@ func grokSupportsXHighReasoningEffort(model string) bool {
 func grokSupportsReasoningEffort(model string) bool {
 	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
 	switch model {
-	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6-latest",
+	case "grok-4.5", "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
 		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
 		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":
@@ -1371,6 +1371,10 @@ func applyGrokCLIHeaders(headers http.Header) {
 }
 
 func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot) {
+	s.updateGrokUsageSnapshotWithRateLimit(ctx, account, snapshot, true)
+}
+
+func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithRateLimit(ctx context.Context, account *Account, snapshot *xai.QuotaSnapshot, installRateLimit bool) {
 	if s == nil || account == nil || account.ID <= 0 || snapshot == nil {
 		return
 	}
@@ -1414,7 +1418,7 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshot(ctx context.Context, acco
 	}
 	// 池模式上游本身负责在真实账号池中切换，额度头只作为观测数据保留，不能反向
 	// 冷却本地这个聚合账号。非池模式仍将错误响应或成功后耗尽的窗口写成真实限流。
-	if hasActiveLimit && !account.IsPoolMode() {
+	if installRateLimit && hasActiveLimit && !account.IsPoolMode() {
 		s.rateLimitGrok(stateCtx, account, resetAt)
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
@@ -1786,7 +1790,9 @@ func (s *OpenAIGatewayService) applyGrokAccountUpstreamError(
 		quotaModel = grokRequestedModelFromCtx(ctx)
 	}
 	stampGrokQuotaSnapshotForPlan(account, quotaSnapshot, quotaModel)
-	s.updateGrokUsageSnapshot(stateCtx, account, quotaSnapshot)
+	// 模型容量 429 属于请求压力，只保存额度观测，不安装账号级限流状态。
+	snapshotFailure := classifyGrokUpstreamFailure(statusCode, responseBody, quotaModel)
+	s.updateGrokUsageSnapshotWithRateLimit(stateCtx, account, quotaSnapshot, snapshotFailure.Class != GrokFailureModelCapacity)
 
 	decision := upstreamErrorDecisionWithoutPersistence(account, statusCode)
 	if s.rateLimitService != nil {

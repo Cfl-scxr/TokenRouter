@@ -1212,24 +1212,18 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		inputTokens = value.Get("prompt_tokens").Int()
 	}
 	outputTokens := value.Get("output_tokens").Int()
-	outputTokensFromResponses := outputTokens != 0
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
-		outputTokensFromResponses = false
 	}
-	// xAI Chat Completions reports visible completion tokens separately from
-	// reasoning_tokens. Billing must include both. Responses usage generally
-	// already folds reasoning into output_tokens; use total_tokens when present
-	// to avoid double-counting that canonical shape.
+	// xAI 可能将 reasoning_tokens 与可见输出 token 分开返回；只有 total_tokens
+	// 证明它是独立组成部分时才累加，OpenAI 标准 completion_tokens 已包含推理细节。
 	reasoningTokens := max(int(firstPositiveGJSONInt(
 		value.Get("completion_tokens_details.reasoning_tokens"),
 		value.Get("output_tokens_details.reasoning_tokens"),
 	)), 0)
 	if reasoningTokens > 0 {
 		totalTokens := value.Get("total_tokens").Int()
-		if !outputTokensFromResponses {
-			outputTokens += int64(reasoningTokens)
-		} else if totalTokens > inputTokens && totalTokens >= outputTokens+int64(reasoningTokens) {
+		if totalTokens > 0 && totalTokens == inputTokens+outputTokens+int64(reasoningTokens) {
 			outputTokens += int64(reasoningTokens)
 		}
 	}
