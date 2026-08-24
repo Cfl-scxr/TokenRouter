@@ -632,11 +632,15 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 			return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 		}
 		if kind == "failover" {
+			retryable, retryDelay, retryDeadline := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
 			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				ResponseHeaders:        resp.Header.Clone(),
-				RetryableOnSameAccount: decision.RetryableOnSameAccount(account, resp.StatusCode),
+				StatusCode:               resp.StatusCode,
+				ResponseBody:             respBody,
+				ResponseHeaders:          resp.Header.Clone(),
+				RetryableOnSameAccount:   retryable || decision.RetryableOnSameAccount(account, resp.StatusCode),
+				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
+				SameAccountRetryDelay:    retryDelay,
+				SameAccountRetryDeadline: retryDeadline,
 			}
 		}
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
