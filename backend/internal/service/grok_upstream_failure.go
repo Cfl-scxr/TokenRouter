@@ -371,6 +371,10 @@ func grokRetryableOnSameAccount(account *Account, statusCode int, responseBody [
 	if account == nil || !account.IsGrok() {
 		return false
 	}
+	// 显式错误码策略优先于池模式默认状态列表，命中后不得在同一账号重试。
+	if account.IsCustomErrorCodesEnabled() && account.ShouldHandleErrorCode(statusCode) {
+		return false
+	}
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	switch decision.Class {
 	case GrokFailureFreeUsage, GrokFailureBilling, GrokFailureCompatibility:

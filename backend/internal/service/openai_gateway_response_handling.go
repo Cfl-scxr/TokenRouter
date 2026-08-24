@@ -15,6 +15,7 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/xai"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1215,17 +1216,16 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
 	}
-	// xAI 可能将 reasoning_tokens 与可见输出 token 分开返回；只有 total_tokens
-	// 证明它是独立组成部分时才累加，OpenAI 标准 completion_tokens 已包含推理细节。
+	// xAI 可能将 reasoning_tokens 与可见输出 token 分开返回；按 total_tokens
+	// 与推理字段的差额判断独立部分，OpenAI 标准 completion_tokens 已包含推理细节。
 	reasoningTokens := max(int(firstPositiveGJSONInt(
 		value.Get("completion_tokens_details.reasoning_tokens"),
 		value.Get("output_tokens_details.reasoning_tokens"),
 	)), 0)
 	if reasoningTokens > 0 {
-		totalTokens := value.Get("total_tokens").Int()
-		if totalTokens > 0 && totalTokens == inputTokens+outputTokens+int64(reasoningTokens) {
-			outputTokens += int64(reasoningTokens)
-		}
+		outputTokens = xai.IncludeIndependentReasoningTokens(
+			inputTokens, outputTokens, value.Get("total_tokens").Int(), int64(reasoningTokens),
+		)
 	}
 	cacheReadTokens := openAICacheReadTokensFromUsage(value)
 	cacheCreationTokens := openAICacheCreationTokensFromUsage(value)

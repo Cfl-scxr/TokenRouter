@@ -112,8 +112,8 @@ func isGrokAccountAccessCode(value string) bool {
 		"subscription_required",
 		"entitlement_required",
 		"not_entitled",
-		"plan_required",
-		"permission_denied":
+		"plan_required":
+		// permission-denied 同时用于权益拒绝和请求级安全拦截，交由错误消息进一步判断。
 		return true
 	default:
 		return false
@@ -168,6 +168,7 @@ func grokContentPolicyMessage(value string) bool {
 		"prompt violates policy",
 		"input violates content policy",
 		"input violates policy",
+		"violates usage guidelines",
 	} {
 		if strings.Contains(lower, phrase) {
 			return true

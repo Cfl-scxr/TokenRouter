@@ -1279,7 +1279,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			wantRequestModel: "grok-imagine-image-quality",
 			wantBillingModel: "vendor-image-model",
 			wantUpstream:     "vendor-image-model",
-			wantBody:         `{"model":"vendor-image-model","prompt":"draw"}`,
+			wantBody:         `{"model":"vendor-image-model","prompt":"draw","resolution":"1k","aspect_ratio":"1:1"}`,
 			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
 		},
 		{
@@ -1378,7 +1378,8 @@ func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
 
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesGenerations, "", body, "application/json")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"model":"grok-imagine-image","prompt":"draw a cat"}`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-image","prompt":"draw a cat","resolution":"1k","aspect_ratio":"1:1"}`, string(upstream.lastBody))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "size").Exists())
 	require.Equal(t, ImageBillingSize1K, result.ImageSize)
 	require.Equal(t, "1024x1024", result.ImageInputSize)
 }
