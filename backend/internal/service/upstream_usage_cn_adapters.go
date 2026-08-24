@@ -105,12 +105,21 @@ func (*deepseekBalanceUsageAdapter) Query(ctx context.Context, client *upstreamU
 	if raw := gjson.GetBytes(body, "is_available"); raw.Exists() {
 		available = raw.Bool()
 	}
-	gjson.GetBytes(body, "balance_infos").ForEach(func(_, item gjson.Result) bool {
+	balanceInfos := gjson.GetBytes(body, "balance_infos")
+	if !balanceInfos.Exists() || !balanceInfos.IsArray() {
+		return nil, ErrUpstreamUsageInvalidResponse
+	}
+	balanceInfos.ForEach(func(_, item gjson.Result) bool {
 		currency := strings.ToUpper(strings.TrimSpace(item.Get("currency").String()))
-		value, ok := cnParseF64(item.Get("total_balance").Value())
-		if currency != "" && ok && validFiniteNumber(value) {
-			balances = append(balances, UpstreamUsageBalanceEntry{Currency: currency, Remaining: value})
+		totalBalance := item.Get("total_balance")
+		value, ok := cnParseF64(totalBalance.Value())
+		if !totalBalance.Exists() || !ok || !validFiniteNumber(value) {
+			return true
 		}
+		if currency == "" {
+			currency = "CNY"
+		}
+		balances = append(balances, UpstreamUsageBalanceEntry{Currency: currency, Remaining: value})
 		return true
 	})
 	if len(balances) == 0 {

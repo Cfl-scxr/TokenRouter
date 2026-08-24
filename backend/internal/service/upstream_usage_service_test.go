@@ -517,6 +517,52 @@ func TestNewAPIUsageEndpointMissingIsUnsupported(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamUsageUnsupported)
 }
 
+// DeepSeek relay 返回结构缺失或数值非法时不能伪造 CNY=0，否则会把上游协议故障
+// 误显示成真实余额；合法的零余额仍应保留为成功结果。
+func TestDeepSeekBalanceAdapterRejectsMalformedPayloads(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "missing balance_infos", body: `{"is_available":true}`},
+		{name: "non array balance_infos", body: `{"balance_infos":{}}`},
+		{name: "empty balance_infos", body: `{"balance_infos":[]}`},
+		{name: "invalid total_balance", body: `{"balance_infos":[{"currency":"CNY","total_balance":"not-a-number"}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{ID: 901, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "deepseek-key", "base_url": "https://relay.example/anthropic", "api_protocol": APIProtocolAnthropic}}
+			upstream := &upstreamUsageHTTPStub{responses: []struct {
+				status int
+				body   string
+				err    error
+			}{{status: http.StatusOK, body: tc.body}}}
+			svc := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+			_, err := svc.QueryAccount(context.Background(), account.ID)
+			require.ErrorIs(t, err, ErrUpstreamUsageInvalidResponse)
+		})
+	}
+}
+
+func TestDeepSeekBalanceAdapterPreservesValidZeroBalance(t *testing.T) {
+	account := &Account{ID: 902, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "deepseek-key", "base_url": "https://relay.example/anthropic", "api_protocol": APIProtocolAnthropic}}
+	upstream := &upstreamUsageHTTPStub{responses: []struct {
+		status int
+		body   string
+		err    error
+	}{{status: http.StatusOK, body: `{"is_available":false,"balance_infos":[{"currency":"CNY","total_balance":"0"}]}`}}}
+	svc := NewUpstreamUsageService(&upstreamUsageAccountRepoStub{account: account}, upstream, testUpstreamUsageConfig(), nil)
+
+	result, err := svc.QueryAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.NotNil(t, result.Usage)
+	require.NotNil(t, result.Usage.Balance)
+	require.Zero(t, *result.Usage.Balance.Remaining)
+	require.False(t, *result.Usage.Available)
+}
+
 func TestNewAPIUsageContinuesWhenStatusProbeFails(t *testing.T) {
 	account := &Account{
 		ID: 13, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
