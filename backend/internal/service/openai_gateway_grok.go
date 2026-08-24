@@ -266,7 +266,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 }
 
 func isGrokInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
-	if statusCode != http.StatusBadRequest {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
 		return false
 	}
 
@@ -292,7 +292,7 @@ func isGrokInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
 		return false
 	}
 
-	if strings.EqualFold(code, "invalid_encrypted_content") {
+	if strings.EqualFold(code, "invalid_encrypted_content") || strings.EqualFold(code, "invalid_compaction") || strings.EqualFold(code, "compaction_decode_error") {
 		return true
 	}
 	// 保留 xAI 官方扁平错误码校验，避免重试无关的 400 响应。
@@ -300,12 +300,13 @@ func isGrokInvalidEncryptedContentResponse(statusCode int, body []byte) bool {
 		return false
 	}
 	// OpenAI 风格的嵌套错误可能省略顶层错误码，此时必须包含解密错误文本。
-	if code == "" && !strings.Contains(normalizedMessage, "decrypt") {
+	if code == "" && !strings.Contains(normalizedMessage, "decrypt") && !strings.Contains(normalizedMessage, "decode the compaction blob") {
 		return false
 	}
-	return strings.Contains(normalizedMessage, "encrypted_content") &&
+	return (strings.Contains(normalizedMessage, "encrypted_content") &&
 		(strings.Contains(normalizedMessage, "decrypt") ||
-			strings.Contains(normalizedMessage, "unmodified"))
+			strings.Contains(normalizedMessage, "unmodified"))) ||
+		strings.Contains(normalizedMessage, "decode the compaction blob")
 }
 
 // requestHasGrokEncryptedReasoning 判断出站 Responses 请求体是否仍包含可在重试前
@@ -399,7 +400,8 @@ func trimGrokInvalidEncryptedContentRetryBody(body []byte) ([]byte, bool, error)
 
 	hasEncryptedReasoning := false
 	for _, item := range items {
-		if strings.TrimSpace(item.Get("type").String()) == "reasoning" && item.Get("encrypted_content").Exists() {
+		if (strings.TrimSpace(item.Get("type").String()) == "reasoning" && item.Get("encrypted_content").Exists()) ||
+			(isResponsesCompactionItemType(strings.TrimSpace(item.Get("type").String())) && item.Get("encrypted_content").Exists()) {
 			hasEncryptedReasoning = true
 			break
 		}
