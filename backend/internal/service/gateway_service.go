@@ -648,12 +648,14 @@ type GatewayFailureReason string
 // 新增元数据保持现有复合字面量源码兼容，并保留旧版切换账号行为。
 type UpstreamFailoverError struct {
 	StatusCode               int
-	ResponseBody             []byte      // 上游响应体，用于错误透传规则匹配
-	ResponseHeaders          http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
-	ForceCacheBilling        bool        // Antigravity 粘性会话切换时设为 true
-	RetryableOnSameAccount   bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
-	RequestScopedTransient   bool        // 请求级瞬时故障与账号健康无关：可同账号重试，但不得据此临时封禁账号
-	SafeToFailoverAfterWrite bool        // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
+	ResponseBody             []byte        // 上游响应体，用于错误透传规则匹配
+	ResponseHeaders          http.Header   // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
+	ForceCacheBilling        bool          // Antigravity 粘性会话切换时设为 true
+	RetryableOnSameAccount   bool          // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	SameAccountRetryDelay    time.Duration // 同账号重试的最小间隔；零值使用 handler 默认值
+	SameAccountRetryDeadline time.Time     // 同账号重试截止时间；零值表示仅受 retryLimit 限制
+	RequestScopedTransient   bool          // 故障因素与账号无关（如上游按客户端身份/模型容量降载）：可同账号重试，但不得据此对账号做临时封禁
+	SafeToFailoverAfterWrite bool          // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
 	Stage                    GatewayFailureStage
 	Scope                    GatewayFailureScope
 	Reason                   GatewayFailureReason

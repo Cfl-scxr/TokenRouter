@@ -48,7 +48,13 @@ const (
 // sameAccountRetryDelayFor 为请求级瞬时错误计算有上限的指数退避；
 // 其它同账号错误继续使用固定 500ms，保持既有重试时延。
 func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryCount int) time.Duration {
-	if failoverErr == nil || !failoverErr.RequestScopedTransient || retryCount <= 1 {
+	if failoverErr == nil {
+		return sameAccountRetryDelay
+	}
+	if failoverErr.SameAccountRetryDelay > 0 {
+		return failoverErr.SameAccountRetryDelay
+	}
+	if !failoverErr.RequestScopedTransient || retryCount <= 1 {
 		return sameAccountRetryDelay
 	}
 
@@ -104,14 +110,19 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
-	sameAccountRetry := failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit
+	retryCount := s.SameAccountRetryCount[accountID]
+	sameAccountRetryAllowed := failoverErr.RetryableOnSameAccount && retryLimit > 0 && retryCount < retryLimit
+	if sameAccountRetryAllowed && !failoverErr.SameAccountRetryDeadline.IsZero() {
+		sameAccountRetryAllowed = time.Now().Before(failoverErr.SameAccountRetryDeadline)
+	}
+	sameAccountRetry := sameAccountRetryAllowed
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
 
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试。
 	// 重试次数上限 retryLimit 由调用方传入（账号级 pool_mode_retry_count 配置）。
-	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < retryLimit {
+	if sameAccountRetryAllowed {
 		s.SameAccountRetryCount[accountID]++
 		retryDelay := sameAccountRetryDelayFor(failoverErr, s.SameAccountRetryCount[accountID])
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
