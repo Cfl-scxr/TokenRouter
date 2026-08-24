@@ -15,7 +15,8 @@ const contentSessionSeedPrefix = "compat_cs_"
 const contentStablePrefixSessionSeedPrefix = "compat_csp_"
 
 // deriveOpenAIContentSessionSeed 从 OpenAI 格式请求体构建稳定会话种子。
-// 仅包含跨对话轮次不变的字段，并同时支持 Chat Completions 与 Responses API。
+// 仅包含跨对话轮次不变的字段；Chat 仅采集开头的 system/developer 前缀，
+// 同时支持 Chat Completions 与 Responses API。
 func deriveOpenAIContentSessionSeed(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -110,15 +111,19 @@ scanRoot:
 
 	msgs := fields[messagesField]
 	if msgs.Exists() && msgs.IsArray() {
+		systemPrefixOpen := true
 		msgs.ForEach(func(_, msg gjson.Result) bool {
 			role := msg.Get("role").String()
 			switch role {
 			case "system", "developer":
-				_, _ = b.WriteString("|system=")
-				if c := msg.Get("content"); c.Exists() {
-					_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+				if systemPrefixOpen {
+					_, _ = b.WriteString("|system=")
+					if c := msg.Get("content"); c.Exists() {
+						_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+					}
 				}
 			case "user":
+				systemPrefixOpen = false
 				if !firstUserCaptured {
 					_, _ = b.WriteString("|first_user=")
 					if c := msg.Get("content"); c.Exists() {
@@ -126,6 +131,8 @@ scanRoot:
 					}
 					firstUserCaptured = true
 				}
+			default:
+				systemPrefixOpen = false
 			}
 			return true
 		})
