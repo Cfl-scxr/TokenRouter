@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -680,4 +681,42 @@ func newOpenAIRejectedFieldTestResponse(status int, body string) *http.Response 
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
+}
+
+// 重放会话包含多个同类型项目，且每项都带有上游 schema 拒绝的 status。
+// 一次拒绝应清理全部同类型项目，否则逐个索引重试会耗尽有限预算。
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsStatusForWholeType(t *testing.T) {
+	input := make([]string, 0, 12)
+	for i := 0; i < 10; i++ {
+		input = append(input, `{"type":"tool_search_output","status":"completed","call_id":"call_`+strconv.Itoa(i)+`","tools":[]}`)
+	}
+	input = append(input, `{"type":"message","role":"user","status":"completed","content":"hi"}`)
+	body := []byte(`{"input":[` + strings.Join(input, ",") + `]}`)
+
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[7].status'.","param":"input[7].status"}}`)
+	retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.NotEmpty(t, reason)
+
+	for i := 0; i < 10; i++ {
+		require.False(t, gjson.GetBytes(retryBody, "input."+strconv.Itoa(i)+".status").Exists(),
+			"every tool_search_output must lose its status in a single retry, index %d did not", i)
+		require.Equal(t, "call_"+strconv.Itoa(i), gjson.GetBytes(retryBody, "input."+strconv.Itoa(i)+".call_id").String(),
+			"unrelated fields must survive")
+	}
+	require.Equal(t, "completed", gjson.GetBytes(retryBody, "input.10.status").String(),
+		"a different item type keeps its status: the rejection only proves this type has none")
+}
+
+// 被拒绝项可能没有可用于匹配的 type。
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyClearsUntypedStatusAtIndexOnly(t *testing.T) {
+	body := []byte(`{"input":[{"status":"keep_a"},{"status":"remove"}]}`)
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[1].status'.","param":"input[1].status"}}`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "keep_a", gjson.GetBytes(retryBody, "input.0.status").String())
+	require.False(t, gjson.GetBytes(retryBody, "input.1.status").Exists())
 }
