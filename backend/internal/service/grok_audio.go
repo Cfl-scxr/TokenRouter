@@ -16,6 +16,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// DefaultGrokRealtimeDialTimeout 限制下游升级前的上游 WebSocket 握手时间；连接建立后不再中断会话。
+const DefaultGrokRealtimeDialTimeout = 12 * time.Second
+
 // supportedGrokVoiceHTTPEndpoints 列出原样转发的 xAI Voice HTTP 路径。
 var supportedGrokVoiceHTTPEndpoints = map[string]struct{}{
 	"tts":           {},

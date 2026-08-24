@@ -54,9 +54,11 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	var release func()
 	var token string
 	var upstream *service.GrokRealtimeUpstream
+	candidateSeen := false
 	for attempts := 0; attempts < 4; attempts++ {
 		candidate, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(), apiKey.GroupID, "", "", "grok-4.6", failed,
+			// Realtime 使用 Voice 模型，账号选择只按能力门禁，不绑定具体文本模型。
+			c.Request.Context(), apiKey.GroupID, "", "", "", failed,
 			service.OpenAIUpstreamTransportHTTPSSE,
 			// Grok 的 HEAD 能力复用文本生成门禁，兼容 fork 的能力枚举。
 			service.OpenAIEndpointCapabilityTextGeneration,
@@ -65,6 +67,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		if selectErr != nil || candidate == nil || candidate.Account == nil {
 			break
 		}
+		candidateSeen = true
 		account := candidate.Account
 		var streamStarted bool
 		var acquired bool
@@ -80,7 +83,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 			failed[account.ID] = struct{}{}
 			continue
 		}
-		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		probeCtx, cancelProbe := context.WithTimeout(c.Request.Context(), service.DefaultGrokRealtimeDialTimeout)
 		candidateUpstream, openErr := h.gatewayService.OpenGrokRealtime(probeCtx, account, token, model)
 		cancelProbe()
 		if openErr != nil {
@@ -94,7 +97,11 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		break
 	}
 	if selection == nil || selection.Account == nil || release == nil || upstream == nil {
-		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
+		if !candidateSeen {
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available Grok accounts")
+		} else {
+			h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok realtime upstream unavailable")
+		}
 		return
 	}
 	defer release()
