@@ -181,15 +181,22 @@ func TestAdaptResponsesClientToolsWithInheritedMapping_LowersFollowupHistoryWith
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.Equal(t, inherited, mapping)
-	items := req["input"].([]any)
-	call := items[0].(map[string]any)
+	items, ok := req["input"].([]any)
+	require.True(t, ok)
+	call, ok := items[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "function_call", call["type"])
-	require.JSONEq(t, `{"input":"pwd"}`, call["arguments"].(string))
+	arguments, ok := call["arguments"].(string)
+	require.True(t, ok)
+	require.JSONEq(t, `{"input":"pwd"}`, arguments)
 	require.NotContains(t, call, "input")
-	output := items[1].(map[string]any)
+	output, ok := items[1].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "function_call_output", output["type"])
 	require.NotContains(t, output, "id")
-	require.JSONEq(t, `[{"text":"ok","type":"input_text"}]`, output["output"].(string))
+	outputText, ok := output["output"].(string)
+	require.True(t, ok)
+	require.JSONEq(t, `[{"text":"ok","type":"input_text"}]`, outputText)
 }
 
 func TestAdaptResponsesClientToolsWithInheritedMapping_PromotesOmittedToolsDiscoveryIntoEffectiveDeclarations(t *testing.T) {
@@ -249,7 +256,13 @@ func TestAdaptResponsesClientToolsWithInheritedMapping_ExplicitToolsReplaceInher
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Empty(t, mapping)
-	require.Equal(t, "custom_tool_call", req["input"].([]any)[0].(map[string]any)["type"])
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	firstInput, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	inputType, ok := firstInput["type"].(string)
+	require.True(t, ok)
+	require.Equal(t, "custom_tool_call", inputType)
 }
 
 func TestAdaptResponsesClientToolsWithInheritedMapping_ExplicitToolResetDoesNotPromoteDiscovery(t *testing.T) {

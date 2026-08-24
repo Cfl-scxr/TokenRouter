@@ -1051,7 +1051,7 @@ func openAICompatPayloadWithEventType(payload, eventType string) string {
 	if eventType == "" || strings.TrimSpace(payload) == "" || strings.TrimSpace(payload) == "[DONE]" {
 		return payload
 	}
-	if gjson.Get(payload, "type").Exists() {
+	if strings.TrimSpace(gjson.Get(payload, "type").String()) != "" {
 		return payload
 	}
 	patched, err := sjson.Set(payload, "type", eventType)
@@ -1639,6 +1639,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 				return nil, fmt.Errorf("upstream compact response failed: status=%d (not in custom error codes)", policyStatus)
 			}
 			if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(terminalPayload, msg)) {
+				markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 				return nil, s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, strings.TrimSpace(resp.Header.Get("x-request-id")), resp.Header,
 					policyStatus, terminalPayload, msg,
@@ -1684,15 +1685,9 @@ func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 	var terminalType string
 	var terminalPayload []byte
 	forEachOpenAISSEFrame(body, func(eventType string, data []byte) {
-		if terminalPayload != nil {
-			return
-		}
-		eventType = strings.TrimSpace(eventType)
-		if eventType == "" {
-			eventType = strings.TrimSpace(gjson.GetBytes(data, "type").String())
-		}
+		eventType = effectiveOpenAISSEEventType(data, eventType)
 		switch eventType {
-		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+		case "error", "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 			terminalType = eventType
 			terminalPayload = append([]byte(nil), data...)
 		}

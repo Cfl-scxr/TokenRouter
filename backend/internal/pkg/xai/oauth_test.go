@@ -361,7 +361,7 @@ func TestNormalizeModelID(t *testing.T) {
 		"grok-latest":                DefaultResponsesModel,
 		"grok-4.5-latest":            DefaultResponsesModel,
 		"grok-build":                 "grok-build-0.1",
-		"grok-build-latest":          DefaultResponsesModel,
+		"grok-build-latest":          "grok-build-0.1",
 		"grok-composer":              "grok-composer-2.5-fast",
 		"composer-2.5":               "grok-composer-2.5-fast",
 		"grok-4.20-reasoning":        "grok-4.20-0309-reasoning",

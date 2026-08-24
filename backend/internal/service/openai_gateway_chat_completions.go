@@ -60,7 +60,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	setCodexToolNameReverse(c, nil)
 
-	routerMatch := TLSFingerprintRouterMatchResult{}
+	var routerMatch TLSFingerprintRouterMatchResult
 	if len(tlsRouterMatch) > 0 {
 		routerMatch = tlsRouterMatch[0]
 	} else {
@@ -496,6 +496,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			return nil, fmt.Errorf("upstream response failed: status=%d (not in custom error codes)", policyStatus)
 		}
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
+			markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 			return nil, s.newOpenAIStreamPolicyFailoverError(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
 				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
@@ -739,6 +740,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			)
 			policyGeneric := decision.ShouldReturnGenericError()
 			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
+				markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
 					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message),

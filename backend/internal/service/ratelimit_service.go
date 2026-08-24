@@ -46,6 +46,12 @@ type AccountRuntimeBlocker interface {
 	ClearAccountSchedulingBlock(accountID int64)
 }
 
+// openAI429RetryDeferrer 允许 OpenAI OAuth 在请求级同账号重试窗口内延迟
+// 持久化 429 冷却；API Key 和没有该能力的调用方仍走原有限流路径。
+type openAI429RetryDeferrer interface {
+	ShouldRetryOpenAIOAuth429(account *Account, headers http.Header, responseBody []byte) bool
+}
+
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
 type SuccessfulTestRecoveryResult struct {
 	ClearedError     bool
@@ -1242,6 +1248,11 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// QueryUsage→persistOpenAICodexProbeSnapshot 维护,枯竭由调度守卫处理。
 	if account.IsShadow() {
 		return
+	}
+	if account.Platform == PlatformOpenAI && account.IsOpenAIOAuthLike() {
+		if deferrer, ok := s.runtimeBlocker.(openAI429RetryDeferrer); ok && deferrer.ShouldRetryOpenAIOAuth429(account, headers, responseBody) {
+			return
+		}
 	}
 	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
 	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。

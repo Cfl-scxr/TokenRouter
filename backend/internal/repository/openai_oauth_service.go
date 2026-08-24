@@ -161,13 +161,6 @@ func firstOpenAIOAuthTokenRequestOption(options []service.OpenAIOAuthTokenReques
 	return options[0]
 }
 
-func resolveOpenAIOAuthTokenUserAgent(option service.OpenAIOAuthTokenRequestOptions) string {
-	if ua := strings.TrimSpace(option.UserAgent); ua != "" {
-		return ua
-	}
-	return service.CodexCanonicalUserAgent()
-}
-
 func resolveOpenAIOAuthTokenIdentity(option service.OpenAIOAuthTokenRequestOptions) (string, string) {
 	if ua := strings.TrimSpace(option.UserAgent); ua != "" {
 		return ua, ""

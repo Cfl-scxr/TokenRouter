@@ -44,8 +44,6 @@ type OpenAIGatewayHandler struct {
 
 var errOpenAIWSLocalRoutingRejected = errors.New("local websocket routing rejected")
 
-var errOpenAIWSUnsupportedModelSwitch = errors.New("selected account does not support websocket model switch")
-
 // newOpenAIWSLocalRoutingRejectedError 标记请求在本地路由阶段被拒绝，避免把未发送到上游的错误归咎于账号。
 func newOpenAIWSLocalRoutingRejectedError(model string, err error) error {
 	reason := fmt.Sprintf("model %s is not available for this websocket channel or account", strings.TrimSpace(model))
@@ -53,17 +51,10 @@ func newOpenAIWSLocalRoutingRejectedError(model string, err error) error {
 	return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, reason, cause)
 }
 
-// newOpenAIWSUnsupportedModelSwitchError 标记需要重新建立连接的模型切换。
-func newOpenAIWSUnsupportedModelSwitchError(model string) error {
-	cause := fmt.Errorf("%w: model %q", errOpenAIWSUnsupportedModelSwitch, strings.TrimSpace(model))
-	return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "model switch requires reconnect", cause)
-}
-
 // shouldReportOpenAIWSProxyAccountFailure 排除明确的本地模型路由拒绝，其余代理错误维持现有上报行为。
 func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
 	return err != nil &&
 		!errors.Is(err, errOpenAIWSLocalRoutingRejected) &&
-		!errors.Is(err, errOpenAIWSUnsupportedModelSwitch) &&
 		!service.IsOpenAIWSSessionPreemptedError(err)
 }
 
@@ -1913,6 +1904,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
 		return
 	}
+	// 首帧已经完整可用，先检查显式会话及其派生会话是否被风控屏蔽，再建立上游连接。
+	if cyberBlockKey := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, apiKey.ID, c, firstMessage); cyberBlockKey != "" {
+		writeCyberSessionBlockedWSError(c.Request.Context(), wsConn)
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg)
+		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, reqModel, cyberBlockKey)
+		return
+	}
 
 	// 首轮账号选择必须按渠道模型 C 判断生图能力，避免别名映射绕过 Responses 能力检查。
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
@@ -2365,6 +2363,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if result == nil {
 					return
 				}
+				// WS 每个 turn 的渠道映射可能覆盖默认计费模型，统一在记录用量前解析。
+				result.BillingModel = openAIWSTurnBillingModel(result, turnChannelMapping, turnModel, result.UpstreamModel)
 				// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, result.ResponseHeaders)

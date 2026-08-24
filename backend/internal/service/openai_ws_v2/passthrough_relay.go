@@ -8,7 +8,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -98,12 +97,9 @@ type RelayTraceEvent struct {
 type relayState struct {
 	usage                Usage
 	turnUsage            Usage
-	requestModelMu       sync.RWMutex
 	requestModel         string
 	pendingTurnStart     atomic.Pointer[time.Time]
 	lastResponseID       string
-	lastResponseModel    string
-	responseConflict     bool
 	terminalEventType    string
 	terminalResponseBody []byte
 	firstTokenMs         *int

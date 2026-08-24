@@ -369,7 +369,6 @@ func TestOpenAIResponsesStreaming_ResponseFailedCustomStatusFailsOver(t *testing
 	account := rawChatCompletionsTestAccount()
 	account.Credentials["custom_error_codes_enabled"] = true
 	account.Credentials["custom_error_codes"] = []any{float64(http.StatusUnprocessableEntity)}
-
 	_, err := svc.handleStreamingResponse(
 		context.Background(), resp, c, account, time.Now(), "gpt-5.4", "gpt-5.4",
 	)

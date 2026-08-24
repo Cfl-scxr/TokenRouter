@@ -738,7 +738,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			Decision:      UpstreamErrorDecision{Policy: ErrorPolicyNone},
 		}
 		if isOpenAIWSTerminalEvent(eventType) && !requestScopedCapacity &&
-			!(eventType == "response.failed" && failureAccountSideEffectsApplied) {
+			(eventType != "response.failed" || !failureAccountSideEffectsApplied) {
 			terminalPolicy = s.handleOpenAIWSTerminalTransientFailure(
 				ctx,
 				account,
@@ -810,12 +810,25 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			if decision.StopScheduling {
 				failureAccountSideEffectsApplied = true
 			}
+			if !requestScopedError && account.Platform == PlatformOpenAI &&
+				(policyStatus == http.StatusUnauthorized || policyStatus == http.StatusTooManyRequests || policyStatus == 529 ||
+					(policyStatus == http.StatusForbidden && openAIStream403AccountFailure(upstreamMessage, errMessage))) {
+				// error 与 response.failed 可能成对出现；前者已经执行账号副作用时，
+				// 后者只负责客户端事件，不得再次写入限流状态。
+				failureAccountSideEffectsApplied = true
+			}
 			if decision.ShouldReturnGenericError() && !requestScopedCapacity {
 				upstreamMessage = buildOpenAIWSHTTPBridgeErrorEvent(http.StatusInternalServerError, "Upstream gateway error")
 				upstreamEventErr = errors.New("upstream error not in custom error codes")
 			} else if !wroteDownstream && (requestScopedCapacity || (!requestScopedError && decision.ShouldFailover(account, policyStatus, defaultFailover))) &&
 				(turn == 1 || policyStatus == http.StatusTooManyRequests) {
 				retrySame := requestScopedCapacity || decision.RetryableOnSameAccount(account, policyStatus)
+				if c != nil && !requestScopedCapacity && !requestScopedError {
+					c.Set(openAIWSFailureSideEffectsStateKey, openAIWSFailureSideEffectsState{
+						StatusCode:    policyStatus,
+						ShouldDisable: decision.StopScheduling,
+					})
+				}
 				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, policyStatus, upstreamMessage, errMessage, retrySame)
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {

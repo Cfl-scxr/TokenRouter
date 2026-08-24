@@ -165,7 +165,8 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 		}
-		decision := s.applyGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
+		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
+		decision := s.applyGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 		kind := "http_error"
 		if decision.ShouldFailover(account, resp.StatusCode, s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)) {
 			kind = "failover"
@@ -182,8 +183,6 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if decision.ShouldReturnGenericError() {
 			return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 		}
-		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
-		s.applyGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 		// 配额/限流响应写入团队模型覆盖层；容量属于请求压力，不应隐藏健康账号。
 		if shouldMarkGrokTeamModelRateLimit(resp.StatusCode, respBody) {
 			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))

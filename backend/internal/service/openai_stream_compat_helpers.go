@@ -27,11 +27,23 @@ func effectiveOpenAISSEEventType(payload []byte, eventType string) string {
 
 // (s *OpenAIGatewayService) parseSSEUsageBytesWithType 兼容带 event 类型的用量解析入口。
 // 旧实现没有 event 参数，因此先复用原有解析器，保持已有字段合并语义。
-func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, _ string, usage *OpenAIUsage) {
+func (s *OpenAIGatewayService) parseSSEUsageBytesWithType(data []byte, eventType string, usage *OpenAIUsage) {
 	if usage == nil || len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 		return
 	}
-	s.parseSSEUsageBytes(data, usage)
+	parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data)
+	if !ok {
+		return
+	}
+	if openAIStreamEventTypeIsTerminal(effectiveOpenAISSEEventType(data, eventType)) {
+		// 某些兼容上游会在 completed 事件附带全零占位 usage；该占位不能
+		// 覆盖此前已收到的真实用量。终态只在至少有一个非零字段时生效。
+		if openAIUsageHasTokens(&parsedUsage) {
+			*usage = parsedUsage
+		}
+		return
+	}
+	mergeOpenAIUsageNonZero(usage, parsedUsage)
 }
 
 const openAIMissingUsageLogInterval = time.Minute

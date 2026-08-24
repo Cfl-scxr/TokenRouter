@@ -530,41 +530,6 @@ func shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(statusCode int) bool {
 	}
 }
 
-// applyOpenAIAlphaSearchErrorPolicy 保留工具端点 401 不执行默认账号状态的既有语义，
-// 并让其余非“端点不支持”错误执行显式配置；404/405 已由调用方按请求级能力缺失提前切号。
-func (s *OpenAIGatewayService) applyOpenAIAlphaSearchErrorPolicy(
-	ctx context.Context,
-	account *Account,
-	statusCode int,
-	headers http.Header,
-	body []byte,
-	canonicalModel string,
-) UpstreamErrorDecision {
-	if s == nil || account == nil {
-		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
-	}
-	if s.rateLimitService == nil {
-		return upstreamErrorDecisionWithoutPersistence(account, statusCode)
-	}
-	policy := s.rateLimitService.ApplyExplicitErrorPolicy(ctx, account, statusCode, body, canonicalModel)
-	decision := UpstreamErrorDecision{Policy: policy}
-	switch policy {
-	case ErrorPolicyCustomMatched:
-		decision.StopScheduling = true
-		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
-		return decision
-	case ErrorPolicyTempUnscheduled:
-		decision.StopScheduling = true
-		return decision
-	case ErrorPolicyCustomSkipped, ErrorPolicyPoolBypassed:
-		return decision
-	}
-	if !shouldApplyOpenAIAlphaSearchAccountErrorSideEffects(statusCode) {
-		return decision
-	}
-	return s.applyOpenAIAccountUpstreamError(ctx, account, statusCode, headers, body, canonicalModel)
-}
-
 func openAIAlphaSearchResponseFromResponsesSSE(body []byte) ([]byte, error) {
 	output, results := parseOpenAIResponsesSSEForAlphaSearch(body)
 	resp := map[string]any{

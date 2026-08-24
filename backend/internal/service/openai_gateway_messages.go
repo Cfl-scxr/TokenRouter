@@ -614,6 +614,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			return nil, fmt.Errorf("upstream response failed: status=%d (not in custom error codes)", policyStatus)
 		}
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
+			markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 			return nil, s.newOpenAIStreamPolicyFailoverError(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
 				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
@@ -1036,7 +1037,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			policyGeneric := decision.ShouldReturnGenericError()
 			// 客户端已有输出时切换账号会拼接两段模型流，此时必须回写 Anthropic error 事件，
 			// 不能返回 handler 已无法安全重试的 failover 错误。
-			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
+			shouldFailoverSignal := openAIStreamFailedEventShouldFailover(payloadBytes, message)
+			if isBareErrorEvent {
+				shouldFailoverSignal = openAIStreamErrorEventShouldFailover(payloadBytes, message)
+			}
+			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, shouldFailoverSignal) {
+				markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
 					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message),

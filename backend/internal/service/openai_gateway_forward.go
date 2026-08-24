@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -163,7 +164,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, tlsRouterMatch)
 	}
-	if account.Platform == PlatformOpenAI && (account.Type == AccountTypeAPIKey || account.Type == AccountTypeOAuth) {
+	if account.Platform == PlatformOpenAI && (account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) {
 		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
 		if sanitizeErr != nil {
 			return nil, fmt.Errorf("sanitize OpenAI Responses input item IDs: %w", sanitizeErr)
@@ -450,7 +451,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	var fingerprintIDs *codexFingerprintIDs
-	if account.Type == AccountTypeOAuth {
+	if account.IsOAuth() {
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -573,7 +574,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("service_tier", decision.Tier)
 	}
 
-	if account.Type == AccountTypeOAuth {
+	if account.IsOAuth() {
 		decoded, decodeErr := ensureReqBody()
 		if decodeErr != nil {
 			return nil, decodeErr
@@ -1138,7 +1139,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
-		if account.Type == AccountTypeOAuth && !account.IsShadow() {
+		if account.IsOAuth() && !account.IsShadow() {
 			if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 				s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 			}
@@ -1230,6 +1231,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		targetURL = openaiPlatformAPIURL
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	// 记录本次实际选择的上游端点，错误路径没有 ForwardResult 时也能正确落日志。
+	if parsedURL, parseErr := url.Parse(targetURL); parseErr == nil {
+		SetActualOpenAIUpstreamEndpoint(c, parsedURL.Path)
+	}
 
 	// DeepSeek 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。
@@ -1313,7 +1318,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	s.applyOpenAIUpstreamUserAgent(ctx, c, account, req, false, routerMatch...)
 
 	// 终态收口：originator 必须与最终 User-Agent 首段配套且为官方身份，否则上游 404（issue #3901）。
-	if account.Type == AccountTypeOAuth {
+	if account.IsOAuth() {
 		enforceCodexIdentityHeaders(req.Header)
 	}
 
@@ -1341,7 +1346,7 @@ func (s *OpenAIGatewayService) overrideBrowserUserAgent(ctx context.Context, acc
 	if req == nil || account == nil {
 		return
 	}
-	if account.Type != AccountTypeOAuth {
+	if !account.IsOAuth() {
 		return
 	}
 	currentUA := req.Header.Get("user-agent")

@@ -1132,6 +1132,11 @@ func (s *GeminiMessagesCompatService) writeGeminiOpenAICompatMappedError(
 	if upstreamMsg != "" && errMsg == "Upstream request failed" {
 		errMsg = upstreamMsg
 	}
+	// 池模式的 4xx 不会切换账号，客户端需要看到上游给出的具体校验原因；
+	// 普通账号仍保留兼容层的通用错误文案。
+	if account != nil && account.IsPoolMode() && upstreamStatus >= http.StatusBadRequest && upstreamMsg != "" {
+		errMsg = upstreamMsg
+	}
 	return s.writeGeminiOpenAICompatError(c, protocol, statusCode, errType, errMsg)
 }
 

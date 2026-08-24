@@ -124,7 +124,11 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamErrorInternal(
 	suppressDefaultRateLimitState bool,
 	canonicalModel ...string,
 ) UpstreamErrorDecision {
-	if isOpenAIAccountPolicyRequestScopedError(account, statusCode, responseBody) {
+	customStatusMatched := account != nil && account.IsCustomErrorCodesEnabled() && account.ShouldHandleErrorCode(statusCode)
+	if isOpenAIContentPolicyRejection(responseBody) || IsOpenAICyberWarningPayload(responseBody, extractUpstreamErrorMessage(responseBody)) {
+		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
+	}
+	if isOpenAIAccountPolicyRequestScopedError(account, statusCode, responseBody) && !customStatusMatched {
 		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
 	// 任意非 2xx 上游响应都表示模型请求已实际发送。

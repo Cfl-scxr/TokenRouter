@@ -316,6 +316,25 @@ type openAIWSTerminalPolicyDecision struct {
 	Decision      UpstreamErrorDecision
 }
 
+// openAIWSFailureSideEffectsState 记录 WS 桥已提前执行的账号副作用，供
+// failover 错误构造器消费一次，避免 error 事件与构造器重复写入限流状态。
+const openAIWSFailureSideEffectsStateKey = "openai_ws_failure_side_effects_state"
+
+type openAIWSFailureSideEffectsState struct {
+	StatusCode    int
+	ShouldDisable bool
+}
+
+func markOpenAIWSFailureSideEffectsApplied(c *gin.Context, statusCode int, shouldDisable bool) {
+	if c == nil {
+		return
+	}
+	c.Set(openAIWSFailureSideEffectsStateKey, openAIWSFailureSideEffectsState{
+		StatusCode:    statusCode,
+		ShouldDisable: shouldDisable,
+	})
+}
+
 func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) openAIWSTerminalPolicyDecision {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 	result := openAIWSTerminalPolicyDecision{

@@ -112,23 +112,6 @@ func upstreamResponseModelObserverFromContext(c *gin.Context) *upstreamResponseM
 	return observer
 }
 
-func observedUpstreamResponseModel(c *gin.Context) string {
-	return upstreamResponseModelObserverFromContext(c).Model()
-}
-
-func observedUpstreamResponseModelConflict(c *gin.Context) bool {
-	return upstreamResponseModelObserverFromContext(c).Conflict()
-}
-
-func observeOpenAISSEBody(observer *upstreamResponseModelObserver, body string) {
-	if observer == nil || strings.TrimSpace(body) == "" {
-		return
-	}
-	forEachOpenAISSEFrame(body, func(eventType string, payload []byte) {
-		observer.ObserveOpenAI(payload, eventType)
-	})
-}
-
 func firstValidTrimmedGJSONModel(payload []byte, paths ...string) string {
 	if len(payload) == 0 {
 		return ""
@@ -158,45 +141,4 @@ func isUpstreamResponseModelTerminalEvent(eventType string) bool {
 	default:
 		return false
 	}
-}
-
-func upstreamModelMismatch(sentModel, responseModel string) *bool {
-	responseModel = strings.TrimSpace(responseModel)
-	if responseModel == "" {
-		return nil
-	}
-	sentModel = strings.TrimSpace(sentModel)
-	mismatch := sentModel == "" || !upstreamModelsMatchForAudit(sentModel, responseModel)
-	return &mismatch
-}
-
-func upstreamModelsMatchForAudit(sentModel, responseModel string) bool {
-	if strings.EqualFold(sentModel, responseModel) {
-		return true
-	}
-
-	// xAI reports the runtime build ID for these supported public aliases.
-	// Canonicalize only for mismatch auditing; keep the raw response model for
-	// observability and for the separate response-model billing safeguards.
-	sentGrokModel := canonicalGrokBuildRuntimeModel(sentModel)
-	return sentGrokModel != "" && sentGrokModel == canonicalGrokBuildRuntimeModel(responseModel)
-}
-
-func canonicalGrokBuildRuntimeModel(model string) string {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "grok-4.5", "grok-4.5-latest", "grok-4.5-build":
-		return "grok-4.5-build"
-	case "grok-4.6", "grok-4.6-latest", "grok-4.6-build":
-		return "grok-4.6-build"
-	default:
-		return ""
-	}
-}
-
-func upstreamSentModel(requestedModel, upstreamModel string) string {
-	sentModel := strings.TrimSpace(upstreamModel)
-	if sentModel == "" {
-		sentModel = strings.TrimSpace(requestedModel)
-	}
-	return sentModel
 }

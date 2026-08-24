@@ -143,6 +143,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if sanitized {
 		body = sanitizedBody
 	}
+	// 透传分支后续的 OAuth/APIKey 兼容归一化可能删除无工具请求的
+	// parallel_tool_calls；Responses Lite 契约仍要求显式发送 false。
+	if c != nil && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+		liteBody, liteChanged, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, body)
+		if liteErr != nil {
+			return nil, liteErr
+		}
+		if liteChanged {
+			body = liteBody
+		}
+	}
 
 	policyModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if policyModel == "" {
@@ -1277,6 +1288,14 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 		return http.StatusBadGateway
 	}
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
+	// response.failed 可能携带任意明确的 HTTP 状态码（例如 422 自定义策略），
+	// 该状态必须传递给统一策略与故障转移错误，而不能退化为 502。
+	for _, path := range []string{"response.error.status_code", "response.error.status", "error.status_code", "error.status", "status_code"} {
+		status := int(gjson.GetBytes(payload, path).Int())
+		if status >= http.StatusBadRequest && status <= 599 {
+			return status
+		}
+	}
 	switch semanticStatus {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return semanticStatus
@@ -1506,6 +1525,18 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 		}
 		return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, accountHeaders, payload)
 	default:
+		// response.failed 可携带管理员自定义的非默认状态码（例如 422）。
+		// 只有命中显式策略或池模式重试状态时才进入账号策略，普通请求级
+		// 校验错误仍保持无副作用。
+		customMatched := account != nil && account.IsCustomErrorCodesEnabled() && account.ShouldHandleErrorCode(statusCode)
+		poolRetryable := account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
+		if customMatched || poolRetryable {
+			ctx := context.Background()
+			if c != nil && c.Request != nil {
+				ctx = c.Request.Context()
+			}
+			return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, payload)
+		}
 		return statusCode, false
 	}
 }
@@ -1630,7 +1661,7 @@ func (s *OpenAIGatewayService) newOpenAIStreamPolicyFailoverError(
 	statusCode int,
 	payload []byte,
 	message string,
-	retryableOnSameAccount bool,
+	_ bool,
 ) *UpstreamFailoverError {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
@@ -1640,7 +1671,25 @@ func (s *OpenAIGatewayService) newOpenAIStreamPolicyFailoverError(
 	if len(responseHeaders) > 0 {
 		headers = responseHeaders.Clone()
 	}
-	statusCode, shouldDisable := s.handleOpenAIStreamTerminalAccountSideEffects(c, account, payload, message, headers)
+	shouldDisable := false
+	sideEffectsApplied := false
+	if c != nil {
+		if rawState, ok := c.Get(openAIWSFailureSideEffectsStateKey); ok {
+			// Gin 没有公开的 Delete 方法；只消费当前请求上下文中的一次性值。
+			delete(c.Keys, openAIWSFailureSideEffectsStateKey)
+			if state, ok := rawState.(openAIWSFailureSideEffectsState); ok {
+				statusCode = state.StatusCode
+				shouldDisable = state.ShouldDisable
+				sideEffectsApplied = true
+			}
+		}
+	}
+	if !sideEffectsApplied {
+		statusCode, shouldDisable = s.handleOpenAIStreamTerminalAccountSideEffects(c, account, payload, message, headers)
+	}
+	if statusCode < http.StatusBadRequest {
+		statusCode = openAIStreamFailureStatus(payload, message)
+	}
 	// 流内 failed 事件承载于 HTTP 200；使用事件的语义状态更新账号健康，
 	// 再由 failover 引擎按 StatusCode/RetryableOnSameAccount 决定恢复策略。
 	message = s.recordOpenAIStreamUpstreamError(c, account, passthrough, upstreamRequestID, "failover", payload, message)
@@ -1654,8 +1703,8 @@ func (s *OpenAIGatewayService) newOpenAIStreamPolicyFailoverError(
 			"message": message,
 		},
 	})
-	retryableOnSameAccount = openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
-	failoverErr := s.newOpenAIAccountFailoverError(account, statusCode, headers, payload, message, shouldDisable, retryableOnSameAccount)
+	retryable := openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
+	failoverErr := s.newOpenAIAccountFailoverError(account, statusCode, headers, payload, message, shouldDisable, retryable)
 	if failoverErr.IsCredentialFailure() || failoverErr.RequestScopedTransient {
 		return failoverErr
 	}
