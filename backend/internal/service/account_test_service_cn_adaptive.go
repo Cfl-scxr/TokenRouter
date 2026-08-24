@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/claude"
@@ -200,4 +201,27 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 		proxyURL = account.Proxy.URL()
 	}
 	return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.resolveTLSProfile(account))
+}
+
+// cnAnthropicBaseURLMisconfigHint 给仍指向 OpenAI 兼容端点的 Anthropic 账号返回可操作提示。
+func cnAnthropicBaseURLMisconfigHint(baseURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	path := strings.ToLower(strings.TrimRight(parsed.Path, "/"))
+	if path == "" {
+		return ""
+	}
+	openAICompatShaped := strings.Contains(path, "/paas/") ||
+		strings.HasSuffix(path, "/chat/completions") ||
+		strings.HasSuffix(path, "/responses") ||
+		openAIBaseURLHasVersionSuffix(path)
+	if !openAICompatShaped {
+		return ""
+	}
+	return fmt.Sprintf(
+		"API protocol is anthropic but base_url (%s) looks like an OpenAI-compatible endpoint; set base_url to the provider's Anthropic endpoint (for example https://open.bigmodel.cn/api/anthropic) or switch api_protocol.",
+		baseURL,
+	)
 }

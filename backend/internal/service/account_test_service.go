@@ -503,6 +503,9 @@ func (s *AccountTestService) testCNProviderAccountConnection(
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
+		if hint := cnAnthropicBaseURLMisconfigHint(baseURL); hint != "" {
+			return s.sendErrorAndEnd(c, hint)
+		}
 		apiURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
 		payload, err = createTestPayloadWithPrompt(testModelID, prompt)
 		if err != nil {
@@ -569,7 +572,11 @@ func (s *AccountTestService) testCNProviderAccountConnection(
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
+		if (protocol == APIProtocolAnthropic && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden)) && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
 	}
 	switch protocol {
 	case APIProtocolAnthropic:

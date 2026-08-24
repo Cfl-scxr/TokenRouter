@@ -189,3 +189,64 @@ func TestAccountTestService_FixedCNChatProtocolStillTestsOnlyChatEndpoint(t *tes
 	require.Equal(t, "http://fixed-chat.example/v1/chat/completions", upstream.requests[0].URL.String())
 	require.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"test_complete"`))
 }
+
+func TestAccountTestService_FixedCNAnthropicUsesNativeEndpointWithoutBetaQuery(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(306, PlatformZhipu)
+	account.Credentials["api_protocol"] = APIProtocolAnthropic
+	account.Credentials["base_url"] = "https://open.bigmodel.cn/api/anthropic"
+	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNAnthropicTestResponse())
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://open.bigmodel.cn/api/anthropic/v1/messages", upstream.requests[0].URL.String())
+	require.Empty(t, upstream.requests[0].URL.RawQuery)
+	require.Equal(t, "sk-adaptive-test", getHeaderRaw(upstream.requests[0].Header, "x-api-key"))
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
+}
+
+func TestAccountTestService_FixedCNAnthropicUsesProviderDefault(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(307, PlatformZhipu)
+	account.Credentials["api_protocol"] = APIProtocolAnthropic
+	delete(account.Credentials, "api_base_urls")
+	svc, upstream := adaptiveCNAccountTestService(account, adaptiveCNAnthropicTestResponse())
+	c, _ := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://open.bigmodel.cn/api/anthropic/v1/messages", upstream.requests[0].URL.String())
+}
+
+func TestAccountTestService_FixedCNAnthropicRejectsOpenAIBaseURLAndMarksAuthErrors(t *testing.T) {
+	t.Run("misconfigured base URL", func(t *testing.T) {
+		account := adaptiveCNAccountTestAccount(308, PlatformZhipu)
+		account.Credentials["api_protocol"] = APIProtocolAnthropic
+		account.Credentials["base_url"] = "https://open.bigmodel.cn/api/paas/v4"
+		svc, upstream := adaptiveCNAccountTestService(account)
+		c, recorder := newTestContext()
+
+		err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+		require.Error(t, err)
+		require.Empty(t, upstream.requests)
+		require.Contains(t, recorder.Body.String(), "looks like an OpenAI-compatible endpoint")
+	})
+
+	t.Run("forbidden marks account error", func(t *testing.T) {
+		account := adaptiveCNAccountTestAccount(309, PlatformZhipu)
+		account.Credentials["api_protocol"] = APIProtocolAnthropic
+		account.Credentials["base_url"] = "https://open.bigmodel.cn/api/anthropic"
+		svc, _ := adaptiveCNAccountTestService(account, newJSONResponse(http.StatusForbidden, `{"error":{"message":"invalid key"}}`))
+		c, _ := newTestContext()
+
+		err := svc.TestAccountConnection(c, account.ID, "glm-4.7", "", AccountTestModeDefault)
+
+		require.Error(t, err)
+		repo := svc.accountRepo.(*openAIAccountTestRepo)
+		require.Equal(t, account.ID, repo.setErrorID)
+	})
+}
