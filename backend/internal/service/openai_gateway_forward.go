@@ -70,7 +70,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = reasoningBody
 		}
 	}
-	if isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
+	responsesLite := account.IsOpenAI() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader))
+	if responsesLite {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, body)
 		if liteErr != nil {
 			param := "tools"

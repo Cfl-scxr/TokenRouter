@@ -258,33 +258,37 @@ func TestNormalizeOpenAIAPIKeyStoreFalseReasoningReplayRejectsEmptyEncryptedCont
 
 func TestNormalizeOpenAIParallelToolCallsWithoutTools(t *testing.T) {
 	withTools := []byte(`{"tools":[{"type":"function","name":"lookup"}],"parallel_tool_calls":false}`)
-	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(withTools)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(withTools, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, string(withTools), string(normalized))
 
 	withoutTools := []byte(`{"input":"hi","parallel_tool_calls":true}`)
-	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(withoutTools)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(withoutTools, false)
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
 }
 
-// 经过 normalizeOpenAIResponsesLiteTools 的 Responses Lite 请求会把工具放入
-// type 为 "additional_tools" 的 input 项，不再保留顶层 tools；但工具仍然存在，
-// 因此 ensureOpenAIResponsesLiteParallelToolCalls 设置的 parallel_tool_calls:false
-// 必须在本次归一化中保留，否则 OpenAI 会采用 true 的默认值并拒绝请求。
+// Lite 工具迁移到 input[].additional_tools 后，仍应按有工具请求处理。
 func TestNormalizeOpenAIParallelToolCallsWithoutTools_KeepsResponsesLiteAdditionalTools(t *testing.T) {
 	liteBody := []byte(`{"input":[{"type":"message","role":"user","content":"hi"},{"type":"additional_tools","tools":[{"type":"function","name":"spawn_agent"}]}],"parallel_tool_calls":false}`)
-	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody)
+	normalized, changed, err := normalizeOpenAIParallelToolCallsWithoutTools(liteBody, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
 
-	// 空的 additional_tools 项不携带工具，因此仍应删除该字段。
+	// 非 Lite 请求的空 additional_tools 不构成有效工具声明，字段仍需删除。
 	emptyLiteBody := []byte(`{"input":[{"type":"additional_tools","tools":[]}],"parallel_tool_calls":true}`)
-	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(emptyLiteBody, false)
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
+
+	// Lite 请求即使没有工具，也必须保留已经固定的 false。
+	toolLessLiteBody := []byte(`{"input":"hi","parallel_tool_calls":false}`)
+	normalized, changed, err = normalizeOpenAIParallelToolCallsWithoutTools(toolLessLiteBody, true)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
 }

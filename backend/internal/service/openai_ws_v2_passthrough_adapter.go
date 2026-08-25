@@ -831,13 +831,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = aliasedBody
 		}
 	}
-	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account); normalizeErr != nil {
+	firstMessageResponsesLite := isOpenAIResponsesLiteWebSocketPayload(firstClientMessage)
+	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account, firstMessageResponsesLite); normalizeErr != nil {
 		return fmt.Errorf("normalize first websocket response.create: %w", normalizeErr)
 	} else if compatibilityChanged {
 		firstClientMessage = normalized
 	}
 	// API-Key 兼容清理可能删除无工具请求的 parallel_tool_calls；Lite 契约要求该字段显式为 false。
-	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
+	if firstMessageResponsesLite {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, firstClientMessage)
 		if liteErr != nil {
 			return fmt.Errorf("normalize first websocket Lite payload: %w", liteErr)
@@ -1121,12 +1122,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						payload = aliasedBody
 					}
 				}
-				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account); normalizeErr != nil {
+				responsesLite := isResponseCreate && isOpenAIResponsesLiteWebSocketPayload(payload)
+				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account, responsesLite); normalizeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
 				} else if compatibilityChanged {
 					payload = normalized
 				}
-				if isOpenAIResponsesLiteWebSocketPayload(payload) {
+				if responsesLite {
 					litePayload, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(account, payload)
 					if liteErr != nil {
 						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, liteErr.Error(), liteErr)

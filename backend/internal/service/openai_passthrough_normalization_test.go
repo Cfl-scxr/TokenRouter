@@ -55,7 +55,7 @@ func TestNormalizeOpenAIOAuthResponsesCompatibilityBody_PreservesExplicitInput(t
 func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_OnlyStripsOAuthFields(t *testing.T) {
 	body := []byte(`{"type":"response.create","prompt":"hello","commands":{},"truncation":"auto","stop_sequences":["END"],"chat_template_kwargs":{"enable_thinking":true}}`)
 
-	oauthBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+	oauthBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, false)
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.Equal(t, "hello", gjson.GetBytes(oauthBody, "input").String())
@@ -63,7 +63,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_OnlyStripsOAuthField
 		require.False(t, gjson.GetBytes(oauthBody, field).Exists(), field)
 	}
 
-	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
+	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.JSONEq(t, string(body), string(apiKeyBody))
@@ -81,7 +81,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesNativeItemI
 		if oauth {
 			accountType = AccountTypeOAuth
 		}
-		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType})
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType}, false)
 		require.NoError(t, err)
 		require.True(t, changed)
 		require.Equal(t, "response.create", gjson.GetBytes(normalized, "type").String())
@@ -105,7 +105,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_APIKeyStoreFalseRepl
 	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-	})
+	}, false)
 
 	require.NoError(t, err)
 	require.True(t, changed)
@@ -115,6 +115,21 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_APIKeyStoreFalseRepl
 	require.False(t, gjson.GetBytes(normalized, "input.0.call_id").Exists())
 	require.True(t, gjson.GetBytes(normalized, "input.0.summary").IsArray())
 	require.Equal(t, "message", gjson.GetBytes(normalized, "input.1.type").String())
+}
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_PreservesResponsesLiteParallelToolCalls(t *testing.T) {
+	body := []byte(`{"type":"response.create","input":"hello","parallel_tool_calls":false}`)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account, true)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gjson.False, gjson.GetBytes(normalized, "parallel_tool_calls").Type)
+
+	normalized, changed, err = normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "parallel_tool_calls").Exists())
 }
 
 func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
@@ -141,13 +156,13 @@ func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
 func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_ReasoningModeAccountScope(t *testing.T) {
 	body := []byte(`{"type":"response.create","reasoning":{"mode":"pro"}}`)
 	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
-		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType})
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType}, false)
 		require.NoError(t, err)
 		require.True(t, changed)
 		require.Equal(t, "max", gjson.GetBytes(normalized, "reasoning.effort").String())
 		require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
 	}
-	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey})
+	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, false)
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.JSONEq(t, string(body), string(apiKeyBody))
@@ -156,7 +171,7 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_ReasoningModeAccount
 func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesToolSchemas(t *testing.T) {
 	body := []byte(`{"type":"response.create","tools":[{"type":"function","name":"search","parameters":{"type":null,"properties":{"q":{"type":"string","pattern":"^(?=.*foo).+$"}}}}]}`)
 	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
-		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType})
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType}, false)
 		require.NoError(t, err)
 		require.True(t, changed)
 		require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
