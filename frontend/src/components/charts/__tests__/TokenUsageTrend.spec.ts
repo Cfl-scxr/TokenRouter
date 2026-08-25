@@ -22,10 +22,12 @@ vi.mock('vue-i18n', async () => {
 vi.mock('vue-chartjs', () => ({
   Line: {
     props: ['data', 'options'],
-    template: `
+      template: `
       <div>
         <div class="chart-data">{{ JSON.stringify(data) }}</div>
         <div class="chart-options">{{ JSON.stringify(options) }}</div>
+        <div class="tooltip-title">{{ options.plugins.tooltip.callbacks.title?.([{ dataIndex: 0 }]) }}</div>
+        <div class="tooltip-footer">{{ options.plugins.tooltip.callbacks.footer?.([{ dataIndex: 0 }]) }}</div>
       </div>
     `
   }
@@ -164,5 +166,62 @@ describe('TokenUsageTrend', () => {
     expect(lightOptions.plugins.legend.labels.color).toBe('#3F3F46')
     expect(lightOptions.scales.x.ticks.color).toBe('#3F3F46')
     expect(lightOptions.scales.y.ticks.color).toBe('#3F3F46')
+  })
+
+  it('uses compact hour labels while keeping the full date in the tooltip', () => {
+    const wrapper = mount(TokenUsageTrend, {
+      props: {
+        granularity: 'hour',
+        trendData: [
+          {
+            date: '2026-08-24 08:00',
+            requests: 1,
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            cost: 0.01,
+            actual_cost: 0.005
+          }
+        ]
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true
+        }
+      }
+    })
+
+    const chartData = JSON.parse(wrapper.find('.chart-data').text())
+    expect(chartData.labels).toEqual(['08:00'])
+    expect(wrapper.find('.tooltip-title').text()).toBe('2026-08-24 08:00')
+  })
+
+  it('omits standard cost from the tooltip when disabled', () => {
+    const wrapper = mount(TokenUsageTrend, {
+      props: {
+        showStandardCost: false,
+        trendData: [
+          {
+            date: '2026-08-24',
+            requests: 1,
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            cost: 0.01,
+            actual_cost: 0.005
+          }
+        ]
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true
+        }
+      }
+    })
+
+    expect(wrapper.find('.tooltip-footer').text()).toContain('Actual:')
+    expect(wrapper.find('.tooltip-footer').text()).not.toContain('Standard:')
   })
 })

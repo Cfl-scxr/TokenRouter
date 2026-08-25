@@ -61,7 +61,7 @@
             :end-date="endDate"
             :filters="breakdownFilters"
           />
-          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" :granularity="granularity" />
         </div>
       </div>
       <!-- 标签和筛选保留在同一卡片，数据内容使用下方独立卡片。 -->
@@ -85,6 +85,12 @@
 
         <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
+            <IpGeoBatchToolbar
+              v-if="activeTab === 'usage'"
+              :ips="usageLogs.map((row) => row.ip_address)"
+              inline
+              @failed="handleIpGeoBatchFailed"
+            />
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
@@ -127,12 +133,12 @@
           :loading="loading"
           :columns="visibleColumns"
           compact-user-column
+          :show-ip-geo-toolbar="false"
           :server-side-sort="true"
           :default-sort-key="'created_at'"
           :default-sort-order="'desc'"
           @sort="handleSort"
           @userClick="handleUserClick"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed"
         />
         <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
       </div>
@@ -194,6 +200,7 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import IpGeoBatchToolbar from '@/components/common/IpGeoBatchToolbar.vue'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'

@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
+      <UsageStatsCards :stats="usageStats" :show-account-cost="false" :show-standard-cost="false" />
 
       <div class="space-y-4">
         <div class="card p-4">
@@ -32,6 +32,7 @@
             :show-metric-toggle="true"
             :enable-breakdown="false"
             :show-account-cost="false"
+            :show-standard-cost="false"
             :start-date="startDate"
             :end-date="endDate"
           />
@@ -42,6 +43,7 @@
             :show-metric-toggle="true"
             :enable-breakdown="false"
             :show-account-cost="false"
+            :show-standard-cost="false"
             :start-date="startDate"
             :end-date="endDate"
           />
@@ -58,11 +60,12 @@
             :show-source-toggle="false"
             :show-metric-toggle="true"
             :enable-breakdown="false"
+            :show-standard-cost="false"
             :title="t('usage.endpointDistribution')"
             :start-date="startDate"
             :end-date="endDate"
           />
-          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+          <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" :granularity="granularity" :show-standard-cost="false" />
         </div>
 
         <div v-if="isTeamOwner" data-tour="team-member-usage-charts">
@@ -161,6 +164,12 @@
                 </button>
               </div>
             </div>
+            <IpGeoBatchToolbar
+              v-if="activeTab === 'usage'"
+              :ips="usageLogs.map((row) => row.ip_address)"
+              inline
+              @failed="handleIpGeoBatchFailed"
+            />
             <button v-if="activeTab !== 'errors'" type="button" @click="exportToCSV" :disabled="exporting" class="btn btn-primary">
               {{ exporting ? t('usage.exporting') : t('usage.exportCsv') }}
             </button>
@@ -184,13 +193,14 @@
           :columns="visibleColumns"
           :server-side-sort="true"
           :show-account-billing="false"
+          :show-standard-cost="false"
           :show-upstream-endpoint="false"
           :user-clickable="false"
           :compact-user-column="isTeamOwner"
+          :show-ip-geo-toolbar="false"
           default-sort-key="created_at"
           default-sort-order="desc"
           @sort="handleSort"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed"
         />
 
         <Pagination
@@ -233,6 +243,7 @@ import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
+import IpGeoBatchToolbar from '@/components/common/IpGeoBatchToolbar.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'

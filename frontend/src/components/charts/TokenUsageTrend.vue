@@ -53,10 +53,15 @@ const { t } = useI18n()
 const { formatBalanceAmount, formatUsdAmount } = useBalanceDisplay()
 const { isDark } = useTheme()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   trendData: TrendDataPoint[]
   loading?: boolean
-}>()
+  granularity?: 'day' | 'hour'
+  showStandardCost?: boolean
+}>(), {
+  granularity: 'day',
+  showStandardCost: true,
+})
 
 const chartColors = computed(() => ({
   // 使用响应式主题状态，确保切换主题后 Chart.js 会同步刷新文字和网格颜色。
@@ -69,11 +74,21 @@ const chartColors = computed(() => ({
   cacheHitRate: '#8b5cf6'
 }))
 
+// 小时粒度只在坐标轴展示时分，完整时间仍由 tooltip 标题保留。
+const formatHourLabel = (value: string): string => {
+  const match = value.match(/(?:T|\s)(\d{2}:\d{2})/)
+  return match?.[1] || value
+}
+
+const chartLabels = computed(() => props.trendData.map((point) => (
+  props.granularity === 'hour' ? formatHourLabel(point.date) : point.date
+)))
+
 const chartData = computed(() => {
   if (!props.trendData?.length) return null
 
   return {
-    labels: props.trendData.map((d) => d.date),
+    labels: chartLabels.value,
     datasets: [
       {
         label: 'Input',
@@ -147,6 +162,10 @@ const lineOptions = computed(() => ({
     },
     tooltip: {
       callbacks: {
+        title: (tooltipItems: any[]) => {
+          const dataIndex = tooltipItems[0]?.dataIndex
+          return dataIndex !== undefined ? props.trendData[dataIndex]?.date || '' : ''
+        },
         label: (context: any) => {
           if (context.dataset.yAxisID === 'yPercent') {
             return `${context.dataset.label}: ${formatPercent(context.raw)}`
@@ -157,7 +176,9 @@ const lineOptions = computed(() => ({
           const dataIndex = tooltipItems[0]?.dataIndex
           if (dataIndex !== undefined && props.trendData[dataIndex]) {
             const data = props.trendData[dataIndex]
-            return `Actual: ${formatBalanceAmount(data.actual_cost, { fractionDigits: 4 })} | Standard: ${formatUsdAmount(data.cost, { fractionDigits: 4 })}`
+            const actual = formatBalanceAmount(data.actual_cost, { fractionDigits: 4 })
+            if (!props.showStandardCost) return `Actual: ${actual}`
+            return `Actual: ${actual} | Standard: ${formatUsdAmount(data.cost, { fractionDigits: 4 })}`
           }
           return ''
         }
@@ -171,6 +192,9 @@ const lineOptions = computed(() => ({
       },
       ticks: {
         color: chartColors.value.text,
+        autoSkip: true,
+        maxRotation: props.granularity === 'hour' ? 0 : 50,
+        minRotation: props.granularity === 'hour' ? 0 : 0,
         font: {
           size: 10
         }

@@ -9,6 +9,8 @@
 
   html {
     @apply scroll-smooth font-sans antialiased;
+    width: 100%;
+    min-width: 0;
     color-scheme: light;
     scrollbar-color: rgba(18, 167, 232, 0.26) transparent;
     scrollbar-width: thin;
@@ -26,8 +28,19 @@
   body {
     @apply text-dark-950 dark:text-white;
     @apply min-h-screen;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    overflow-x: hidden;
     background: #FCFCFE;
     background-attachment: fixed;
+  }
+
+  /* 视觉视口缩放后仍让应用根节点占满屏幕，避免右侧出现固定空白带。 */
+  #app {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .dark body {
@@ -987,6 +1000,10 @@
 
   /* 全局背景：浅色使用纯白，深色保留微亮到纯黑的纵向渐变。 */
   .ba-theme-shell {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: clip;
     background: #FCFCFE;
   }
 

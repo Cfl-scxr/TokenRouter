@@ -492,7 +492,7 @@
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
             <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span>
           </div>
-          <div class="flex items-center justify-between gap-6">
+          <div v-if="showStandardCost" class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
             <span class="font-medium text-white">{{ formatDetailedUsdAmount(tooltipData?.total_cost) }}</span>
           </div>
@@ -597,6 +597,8 @@ interface Props {
   defaultSortKey?: string
   defaultSortOrder?: 'asc' | 'desc'
   showAccountBilling?: boolean
+  /** 用户端只展示实际扣费时隐藏标准费用明细。 */
+  showStandardCost?: boolean
   showUpstreamEndpoint?: boolean
   /** 用户端只展示成员归因，不提供管理端余额入口。 */
   userClickable?: boolean
@@ -604,6 +606,8 @@ interface Props {
   compactUserColumn?: boolean
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
+  /** 页面已有独立批量地区按钮时关闭表格内部工具条。 */
+  showIpGeoToolbar?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -612,10 +616,12 @@ const props = withDefaults(defineProps<Props>(), {
   defaultSortKey: '',
   defaultSortOrder: 'asc',
   showAccountBilling: true,
+  showStandardCost: true,
   showUpstreamEndpoint: true,
   userClickable: true,
   compactUserColumn: false,
-  flat: false
+  flat: false,
+  showIpGeoToolbar: true,
 })
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
@@ -627,6 +633,7 @@ const { balanceUnitSymbol, usdUnitSymbol, formatBalanceAmount, formatUsdAmount }
 const { copyToClipboard } = useClipboard()
 const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
+const showStandardCost = props.showStandardCost
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const userClickable = props.userClickable
 const compactUserColumn = computed(() => props.compactUserColumn)
@@ -655,7 +662,7 @@ const usageUserTitle = (row: AdminUsageLog): string => {
   return username || email
 }
 
-const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+const showIpGeoToolbar = computed(() => props.showIpGeoToolbar && props.columns.some((col) => col.key === 'ip_address'))
 
 const currentPageIps = computed(() =>
   Array.from(new Set(props.data.map((row) => row.ip_address).filter((ip): ip is string => Boolean(ip))))

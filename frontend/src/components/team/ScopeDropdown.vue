@@ -2,14 +2,14 @@
   <div ref="dropdownRef" class="relative" data-tour="keys-scope-switch">
     <button
       type="button"
-      class="btn btn-secondary px-2 md:px-3"
+      class="btn btn-secondary h-11 w-11 p-0 md:h-auto md:w-auto md:px-3 md:py-2.5"
       :title="t('team.scopeSwitch')"
       :aria-expanded="open"
       aria-haspopup="menu"
       data-test="scope-dropdown-trigger"
       @click="open = !open"
     >
-      <Icon :name="scope === 'team' ? 'users' : 'user'" size="sm" class="md:mr-1.5" />
+      <Icon :name="scope === 'team' ? 'users' : 'user'" size="md" class="md:mr-1.5" />
       <span class="hidden md:inline">{{ currentLabel }}</span>
       <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
     </button>

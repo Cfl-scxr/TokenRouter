@@ -1,7 +1,11 @@
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden" :class="flat ? '' : 'card'">
-      <IpGeoBatchToolbar :ips="rows.map((r) => r.client_ip)" @failed="emit('ipGeoBatchFailed')" />
+      <IpGeoBatchToolbar
+        v-if="showIpGeoToolbar"
+        :ips="rows.map((r) => r.client_ip)"
+        @failed="emit('ipGeoBatchFailed')"
+      />
 
       <DataTable
         :columns="columns"
@@ -291,6 +295,8 @@ interface Props {
   visibleColumnKeys?: string[]
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
+  /** 页面已有独立批量地区按钮时关闭表格内部工具条。 */
+  showIpGeoToolbar?: boolean
 }
 
 interface Emits {
@@ -302,8 +308,11 @@ interface Emits {
   (e: 'userClick', userId: number, email?: string): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showIpGeoToolbar: true,
+})
 const emit = defineEmits<Emits>()
+const showIpGeoToolbar = computed(() => props.showIpGeoToolbar)
 
 function onSort(key: string, order: 'asc' | 'desc') {
   emit('sort', mapErrorSortKey(key), order)

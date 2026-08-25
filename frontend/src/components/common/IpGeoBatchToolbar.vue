@@ -1,14 +1,18 @@
 <template>
   <div
     v-if="uniqueIps.length > 0"
-    class="flex flex-shrink-0 items-center justify-end gap-2 border-b border-gray-200 px-4 py-2 dark:border-dark-700"
+    class="flex flex-shrink-0 items-center justify-end gap-2"
+    :class="inline
+      ? ''
+      : 'border-b border-gray-200 px-4 py-2 dark:border-dark-700'"
   >
-    <span v-if="pendingCount > 0" class="text-xs text-gray-500 dark:text-gray-400">
-      {{ t('usage.ipGeo.pending', { count: pendingCount }) }}
-    </span>
     <button
       type="button"
-      class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/30"
+      :class="inline
+        ? compact
+          ? 'btn btn-secondary btn-sm h-[34px]'
+          : 'btn btn-secondary'
+        : 'inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-900/30'"
       :disabled="loading || pendingCount === 0"
       @click="run"
     >
@@ -26,15 +30,24 @@ import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
 
 // 当前页 IP 批量地理查询工具条:传入原始 IP 列表(可含空值),内部去重;
 // 无 IP 时自身不渲染。批量失败 emit failed,由使用方弹提示。
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   ips: Array<string | null | undefined>
-}>()
+  /** 嵌入页面操作栏时使用按钮样式，不显示表格工具条边框。 */
+  inline?: boolean
+  /** 紧凑筛选区使用小尺寸按钮，避免撑高或挤压网格布局。 */
+  compact?: boolean
+}>(), {
+  inline: false,
+  compact: false,
+})
 
 const emit = defineEmits<{
   (e: 'failed'): void
 }>()
 
 const { t } = useI18n()
+const inline = computed(() => props.inline)
+const compact = computed(() => props.compact)
 
 const uniqueIps = computed(() =>
   Array.from(new Set(props.ips.filter((ip): ip is string => Boolean(ip))))

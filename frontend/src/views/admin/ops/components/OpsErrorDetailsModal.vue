@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import IpGeoBatchToolbar from '@/components/common/IpGeoBatchToolbar.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
 import { opsAPI, type OpsErrorLog } from '@/api/admin/ops'
 import { buildOpsErrorTimeParams } from '../utils/opsErrorParams'
@@ -260,10 +261,11 @@ watch(
             <Select :model-value="viewMode" :options="viewModeSelectOptions" @update:model-value="viewMode = $event as any" />
           </div>
 
-          <div class="flex items-center justify-end">
-            <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-950 dark:text-gray-300 dark:hover:bg-dark-800" @click="resetFilters">
+          <div class="col-span-2 flex items-center justify-start gap-1 md:col-span-2 md:justify-end">
+            <button type="button" class="btn btn-secondary btn-sm h-[34px] whitespace-nowrap" @click="resetFilters">
               {{ t('common.reset') }}
             </button>
+            <IpGeoBatchToolbar :ips="rows.map((row) => row.client_ip)" inline compact />
           </div>
         </div>
       </div>
@@ -281,6 +283,7 @@ watch(
             :loading="loading"
             :page="page"
             :page-size="pageSize"
+            :show-ip-geo-toolbar="false"
             @openErrorDetail="emit('openErrorDetail', $event)"
             @sort="onSort"
 

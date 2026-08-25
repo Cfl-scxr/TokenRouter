@@ -61,7 +61,7 @@
       </div>
 
       <!-- Token Usage Trend Chart -->
-      <TokenUsageTrend :trend-data="trend" :loading="loading" />
+      <TokenUsageTrend :trend-data="trend" :loading="loading" :granularity="granularity === 'hour' ? 'hour' : 'day'" />
     </div>
   </div>
 </template>

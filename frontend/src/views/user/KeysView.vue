@@ -28,7 +28,7 @@
               <button
                 @click="loadApiKeys"
                 :disabled="loading"
-                class="btn btn-secondary"
+                class="btn btn-secondary h-11 w-11 p-0 md:h-auto md:w-auto md:px-3 md:py-2.5"
                 :title="t('common.refresh')"
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
@@ -37,10 +37,10 @@
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click.stop="showColumnDropdown = !showColumnDropdown"
-                  class="btn btn-secondary px-2 md:px-3"
+                  class="btn btn-secondary h-11 w-11 p-0 md:h-auto md:w-auto md:px-3 md:py-2.5"
                   :title="t('keys.columnSettings')"
                 >
-                  <Icon name="grid" size="sm" class="md:mr-1.5" />
+                  <Icon name="grid" size="md" class="md:mr-1.5" />
                   <span class="hidden md:inline">{{ t('keys.columnSettings') }}</span>
                   <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
                 </button>

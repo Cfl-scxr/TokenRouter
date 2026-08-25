@@ -55,12 +55,12 @@
         <p class="text-xl font-bold text-green-600">
           {{ formatBalanceAmount(stats?.total_actual_cost || 0, { fractionDigits: 4 }) }}
         </p>
-        <p class="text-xs text-gray-400">
+        <p v-if="showStandardCost || (showAccountCost && totalAccountCost != null)" class="text-xs text-gray-400">
           <template v-if="showAccountCost && totalAccountCost != null">
             <span class="text-orange-500">{{ t('usage.accountCost') }} {{ formatUsdAmount(totalAccountCost, { fractionDigits: 4 }) }}</span>
-            <span> · </span>
+            <span v-if="showStandardCost"> · </span>
           </template>
-          <span>
+          <span v-if="showStandardCost">
             {{ t('usage.standardCost') }}
             <span :class="{ 'line-through': strikeStandardCost }">{{ formatUsdAmount(stats?.total_cost || 0, { fractionDigits: 4 }) }}</span>
           </span>
@@ -89,9 +89,11 @@ const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
   showAccountCost?: boolean
   strikeStandardCost?: boolean
+  showStandardCost?: boolean
 }>(), {
   showAccountCost: true,
   strikeStandardCost: false,
+  showStandardCost: true,
 })
 
 const { t } = useI18n()
@@ -103,6 +105,7 @@ const totalAccountCost = computed(() => {
 })
 const showAccountCost = computed(() => props.showAccountCost)
 const strikeStandardCost = computed(() => props.strikeStandardCost)
+const showStandardCost = computed(() => props.showStandardCost)
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`
