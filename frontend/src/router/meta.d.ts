@@ -88,5 +88,10 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * 页面自身已经提供标题区时，隐藏 AppLayout 的通用标题。
+     */
+    hidePageHeading?: boolean
   }
 }

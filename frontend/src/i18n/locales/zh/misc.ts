@@ -144,7 +144,7 @@ marketplace: {
 // Recharge / Subscription Page
   purchase: {
     title: '充值/订阅',
-    description: '通过内嵌页面完成充值/订阅',
+    description: '购买新的套餐',
     openInNewTab: '新窗口打开',
     notEnabledTitle: '该功能未开启',
     notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',
@@ -517,6 +517,7 @@ marketplace: {
     },
     orders: {
       title: '我的订单',
+      description: '查看和管理您的支付订单',
       empty: '暂无订单',
       orderId: '订单 ID',
       orderNo: '订单编号',
@@ -560,7 +561,7 @@ marketplace: {
     rechargeAccount: '充值账户',
     activeSubscription: '当前订阅',
     noActiveSubscription: '暂无有效订阅',
-    tabTopUp: '充值',
+    tabTopUp: '按量',
     tabSubscribe: '订阅',
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',

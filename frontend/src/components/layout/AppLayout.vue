@@ -3,19 +3,25 @@
     <!-- Background Decoration -->
     <div class="ba-theme-backdrop pointer-events-none fixed inset-0"></div>
 
-    <!-- Sidebar -->
+    <!-- 全局顶栏横跨侧栏和内容区，页面标题由内容区承载。 -->
+    <AppHeader />
+
+    <!-- Sidebar and Main Content Area -->
     <AppSidebar />
 
-    <!-- Main Content Area -->
     <div
-      class="relative z-10 min-h-screen min-w-0 transition-all duration-300"
+      class="relative z-10 min-h-screen min-w-0 pt-16 transition-all duration-300"
       :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-56']"
     >
-      <!-- Header -->
-      <AppHeader />
-
       <!-- Main Content -->
-      <main class="min-w-0 p-4 md:p-6 lg:p-8">
+      <main
+        class="app-main min-w-0 px-4 pb-4 pt-4 md:px-6 md:pb-6 md:pt-5 lg:px-8 lg:pb-8 lg:pt-4"
+        :class="{ 'has-page-heading': pageTitle }"
+      >
+        <div v-if="pageTitle" class="page-heading mb-4">
+          <h1 class="page-title">{{ pageTitle }}</h1>
+          <p v-if="pageDescription" class="page-description">{{ pageDescription }}</p>
+        </div>
         <slot />
       </main>
     </div>
@@ -28,6 +34,7 @@ import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
+import { usePageMeta } from '@/composables/usePageMeta'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
@@ -43,6 +50,7 @@ const { replayTour, startTeamTour } = useOnboardingTour({
 })
 
 const onboardingStore = useOnboardingStore()
+const { pageTitle, pageDescription } = usePageMeta()
 
 onMounted(() => {
   onboardingStore.setReplayCallback(replayTour)
@@ -51,3 +59,14 @@ onMounted(() => {
 
 defineExpose({ replayTour })
 </script>
+
+<style scoped>
+/* 表格页需要知道内容区标题占用的固定空间，避免滚动区域向视口底部溢出。 */
+.app-main {
+  --page-heading-space: 0px;
+}
+
+.app-main.has-page-heading {
+  --page-heading-space: 5rem;
+}
+</style>

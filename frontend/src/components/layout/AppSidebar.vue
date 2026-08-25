@@ -6,30 +6,6 @@
       { '-translate-x-full lg:translate-x-0': !mobileOpen }
     ]"
   >
-    <!-- Logo/Brand -->
-    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
-      <!-- Custom Logo or Default Logo -->
-      <router-link
-        :to="homePath"
-        class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl transition-opacity hover:opacity-80"
-        @click="handleMenuItemClick(homePath)"
-      >
-        <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-      </router-link>
-      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-        <router-link
-          :to="homePath"
-          :tabindex="sidebarCollapsed ? -1 : undefined"
-          class="sidebar-brand-title text-lg font-bold text-gray-900 transition-colors hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
-          @click="handleMenuItemClick(homePath)"
-        >
-          {{ siteName }}
-        </router-link>
-        <!-- Version Badge -->
-        <VersionBadge :version="siteVersion" />
-      </div>
-    </div>
-
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
       <!-- Admin View: Admin menu first, then personal menu -->
@@ -165,9 +141,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'v
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
-import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
-import { sanitizeUrl } from '@/utils/url'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 
 interface NavItem {
@@ -195,17 +169,8 @@ const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 
-// 品牌入口按当前身份返回对应首页。
-const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
-
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())
-
-// Site settings from appStore (cached, no flicker)
-const siteName = computed(() => appStore.siteName)
-const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteVersion = computed(() => appStore.siteVersion)
-const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -880,43 +845,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.sidebar-logo {
-  flex: 0 0 2.25rem;
-  min-width: 2.25rem;
-}
-
-.sidebar-header-collapsed {
-  gap: 0;
-  padding-left: 1.125rem;
-  padding-right: 1.125rem;
-}
-
-.sidebar-brand {
-  min-width: 0;
-  flex: 1 1 auto;
-  white-space: nowrap;
-  transition:
-    max-width 0.22s ease,
-    opacity 0.14s ease,
-    transform 0.14s ease;
-  max-width: 12rem;
-}
-
-.sidebar-brand-collapsed {
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(-4px);
-  pointer-events: none;
-}
-
-.sidebar-brand-title {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .sidebar-link-collapsed {
   gap: 0;
   padding-left: 0.875rem;

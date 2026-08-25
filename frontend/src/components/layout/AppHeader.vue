@@ -1,8 +1,8 @@
 <template>
-  <header class="glass sticky top-0 z-30 border-b border-primary-900/10 dark:border-dark-600/80">
-    <div class="flex h-16 items-center justify-between gap-2 px-2 sm:px-4 md:px-6">
-      <!-- Left: Mobile Menu Toggle + Page Title -->
-      <div class="flex shrink-0 items-center gap-2 sm:gap-4">
+  <header class="glass fixed inset-x-0 top-0 z-50 border-b border-primary-900/10 dark:border-dark-600/80">
+    <div class="flex h-16 items-center justify-between gap-3 px-3 sm:px-5 md:px-7">
+      <!-- 品牌固定在全局顶栏，避免与侧栏和页面标题争夺层级。 -->
+      <div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
         <button
           @click="toggleMobileSidebar"
           class="btn-ghost btn-icon lg:hidden"
@@ -11,17 +11,21 @@
           <Icon name="menu" size="md" />
         </button>
 
-        <div class="hidden lg:block">
-          <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ pageTitle }}
-          </h1>
-          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
-            {{ pageDescription }}
-          </p>
-        </div>
+        <router-link
+          :to="homePath"
+          class="header-brand flex min-w-0 items-center gap-2.5 rounded-control px-1.5 py-1 transition-colors hover:bg-primary-100/70 dark:hover:bg-dark-800/80"
+        >
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-100 dark:bg-dark-800">
+            <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" :alt="siteName" class="h-full w-full object-contain" />
+          </span>
+          <span class="hidden min-w-0 sm:block">
+            <span class="block max-w-44 truncate text-base font-bold leading-tight text-gray-900 dark:text-white">{{ siteName }}</span>
+            <VersionBadge :version="siteVersion" />
+          </span>
+        </router-link>
       </div>
 
-      <!-- 右侧状态项：只调整按钮形状、间距和分隔线，不改变顶部栏主体结构。 -->
+      <!-- 右侧状态项保持紧凑，作为全局账户工具区。 -->
       <div class="header-status-actions">
         <div class="header-status-icon-group">
           <div v-if="user" class="hidden sm:block">
@@ -238,29 +242,32 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
-import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
-const route = useRoute()
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 const { formatBalanceAmount } = useBalanceDisplay()
 const { isDark, toggleTheme } = useTheme()
 
 const user = computed(() => authStore.user)
+const homePath = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/dashboard'))
+const siteName = computed(() => appStore.siteName)
+const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+const siteVersion = computed(() => appStore.siteVersion)
+const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
@@ -330,30 +337,6 @@ const displayName = computed(() => {
   return user.value.username || user.value.email?.split('@')[0] || ''
 })
 
-const pageTitle = computed(() => {
-  // For custom pages, use the menu item's label instead of generic "自定义页面"
-  if (route.name === 'CustomPage') {
-    const id = route.params.id as string
-    const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
-    const menuItem = publicItems.find((item) => item.id === id)
-      ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
-    if (menuItem?.label) return menuItem.label
-  }
-  const titleKey = route.meta.titleKey as string
-  if (titleKey) {
-    return t(titleKey)
-  }
-  return (route.meta.title as string) || ''
-})
-
-const pageDescription = computed(() => {
-  const descKey = route.meta.descriptionKey as string
-  if (descKey) {
-    return t(descKey)
-  }
-  return (route.meta.description as string) || ''
-})
-
 function toggleMobileSidebar() {
   appStore.toggleMobileSidebar()
 }
@@ -404,6 +387,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .header-status-actions {
   @apply ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-3.5;
+}
+
+.header-brand {
+  max-width: min(18rem, 42vw);
 }
 
 .header-status-icon-group {

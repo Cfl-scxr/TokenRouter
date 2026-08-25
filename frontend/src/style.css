@@ -741,21 +741,13 @@
 
   /* ============ 侧边栏 ============ */
   .sidebar {
-    @apply fixed inset-y-0 left-0 z-40;
+    @apply fixed bottom-0 left-0 z-40;
     @apply w-56 bg-white dark:bg-dark-900/95;
     @apply border-r border-primary-900/10 dark:border-dark-600;
     @apply flex flex-col;
     @apply transition-transform duration-300;
     transition-property: width, transform;
-  }
-
-  .sidebar-header {
-    @apply h-16 px-6;
-    @apply flex items-center gap-3;
-    @apply border-b border-primary-900/10 dark:border-dark-600;
-    transition:
-      padding 0.2s ease,
-      gap 0.2s ease;
+    top: 4rem;
   }
 
   .sidebar-nav {

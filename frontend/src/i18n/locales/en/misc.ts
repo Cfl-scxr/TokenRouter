@@ -145,7 +145,7 @@ marketplace: {
 // Recharge / Subscription Page
   purchase: {
     title: 'Recharge / Subscription',
-    description: 'Recharge balance or purchase subscription via the embedded page',
+    description: 'Purchase a new plan',
     openInNewTab: 'Open in new tab',
     notEnabledTitle: 'Feature not enabled',
     notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
@@ -493,6 +493,7 @@ marketplace: {
     },
     orders: {
       title: 'My Orders',
+      description: 'View and manage your payment orders',
       empty: 'No orders yet',
       orderId: 'Order ID',
       orderNo: 'Order No.',
@@ -536,7 +537,7 @@ marketplace: {
     rechargeAccount: 'Recharge Account',
     activeSubscription: 'Active Subscription',
     noActiveSubscription: 'No active subscription',
-    tabTopUp: 'Top Up',
+    tabTopUp: 'Pay-as-you-go',
     tabSubscribe: 'Subscribe',
     noPlans: 'No subscription plans available',
     notAvailable: 'Top-up is currently unavailable',

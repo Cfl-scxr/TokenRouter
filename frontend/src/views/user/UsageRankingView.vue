@@ -1,9 +1,14 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <section class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div class="hidden lg:block"></div>
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <!-- 标题与筛选工具共用一行，保持和 OpenRouter 页面工具栏一致。 -->
+      <section class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0">
+          <h1 class="page-title">{{ t('usageRanking.title') }}</h1>
+          <p class="page-description">{{ t('usageRanking.description') }}</p>
+        </div>
+
+        <div class="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
           <div>
             <label class="input-label">{{ t('usageRanking.timeRange') }}</label>
             <DateRangePicker

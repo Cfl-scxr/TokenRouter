@@ -73,21 +73,12 @@ describe('AppSidebar scroll position persistence', () => {
   })
 })
 
-describe('AppSidebar header styles', () => {
-  it('does not clip the version badge dropdown', () => {
-    const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)
-    const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\}/)
-
-    expect(sidebarHeaderBlockMatch).not.toBeNull()
-    expect(sidebarBrandBlockMatch).not.toBeNull()
-    expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
-    expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
-  })
-
-  it('links the logo and site name to the role-specific dashboard', () => {
-    expect(componentSource).toContain("const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))")
-    expect(componentSource.match(/:to="homePath"/g)).toHaveLength(2)
-    expect(componentSource).toContain(':tabindex="sidebarCollapsed ? -1 : undefined"')
+describe('global header and sidebar hierarchy', () => {
+  it('keeps branding out of the sidebar and places the global header before it', () => {
+    expect(componentSource).not.toContain('sidebar-header')
+    expect(componentSource).not.toContain('sidebar-brand')
+    expect(layoutSource).toContain('<AppHeader />')
+    expect(layoutSource.indexOf('<AppHeader />')).toBeLessThan(layoutSource.indexOf('<AppSidebar />'))
   })
 })
 

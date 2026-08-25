@@ -46,7 +46,8 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: false,
       title: 'Model Marketplace',
-      titleKey: 'marketplace.title'
+      titleKey: 'marketplace.title',
+      descriptionKey: 'marketplace.subtitle'
     }
   },
   {
@@ -283,7 +284,8 @@ const routes: RouteRecordRaw[] = [
       requiresUsageRanking: true,
       title: 'Usage Ranking',
       titleKey: 'usageRanking.title',
-      descriptionKey: 'usageRanking.description'
+      descriptionKey: 'usageRanking.description',
+      hidePageHeading: true
     }
   },
   {
@@ -357,6 +359,7 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'My Orders',
       titleKey: 'nav.myOrders',
+      descriptionKey: 'payment.orders.description',
       requiresPayment: true
     }
   },
@@ -615,7 +618,8 @@ const routes: RouteRecordRaw[] = [
       title: 'Risk Control',
       titleKey: 'admin.riskControl.title',
       descriptionKey: 'admin.riskControl.description',
-      requiresRiskControl: true
+      requiresRiskControl: true,
+      hidePageHeading: true
     }
   },
   {
