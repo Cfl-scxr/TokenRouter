@@ -15,16 +15,19 @@
       </div>
     </div>
 
-    <!-- 小屏横向滚动；格子按列弹性铺满卡片宽度 -->
-    <div class="overflow-x-auto">
+    <!--
+      格子固定 12px、间距 3px，周列数随容器宽度自适应（宽屏显示更多历史周），
+      justify-between 把不足一格的零头均摊到列间隙，保证左右贴齐。
+    -->
+    <div ref="gridWrapRef">
       <!--
         统一网格：第 1 列是星期标签，第 1 行是月份标签，其余为日期格子。
         格子显式指定 gridColumn/gridRow，保证标签与格子严格对齐。
       -->
       <div
-        class="grid w-full min-w-[720px]"
+        class="grid justify-between"
         :style="{
-          gridTemplateColumns: `auto repeat(${weekCount}, minmax(0, 1fr))`,
+          gridTemplateColumns: `auto repeat(${visibleWeeks}, ${CELL_SIZE})`,
           gap: CELL_GAP,
         }"
       >
@@ -44,12 +47,12 @@
           :style="{ gridColumn: 1, gridRow: w.row + 2 }"
         >{{ w.label }}</div>
 
-        <!-- 日期格子：aspect-square 让行高跟随列宽，整网格自动铺满 -->
+        <!-- 日期格子 -->
         <div
-          v-for="day in days"
+          v-for="day in visibleDays"
           :key="day.date"
           data-testid="heatmap-cell"
-          class="aspect-square w-full rounded-sm"
+          class="h-3 w-3 rounded-sm"
           :class="day.future ? 'invisible' : levelClass(day.level)"
           :style="{ gridColumn: day.weekIndex + 2, gridRow: day.dayOfWeek + 2 }"
           @mouseenter="onCellHover(day, $event)"
@@ -59,7 +62,7 @@
     </div>
 
     <!--
-      悬停提示：放在滚动容器外、卡片内绝对定位，避免被 overflow-x-auto 裁剪。
+      悬停提示：卡片内绝对定位，避免被滚动容器裁剪。
       前两行格子改为下方弹出，避免超出卡片顶部。
     -->
     <div
@@ -80,14 +83,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { usageAPI } from '@/api/usage'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { formatDateLocalInput, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens } from '@/utils/format'
 
+const CELL_SIZE = '12px'
 const CELL_GAP = '3px'
+// 自适应列数计算用的像素常量；LABEL_COL_PX 是星期标签列的近似宽度
+const CELL_PX = 12
+const GAP_PX = 3
+const LABEL_COL_PX = 24
+// 拉取近三年的按日数据，宽屏时可以显示更多历史周；测不出宽度时回退到 53 周（近一年）
+const FETCH_DAYS = 3 * 364
+const FALLBACK_WEEKS = 53
 // 格子分档色：0 为无用量，1-4 按用量分位递增
 const LEVEL_CLASSES = [
   'bg-gray-100 dark:bg-dark-700',
@@ -115,17 +126,21 @@ const loading = ref(false)
 const days = ref<HeatmapDay[]>([])
 const hoveredDay = ref<HeatmapDay | null>(null)
 const cardRef = ref<HTMLElement | null>(null)
+const gridWrapRef = ref<HTMLElement | null>(null)
 // 悬停格子中心相对卡片左上角的坐标，用于 tooltip 定位
 const hoverPos = ref({ left: 0, top: 0 })
+// 网格容器宽度，驱动可见周数自适应
+const gridWidth = ref(0)
+let resizeObserver: ResizeObserver | null = null
 
 const levelClass = (level: number) => LEVEL_CLASSES[level] ?? LEVEL_CLASSES[0]
 
-// 近一年的日期序列：从今天向前 364 天，再向前对齐到周日，保证整周列
+// 拉取范围：近三年，向前对齐到周日，保证整周列
 // start 从 end 克隆，保证两者时分秒一致，最后一天比较不会出现毫秒级漂移
 const buildDateRange = () => {
   const end = new Date()
   const start = new Date(end)
-  start.setDate(start.getDate() - 364)
+  start.setDate(start.getDate() - FETCH_DAYS)
   start.setDate(start.getDate() - start.getDay())
   return { start, end }
 }
@@ -196,17 +211,39 @@ const load = async () => {
   }
 }
 
-// 网格列数 = 周数（含占位格）
-const weekCount = computed(() => Math.ceil(days.value.length / 7))
+// 数据覆盖的总周数（含占位格）
+const totalWeeks = computed(() => Math.ceil(days.value.length / 7))
 
-// 月份标签：每周首格（周日）月份与上一列不同才显示
+// 可见周数随容器宽度自适应；测不出宽度（如测试环境）时回退 53 周
+const visibleWeeks = computed(() => {
+  const total = totalWeeks.value
+  if (gridWidth.value <= 0) return total > 0 ? Math.min(FALLBACK_WEEKS, total) : FALLBACK_WEEKS
+  const fit = Math.floor((gridWidth.value - LABEL_COL_PX + GAP_PX) / (CELL_PX + GAP_PX))
+  return Math.max(4, Math.min(fit, total || fit))
+})
+
+// 只渲染最近 visibleWeeks 周，weekIndex 重新从 0 编排
+const visibleDays = computed(() =>
+  days.value.slice(-visibleWeeks.value * 7).map((day, i) => ({
+    ...day,
+    weekIndex: Math.floor(i / 7),
+  }))
+)
+
+// 月份标签：每周首格（周日）月份与上一列不同才显示；
+// 与上一个标签间隔不足 MIN_MONTH_LABEL_GAP 列时，用新月份替换掉旧标签（保近舍远），避免挨在一起
+const MIN_MONTH_LABEL_GAP = 3
 const monthItems = computed(() => {
   const items: { weekIndex: number; label: string }[] = []
   let prevMonth = -1
-  for (const day of days.value) {
+  for (const day of visibleDays.value) {
     if (day.dayOfWeek !== 0) continue
     const month = new Date(`${day.date}T00:00:00`).getMonth()
     if (month !== prevMonth) {
+      const prev = items[items.length - 1]
+      if (prev && day.weekIndex - prev.weekIndex < MIN_MONTH_LABEL_GAP) {
+        items.pop()
+      }
       items.push({ weekIndex: day.weekIndex, label: formatMonth(day.date) })
     }
     prevMonth = month
@@ -229,7 +266,7 @@ const formatMonth = (date: string) =>
 const formatDayLabel = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString(locale.value, { year: 'numeric', month: 'short', day: 'numeric' })
 
-// 以格子中心相对卡片的位置定位 tooltip，兼容弹性格宽与横向滚动
+// 以格子中心相对卡片的位置定位 tooltip
 const onCellHover = (day: HeatmapDay, event: MouseEvent) => {
   if (day.future) return
   const cell = event.currentTarget as HTMLElement
@@ -257,7 +294,19 @@ const tooltipStyle = computed(() => {
 })
 
 onMounted(() => {
+  // 监听容器宽度变化，窗口缩放时实时调整可见周数
+  if (gridWrapRef.value && typeof ResizeObserver !== 'undefined') {
+    gridWidth.value = gridWrapRef.value.clientWidth
+    resizeObserver = new ResizeObserver((entries) => {
+      gridWidth.value = entries[0]?.contentRect.width ?? 0
+    })
+    resizeObserver.observe(gridWrapRef.value)
+  }
   void load()
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
 })
 
 // 供仪表盘刷新按钮联动调用
