@@ -78,7 +78,7 @@
         </div>
       </div>
 
-      <div class="card p-4 sm:p-6">
+      <div class="card p-4">
         <div class="flex items-center justify-between gap-3">
           <div ref="filterPanelRef" class="relative shrink-0">
             <button
