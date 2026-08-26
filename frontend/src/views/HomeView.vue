@@ -62,9 +62,12 @@
             :to="dashboardPath"
             class="inline-flex items-center gap-1.5 rounded-full bg-primary-600 py-1.5 pl-1.5 pr-3 text-xs font-semibold text-white shadow-none transition hover:bg-primary-700 dark:bg-primary-600 dark:text-white dark:hover:bg-primary-700"
           >
-            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-primary-500 text-[10px] text-white">
-              {{ userInitial }}
-            </span>
+            <UserAvatar
+              :user-id="authStore.user?.id"
+              :avatar-url="authStore.user?.avatar_url || ''"
+              :alt="authStore.user?.username || authStore.user?.email || ''"
+              size-class="h-5 w-5"
+            />
             {{ t('home.dashboard') }}
           </router-link>
           <router-link
@@ -522,6 +525,7 @@ import { useAuthStore, useAppStore } from '@/stores'
 import GitHubMark from '@/components/auth/GitHubMark.vue'
 import GoogleOneTap from '@/components/auth/GoogleOneTap.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useTheme } from '@/composables/useTheme'
@@ -621,11 +625,6 @@ const { isDark, toggleTheme } = useTheme()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
-const userInitial = computed(() => {
-  const user = authStore.user
-  if (!user || !user.email) return ''
-  return user.email.charAt(0).toUpperCase()
-})
 
 const googleOneTapClientID = computed(
   () => appStore.cachedPublicSettings?.google_oauth_client_id || ''

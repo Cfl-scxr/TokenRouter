@@ -53,37 +53,28 @@
               </div>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                data-testid="profile-overview-metric-balance"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+            <div class="flex flex-wrap gap-x-10 gap-y-4">
+              <div data-testid="profile-overview-metric-balance">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('profile.accountBalance') }}
                 </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ formatBalanceAmount(user?.balance ?? 0) }}
                 </p>
               </div>
-              <div
-                data-testid="profile-overview-metric-concurrency"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <div data-testid="profile-overview-metric-concurrency">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('profile.concurrencyLimit') }}
                 </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ user?.concurrency || 0 }}
                 </p>
               </div>
-              <div
-                data-testid="profile-overview-metric-member-since"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              <div data-testid="profile-overview-metric-member-since">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('profile.memberSince') }}
                 </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
                   {{ memberSinceLabel }}
                 </p>
               </div>
