@@ -46,7 +46,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
       t: (key: string, params?: Record<string, string>) => {
         if (key === 'profile.avatar.title') return 'Profile avatar'
         if (key === 'profile.avatar.description') return 'Upload and manage your avatar'
-        if (key === 'profile.avatar.uploadAction') return 'Upload image'
+        if (key === 'profile.avatar.uploadAction') return 'Upload'
         if (key === 'profile.avatar.uploadHint') return 'Uploaded images are compressed to 20KB when possible'
         if (key === 'profile.avatar.saveSuccess') return 'Avatar updated'
         if (key === 'profile.avatar.deleteSuccess') return 'Avatar removed'

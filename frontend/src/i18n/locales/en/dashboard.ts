@@ -707,7 +707,7 @@ affiliate: {
     avatar: {
       title: 'Profile Avatar',
       description: 'Upload an avatar image. Static uploads are compressed to 20KB before saving.',
-      uploadAction: 'Upload image',
+      uploadAction: 'Upload',
       uploadHint: 'Static uploads are compressed to 20KB when possible. GIF uploads must already be within 20KB.',
       uploadRequired: 'Upload an avatar image first',
       saveSuccess: 'Avatar updated',
