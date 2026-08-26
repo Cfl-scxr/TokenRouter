@@ -31,6 +31,7 @@ var openAIPersistentTransportErrorMarkers = []string{
 	"authentication failed",
 	"proxy authentication required",
 	"connection refused",
+
 	"no route to host",
 	"network is unreachable",
 	"no such host",
@@ -57,6 +58,11 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 		}
 	}
 	return openAITransportErrorClass{}
+}
+
+// classifyUpstreamTransportError 兼容网关通用传输错误处理，复用 OpenAI 的持久故障判定。
+func classifyUpstreamTransportError(err error) openAITransportErrorClass {
+	return classifyOpenAITransportError(err)
 }
 
 // handleOpenAIUpstreamTransportError 处理没有 HTTP 响应的上游传输层错误。
@@ -96,6 +102,11 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	}
 
+	// 插件已把请求交给上游时，自动切换账号可能造成重复扣费或重复执行。
+	var pluginErr *PluginTransportError
+	if errors.As(err, &pluginErr) && pluginErr.RequestSent {
+		return err
+	}
 	if classifyOpenAITransportError(err).Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 	}
