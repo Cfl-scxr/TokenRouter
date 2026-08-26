@@ -80,6 +80,22 @@ describe('global header and sidebar hierarchy', () => {
     expect(layoutSource).toContain('<AppHeader />')
     expect(layoutSource.indexOf('<AppHeader />')).toBeLessThan(layoutSource.indexOf('<AppSidebar />'))
   })
+
+  it('starts the mobile overlay below the global header', () => {
+    // 遮罩不能位于半透明顶栏下方，否则 glass 背景会透出黑色并使顶栏变灰。
+    expect(componentSource).toContain('fixed inset-x-0 bottom-0 top-14 z-30 bg-black/50 lg:hidden')
+    expect(componentSource).not.toContain('fixed inset-0 z-30 bg-black/50 lg:hidden')
+  })
+
+  it('fades the mobile overlay in and out', () => {
+    // 遮罩应渐进显示和隐藏，避免打开侧栏时页面突然变暗。
+    expect(componentSource).toContain('.fade-enter-active')
+    expect(componentSource).toContain('transition: opacity 200ms ease-out;')
+    expect(componentSource).toContain('.fade-leave-active')
+    expect(componentSource).toContain('transition: opacity 150ms ease-in;')
+    expect(componentSource).toContain('.fade-enter-from,')
+    expect(componentSource).toContain('.fade-leave-to')
+  })
 })
 
 describe('AppSidebar admin personal menu', () => {

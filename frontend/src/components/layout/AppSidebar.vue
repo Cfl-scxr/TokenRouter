@@ -130,7 +130,7 @@
   <transition name="fade">
     <div
       v-if="mobileOpen"
-      class="fixed inset-0 z-30 bg-black/50 lg:hidden"
+      class="fixed inset-x-0 bottom-0 top-14 z-30 bg-black/50 lg:hidden"
       @click="closeMobile"
     ></div>
   </transition>
@@ -845,6 +845,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.fade-enter-active {
+  transition: opacity 200ms ease-out;
+}
+
+.fade-leave-active {
+  transition: opacity 150ms ease-in;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-enter-active,
+  .fade-leave-active {
+    transition-duration: 1ms;
+  }
+}
+
 .sidebar-link-collapsed {
   gap: 0;
   padding-left: 0.875rem;
