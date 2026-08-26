@@ -798,7 +798,7 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedC
 	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), headers.Get("session-id"))
 	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), headers.Get("thread-id"))
 	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "request", "client-request"), headers.Get("x-client-request-id"))
-	require.Equal(t, "internal-request", headers.Get("x-sub2api-request-id"))
+	require.Empty(t, headers.Get("x-sub2api-request-id"))
 }
 
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {

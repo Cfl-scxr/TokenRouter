@@ -28,7 +28,7 @@ RequestLogger
   -> embedded frontend and API routes
 ```
 
-`X-Request-ID` 是服务端请求关联 ID：长度和字符合法时沿用客户端值，否则生成 UUID，并写回响应和 request context。网关路由另外安装 `ClientRequestID`，始终为本服务生成内部请求 ID；合法的 `X-Client-Request-ID` 只作为调用方关联 ID 保存和回显，不参与权限或结算幂等。缺失或不安全时，`X-Client-Request-ID` 回退为内部 ID；内部 ID 另通过 `X-Sub2API-Request-ID` 返回并在允许的上游请求中透传。两者用途不同，不能互相覆盖。
+`X-Request-ID` 是服务端请求关联 ID：长度和字符合法时沿用客户端值，否则生成 UUID，并写回响应和 request context。网关路由另外安装 `ClientRequestID`，始终为本服务生成内部请求 ID；合法的 `X-Client-Request-ID` 只作为调用方关联 ID 保存和回显，不参与权限或结算幂等。缺失或不安全时，响应中的 `X-Client-Request-ID` 回退为内部 ID；内部 ID 另通过 `X-Sub2API-Request-ID` 返回。服务生成的关联 ID 不主动加入上游请求，避免把网关内部头发送给供应商。
 
 入口体积限制和错误采集按路由族叠加。网关在读取 JSON/multipart 之前应用通用或文本 body limit、client request ID、Ops error logger、endpoint 归一化和 API Key auth。面板接口使用全局/重查询限流和审计；高风险公开认证接口使用独立 Redis 限流并在依赖故障时 fail-close。
 
@@ -164,8 +164,8 @@ gemini_generate_content
 ## 请求关联
 
 - `X-Request-ID` 用于一次 HTTP 调用的日志和审计关联，最长持久化长度受限。
-- `X-Client-Request-ID` 是调用方提供的跨服务关联 ID；服务会限制为安全的 ASCII 标识并保留在日志链路中，但不作为内部结算幂等 ID。缺失或不安全时回退为服务生成的内部 ID。
-- `X-Sub2API-Request-ID` 是服务生成的内部请求 ID，用于本服务日志、结算幂等和下游诊断；它会写入响应，并在允许的 OpenAI 上游请求中透传。
+- `X-Client-Request-ID` 是调用方提供的跨服务关联 ID；服务会限制为安全的 ASCII 标识并保留在日志链路中，但不作为内部结算幂等 ID。缺失或不安全时，响应中的该头回退为服务生成的内部 ID。
+- `X-Sub2API-Request-ID` 是服务生成的内部请求 ID，用于本服务日志、结算幂等和下游诊断；它只写入响应，不加入上游请求。
 - 上游 request ID 属于供应商观测字段，需单独保存，不能替换本地 ID。
 - 后台 worker 从请求派生所需 metadata 后使用受超时约束的新 Context；不得继续持有已取消请求的 body 或 Gin context。
 

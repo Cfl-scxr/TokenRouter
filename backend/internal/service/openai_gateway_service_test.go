@@ -3239,7 +3239,7 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesExplicitAPIKeyBetaH
 	require.Equal(t, "api-key-specific-beta", req.Header.Get("OpenAI-Beta"), "OAuth-only backport must not alter API-key passthrough headers")
 }
 
-func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPropagatesInternalRequestID(t *testing.T) {
+func TestOpenAIBuildUpstreamRequestOpenAIPassthroughDoesNotPropagateInternalRequestID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -3250,7 +3250,7 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPropagatesInternalRequestID(
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token")
 	require.NoError(t, err)
-	require.Equal(t, "internal-request-123", req.Header.Get("X-Sub2API-Request-ID"))
+	require.Empty(t, req.Header.Get("X-Sub2API-Request-ID"))
 }
 
 func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T) {

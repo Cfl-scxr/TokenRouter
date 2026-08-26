@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
@@ -50,19 +49,15 @@ func ClientRequestID() gin.HandlerFunc {
 		}
 		ctx = logger.IntoContext(ctx, requestLogger)
 		c.Request = c.Request.WithContext(ctx)
-		// 保留合法的调用方 ID供上下游串联；没有调用方 ID 时才回写内部 ID。
-		if c.Request.Header == nil {
-			c.Request.Header = make(http.Header)
-		}
+		// 内部关联头由服务独占；清除调用方伪造值，避免被其它转发路径带到上游。
+		c.Request.Header.Del(internalRequestIDHeader)
+		// 只将关联 ID 写入响应；不把服务生成的内部 ID 加入上游请求。
 		if parentID != "" {
-			c.Request.Header.Set(clientRequestIDHeader, parentID)
 			c.Header(clientRequestIDHeader, parentID)
 		} else {
-			c.Request.Header.Set(clientRequestIDHeader, internalID)
 			c.Header(clientRequestIDHeader, internalID)
 		}
-		// 专用内部头不复用客户端可控的 X-Client-Request-ID，便于下游同时记录两类 ID。
-		c.Request.Header.Set(internalRequestIDHeader, internalID)
+		// 专用内部头只用于下游诊断响应，不加入出站上游请求。
 		c.Header(internalRequestIDHeader, internalID)
 		c.Next()
 	}

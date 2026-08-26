@@ -108,7 +108,6 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 			"session-id",
 			"thread-id",
 			"x-client-request-id",
-			"x-sub2api-request-id",
 		} {
 			if value := strings.TrimSpace(c.Request.Header.Get(name)); value != "" {
 				headers.Set(name, value)
