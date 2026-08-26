@@ -599,7 +599,6 @@ affiliate: {
     role: '角色',
     enterUsername: '输入用户名',
     editProfile: '编辑个人资料',
-    emailChangeRequiresVerification: '更换邮箱需要在下方登录方式绑定中完成验证码验证。',
     updateProfile: '更新资料',
     updating: '更新中...',
     updateSuccess: '资料更新成功',
@@ -713,7 +712,7 @@ affiliate: {
     avatar: {
       title: '资料头像',
       description: '仅支持上传头像图片；静态图片会自动压缩到 20KB 以内后再保存。',
-      uploadAction: '上传图片',
+      uploadAction: '上传',
       uploadHint: '上传图片时会自动压缩静态图片到 20KB 以内，GIF 需自行控制在 20KB 以内',
       uploadRequired: '请先上传头像图片',
       saveSuccess: '头像已更新',

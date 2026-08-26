@@ -594,7 +594,6 @@ affiliate: {
     role: 'Role',
     enterUsername: 'Enter username',
     editProfile: 'Edit Profile',
-    emailChangeRequiresVerification: 'Change email from the sign-in methods section after verification.',
     updateProfile: 'Update Profile',
     updating: 'Updating...',
     updateSuccess: 'Profile updated successfully',
