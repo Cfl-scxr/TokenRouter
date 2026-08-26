@@ -233,6 +233,38 @@
           </div>
         </template>
 
+        <template #cell-detailed_timing="{ row }">
+          <div v-if="row.detailed_timing" class="min-w-[280px] text-[11px] leading-4 text-gray-600 dark:text-gray-300">
+            <div class="grid grid-cols-[max-content_max-content_max-content_max-content] gap-x-2 gap-y-0.5">
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingRequestSize') }}</span>
+              <span class="font-medium tabular-nums">{{ formatRequestSize(row.detailed_timing.request_content_length) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingSlot') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.account_slot_acquired_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingGetConn') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.upstream_get_conn_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingGotConn') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.upstream_got_conn_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingWriteRequest') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.upstream_wrote_request_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingFirstByte') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.upstream_first_response_byte_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingFirstSSE') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.upstream_first_sse_data_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingVisible') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.first_visible_output_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingFlush') }}</span>
+              <span class="font-medium tabular-nums">{{ formatTimingMs(row.detailed_timing.first_downstream_flush_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.timingAttempts') }}</span>
+              <span class="font-medium tabular-nums">{{ row.detailed_timing.upstream_attempt_count ?? '-' }}</span>
+            </div>
+            <div v-if="row.detailed_timing.upstream_connection_reused || row.detailed_timing.upstream_wrote_request_error" class="mt-1 flex flex-wrap gap-x-2 text-[10px]">
+              <span v-if="row.detailed_timing.upstream_connection_reused" class="text-emerald-600 dark:text-emerald-400">{{ t('usage.timingReused') }}</span>
+              <span v-if="row.detailed_timing.upstream_wrote_request_error" class="text-rose-600 dark:text-rose-400">{{ t('usage.timingWriteError') }}</span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">{{ t('usage.timingUnavailable') }}</span>
+        </template>
+
         <template #cell-created_at="{ value }">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
@@ -812,6 +844,18 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+const formatTimingMs = (ms: number | null | undefined): string => {
+  if (ms == null) return '-'
+  return formatDuration(ms)
+}
+
+const formatRequestSize = (bytes: number | null | undefined): string => {
+  if (bytes == null) return '-'
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)}MB`
 }
 
 // 费用 Tooltip 交互。

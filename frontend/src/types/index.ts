@@ -1975,6 +1975,7 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  detailed_timing?: UsageLogTiming | null
   upstream_model?: string | null
   model_mapping_chain?: string | null
 
@@ -1989,6 +1990,24 @@ export interface AdminUsageLog extends UsageLog {
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
+}
+
+export interface UsageLogTiming {
+  request_content_length?: number | null
+  account_slot_acquired_ms?: number | null
+  upstream_get_conn_ms?: number | null
+  upstream_got_conn_ms?: number | null
+  upstream_wrote_request_ms?: number | null
+  upstream_first_response_byte_ms?: number | null
+  upstream_first_sse_data_ms?: number | null
+  first_visible_output_ms?: number | null
+  first_downstream_flush_ms?: number | null
+  upstream_get_conn_count?: number | null
+  upstream_got_conn_count?: number | null
+  upstream_attempt_count?: number | null
+  upstream_first_response_byte_count?: number | null
+  upstream_connection_reused?: boolean
+  upstream_wrote_request_error?: boolean
 }
 
 export interface UsageCleanupFilters {

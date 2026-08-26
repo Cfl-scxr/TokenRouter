@@ -70,6 +70,20 @@ const messages: Record<string, string> = {
   'admin.usage.requestIdCopied': 'Request ID copied',
   'keys.copied': 'Copied',
   'keys.copyToClipboard': 'Copy to clipboard',
+  'usage.detailedTiming': 'Detailed Timing',
+  'usage.timingRequestSize': 'Request size',
+  'usage.timingSlot': 'Slot',
+  'usage.timingGetConn': 'Get conn',
+  'usage.timingGotConn': 'Got conn',
+  'usage.timingWriteRequest': 'Write request',
+  'usage.timingFirstByte': 'First byte',
+  'usage.timingFirstSSE': 'First SSE',
+  'usage.timingVisible': 'Visible',
+  'usage.timingFlush': 'First flush',
+  'usage.timingAttempts': 'Attempts',
+  'usage.timingReused': 'Reused conn',
+  'usage.timingWriteError': 'Write error',
+  'usage.timingUnavailable': 'Not collected',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -91,6 +105,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-detailed_timing" :row="row" />
         <slot name="cell-request_id" :row="row" />
       </div>
     </div>
@@ -147,6 +162,41 @@ describe('admin UsageTable request ID column', () => {
 
     expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith('req-admin-visible-id', 'Request ID copied')
     expect(wrapper.get('button').attributes('title')).toBe('Copied')
+  })
+})
+
+describe('admin UsageTable detailed timing column', () => {
+  it('renders the request stage timings', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          detailed_timing: {
+            request_content_length: 8360000,
+            account_slot_acquired_ms: 120,
+            upstream_got_conn_ms: 200,
+            upstream_get_conn_ms: 180,
+            upstream_wrote_request_ms: 420,
+            upstream_first_response_byte_ms: 980,
+            upstream_first_sse_data_ms: 1020,
+            first_visible_output_ms: 1060,
+            first_downstream_flush_ms: 1080,
+            upstream_attempt_count: 2,
+          },
+        }],
+        loading: false,
+          columns: [{ key: 'detailed_timing', label: 'Detailed Timing' }],
+      },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Slot')
+    expect(wrapper.text()).toContain('7.97MB')
+    expect(wrapper.text()).toContain('120ms')
+    expect(wrapper.text()).toContain('First SSE')
+    expect(wrapper.text()).toContain('2')
   })
 })
 

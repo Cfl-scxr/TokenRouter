@@ -28,7 +28,7 @@ RequestLogger
   -> embedded frontend and API routes
 ```
 
-`X-Request-ID` 是服务端请求关联 ID：长度和字符合法时沿用客户端值，否则生成 UUID，并写回响应和 request context。网关路由另外安装 `ClientRequestID`，以 `X-Client-Request-ID` 关联一次客户端业务请求、Ops 记录和后台结算；两者用途不同，不能互相覆盖。
+`X-Request-ID` 是服务端请求关联 ID：长度和字符合法时沿用客户端值，否则生成 UUID，并写回响应和 request context。网关路由另外安装 `ClientRequestID`，始终为本服务生成内部请求 ID；合法的 `X-Client-Request-ID` 只作为调用方关联 ID 保存和回显，不参与权限或结算幂等。缺失或不安全时，`X-Client-Request-ID` 回退为内部 ID；内部 ID 另通过 `X-Sub2API-Request-ID` 返回并在允许的上游请求中透传。两者用途不同，不能互相覆盖。
 
 入口体积限制和错误采集按路由族叠加。网关在读取 JSON/multipart 之前应用通用或文本 body limit、client request ID、Ops error logger、endpoint 归一化和 API Key auth。面板接口使用全局/重查询限流和审计；高风险公开认证接口使用独立 Redis 限流并在依赖故障时 fail-close。
 
@@ -153,6 +153,8 @@ gemini_generate_content
 
 业务错误由 `ApplicationError` 映射为 HTTP status，并可返回 `reason` 和字符串 `metadata`。未知错误按 500 处理并只在服务端记录脱敏详情。分页数据使用 `items`、`total`、`page`、`page_size` 和 `pages`；创建与异步接受分别可以返回 201/202。
 
+管理员 `GET /api/v1/admin/usage` 的每条记录可包含 `detailed_timing`。该对象由同一内部请求 ID 关联 `http.access` 日志得到，字段是相对于 Sub2API 入口的毫秒时间点，包括账号槽位、上游连接/写入、首字节、首个 SSE、首个可见输出和首次下游 Flush；历史记录或观测日志缺失时省略该对象。
+
 网关错误必须保持调用协议形状：OpenAI 入口使用 `error` 对象，Anthropic 使用 `type: error` 与嵌套错误，Google 使用 HTTP code/message/status。认证、未分组、复合 Key 和本地能力拒绝都选择当前协议 writer；不能为了复用面板 helper 把一个 Google/Anthropic 客户端错误改成面板 envelope。
 
 客户端协议被分组禁用时返回 `403`，并在账号选择、计费、重试和 fallback 前记录 `LocalPolicyDenied`。Anthropic 入口使用 `permission_error`，OpenAI 入口使用 `protocol_not_allowed`，Gemini 入口使用 Google `PERMISSION_DENIED`。模型列表 GET 不经过生成协议开关。
@@ -162,7 +164,8 @@ gemini_generate_content
 ## 请求关联
 
 - `X-Request-ID` 用于一次 HTTP 调用的日志和审计关联，最长持久化长度受限。
-- `X-Client-Request-ID` 用于网关业务链路和结算幂等来源；缺失时由入口生成并写回。
+- `X-Client-Request-ID` 是调用方提供的跨服务关联 ID；服务会限制为安全的 ASCII 标识并保留在日志链路中，但不作为内部结算幂等 ID。缺失或不安全时回退为服务生成的内部 ID。
+- `X-Sub2API-Request-ID` 是服务生成的内部请求 ID，用于本服务日志、结算幂等和下游诊断；它会写入响应，并在允许的 OpenAI 上游请求中透传。
 - 上游 request ID 属于供应商观测字段，需单独保存，不能替换本地 ID。
 - 后台 worker 从请求派生所需 metadata 后使用受超时约束的新 Context；不得继续持有已取消请求的 body 或 Gin context。
 

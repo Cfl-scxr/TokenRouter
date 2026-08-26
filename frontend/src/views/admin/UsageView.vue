@@ -581,6 +581,28 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
   return t('usage.unknown')
 }
 
+// 导出时把阶段耗时压缩为单元格文本，保留原始毫秒值便于后续分析。
+const formatDetailedTimingForExport = (row: AdminUsageLog): string => {
+  const timing = row.detailed_timing
+  if (!timing) return ''
+  const stages: Array<[string, number | null | undefined]> = [
+    ['slot', timing.account_slot_acquired_ms],
+    ['get_conn', timing.upstream_get_conn_ms],
+    ['got_conn', timing.upstream_got_conn_ms],
+    ['write', timing.upstream_wrote_request_ms],
+    ['first_byte', timing.upstream_first_response_byte_ms],
+    ['first_sse', timing.upstream_first_sse_data_ms],
+    ['visible', timing.first_visible_output_ms],
+    ['flush', timing.first_downstream_flush_ms],
+  ]
+  const details = stages.filter(([, value]) => value != null).map(([name, value]) => `${name}=${value}ms`)
+  if (timing.request_content_length != null) details.unshift(`request_bytes=${timing.request_content_length}`)
+  if (timing.upstream_attempt_count != null) details.push(`attempts=${timing.upstream_attempt_count}`)
+  if (timing.upstream_connection_reused) details.push('reused=true')
+  if (timing.upstream_wrote_request_error) details.push('write_error=true')
+  return details.join('; ')
+}
+
 const exportToExcel = async () => {
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
@@ -597,7 +619,7 @@ const exportToExcel = async () => {
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
       t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
-      t('usage.firstToken'), t('usage.duration'),
+      t('usage.firstToken'), t('usage.duration'), t('usage.detailedTiming'),
       t('admin.usage.requestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
     ]
     const ws = XLSX.utils.aoa_to_sheet([headers])
@@ -617,6 +639,7 @@ const exportToExcel = async () => {
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
         ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
+        formatDetailedTimingForExport(log),
         log.request_id || '', log.user_agent || '', log.ip_address || ''
       ])
       if (rows.length) {
@@ -657,6 +680,7 @@ const allColumns = computed(() => [
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
+  { key: 'detailed_timing', label: t('usage.detailedTiming'), sortable: false, class: 'min-w-[300px]' },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'request_id', label: t('admin.usage.requestId'), sortable: false },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },

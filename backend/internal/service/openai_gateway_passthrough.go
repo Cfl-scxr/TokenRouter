@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/apicompat"
+	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
 	"github.com/TokenFlux/TokenRouter/internal/pkg/logger"
 	"github.com/TokenFlux/TokenRouter/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -1794,6 +1795,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return
 		}
 		flusher.Flush()
+		MarkOpsTimestamp(c, ctxkey.FirstDownstreamFlushAt)
 		flushPending = false
 	}
 	defer flushPendingOutput()
@@ -1866,6 +1868,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			MarkOpsTimestamp(c, ctxkey.FirstSSEDataAt)
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
@@ -2053,6 +2056,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
 			}
 			if firstTokenMs == nil && openAIStreamDataStartsVisibleOutput(trimmedData, eventType) {
+				MarkOpsTimestamp(c, ctxkey.FirstVisibleOutputAt)
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}

@@ -40,7 +40,9 @@
 
 ## 关联与脱敏
 
-网关生成或接受 client request ID，并把归一化 endpoint、platform、requested/upstream model、用户、API Key、账号和团队等维度带入允许的用量/Ops 记录。客户端提供的 session ID 只作为显式关联字段，不从 prompt 或缓存键推导。
+网关为每次请求生成内部 client request ID，并把归一化 endpoint、platform、requested/upstream model、用户、API Key、账号和团队等维度带入允许的用量/Ops 记录。入站 `X-Client-Request-ID` 仅作为受限的 `parent_client_request_id` 保存，用于跨 TokenRouter/Sub2API 链路排障，不参与权限、路由或结算幂等；服务生成的内部 ID 通过 `X-Sub2API-Request-ID` 暴露给下游诊断。客户端提供的 session ID 只作为显式关联字段，不从 prompt 或缓存键推导。
+
+网关入口只接受字符受限的 `X-Client-Request-ID` 作为父级关联值；缺失或不安全时，响应和下游请求回退使用服务生成的内部 ID。内部 ID 通过 `X-Sub2API-Request-ID` 标识，调用方 ID 与内部 ID 均会进入访问日志，但只有内部 ID 能作为结算幂等来源。流式网关的 `http.access` 记录还会尽力写入 `request_content_length`、`account_slot_acquired_ms`、`upstream_get_conn_ms`、`upstream_got_conn_ms`、`upstream_wrote_request_ms`、`upstream_first_response_byte_ms`、`upstream_first_sse_data_ms`、`first_visible_output_ms` 和 `first_downstream_flush_ms`；`upstream_attempt_count`、各阶段计数、连接复用和写入错误字段用于识别连接池等待、重试与传输异常。阶段字段只包含时间、计数和连接复用状态，不包含请求体或凭据。
 
 凭据、Authorization、Cookie、refresh token、支付密钥、对象存储 secret、完整上游 body 和用户提示不能直接写入日志。上游错误只透传允许的安全字段；系统日志 sink 在落库前再次整理字段并限制长度。新增日志字段时要同时检查：结构化 logger、Ops sink 的字段白名单/脱敏、管理端 DTO、导出和测试夹具。
 
