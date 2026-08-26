@@ -167,6 +167,8 @@ dataSharing: {
         emailNormalization: '邮箱地址归一化',
         emailNormalizationHint:
           '启用后，注册或修改邮箱时会移除所有域名的 +标签，将 Gmail/Googlemail 点号变体和域名根点视为同一收件箱，并与全部已注册账号比较。不会修改已保存的邮箱。',
+        userEmailChange: '允许用户更改邮箱',
+        userEmailChangeHint: '开启后，已绑定邮箱的用户可以通过验证码和当前密码更换主邮箱；关闭时仍允许尚未绑定邮箱的用户完成首次绑定。',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',

@@ -751,7 +751,6 @@ affiliate: {
         wechat: 'WeChat',
       },
       notes: {
-        emailManagedByBinding: 'Primary email is managed through verified email binding',
         canUnbind: 'You can unbind this sign-in method',
         bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding',
       },

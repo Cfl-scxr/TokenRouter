@@ -485,6 +485,7 @@ const baseSettingsResponse = {
   registration_email_suffix_whitelist: [],
   registration_email_normalization: false,
   registration_email_domain_quota_enabled: false,
+  user_email_change_enabled: false,
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -2389,6 +2390,30 @@ describe("admin SettingsView security tab controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         registration_email_domain_quota_enabled: true,
+      }),
+    );
+  });
+
+  it("renders and submits the user email change switch", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      user_email_change_enabled: true,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const emailChangeSetting = wrapper.get('[data-testid="user-email-change-setting"]');
+    const emailChangeToggle = emailChangeSetting.get("input.toggle-stub");
+    expect((emailChangeToggle.element as HTMLInputElement).checked).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_email_change_enabled: true,
       }),
     );
   });

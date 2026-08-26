@@ -1771,6 +1771,22 @@
                 <Toggle v-model="form.registration_email_normalization" />
               </div>
 
+              <!-- 用户换绑主邮箱 -->
+              <div
+                data-testid="user-email-change-setting"
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.userEmailChange")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.userEmailChangeHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.user_email_change_enabled" />
+              </div>
+
               <!-- Promo Code -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -9280,6 +9296,7 @@ const form = reactive<SettingsForm>({
   registration_email_suffix_whitelist: [],
   registration_email_normalization: false,
   registration_email_domain_quota_enabled: false,
+  user_email_change_enabled: false,
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -11136,6 +11153,7 @@ async function saveSettings() {
         form.registration_email_normalization,
       registration_email_domain_quota_enabled:
         form.registration_email_domain_quota_enabled,
+      user_email_change_enabled: form.user_email_change_enabled,
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,

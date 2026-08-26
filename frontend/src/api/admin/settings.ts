@@ -438,6 +438,7 @@ export interface SystemSettings {
   registration_email_suffix_whitelist: string[];
   registration_email_normalization: boolean;
   registration_email_domain_quota_enabled: boolean;
+  user_email_change_enabled: boolean; // 是否允许已有邮箱的用户换绑主邮箱
   promo_code_enabled: boolean;
   password_reset_enabled: boolean;
   frontend_url: string;
@@ -771,6 +772,7 @@ export interface UpdateSettingsRequest {
   registration_email_suffix_whitelist?: string[];
   registration_email_normalization?: boolean;
   registration_email_domain_quota_enabled?: boolean;
+  user_email_change_enabled?: boolean; // 是否允许已有邮箱的用户换绑主邮箱
   promo_code_enabled?: boolean;
   password_reset_enabled?: boolean;
   frontend_url?: string;

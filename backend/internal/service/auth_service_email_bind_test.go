@@ -216,6 +216,34 @@ func TestAuthServiceBindEmailIdentity_RejectsExistingEmailOnAnotherUser(t *testi
 	require.Equal(t, 0, countProviderGrantRecords(t, client, sourceUser.ID, "email", "first_bind"))
 }
 
+func TestAuthServiceBindEmailIdentity_RejectsBoundEmailChangeWhenDisabled(t *testing.T) {
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+		},
+	}
+	svc, _, client := newAuthServiceForEmailBind(t, nil, cache, nil)
+
+	ctx := context.Background()
+	hashedPassword, err := svc.HashPassword("current-password")
+	require.NoError(t, err)
+	user := createEmailBindTestUser(t, client, "current@example.com", "bound-user", hashedPassword)
+
+	err = svc.SendEmailIdentityBindCode(ctx, user.ID, "new@example.com")
+	require.ErrorIs(t, err, service.ErrEmailChangeDisabled)
+	require.Empty(t, cache.setEmails)
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "new@example.com", "123456", "current-password")
+	require.ErrorIs(t, err, service.ErrEmailChangeDisabled)
+	require.Nil(t, updatedUser)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "current@example.com", storedUser.Email)
+}
+
 func TestAuthServiceBindEmailIdentity_RejectsAliasOfExistingEmailOnAnotherUser(t *testing.T) {
 	cache := &emailBindCacheStub{
 		data: &service.VerificationCodeData{
@@ -330,7 +358,9 @@ func TestAuthServiceBindEmailIdentity_RejectsNewAliasWhenAnotherUserSharesCurren
 			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
 		},
 	}
-	svc, _, client := newAuthServiceForEmailBind(t, nil, cache, nil)
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyUserEmailChangeEnabled: "true",
+	}, cache, nil)
 
 	ctx := context.Background()
 	hashedPassword, err := svc.HashPassword("current-password")
@@ -450,6 +480,7 @@ func TestAuthServiceBindEmailIdentity_ReplacesBoundEmailAndSkipsFirstBindDefault
 		service.SettingKeyAuthSourceDefaultEmailConcurrency:      "4",
 		service.SettingKeyAuthSourceDefaultEmailSubscriptions:    `[{"plan_id":11}]`,
 		service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "true",
+		service.SettingKeyUserEmailChangeEnabled:                 "true",
 	}, cache, assigner)
 
 	ctx := context.Background()
@@ -521,7 +552,9 @@ func TestAuthServiceBindEmailIdentity_RejectsWrongCurrentPasswordForBoundEmail(t
 			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
 		},
 	}
-	svc, _, client := newAuthServiceForEmailBind(t, nil, cache, nil)
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyUserEmailChangeEnabled: "true",
+	}, cache, nil)
 
 	ctx := context.Background()
 	hashedPassword, err := svc.HashPassword("current-password")

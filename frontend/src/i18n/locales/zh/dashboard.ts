@@ -756,7 +756,6 @@ affiliate: {
         wechat: '微信',
       },
       notes: {
-        emailManagedByBinding: '主邮箱通过验证码绑定流程管理',
         canUnbind: '你可以解绑这个登录方式。',
         bindAnotherBeforeUnbind: '请先绑定其他登录方式，再解除当前绑定。',
       },

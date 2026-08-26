@@ -67,6 +67,8 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 `registration_email_domain_quota_enabled` 控制邮箱白名单非空时是否允许非白名单域名按可注册主域名限量注册，缺失或读取失败均按关闭处理，以保持严格白名单的安全默认。该设置通过公开设置和 SSR 注入提供给注册前端用于选择本地白名单预检策略，但最终准入仍由服务端在注册事务内重新读取并判定；管理更新请求省略该字段时必须保留当前值，不能把兼容请求解释为显式关闭。
 
+`user_email_change_enabled` 控制已有真实邮箱身份的用户能否在注册后换绑主邮箱，默认关闭；缺失、读取失败或认证服务未接入设置服务时都必须拒绝换绑。它不影响尚无真实邮箱用户的首次邮箱绑定，也不阻止用户验证并绑定与当前记录相同的邮箱。开关通过公开设置和 SSR 注入控制个人资料页入口，但安全边界由服务端同时在发送换绑验证码和提交换绑时执行；管理更新请求省略该字段时保留当前值。
+
 `google_one_tap_enabled` 是独立于 `google_oauth_enabled` 的数据库运行时开关，默认关闭。部署者先为现有 Web 类型 Google OAuth Client ID 登记每个前端 Authorized JavaScript origin，再显式开启；生产 Origin 必须使用 HTTPS，本地开发只允许 localhost/loopback HTTP。公开设置只有在 One Tap 开关和完整 Google OAuth 配置同时有效时才返回 `google_one_tap_enabled=true` 及非敏感 `google_oauth_client_id`，任一条件不满足时按关闭并返回空 Client ID；Client Secret 始终只留在服务端和受掩码保护的管理设置中。首页与登录页共用这组公开设置，旧 HTML 注入缓存缺失新字段时按关闭处理。
 
 `usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。

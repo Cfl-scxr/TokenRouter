@@ -205,6 +205,7 @@ const (
 	SettingKeyRegistrationEmailNormalization   = "registration_email_normalization"    // 注册邮箱地址归一化唯一性开关
 	// 白名单非空时，是否放行非白名单域名按主域名限量注册；默认关闭并严格执行白名单。
 	SettingKeyRegistrationEmailDomainQuotaEnabled = "registration_email_domain_quota_enabled"
+	SettingKeyUserEmailChangeEnabled              = "user_email_change_enabled"        // 是否允许已有邮箱身份的用户换绑主邮箱
 	SettingKeyPromoCodeEnabled                    = "promo_code_enabled"               // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled                = "password_reset_enabled"           // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                         = "frontend_url"                     // 前端基础URL，用于生成密码重置、团队邀请等邮件外部链接

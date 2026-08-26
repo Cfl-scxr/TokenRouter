@@ -28,6 +28,7 @@ type UpdateSettingsRequest struct {
 	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailNormalization      bool                         `json:"registration_email_normalization"`
 	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 省略时保持现值
+	UserEmailChangeEnabled              *bool                        `json:"user_email_change_enabled"`               // 省略时保持现值
 	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
@@ -502,6 +503,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	registrationEmailDomainQuotaEnabled := previousSettings.RegistrationEmailDomainQuotaEnabled
 	if req.RegistrationEmailDomainQuotaEnabled != nil {
 		registrationEmailDomainQuotaEnabled = *req.RegistrationEmailDomainQuotaEnabled
+	}
+	userEmailChangeEnabled := previousSettings.UserEmailChangeEnabled
+	if req.UserEmailChangeEnabled != nil {
+		userEmailChangeEnabled = *req.UserEmailChangeEnabled
 	}
 	// 两个安全开关同样保留省略字段语义。
 	sessionBindingEnabled := previousSettings.SessionBindingEnabled
@@ -1635,6 +1640,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailNormalization:      req.RegistrationEmailNormalization,
 		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
+		UserEmailChangeEnabled:              userEmailChangeEnabled,
 		PromoCodeEnabled:                    req.PromoCodeEnabled,
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
@@ -2195,6 +2201,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RegistrationEmailSuffixWhitelist:                 updatedSettings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailNormalization:                   updatedSettings.RegistrationEmailNormalization,
 		RegistrationEmailDomainQuotaEnabled:              updatedSettings.RegistrationEmailDomainQuotaEnabled,
+		UserEmailChangeEnabled:                           updatedSettings.UserEmailChangeEnabled,
 		PromoCodeEnabled:                                 updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                             updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                      updatedSettings.FrontendURL,

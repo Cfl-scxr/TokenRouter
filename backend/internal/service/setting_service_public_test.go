@@ -148,6 +148,7 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(
 			SettingKeyAffiliateEnabled:                    "true",
 			SettingKeyForceEmailOnThirdPartySignup:        "true",
 			SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+			SettingKeyUserEmailChangeEnabled:              "true",
 			SettingKeyAllowUserViewErrorRequests:          "true",
 			SettingKeyTeamEnabled:                         "true",
 			SettingKeyDataSharingEnabled:                  "false",
@@ -172,6 +173,7 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(
 		DataSharingEnabled                  bool `json:"data_sharing_enabled"`
 		PasskeyEnabled                      bool `json:"passkey_enabled"`
 		RegistrationEmailDomainQuotaEnabled bool `json:"registration_email_domain_quota_enabled"`
+		UserEmailChangeEnabled              bool `json:"user_email_change_enabled"`
 	}
 	require.NoError(t, json.Unmarshal(encoded, &settings))
 	require.True(t, settings.AffiliateEnabled)
@@ -181,6 +183,7 @@ func TestSettingService_GetPublicSettingsForInjection_ExposesPublicFeatureFlags(
 	require.False(t, settings.DataSharingEnabled)
 	require.True(t, settings.PasskeyEnabled)
 	require.True(t, settings.RegistrationEmailDomainQuotaEnabled)
+	require.True(t, settings.UserEmailChangeEnabled)
 }
 
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {

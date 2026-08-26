@@ -161,6 +161,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyForceEmailOnThirdPartySignup,
 		SettingKeyRegistrationEmailSuffixWhitelist,
 		SettingKeyRegistrationEmailDomainQuotaEnabled,
+		SettingKeyUserEmailChangeEnabled,
 		SettingKeyPromoCodeEnabled,
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
@@ -331,6 +332,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ForceEmailOnThirdPartySignup:        settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist:    registrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings[SettingKeyRegistrationEmailDomainQuotaEnabled] == "true",
+		UserEmailChangeEnabled:              settings[SettingKeyUserEmailChangeEnabled] == "true",
 		PromoCodeEnabled:                    settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:                passwordResetEnabled,
 		InvitationCodeEnabled:               settings[SettingKeyInvitationCodeEnabled] == "true",
@@ -434,6 +436,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
 		RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 		RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+		UserEmailChangeEnabled              bool                     `json:"user_email_change_enabled"` // 是否允许已有邮箱的用户换绑主邮箱
 		PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 		PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 		InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
@@ -518,6 +521,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ForceEmailOnThirdPartySignup:        settings.ForceEmailOnThirdPartySignup,
 		RegistrationEmailSuffixWhitelist:    settings.RegistrationEmailSuffixWhitelist,
 		RegistrationEmailDomainQuotaEnabled: settings.RegistrationEmailDomainQuotaEnabled,
+		UserEmailChangeEnabled:              settings.UserEmailChangeEnabled,
 		PromoCodeEnabled:                    settings.PromoCodeEnabled,
 		PasswordResetEnabled:                settings.PasswordResetEnabled,
 		InvitationCodeEnabled:               settings.InvitationCodeEnabled,

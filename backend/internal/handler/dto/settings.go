@@ -32,6 +32,7 @@ type SystemSettings struct {
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailNormalization      bool                     `json:"registration_email_normalization"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	UserEmailChangeEnabled              bool                     `json:"user_email_change_enabled"` // 是否允许已有邮箱的用户换绑主邮箱
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	FrontendURL                         string                   `json:"frontend_url"`
@@ -341,6 +342,7 @@ type PublicSettings struct {
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationEmailDomainQuotaEnabled bool                     `json:"registration_email_domain_quota_enabled"`
+	UserEmailChangeEnabled              bool                     `json:"user_email_change_enabled"` // 是否允许已有邮箱的用户换绑主邮箱
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`

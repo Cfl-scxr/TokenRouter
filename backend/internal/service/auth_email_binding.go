@@ -47,15 +47,17 @@ func (s *AuthService) BindEmailIdentity(
 	if strings.TrimSpace(password) == "" {
 		return nil, ErrPasswordRequired
 	}
+	currentUser, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureUserEmailChangeAllowed(ctx, currentUser, normalizedEmail); err != nil {
+		return nil, err
+	}
 	if err := s.VerifyOAuthEmailCode(ctx, normalizedEmail, verifyCode); err != nil {
 		return nil, err
 	}
 	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
-		return nil, err
-	}
-
-	currentUser, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
 		return nil, err
 	}
 	firstRealEmailBind := !hasBindableEmailIdentitySubject(currentUser.Email)
@@ -124,17 +126,20 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 	if isReservedEmail(normalizedEmail) {
 		return ErrEmailReserved
 	}
-	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
-		return err
-	}
-	if s.emailService == nil {
-		return ErrServiceUnavailable
-	}
 	currentUser, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return ErrUserNotFound
 		}
+		return ErrServiceUnavailable
+	}
+	if err := s.ensureUserEmailChangeAllowed(ctx, currentUser, normalizedEmail); err != nil {
+		return err
+	}
+	if err := s.validateRegistrationEmailPolicy(ctx, normalizedEmail); err != nil {
+		return err
+	}
+	if s.emailService == nil {
 		return ErrServiceUnavailable
 	}
 	registrationNormalizedEmail := s.normalizeRegistrationEmailForBinding(ctx, normalizedEmail)
@@ -147,6 +152,20 @@ func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int6
 		siteName = s.settingService.GetSiteName(ctx)
 	}
 	return s.emailService.SendVerifyCode(ctx, normalizedEmail, siteName, firstEmailLocale(locale))
+}
+
+// ensureUserEmailChangeAllowed 只限制真实邮箱发生变化；首次绑定或验证现有邮箱仍保持可用。
+func (s *AuthService) ensureUserEmailChangeAllowed(ctx context.Context, currentUser *User, targetEmail string) error {
+	if currentUser == nil {
+		return ErrUserNotFound
+	}
+	if !hasBindableEmailIdentitySubject(currentUser.Email) || strings.EqualFold(strings.TrimSpace(currentUser.Email), targetEmail) {
+		return nil
+	}
+	if s.settingService == nil || !s.settingService.IsUserEmailChangeEnabled(ctx) {
+		return ErrEmailChangeDisabled
+	}
+	return nil
 }
 
 func normalizeEmailForIdentityBinding(email string) (string, error) {

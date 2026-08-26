@@ -169,6 +169,9 @@ dataSharing: {
         emailNormalization: 'Email Normalization',
         emailNormalizationHint:
           "When enabled, registration or email updates strip +tags for all domains, treat Gmail/Googlemail dot variants and trailing domain dots as the same inbox, and compare against all registered accounts. Existing stored emails are unchanged.",
+        userEmailChange: 'Allow Users to Change Email',
+        userEmailChangeHint:
+          'Allow users with a bound email to replace their primary email using a verification code and current password. First-time email binding remains available when disabled.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',

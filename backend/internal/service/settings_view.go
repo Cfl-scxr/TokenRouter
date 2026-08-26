@@ -17,6 +17,7 @@ type SystemSettings struct {
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailNormalization      bool
 	RegistrationEmailDomainQuotaEnabled bool // 非白名单域名按主域名限量注册，默认关闭
+	UserEmailChangeEnabled              bool // 已有邮箱身份的用户是否可以换绑主邮箱，默认关闭
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	FrontendURL                         string
@@ -320,6 +321,7 @@ type PublicSettings struct {
 	ForceEmailOnThirdPartySignup        bool
 	RegistrationEmailSuffixWhitelist    []string
 	RegistrationEmailDomainQuotaEnabled bool
+	UserEmailChangeEnabled              bool // 是否允许已有邮箱的用户换绑主邮箱
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	InvitationCodeEnabled               bool
