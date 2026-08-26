@@ -10,7 +10,7 @@
     <AppSidebar />
 
     <div
-      class="relative z-10 min-h-screen min-w-0 pt-16 transition-all duration-300"
+      class="relative z-10 min-h-screen min-w-0 pt-14 transition-all duration-300"
       :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-56']"
     >
       <!-- Main Content -->
@@ -18,9 +18,14 @@
         class="app-main min-w-0 px-4 pb-4 pt-4 md:px-6 md:pb-6 md:pt-5 lg:px-8 lg:pb-8 lg:pt-4"
         :class="{ 'has-page-heading': pageTitle }"
       >
-        <div v-if="pageTitle" class="page-heading mb-4">
-          <h1 class="page-title">{{ pageTitle }}</h1>
-          <p v-if="pageDescription" class="page-description">{{ pageDescription }}</p>
+        <div v-if="pageTitle" class="page-heading mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="page-title">{{ pageTitle }}</h1>
+            <p v-if="pageDescription" class="page-description">{{ pageDescription }}</p>
+          </div>
+          <div v-if="$slots['page-heading-actions']" class="shrink-0">
+            <slot name="page-heading-actions" />
+          </div>
         </div>
         <slot />
       </main>

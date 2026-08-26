@@ -7,18 +7,12 @@
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('profile.authBindings.title') }}
       </h2>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        {{ t('profile.authBindings.description') }}
-      </p>
     </div>
 
     <div :class="props.embedded ? 'space-y-4' : 'divide-y divide-gray-100 dark:divide-dark-700'">
       <div v-if="props.embedded">
         <p class="text-sm font-semibold text-gray-900 dark:text-white">
           {{ t('profile.authBindings.title') }}
-        </p>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ t('profile.authBindings.description') }}
         </p>
       </div>
 

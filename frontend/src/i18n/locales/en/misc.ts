@@ -1,7 +1,7 @@
 export default {
 marketplace: {
     title: 'Model Marketplace',
-    subtitle: 'Browse currently available models by public group, with actual charged pricing after group and independent image multipliers are applied.',
+    subtitle: 'View available models',
     backHome: 'Back Home',
     actualPricingNote: 'Prices are calculated from pricing file base rates multiplied by the group multiplier. When independent image pricing is enabled, image prices use the image multiplier instead. Unit: {unitName}',
     tokenPricing: 'Token Pricing',
@@ -786,6 +786,7 @@ marketplace: {
       rateMultiplier: 'Rate Multiplier',
       dashboardTitle: 'Payment Dashboard',
       dashboardDesc: 'Recharge order analytics and insights',
+      ordersPageDesc: 'View and manage user payment orders',
       daySuffix: 'd',
       paymentConfigTitle: 'Payment Config',
       paymentConfigDesc: 'Configure payment providers and settings',

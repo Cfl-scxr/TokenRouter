@@ -451,13 +451,15 @@ describe('user KeysView column settings', () => {
     expect(wrapper.get('[data-test="group"]').text()).not.toContain('Select a group')
   })
 
-  it('places the key scope dropdown directly after the refresh action', async () => {
+  it('places the key scope dropdown after column settings', async () => {
     const wrapper = await mountView()
 
     const refreshButton = wrapper.get('button[title="Refresh"]').element
+    const columnButton = wrapper.get('button[title="Column Settings"]').element
     const scopeTrigger = wrapper.get('[data-test="scope-dropdown-trigger"]').element
 
-    expect(refreshButton.nextElementSibling?.contains(scopeTrigger)).toBe(true)
+    expect(refreshButton.nextElementSibling?.contains(columnButton)).toBe(true)
+    expect(columnButton.parentElement?.nextElementSibling?.contains(scopeTrigger)).toBe(true)
     expect(wrapper.find('.mb-6').exists()).toBe(false)
   })
 

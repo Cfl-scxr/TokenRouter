@@ -2,25 +2,27 @@
   <AppLayout>
     <div class="space-y-6">
       <!-- 标题与筛选工具共用一行，保持和 OpenRouter 页面工具栏一致。 -->
-      <section class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <section class="flex flex-row items-start justify-between gap-3">
         <div class="min-w-0">
           <h1 class="page-title">{{ t('usageRanking.title') }}</h1>
           <p class="page-description">{{ t('usageRanking.description') }}</p>
         </div>
 
-        <div class="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-          <div>
-            <label class="input-label">{{ t('usageRanking.timeRange') }}</label>
-            <DateRangePicker
-              v-model:start-date="startDate"
-              v-model:end-date="endDate"
-              apply-on-preset
-              @change="onDateRangeChange"
-            />
-          </div>
-          <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="loading" @click="loadRanking">
+        <div class="flex shrink-0 items-center gap-2">
+          <DateRangePicker
+            v-model:start-date="startDate"
+            v-model:end-date="endDate"
+            apply-on-preset
+            @change="onDateRangeChange"
+          />
+          <button
+            type="button"
+            class="btn btn-secondary h-11 w-11 p-0"
+            :disabled="loading"
+            :title="t('common.refresh')"
+            @click="loadRanking"
+          >
             <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-            {{ t('common.refresh') }}
           </button>
         </div>
       </section>
@@ -267,13 +269,13 @@ const UserAvatar = defineComponent({
         return h('img', {
           src: props.item.avatar_url,
           alt: props.item.display_name,
-          class: `${sizeClass} rounded-lg object-cover ring-1 ring-black/5 dark:ring-white/10`,
+          class: `${sizeClass} rounded-full object-cover`,
         })
       }
       return h(
         'div',
         {
-          class: `${sizeClass} flex items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 font-semibold text-white shadow-sm shadow-primary-500/20`,
+          class: `${sizeClass} flex items-center justify-center rounded-full bg-primary-600 font-semibold text-white`,
         },
         initials(props.item.display_name),
       )

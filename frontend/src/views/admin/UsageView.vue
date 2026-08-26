@@ -5,17 +5,17 @@
       <!-- Charts Section -->
       <div class="space-y-4">
         <div class="card p-4">
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
+          <div class="time-controls flex flex-wrap items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="time-control-label text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
                 @change="onDateRangeChange"
               />
             </div>
-            <div class="ml-auto flex items-center gap-2">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
+            <div class="flex shrink-0 items-center gap-2">
+              <span class="time-control-label text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
               <div class="w-28">
                 <Select v-model="granularity" :options="granularityOptions" @change="loadChartData" />
               </div>
@@ -94,13 +94,13 @@
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary px-2 md:px-3"
+                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
                 :title="t('admin.users.columnSettings')"
               >
                 <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
                 </svg>
-                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
+                <span class="hidden">{{ t('admin.users.columnSettings') }}</span>
               </button>
               <div
                 v-if="showColumnDropdown"

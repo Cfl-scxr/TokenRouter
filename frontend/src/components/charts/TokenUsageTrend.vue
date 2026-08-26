@@ -80,8 +80,15 @@ const formatHourLabel = (value: string): string => {
   return match?.[1] || value
 }
 
+// 日粒度只展示月日，避免年份重复占用横轴空间。
+const formatDayLabel = (value: string): string => {
+  const match = value.match(/^(?:\d{4}[-/])?(\d{1,2})[-/](\d{1,2})/)
+  if (!match) return value
+  return `${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`
+}
+
 const chartLabels = computed(() => props.trendData.map((point) => (
-  props.granularity === 'hour' ? formatHourLabel(point.date) : point.date
+  props.granularity === 'hour' ? formatHourLabel(point.date) : formatDayLabel(point.date)
 )))
 
 const chartData = computed(() => {

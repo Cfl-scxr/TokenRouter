@@ -1,5 +1,17 @@
 <template>
   <AppLayout>
+    <template #page-heading-actions>
+      <button
+        type="button"
+        class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+        :disabled="loadingCharts || loading"
+        :title="t('common.refresh')"
+        @click="refreshAll"
+      >
+        <Icon name="refresh" size="md" :class="(loadingCharts || loading) ? 'animate-spin' : ''" />
+      </button>
+    </template>
+
     <div class="space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
       <template v-else-if="stats">
@@ -16,6 +28,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAnnouncementStore } from '@/stores/announcements'
 import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
@@ -25,10 +38,12 @@ import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.v
 import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
 import UserDashboardAnnouncements from '@/components/user/dashboard/UserDashboardAnnouncements.vue'
 import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { ModelStat, TrendDataPoint } from '@/types'
 import { formatDateLocalInput } from '@/utils/format'
 
 const authStore = useAuthStore()
+const { t } = useI18n()
 const announcementStore = useAnnouncementStore()
 const user = computed(() => authStore.user)
 const stats = ref<UserStatsType | null>(null)

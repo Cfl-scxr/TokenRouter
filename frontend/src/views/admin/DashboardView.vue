@@ -1,5 +1,17 @@
 <template>
   <AppLayout>
+    <template #page-heading-actions>
+      <button
+        type="button"
+        class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+        :disabled="chartsLoading"
+        :title="t('common.refresh')"
+        @click="loadDashboardStats"
+      >
+        <Icon name="refresh" size="md" :class="chartsLoading ? 'animate-spin' : ''" />
+      </button>
+    </template>
+
     <div class="space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
@@ -220,24 +232,17 @@
         <div class="space-y-6">
           <!-- Date Range Filter -->
           <div class="card p-4">
-            <div class="flex flex-wrap items-center gap-4">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.timeRange') }}:</span
-                >
+            <div class="time-controls flex flex-wrap items-center justify-between gap-2">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="time-control-label text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
                 <DateRangePicker
                   v-model:start-date="startDate"
                   v-model:end-date="endDate"
                   @change="onDateRangeChange"
                 />
               </div>
-              <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
-                {{ t('common.refresh') }}
-              </button>
-              <div class="ml-auto flex items-center gap-2">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >{{ t('admin.dashboard.granularity') }}:</span
-                >
+              <div class="flex shrink-0 items-center gap-2">
+                <span class="time-control-label text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
                 <div class="w-28">
                   <Select
                     v-model="granularity"

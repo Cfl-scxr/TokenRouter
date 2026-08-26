@@ -284,6 +284,8 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2;
     @apply rounded-control px-4 py-2.5 text-sm font-medium;
+    /* 工具栏控件统一 44px 高，避免输入框、下拉和按钮出现错位。 */
+    @apply min-h-11;
     @apply shadow-none;
     @apply transition-all duration-200 ease-out;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
@@ -358,6 +360,17 @@
 
   .btn-sm {
     @apply rounded-control px-3 py-1.5 text-xs;
+    @apply min-h-0;
+  }
+
+  /* 显式紧凑尺寸用于表单内的小控件，不被工具栏基线覆盖。 */
+  .btn.h-8,
+  .btn.h-9,
+  .btn.h-10,
+  .input.h-8,
+  .input.h-9,
+  .input.h-10 {
+    @apply min-h-0;
   }
 
   .btn-md {
@@ -375,6 +388,8 @@
   /* ============ 输入框样式 ============ */
   .input {
     @apply w-full rounded-control px-4 py-2.5 text-sm;
+    /* 过滤栏输入框与按钮保持同一基线，文本域仍可由 rows 自然撑开。 */
+    @apply min-h-11;
     @apply bg-white dark:bg-dark-950;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply text-dark-950 dark:text-dark-50;
@@ -747,11 +762,26 @@
     @apply flex flex-col;
     @apply transition-transform duration-300;
     transition-property: width, transform;
-    top: 4rem;
+    top: 3.5rem;
   }
 
   .sidebar-nav {
     @apply flex-1 overflow-y-auto px-3 py-4;
+  }
+
+  /* 时间控件在容器足够宽时保留语义标签，窄屏时隐藏标签避免换行。 */
+  .time-controls {
+    container-type: inline-size;
+  }
+
+  .time-control-label {
+    display: none;
+  }
+
+  @container (min-width: 460px) {
+    .time-control-label {
+      display: inline;
+    }
   }
 
   .sidebar-link {
@@ -779,7 +809,7 @@
 
   .sidebar-section-title {
     @apply mb-2 px-3;
-    @apply text-xs font-semibold uppercase tracking-wider;
+    @apply text-xs font-semibold tracking-wider;
     @apply text-primary-900/80 dark:text-dark-300;
   }
 

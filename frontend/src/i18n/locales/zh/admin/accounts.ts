@@ -97,6 +97,8 @@ export default {
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       searchAccounts: '搜索账号...',
+      filterHint: '按平台、类型、状态、Privacy 或分组筛选',
+      privacyFilter: 'Privacy 状态',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',

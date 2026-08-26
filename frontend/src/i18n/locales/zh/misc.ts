@@ -1,7 +1,7 @@
 export default {
 marketplace: {
     title: '模型广场',
-    subtitle: '按公开分组浏览当前可用模型，并直接查看已包含分组倍率和生图独立倍率的实际扣费价格。',
+    subtitle: '查看可用模型',
     backHome: '返回首页',
     actualPricingNote: '价格已按价格文件记录的基础价乘以分组倍率计算；生图独立倍率开启时，图片价格会改用生图倍率，单位为 {unitName}',
     tokenPricing: 'Token 计费',
@@ -810,6 +810,7 @@ marketplace: {
       rateMultiplier: '费率倍数',
       dashboardTitle: '支付概览',
       dashboardDesc: '充值订单统计与分析',
+      ordersPageDesc: '查看和管理用户支付订单',
       daySuffix: '天',
       paymentConfigTitle: '支付配置',
       paymentConfigDesc: '管理支付服务商与相关设置',

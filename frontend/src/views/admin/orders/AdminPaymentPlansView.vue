@@ -1,9 +1,9 @@
 <template>
   <AppLayout>
-    <div class="space-y-4">
+    <template #page-heading-actions>
       <div class="flex items-center justify-end gap-2">
         <button
-          class="btn btn-secondary"
+          class="btn btn-secondary h-11 w-11 shrink-0 p-0"
           :disabled="plansLoading"
           :title="t('common.refresh')"
           @click="loadPlans"
@@ -11,10 +11,12 @@
           <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
         </button>
         <button class="btn btn-primary" @click="openPlanEdit(null)">
+          <Icon name="plus" size="md" class="mr-2" />
           {{ t('payment.admin.createPlan') }}
         </button>
       </div>
-
+    </template>
+    <div class="space-y-4">
       <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
         <template #cell-price="{ value, row }">
           <div class="text-sm">

@@ -21,17 +21,17 @@
   <div v-else class="ba-theme-shell relative flex min-h-screen flex-col overflow-hidden text-gray-950 dark:text-white">
     <div class="ba-theme-backdrop pointer-events-none fixed inset-0"></div>
 
-    <header class="relative z-20 border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur dark:border-dark-800 dark:bg-dark-950/90 sm:px-6">
-      <nav class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4">
+    <header class="glass relative z-20 border-b border-primary-900/10 px-4 dark:border-dark-600/80 sm:px-6">
+      <nav class="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4">
         <router-link to="/home" class="flex min-w-0 items-center gap-2.5">
           <span class="h-8 w-8 shrink-0 overflow-hidden rounded-lg shadow-sm">
             <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </span>
-          <span class="truncate text-sm font-semibold text-gray-950 dark:text-white">{{ siteName }}</span>
+          <span class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ siteName }}</span>
         </router-link>
 
         <div class="flex items-center gap-2 sm:gap-3">
-          <div class="hidden items-center gap-5 text-sm font-medium text-gray-600 dark:text-dark-300 lg:flex">
+          <div class="hidden items-center gap-5 text-sm font-medium text-gray-600 dark:text-dark-300 md:flex">
             <router-link to="/models" class="transition hover:text-gray-950 dark:hover:text-white">
               {{ t('home.nav.models') }}
             </router-link>
@@ -50,7 +50,7 @@
 
           <button
             @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-900 dark:hover:text-white"
+            class="flex h-9 w-9 items-center justify-center rounded-control text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
           >
             <Icon v-if="isDark" name="sun" size="md" />

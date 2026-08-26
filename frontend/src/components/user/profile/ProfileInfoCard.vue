@@ -7,7 +7,7 @@
       <div class="px-6 py-6 md:px-8">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
+            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-600 text-2xl font-bold text-white"
           >
             <img
               v-if="avatarUrl"
@@ -157,10 +157,6 @@
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('profile.linkedProfileSources') }}
           </h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.linkedProfileSourcesDescription') }}
-          </p>
-
           <div class="mt-5 grid gap-3">
             <div
               v-for="hint in sourceHints"

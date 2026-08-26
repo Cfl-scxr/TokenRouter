@@ -3,12 +3,12 @@
     <TablePageLayout>
       <template #filters>
         <!-- Top Toolbar: Left (search + filters) / Right (actions) -->
-        <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <!-- Left: Fuzzy user search + filters (wrap to multiple lines) -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="flex min-w-0 flex-1 flex-nowrap items-center gap-3">
             <!-- User Search -->
             <div
-              class="relative w-full sm:w-64"
+              class="relative min-w-0 flex-1 sm:flex-none sm:w-64"
               data-filter-user-search
             >
               <Icon
@@ -65,38 +65,64 @@
             </div>
 
             <!-- Filters -->
-            <div class="w-full sm:w-40">
-              <Select
-                v-model="filters.status"
-                :options="statusOptions"
-                :placeholder="t('admin.subscriptions.allStatus')"
-                @change="applyFilters"
-              />
-            </div>
-            <div class="w-full sm:w-48">
-              <Select
-                v-model="filters.plan_id"
-                :options="planOptions"
-                :placeholder="t('admin.announcements.form.selectPackages')"
-                @change="applyFilters"
-              />
-            </div>
-            <div class="w-full sm:w-40">
-              <Select
-                v-model="filters.platform"
-                :options="platformFilterOptions"
-                :placeholder="t('admin.subscriptions.allPlatforms')"
-                @change="applyFilters"
-              />
+            <div ref="filterDropdownRef" class="relative shrink-0">
+              <button
+                type="button"
+                class="btn btn-secondary relative h-11 w-11 p-0"
+                :aria-expanded="showFilterDropdown"
+                :aria-label="t('common.filter')"
+                :title="t('common.filter')"
+                @click="showFilterDropdown = !showFilterDropdown"
+              >
+                <Icon name="filter" size="sm" />
+                <span
+                  v-if="activeFilterCount > 0"
+                  class="pointer-events-none absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                >
+                  {{ activeFilterCount }}
+                </span>
+              </button>
+
+              <div
+                v-if="showFilterDropdown"
+                class="absolute left-auto right-0 top-full z-[60] mt-2 w-[min(32rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-xl dark:border-dark-600 dark:bg-dark-900 sm:left-0 sm:right-auto"
+                @click.stop
+              >
+                <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-700">
+                  <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
+                  <button
+                    v-if="activeFilterCount > 0"
+                    type="button"
+                    class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                    @click="resetSubscriptionFilters"
+                  >
+                    {{ t('common.reset') }}
+                  </button>
+                </div>
+                <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+                  <div>
+                    <label class="input-label">{{ t('admin.subscriptions.columns.status') }}</label>
+                    <Select v-model="filters.status" :options="statusOptions" :placeholder="t('admin.subscriptions.allStatus')" @change="applyFilters" />
+                  </div>
+                  <div>
+                    <label class="input-label">{{ t('admin.subscriptions.form.group') }}</label>
+                    <Select v-model="filters.plan_id" :options="planOptions" :placeholder="t('admin.announcements.form.selectPackages')" @change="applyFilters" />
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="input-label">{{ t('admin.accounts.columns.platform') }}</label>
+                    <Select v-model="filters.platform" :options="platformFilterOptions" :placeholder="t('admin.subscriptions.allPlatforms')" @change="applyFilters" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Right: Actions -->
-          <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+          <div class="flex shrink-0 flex-wrap items-center justify-end gap-3">
             <button
               @click="loadSubscriptions"
               :disabled="loading"
-              class="btn btn-secondary"
+              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
               :title="t('common.refresh')"
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
@@ -105,13 +131,13 @@
             <div class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary px-2 md:px-3"
+                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
                 :title="t('admin.users.columnSettings')"
               >
-                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
                 </svg>
-                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
+                <span class="hidden">{{ t('admin.users.columnSettings') }}</span>
               </button>
               <!-- Dropdown menu -->
               <div
@@ -154,12 +180,12 @@
             </div>
             <button
               @click="showGuideModal = true"
-              class="btn btn-secondary"
+              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
               :title="t('admin.subscriptions.guide.showGuide')"
             >
               <Icon name="questionCircle" size="md" />
             </button>
-            <button @click="showAssignModal = true" class="btn btn-primary">
+            <button @click="showAssignModal = true" class="btn btn-primary h-11 whitespace-nowrap">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.subscriptions.assignSubscription') }}
             </button>
@@ -928,6 +954,8 @@ const columns = computed<Column[]>(() =>
 // Column dropdown state
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
+const showFilterDropdown = ref(false)
+const filterDropdownRef = ref<HTMLElement | null>(null)
 
 // Filter options
 const statusOptions = computed(() => [
@@ -966,6 +994,15 @@ const filters = reactive({
   platform: '',
   user_id: null as number | null
 })
+
+const activeFilterCount = computed(() => [filters.status, filters.plan_id, filters.platform].filter(Boolean).length)
+
+const resetSubscriptionFilters = () => {
+  filters.status = ''
+  filters.plan_id = ''
+  filters.platform = ''
+  applyFilters()
+}
 
 // Sorting state
 const sortState = reactive({
@@ -1490,6 +1527,9 @@ const handleClickOutside = (event: MouseEvent) => {
   if (!target.closest('[data-filter-user-search]')) showFilterUserDropdown.value = false
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
+  }
+  if (filterDropdownRef.value && !filterDropdownRef.value.contains(target)) {
+    showFilterDropdown.value = false
   }
 }
 

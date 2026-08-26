@@ -4,45 +4,63 @@
       <template #filters>
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="flex min-w-0 flex-1 items-center gap-2">
               <SearchInput
                 v-model="filterSearch"
                 :placeholder="t('keys.searchPlaceholder')"
-                class="w-full sm:w-64"
+                class="min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-48 xl:w-64"
                 @search="onFilterChange"
               />
-              <Select
-                :model-value="filterGroupId"
-                class="w-40"
-                :options="groupFilterOptions"
-                @update:model-value="onGroupFilterChange"
-              />
-              <Select
-                :model-value="filterStatus"
-                class="w-40"
-                :options="statusFilterOptions"
-                @update:model-value="onStatusFilterChange"
-              />
+              <div ref="filterDropdownRef" class="relative shrink-0">
+                <button
+                  type="button"
+                  class="btn btn-secondary relative h-11 w-11 p-0"
+                  :aria-expanded="showFilterDropdown"
+                  :aria-label="t('common.filter')"
+                  :title="t('common.filter')"
+                  @click="showFilterDropdown = !showFilterDropdown"
+                >
+                  <Icon name="filter" size="sm" />
+                  <span v-if="activeFilterCount > 0" class="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                    {{ activeFilterCount }}
+                  </span>
+                </button>
+                <div v-show="showFilterDropdown" class="absolute left-auto right-0 top-full z-[60] mt-2 w-[min(32rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-dark-600 dark:bg-dark-900" @click.stop>
+                  <div class="mb-3 flex items-center justify-between">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
+                    <button v-if="activeFilterCount > 0" type="button" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="resetKeyFilters">
+                      {{ t('common.reset') }}
+                    </button>
+                  </div>
+                  <div class="space-y-3">
+                    <div>
+                      <label class="input-label">{{ t('keys.allGroups') }}</label>
+                      <Select :model-value="filterGroupId" :options="groupFilterOptions" @update:model-value="onGroupFilterChange" />
+                    </div>
+                    <div>
+                      <label class="input-label">{{ t('keys.allStatus') }}</label>
+                      <Select :model-value="filterStatus" :options="statusFilterOptions" @update:model-value="onStatusFilterChange" />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="flex shrink-0 justify-end gap-3">
               <button
                 @click="loadApiKeys"
                 :disabled="loading"
-                class="btn btn-secondary h-11 w-11 p-0 md:h-auto md:w-auto md:px-3 md:py-2.5"
+                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
                 :title="t('common.refresh')"
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
-              <ScopeDropdown v-if="teamFeatureEnabled" v-model="scope" @change="onScopeChange" />
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click.stop="showColumnDropdown = !showColumnDropdown"
-                  class="btn btn-secondary h-11 w-11 p-0 md:h-auto md:w-auto md:px-3 md:py-2.5"
+                  class="btn btn-secondary h-11 w-11 shrink-0 p-0"
                   :title="t('keys.columnSettings')"
                 >
-                  <Icon name="grid" size="md" class="md:mr-1.5" />
-                  <span class="hidden md:inline">{{ t('keys.columnSettings') }}</span>
-                  <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
+                  <Icon name="grid" size="md" />
                 </button>
                 <div
                   v-if="showColumnDropdown"
@@ -65,6 +83,7 @@
                   </button>
                 </div>
               </div>
+              <ScopeDropdown v-if="teamFeatureEnabled" v-model="scope" @change="onScopeChange" />
               <button @click="openCreateModal" class="btn btn-primary" data-tour="keys-create-btn">
                 <Icon name="plus" size="md" class="mr-2" />
                 {{ t('keys.createKey') }}
@@ -1596,6 +1615,8 @@ const sortState = ref({
 const filterSearch = ref('')
 const filterStatus = ref('')
 const filterGroupId = ref<string | number>('')
+const showFilterDropdown = ref(false)
+const filterDropdownRef = ref<HTMLElement | null>(null)
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -1849,6 +1870,23 @@ const statusFilterOptions = computed(() => [
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
   { value: 'expired', label: t('keys.status.expired') }
 ])
+
+const activeFilterCount = computed(() => [filterGroupId.value !== '', filterStatus.value !== ''].filter(Boolean).length)
+
+const resetKeyFilters = () => {
+  filterGroupId.value = ''
+  filterStatus.value = ''
+  pagination.value.page = 1
+  showFilterDropdown.value = false
+  loadApiKeys()
+}
+
+const handleFilterClickOutside = (event: MouseEvent) => {
+  const target = event.target
+  if (target instanceof Node && filterDropdownRef.value?.contains(target)) return
+  if (target instanceof Element && target.closest('.select-dropdown-portal')) return
+  showFilterDropdown.value = false
+}
 
 const onFilterChange = () => {
   pagination.value.page = 1
@@ -2854,6 +2892,7 @@ function formatResetTime(resetAt: string | null): string {
 onMounted(async () => {
   loadSavedColumns()
   document.addEventListener('click', closeGroupSelector)
+  document.addEventListener('click', handleFilterClickOutside)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
   await loadPublicSettings()
   await Promise.all([loadApiKeys(), loadGroups(), loadUserGroupRates(), loadBillingOptions(), loadFormGroups()])
@@ -2861,6 +2900,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)
+  document.removeEventListener('click', handleFilterClickOutside)
   abortController?.abort()
   clearDataSharingCountdown()
   if (resetTimer) clearInterval(resetTimer)

@@ -319,13 +319,13 @@
               <table class="w-full">
                 <thead>
                   <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
-                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.date') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheWriteTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.date') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheWriteTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,14 +362,14 @@
               <table class="w-full">
                 <thead>
                   <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
-                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.model') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheCreationTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') }}</th>
-                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.model') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheCreationTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
                   </tr>
                 </thead>
                 <tbody>

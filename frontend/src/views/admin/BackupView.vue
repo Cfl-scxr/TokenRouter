@@ -207,7 +207,7 @@
         <div class="overflow-x-auto">
           <table class="w-full min-w-[800px] text-sm">
             <thead>
-              <tr class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:text-gray-400">
+              <tr class="border-b border-gray-200 text-left text-xs tracking-wide text-gray-500 dark:border-dark-700 dark:text-gray-400">
                 <th class="py-2 pr-4">ID</th>
                 <th class="py-2 pr-4">{{ t('admin.backup.columns.status') }}</th>
                 <th class="py-2 pr-4">{{ t('admin.backup.columns.storage') }}</th>

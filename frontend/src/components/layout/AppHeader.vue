@@ -1,6 +1,6 @@
 <template>
   <header class="glass fixed inset-x-0 top-0 z-50 border-b border-primary-900/10 dark:border-dark-600/80">
-    <div class="flex h-16 items-center justify-between gap-3 px-3 sm:px-5 md:px-7">
+    <div class="flex h-14 items-center justify-between gap-3 px-3 sm:px-5 md:px-7">
       <!-- 品牌固定在全局顶栏，避免与侧栏和页面标题争夺层级。 -->
       <div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
         <button
@@ -15,7 +15,7 @@
           :to="homePath"
           class="header-brand flex min-w-0 items-center gap-2.5 rounded-control px-1.5 py-1 transition-colors hover:bg-primary-100/70 dark:hover:bg-dark-800/80"
         >
-          <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-100 dark:bg-dark-800">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-100 dark:bg-dark-800">
             <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" :alt="siteName" class="h-full w-full object-contain" />
           </span>
           <span class="hidden min-w-0 sm:block">
@@ -91,7 +91,7 @@
             class="header-status-user-button"
             :aria-label="t('common.userMenu')"
           >
-            <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-600 text-sm font-medium text-white">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -263,7 +263,7 @@ const { formatBalanceAmount } = useBalanceDisplay()
 const { isDark, toggleTheme } = useTheme()
 
 const user = computed(() => authStore.user)
-const homePath = computed(() => (authStore.isAdmin ? '/admin/dashboard' : '/dashboard'))
+const homePath = '/home'
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const siteVersion = computed(() => appStore.siteVersion)
@@ -402,7 +402,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-icon-button {
-  @apply flex h-10 w-10 items-center justify-center rounded-control text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
+  @apply flex h-9 w-9 items-center justify-center rounded-control text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white;
 }
 
 .header-status-balance {
@@ -410,7 +410,7 @@ onBeforeUnmount(() => {
 }
 
 .header-status-user-button {
-  @apply flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-primary-100 dark:hover:bg-dark-800;
+  @apply flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-primary-100 dark:hover:bg-dark-800;
 }
 
 .dropdown-enter-active,

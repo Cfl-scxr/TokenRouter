@@ -705,6 +705,7 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Payment Dashboard',
       titleKey: 'nav.paymentDashboard',
+      descriptionKey: 'payment.admin.dashboardDesc',
       requiresPayment: true
     }
   },
@@ -717,6 +718,7 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Order Management',
       titleKey: 'nav.orderManagement',
+      descriptionKey: 'payment.admin.ordersPageDesc',
       requiresPayment: true
     }
   },
@@ -729,6 +731,7 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Subscription Plans',
       titleKey: 'nav.paymentPlans',
+      descriptionKey: 'payment.admin.plansPageDesc',
       requiresPayment: true
     }
   },

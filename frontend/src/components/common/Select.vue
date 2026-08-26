@@ -490,6 +490,7 @@ onUnmounted(() => {
 .select-trigger {
   @apply flex w-full items-center justify-between gap-2;
   @apply rounded-control px-4 py-2.5 text-sm;
+  @apply min-h-11;
   @apply bg-white dark:bg-dark-950;
   @apply border border-primary-900/10 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;

@@ -98,6 +98,8 @@ export default {
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
       searchAccounts: 'Search accounts...',
+      filterHint: 'Filter by platform, type, status, Privacy, or group',
+      privacyFilter: 'Privacy status',
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
       notesHint: 'Notes are optional',

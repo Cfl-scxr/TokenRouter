@@ -30,6 +30,7 @@ vi.mock('@/stores', () => ({
 
 vi.mock('@/composables/useTheme', () => ({
   initTheme: vi.fn(),
+  useTheme: () => ({ isDark: { value: true }, toggleTheme: vi.fn() }),
 }))
 
 vi.mock('@/composables/useBalanceDisplay', () => ({
@@ -200,7 +201,7 @@ async function mountMarketplace() {
   const wrapper = mount(ModelMarketplaceView, {
     global: {
       stubs: {
-        AppLayout: { template: '<div><slot /></div>' },
+        AppLayout: { template: '<div><slot name="page-heading-actions" /><slot /></div>' },
         RouterLink: { template: '<a><slot /></a>' },
         Icon: { template: '<span />' },
         LoadingSpinner: { template: '<span />' },

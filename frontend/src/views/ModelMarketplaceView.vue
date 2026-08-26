@@ -3,44 +3,106 @@
     :is="isAuthenticated ? AppLayout : 'div'"
     :class="isAuthenticated ? '' : 'ba-theme-shell relative min-h-screen overflow-hidden'"
   >
+    <template v-if="isAuthenticated" #page-heading-actions>
+      <div class="model-marketplace-toolbar flex w-[calc(100vw-2rem)] max-w-full min-w-0 items-center gap-2 sm:w-auto">
+        <div class="min-w-0 flex-1 sm:w-80 sm:flex-none lg:w-[min(24rem,32vw)]">
+          <SearchInput
+            v-model="search"
+            :placeholder="t('marketplace.searchPlaceholder')"
+            :debounce-ms="120"
+          />
+        </div>
+
+        <div ref="filterPanelRef" class="relative shrink-0">
+          <button
+            type="button"
+            class="btn btn-secondary relative h-11 w-11 p-0"
+            :aria-expanded="showFilterDropdown"
+            :aria-label="t('common.filter')"
+            :title="t('common.filter')"
+            @click="showFilterDropdown = !showFilterDropdown"
+          >
+            <Icon name="filter" size="sm" />
+            <span v-if="activeFilterCount > 0" class="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+              {{ activeFilterCount }}
+            </span>
+          </button>
+          <div v-show="showFilterDropdown" class="absolute right-0 top-full z-[60] mt-2 w-[min(34rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-dark-600 dark:bg-dark-900" @click.stop>
+            <div class="mb-3 flex items-center justify-between">
+              <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
+              <button v-if="activeFilterCount > 0" type="button" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="resetFilters">
+                {{ t('common.reset') }}
+              </button>
+            </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('marketplace.displayMode') }}</label>
+                <Select v-model="displayMode" :options="displayModeOptions" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('marketplace.allBrands') }}</label>
+                <Select v-model="selectedBrand" :options="brandSelectOptions" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('marketplace.allTypes') }}</label>
+                <Select v-model="selectedPricingMode" :options="pricingSelectOptions" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('marketplace.allGroups') }}</label>
+                <Select v-model="selectedGroupId" :options="groupSelectOptions" searchable />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <template v-if="!isAuthenticated">
       <div class="ba-theme-backdrop pointer-events-none fixed inset-0"></div>
 
-      <header class="relative z-20 border-b border-primary-900/10 bg-white/75 backdrop-blur-xl dark:border-dark-600/70 dark:bg-dark-700/95">
-        <nav class="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <RouterLink to="/home" class="flex min-w-0 items-center gap-3">
-            <div class="h-11 w-11 overflow-hidden rounded-2xl border border-primary-900/10 bg-white shadow-md dark:border-dark-600 dark:bg-dark-900">
+      <header class="glass relative z-20 border-b border-primary-900/10 px-4 dark:border-dark-600/80 sm:px-6">
+        <nav class="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4">
+          <router-link to="/home" class="flex min-w-0 items-center gap-2.5">
+            <span class="h-8 w-8 shrink-0 overflow-hidden rounded-lg shadow-sm">
               <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-            </div>
-            <div class="min-w-0">
-              <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ siteName }}</div>
-              <div class="truncate text-xs text-gray-500 dark:text-dark-400">{{ t('marketplace.title') }}</div>
-            </div>
-          </RouterLink>
+            </span>
+            <span class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ siteName }}</span>
+          </router-link>
 
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="hidden items-center gap-5 text-sm font-medium text-gray-600 dark:text-dark-300 md:flex">
+              <router-link to="/models" class="transition hover:text-gray-950 dark:hover:text-white">
+                {{ t('home.nav.models') }}
+              </router-link>
+              <a
+                v-if="docUrl"
+                :href="docUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="transition hover:text-gray-950 dark:hover:text-white"
+              >
+                {{ t('home.docs') }}
+              </a>
+            </div>
+
             <LocaleSwitcher />
-            <a
-              v-if="docUrl"
-              :href="docUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="rounded-full border border-primary-900/10 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-black/20 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
+
+            <button
+              type="button"
+              @click="toggleTheme"
+              class="flex h-9 w-9 items-center justify-center rounded-control text-primary-900/90 transition-colors hover:bg-primary-100 hover:text-primary-900 dark:text-dark-100/80 dark:hover:bg-dark-800 dark:hover:text-white"
+              :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
             >
-              {{ t('home.docs') }}
-            </a>
-            <RouterLink
-              to="/home"
-              class="rounded-full border border-primary-900/10 bg-white/80 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur transition hover:border-black/20 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-900/80 dark:text-dark-100 dark:hover:border-primary-500"
+              <Icon v-if="isDark" name="sun" size="md" />
+              <Icon v-else name="moon" size="md" />
+            </button>
+
+            <router-link
+              to="/login"
+              class="inline-flex items-center rounded-full bg-gray-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-800 dark:bg-white dark:text-dark-950 dark:hover:bg-dark-200"
             >
-              {{ t('marketplace.backHome') }}
-            </RouterLink>
-            <RouterLink
-              :to="dashboardPath"
-              class="rounded-full bg-primary-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-800 dark:bg-primary-100 dark:text-dark-950 dark:hover:bg-white"
-            >
-              {{ isAuthenticated ? t('home.dashboard') : t('home.login') }}
-            </RouterLink>
+              {{ t('home.login') }}
+            </router-link>
           </div>
         </nav>
       </header>
@@ -52,8 +114,12 @@
         : 'relative z-10 px-4 pb-12 pt-6 sm:px-6 lg:px-8'"
     >
       <div :class="isAuthenticated ? 'space-y-4' : 'relative mx-auto max-w-[1400px] space-y-5'">
-        <div class="flex flex-wrap items-center gap-3">
-          <div class="min-w-[280px] flex-1 xl:max-w-[420px]">
+        <div v-if="!isAuthenticated" class="page-heading mb-4">
+          <h1 class="page-title">{{ t('marketplace.title') }}</h1>
+          <p class="page-description">{{ t('marketplace.subtitle') }}</p>
+        </div>
+        <div v-if="!isAuthenticated" class="flex min-w-0 items-center gap-2">
+          <div class="min-w-0 flex-1 sm:w-80 sm:flex-none xl:w-96">
             <SearchInput
               v-model="search"
               :placeholder="t('marketplace.searchPlaceholder')"
@@ -61,20 +127,46 @@
             />
           </div>
 
-          <div class="w-full sm:w-[200px] xl:w-[180px]">
-            <Select v-model="displayMode" :options="displayModeOptions" />
-          </div>
-
-          <div class="w-full sm:w-[200px] xl:w-[180px]">
-            <Select v-model="selectedBrand" :options="brandSelectOptions" />
-          </div>
-
-          <div class="w-full sm:w-[200px] xl:w-[180px]">
-            <Select v-model="selectedPricingMode" :options="pricingSelectOptions" />
-          </div>
-
-          <div class="w-full sm:w-[220px] xl:w-[220px]">
-            <Select v-model="selectedGroupId" :options="groupSelectOptions" searchable />
+          <div ref="filterPanelRef" class="relative shrink-0">
+            <button
+              type="button"
+              class="btn btn-secondary relative h-11 w-11 p-0"
+              :aria-expanded="showFilterDropdown"
+              :aria-label="t('common.filter')"
+              :title="t('common.filter')"
+              @click="showFilterDropdown = !showFilterDropdown"
+            >
+              <Icon name="filter" size="sm" />
+              <span v-if="activeFilterCount > 0" class="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                {{ activeFilterCount }}
+              </span>
+            </button>
+            <div v-show="showFilterDropdown" class="absolute right-0 top-full z-[60] mt-2 w-[min(34rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-dark-600 dark:bg-dark-900" @click.stop>
+              <div class="mb-3 flex items-center justify-between">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
+                <button v-if="activeFilterCount > 0" type="button" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="resetFilters">
+                  {{ t('common.reset') }}
+                </button>
+              </div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ t('marketplace.displayMode') }}</label>
+                  <Select v-model="displayMode" :options="displayModeOptions" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('marketplace.allBrands') }}</label>
+                  <Select v-model="selectedBrand" :options="brandSelectOptions" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('marketplace.allTypes') }}</label>
+                  <Select v-model="selectedPricingMode" :options="pricingSelectOptions" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('marketplace.allGroups') }}</label>
+                  <Select v-model="selectedGroupId" :options="groupSelectOptions" searchable />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -366,7 +458,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -379,7 +471,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
-import { initTheme } from '@/composables/useTheme'
+import { initTheme, useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels } from '@/api/marketplace'
 import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand, resolveProviderBrandKey } from '@/utils/providerBrand'
 import { sanitizeUrl } from '@/utils/url'
@@ -425,6 +517,7 @@ const { balanceUnitName } = useBalanceDisplay()
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const { isDark, toggleTheme } = useTheme()
 
 const groups = ref<MarketplaceGroup[]>([])
 const loading = ref(true)
@@ -435,15 +528,10 @@ const selectedBrand = ref<string | 'all'>('all')
 const selectedPricingMode = ref<PricingFilter>('all')
 const selectedGroupId = ref<number | 'all'>('all')
 const selectedPricing = ref<SelectedPricingModel | null>(null)
+const showFilterDropdown = ref(false)
+const filterPanelRef = ref<HTMLElement | null>(null)
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
-const isAdmin = computed(() => authStore.isAdmin)
-const dashboardPath = computed(() => {
-  if (!isAuthenticated.value) {
-    return '/login'
-  }
-  return isAdmin.value ? '/admin/dashboard' : '/dashboard'
-})
 
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
@@ -459,6 +547,12 @@ const selectedPricingTitle = computed(() => {
 })
 
 const normalizedSearch = computed(() => search.value.trim().toLowerCase())
+const activeFilterCount = computed(() => [
+  displayMode.value !== 'group-model' ? displayMode.value : '',
+  selectedBrand.value !== 'all' ? selectedBrand.value : '',
+  selectedPricingMode.value !== 'all' ? selectedPricingMode.value : '',
+  selectedGroupId.value !== 'all' ? selectedGroupId.value : '',
+].filter(Boolean).length)
 
 const sortedGroups = computed(() =>
   [...groups.value].sort((left, right) => {
@@ -706,9 +800,18 @@ function closePricingDialog() {
 
 function resetFilters() {
   search.value = ''
+  displayMode.value = 'group-model'
   selectedBrand.value = 'all'
   selectedPricingMode.value = 'all'
   selectedGroupId.value = 'all'
+  showFilterDropdown.value = false
+}
+
+function handleFilterClickOutside(event: MouseEvent) {
+  const target = event.target
+  if (target instanceof Node && filterPanelRef.value?.contains(target)) return
+  if (target instanceof Element && target.closest('.select-dropdown-portal')) return
+  showFilterDropdown.value = false
 }
 
 function formatMultiplier(multiplier: number): string {
@@ -1050,6 +1153,7 @@ async function fetchMarketplace() {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', handleFilterClickOutside)
   initTheme()
   authStore.checkAuth()
   if (!appStore.publicSettingsLoaded) {
@@ -1057,4 +1161,6 @@ onMounted(async () => {
   }
   await fetchMarketplace()
 })
+
+onUnmounted(() => document.removeEventListener('click', handleFilterClickOutside))
 </script>
