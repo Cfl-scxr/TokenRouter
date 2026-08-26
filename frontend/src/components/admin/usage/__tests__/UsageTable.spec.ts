@@ -105,7 +105,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
-        <slot name="cell-detailed_timing" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
       </div>
     </div>
@@ -165,8 +165,8 @@ describe('admin UsageTable request ID column', () => {
   })
 })
 
-describe('admin UsageTable detailed timing column', () => {
-  it('renders the request stage timings', () => {
+describe('admin UsageTable detailed timing tooltip', () => {
+  it('renders the request stage timings from the latency info button', async () => {
     const wrapper = mount(UsageTable, {
       props: {
         data: [{
@@ -185,18 +185,50 @@ describe('admin UsageTable detailed timing column', () => {
           },
         }],
         loading: false,
-          columns: [{ key: 'detailed_timing', label: 'Detailed Timing' }],
+        columns: [{ key: 'latency', label: 'Latency' }],
       },
       global: {
         stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
       },
     })
 
+    const timingButton = wrapper.get('button[title="Detailed Timing"]')
+    await timingButton.trigger('mouseenter')
+    await nextTick()
+
     expect(wrapper.text()).toContain('Slot')
     expect(wrapper.text()).toContain('7.97MB')
     expect(wrapper.text()).toContain('120ms')
     expect(wrapper.text()).toContain('First SSE')
     expect(wrapper.text()).toContain('2')
+  })
+
+  it('keeps the timing tooltip open after a mobile-style click until toggled again', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          detailed_timing: { account_slot_acquired_ms: 120 },
+        }],
+        loading: false,
+        columns: [{ key: 'latency', label: 'Latency' }],
+      },
+      global: {
+        stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true },
+      },
+    })
+
+    const timingButton = wrapper.get('button[title="Detailed Timing"]')
+    await timingButton.trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="timing-detail-tooltip"]').exists()).toBe(true)
+
+    await timingButton.trigger('mouseleave')
+    expect(wrapper.find('[data-testid="timing-detail-tooltip"]').exists()).toBe(true)
+
+    await timingButton.trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="timing-detail-tooltip"]').exists()).toBe(false)
   })
 })
 

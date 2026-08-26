@@ -3,8 +3,7 @@
     <TablePageLayout>
       <!-- 筛选条件 -->
       <template #filters>
-        <div class="card p-4 sm:p-6">
-          <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center justify-between gap-3">
             <div ref="filterPanelRef" class="relative shrink-0">
               <button
                 type="button"
@@ -92,7 +91,6 @@
                 {{ t('admin.audit.clearAll') }}
               </button>
             </div>
-          </div>
         </div>
       </template>
 
