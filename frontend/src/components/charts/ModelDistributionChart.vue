@@ -252,6 +252,7 @@ import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
+import { compressSkewedValues } from '@/utils/chartDisplayScale'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 
@@ -373,6 +374,11 @@ const displayModelStats = computed(() => {
   return [...sourceStats].sort((a, b) => toFiniteNumber(b[metricKey]) - toFiniteNumber(a[metricKey]))
 })
 
+// 图形渲染对应的原始指标值；扇区经 log 压缩后，tooltip 仍按原始值计算真实占比。
+const chartValues = computed(() =>
+  displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens))
+)
+
 const chartData = computed(() => {
   if (!displayModelStats.value.length) return null
 
@@ -380,7 +386,7 @@ const chartData = computed(() => {
     labels: displayModelStats.value.map((m) => m.model),
     datasets: [
       {
-        data: displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens)),
+        data: compressSkewedValues(chartValues.value),
         backgroundColor: chartColors.slice(0, displayModelStats.value.length),
         borderWidth: 0
       }
@@ -388,16 +394,22 @@ const chartData = computed(() => {
   }
 })
 
+const rankingValues = computed(() => {
+  if (!props.rankingItems?.length) return []
+
+  const values = props.rankingItems.map((item) => toFiniteNumber(item.actual_cost))
+  if (otherRankingItem.value) values.push(toFiniteNumber(otherRankingItem.value.actual_cost))
+  return values
+})
+
 const rankingChartData = computed(() => {
   if (!props.rankingItems?.length) return null
 
   const labels = props.rankingItems.map((item, index) => `#${index + 1} ${getRankingUserLabel(item)}`)
-  const data = props.rankingItems.map((item) => toFiniteNumber(item.actual_cost))
   const backgroundColor = chartColors.slice(0, props.rankingItems.length)
 
   if (otherRankingItem.value) {
     labels.push(t('admin.dashboard.spendingRankingOther'))
-    data.push(otherRankingItem.value.actual_cost)
     backgroundColor.push('#94a3b8')
   }
 
@@ -405,7 +417,7 @@ const rankingChartData = computed(() => {
     labels,
     datasets: [
       {
-        data,
+        data: compressSkewedValues(rankingValues.value),
         backgroundColor,
         borderWidth: 0
       }
@@ -453,9 +465,10 @@ const doughnutOptions = computed(() => ({
     },
     tooltip: {
       callbacks: {
+        // 扇区可能被 log 压缩，数值与占比一律按原始值（dataIndex 回查）展示。
         label: (context: any) => {
-          const value = context.raw as number
-          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+          const value = chartValues.value[context.dataIndex] ?? 0
+          const total = chartValues.value.reduce((a: number, b: number) => a + b, 0)
           const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
           const formattedValue = props.metric === 'actual_cost'
             ? `${balanceUnitSymbol.value}${formatCost(value)}`
@@ -477,8 +490,8 @@ const rankingDoughnutOptions = computed(() => ({
     tooltip: {
       callbacks: {
         label: (context: any) => {
-          const value = context.raw as number
-          const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0)
+          const value = rankingValues.value[context.dataIndex] ?? 0
+          const total = rankingValues.value.reduce((a: number, b: number) => a + b, 0)
           const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0'
           return `${context.label}: ${balanceUnitSymbol.value}${formatCost(value)} (${percentage}%)`
         }

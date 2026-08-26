@@ -99,8 +99,7 @@ describe('ModelDistributionChart', () => {
     const options = (wrapper.vm as any).$?.setupState.doughnutOptions
     const label = options.plugins.tooltip.callbacks.label({
       label: 'model-a',
-      raw: 1000,
-      dataset: { data: [1000, 500] },
+      dataIndex: 0,
     })
     expect(label).toBe('model-a: 1.00K (66.7%)')
   })
@@ -129,8 +128,7 @@ describe('ModelDistributionChart', () => {
     const options = (wrapper.vm as any).$?.setupState.doughnutOptions
     const label = options.plugins.tooltip.callbacks.label({
       label: 'model-b',
-      raw: 1.4,
-      dataset: { data: [1.4, 0.2] },
+      dataIndex: 0,
     })
     expect(label).toBe('model-b: $1.40 (87.5%)')
   })
