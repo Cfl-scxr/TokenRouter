@@ -685,7 +685,7 @@ export default {
         selectingAll: '正在选择全部结果...',
         selectAllFailed: '获取全部账号失败，原有选择未改变',
         clear: '清除选择',
-        edit: '批量编辑账号',
+        edit: '批量编辑选中账号',
         delete: '批量删除',
         confirmDelete: '确认删除选中的 {count} 个账号吗？此操作不可恢复。',
         deleteSuccess: '已成功删除 {count} 个账号',
