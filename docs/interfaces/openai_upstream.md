@@ -42,11 +42,12 @@ OpenAI 分组支持 Messages、Responses 和 Chat，新建时默认启用 Respon
 
 ### API Key 文本配置
 
-OpenAI API Key 的普通文本配置把三个概念分开持久化：
+OpenAI API Key 的普通文本配置把四个概念分开持久化：
 
 - `credentials.openai_workload_capabilities` 是工作负载集合，只允许 `text_generation` 与 `embeddings`。缺失时写入两项默认值，显式空数组表示该账号不承接这两类工作负载。
 - `extra.openai_text_route_mode` 是管理员拥有的路由策略，只允许 `preserve_client_protocol`、`force_responses`、`force_chat_completions`。
 - `extra.openai_responses_probe_status` 是探测服务拥有的只读事实，只允许 `supported`、`unsupported`、`unknown`。探测更新不得改写管理员路由策略。
+- `extra.openai_responses_continuation_supported` 是管理员拥有的 HTTP continuation 能力开关，取值为布尔值，缺失时按 `false` 处理。只有显式为 `true` 时，Messages 转 Responses 的兼容桥才会发送和缓存 `previous_response_id`；它不改变协议路由，也不覆盖探测状态。
 
 普通文本协议按下表解析：
 
@@ -58,7 +59,7 @@ OpenAI API Key 的普通文本配置把三个概念分开持久化：
 
 因此 `preserve_client_protocol` 下的 Chat 请求只访问上游 `/v1/chat/completions`，请求体保持 Chat 形状，不再先尝试 `/v1/responses` 后按 404 回退。Responses 与 Messages 没有同形 Chat 首选路径，只有探测明确不支持时才在默认模式下降级。显式强制模式始终优先于探测事实。OAuth、Grok、Images、Compact 和 WebSocket 使用各自专用路由，不套用这张普通文本矩阵。
 
-运行时与调度缓存只读取上述新键。账号创建、更新、批量更新和导入仍可接收旧 `openai_capabilities`、`openai_responses_mode`、`openai_responses_supported`，但必须在持久化前规范化并删除旧键；复制账号保留工作负载和路由策略，将探测状态重置为 `unknown` 后重新探测。
+运行时与调度缓存只读取上述新键。账号创建、更新、批量更新和导入仍可接收旧 `openai_capabilities`、`openai_responses_mode`、`openai_responses_supported`，但必须在持久化前规范化并删除旧键；复制账号保留工作负载、路由策略和 continuation 能力开关，将探测状态重置为 `unknown` 后重新探测。嵌套 Sub2API 等可能把请求转给 OAuth 上游的 API Key 账号应保持 continuation 关闭；确认直连 API Key 上游支持 HTTP continuation 后再开启。
 
 OpenAI 兼容非流式响应的 usage 按 `usage`、`response.usage`、`data.usage`、`data.response.usage` 的顺序解析；前两条原生路径优先于 Cline 等兼容上游使用的 `data` envelope。同层的 hosted image usage 必须随对应路径读取，不能把不同 envelope 的 token 与图片用量混合。
 

@@ -502,6 +502,24 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('OpenAI API Key 批量编辑可显式开启 HTTP continuation', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.get('[data-testid="bulk-edit-openai-continuation-supported-apply"]').attributes('role')).toBe('switch')
+    expect(wrapper.get('[data-testid="bulk-edit-openai-continuation-supported"]').attributes('role')).toBe('switch')
+    await wrapper.get('[data-testid="bulk-edit-openai-continuation-supported-apply"]').trigger('click')
+    await wrapper.get('[data-testid="bulk-edit-openai-continuation-supported"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_responses_continuation_supported: true }
+    })
+  })
+
   it('仅保留 embeddings 时自动清除强制文本路由', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

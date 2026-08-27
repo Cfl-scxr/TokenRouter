@@ -3556,6 +3556,22 @@
             />
           </div>
         </div>
+        <div class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-dark-600 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <label class="input-label mb-0" for="create-openai-continuation-supported">
+              {{ t('admin.accounts.openai.responsesContinuationSupported') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.responsesContinuationSupportedDesc') }}
+            </p>
+          </div>
+          <Toggle
+            id="create-openai-continuation-supported"
+            v-model="openAIResponsesContinuationSupported"
+            data-testid="create-openai-continuation-supported"
+            :aria-label="t('admin.accounts.openai.responsesContinuationSupported')"
+          />
+        </div>
         <div
           class="flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-dark-600 sm:flex-row sm:items-center sm:justify-between"
           data-testid="openai-responses-probe-status"
@@ -4157,6 +4173,7 @@ import type { OpenAIOAuthImportDefaults } from '@/api/admin/settings'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -4623,6 +4640,8 @@ const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAINativeCompactionV2Mode = ref<OpenAICompactMode>('auto')
 const openAITextRouteMode = ref<OpenAITextRouteMode>('preserve_client_protocol')
 const openAIWorkloadCapabilities = ref<OpenAIWorkloadCapability[]>(['text_generation', 'embeddings'])
+// HTTP continuation 默认关闭，避免把中继账号误判为支持 previous_response_id。
+const openAIResponsesContinuationSupported = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
@@ -5363,6 +5382,7 @@ watch(
       openaiFlattenNamespacesEnabled.value = false
       openAITextRouteMode.value = 'preserve_client_protocol'
       openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
+      openAIResponsesContinuationSupported.value = false
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyAllowClaudeCodeEnabled.value = false
@@ -5867,6 +5887,7 @@ const resetForm = () => {
   openAINativeCompactionV2Mode.value = 'auto'
   openAITextRouteMode.value = 'preserve_client_protocol'
   openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
+  openAIResponsesContinuationSupported.value = false
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyAllowClaudeCodeEnabled.value = false
@@ -6066,6 +6087,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_responses_supported
     extra.openai_text_route_mode = openAITextRouteMode.value
     extra.openai_responses_probe_status = 'unknown'
+    extra.openai_responses_continuation_supported = openAIResponsesContinuationSupported.value
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

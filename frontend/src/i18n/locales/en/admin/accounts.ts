@@ -755,6 +755,10 @@ export default {
         textRouteForceChatCompletions: 'Force Chat Completions',
         textRouteTextDisabledHint:
           'Text protocol routing is not applicable when text generation is disabled.',
+        responsesContinuationSupported: 'HTTP continuation support',
+        responsesContinuationSupportedDesc:
+          'Enable only when the upstream supports HTTP previous_response_id. Disable this for nested Sub2API accounts that may route to OAuth. This does not change text protocol routing.',
+        responsesContinuationSupportedEnabled: 'Allow sending and caching previous_response_id',
         responsesProbeStatus: 'Responses probe status',
         responsesProbeStatusDesc: 'Read-only result from the latest automatic Responses capability probe.',
         responsesProbeSupported: 'Supported',

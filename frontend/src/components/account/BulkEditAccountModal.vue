@@ -260,6 +260,49 @@
         </div>
       </div>
 
+      <!-- OpenAI API Key HTTP continuation 能力 -->
+      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <div class="flex-1">
+            <label
+              id="bulk-edit-openai-continuation-supported-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-continuation-supported-enabled"
+            >
+              {{ t('admin.accounts.openai.responsesContinuationSupported') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.responsesContinuationSupportedDesc') }}
+            </p>
+          </div>
+          <Toggle
+            id="bulk-edit-openai-continuation-supported-enabled"
+            v-model="enableOpenAIResponsesContinuationSupported"
+            aria-controls="bulk-edit-openai-continuation-supported-body"
+            data-testid="bulk-edit-openai-continuation-supported-apply"
+            :aria-label="t('admin.accounts.bulkEdit.applyField')"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-continuation-supported-body"
+          :class="!enableOpenAIResponsesContinuationSupported && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-continuation-supported-label"
+        >
+          <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600">
+            <Toggle
+              v-model="openAIResponsesContinuationSupported"
+              :disabled="!enableOpenAIResponsesContinuationSupported"
+              data-testid="bulk-edit-openai-continuation-supported"
+              :aria-label="t('admin.accounts.openai.responsesContinuationSupportedEnabled')"
+            />
+            <span class="text-gray-700 dark:text-gray-200">
+              {{ t('admin.accounts.openai.responsesContinuationSupportedEnabled') }}
+            </span>
+          </label>
+        </div>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1687,6 +1730,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import CodexImageToolModeSelector from '@/components/account/CodexImageToolModeSelector.vue'
@@ -1884,6 +1928,7 @@ const enableOpenAIFlattenNamespaces = ref(false)
 const enableCodexImageToolMode = ref(false)
 const enableOpenAIWorkloadCapabilities = ref(false)
 const enableOpenAITextRouteMode = ref(false)
+const enableOpenAIResponsesContinuationSupported = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableCodexCLIOnly = ref(false)
@@ -1928,6 +1973,8 @@ const openAIWorkloadCapabilities = ref<OpenAIWorkloadCapability[]>([
   'embeddings'
 ])
 const openAITextRouteMode = ref<OpenAITextRouteMode>('preserve_client_protocol')
+// 批量修改默认不触碰 continuation，避免未勾选时覆盖目标账号已有设置。
+const openAIResponsesContinuationSupported = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openAIOAuthClientPolicy = ref<OpenAIOAuthClientPolicy>('any')
@@ -2428,6 +2475,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
         : null
   }
 
+  if (enableOpenAIResponsesContinuationSupported.value && allOpenAIAPIKey.value) {
+    const extra = ensureExtra()
+    extra.openai_responses_continuation_supported = openAIResponsesContinuationSupported.value
+  }
+
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
     // Antigravity 账号仍使用 mapping-only 语义，批量修改不能给它写入普通账号的独立白名单字段。
     if (targetSelectedPlatforms.value.length === 1 && targetSelectedPlatforms.value[0] === 'antigravity') {
@@ -2638,6 +2690,7 @@ const handleSubmit = async () => {
     enableCodexImageToolMode.value ||
     enableOpenAIWorkloadCapabilities.value ||
     enableOpenAITextRouteMode.value ||
+    enableOpenAIResponsesContinuationSupported.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
@@ -2789,6 +2842,7 @@ const resetBulkEditFormState = () => {
   enableCodexImageToolMode.value = false
   enableOpenAIWorkloadCapabilities.value = false
   enableOpenAITextRouteMode.value = false
+  enableOpenAIResponsesContinuationSupported.value = false
   enableOpenAIWSMode.value = false
   enableOpenAIAPIKeyWSMode.value = false
   enableCodexCLIOnly.value = false
@@ -2810,6 +2864,7 @@ const resetBulkEditFormState = () => {
   codexImageToolMode.value = 'inherit'
   openAIWorkloadCapabilities.value = ['text_generation', 'embeddings']
   openAITextRouteMode.value = 'preserve_client_protocol'
+  openAIResponsesContinuationSupported.value = false
   resetModelRestrictionDraft()
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null

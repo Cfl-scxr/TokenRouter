@@ -998,6 +998,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_text_route_mode",
 		"openai_responses_probe_status",
+		"openai_responses_continuation_supported",
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
 		"codex_5h_used_percent",

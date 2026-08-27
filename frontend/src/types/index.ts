@@ -1691,6 +1691,7 @@ export interface OpenAINativeCompactionV2State {
 export interface OpenAITextProtocolState {
   openai_text_route_mode?: OpenAITextRouteMode
   openai_responses_probe_status?: OpenAIResponsesProbeStatus
+  openai_responses_continuation_supported?: boolean
 }
 
 export interface CreateAccountRequest {
