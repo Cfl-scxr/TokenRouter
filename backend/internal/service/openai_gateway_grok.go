@@ -78,8 +78,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 	}
 	// 从 xAI 实际接收的请求派生身份，使 Codex Responses Lite 的 additional_tools
-	// 成为稳定工具前缀的一部分。
-	cacheIdentity := resolveGrokCacheIdentity(c, patchedBody, "", upstreamModel)
+	// 成为稳定工具前缀的一部分。若 Claude Code session 只存在于 metadata.user_id，
+	// 则在 metadata 被剥离前使用原始请求保留该身份。
+	cacheIdentityBody := patchedBody
+	if extractClaudeCodeSessionIDFromPayload(body) != "" {
+		cacheIdentityBody = body
+	}
+	cacheIdentity := resolveGrokCacheIdentity(c, cacheIdentityBody, "", upstreamModel)
 	mixedCacheIntentBody := append([]byte(nil), patchedBody...)
 	patchedBody, err = applyGrokResponsesCacheIdentity(patchedBody, body, cacheIdentity, account.IsGrokOAuth())
 	if err != nil {
@@ -550,7 +555,7 @@ func patchGrokResponsesBodyBase(body []byte, upstreamModel string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier"} {
+	for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier", "metadata"} {
 		if gjson.GetBytes(out, unsupportedField).Exists() {
 			out, err = sjson.DeleteBytes(out, unsupportedField)
 			if err != nil {
