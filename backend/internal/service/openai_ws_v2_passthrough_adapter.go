@@ -1433,6 +1433,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if !ok {
 					return
 				}
+				// 与 handler 的关闭路径保持一致，并限制在 WebSocket 控制帧大小内；
+				// 原因过长会导致 coder/websocket 跳过关闭帧，客户端只能收到 EOF 而非状态码。
+				reason = truncateString(reason, 120)
 				_ = clientConn.Close(status, reason)
 				_ = clientConn.CloseNow()
 			},
@@ -1445,6 +1448,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				routingModel := strings.TrimSpace(turnPayload.RoutingModel)
 				if routingModel == "" {
 					routingModel = loadCapturedModel(&capturedSessionRoutingModel)
+				}
+				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
+					return nil
 				}
 				if eventType == "response.failed" {
 					terminalPolicy := s.handleOpenAIWSTerminalTransientFailure(ctx, account, routingModel, handshakeHeaders, payload)
@@ -1675,6 +1681,24 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 		return coderws.StatusInternalError, "upstream websocket proxy failed", true
 	}
 	return 0, "", false
+}
+
+func markOpenAIWSV2PassthroughCyberPolicy(c *gin.Context, payload []byte) bool {
+	hit, code, message := detectOpenAICyberPolicy(payload)
+	if !hit {
+		return false
+	}
+	usage := OpenAIUsage{}
+	parseOpenAIWSResponseUsageFromCompletedEvent(payload, &usage)
+	MarkOpsCyberPolicy(c, CyberPolicyMark{
+		Code:           code,
+		Message:        message,
+		Body:           truncateString(string(payload), 4096),
+		UpstreamStatus: http.StatusOK,
+		UpstreamInTok:  usage.InputTokens,
+		UpstreamOutTok: usage.OutputTokens,
+	})
+	return true
 }
 
 func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(
