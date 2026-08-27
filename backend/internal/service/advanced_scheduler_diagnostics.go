@@ -542,13 +542,6 @@ func (s *AdvancedSchedulerScoreDiagnosticService) effectiveSettings(ctx context.
 	return gateway.advancedSchedulerEffectiveSettingsForGroup(ctx, group), runtime
 }
 
-func (s *AdvancedSchedulerScoreDiagnosticService) stickyEscapeConfig() advancedStickyEscapeConfig {
-	if s == nil || s.rateLimitService == nil {
-		return advancedStickyEscapeConfig{}
-	}
-	return resolveAdvancedStickyEscapeConfig(s.rateLimitService.cfg)
-}
-
 func (s *AdvancedSchedulerScoreDiagnosticService) prepareEligibilityContext(ctx context.Context, group *Group, accounts []Account) context.Context {
 	if s == nil {
 		return ctx

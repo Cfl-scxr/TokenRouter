@@ -373,11 +373,11 @@ func TestOpenAIGatewayService_AdvancedSchedulerRuntimeSettings_DBOverridesConfig
 	repo := &advancedSchedulerSettingRepoStub{
 		values: map[string]string{
 			SettingKeyAdvancedSchedulerLBTopK:                 "3",
-			SettingKeyAdvancedSchedulerEWMAErrorRateAlpha:    "0.4",
-			SettingKeyAdvancedSchedulerEWMATTFTAlpha:         "0.6",
-			SettingKeyAdvancedSchedulerStickyEscapeEnabled:   "false",
-			SettingKeyAdvancedSchedulerStickyEscapeTTFTMs:    "9000",
-			SettingKeyAdvancedSchedulerStickyEscapeErrorRate: "0.25",
+			SettingKeyAdvancedSchedulerEWMAErrorRateAlpha:     "0.4",
+			SettingKeyAdvancedSchedulerEWMATTFTAlpha:          "0.6",
+			SettingKeyAdvancedSchedulerStickyEscapeEnabled:    "false",
+			SettingKeyAdvancedSchedulerStickyEscapeTTFTMs:     "9000",
+			SettingKeyAdvancedSchedulerStickyEscapeErrorRate:  "0.25",
 			SettingKeyAdvancedSchedulerWeightPriority:         "2.5",
 			SettingKeyAdvancedSchedulerWeightReset:            "0.25",
 			SettingKeyAdvancedSchedulerWeightPreviousResponse: "12",

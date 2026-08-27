@@ -2320,13 +2320,6 @@ func normalizeAdvancedStickyEscapeConfig(value advancedStickyEscapeConfig) advan
 	return value
 }
 
-func (s *OpenAIGatewayService) openAIStickyEscapeConfig() advancedStickyEscapeConfig {
-	if s == nil {
-		return resolveAdvancedStickyEscapeConfig(nil)
-	}
-	return resolveAdvancedStickyEscapeConfig(s.cfg)
-}
-
 func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayAdvancedSchedulerScoreWeightsView {
 	if s != nil && s.cfg != nil {
 		return GatewayAdvancedSchedulerScoreWeightsView{
