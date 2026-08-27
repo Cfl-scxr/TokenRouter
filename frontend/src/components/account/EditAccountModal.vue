@@ -1696,8 +1696,8 @@
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
             <label class="input-label mb-0">{{ t('admin.accounts.openai.wsMode') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.openai.wsModeDesc') }}
@@ -1706,7 +1706,7 @@
               {{ t(openAIWSModeConcurrencyHintKey) }}
             </p>
           </div>
-          <div class="w-52">
+          <div class="w-full sm:w-52 sm:flex-shrink-0">
             <Select v-model="openaiResponsesWebSocketV2Mode" :options="openAIWSModeOptions" />
           </div>
         </div>
