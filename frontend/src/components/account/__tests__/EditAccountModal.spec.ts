@@ -909,6 +909,12 @@ describe('EditAccountModal', () => {
     expect(wrapper.find('[data-testid="openai-plan-type-select"]').exists()).toBe(false)
   })
 
+  it('renders the account scheduling threshold override as a switch', () => {
+    const wrapper = mountModal(buildAccount())
+
+    expect(wrapper.get('[data-testid="account-scheduling-threshold-override-enabled"]').attributes('role')).toBe('switch')
+  })
+
   it('submits OpenAI APIKey text route mode and keeps probe status read-only', async () => {
     const account = buildAccount()
     account.extra = {

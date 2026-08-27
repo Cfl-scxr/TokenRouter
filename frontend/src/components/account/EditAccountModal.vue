@@ -1515,11 +1515,10 @@
               {{ t('admin.accounts.accountSchedulingThresholdOverrideHint') }}
             </p>
           </div>
-          <input
+          <Toggle
             v-model="accountSchedulingThresholdOverrideEnabled"
             data-testid="account-scheduling-threshold-override-enabled"
-            type="checkbox"
-            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :aria-label="t('admin.accounts.accountSchedulingThresholdOverride')"
           />
         </div>
         <div v-if="accountSchedulingThresholdOverrideEnabled">
