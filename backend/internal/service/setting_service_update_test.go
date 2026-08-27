@@ -479,6 +479,21 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "4", repo.updates[SettingKeyAdvancedSchedulerWeightSessionSticky])
 }
 
+func TestSettingServiceRefreshCachedSettingsKeepsIndependentEWMAProcessDefaults(t *testing.T) {
+	resetAdvancedSchedulerSettingCacheForTest()
+	defer resetAdvancedSchedulerSettingCacheForTest()
+
+	cfg := &config.Config{}
+	cfg.Gateway.AdvancedScheduler.EWMAErrorRateAlpha = 0.35
+	cfg.Gateway.AdvancedScheduler.EWMATTFTAlpha = 0.8
+	svc := NewSettingService(&settingUpdateRepoStub{}, cfg)
+	svc.refreshCachedSettings(&SystemSettings{})
+
+	runtime := (&OpenAIGatewayService{cfg: cfg}).advancedSchedulerRuntimeSettings(context.Background())
+	require.InDelta(t, 0.35, runtime.ewmaErrorRateAlpha, 0.000001)
+	require.InDelta(t, 0.8, runtime.ewmaTTFTAlpha, 0.000001)
+}
+
 func TestSettingService_UpdateSettings_AdvancedSchedulerWeightSums(t *testing.T) {
 	maxFloat := strconv.FormatFloat(math.MaxFloat64, 'g', -1, 64)
 	tests := []struct {

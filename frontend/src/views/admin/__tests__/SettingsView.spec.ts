@@ -1956,6 +1956,10 @@ describe("admin SettingsView payment visible method controls", () => {
     const advancedCard = wrapper.get(
       '[data-testid="gateway-scheduling-general-advanced"]',
     );
+    const generalCard = wrapper.get(
+      '[data-testid="gateway-scheduling-general"]',
+    );
+    expect(generalCard.isVisible()).toBe(true);
     expect(advancedCard.isVisible()).toBe(true);
     expect(advancedCard.classes()).toContain("border-t");
     expect(advancedCard.find("h3").text()).toBe("通用高级调度器");
@@ -1967,7 +1971,8 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(advancedCard.text()).toContain("通用高级调度器");
     expect(wrapper.text()).not.toContain("OpenAI 实验调度策略");
     expect(advancedCard.text()).toContain("EWMA");
-    expect(advancedCard.text()).toContain("强制粘性切换");
+    expect(generalCard.text()).toContain("强制粘性切换");
+    expect(advancedCard.text()).not.toContain("强制粘性切换");
 
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();

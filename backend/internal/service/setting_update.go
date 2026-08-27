@@ -604,6 +604,18 @@ func resolveAdvancedSchedulerAlphaForSettings(raw string, s *SettingService) flo
 	return value
 }
 
+// resolveAdvancedSchedulerTTFTAlphaForSettings 使用 TTFT 进程默认值解析运行时覆盖，避免复用错误率默认值。
+func resolveAdvancedSchedulerTTFTAlphaForSettings(raw string, s *SettingService) float64 {
+	defaults := (&OpenAIGatewayService{cfg: func() *config.Config {
+		if s == nil {
+			return nil
+		}
+		return s.cfg
+	}()}).advancedSchedulerProcessRuntimeSettings()
+	value, _ := parseAdvancedSchedulerAlphaOverride(raw, defaults.ewmaTTFTAlpha)
+	return value
+}
+
 func resolveAdvancedSchedulerPositiveFloatForSettings(raw string, s *SettingService) float64 {
 	defaults := (&OpenAIGatewayService{cfg: func() *config.Config {
 		if s == nil {
@@ -818,7 +830,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		lbTopKOverride:              parsePositiveIntOverride(settings.AdvancedSchedulerLBTopK),
 		ewmaErrorRateAlpha:          resolveAdvancedSchedulerAlphaForSettings(settings.AdvancedSchedulerEWMAErrorRateAlpha, s),
 		ewmaErrorRateAlphaSet:       strings.TrimSpace(settings.AdvancedSchedulerEWMAErrorRateAlpha) != "",
-		ewmaTTFTAlpha:               resolveAdvancedSchedulerAlphaForSettings(settings.AdvancedSchedulerEWMATTFTAlpha, s),
+		ewmaTTFTAlpha:               resolveAdvancedSchedulerTTFTAlphaForSettings(settings.AdvancedSchedulerEWMATTFTAlpha, s),
 		ewmaTTFTAlphaSet:            strings.TrimSpace(settings.AdvancedSchedulerEWMATTFTAlpha) != "",
 		stickyEscapeEnabled:         settings.AdvancedSchedulerStickyEscapeEnabled,
 		stickyEscapeEnabledSet:      settings.AdvancedSchedulerStickyEscapeEnabledSet,

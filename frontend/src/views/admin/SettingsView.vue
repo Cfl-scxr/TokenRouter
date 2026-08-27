@@ -4790,6 +4790,54 @@
                     </div>
                   </div>
                 </div>
+
+                <div class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-700">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.scheduling.stickyEscapeTitle") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.scheduling.stickyEscapeDescription") }}
+                    </p>
+                  </div>
+                  <div class="mt-4 flex flex-col gap-4">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.scheduling.stickyEscapeEnabled") }}
+                      </span>
+                      <Toggle
+                        v-model="form.advanced_scheduler_sticky_escape_enabled"
+                        class="self-end sm:self-auto"
+                      />
+                    </div>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <label class="block">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.scheduling.stickyEscapeTTFT") }}
+                        </span>
+                        <input
+                          v-model="form.advanced_scheduler_sticky_escape_ttft_ms"
+                          class="input mt-1"
+                          inputmode="numeric"
+                          type="text"
+                          :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_ttft_ms', '15000')"
+                        />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.scheduling.stickyEscapeErrorRate") }}
+                        </span>
+                        <input
+                          v-model="form.advanced_scheduler_sticky_escape_error_rate"
+                          class="input mt-1"
+                          inputmode="decimal"
+                          type="text"
+                          :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_error_rate', '0.5')"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <section
@@ -4905,54 +4953,6 @@
                       v-model="form.advanced_scheduler_subscription_priority_enabled"
                       class="self-end sm:self-auto"
                     />
-                  </div>
-
-                  <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
-                    <div>
-                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.scheduling.stickyEscapeTitle") }}
-                      </label>
-                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t("admin.settings.scheduling.stickyEscapeDescription") }}
-                      </p>
-                    </div>
-                    <div class="mt-4 flex flex-col gap-4">
-                      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <span class="text-sm text-gray-700 dark:text-gray-300">
-                          {{ t("admin.settings.scheduling.stickyEscapeEnabled") }}
-                        </span>
-                        <Toggle
-                          v-model="form.advanced_scheduler_sticky_escape_enabled"
-                          class="self-end sm:self-auto"
-                        />
-                      </div>
-                      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <label class="block">
-                          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
-                            {{ t("admin.settings.scheduling.stickyEscapeTTFT") }}
-                          </span>
-                          <input
-                            v-model="form.advanced_scheduler_sticky_escape_ttft_ms"
-                            class="input mt-1"
-                            inputmode="numeric"
-                            type="text"
-                            :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_ttft_ms', '15000')"
-                          />
-                        </label>
-                        <label class="block">
-                          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
-                            {{ t("admin.settings.scheduling.stickyEscapeErrorRate") }}
-                          </span>
-                          <input
-                            v-model="form.advanced_scheduler_sticky_escape_error_rate"
-                            class="input mt-1"
-                            inputmode="decimal"
-                            type="text"
-                            :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_error_rate', '0.5')"
-                          />
-                        </label>
-                      </div>
-                    </div>
                   </div>
 
                   <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
