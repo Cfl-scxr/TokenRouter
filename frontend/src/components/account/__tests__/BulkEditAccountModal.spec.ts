@@ -511,6 +511,7 @@ describe('BulkEditAccountModal', () => {
     const applyContinuationCheckbox = wrapper.get<HTMLInputElement>('#bulk-edit-openai-continuation-supported-enabled')
     expect(applyContinuationCheckbox.element.tagName).toBe('INPUT')
     expect(applyContinuationCheckbox.attributes('type')).toBe('checkbox')
+    expect(wrapper.get('#bulk-edit-openai-continuation-supported-body').text()).toBe('')
     expect(wrapper.get('[data-testid="bulk-edit-openai-continuation-supported"]').attributes('role')).toBe('switch')
     await applyContinuationCheckbox.setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-continuation-supported"]').trigger('click')

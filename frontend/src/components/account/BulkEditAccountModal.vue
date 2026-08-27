@@ -281,21 +281,16 @@
         </div>
         <div
           id="bulk-edit-openai-continuation-supported-body"
-          :class="!enableOpenAIResponsesContinuationSupported && 'pointer-events-none opacity-50'"
+          class="flex items-center justify-end"
           role="group"
           aria-labelledby="bulk-edit-openai-continuation-supported-label"
         >
-          <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600">
-            <Toggle
-              v-model="openAIResponsesContinuationSupported"
-              :disabled="!enableOpenAIResponsesContinuationSupported"
-              data-testid="bulk-edit-openai-continuation-supported"
-              :aria-label="t('admin.accounts.openai.responsesContinuationSupportedEnabled')"
-            />
-            <span class="text-gray-700 dark:text-gray-200">
-              {{ t('admin.accounts.openai.responsesContinuationSupportedEnabled') }}
-            </span>
-          </label>
+          <Toggle
+            v-model="openAIResponsesContinuationSupported"
+            :disabled="!enableOpenAIResponsesContinuationSupported"
+            data-testid="bulk-edit-openai-continuation-supported"
+            :aria-label="t('admin.accounts.openai.responsesContinuationSupportedEnabled')"
+          />
         </div>
       </div>
 
