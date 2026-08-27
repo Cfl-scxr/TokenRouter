@@ -140,17 +140,12 @@
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="mb-3 flex items-center justify-end gap-2">
-          <label
-            class="text-sm text-gray-700 dark:text-gray-300"
-            for="bulk-edit-codex-image-tool-enabled"
-          >
-            {{ t('admin.accounts.bulkEdit.applyField') }}
-          </label>
           <input
             v-model="enableCodexImageToolMode"
             id="bulk-edit-codex-image-tool-enabled"
             type="checkbox"
             aria-controls="bulk-edit-codex-image-tool"
+            :aria-label="t('admin.accounts.openai.codexImageTool')"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
@@ -275,12 +270,13 @@
               {{ t('admin.accounts.openai.responsesContinuationSupportedDesc') }}
             </p>
           </div>
-          <Toggle
+          <input
             id="bulk-edit-openai-continuation-supported-enabled"
             v-model="enableOpenAIResponsesContinuationSupported"
+            type="checkbox"
             aria-controls="bulk-edit-openai-continuation-supported-body"
             data-testid="bulk-edit-openai-continuation-supported-apply"
-            :aria-label="t('admin.accounts.bulkEdit.applyField')"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
         <div
