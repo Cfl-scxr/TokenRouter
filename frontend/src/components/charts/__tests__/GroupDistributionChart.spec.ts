@@ -72,7 +72,8 @@ describe('GroupDistributionChart', () => {
 
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
     expect(chartData.labels).toEqual(['group-a', 'group-b'])
-    expect(chartData.datasets[0].data).toEqual([1200, 600])
+    expect(chartData.datasets[0].data[0]).toBeCloseTo(1 + Math.log10(2))
+    expect(chartData.datasets[0].data[1]).toBe(1)
 
     const chartTableLayout = wrapper.find('table').element.parentElement?.parentElement
     expect(chartTableLayout?.className).toContain('sm:items-start')
@@ -82,6 +83,8 @@ describe('GroupDistributionChart', () => {
     expect(rows[1].text()).toContain('group-b')
 
     const options = (wrapper.vm as any).$?.setupState.doughnutOptions
+    expect(options.plugins.tooltip.enabled).toBe(false)
+    expect(options.plugins.tooltip.external).toBeTypeOf('function')
     const label = options.plugins.tooltip.callbacks.label({
       label: 'group-a',
       dataIndex: 0,
@@ -104,7 +107,8 @@ describe('GroupDistributionChart', () => {
 
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
     expect(chartData.labels).toEqual(['group-b', 'group-a'])
-    expect(chartData.datasets[0].data).toEqual([0.9, 0.1])
+    expect(chartData.datasets[0].data[0]).toBeCloseTo(1 + Math.log10(9))
+    expect(chartData.datasets[0].data[1]).toBe(1)
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('group-b')
@@ -155,6 +159,8 @@ describe('GroupDistributionChart', () => {
     expect(chartData.datasets[0].data).toEqual([1200, 600])
 
     const options = (wrapper.vm as any).$?.setupState.barOptions
+    expect(options.plugins.tooltip.enabled).toBe(false)
+    expect(options.plugins.tooltip.external).toBeTypeOf('function')
     expect(options.indexAxis).toBe('y')
     expect(options.scales.x.type).toBe('logarithmic')
     expect(options.scales.x.ticks.display).toBe(false)
@@ -171,7 +177,7 @@ describe('GroupDistributionChart', () => {
     expect(label).toBe('group-a: 1.20K (66.7%)')
   })
 
-  it('compresses doughnut slices under skewed values while tooltip keeps raw value and real percentage', () => {
+  it('uses logarithmic doughnut slices while tooltip keeps raw value and real percentage', () => {
     const wrapper = mount(GroupDistributionChart, {
       props: {
         groupStats: [

@@ -62,6 +62,9 @@ describe('TokenUsageTrend', () => {
     })
 
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
+    const options = (wrapper.vm as any).$?.setupState.lineOptions
+    expect(options.plugins.tooltip.enabled).toBe(false)
+    expect(options.plugins.tooltip.external).toBeTypeOf('function')
     const hitRateDataset = chartData.datasets.find(
       (ds: any) => ds.label === 'Cached Input %'
     )

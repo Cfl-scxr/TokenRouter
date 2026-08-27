@@ -245,18 +245,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
-import { compressSkewedValues } from '@/utils/chartDisplayScale'
+import { toLogarithmicDisplayValues } from '@/utils/chartDisplayScale'
+import { externalTooltipHandler, hideExternalTooltip } from '@/utils/chartExternalTooltip'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
+
+onBeforeUnmount(hideExternalTooltip)
 
 const { t } = useI18n()
 const { balanceUnitSymbol, usdUnitSymbol } = useBalanceDisplay()
@@ -386,7 +389,7 @@ const chartData = computed(() => {
     labels: displayModelStats.value.map((m) => m.model),
     datasets: [
       {
-        data: compressSkewedValues(chartValues.value),
+        data: toLogarithmicDisplayValues(chartValues.value),
         backgroundColor: chartColors.slice(0, displayModelStats.value.length),
         borderWidth: 0
       }
@@ -417,7 +420,7 @@ const rankingChartData = computed(() => {
     labels,
     datasets: [
       {
-        data: compressSkewedValues(rankingValues.value),
+        data: toLogarithmicDisplayValues(rankingValues.value),
         backgroundColor,
         borderWidth: 0
       }
@@ -464,6 +467,8 @@ const doughnutOptions = computed(() => ({
       display: false
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       callbacks: {
         // 扇区可能被 log 压缩，数值与占比一律按原始值（dataIndex 回查）展示。
         label: (context: any) => {
@@ -488,6 +493,8 @@ const rankingDoughnutOptions = computed(() => ({
       display: false
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       callbacks: {
         label: (context: any) => {
           const value = rankingValues.value[context.dataIndex] ?? 0

@@ -111,18 +111,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, LogarithmicScale, Tooltip, Legend } from 'chart.js'
 import { Bar, Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
-import { compressSkewedValues } from '@/utils/chartDisplayScale'
+import { toLogarithmicDisplayValues } from '@/utils/chartDisplayScale'
+import { externalTooltipHandler, hideExternalTooltip } from '@/utils/chartExternalTooltip'
 import type { GroupStat, UserBreakdownItem } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LogarithmicScale, Tooltip, Legend)
+
+onBeforeUnmount(hideExternalTooltip)
 
 const { t } = useI18n()
 const { balanceUnitSymbol, usdUnitSymbol } = useBalanceDisplay()
@@ -237,7 +240,7 @@ const doughnutChartData = computed(() => ({
   labels: displayGroupStats.value.map(groupLabel),
   datasets: [
     {
-      data: compressSkewedValues(chartValues.value),
+      data: toLogarithmicDisplayValues(chartValues.value),
       backgroundColor: chartColors.slice(0, displayGroupStats.value.length),
       borderWidth: 0
     }
@@ -264,6 +267,8 @@ const doughnutOptions = computed(() => ({
       display: false
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       callbacks: {
         label: tooltipLabel
       }
@@ -310,6 +315,8 @@ const barOptions = computed(() => ({
       display: false
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       callbacks: {
         label: tooltipLabel
       }

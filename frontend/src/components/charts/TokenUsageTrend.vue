@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -36,6 +36,7 @@ import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { useTheme } from '@/composables/useTheme'
+import { externalTooltipHandler, hideExternalTooltip } from '@/utils/chartExternalTooltip'
 import type { TrendDataPoint } from '@/types'
 
 ChartJS.register(
@@ -48,6 +49,8 @@ ChartJS.register(
   Legend,
   Filler
 )
+
+onBeforeUnmount(hideExternalTooltip)
 
 const { t } = useI18n()
 const { formatBalanceAmount, formatUsdAmount } = useBalanceDisplay()
@@ -168,6 +171,8 @@ const lineOptions = computed(() => ({
       }
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       callbacks: {
         title: (tooltipItems: any[]) => {
           const dataIndex = tooltipItems[0]?.dataIndex

@@ -72,7 +72,8 @@ describe('EndpointDistributionChart', () => {
     expect(wrapper.find('.bar-chart-data').exists()).toBe(false)
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
     expect(chartData.labels).toEqual(['/v1/responses', '/v1/messages'])
-    expect(chartData.datasets[0].data).toEqual([1200, 600])
+    expect(chartData.datasets[0].data[0]).toBeCloseTo(1 + Math.log10(2))
+    expect(chartData.datasets[0].data[1]).toBe(1)
   })
 
   it('renders a bar chart instead of doughnut when chartType is bar', () => {
@@ -94,6 +95,8 @@ describe('EndpointDistributionChart', () => {
     expect(chartData.datasets[0].data).toEqual([1200, 600])
 
     const options = (wrapper.vm as any).$?.setupState.barOptions
+    expect(options.plugins.tooltip.enabled).toBe(false)
+    expect(options.plugins.tooltip.external).toBeTypeOf('function')
     expect(options.scales.x.ticks.display).toBe(false)
     expect(options.scales.y.type).toBe('logarithmic')
     expect(options.scales.y.ticks.display).toBe(false)
@@ -120,7 +123,8 @@ describe('EndpointDistributionChart', () => {
 
     const chartData = JSON.parse(wrapper.find('.chart-data').text())
     expect(chartData.labels).toEqual(['/v1/messages', '/v1/responses'])
-    expect(chartData.datasets[0].data).toEqual([0.9, 0.1])
+    expect(chartData.datasets[0].data[0]).toBeCloseTo(1 + Math.log10(9))
+    expect(chartData.datasets[0].data[1]).toBe(1)
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('/v1/messages')
