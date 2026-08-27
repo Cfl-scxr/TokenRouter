@@ -262,8 +262,15 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// 通用高级调度器参数；是否启用由分组 scheduler_type 决定。
-	AdvancedSchedulerStickyWeightedEnabled           bool
-	AdvancedSchedulerSubscriptionPriorityEnabled     bool
+	AdvancedSchedulerStickyWeightedEnabled       bool
+	AdvancedSchedulerSubscriptionPriorityEnabled bool
+	AdvancedSchedulerEWMAErrorRateAlpha          string
+	AdvancedSchedulerEWMATTFTAlpha               string
+	AdvancedSchedulerStickyEscapeEnabled         bool
+	// AdvancedSchedulerStickyEscapeEnabledSet 标记开关是否由数据库显式设置，用于诊断继承来源。
+	AdvancedSchedulerStickyEscapeEnabledSet          bool
+	AdvancedSchedulerStickyEscapeTTFTMs              string
+	AdvancedSchedulerStickyEscapeErrorRate           string
 	AdvancedSchedulerLBTopK                          string
 	AdvancedSchedulerWeightPriority                  string
 	AdvancedSchedulerWeightLoad                      string
@@ -284,6 +291,11 @@ type SystemSettings struct {
 	AdvancedSchedulerEffectiveWeightQuotaHeadroom    string
 	AdvancedSchedulerEffectiveWeightPreviousResponse string
 	AdvancedSchedulerEffectiveWeightSessionSticky    string
+	AdvancedSchedulerEffectiveEWMAErrorRateAlpha     string
+	AdvancedSchedulerEffectiveEWMATTFTAlpha          string
+	AdvancedSchedulerEffectiveStickyEscapeEnabled    bool
+	AdvancedSchedulerEffectiveStickyEscapeTTFTMs     string
+	AdvancedSchedulerEffectiveStickyEscapeErrorRate  string
 	// OpenAIQuotaAutoPauseSettings 是 OpenAI 账号配额自动暂停的全局默认阈值，存储在 ops_advanced_settings 中。
 	OpenAIQuotaAutoPauseSettings OpsOpenAIAccountQuotaAutoPauseSettings
 	// OpenAIQuotaAutoPauseSettingsSet 标记本次系统设置更新是否显式带了配额自动暂停配置，避免旧客户端误覆盖。

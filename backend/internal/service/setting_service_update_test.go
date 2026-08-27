@@ -438,6 +438,12 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 		PaymentVisibleMethodWxpayEnabled:             false,
 		AdvancedSchedulerStickyWeightedEnabled:       true,
 		AdvancedSchedulerSubscriptionPriorityEnabled: true,
+		AdvancedSchedulerEWMAErrorRateAlpha:          "0.4",
+		AdvancedSchedulerEWMATTFTAlpha:               "0.7",
+		AdvancedSchedulerStickyEscapeEnabled:         false,
+		AdvancedSchedulerStickyEscapeEnabledSet:      true,
+		AdvancedSchedulerStickyEscapeTTFTMs:          "9000",
+		AdvancedSchedulerStickyEscapeErrorRate:       "0.25",
 		AdvancedSchedulerLBTopK:                      " 3 ",
 		AdvancedSchedulerWeightPriority:              "2.50",
 		AdvancedSchedulerWeightLoad:                  "0",
@@ -456,6 +462,11 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "false", repo.updates[SettingPaymentVisibleMethodWxpayEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyAdvancedSchedulerStickyWeightedEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled])
+	require.Equal(t, "0.4", repo.updates[SettingKeyAdvancedSchedulerEWMAErrorRateAlpha])
+	require.Equal(t, "0.7", repo.updates[SettingKeyAdvancedSchedulerEWMATTFTAlpha])
+	require.Equal(t, "false", repo.updates[SettingKeyAdvancedSchedulerStickyEscapeEnabled])
+	require.Equal(t, "9000", repo.updates[SettingKeyAdvancedSchedulerStickyEscapeTTFTMs])
+	require.Equal(t, "0.25", repo.updates[SettingKeyAdvancedSchedulerStickyEscapeErrorRate])
 	require.Equal(t, "3", repo.updates[SettingKeyAdvancedSchedulerLBTopK])
 	require.Equal(t, "2.5", repo.updates[SettingKeyAdvancedSchedulerWeightPriority])
 	require.Equal(t, "0", repo.updates[SettingKeyAdvancedSchedulerWeightLoad])

@@ -602,6 +602,21 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AdvancedSchedulerSubscriptionPriorityEnabled != after.AdvancedSchedulerSubscriptionPriorityEnabled {
 		changed = append(changed, "advanced_scheduler_subscription_priority_enabled")
 	}
+	if before.AdvancedSchedulerEWMAErrorRateAlpha != after.AdvancedSchedulerEWMAErrorRateAlpha {
+		changed = append(changed, "advanced_scheduler_ewma_error_rate_alpha")
+	}
+	if before.AdvancedSchedulerEWMATTFTAlpha != after.AdvancedSchedulerEWMATTFTAlpha {
+		changed = append(changed, "advanced_scheduler_ewma_ttft_alpha")
+	}
+	if before.AdvancedSchedulerStickyEscapeEnabled != after.AdvancedSchedulerStickyEscapeEnabled {
+		changed = append(changed, "advanced_scheduler_sticky_escape_enabled")
+	}
+	if before.AdvancedSchedulerStickyEscapeTTFTMs != after.AdvancedSchedulerStickyEscapeTTFTMs {
+		changed = append(changed, "advanced_scheduler_sticky_escape_ttft_ms")
+	}
+	if before.AdvancedSchedulerStickyEscapeErrorRate != after.AdvancedSchedulerStickyEscapeErrorRate {
+		changed = append(changed, "advanced_scheduler_sticky_escape_error_rate")
+	}
 	if before.AdvancedSchedulerLBTopK != after.AdvancedSchedulerLBTopK {
 		changed = append(changed, "advanced_scheduler_lb_top_k")
 	}

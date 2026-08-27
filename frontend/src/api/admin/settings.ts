@@ -731,6 +731,11 @@ export interface SystemSettings {
   openai_account_quota_auto_pause?: OpenAIQuotaAutoPauseSettings;
   advanced_scheduler_sticky_weighted_enabled?: boolean;
   advanced_scheduler_subscription_priority_enabled?: boolean;
+  advanced_scheduler_ewma_error_rate_alpha?: string;
+  advanced_scheduler_ewma_ttft_alpha?: string;
+  advanced_scheduler_sticky_escape_enabled?: boolean;
+  advanced_scheduler_sticky_escape_ttft_ms?: string;
+  advanced_scheduler_sticky_escape_error_rate?: string;
   advanced_scheduler_lb_top_k?: string;
   advanced_scheduler_weight_priority?: string;
   advanced_scheduler_weight_load?: string;
@@ -751,6 +756,11 @@ export interface SystemSettings {
   advanced_scheduler_effective_weight_quota_headroom?: string;
   advanced_scheduler_effective_weight_previous_response?: string;
   advanced_scheduler_effective_weight_session_sticky?: string;
+  advanced_scheduler_effective_ewma_error_rate_alpha?: string;
+  advanced_scheduler_effective_ewma_ttft_alpha?: string;
+  advanced_scheduler_effective_sticky_escape_enabled?: boolean;
+  advanced_scheduler_effective_sticky_escape_ttft_ms?: string;
+  advanced_scheduler_effective_sticky_escape_error_rate?: string;
 
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: boolean;
@@ -1036,6 +1046,11 @@ export interface UpdateSettingsRequest {
   openai_account_quota_auto_pause?: OpenAIQuotaAutoPauseSettings;
   advanced_scheduler_sticky_weighted_enabled?: boolean;
   advanced_scheduler_subscription_priority_enabled?: boolean;
+  advanced_scheduler_ewma_error_rate_alpha?: string;
+  advanced_scheduler_ewma_ttft_alpha?: string;
+  advanced_scheduler_sticky_escape_enabled?: boolean;
+  advanced_scheduler_sticky_escape_ttft_ms?: string;
+  advanced_scheduler_sticky_escape_error_rate?: string;
   advanced_scheduler_lb_top_k?: string;
   advanced_scheduler_weight_priority?: string;
   advanced_scheduler_weight_load?: string;

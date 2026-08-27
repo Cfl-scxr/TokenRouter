@@ -4907,6 +4907,91 @@
                     />
                   </div>
 
+                  <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                    <div>
+                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.scheduling.stickyEscapeTitle") }}
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.scheduling.stickyEscapeDescription") }}
+                      </p>
+                    </div>
+                    <div class="mt-4 flex flex-col gap-4">
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.scheduling.stickyEscapeEnabled") }}
+                        </span>
+                        <Toggle
+                          v-model="form.advanced_scheduler_sticky_escape_enabled"
+                          class="self-end sm:self-auto"
+                        />
+                      </div>
+                      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label class="block">
+                          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {{ t("admin.settings.scheduling.stickyEscapeTTFT") }}
+                          </span>
+                          <input
+                            v-model="form.advanced_scheduler_sticky_escape_ttft_ms"
+                            class="input mt-1"
+                            inputmode="numeric"
+                            type="text"
+                            :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_ttft_ms', '15000')"
+                          />
+                        </label>
+                        <label class="block">
+                          <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {{ t("admin.settings.scheduling.stickyEscapeErrorRate") }}
+                          </span>
+                          <input
+                            v-model="form.advanced_scheduler_sticky_escape_error_rate"
+                            class="input mt-1"
+                            inputmode="decimal"
+                            type="text"
+                            :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_sticky_escape_error_rate', '0.5')"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                    <div>
+                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.scheduling.ewmaTitle") }}
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.scheduling.ewmaDescription") }}
+                      </p>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <label class="block">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.scheduling.ewmaErrorRateAlpha") }}
+                        </span>
+                        <input
+                          v-model="form.advanced_scheduler_ewma_error_rate_alpha"
+                          class="input mt-1"
+                          inputmode="decimal"
+                          type="text"
+                          :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_ewma_error_rate_alpha', '0.2')"
+                        />
+                      </label>
+                      <label class="block">
+                        <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.scheduling.ewmaTTFTAlpha") }}
+                        </span>
+                        <input
+                          v-model="form.advanced_scheduler_ewma_ttft_alpha"
+                          class="input mt-1"
+                          inputmode="decimal"
+                          type="text"
+                          :placeholder="advancedSchedulerPlaceholder('advanced_scheduler_effective_ewma_ttft_alpha', '0.2')"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
                   <div
                     class="border-t border-gray-100 pt-5 dark:border-dark-700"
                   >
@@ -9272,6 +9357,11 @@ type SettingsForm = Omit<
   force_email_on_third_party_signup: boolean;
   advanced_scheduler_sticky_weighted_enabled: boolean;
   advanced_scheduler_subscription_priority_enabled: boolean;
+  advanced_scheduler_ewma_error_rate_alpha: string;
+  advanced_scheduler_ewma_ttft_alpha: string;
+  advanced_scheduler_sticky_escape_enabled: boolean;
+  advanced_scheduler_sticky_escape_ttft_ms: string;
+  advanced_scheduler_sticky_escape_error_rate: string;
   advanced_scheduler_lb_top_k: string;
   advanced_scheduler_weight_priority: string;
   advanced_scheduler_weight_load: string;
@@ -9534,6 +9624,11 @@ const form = reactive<SettingsForm>({
   allow_ungrouped_key_scheduling: false,
   advanced_scheduler_sticky_weighted_enabled: false,
   advanced_scheduler_subscription_priority_enabled: false,
+  advanced_scheduler_ewma_error_rate_alpha: "",
+  advanced_scheduler_ewma_ttft_alpha: "",
+  advanced_scheduler_sticky_escape_enabled: true,
+  advanced_scheduler_sticky_escape_ttft_ms: "",
+  advanced_scheduler_sticky_escape_error_rate: "",
   advanced_scheduler_lb_top_k: "",
   advanced_scheduler_weight_priority: "",
   advanced_scheduler_weight_load: "",
@@ -9828,7 +9923,24 @@ type AdvancedSchedulerEffectiveKey =
   | "advanced_scheduler_effective_weight_reset"
   | "advanced_scheduler_effective_weight_quota_headroom"
   | "advanced_scheduler_effective_weight_previous_response"
-  | "advanced_scheduler_effective_weight_session_sticky";
+  | "advanced_scheduler_effective_weight_session_sticky"
+  | "advanced_scheduler_effective_ewma_error_rate_alpha"
+  | "advanced_scheduler_effective_ewma_ttft_alpha"
+  | "advanced_scheduler_effective_sticky_escape_enabled"
+  | "advanced_scheduler_effective_sticky_escape_ttft_ms"
+  | "advanced_scheduler_effective_sticky_escape_error_rate";
+
+const advancedSchedulerPlaceholder = (
+  effectiveKey: AdvancedSchedulerEffectiveKey,
+  fallbackValue: string,
+) => {
+  const effectiveValue = String(
+    (form as Record<string, unknown>)[effectiveKey] ?? "",
+  ).trim();
+  return t("admin.settings.scheduling.defaultPlaceholder", {
+    value: effectiveValue || fallbackValue,
+  });
+};
 
 const advancedSchedulerWeightFields = computed<
   Array<{
@@ -9837,68 +9949,56 @@ const advancedSchedulerWeightFields = computed<
     placeholder: string;
   }>
 >(() => {
-  const placeholder = (
-    effectiveKey: AdvancedSchedulerEffectiveKey,
-    fallbackValue: string,
-  ) => {
-    const effectiveValue = String(
-      (form as Record<string, unknown>)[effectiveKey] ?? "",
-    ).trim();
-    return t("admin.settings.scheduling.defaultPlaceholder", {
-      value: effectiveValue || fallbackValue,
-    });
-  };
-
   return [
     {
       key: "advanced_scheduler_lb_top_k",
       label: t("admin.settings.scheduling.topKLabel"),
-      placeholder: placeholder("advanced_scheduler_effective_lb_top_k", "7"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_lb_top_k", "7"),
     },
     {
       key: "advanced_scheduler_weight_priority",
       label: t("admin.settings.scheduling.priorityWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_priority", "1"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_priority", "1"),
     },
     {
       key: "advanced_scheduler_weight_load",
       label: t("admin.settings.scheduling.loadWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_load", "1"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_load", "1"),
     },
     {
       key: "advanced_scheduler_weight_queue",
       label: t("admin.settings.scheduling.queueWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_queue", "0.7"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_queue", "0.7"),
     },
     {
       key: "advanced_scheduler_weight_error_rate",
       label: t("admin.settings.scheduling.errorRateWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_error_rate", "0.8"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_error_rate", "0.8"),
     },
     {
       key: "advanced_scheduler_weight_ttft",
       label: t("admin.settings.scheduling.ttftWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_ttft", "0.5"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_ttft", "0.5"),
     },
     {
       key: "advanced_scheduler_weight_reset",
       label: t("admin.settings.scheduling.resetWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_reset", "0"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_reset", "0"),
     },
     {
       key: "advanced_scheduler_weight_quota_headroom",
       label: t("admin.settings.scheduling.quotaHeadroomWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_quota_headroom", "0"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_quota_headroom", "0"),
     },
     {
       key: "advanced_scheduler_weight_previous_response",
       label: t("admin.settings.scheduling.previousResponseWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_previous_response", "5"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_previous_response", "5"),
     },
     {
       key: "advanced_scheduler_weight_session_sticky",
       label: t("admin.settings.scheduling.sessionStickyWeight"),
-      placeholder: placeholder("advanced_scheduler_effective_weight_session_sticky", "3"),
+      placeholder: advancedSchedulerPlaceholder("advanced_scheduler_effective_weight_session_sticky", "3"),
     },
   ];
 });
@@ -11427,6 +11527,16 @@ async function saveSettings() {
         form.advanced_scheduler_sticky_weighted_enabled,
       advanced_scheduler_subscription_priority_enabled:
         form.advanced_scheduler_subscription_priority_enabled,
+      advanced_scheduler_ewma_error_rate_alpha:
+        form.advanced_scheduler_ewma_error_rate_alpha.trim(),
+      advanced_scheduler_ewma_ttft_alpha:
+        form.advanced_scheduler_ewma_ttft_alpha.trim(),
+      advanced_scheduler_sticky_escape_enabled:
+        form.advanced_scheduler_sticky_escape_enabled,
+      advanced_scheduler_sticky_escape_ttft_ms:
+        form.advanced_scheduler_sticky_escape_ttft_ms.trim(),
+      advanced_scheduler_sticky_escape_error_rate:
+        form.advanced_scheduler_sticky_escape_error_rate.trim(),
       advanced_scheduler_lb_top_k:
         form.advanced_scheduler_lb_top_k.trim(),
       advanced_scheduler_weight_priority:

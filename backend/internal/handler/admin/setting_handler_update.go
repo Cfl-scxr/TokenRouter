@@ -295,6 +295,11 @@ type UpdateSettingsRequest struct {
 	// 通用高级调度器参数
 	AdvancedSchedulerStickyWeightedEnabled       *bool   `json:"advanced_scheduler_sticky_weighted_enabled"`
 	AdvancedSchedulerSubscriptionPriorityEnabled *bool   `json:"advanced_scheduler_subscription_priority_enabled"`
+	AdvancedSchedulerEWMAErrorRateAlpha          *string `json:"advanced_scheduler_ewma_error_rate_alpha"`
+	AdvancedSchedulerEWMATTFTAlpha               *string `json:"advanced_scheduler_ewma_ttft_alpha"`
+	AdvancedSchedulerStickyEscapeEnabled         *bool   `json:"advanced_scheduler_sticky_escape_enabled"`
+	AdvancedSchedulerStickyEscapeTTFTMs          *string `json:"advanced_scheduler_sticky_escape_ttft_ms"`
+	AdvancedSchedulerStickyEscapeErrorRate       *string `json:"advanced_scheduler_sticky_escape_error_rate"`
 	AdvancedSchedulerLBTopK                      *string `json:"advanced_scheduler_lb_top_k"`
 	AdvancedSchedulerWeightPriority              *string `json:"advanced_scheduler_weight_priority"`
 	AdvancedSchedulerWeightLoad                  *string `json:"advanced_scheduler_weight_load"`
@@ -1994,6 +1999,22 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AdvancedSchedulerSubscriptionPriorityEnabled
 		}(),
+		AdvancedSchedulerEWMAErrorRateAlpha: stringSetting(req.AdvancedSchedulerEWMAErrorRateAlpha, previousSettings.AdvancedSchedulerEWMAErrorRateAlpha),
+		AdvancedSchedulerEWMATTFTAlpha:      stringSetting(req.AdvancedSchedulerEWMATTFTAlpha, previousSettings.AdvancedSchedulerEWMATTFTAlpha),
+		AdvancedSchedulerStickyEscapeEnabled: func() bool {
+			if req.AdvancedSchedulerStickyEscapeEnabled != nil {
+				return *req.AdvancedSchedulerStickyEscapeEnabled
+			}
+			return previousSettings.AdvancedSchedulerStickyEscapeEnabled
+		}(),
+		AdvancedSchedulerStickyEscapeEnabledSet: func() bool {
+			if req.AdvancedSchedulerStickyEscapeEnabled != nil {
+				return true
+			}
+			return previousSettings.AdvancedSchedulerStickyEscapeEnabledSet
+		}(),
+		AdvancedSchedulerStickyEscapeTTFTMs:     stringSetting(req.AdvancedSchedulerStickyEscapeTTFTMs, previousSettings.AdvancedSchedulerStickyEscapeTTFTMs),
+		AdvancedSchedulerStickyEscapeErrorRate:  stringSetting(req.AdvancedSchedulerStickyEscapeErrorRate, previousSettings.AdvancedSchedulerStickyEscapeErrorRate),
 		AdvancedSchedulerLBTopK:                 stringSetting(req.AdvancedSchedulerLBTopK, previousSettings.AdvancedSchedulerLBTopK),
 		AdvancedSchedulerWeightPriority:         stringSetting(req.AdvancedSchedulerWeightPriority, previousSettings.AdvancedSchedulerWeightPriority),
 		AdvancedSchedulerWeightLoad:             stringSetting(req.AdvancedSchedulerWeightLoad, previousSettings.AdvancedSchedulerWeightLoad),
@@ -2396,6 +2417,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpayEnabled:                 updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		AdvancedSchedulerStickyWeightedEnabled:           updatedSettings.AdvancedSchedulerStickyWeightedEnabled,
 		AdvancedSchedulerSubscriptionPriorityEnabled:     updatedSettings.AdvancedSchedulerSubscriptionPriorityEnabled,
+		AdvancedSchedulerEWMAErrorRateAlpha:              updatedSettings.AdvancedSchedulerEWMAErrorRateAlpha,
+		AdvancedSchedulerEWMATTFTAlpha:                   updatedSettings.AdvancedSchedulerEWMATTFTAlpha,
+		AdvancedSchedulerStickyEscapeEnabled:             updatedSettings.AdvancedSchedulerStickyEscapeEnabled,
+		AdvancedSchedulerStickyEscapeTTFTMs:              updatedSettings.AdvancedSchedulerStickyEscapeTTFTMs,
+		AdvancedSchedulerStickyEscapeErrorRate:           updatedSettings.AdvancedSchedulerStickyEscapeErrorRate,
 		AdvancedSchedulerLBTopK:                          updatedSettings.AdvancedSchedulerLBTopK,
 		AdvancedSchedulerWeightPriority:                  updatedSettings.AdvancedSchedulerWeightPriority,
 		AdvancedSchedulerWeightLoad:                      updatedSettings.AdvancedSchedulerWeightLoad,
@@ -2416,6 +2442,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AdvancedSchedulerEffectiveWeightQuotaHeadroom:    updatedSettings.AdvancedSchedulerEffectiveWeightQuotaHeadroom,
 		AdvancedSchedulerEffectiveWeightPreviousResponse: updatedSettings.AdvancedSchedulerEffectiveWeightPreviousResponse,
 		AdvancedSchedulerEffectiveWeightSessionSticky:    updatedSettings.AdvancedSchedulerEffectiveWeightSessionSticky,
+		AdvancedSchedulerEffectiveEWMAErrorRateAlpha:     updatedSettings.AdvancedSchedulerEffectiveEWMAErrorRateAlpha,
+		AdvancedSchedulerEffectiveEWMATTFTAlpha:          updatedSettings.AdvancedSchedulerEffectiveEWMATTFTAlpha,
+		AdvancedSchedulerEffectiveStickyEscapeEnabled:    updatedSettings.AdvancedSchedulerEffectiveStickyEscapeEnabled,
+		AdvancedSchedulerEffectiveStickyEscapeTTFTMs:     updatedSettings.AdvancedSchedulerEffectiveStickyEscapeTTFTMs,
+		AdvancedSchedulerEffectiveStickyEscapeErrorRate:  updatedSettings.AdvancedSchedulerEffectiveStickyEscapeErrorRate,
 		OpenAIQuotaAutoPauseSettings:                     updatedSettings.OpenAIQuotaAutoPauseSettings,
 		BalanceLowNotifyEnabled:                          updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:                        updatedSettings.BalanceLowNotifyThreshold,

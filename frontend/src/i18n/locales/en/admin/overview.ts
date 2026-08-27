@@ -975,12 +975,13 @@ affiliates: {
         disabled: 'Disabled',
         stickyWeighted: 'Sticky weighting',
         subscriptionPriority: 'Subscription priority',
+        stickyEscapeEnabled: 'Forced sticky switching',
         weightsTitle: 'Candidate scoring and Top-K',
         weightsHint: 'Higher weights give that signal more influence. Leave a value blank to inherit it.',
         inheritPlaceholder: 'Inherit',
         inheritHint: 'Blank inherits',
         reset: 'Restore all inheritance',
-        invalidValue: 'Enter a non-negative number; Top-K must be a positive integer.',
+        invalidValue: 'Enter valid values; alpha must be greater than 0 and at most 1, error-rate thresholds must be 0-1, and Top-K/TTFT must be positive integers.',
         fields: {
           lbTopK: 'Top-K',
           weightPriority: 'Priority',
@@ -991,7 +992,11 @@ affiliates: {
           weightReset: 'Window reset',
           weightQuotaHeadroom: 'Quota headroom',
           weightPreviousResponse: 'Previous response affinity',
-          weightSessionSticky: 'Session affinity'
+          weightSessionSticky: 'Session affinity',
+          ewmaErrorRateAlpha: 'Error-rate EWMA factor',
+          ewmaTTFTAlpha: 'TTFT EWMA factor',
+          stickyEscapeTTFTMs: 'TTFT switch threshold (ms)',
+          stickyEscapeErrorRate: 'Error-rate switch threshold (0-1)'
         }
       },
       exclusiveHint: 'Exclusive group, manually assign to specific users',

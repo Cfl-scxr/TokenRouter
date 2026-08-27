@@ -372,6 +372,10 @@ gateway:
   advanced_scheduler:
     # 每次加权选择前保留的高分候选数量。
     lb_top_k: 7
+    # 错误率 EWMA 平滑系数（0<值<=1）；值越大越重视最新请求结果。
+    ewma_error_rate_alpha: 0.2
+    # 首 token 延迟 EWMA 平滑系数（0<值<=1）；值越大越重视最新观测。
+    ewma_ttft_alpha: 0.2
     score_weights:
       priority: 1.0
       load: 1.0

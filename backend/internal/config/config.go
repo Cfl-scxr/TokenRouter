@@ -1303,6 +1303,10 @@ type GatewayAdvancedSchedulerConfig struct {
 	LBTopK int `mapstructure:"lb_top_k"`
 	// ScoreWeights 是通用高级调度器的候选评分权重。
 	ScoreWeights GatewayAdvancedSchedulerScoreWeights `mapstructure:"score_weights"`
+	// EWMAErrorRateAlpha 是错误率反馈的 EWMA 平滑系数，取值越大越重视最新样本。
+	EWMAErrorRateAlpha float64 `mapstructure:"ewma_error_rate_alpha"`
+	// EWMATTFTAlpha 是首 token 延迟反馈的 EWMA 平滑系数，取值越大越重视最新样本。
+	EWMATTFTAlpha float64 `mapstructure:"ewma_ttft_alpha"`
 	// StickyEscapeEnabled: 是否允许 session_hash sticky 在账号健康度劣化时临时逃逸
 	StickyEscapeEnabled bool `mapstructure:"sticky_escape_enabled"`
 	// StickyEscapeTTFTMs: TTFT EWMA 超过该阈值时跳过 sticky
@@ -2391,6 +2395,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.retry_total_budget_ms", 5000)
 	viper.SetDefault("gateway.openai_ws.payload_log_sample_rate", 0.2)
 	viper.SetDefault("gateway.advanced_scheduler.lb_top_k", 7)
+	viper.SetDefault("gateway.advanced_scheduler.ewma_error_rate_alpha", 0.2)
+	viper.SetDefault("gateway.advanced_scheduler.ewma_ttft_alpha", 0.2)
 	viper.SetDefault("gateway.openai_ws.sticky_session_ttl_seconds", 3600)
 	viper.SetDefault("gateway.openai_ws.session_hash_read_old_fallback", true)
 	viper.SetDefault("gateway.openai_ws.session_hash_dual_write_old", true)
@@ -3453,6 +3459,14 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.AdvancedScheduler.LBTopK <= 0 {
 		return fmt.Errorf("gateway.advanced_scheduler.lb_top_k must be positive")
+	}
+	if c.Gateway.AdvancedScheduler.EWMAErrorRateAlpha <= 0 || c.Gateway.AdvancedScheduler.EWMAErrorRateAlpha > 1 ||
+		math.IsNaN(c.Gateway.AdvancedScheduler.EWMAErrorRateAlpha) || math.IsInf(c.Gateway.AdvancedScheduler.EWMAErrorRateAlpha, 0) {
+		return fmt.Errorf("gateway.advanced_scheduler.ewma_error_rate_alpha must be between 0 and 1")
+	}
+	if c.Gateway.AdvancedScheduler.EWMATTFTAlpha <= 0 || c.Gateway.AdvancedScheduler.EWMATTFTAlpha > 1 ||
+		math.IsNaN(c.Gateway.AdvancedScheduler.EWMATTFTAlpha) || math.IsInf(c.Gateway.AdvancedScheduler.EWMATTFTAlpha, 0) {
+		return fmt.Errorf("gateway.advanced_scheduler.ewma_ttft_alpha must be between 0 and 1")
 	}
 	if c.Gateway.OpenAIWS.StickySessionTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.openai_ws.sticky_session_ttl_seconds must be positive")

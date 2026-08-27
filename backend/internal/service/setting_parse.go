@@ -233,6 +233,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodWxpayEnabled:                "false",
 		SettingKeyAdvancedSchedulerStickyWeightedEnabled:       "false",
 		SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled: "false",
+		SettingKeyAdvancedSchedulerEWMAErrorRateAlpha:          "",
+		SettingKeyAdvancedSchedulerEWMATTFTAlpha:               "",
+		SettingKeyAdvancedSchedulerStickyEscapeEnabled:         "",
+		SettingKeyAdvancedSchedulerStickyEscapeTTFTMs:          "",
+		SettingKeyAdvancedSchedulerStickyEscapeErrorRate:       "",
 		SettingKeyAdvancedSchedulerLBTopK:                      "",
 		SettingKeyAdvancedSchedulerWeightPriority:              "",
 		SettingKeyAdvancedSchedulerWeightLoad:                  "",
@@ -891,6 +896,51 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
 	result.AdvancedSchedulerStickyWeightedEnabled = settings[SettingKeyAdvancedSchedulerStickyWeightedEnabled] == "true"
 	result.AdvancedSchedulerSubscriptionPriorityEnabled = settings[SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled] == "true"
+	result.AdvancedSchedulerEWMAErrorRateAlpha = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerEWMAErrorRateAlpha])
+	result.AdvancedSchedulerEWMATTFTAlpha = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerEWMATTFTAlpha])
+	result.AdvancedSchedulerStickyEscapeTTFTMs = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerStickyEscapeTTFTMs])
+	result.AdvancedSchedulerStickyEscapeErrorRate = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerStickyEscapeErrorRate])
+	processSchedulerDefaults := (&OpenAIGatewayService{cfg: func() *config.Config {
+		if s == nil {
+			return nil
+		}
+		return s.cfg
+	}()}).advancedSchedulerProcessRuntimeSettings()
+	result.AdvancedSchedulerStickyEscapeEnabled = processSchedulerDefaults.stickyEscape.enabled
+	if raw := strings.TrimSpace(settings[SettingKeyAdvancedSchedulerStickyEscapeEnabled]); raw != "" {
+		if parsed, err := strconv.ParseBool(raw); err == nil {
+			result.AdvancedSchedulerStickyEscapeEnabled = parsed
+			result.AdvancedSchedulerStickyEscapeEnabledSet = true
+		}
+	}
+	result.AdvancedSchedulerEffectiveEWMAErrorRateAlpha = formatAdvancedSchedulerFloat(normalizeAdvancedSchedulerFeedbackConfig(advancedSchedulerFeedbackConfig{
+		errorRateAlpha: processSchedulerDefaults.ewmaErrorRateAlpha,
+		ttftAlpha:      processSchedulerDefaults.ewmaTTFTAlpha,
+	}).errorRateAlpha)
+	result.AdvancedSchedulerEffectiveEWMATTFTAlpha = formatAdvancedSchedulerFloat(normalizeAdvancedSchedulerFeedbackConfig(advancedSchedulerFeedbackConfig{
+		errorRateAlpha: processSchedulerDefaults.ewmaErrorRateAlpha,
+		ttftAlpha:      processSchedulerDefaults.ewmaTTFTAlpha,
+	}).ttftAlpha)
+	result.AdvancedSchedulerEffectiveStickyEscapeEnabled = processSchedulerDefaults.stickyEscape.enabled
+	result.AdvancedSchedulerEffectiveStickyEscapeTTFTMs = formatAdvancedSchedulerFloat(processSchedulerDefaults.stickyEscape.ttftMs)
+	result.AdvancedSchedulerEffectiveStickyEscapeErrorRate = formatAdvancedSchedulerFloat(processSchedulerDefaults.stickyEscape.errorRate)
+	if parsed, ok := parseAdvancedSchedulerAlphaOverride(result.AdvancedSchedulerEWMAErrorRateAlpha, processSchedulerDefaults.ewmaErrorRateAlpha); ok {
+		result.AdvancedSchedulerEffectiveEWMAErrorRateAlpha = formatAdvancedSchedulerFloat(parsed)
+	}
+	if parsed, ok := parseAdvancedSchedulerAlphaOverride(result.AdvancedSchedulerEWMATTFTAlpha, processSchedulerDefaults.ewmaTTFTAlpha); ok {
+		result.AdvancedSchedulerEffectiveEWMATTFTAlpha = formatAdvancedSchedulerFloat(parsed)
+	}
+	if parsed, ok := parseAdvancedSchedulerPositiveFloatOverride(result.AdvancedSchedulerStickyEscapeTTFTMs, processSchedulerDefaults.stickyEscape.ttftMs); ok {
+		result.AdvancedSchedulerEffectiveStickyEscapeTTFTMs = formatAdvancedSchedulerFloat(parsed)
+	}
+	if parsed, ok := parseAdvancedSchedulerRateOverride(result.AdvancedSchedulerStickyEscapeErrorRate, processSchedulerDefaults.stickyEscapeErrorRate); ok {
+		result.AdvancedSchedulerEffectiveStickyEscapeErrorRate = formatAdvancedSchedulerFloat(parsed)
+	}
+	if raw := strings.TrimSpace(settings[SettingKeyAdvancedSchedulerStickyEscapeEnabled]); raw != "" {
+		if parsed, err := strconv.ParseBool(raw); err == nil {
+			result.AdvancedSchedulerEffectiveStickyEscapeEnabled = parsed
+		}
+	}
 	result.AdvancedSchedulerLBTopK = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerLBTopK])
 	result.AdvancedSchedulerWeightPriority = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerWeightPriority])
 	result.AdvancedSchedulerWeightLoad = strings.TrimSpace(settings[SettingKeyAdvancedSchedulerWeightLoad])
@@ -1039,6 +1089,29 @@ func (s *SettingService) normalizeAdvancedSchedulerOverrides(settings *SystemSet
 		return infraerrors.BadRequest("INVALID_ADVANCED_SCHEDULER_LB_TOP_K", "advanced scheduler TopK must be a positive integer or empty")
 	}
 	settings.AdvancedSchedulerLBTopK = lbTopK
+	for _, item := range []struct {
+		name   string
+		target *string
+	}{
+		{"advanced scheduler error-rate EWMA alpha", &settings.AdvancedSchedulerEWMAErrorRateAlpha},
+		{"advanced scheduler TTFT EWMA alpha", &settings.AdvancedSchedulerEWMATTFTAlpha},
+	} {
+		normalized, err := normalizeOptionalAlphaString(*item.target)
+		if err != nil {
+			return infraerrors.BadRequest("INVALID_ADVANCED_SCHEDULER_EWMA_ALPHA", item.name+" must be greater than 0 and at most 1, or empty")
+		}
+		*item.target = normalized
+	}
+	stickyTTFT, err := normalizeOptionalPositiveIntString(settings.AdvancedSchedulerStickyEscapeTTFTMs)
+	if err != nil {
+		return infraerrors.BadRequest("INVALID_ADVANCED_SCHEDULER_STICKY_ESCAPE_TTFT", "advanced scheduler sticky escape TTFT must be a positive integer or empty")
+	}
+	settings.AdvancedSchedulerStickyEscapeTTFTMs = stickyTTFT
+	stickyRate, err := normalizeOptionalRateString(settings.AdvancedSchedulerStickyEscapeErrorRate)
+	if err != nil {
+		return infraerrors.BadRequest("INVALID_ADVANCED_SCHEDULER_STICKY_ESCAPE_ERROR_RATE", "advanced scheduler sticky escape error rate must be between 0 and 1, or empty")
+	}
+	settings.AdvancedSchedulerStickyEscapeErrorRate = stickyRate
 
 	weights := []*string{
 		&settings.AdvancedSchedulerWeightPriority,
@@ -1112,6 +1185,30 @@ func normalizeOptionalNonNegativeFloatString(raw string) (string, error) {
 	value, err := strconv.ParseFloat(raw, 64)
 	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
 		return "", fmt.Errorf("invalid non-negative float")
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64), nil
+}
+
+func normalizeOptionalAlphaString(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value <= 0 || value > 1 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return "", fmt.Errorf("invalid alpha")
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64), nil
+}
+
+func normalizeOptionalRateString(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || value < 0 || value > 1 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return "", fmt.Errorf("invalid rate")
 	}
 	return strconv.FormatFloat(value, 'f', -1, 64), nil
 }

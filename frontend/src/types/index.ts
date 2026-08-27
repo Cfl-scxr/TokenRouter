@@ -572,6 +572,11 @@ export type VideoModelPrices = Record<string, Record<string, number>>
 export interface GroupAdvancedSchedulerOverrides {
   sticky_weighted_enabled?: boolean
   subscription_priority_enabled?: boolean
+  ewma_error_rate_alpha?: number
+  ewma_ttft_alpha?: number
+  sticky_escape_enabled?: boolean
+  sticky_escape_ttft_ms?: number
+  sticky_escape_error_rate?: number
   lb_top_k?: number
   weight_priority?: number
   weight_load?: number

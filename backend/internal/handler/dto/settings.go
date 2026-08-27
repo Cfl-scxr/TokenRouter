@@ -257,6 +257,11 @@ type SystemSettings struct {
 	// 通用高级调度器参数；是否启用由分组 scheduler_type 决定。
 	AdvancedSchedulerStickyWeightedEnabled           bool   `json:"advanced_scheduler_sticky_weighted_enabled"`
 	AdvancedSchedulerSubscriptionPriorityEnabled     bool   `json:"advanced_scheduler_subscription_priority_enabled"`
+	AdvancedSchedulerEWMAErrorRateAlpha              string `json:"advanced_scheduler_ewma_error_rate_alpha"`
+	AdvancedSchedulerEWMATTFTAlpha                   string `json:"advanced_scheduler_ewma_ttft_alpha"`
+	AdvancedSchedulerStickyEscapeEnabled             bool   `json:"advanced_scheduler_sticky_escape_enabled"`
+	AdvancedSchedulerStickyEscapeTTFTMs              string `json:"advanced_scheduler_sticky_escape_ttft_ms"`
+	AdvancedSchedulerStickyEscapeErrorRate           string `json:"advanced_scheduler_sticky_escape_error_rate"`
 	AdvancedSchedulerLBTopK                          string `json:"advanced_scheduler_lb_top_k"`
 	AdvancedSchedulerWeightPriority                  string `json:"advanced_scheduler_weight_priority"`
 	AdvancedSchedulerWeightLoad                      string `json:"advanced_scheduler_weight_load"`
@@ -277,6 +282,11 @@ type SystemSettings struct {
 	AdvancedSchedulerEffectiveWeightQuotaHeadroom    string `json:"advanced_scheduler_effective_weight_quota_headroom"`
 	AdvancedSchedulerEffectiveWeightPreviousResponse string `json:"advanced_scheduler_effective_weight_previous_response"`
 	AdvancedSchedulerEffectiveWeightSessionSticky    string `json:"advanced_scheduler_effective_weight_session_sticky"`
+	AdvancedSchedulerEffectiveEWMAErrorRateAlpha     string `json:"advanced_scheduler_effective_ewma_error_rate_alpha"`
+	AdvancedSchedulerEffectiveEWMATTFTAlpha          string `json:"advanced_scheduler_effective_ewma_ttft_alpha"`
+	AdvancedSchedulerEffectiveStickyEscapeEnabled    bool   `json:"advanced_scheduler_effective_sticky_escape_enabled"`
+	AdvancedSchedulerEffectiveStickyEscapeTTFTMs     string `json:"advanced_scheduler_effective_sticky_escape_ttft_ms"`
+	AdvancedSchedulerEffectiveStickyEscapeErrorRate  string `json:"advanced_scheduler_effective_sticky_escape_error_rate"`
 	// OpenAI 账号配额自动暂停全局默认阈值。后端按 0~1 存储，0 表示不启用全局默认阈值。
 	OpenAIQuotaAutoPauseSettings service.OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
 

@@ -568,16 +568,26 @@ const (
 	SettingKeyAdvancedSchedulerStickyWeightedEnabled = "advanced_scheduler_sticky_weighted_enabled"
 	// SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled 控制可用时的订阅账号优先级。
 	SettingKeyAdvancedSchedulerSubscriptionPriorityEnabled = "advanced_scheduler_subscription_priority_enabled"
-	SettingKeyAdvancedSchedulerLBTopK                      = "advanced_scheduler_lb_top_k"
-	SettingKeyAdvancedSchedulerWeightPriority              = "advanced_scheduler_weight_priority"
-	SettingKeyAdvancedSchedulerWeightLoad                  = "advanced_scheduler_weight_load"
-	SettingKeyAdvancedSchedulerWeightQueue                 = "advanced_scheduler_weight_queue"
-	SettingKeyAdvancedSchedulerWeightErrorRate             = "advanced_scheduler_weight_error_rate"
-	SettingKeyAdvancedSchedulerWeightTTFT                  = "advanced_scheduler_weight_ttft"
-	SettingKeyAdvancedSchedulerWeightReset                 = "advanced_scheduler_weight_reset"
-	SettingKeyAdvancedSchedulerWeightQuotaHeadroom         = "advanced_scheduler_weight_quota_headroom"
-	SettingKeyAdvancedSchedulerWeightPreviousResponse      = "advanced_scheduler_weight_previous_response"
-	SettingKeyAdvancedSchedulerWeightSessionSticky         = "advanced_scheduler_weight_session_sticky"
+	// SettingKeyAdvancedSchedulerEWMAErrorRateAlpha 控制错误率 EWMA 的平滑系数。
+	SettingKeyAdvancedSchedulerEWMAErrorRateAlpha = "advanced_scheduler_ewma_error_rate_alpha"
+	// SettingKeyAdvancedSchedulerEWMATTFTAlpha 控制首 token 延迟 EWMA 的平滑系数。
+	SettingKeyAdvancedSchedulerEWMATTFTAlpha = "advanced_scheduler_ewma_ttft_alpha"
+	// SettingKeyAdvancedSchedulerStickyEscapeEnabled 控制健康度恶化时是否允许逃逸粘性账号。
+	SettingKeyAdvancedSchedulerStickyEscapeEnabled = "advanced_scheduler_sticky_escape_enabled"
+	// SettingKeyAdvancedSchedulerStickyEscapeTTFTMs 控制触发粘性逃逸的 TTFT 阈值。
+	SettingKeyAdvancedSchedulerStickyEscapeTTFTMs = "advanced_scheduler_sticky_escape_ttft_ms"
+	// SettingKeyAdvancedSchedulerStickyEscapeErrorRate 控制触发粘性逃逸的错误率阈值。
+	SettingKeyAdvancedSchedulerStickyEscapeErrorRate  = "advanced_scheduler_sticky_escape_error_rate"
+	SettingKeyAdvancedSchedulerLBTopK                 = "advanced_scheduler_lb_top_k"
+	SettingKeyAdvancedSchedulerWeightPriority         = "advanced_scheduler_weight_priority"
+	SettingKeyAdvancedSchedulerWeightLoad             = "advanced_scheduler_weight_load"
+	SettingKeyAdvancedSchedulerWeightQueue            = "advanced_scheduler_weight_queue"
+	SettingKeyAdvancedSchedulerWeightErrorRate        = "advanced_scheduler_weight_error_rate"
+	SettingKeyAdvancedSchedulerWeightTTFT             = "advanced_scheduler_weight_ttft"
+	SettingKeyAdvancedSchedulerWeightReset            = "advanced_scheduler_weight_reset"
+	SettingKeyAdvancedSchedulerWeightQuotaHeadroom    = "advanced_scheduler_weight_quota_headroom"
+	SettingKeyAdvancedSchedulerWeightPreviousResponse = "advanced_scheduler_weight_previous_response"
+	SettingKeyAdvancedSchedulerWeightSessionSticky    = "advanced_scheduler_weight_session_sticky"
 
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"

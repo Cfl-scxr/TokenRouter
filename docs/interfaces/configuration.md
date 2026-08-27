@@ -75,13 +75,13 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 管理端“通用设置”的用量排行卡片和公开设置都会返回这组有效配置。关闭总开关后，用户侧导航和路由不再提供入口，`GET /api/v1/usage/ranking` 也必须在查询前返回 `403`；它不影响管理员仪表盘的消费排行。关闭显示字段时，用户排行响应必须省略对应行字段及总计，关闭 Token 还要省略输入、输出和缓存 Token 明细，不能只由浏览器隐藏。普通明细和预聚合查询都按所选指标大于零入榜，并使用其余指标和用户 ID 作为稳定并列顺序。
 
-高级调度器的归属分为两层：每个 Group 的 `scheduler_type` 是领域配置，明确选择 `basic` 或 `advanced`；网关通用设置只保存高级模式的运行参数，包括 `advanced_scheduler_sticky_weighted_enabled`、`advanced_scheduler_subscription_priority_enabled`、`advanced_scheduler_lb_top_k` 及各 `advanced_scheduler_weight_*`。它们在“网关设置 - 通用设置”编辑，使用短 TTL 的进程缓存读取。不存在 `advanced_scheduler_enabled` 全局开关，缺失参数只回退到进程配置默认值，不能改变任意分组的模式。
+高级调度器的归属分为两层：每个 Group 的 `scheduler_type` 是领域配置，明确选择 `basic` 或 `advanced`；网关通用设置保存高级模式的运行参数，包括 `advanced_scheduler_sticky_weighted_enabled`、`advanced_scheduler_subscription_priority_enabled`、`advanced_scheduler_lb_top_k`、各 `advanced_scheduler_weight_*`、两个独立的 `advanced_scheduler_ewma_*_alpha` 以及 `advanced_scheduler_sticky_escape_*`。它们在“网关设置 - 通用设置”编辑，使用短 TTL 的进程缓存读取。数值留空时继承 `gateway.advanced_scheduler` 的进程默认值；sticky escape 开关和两个阈值也支持热更新。不存在 `advanced_scheduler_enabled` 全局开关，缺失参数只回退到进程配置默认值，不能改变任意分组的模式。
 
 管理 Group API 还接受 `advanced_scheduler_overrides` 作为稀疏对象，仅在 `scheduler_type=advanced` 的实际调度中使用。创建缺省为 `{}`；更新时省略字段保持原对象，传 `{}` 清除全部覆盖，字段内未出现的值继续继承全局设置。`false` 与 `0` 不等于未设置，都会作为显式覆盖保存；合并后的七项基础评分权重全部为零也是有效配置，此时评分相同的候选按账号全局优先级和账号 ID 稳定排序，不会静默恢复全局权重。合并后的基础权重和完整权重总和都必须是有限值，写入会拒绝导致溢出的稀疏覆盖；运行时若读到历史异常对象，权重回退到全局有效值。该字段随认证快照缓存并提升快照版本；公开用户分组接口不会返回它或 `scheduler_type`。
 
 管理员账号高级调度评分诊断会逐项返回最终参数和来源：`group_override` 优先于 `global_runtime`，后者缺失时为 `process_default`。该返回只解释当前实时评分，不保存历史快照；它不会反向启用分组、高级调度器或任何平台专属策略。
 
-进程配置的默认参数位于 `gateway.advanced_scheduler`，包含 `lb_top_k`、`score_weights` 与粘性逃逸阈值。默认值由 Viper 在解码前注册，因此 YAML 或环境变量显式设置 `sticky_escape_error_rate=0` 会保留为零，表示任意正错误率均可触发逃逸；`sticky_escape_ttft_ms=0` 不合法并在启动校验时失败，不会被默认值覆盖。旧的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*` 和 `gateway.openai_scheduler.sticky_escape_*` 均不再兼容，启动校验会明确拒绝；管理设置请求中的 `openai_advanced_scheduler_*` 或旧全局开关也会返回弃用错误，而不是被静默忽略。OpenAI 配额自动暂停仍是 OpenAI 专属设置，不属于通用高级调度参数。
+进程配置的默认参数位于 `gateway.advanced_scheduler`，包含 `lb_top_k`、`score_weights`、`ewma_error_rate_alpha`、`ewma_ttft_alpha` 与粘性逃逸阈值。两个 alpha 要求 `0 < alpha <= 1`；sticky escape 的 TTFT 阈值必须为正数，错误率阈值必须在 `0..1`，显式错误率 `0` 表示任意正错误率即可触发逃逸。旧的 `gateway.openai_ws.lb_top_k`、`gateway.openai_ws.scheduler_score_weights.*` 和 `gateway.openai_scheduler.sticky_escape_*` 均不再兼容，启动校验会明确拒绝；管理设置请求中的 `openai_advanced_scheduler_*` 或旧全局开关也会返回弃用错误，而不是被静默忽略。OpenAI 配额自动暂停仍是 OpenAI 专属设置，不属于通用高级调度参数。
 
 Grok 文本转发有三项数据库运行时设置：`grok_default_text_model`、`grok_cross_client_model_map_enabled` 和 `grok_default_base_url_mode`。默认模型与跨客户端开关共同发布进程级模型映射快照；当前开关只在 Grok 分组的 Anthropic Messages 派发阶段生效，将 Claude 模型 ID 映射到默认文本模型，不改写 Responses 或 Chat Completions 中的其他模型。base URL 模式只在账号未保存显式端点时生效，可选 CLI 代理、公共 API、`us-east-1`、`us-west-2` 和 `eu-west-1`。这些设置可热更新，不覆盖账号显式 URL，也不改变媒体/Voice 的官方端点选择。
 
