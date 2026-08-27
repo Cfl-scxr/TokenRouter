@@ -71,9 +71,9 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 `google_one_tap_enabled` 是独立于 `google_oauth_enabled` 的数据库运行时开关，默认关闭。部署者先为现有 Web 类型 Google OAuth Client ID 登记每个前端 Authorized JavaScript origin，再显式开启；生产 Origin 必须使用 HTTPS，本地开发只允许 localhost/loopback HTTP。公开设置只有在 One Tap 开关和完整 Google OAuth 配置同时有效时才返回 `google_one_tap_enabled=true` 及非敏感 `google_oauth_client_id`，任一条件不满足时按关闭并返回空 Client ID；Client Secret 始终只留在服务端和受掩码保护的管理设置中。首页与登录页共用这组公开设置，旧 HTML 注入缓存缺失新字段时按关闭处理。
 
-`usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。
+`usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。排行行的 `user_id` 表示付款主体；团队 Key 的请求按 `billing_user_id` 归到团队 Owner，Usage 明细中的 `user_id` 仍表示实际行为成员。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。
 
-管理端“通用设置”的用量排行卡片和公开设置都会返回这组有效配置。关闭总开关后，用户侧导航和路由不再提供入口，`GET /api/v1/usage/ranking` 也必须在查询前返回 `403`；它不影响管理员仪表盘的消费排行。关闭显示字段时，用户排行响应必须省略对应行字段及总计，关闭 Token 还要省略输入、输出和缓存 Token 明细，不能只由浏览器隐藏。普通明细和预聚合查询都按所选指标大于零入榜，并使用其余指标和用户 ID 作为稳定并列顺序。
+管理端“通用设置”的用量排行卡片和公开设置都会返回这组有效配置。关闭总开关后，用户侧导航和路由不再提供入口，`GET /api/v1/usage/ranking` 也必须在查询前返回 `403`；它不影响管理员仪表盘的消费排行。关闭显示字段时，用户排行响应必须省略对应行字段及总计，关闭 Token 还要省略输入、输出和缓存 Token 明细，不能只由浏览器隐藏。普通明细和预聚合查询都按所选指标大于零入榜，并使用其余指标和付款主体 ID 作为稳定并列顺序。
 
 高级调度器的归属分为两层：每个 Group 的 `scheduler_type` 是领域配置，明确选择 `basic` 或 `advanced`；网关通用设置保存高级模式的运行参数，包括 `advanced_scheduler_sticky_weighted_enabled`、`advanced_scheduler_subscription_priority_enabled`、`advanced_scheduler_lb_top_k`、各 `advanced_scheduler_weight_*`、两个独立的 `advanced_scheduler_ewma_*_alpha` 以及 `advanced_scheduler_sticky_escape_*`。它们在“网关设置 - 通用设置”编辑，使用短 TTL 的进程缓存读取。数值留空时继承 `gateway.advanced_scheduler` 的进程默认值；sticky escape 开关和两个阈值也支持热更新。不存在 `advanced_scheduler_enabled` 全局开关，缺失参数只回退到进程配置默认值，不能改变任意分组的模式。
 

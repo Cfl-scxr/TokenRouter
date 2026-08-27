@@ -148,7 +148,7 @@ function topCardOrderClass(rank: number): string {
   return 'md:order-3'
 }
 
-// 排行榜接口不暴露邮箱，统一用用户 ID 作为 identicon 种子，与全站其他位置的头像保持一致。
+// 排行榜接口不暴露邮箱，统一用付款主体 ID 作为 identicon 种子，与全站其他位置的头像保持一致。
 function rankingAvatarProps(item: UsageRankingItem, sizeClass: string) {
   return {
     avatarUrl: item.avatar_url,
