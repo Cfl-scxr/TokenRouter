@@ -19,7 +19,7 @@
       格子固定 12px、间距 3px，周列数随容器宽度自适应（宽屏显示更多历史周），
       justify-between 把不足一格的零头均摊到列间隙，保证左右贴齐。
     -->
-    <div ref="gridWrapRef">
+    <div ref="gridWrapRef" data-testid="heatmap-grid-wrap" @mouseleave="hoveredDay = null">
       <!--
         统一网格：第 1 列是星期标签，第 1 行是月份标签，其余为日期格子。
         格子显式指定 gridColumn/gridRow，保证标签与格子严格对齐。
@@ -56,7 +56,6 @@
           :class="day.future ? 'invisible' : levelClass(day.level)"
           :style="{ gridColumn: day.weekIndex + 2, gridRow: day.dayOfWeek + 2 }"
           @mouseenter="onCellHover(day, $event)"
-          @mouseleave="hoveredDay = null"
         />
       </div>
     </div>
@@ -66,24 +65,29 @@
       前两行格子改为下方弹出，避免超出卡片顶部。
     -->
     <div
-      v-if="hoveredDay"
+      ref="tooltipRef"
       data-testid="heatmap-tooltip"
       class="pointer-events-none absolute z-20 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs text-white shadow-lg dark:bg-dark-600"
       :style="tooltipStyle"
+      :aria-hidden="hoveredDay ? 'false' : 'true'"
     >
-      <div class="font-medium">{{ formatDayLabel(hoveredDay.date) }}</div>
-      <template v-if="hoveredDay.requests > 0">
-        <div>{{ t('dashboard.requests') }}: {{ formatNumber(hoveredDay.requests) }}</div>
-        <div>{{ t('dashboard.tokens') }}: {{ formatTokens(hoveredDay.tokens) }}</div>
-        <div>{{ t('dashboard.heatmapCost') }}: {{ formatBalanceAmount(hoveredDay.actualCost, { fractionDigits: 4 }) }}</div>
-      </template>
-      <div v-else>{{ t('dashboard.heatmapNoUsage') }}</div>
+      <div ref="tooltipContentRef" class="w-max">
+        <template v-if="hoveredDay">
+          <div class="font-medium">{{ formatDayLabel(hoveredDay.date) }}</div>
+          <template v-if="hoveredDay.requests > 0">
+            <div>{{ t('dashboard.requests') }}: {{ formatNumber(hoveredDay.requests) }}</div>
+            <div>{{ t('dashboard.tokens') }}: {{ formatTokens(hoveredDay.tokens) }}</div>
+            <div>{{ t('dashboard.heatmapCost') }}: {{ formatBalanceAmount(hoveredDay.actualCost, { fractionDigits: 4 }) }}</div>
+          </template>
+          <div v-else>{{ t('dashboard.heatmapNoUsage') }}</div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { usageAPI } from '@/api/usage'
@@ -127,8 +131,13 @@ const days = ref<HeatmapDay[]>([])
 const hoveredDay = ref<HeatmapDay | null>(null)
 const cardRef = ref<HTMLElement | null>(null)
 const gridWrapRef = ref<HTMLElement | null>(null)
+const tooltipRef = ref<HTMLElement | null>(null)
+const tooltipContentRef = ref<HTMLElement | null>(null)
 // 悬停格子中心相对卡片左上角的坐标，用于 tooltip 定位
 const hoverPos = ref({ left: 0, top: 0 })
+// 记录 tooltip 上一次弹出方向，离开格子时仍保留位置以完成淡出动画。
+const tooltipAbove = ref(false)
+const tooltipSize = ref({ width: 0, height: 0 })
 // 网格容器宽度，驱动可见周数自适应
 const gridWidth = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -279,19 +288,47 @@ const onCellHover = (day: HeatmapDay, event: MouseEvent) => {
       top: rect.top - cardRect.top,
     }
   }
+  tooltipAbove.value = day.dayOfWeek >= 2
   hoveredDay.value = day
+  void updateTooltipSize()
 }
 
 const tooltipStyle = computed(() => {
-  const day = hoveredDay.value
-  if (!day) return {}
-  const above = day.dayOfWeek >= 2
+  const above = tooltipAbove.value
   return {
     left: `${hoverPos.value.left}px`,
     top: above ? `${hoverPos.value.top - 6}px` : `${hoverPos.value.top + 18}px`,
     transform: above ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+    width: tooltipSize.value.width > 0 ? `${tooltipSize.value.width}px` : '0px',
+    height: tooltipSize.value.height > 0 ? `${tooltipSize.value.height}px` : '0px',
+    opacity: hoveredDay.value ? '1' : '0',
+    overflow: 'hidden',
+    boxSizing: 'border-box' as const,
+    transition: [
+      'left 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+      'top 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+      'width 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+      'height 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+      'transform 400ms cubic-bezier(0.25, 1, 0.5, 1)',
+      'opacity 200ms linear',
+    ].join(', '),
+    willChange: 'left, top, width, height, transform, opacity',
   }
 })
+
+// 内容更新后测量自然尺寸，让 tooltip 在不同日期之间平滑过渡宽高。
+const updateTooltipSize = async () => {
+  await nextTick()
+  const content = tooltipContentRef.value
+  if (!content) return
+  const width = Math.ceil(content.scrollWidth || content.getBoundingClientRect().width)
+  const height = Math.ceil(content.scrollHeight || content.getBoundingClientRect().height)
+  if (width <= 0 || height <= 0) return
+  tooltipSize.value = {
+    width: width + 16,
+    height: height + 8,
+  }
+}
 
 onMounted(() => {
   // 监听容器宽度变化，窗口缩放时实时调整可见周数

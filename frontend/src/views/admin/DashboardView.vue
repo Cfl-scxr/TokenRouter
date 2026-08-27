@@ -298,7 +298,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -321,6 +321,7 @@ import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { externalTooltipHandler, hideExternalTooltip } from '@/utils/chartExternalTooltip'
 
 import {
   Chart as ChartJS,
@@ -344,6 +345,8 @@ ChartJS.register(
   Legend,
   Filler
 )
+
+onBeforeUnmount(hideExternalTooltip)
 
 const appStore = useAppStore()
 const router = useRouter()
@@ -428,6 +431,8 @@ const lineOptions = computed(() => ({
       }
     },
     tooltip: {
+      enabled: false,
+      external: externalTooltipHandler,
       itemSort: (a: any, b: any) => {
         const aValue = typeof a?.raw === 'number' ? a.raw : Number(a?.parsed?.y ?? 0)
         const bValue = typeof b?.raw === 'number' ? b.raw : Number(b?.parsed?.y ?? 0)

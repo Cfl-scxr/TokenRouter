@@ -128,13 +128,36 @@ describe('UserDashboardHeatmap', () => {
     expect(tooltip.text()).toContain('dashboard.tokens')
     expect(tooltip.text()).toContain('dashboard.heatmapCost')
     expect(tooltip.text()).toContain('0.2')
+    expect(tooltip.attributes('aria-hidden')).toBe('false')
+    expect(tooltip.attributes('style')).toContain('left 400ms cubic-bezier(0.25, 1, 0.5, 1)')
+    expect(tooltip.attributes('style')).toContain('width 400ms cubic-bezier(0.25, 1, 0.5, 1)')
 
-    await cells[todayIndex].trigger('mouseleave')
-    expect(wrapper.find('[data-testid="heatmap-tooltip"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="heatmap-grid-wrap"]').trigger('mouseleave')
+    expect(wrapper.get('[data-testid="heatmap-tooltip"]').attributes('aria-hidden')).toBe('true')
 
     // 前一天无用量
     await cells[todayIndex - 1].trigger('mouseenter')
     expect(wrapper.get('[data-testid="heatmap-tooltip"]').text()).toContain('dashboard.heatmapNoUsage')
+  })
+
+  it('在相邻格子之间移动时保持 tooltip 可见，不触发闪烁隐藏', async () => {
+    const { end } = expectedRange()
+    const today = formatDateLocalInput(end)
+    vi.mocked(usageAPI.getDashboardTrend).mockResolvedValue({
+      ...emptyTrend,
+      trend: [todayTrendPoint(today)],
+    })
+
+    const wrapper = await mountHeatmap()
+    const cells = wrapper.findAll('[data-testid="heatmap-cell"]')
+    const todayIndex = cells.findIndex((c) => c.classes().includes('bg-green-700'))
+    await cells[todayIndex].trigger('mouseenter')
+    const tooltipElement = wrapper.get('[data-testid="heatmap-tooltip"]').element
+
+    await cells[todayIndex - 1].trigger('mouseenter')
+
+    expect(wrapper.get('[data-testid="heatmap-tooltip"]').element).toBe(tooltipElement)
+    expect(wrapper.get('[data-testid="heatmap-tooltip"]').attributes('aria-hidden')).toBe('false')
   })
 
   it('左侧渲染周一/周三/周五的星期标签', async () => {
