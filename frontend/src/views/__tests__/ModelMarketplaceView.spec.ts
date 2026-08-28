@@ -297,6 +297,24 @@ describe('ModelMarketplaceView', () => {
       .toEqual(['input-text', 'output-text'])
   })
 
+  it('能力标签优先使用接口下发的模态元数据', async () => {
+    const fixture = marketplaceFixture()
+    fixture[0] = {
+      ...fixture[0],
+      models: [
+        // 本地规则会把 gpt-image-2 识别为 text+image 输入，接口数据应覆盖为纯文字输入。
+        { ...marketplaceModel('gpt-image-2', 'GPT Image 2', imagePricing), input_modalities: ['text'], output_modalities: ['image'] },
+      ],
+    }
+    getMarketplaceModels.mockResolvedValue(fixture)
+
+    const wrapper = await mountMarketplace()
+    const sections = wrapper.findAll('[data-testid="marketplace-group-section"]')
+
+    expect(sections[0].get('[data-testid="model-capability-tags"]').findAll('[data-modality]').map((tag) => tag.attributes('data-modality')))
+      .toEqual(['input-text', 'output-image'])
+  })
+
   it('xAI 品牌在分组模式下展示 Grok 图标而不是字母占位', async () => {
     const fixture = marketplaceFixture()
     fixture[0] = {

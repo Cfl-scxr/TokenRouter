@@ -35,12 +35,18 @@ import { resolveModelCapabilities, type ModelModality } from '@/utils/modelCapab
 import type { MarketplaceModel } from '@/types'
 
 const props = defineProps<{
-  model: Pick<MarketplaceModel, 'id' | 'pricing'>
+  model: Pick<MarketplaceModel, 'id' | 'pricing' | 'input_modalities' | 'output_modalities'>
 }>()
 
 const { t } = useI18n()
 
-const capabilities = computed(() => resolveModelCapabilities(props.model.id, props.model.pricing))
+// 能力数据优先用后端从定价元数据下发的字段，缺失时由解析器回退到模型 ID 规则。
+const capabilities = computed(() =>
+  resolveModelCapabilities(props.model.id, props.model.pricing, {
+    input: props.model.input_modalities,
+    output: props.model.output_modalities,
+  })
+)
 
 function modalityLabel(modality: ModelModality): string {
   switch (modality) {

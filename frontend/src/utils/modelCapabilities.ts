@@ -1,14 +1,21 @@
-import type { MarketplaceModelPricing } from '@/types'
+import type { MarketplaceModelPricing, ModelModality } from '@/types'
 
 // 模型能力（输入/输出模态）解析：模型广场卡片右上角能力标签的数据源。
-// 与 ModelIcon 一样按模型 ID 模式识别展示层元数据；定价数据（图片计费、图片输入价）
-// 比 ID 模式更可靠，优先采用，ID 模式仅作为兜底。
+// 优先使用后端从定价元数据下发的 input_modalities/output_modalities；
+// 接口缺失或非空校验失败时，回退到按模型 ID 模式识别的本地规则（与 ModelIcon 同一思路），
+// 其中定价数据（图片计费、图片输入价）比 ID 模式更可靠，ID 模式仅作为兜底。
 
-export type ModelModality = 'text' | 'image' | 'audio' | 'video'
+export type { ModelModality } from '@/types'
 
 export interface ModelCapabilities {
   input: ModelModality[]
   output: ModelModality[]
+}
+
+// 后端下发的能力入参：两侧都非空才视为可信数据。
+export interface ApiModelCapabilities {
+  input?: ModelModality[]
+  output?: ModelModality[]
 }
 
 // 标签固定按该顺序渲染，保证不同卡片之间可扫读对比。
@@ -44,6 +51,9 @@ const IMAGE_INPUT_PATTERNS = [
   /llama-4/,
 ]
 
+// 支持图片编辑（图生图）的生图模型：输入除文字外还有图片。
+const IMAGE_EDIT_PATTERNS = [/gpt-image/]
+
 function hasPositivePrice(value?: number): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
@@ -52,7 +62,26 @@ function sortedModalities(modalities: Set<ModelModality>): ModelModality[] {
   return MODEL_MODALITY_ORDER.filter((modality) => modalities.has(modality))
 }
 
-export function resolveModelCapabilities(modelId: string, pricing?: MarketplaceModelPricing): ModelCapabilities {
+// 过滤接口下发值中的非法模态，并按固定顺序输出；空数组/缺失返回空。
+function sanitizeApiModalities(modalities?: ModelModality[]): ModelModality[] {
+  if (!Array.isArray(modalities)) {
+    return []
+  }
+  return MODEL_MODALITY_ORDER.filter((modality) => modalities.includes(modality))
+}
+
+export function resolveModelCapabilities(
+  modelId: string,
+  pricing?: MarketplaceModelPricing,
+  apiCapabilities?: ApiModelCapabilities,
+): ModelCapabilities {
+  // 后端下发的能力元数据优先：过滤非法取值后，两侧都非空就直接采用。
+  const apiInput = sanitizeApiModalities(apiCapabilities?.input)
+  const apiOutput = sanitizeApiModalities(apiCapabilities?.output)
+  if (apiInput.length > 0 && apiOutput.length > 0) {
+    return { input: apiInput, output: apiOutput }
+  }
+
   const id = modelId.toLowerCase()
 
   // 大部分模型至少支持文字输入输出，作为默认值；命中更具体的能力时再调整。
@@ -94,10 +123,13 @@ export function resolveModelCapabilities(modelId: string, pricing?: MarketplaceM
   }
 
   // 图片输入：优先看定价数据里的图片输入价，其次按已知视觉模型兜底；
-  // 纯生成类模型（已判定为图片/视频/音频输出）不再叠加图片输入；
+  // 纯生成类模型（已判定为图片/视频/音频输出）默认只有文字输入；
+  // 但 gpt-image 系列支持图片编辑（图生图），输入需要叠加图片；
   // 音频对话/识别模型（如 gpt-4o-audio）不按 gpt-4o 视觉模式叠加图片输入。
   const generativeOnly = imageOutputByPricing || imageOutputById || videoOutput || audioOutput
-  if (!generativeOnly && !audioIO && !audioInput) {
+  if (IMAGE_EDIT_PATTERNS.some((pattern) => pattern.test(id))) {
+    input.add('image')
+  } else if (!generativeOnly && !audioIO && !audioInput) {
     const imageInputByPricing = hasPositivePrice(pricing?.image_input_price_per_token)
     const imageInputById = IMAGE_INPUT_PATTERNS.some((pattern) => pattern.test(id))
     if (imageInputByPricing || imageInputById) {

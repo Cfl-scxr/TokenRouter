@@ -635,10 +635,15 @@ export interface MarketplaceModelPricing {
   image_price_4k?: number
 }
 
+// 模型能力模态：模型广场接口从定价元数据下发，缺省时前端按模型 ID 规则兜底。
+export type ModelModality = 'text' | 'image' | 'audio' | 'video'
+
 export interface MarketplaceModel {
   id: string
   display_name: string
   pricing: MarketplaceModelPricing
+  input_modalities?: ModelModality[]
+  output_modalities?: ModelModality[]
 }
 
 // 用户与市场接口可携带的分组容量快照，仅包含聚合后的负载数字。
