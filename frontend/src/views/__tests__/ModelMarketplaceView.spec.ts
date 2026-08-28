@@ -7,9 +7,14 @@ import type { MarketplaceGroup, MarketplaceModelPricing } from '@/types'
 const getMarketplaceModels = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
+const copyToClipboard = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/marketplace', () => ({
   getMarketplaceModels,
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copied: { value: false }, copyToClipboard }),
 }))
 
 vi.mock('@/stores', () => ({
@@ -229,12 +234,19 @@ function groupEntries(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('[data-testid="marketplace-model-group-entry"]')
 }
 
+// HelpTooltip 通过 Teleport 挂到 body，隐藏时用 v-show（display:none）控制。
+function visibleTooltips() {
+  return Array.from(document.body.querySelectorAll<HTMLElement>('[role="tooltip"]'))
+    .filter((el) => el.style.display !== 'none')
+}
+
 describe('ModelMarketplaceView', () => {
   beforeEach(() => {
     localStorage.clear()
     getMarketplaceModels.mockResolvedValue(marketplaceFixture())
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
+    copyToClipboard.mockClear()
   })
 
   it('默认按分组-模型展示', async () => {
@@ -311,6 +323,50 @@ describe('ModelMarketplaceView', () => {
     expect(sections[1].text()).not.toContain('marketplace.maxDiscountOff')
     expect(sections[2].text()).not.toContain('marketplace.maxDiscountOff')
     expect(sections[3].text()).toContain('marketplace.maxDiscountOff 60')
+
+    // 移动端点击 tag 也能查看说明：点击后弹出提示气泡。
+    await sections[0].get('[data-testid="group-max-discount-tag"]').trigger('click')
+    await nextTick()
+    expect(visibleTooltips().some((el) => el.textContent?.includes('marketplace.maxDiscountHint'))).toBe(true)
+    await sections[0].get('[data-testid="group-rate-multiplier-tag"]').trigger('click')
+    await nextTick()
+    expect(visibleTooltips().some((el) => el.textContent?.includes('marketplace.rateMultiplierHint'))).toBe(true)
+  })
+
+  it('模型卡片与定价弹窗中的模型 ID 支持一键复制', async () => {
+    const wrapper = await mountMarketplace()
+
+    // 分组-模型模式下，卡片 ID 行的复制按钮直接复制模型 ID。
+    const cardCopyButtons = wrapper.findAll('[data-testid="model-id-copy"]')
+    expect(cardCopyButtons.length).toBeGreaterThan(0)
+    await cardCopyButtons[0].trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('gpt-5.5')
+
+    // 打开定价弹窗后，弹窗内的 ID 行提供同样的复制按钮。
+    const pricingButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('marketplace.viewPricing'))
+    await pricingButton!.trigger('click')
+    await nextTick()
+
+    const dialog = wrapper.get('[data-testid="pricing-dialog"]')
+    const dialogCopyButtons = dialog.findAll('[data-testid="model-id-copy"]')
+    expect(dialogCopyButtons).toHaveLength(1)
+    await dialogCopyButtons[0].trigger('click')
+    expect(copyToClipboard).toHaveBeenLastCalledWith('gpt-5.5')
+  })
+
+  it('模型卡片右上角展示输入输出能力标签', async () => {
+    const wrapper = await mountMarketplace()
+
+    const sections = wrapper.findAll('[data-testid="marketplace-group-section"]')
+    const gptCards = sections[0].findAll('article')
+    // fixture 中 gpt-5.5 定价数据带图片输入价，应展示 文字·图片 -> 文字。
+    expect(gptCards[0].get('[data-testid="model-capability-tags"]').findAll('[data-modality]').map((tag) => tag.attributes('data-modality')))
+      .toEqual(['input-text', 'input-image', 'output-text'])
+    // 无定价数据的模型回退为纯文本能力。
+    expect(gptCards[1].get('[data-testid="model-capability-tags"]').findAll('[data-modality]').map((tag) => tag.attributes('data-modality')))
+      .toEqual(['input-text', 'output-text'])
   })
 
   it('xAI 品牌在分组模式下展示 Grok 图标而不是字母占位', async () => {

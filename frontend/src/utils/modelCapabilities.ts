@@ -1,0 +1,112 @@
+import type { MarketplaceModelPricing } from '@/types'
+
+// 模型能力（输入/输出模态）解析：模型广场卡片右上角能力标签的数据源。
+// 与 ModelIcon 一样按模型 ID 模式识别展示层元数据；定价数据（图片计费、图片输入价）
+// 比 ID 模式更可靠，优先采用，ID 模式仅作为兜底。
+
+export type ModelModality = 'text' | 'image' | 'audio' | 'video'
+
+export interface ModelCapabilities {
+  input: ModelModality[]
+  output: ModelModality[]
+}
+
+// 标签固定按该顺序渲染，保证不同卡片之间可扫读对比。
+export const MODEL_MODALITY_ORDER: ModelModality[] = ['text', 'image', 'audio', 'video']
+
+// 已知生图模型的 ID 特征（定价模式缺失时兜底，命中后只输出图片）。
+const IMAGE_OUTPUT_PATTERNS = [/dall-e/, /flux/, /stable-diffusion/, /imagen/, /cogview/, /midjourney/, /mj-/, /gpt-image/]
+
+// 已知视频生成模型的 ID 特征（命中后只输出视频）。
+const VIDEO_OUTPUT_PATTERNS = [/veo/, /sora/, /cogvideo/]
+
+// 音频输入输出双通的对话模型（如 gpt-4o-audio、realtime 系列）。
+const AUDIO_IO_PATTERNS = [/gpt-4o-audio/, /gpt-audio/, /realtime/]
+
+// 仅音频输入的模型（语音识别类，输入只有音频）。
+const AUDIO_INPUT_PATTERNS = [/whisper/, /voxtral/, /qwen-audio/]
+
+// 仅音频输出的模型（语音合成类）。
+const AUDIO_OUTPUT_PATTERNS = [/tts/]
+
+// 已知支持图片理解（视觉输入）的模型 ID 特征。
+const IMAGE_INPUT_PATTERNS = [
+  /claude/,
+  /gemini/,
+  /gpt-4o/,
+  /gpt-4\.1/,
+  /gpt-5/,
+  /o3/,
+  /o4/,
+  /qwen-vl/,
+  /glm-4v/,
+  /pixtral/,
+  /llama-4/,
+]
+
+function hasPositivePrice(value?: number): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function sortedModalities(modalities: Set<ModelModality>): ModelModality[] {
+  return MODEL_MODALITY_ORDER.filter((modality) => modalities.has(modality))
+}
+
+export function resolveModelCapabilities(modelId: string, pricing?: MarketplaceModelPricing): ModelCapabilities {
+  const id = modelId.toLowerCase()
+
+  // 大部分模型至少支持文字输入输出，作为默认值；命中更具体的能力时再调整。
+  const input = new Set<ModelModality>(['text'])
+  const output = new Set<ModelModality>(['text'])
+
+  const imageOutputByPricing = pricing?.pricing_mode === 'image'
+  const imageOutputById = IMAGE_OUTPUT_PATTERNS.some((pattern) => pattern.test(id))
+  const audioIO = AUDIO_IO_PATTERNS.some((pattern) => pattern.test(id))
+  const audioInput = AUDIO_INPUT_PATTERNS.some((pattern) => pattern.test(id))
+  const audioOutput = AUDIO_OUTPUT_PATTERNS.some((pattern) => pattern.test(id))
+  const videoOutput = VIDEO_OUTPUT_PATTERNS.some((pattern) => pattern.test(id))
+
+  // 生图模型只输出图片，纯生成类模型没有对话输出。
+  if (imageOutputByPricing || imageOutputById) {
+    output.delete('text')
+    output.add('image')
+  }
+
+  // 视频生成模型只输出视频。
+  if (videoOutput) {
+    output.delete('text')
+    output.add('video')
+  }
+
+  if (audioIO) {
+    input.add('audio')
+    output.add('audio')
+  }
+  if (audioInput) {
+    // 语音识别类模型输入只有音频。
+    input.delete('text')
+    input.add('audio')
+  }
+  if (audioOutput) {
+    // 语音合成类模型输出只有音频。
+    output.delete('text')
+    output.add('audio')
+  }
+
+  // 图片输入：优先看定价数据里的图片输入价，其次按已知视觉模型兜底；
+  // 纯生成类模型（已判定为图片/视频/音频输出）不再叠加图片输入；
+  // 音频对话/识别模型（如 gpt-4o-audio）不按 gpt-4o 视觉模式叠加图片输入。
+  const generativeOnly = imageOutputByPricing || imageOutputById || videoOutput || audioOutput
+  if (!generativeOnly && !audioIO && !audioInput) {
+    const imageInputByPricing = hasPositivePrice(pricing?.image_input_price_per_token)
+    const imageInputById = IMAGE_INPUT_PATTERNS.some((pattern) => pattern.test(id))
+    if (imageInputByPricing || imageInputById) {
+      input.add('image')
+    }
+  }
+
+  return {
+    input: sortedModalities(input),
+    output: sortedModalities(output),
+  }
+}

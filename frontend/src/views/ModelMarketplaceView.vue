@@ -217,21 +217,43 @@
                     <ProviderIcon :brand="groupBrandSource(group)" size="14px" />
                     {{ groupBrandLabel(group) }}
                   </span>
-                  <span class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
-                    {{ formatRateMultiplierLabel(group.rate_multiplier) }}
-                  </span>
+                  <!-- 分组头部展示相对官方价的最高优惠，无有效折扣数据时不渲染该标签；点击/悬停查看说明。 -->
+                  <HelpTooltip
+                    v-if="formatMaxDiscountOff(group.official_price_ratio)"
+                    trigger="both"
+                    width-class="w-72"
+                    :closable="false"
+                    :content="t('marketplace.maxDiscountHint')"
+                  >
+                    <template #trigger>
+                      <span
+                        data-testid="group-max-discount-tag"
+                        class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                      >
+                        {{ formatMaxDiscountOff(group.official_price_ratio) }}
+                      </span>
+                    </template>
+                  </HelpTooltip>
+                  <HelpTooltip
+                    trigger="both"
+                    width-class="w-72"
+                    :closable="false"
+                    :content="t('marketplace.rateMultiplierHint')"
+                  >
+                    <template #trigger>
+                      <span
+                        data-testid="group-rate-multiplier-tag"
+                        class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200"
+                      >
+                        {{ formatRateMultiplierLabel(group.rate_multiplier) }}
+                      </span>
+                    </template>
+                  </HelpTooltip>
                   <span
                     v-if="hasIndependentImageRate(group)"
                     class="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-200"
                   >
                     {{ formatImageRateMultiplierLabel(group.image_rate_multiplier) }}
-                  </span>
-                  <!-- 分组头部展示相对官方价的最高优惠，无有效折扣数据时不渲染该标签。 -->
-                  <span
-                    v-if="formatMaxDiscountOff(group.official_price_ratio)"
-                    class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
-                  >
-                    {{ formatMaxDiscountOff(group.official_price_ratio) }}
                   </span>
                   <!-- 数据共享分组需要醒目标记，避免用户在模型广场忽略采集属性。 -->
                   <span
@@ -277,35 +299,34 @@
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <h3 class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ model.display_name }}</h3>
-                    <p class="mt-1 break-all font-mono text-xs text-gray-500 dark:text-dark-400">{{ model.id }}</p>
+                    <ModelIdLabel :model-id="model.id" class="mt-1" />
                   </div>
-                  <span :class="pricingBadgeClass(model.pricing)">
-                    {{ pricingLabel(model.pricing) }}
-                  </span>
+                  <ModelCapabilityTags :model="model" />
                 </div>
 
-                <div class="mt-4 grid gap-2">
+                <!-- 价格预览改为无边框列表，避免卡片里再嵌套一层卡片。 -->
+                <div class="mt-4">
                   <template v-if="compactPricingRows(model.pricing).length > 0">
-                    <div
-                      v-for="row in compactPricingRows(model.pricing)"
-                      :key="row.key"
-                      class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white/90 px-3 py-2.5 text-sm dark:border-dark-700 dark:bg-dark-950/90"
-                    >
-                      <span class="shrink-0 whitespace-nowrap text-gray-500 dark:text-dark-400">{{ row.label }}</span>
-                      <span class="min-w-0 text-right font-medium text-gray-900 dark:text-white">{{ row.value }}</span>
-                    </div>
+                    <dl class="space-y-2">
+                      <div
+                        v-for="row in compactPricingRows(model.pricing)"
+                        :key="row.key"
+                        class="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <dt class="shrink-0 text-gray-500 dark:text-dark-400">{{ row.label }}</dt>
+                        <dd class="min-w-0 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ row.value }}</dd>
+                      </div>
+                    </dl>
                   </template>
-                  <div
-                    v-else
-                    class="rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-950/90 dark:text-dark-400"
-                  >
+                  <p v-else class="text-sm text-gray-400 dark:text-dark-500">
                     {{ t('marketplace.pricingUnavailable') }}
-                  </div>
+                  </p>
 
+                  <!-- 详细定价入口保持低调的文字链接样式，与上方价格列表用细分隔线分开。 -->
                   <button
                     v-if="hasDisplayPricing(model.pricing)"
                     type="button"
-                    class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary-100 px-3 py-2 text-sm font-medium text-primary-700 transition hover:bg-primary-200 dark:bg-primary-500/15 dark:text-primary-300 dark:hover:bg-primary-500/25"
+                    class="mt-3 flex w-full items-center gap-1.5 border-t border-gray-100 pt-3 text-sm font-medium text-primary-600 transition hover:text-primary-700 dark:border-dark-700 dark:text-primary-300 dark:hover:text-primary-200"
                     @click="openPricingDialog(group, model)"
                   >
                     <Icon name="eye" size="sm" />
@@ -332,7 +353,7 @@
                     </span>
                     <div class="min-w-0">
                       <h2 class="truncate text-base font-semibold text-gray-950 dark:text-white">{{ model.display_name }}</h2>
-                      <p class="mt-1 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ model.id }}</p>
+                      <ModelIdLabel :model-id="model.id" class="mt-1" />
                     </div>
                   </div>
                   <span class="shrink-0 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
@@ -381,41 +402,38 @@
       @close="closePricingDialog"
     >
       <div v-if="selectedPricing" class="space-y-4">
-        <div class="rounded-xl border border-gray-100 bg-gray-50/80 p-4 dark:border-dark-700 dark:bg-dark-950/80">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                <div class="text-base font-semibold text-gray-950 dark:text-white">{{ selectedPricing.model.display_name }}</div>
-                <div class="min-w-0 break-all font-mono text-xs leading-5 text-gray-500 dark:text-dark-400">{{ selectedPricing.model.id }}</div>
-              </div>
-            </div>
-            <span :class="pricingBadgeClass(selectedPricing.model.pricing)">
-              {{ pricingLabel(selectedPricing.model.pricing) }}
-            </span>
+        <!-- 弹窗头部与模型卡片保持一致：模型名 + 计费类型徽标 + 可复制 ID，不再套一层卡片。 -->
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-base font-semibold text-gray-950 dark:text-white">{{ selectedPricing.model.display_name }}</div>
+            <ModelIdLabel :model-id="selectedPricing.model.id" class="mt-1" />
           </div>
+          <span :class="pricingBadgeClass(selectedPricing.model.pricing)">
+            {{ pricingLabel(selectedPricing.model.pricing) }}
+          </span>
         </div>
 
         <template
           v-if="pricingKind(selectedPricing.model.pricing) === 'token' && contextIntervalPricingRows(selectedPricing.model.pricing).length > 0"
         >
-          <div class="grid gap-3 md:grid-cols-2">
+          <!-- 每个上下文区间是一个扁平分节：区间范围作为小节标题，下方价格行用细分隔线分组。 -->
+          <div class="space-y-4">
             <div
               v-for="interval in contextIntervalPricingRows(selectedPricing.model.pricing)"
               :key="interval.key"
-              class="rounded-xl border border-gray-100 bg-white/90 px-3 py-3 text-sm dark:border-dark-700 dark:bg-dark-950/90"
             >
-              <div class="flex items-center justify-between gap-3">
+              <div class="flex items-baseline justify-between gap-3 text-sm">
                 <span class="text-gray-500 dark:text-dark-400">{{ t('marketplace.contextTokens') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ interval.range }}</span>
+                <span class="font-medium tabular-nums text-gray-900 dark:text-white">{{ interval.range }}</span>
               </div>
-              <div class="mt-2 grid gap-1.5 border-t border-gray-100 pt-2 dark:border-dark-700">
+              <div class="mt-2 space-y-2 border-t border-gray-100 pt-2 dark:border-dark-700">
                 <div
                   v-for="row in interval.rows"
                   :key="row.key"
-                  class="flex items-center justify-between gap-3"
+                  class="flex items-baseline justify-between gap-3 text-sm"
                 >
                   <span class="text-gray-500 dark:text-dark-400">{{ row.label }}</span>
-                  <span class="min-w-0 text-right font-medium text-gray-900 dark:text-white">{{ row.value }}</span>
+                  <span class="min-w-0 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ row.value }}</span>
                 </div>
               </div>
             </div>
@@ -425,37 +443,34 @@
         <template
           v-else-if="pricingKind(selectedPricing.model.pricing) === 'token' && tokenPricingRows(selectedPricing.model.pricing).length > 0"
         >
-          <div class="grid gap-2 md:grid-cols-2">
+          <div class="grid gap-x-6 gap-y-2.5 md:grid-cols-2">
             <div
               v-for="row in tokenPricingRows(selectedPricing.model.pricing)"
               :key="row.key"
-              class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white/90 px-3 py-2.5 text-sm dark:border-dark-700 dark:bg-dark-950/90"
+              class="flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2.5 text-sm dark:border-dark-700"
             >
               <span class="text-gray-500 dark:text-dark-400">{{ row.label }}</span>
-              <span class="min-w-0 text-right font-medium text-gray-900 dark:text-white">{{ row.value }}</span>
+              <span class="min-w-0 text-right font-medium tabular-nums text-gray-900 dark:text-white">{{ row.value }}</span>
             </div>
           </div>
         </template>
 
         <template v-else-if="pricingKind(selectedPricing.model.pricing) === 'image' && imagePricingRows(selectedPricing.model.pricing).length > 0">
-          <div class="grid gap-2 md:grid-cols-2">
+          <div class="grid gap-x-6 gap-y-2.5 md:grid-cols-2">
             <div
               v-for="row in imagePricingRows(selectedPricing.model.pricing)"
               :key="row.key"
-              class="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white/90 px-3 py-2.5 text-sm dark:border-dark-700 dark:bg-dark-950/90"
+              class="flex items-baseline justify-between gap-3 border-b border-gray-100 pb-2.5 text-sm dark:border-dark-700"
             >
               <span class="text-gray-500 dark:text-dark-400">{{ row.label }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ row.value }}</span>
+              <span class="font-medium tabular-nums text-gray-900 dark:text-white">{{ row.value }}</span>
             </div>
           </div>
         </template>
 
-        <div
-          v-else
-          class="rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-4 text-sm leading-6 text-gray-500 dark:border-dark-700 dark:bg-dark-950/90 dark:text-dark-400"
-        >
+        <p v-else class="text-sm leading-6 text-gray-400 dark:text-dark-500">
           {{ t('marketplace.pricingUnavailable') }}
-        </div>
+        </p>
       </div>
     </BaseDialog>
   </component>
@@ -469,11 +484,14 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import GroupAvailabilityBar from '@/components/marketplace/GroupAvailabilityBar.vue'
+import ModelCapabilityTags from '@/components/marketplace/ModelCapabilityTags.vue'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
+import ModelIdLabel from '@/components/common/ModelIdLabel.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { initTheme, useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels } from '@/api/marketplace'
