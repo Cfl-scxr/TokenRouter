@@ -23,6 +23,8 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/batchimageevent"
 	"github.com/TokenFlux/TokenRouter/ent/batchimageitem"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
+	"github.com/TokenFlux/TokenRouter/ent/creativerun"
+	"github.com/TokenFlux/TokenRouter/ent/creativerunoutput"
 	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
 	"github.com/TokenFlux/TokenRouter/ent/group"
@@ -126,6 +128,8 @@ func checkColumn(t, c string) error {
 			batchimageevent.Table:          batchimageevent.ValidColumn,
 			batchimageitem.Table:           batchimageitem.ValidColumn,
 			batchimagejob.Table:            batchimagejob.ValidColumn,
+			creativerun.Table:              creativerun.ValidColumn,
+			creativerunoutput.Table:        creativerunoutput.ValidColumn,
 			datasharesession.Table:         datasharesession.ValidColumn,
 			errorpassthroughrule.Table:     errorpassthroughrule.ValidColumn,
 			group.Table:                    group.ValidColumn,

@@ -39,6 +39,12 @@ type BatchImageItem func(*sql.Selector)
 // BatchImageJob is the predicate function for batchimagejob builders.
 type BatchImageJob func(*sql.Selector)
 
+// CreativeRun is the predicate function for creativerun builders.
+type CreativeRun func(*sql.Selector)
+
+// CreativeRunOutput is the predicate function for creativerunoutput builders.
+type CreativeRunOutput func(*sql.Selector)
+
 // DataShareSession is the predicate function for datasharesession builders.
 type DataShareSession func(*sql.Selector)
 

@@ -43,6 +43,7 @@ var (
 		{Name: "data_sharing_confirmed_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "data_sharing_confirmed_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fallback_to_default_group_when_unavailable", Type: field.TypeBool, Default: true},
+		{Name: "managed_by", Type: field.TypeString, Nullable: true, Size: 32},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "team_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
@@ -55,19 +56,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[32]},
+				Columns:    []*schema.Column{APIKeysColumns[33]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_teams_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[33]},
+				Columns:    []*schema.Column{APIKeysColumns[34]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[34]},
+				Columns:    []*schema.Column{APIKeysColumns[35]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -76,17 +77,17 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[34]},
+				Columns: []*schema.Column{APIKeysColumns[35]},
 			},
 			{
 				Name:    "apikey_team_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[33]},
+				Columns: []*schema.Column{APIKeysColumns[34]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[32]},
+				Columns: []*schema.Column{APIKeysColumns[33]},
 			},
 			{
 				Name:    "apikey_status",
@@ -710,6 +711,121 @@ var (
 				Name:    "batchimagejob_user_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{BatchImageJobsColumns[42]},
+			},
+		},
+	}
+	// CreativeRunsColumns holds the columns for the "creative_runs" table.
+	CreativeRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "run_id", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "model", Type: field.TypeString, Size: 128},
+		{Name: "requested_model", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "operation", Type: field.TypeString, Size: 16},
+		{Name: "requested_output_count", Type: field.TypeInt, Default: 1},
+		{Name: "image_size", Type: field.TypeString, Size: 16, Default: "1K"},
+		{Name: "aspect_ratio", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "response_mime_type", Type: field.TypeString, Size: 64, Default: "image/png"},
+		{Name: "prompt_hash", Type: field.TypeString, Size: 64},
+		{Name: "request_fingerprint", Type: field.TypeString, Size: 64},
+		{Name: "idempotency_key", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "queued"},
+		{Name: "estimated_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "hold_amount", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "balance_hold_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "subscription_hold_allocations", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "base_unit_price", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "subscription_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "balance_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "plan_group_rate_multiplier_enabled", Type: field.TypeBool, Default: true},
+		{Name: "error_code", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "cancelled_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CreativeRunsTable holds the schema information for the "creative_runs" table.
+	CreativeRunsTable = &schema.Table{
+		Name:       "creative_runs",
+		Columns:    CreativeRunsColumns,
+		PrimaryKey: []*schema.Column{CreativeRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "creativerun_run_id",
+				Unique:  true,
+				Columns: []*schema.Column{CreativeRunsColumns[3]},
+			},
+			{
+				Name:    "creativerun_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[1]},
+			},
+			{
+				Name:    "creativerun_status",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunsColumns[18]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status IN ('queued', 'running')",
+				},
+			},
+			{
+				Name:    "creativerun_request_fingerprint",
+				Unique:  true,
+				Columns: []*schema.Column{CreativeRunsColumns[16]},
+			},
+			{
+				Name:    "creativerun_user_id_idempotency_key",
+				Unique:  true,
+				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[17]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
+				},
+			},
+		},
+	}
+	// CreativeRunOutputsColumns holds the columns for the "creative_run_outputs" table.
+	CreativeRunOutputsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "run_id", Type: field.TypeString, Size: 64},
+		{Name: "output_index", Type: field.TypeInt},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "mime_type", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "byte_size", Type: field.TypeInt64, Nullable: true},
+		{Name: "transient_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "acked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "error_code", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+	}
+	// CreativeRunOutputsTable holds the schema information for the "creative_run_outputs" table.
+	CreativeRunOutputsTable = &schema.Table{
+		Name:       "creative_run_outputs",
+		Columns:    CreativeRunOutputsColumns,
+		PrimaryKey: []*schema.Column{CreativeRunOutputsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "creativerunoutput_run_id_output_index",
+				Unique:  true,
+				Columns: []*schema.Column{CreativeRunOutputsColumns[3], CreativeRunOutputsColumns[4]},
+			},
+			{
+				Name:    "creativerunoutput_run_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunOutputsColumns[3], CreativeRunOutputsColumns[5]},
+			},
+			{
+				Name:    "creativerunoutput_transient_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunOutputsColumns[8]},
 			},
 		},
 	}
@@ -2388,6 +2504,8 @@ var (
 		BatchImageEventsTable,
 		BatchImageItemsTable,
 		BatchImageJobsTable,
+		CreativeRunsTable,
+		CreativeRunOutputsTable,
 		DataShareSessionsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
@@ -2469,6 +2587,12 @@ func init() {
 	}
 	BatchImageJobsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_jobs",
+	}
+	CreativeRunsTable.Annotation = &entsql.Annotation{
+		Table: "creative_runs",
+	}
+	CreativeRunOutputsTable.Annotation = &entsql.Annotation{
+		Table: "creative_run_outputs",
 	}
 	DataShareSessionsTable.Annotation = &entsql.Annotation{
 		Table: "data_share_sessions",

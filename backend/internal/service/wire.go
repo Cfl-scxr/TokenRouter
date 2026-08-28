@@ -99,6 +99,17 @@ func ProvideBatchImageModelPricingResolver(resolver *ModelPricingResolver) *Batc
 	return &BatchImageModelPricingResolver{Resolver: resolver}
 }
 
+// 以下四个 provider 把现有宽接口仓储以创作台窄接口注入，保持服务可测试性。
+func ProvideCreativeUserRepository(repo UserRepository) CreativeUserRepository { return repo }
+
+func ProvideCreativeGroupRepository(repo GroupRepository) CreativeGroupRepository { return repo }
+
+func ProvideCreativeAccountRepository(repo AccountRepository) CreativeAccountRepository { return repo }
+
+func ProvideCreativeUserGroupRateRepository(repo UserGroupRateRepository) CreativeUserGroupRateRepository {
+	return repo
+}
+
 // ProvideBatchImageCleanupService 创建并启动批量图片清理服务。
 func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
 	svc := NewBatchImageCleanupService(repo, accountRepo, cfg)
@@ -864,6 +875,14 @@ var ProviderSet = wire.NewSet(
 	NewBatchImageDownloadService,
 	ProvideBatchImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
+	NewCreativePublicService,
+	ProvideCreativeUserRepository,
+	ProvideCreativeGroupRepository,
+	ProvideCreativeAccountRepository,
+	ProvideCreativeUserGroupRateRepository,
+	NewCreativeExecutor,
+	wire.Bind(new(CreativeRunExecutor), new(*CreativeExecutor)),
+	ProvideCreativeWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,

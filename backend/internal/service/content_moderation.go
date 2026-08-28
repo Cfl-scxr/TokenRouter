@@ -375,6 +375,9 @@ type ContentModerationCheckInput struct {
 	Model         string
 	Protocol      string
 	Body          []byte
+	// NoMediaRetention 为 true 时进入“无媒体留存”模式（创作台等敏感场景）：
+	// 只保留输入 hash、分类、分数、决策等元数据，不保存正文摘录、输入项与媒体快照。
+	NoMediaRetention bool
 }
 
 const (
@@ -1473,7 +1476,10 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		"queue_delay_ms", queueDelay)
 	if flagged || cfg.RecordNonHits || !result.AuditComplete {
 		log := s.buildStructuredLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content, &latency, queueDelay, result.ErrorText(), result)
-		log.Media = contentModerationHitMedia(auditInput, result.FlaggedImageIndexes)
+		if !input.NoMediaRetention {
+			// 无媒体留存模式禁止对命中媒体做快照（快照会把媒体内容持久化）。
+			log.Media = contentModerationHitMedia(auditInput, result.FlaggedImageIndexes)
+		}
 		if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
 			if !s.enqueueRecord(input, cfg, log, hashText, flagged, flagged) {
 				s.persistContentModerationLog(ctx, cfg, log, hashText, flagged, flagged)
@@ -2829,9 +2835,7 @@ func (s *ContentModerationService) buildStructuredLog(input ContentModerationChe
 		HighestScore:      highestScore,
 		CategoryScores:    cloneFloatMap(scores),
 		ThresholdSnapshot: cloneFloatMap(cfg.Thresholds),
-		InputExcerpt:      sanitizeContentModerationExcerpt(content.Text, maxModerationExcerptRunes),
 		Source:            content.Source,
-		InputItems:        append([]ContentModerationInputItem(nil), content.Items...),
 		ContentComplete:   true,
 		AuditComplete:     true,
 		TextUnitCount:     countContentModerationTextChunks(content.Text, maxModerationInputRunes, contentModerationChunkOverlap),
@@ -2839,6 +2843,16 @@ func (s *ContentModerationService) buildStructuredLog(input ContentModerationChe
 		UpstreamLatencyMS: latency,
 		QueueDelayMS:      queueDelay,
 		Error:             errText,
+	}
+	if input.NoMediaRetention {
+		// 无媒体留存模式：不落任何正文与媒体内容，只保留 hash、分类、分数、决策等元数据。
+		log.InputExcerpt = ""
+		log.InputItems = nil
+		log.ContentComplete = false
+		log.Media = nil
+	} else {
+		log.InputExcerpt = sanitizeContentModerationExcerpt(content.Text, maxModerationExcerptRunes)
+		log.InputItems = append([]ContentModerationInputItem(nil), content.Items...)
 	}
 	if audit != nil {
 		log.AuditComplete = audit.AuditComplete
