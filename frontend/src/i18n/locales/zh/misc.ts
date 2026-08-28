@@ -38,6 +38,7 @@ marketplace: {
     rateMultiplierValue: '分组倍率{multiplier}',
     imageRateMultiplierValue: '生图倍率{multiplier}',
     officialPriceDiscount: '最低至官方价格的{discount}折',
+    maxDiscountOff: '最高优惠{percent}%',
     usdRmbEquivalent: '最低 {amount} 元相当于 1 美元',
     contextTokens: '上下文 Token',
     input: '输入',

@@ -226,8 +226,12 @@
                   >
                     {{ formatImageRateMultiplierLabel(group.image_rate_multiplier) }}
                   </span>
-                  <span class="rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">
-                    {{ group.model_count }} {{ t('marketplace.modelsStat') }}
+                  <!-- 分组头部展示相对官方价的最高优惠，无有效折扣数据时不渲染该标签。 -->
+                  <span
+                    v-if="formatMaxDiscountOff(group.official_price_ratio)"
+                    class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                  >
+                    {{ formatMaxDiscountOff(group.official_price_ratio) }}
                   </span>
                   <!-- 数据共享分组需要醒目标记，避免用户在模型广场忽略采集属性。 -->
                   <span
@@ -825,6 +829,17 @@ function formatRateMultiplierLabel(multiplier: number): string {
 
 function hasIndependentImageRate(group: Pick<MarketplaceGroup, 'image_rate_independent'>): boolean {
   return Boolean(group.image_rate_independent)
+}
+
+// 相对官方价的最高优惠文案（分组级），口径与首页精选卡片一致：比例缺失、非法或不低于 1（无折扣）时返回 null。
+function formatMaxDiscountOff(ratio?: number): string | null {
+  if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) {
+    return null
+  }
+  const percent = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 1,
+  }).format((1 - ratio) * 100)
+  return t('marketplace.maxDiscountOff', { percent })
 }
 
 function formatImageRateMultiplierLabel(multiplier: number): string {

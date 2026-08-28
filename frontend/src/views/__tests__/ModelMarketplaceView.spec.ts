@@ -51,6 +51,9 @@ vi.mock('vue-i18n', async () => {
         if (key === 'marketplace.imageRateMultiplierValue') {
           return `marketplace.imageRateMultiplierValue ${params?.multiplier || ''}`
         }
+        if (key === 'marketplace.maxDiscountOff') {
+          return `marketplace.maxDiscountOff ${params?.percent || ''}`
+        }
 
         return key
       },
@@ -290,6 +293,24 @@ describe('ModelMarketplaceView', () => {
 
     const restored = await mountMarketplace()
     expect(modelCards(restored).filter((card) => card.text().includes('gpt-5.5'))).toHaveLength(1)
+  })
+
+  it('分组头部用最高优惠标签替换模型数标签，无有效折扣的分组不渲染', async () => {
+    const fixture = marketplaceFixture()
+    // ratio >= 1 表示无折扣；undefined 表示后端未下发官方价比例。
+    fixture[1] = { ...fixture[1], official_price_ratio: 1.2 }
+    fixture[2] = { ...fixture[2], official_price_ratio: undefined }
+    getMarketplaceModels.mockResolvedValue(fixture)
+
+    const wrapper = await mountMarketplace()
+    const sections = wrapper.findAll('[data-testid="marketplace-group-section"]')
+
+    // fixture 中 group 1 的 official_price_ratio 为 0.1，即最高优惠 90%。
+    expect(sections[0].text()).toContain('marketplace.maxDiscountOff 90')
+    expect(sections[0].text()).not.toContain('marketplace.modelsStat')
+    expect(sections[1].text()).not.toContain('marketplace.maxDiscountOff')
+    expect(sections[2].text()).not.toContain('marketplace.maxDiscountOff')
+    expect(sections[3].text()).toContain('marketplace.maxDiscountOff 60')
   })
 
   it('xAI 品牌在分组模式下展示 Grok 图标而不是字母占位', async () => {

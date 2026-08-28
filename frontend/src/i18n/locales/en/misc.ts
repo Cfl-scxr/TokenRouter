@@ -38,6 +38,7 @@ marketplace: {
     rateMultiplierValue: 'Group Multiplier {multiplier}',
     imageRateMultiplierValue: 'Image Multiplier {multiplier}',
     officialPriceDiscount: 'As low as {discount}/10 of official price',
+    maxDiscountOff: 'Up to {percent}% off',
     usdRmbEquivalent: 'As low as {amount} CNY equals 1 USD',
     contextTokens: 'Context Tokens',
     input: 'Input',
