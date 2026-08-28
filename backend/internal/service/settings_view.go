@@ -179,6 +179,7 @@ type SystemSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 	FooterLinks                 string // JSON array of footer link groups
 	FooterText                  string // Extra footer text (ICP number etc.)
+	HomeFeaturedModels          string // JSON array of model IDs featured on the home page
 
 	DefaultConcurrency int
 	DefaultBalance     float64
@@ -382,6 +383,7 @@ type PublicSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 	FooterLinks                 string // JSON array of footer link groups
 	FooterText                  string // Extra footer text (ICP number etc.)
+	HomeFeaturedModels          string // JSON array of model IDs featured on the home page
 
 	LinuxDoOAuthEnabled      bool
 	DingTalkOAuthEnabled     bool

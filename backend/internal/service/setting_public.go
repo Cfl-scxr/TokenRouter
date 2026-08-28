@@ -209,6 +209,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyFooterLinks,
 		SettingKeyFooterText,
+		SettingKeyHomeFeaturedModels,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
 		SettingKeyWeChatConnectEnabled,
@@ -384,6 +385,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		FooterLinks:                         settings[SettingKeyFooterLinks],
 		FooterText:                          settings[SettingKeyFooterText],
+		HomeFeaturedModels:                  settings[SettingKeyHomeFeaturedModels],
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
 		WeChatOAuthEnabled:                  weChatEnabled,
@@ -484,6 +486,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
 		FooterLinks                         json.RawMessage          `json:"footer_links"`
 		FooterText                          string                   `json:"footer_text,omitempty"`
+		HomeFeaturedModels                  json.RawMessage          `json:"home_featured_models"`
 		LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
 		DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 		WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
@@ -569,6 +572,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		CustomEndpoints:                     safeRawJSONArray(settings.CustomEndpoints),
 		FooterLinks:                         safeRawJSONArray(settings.FooterLinks),
 		FooterText:                          settings.FooterText,
+		HomeFeaturedModels:                  safeRawJSONArray(settings.HomeFeaturedModels),
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:                settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:                  settings.WeChatOAuthEnabled,

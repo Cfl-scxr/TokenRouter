@@ -406,6 +406,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 	updates[SettingKeyFooterLinks] = settings.FooterLinks
 	updates[SettingKeyFooterText] = strings.TrimSpace(settings.FooterText)
+	updates[SettingKeyHomeFeaturedModels] = settings.HomeFeaturedModels
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)

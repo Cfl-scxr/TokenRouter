@@ -175,6 +175,7 @@ type SystemSettings struct {
 	CustomEndpoints             []CustomEndpoint  `json:"custom_endpoints"`
 	FooterLinks                 []FooterLinkGroup `json:"footer_links"`
 	FooterText                  string            `json:"footer_text"`
+	HomeFeaturedModels          []string          `json:"home_featured_models"`
 
 	DefaultConcurrency                   int                          `json:"default_concurrency"`
 	DefaultBalance                       float64                      `json:"default_balance"`
@@ -400,6 +401,7 @@ type PublicSettings struct {
 	CustomEndpoints                     []CustomEndpoint         `json:"custom_endpoints"`
 	FooterLinks                         []FooterLinkGroup        `json:"footer_links"`
 	FooterText                          string                   `json:"footer_text"`
+	HomeFeaturedModels                  []string                 `json:"home_featured_models"`
 	DingTalkOAuthEnabled                bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled                  bool                     `json:"wechat_oauth_enabled"`
@@ -663,4 +665,18 @@ func ParseFooterLinks(raw string) []FooterLinkGroup {
 		return []FooterLinkGroup{}
 	}
 	return groups
+}
+
+// ParseHomeFeaturedModels 将 JSON 字符串解析为首页展示模型 ID 列表。
+// 空串或非法输入返回空切片。
+func ParseHomeFeaturedModels(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []string{}
+	}
+	var models []string
+	if err := json.Unmarshal([]byte(raw), &models); err != nil {
+		return []string{}
+	}
+	return models
 }

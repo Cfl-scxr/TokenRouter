@@ -544,6 +544,7 @@ export interface SystemSettings {
   custom_endpoints: CustomEndpoint[];
   footer_links: FooterLinkGroup[];
   footer_text: string;
+  home_featured_models: string[];
   // SMTP settings
   smtp_host: string;
   smtp_port: number;
@@ -885,6 +886,7 @@ export interface UpdateSettingsRequest {
   custom_endpoints?: CustomEndpoint[];
   footer_links?: FooterLinkGroup[];
   footer_text?: string;
+  home_featured_models?: string[];
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;

@@ -6984,6 +6984,101 @@
             </div>
           </div>
 
+          <!-- Home Featured Models -->
+          <div class="card">
+            <div
+              class="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ localText("首页模型展示", "Home featured models") }}
+                </h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    localText(
+                      "配置首页「已支持的 AI 模型」板块展示的单模型卡片，按此处顺序展示，最多 12 个。留空时首页保持按服务商类别聚合的默认展示。",
+                      'Configure the individual model cards shown in the "Supported AI Models" section of the homepage, displayed in this order, up to 12. When empty, the homepage keeps the default provider-category cards.',
+                    )
+                  }}
+                </p>
+              </div>
+              <button
+                v-if="form.home_featured_models.length > 0"
+                type="button"
+                class="btn btn-secondary btn-sm shrink-0"
+                @click="form.home_featured_models = []"
+              >
+                {{ localText("清空", "Clear") }}
+              </button>
+            </div>
+            <div class="space-y-4 p-6">
+              <div
+                v-for="(modelId, mIndex) in form.home_featured_models"
+                :key="modelId || mIndex"
+                class="flex items-center gap-2"
+              >
+                <Select
+                  v-model="form.home_featured_models[mIndex]"
+                  :options="homeFeaturedModelOptions"
+                  searchable
+                  class="flex-1"
+                  :placeholder="localText('选择模型', 'Select a model')"
+                />
+                <button
+                  v-if="mIndex > 0"
+                  type="button"
+                  class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                  :title="t('admin.settings.customMenu.moveUp')"
+                  @click="moveHomeFeaturedModel(mIndex, -1)"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+                <button
+                  v-if="mIndex < form.home_featured_models.length - 1"
+                  type="button"
+                  class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                  :title="t('admin.settings.customMenu.moveDown')"
+                  @click="moveHomeFeaturedModel(mIndex, 1)"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  :title="localText('删除模型', 'Remove model')"
+                  @click="removeHomeFeaturedModel(mIndex)"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Add model button -->
+              <button
+                type="button"
+                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                :disabled="form.home_featured_models.length >= homeFeaturedModelsMax"
+                @click="form.home_featured_models.push('')"
+              >
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                {{ localText("添加模型", "Add model") }}
+              </button>
+              <p
+                v-if="homeFeaturedModelOptions.length === 0"
+                class="text-xs text-gray-400 dark:text-gray-500"
+              >
+                {{ localText("暂无可选模型（模型广场没有公开分组）", "No models available (no public groups in the marketplace)") }}
+              </p>
+            </div>
+          </div>
+
           <!-- Footer Settings -->
           <div class="card">
             <div
@@ -8748,7 +8843,7 @@ import type {
   UserPromptReplacementType,
   UsageRankingSortBy,
 } from "@/api/admin/settings";
-import type { LoginAgreementDocument, NotifyEmailEntry, Proxy } from "@/types";
+import type { LoginAgreementDocument, MarketplaceGroup, NotifyEmailEntry, Proxy } from "@/types";
 import type { ProviderInstance, SubscriptionPlan } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
@@ -8779,6 +8874,7 @@ import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
+import { getMarketplaceModels } from "@/api/marketplace";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import { MAX_USER_API_KEY_LIMIT } from "@/constants/user";
 import {
@@ -9487,6 +9583,7 @@ const form = reactive<SettingsForm>({
     links: Array<{ label: string; url: string }>;
   }>,
   footer_text: "",
+  home_featured_models: [] as string[],
   frontend_url: "",
   smtp_host: "",
   smtp_port: 587,
@@ -10708,6 +10805,60 @@ function normalizeFooterLinksForSave() {
     .filter((group) => group.title && group.links.length > 0);
 }
 
+// 首页展示模型上限，与后端校验保持一致
+const homeFeaturedModelsMax = 12;
+
+// 首页模型展示卡片：选项来自公开模型广场接口，按分组分片展示
+const homeFeaturedModelOptions = ref<
+  Array<{ value: string; label: string; kind?: string; disabled?: boolean }>
+>([]);
+
+async function loadHomeFeaturedModelOptions() {
+  try {
+    const groups: MarketplaceGroup[] = await getMarketplaceModels();
+    const options: Array<{ value: string; label: string; kind?: string; disabled?: boolean }> = [];
+    for (const group of groups) {
+      if (!group.models?.length) continue;
+      options.push({ value: `__group_${group.id}`, label: group.name, kind: "group", disabled: true });
+      for (const model of group.models) {
+        options.push({
+          value: model.id,
+          label: model.display_name ? `${model.display_name}（${model.id}）` : model.id,
+        });
+      }
+    }
+    homeFeaturedModelOptions.value = options;
+  } catch {
+    // 选项加载失败不阻塞设置页，已配置的模型 ID 仍会原样保存
+    homeFeaturedModelOptions.value = [];
+  }
+}
+
+function removeHomeFeaturedModel(index: number) {
+  form.home_featured_models.splice(index, 1);
+}
+
+function moveHomeFeaturedModel(index: number, direction: -1 | 1) {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= form.home_featured_models.length) return;
+  const models = form.home_featured_models;
+  const temp = models[index];
+  models[index] = models[targetIndex];
+  models[targetIndex] = temp;
+}
+
+// 保存前清理:去掉空白项并去重，保持管理员配置的顺序
+function normalizeHomeFeaturedModelsForSave() {
+  const seen = new Set<string>();
+  return form.home_featured_models
+    .map((id) => id.trim())
+    .filter((id) => {
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
 function addLoginAgreementDocument() {
   form.login_agreement_documents.push({
     id: `custom-${Date.now().toString(36)}`,
@@ -11330,6 +11481,7 @@ async function saveSettings() {
       custom_endpoints: form.custom_endpoints,
       footer_links: normalizeFooterLinksForSave(),
       footer_text: form.footer_text,
+      home_featured_models: normalizeHomeFeaturedModelsForSave(),
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
@@ -12728,6 +12880,7 @@ async function handleDeleteProvider() {
 
 onMounted(() => {
   loadSettings();
+  loadHomeFeaturedModelOptions();
   loadSubscriptionPlans();
   loadAdminApiKey();
   loadOllamaCloudUsageSettings();

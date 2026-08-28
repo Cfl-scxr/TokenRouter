@@ -184,6 +184,7 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint  `json:"custom_endpoints"`
 	FooterLinks                 *[]dto.FooterLinkGroup `json:"footer_links"`
 	FooterText                  *string                `json:"footer_text"`
+	HomeFeaturedModels          *[]string              `json:"home_featured_models"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -1562,6 +1563,43 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		footerLinksJSON = string(groupBytes)
 	}
 
+	// 首页展示模型列表验证：限制数量、去空白、去重，保持管理员配置的顺序
+	const maxHomeFeaturedModels = 12
+	const maxHomeFeaturedModelIDLen = 200
+
+	homeFeaturedModelsJSON := previousSettings.HomeFeaturedModels
+	if req.HomeFeaturedModels != nil {
+		models := *req.HomeFeaturedModels
+		if len(models) > maxHomeFeaturedModels {
+			response.BadRequest(c, "Too many home featured models (max 12)")
+			return
+		}
+		seen := make(map[string]struct{}, len(models))
+		normalized := make([]string, 0, len(models))
+		for _, model := range models {
+			trimmed := strings.TrimSpace(model)
+			if trimmed == "" {
+				response.BadRequest(c, "Home featured model ID is required")
+				return
+			}
+			if len(trimmed) > maxHomeFeaturedModelIDLen {
+				response.BadRequest(c, "Home featured model ID is too long (max 200 characters)")
+				return
+			}
+			if _, duplicate := seen[trimmed]; duplicate {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			normalized = append(normalized, trimmed)
+		}
+		modelBytes, err := json.Marshal(normalized)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize home featured models")
+			return
+		}
+		homeFeaturedModelsJSON = string(modelBytes)
+	}
+
 	footerText := previousSettings.FooterText
 	if req.FooterText != nil {
 		trimmed := strings.TrimSpace(*req.FooterText)
@@ -1784,6 +1822,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		FooterLinks:                            footerLinksJSON,
 		FooterText:                             footerText,
+		HomeFeaturedModels:                     homeFeaturedModelsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateEnabled:                       req.AffiliateEnabled,
@@ -2357,6 +2396,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                                  dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		FooterLinks:                                      dto.ParseFooterLinks(updatedSettings.FooterLinks),
 		FooterText:                                       updatedSettings.FooterText,
+		HomeFeaturedModels:                               dto.ParseHomeFeaturedModels(updatedSettings.HomeFeaturedModels),
 		DefaultConcurrency:                               updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                   updatedSettings.DefaultBalance,
 		TeamEnabled:                                      updatedSettings.TeamEnabled,

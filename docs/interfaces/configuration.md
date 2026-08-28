@@ -71,6 +71,8 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 `google_one_tap_enabled` 是独立于 `google_oauth_enabled` 的数据库运行时开关，默认关闭。部署者先为现有 Web 类型 Google OAuth Client ID 登记每个前端 Authorized JavaScript origin，再显式开启；生产 Origin 必须使用 HTTPS，本地开发只允许 localhost/loopback HTTP。公开设置只有在 One Tap 开关和完整 Google OAuth 配置同时有效时才返回 `google_one_tap_enabled=true` 及非敏感 `google_oauth_client_id`，任一条件不满足时按关闭并返回空 Client ID；Client Secret 始终只留在服务端和受掩码保护的管理设置中。首页与登录页共用这组公开设置，旧 HTML 注入缓存缺失新字段时按关闭处理。
 
+`home_featured_models` 保存首页「已支持的 AI 模型」板块的精选模型 ID 列表（JSON 数组，最多 12 个，按数组顺序展示），在管理端“系统设置 - 通用设置”的「首页模型展示」卡片维护，选项来自公开模型广场分组。它通过公开设置接口和 SSR 注入同时下发，首页按 ID 在市场分组中解析模型；列表为空或全部解析不到时，首页回退到按服务商类别聚合的默认卡片。该设置可热更新、不需要迁移（读路径容忍缺键按空列表处理）；管理更新请求省略该字段时保留当前值，写入前会去掉空白项、去重并拒绝超长列表。
+
 `usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。排行行的 `user_id` 表示付款主体；团队 Key 的请求按 `billing_user_id` 归到团队 Owner，Usage 明细中的 `user_id` 仍表示实际行为成员。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。
 
 管理端“通用设置”的用量排行卡片和公开设置都会返回这组有效配置。关闭总开关后，用户侧导航和路由不再提供入口，`GET /api/v1/usage/ranking` 也必须在查询前返回 `403`；它不影响管理员仪表盘的消费排行。关闭显示字段时，用户排行响应必须省略对应行字段及总计，关闭 Token 还要省略输入、输出和缓存 Token 明细，不能只由浏览器隐藏。普通明细和预聚合查询都按所选指标大于零入榜，并使用其余指标和付款主体 ID 作为稳定并列顺序。

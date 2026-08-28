@@ -309,20 +309,50 @@
           </router-link>
         </div>
 
-        <div class="grid gap-6 lg:grid-cols-3">
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div
             v-if="homeMarketplaceLoading"
-            class="rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-sm text-gray-500 dark:border-dark-800 dark:bg-dark-900 dark:text-dark-400 lg:col-span-3"
+            class="rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-sm text-gray-500 dark:border-dark-800 dark:bg-dark-900 dark:text-dark-400 sm:col-span-2 lg:col-span-3"
           >
             {{ t('common.loading') }}
           </div>
 
           <div
             v-else-if="supportedProviders.length === 0"
-            class="rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-sm text-gray-500 dark:border-dark-800 dark:bg-dark-900 dark:text-dark-400 lg:col-span-3"
+            class="rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-sm text-gray-500 dark:border-dark-800 dark:bg-dark-900 dark:text-dark-400 sm:col-span-2 lg:col-span-3"
           >
             {{ homeMarketplaceError ? t('home.providers.unavailable') : t('home.providers.empty') }}
           </div>
+
+          <!-- 管理员配置了首页展示模型时，按 OpenRouter Featured Models 风格渲染单模型卡片 -->
+          <template v-else-if="featuredModels.length > 0">
+            <article
+              v-for="featured in featuredModels"
+              :key="featured.model.id"
+              class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm ring-1 ring-transparent transition duration-300 hover:-translate-y-1 hover:border-black/20 hover:shadow-[0_12px_32px_rgba(0,0,0,0.1)] focus-within:border-black/20 dark:border-dark-800 dark:bg-dark-900 dark:hover:border-dark-600 dark:hover:shadow-[0_12px_32px_rgba(0,0,0,0.4)]"
+            >
+              <div class="flex items-start gap-4">
+                <!-- 图标与模型广场保持一致：模型图标体系 + 白底圆角方形 -->
+                <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-950">
+                  <ModelIcon :model="featured.model.id" size="28px" />
+                </span>
+                <div class="min-w-0 flex-1">
+                  <h3 class="truncate text-lg font-semibold text-gray-950 dark:text-white">
+                    {{ featured.model.display_name || featured.model.id }}
+                  </h3>
+                  <p class="truncate text-sm text-gray-500 dark:text-dark-400">
+                    {{ t('home.featured.byProvider', { provider: homeProviderCategory(featured.group).label }) }}
+                  </p>
+                </div>
+              </div>
+              <!-- 左下角展示相对官方价的折扣，右下角留空；无折扣数据时整块底部区域不渲染 -->
+              <div v-if="featured.discountOff" class="mt-5 border-t border-gray-200 pt-5 dark:border-dark-800">
+                <p class="text-sm font-semibold tabular-nums text-gray-950 dark:text-white">
+                  {{ featured.discountOff }}
+                </p>
+              </div>
+            </article>
+          </template>
 
           <template v-else>
             <article
@@ -527,10 +557,11 @@ import GoogleOneTap from '@/components/auth/GoogleOneTap.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
+import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels, getMarketplaceStats } from '@/api/marketplace'
-import type { MarketplaceGroup, MarketplaceStats } from '@/types'
+import type { MarketplaceGroup, MarketplaceModel, MarketplaceStats } from '@/types'
 import { sanitizeUrl } from '@/utils/url'
 import { hasAcceptedLoginAgreement } from '@/utils/loginAgreement'
 import { isGoogleOneTapEligible, isGoogleOneTapOriginSupported } from '@/utils/googleIdentity'
@@ -583,6 +614,14 @@ interface HomeProviderCloudIcon {
   top: string
   opacity: number
   scale: number
+}
+
+// 首页精选卡片：单个模型及其所属分组（分组提供品牌与折扣上下文）
+interface HomeFeaturedModel {
+  model: MarketplaceModel
+  group: MarketplaceGroup
+  // 相对官方价的折扣文案（如 "95.6% off"），分组无有效折扣时为 null
+  discountOff: string | null
 }
 
 const { t, locale } = useI18n()
@@ -759,6 +798,31 @@ const providerCloudLayout = [
 const totalModelCount = computed(() =>
   marketplaceGroups.value.reduce((total, group) => total + group.models.length, 0)
 )
+
+// 管理员在「系统设置 - 通用设置 - 首页模型展示」配置的模型 ID 列表（公开设置注入或接口返回）
+const homeFeaturedModelIds = computed<string[]>(() => {
+  const configured = appStore.cachedPublicSettings?.home_featured_models
+  return Array.isArray(configured) ? configured : []
+})
+
+// 按配置顺序在市场分组中解析模型，解析不到的 ID 直接跳过
+const featuredModels = computed<HomeFeaturedModel[]>(() => {
+  const resolved: HomeFeaturedModel[] = []
+  for (const modelId of homeFeaturedModelIds.value) {
+    for (const group of marketplaceGroups.value) {
+      const model = group.models.find(item => item.id === modelId)
+      if (model) {
+        resolved.push({
+          model,
+          group,
+          discountOff: formatFeaturedDiscountOff(group.official_price_ratio),
+        })
+        break
+      }
+    }
+  }
+  return resolved
+})
 
 const homeStatAnimationTargets = computed<Record<HomeStatsKey, number | null>>(() => ({
   'today-tokens': homeStatsLoading.value ? null : normalizedHomeStatTarget(homeStats.value?.today_tokens),
@@ -968,6 +1032,19 @@ function formatOfficialPriceRatio(ratio: number): string {
   return t('marketplace.officialPriceDiscount', { discount })
 }
 
+// 相对官方价的折扣百分比（分组级），如 0.044 返回 "95.6% off"；
+// 无有效倍率或价格不低于官方价时返回 null，卡片底部整块不渲染
+function formatFeaturedDiscountOff(ratio?: number): string | null {
+  const valid = validOfficialPriceRatio(ratio)
+  if (valid === null || valid >= 1) {
+    return null
+  }
+  const percent = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 1,
+  }).format((1 - valid) * 100)
+  return t('home.featured.discountOff', { percent })
+}
+
 function formatAnimatedHomeStat(
   key: HomeStatsKey,
   target: number | null,
@@ -1131,7 +1208,7 @@ function mergeProviderVisualBrands(brands: string[]): string[] {
   return merged
 }
 
-function providerIconWrapClass(provider: HomeProviderSummary): string {
+function providerIconWrapClass(provider: Pick<HomeProviderSummary, 'key' | 'iconBrand'>): string {
   if (provider.key === 'antigravity') {
     return 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-200 dark:ring-rose-400/30'
   }

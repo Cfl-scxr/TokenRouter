@@ -280,6 +280,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                                  dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		FooterLinks:                                      dto.ParseFooterLinks(settings.FooterLinks),
 		FooterText:                                       settings.FooterText,
+		HomeFeaturedModels:                               dto.ParseHomeFeaturedModels(settings.HomeFeaturedModels),
 		DefaultConcurrency:                               settings.DefaultConcurrency,
 		DefaultBalance:                                   settings.DefaultBalance,
 		TeamEnabled:                                      settings.TeamEnabled,

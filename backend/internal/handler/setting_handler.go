@@ -96,6 +96,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		CustomEndpoints:                     dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		FooterLinks:                         dto.ParseFooterLinks(settings.FooterLinks),
 		FooterText:                          settings.FooterText,
+		HomeFeaturedModels:                  dto.ParseHomeFeaturedModels(settings.HomeFeaturedModels),
 		DingTalkOAuthEnabled:                settings.DingTalkOAuthEnabled,
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,
 		WeChatOAuthEnabled:                  settings.WeChatOAuthEnabled,

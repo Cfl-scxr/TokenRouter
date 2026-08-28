@@ -389,6 +389,7 @@ const (
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 	SettingKeyFooterLinks                 = "footer_links"                  // 首页底栏链接分组（JSON 数组）
 	SettingKeyFooterText                  = "footer_text"                   // 首页底栏附加文本（备案号等，支持多行）
+	SettingKeyHomeFeaturedModels          = "home_featured_models"          // 首页展示的模型 ID 列表（JSON 数组，按顺序展示）
 )
 
 const (

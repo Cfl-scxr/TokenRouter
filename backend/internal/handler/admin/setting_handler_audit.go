@@ -545,6 +545,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.FooterText != after.FooterText {
 		changed = append(changed, "footer_text")
 	}
+	if before.HomeFeaturedModels != after.HomeFeaturedModels {
+		changed = append(changed, "home_featured_models")
+	}
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
 	}

@@ -276,6 +276,7 @@ export interface PublicSettings {
   custom_endpoints: CustomEndpoint[]
   footer_links?: FooterLinkGroup[]
   footer_text?: string
+  home_featured_models?: string[]
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean

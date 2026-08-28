@@ -38,6 +38,8 @@ const {
   adminSettingsFetch,
   showError,
   showSuccess,
+  getMarketplaceModels,
+  getMarketplaceStats,
 } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
@@ -95,6 +97,12 @@ const {
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
+  getMarketplaceModels: vi.fn().mockResolvedValue([]),
+  getMarketplaceStats: vi.fn().mockResolvedValue({
+    today_tokens: 0,
+    total_tokens: 0,
+    total_users: 0,
+  }),
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
@@ -143,6 +151,11 @@ vi.mock("@/api", () => ({
       list: listTLSFingerprintProfiles,
     },
   },
+}));
+
+vi.mock("@/api/marketplace", () => ({
+  getMarketplaceModels,
+  getMarketplaceStats,
 }));
 
 vi.mock("@/stores", () => ({
