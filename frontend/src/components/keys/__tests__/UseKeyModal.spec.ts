@@ -200,6 +200,10 @@ describe('UseKeyModal', () => {
     const parsedSettings = JSON.parse(settingsConfig!)
     expect(parsedSettings.$schema).toBe('https://json.schemastore.org/claude-code-settings.json')
     expect(parsedSettings.env.ANTHROPIC_MODEL).toBe('grok-4.5')
+    expect(codeBlocks.join('\n')).not.toContain('CLAUDE_CODE_ATTRIBUTION_HEADER')
+    expect(codeBlocks.join('\n')).toContain('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
+    expect(parsedSettings.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+    expect(parsedSettings.env).not.toHaveProperty('CLAUDE_CODE_ATTRIBUTION_HEADER')
     expect(wrapper.text()).toContain('keys.useKeyModal.claudeSettingsHint')
     expect(wrapper.text()).toContain('keys.useKeyModal.grok.claudeNote')
     expect(wrapper.find('nav[aria-label="Client"]').classes()).toContain('min-w-max')
@@ -216,6 +220,11 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('set ANTHROPIC_MODEL=grok-4.5')
     expect(codeBlocks.join('\n')).toContain('set ANTHROPIC_DEFAULT_FABLE_MODEL=grok-4.5')
     expect(codeBlocks.join('\n')).toContain('set CLAUDE_CODE_SUBAGENT_MODEL=grok-4.5')
+    expect(codeBlocks.join('\n')).toContain('set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1')
+    expect(codeBlocks.join('\n')).not.toContain('CLAUDE_CODE_ATTRIBUTION_HEADER')
+    const cmdSettings = JSON.parse(codeBlocks.find((content) => content.includes('"$schema"'))!)
+    expect(cmdSettings.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+    expect(cmdSettings.env).not.toHaveProperty('CLAUDE_CODE_ATTRIBUTION_HEADER')
 
     const powershellTab = wrapper.findAll('button').find(
       (button) => button.text().trim() === 'PowerShell'
@@ -229,6 +238,11 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('$env:ANTHROPIC_MODEL="grok-4.5"')
     expect(codeBlocks.join('\n')).toContain('$env:ANTHROPIC_DEFAULT_FABLE_MODEL="grok-4.5"')
     expect(codeBlocks.join('\n')).toContain('$env:CLAUDE_CODE_SUBAGENT_MODEL="grok-4.5"')
+    expect(codeBlocks.join('\n')).toContain('$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"')
+    expect(codeBlocks.join('\n')).not.toContain('CLAUDE_CODE_ATTRIBUTION_HEADER')
+    const powershellSettings = JSON.parse(codeBlocks.find((content) => content.includes('"$schema"'))!)
+    expect(powershellSettings.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+    expect(powershellSettings.env).not.toHaveProperty('CLAUDE_CODE_ATTRIBUTION_HEADER')
     expect(wrapper.text()).toContain('%USERPROFILE%\\.claude\\settings.json')
 
     const copyButton = wrapper.findAll('button').find((button) =>
