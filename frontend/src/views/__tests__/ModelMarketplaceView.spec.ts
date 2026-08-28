@@ -112,26 +112,6 @@ const SearchInputStub = defineComponent({
   `,
 })
 
-const BaseDialogStub = defineComponent({
-  name: 'BaseDialog',
-  props: {
-    show: {
-      type: Boolean,
-      default: false,
-    },
-    title: {
-      type: String,
-      default: '',
-    },
-  },
-  template: `
-    <div v-if="show" data-testid="pricing-dialog">
-      <h2>{{ title }}</h2>
-      <slot />
-    </div>
-  `,
-})
-
 const tokenPricing: MarketplaceModelPricing = {
   pricing_mode: 'token',
   price_status: 'priced',
@@ -216,7 +196,6 @@ async function mountMarketplace() {
         LocaleSwitcher: { template: '<span />' },
         ProviderIcon: { template: '<span />' },
         GroupCapacityBadge: { template: '<span data-testid="group-capacity" />' },
-        BaseDialog: BaseDialogStub,
         SearchInput: SearchInputStub,
         Select: SelectStub,
       },
@@ -224,14 +203,6 @@ async function mountMarketplace() {
   })
   await flushPromises()
   return wrapper
-}
-
-function modelCards(wrapper: ReturnType<typeof mount>) {
-  return wrapper.findAll('[data-testid="marketplace-model-card"]')
-}
-
-function groupEntries(wrapper: ReturnType<typeof mount>) {
-  return wrapper.findAll('[data-testid="marketplace-model-group-entry"]')
 }
 
 // HelpTooltip 通过 Teleport 挂到 body，隐藏时用 v-show（display:none）控制。
@@ -253,11 +224,10 @@ describe('ModelMarketplaceView', () => {
     const wrapper = await mountMarketplace()
 
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]')).toHaveLength(4)
-    expect(modelCards(wrapper)).toHaveLength(0)
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]').map((section) => section.text()).join('\n')).toContain('marketplace.dataSharingTag')
   })
 
-  it('用户侧两个显示模式均不展示分组容量，并将可用率状态条靠右放置', async () => {
+  it('用户侧不展示分组容量，并将可用率状态条靠右放置', async () => {
     const fixture = marketplaceFixture()
     fixture[0] = {
       ...fixture[0],
@@ -276,35 +246,6 @@ describe('ModelMarketplaceView', () => {
 
     expect(wrapper.findAll('[data-testid="group-capacity"]')).toHaveLength(0)
     expect(wrapper.get('[data-testid="marketplace-group-availability"]').classes()).toContain('xl:w-[560px]')
-
-    await wrapper.get('[data-testid="select-option-model-group"]').trigger('click')
-    await nextTick()
-
-    expect(wrapper.findAll('[data-testid="group-capacity"]')).toHaveLength(0)
-  })
-
-  it('可以切换到模型-分组模式并保存本地偏好', async () => {
-    const wrapper = await mountMarketplace()
-
-    await wrapper.get('[data-testid="select-option-model-group"]').trigger('click')
-    await nextTick()
-
-    expect(localStorage.getItem('tokenrouter:model-marketplace:view-mode')).toBe('model-group')
-    const gptCards = modelCards(wrapper).filter((card) => card.text().includes('gpt-5.5'))
-    expect(gptCards).toHaveLength(1)
-    expect(gptCards[0].findAll('[data-testid="marketplace-model-group-entry"]')).toHaveLength(4)
-    expect(gptCards[0].text()).toContain('Plus')
-    expect(gptCards[0].text()).toContain('x1')
-    expect(gptCards[0].text()).not.toContain('marketplace.rateMultiplierValue')
-    expect(gptCards[0].text()).toContain('Pro')
-    expect(gptCards[0].text()).toContain('Plus Data Sharing')
-    expect(gptCards[0].text()).toContain('Pro Data Sharing')
-    expect(gptCards[0].text()).not.toContain('marketplace.dataSharingTag')
-
-    wrapper.unmount()
-
-    const restored = await mountMarketplace()
-    expect(modelCards(restored).filter((card) => card.text().includes('gpt-5.5'))).toHaveLength(1)
   })
 
   it('分组头部用最高优惠标签替换模型数标签，无有效折扣的分组不渲染', async () => {
@@ -333,27 +274,14 @@ describe('ModelMarketplaceView', () => {
     expect(visibleTooltips().some((el) => el.textContent?.includes('marketplace.rateMultiplierHint'))).toBe(true)
   })
 
-  it('模型卡片与定价弹窗中的模型 ID 支持一键复制', async () => {
+  it('模型卡片中的模型 ID 支持一键复制', async () => {
     const wrapper = await mountMarketplace()
 
-    // 分组-模型模式下，卡片 ID 行的复制按钮直接复制模型 ID。
+    // 卡片 ID 行的复制按钮直接复制模型 ID。
     const cardCopyButtons = wrapper.findAll('[data-testid="model-id-copy"]')
     expect(cardCopyButtons.length).toBeGreaterThan(0)
     await cardCopyButtons[0].trigger('click')
     expect(copyToClipboard).toHaveBeenCalledWith('gpt-5.5')
-
-    // 打开定价弹窗后，弹窗内的 ID 行提供同样的复制按钮。
-    const pricingButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('marketplace.viewPricing'))
-    await pricingButton!.trigger('click')
-    await nextTick()
-
-    const dialog = wrapper.get('[data-testid="pricing-dialog"]')
-    const dialogCopyButtons = dialog.findAll('[data-testid="model-id-copy"]')
-    expect(dialogCopyButtons).toHaveLength(1)
-    await dialogCopyButtons[0].trigger('click')
-    expect(copyToClipboard).toHaveBeenLastCalledWith('gpt-5.5')
   })
 
   it('模型卡片右上角展示输入输出能力标签', async () => {
@@ -402,72 +330,34 @@ describe('ModelMarketplaceView', () => {
     const wrapper = await mountMarketplace()
 
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]').map((section) => section.text()).join('\n')).toContain('marketplace.imageRateMultiplierValue x0.50')
-
-    await wrapper.get('[data-testid="select-option-model-group"]').trigger('click')
-    await nextTick()
-
-    expect(modelCards(wrapper).map((card) => card.text()).join('\n')).toContain('marketplace.imageRateMultiplierValue x0.50')
   })
 
-  it('模型-分组模式下按分组、搜索和计费类型裁剪分组条目', async () => {
-    localStorage.setItem('tokenrouter:model-marketplace:view-mode', 'model-group')
+  it('模型卡片可展开抽屉式定价面板并切换 fast mode', async () => {
     const wrapper = await mountMarketplace()
 
-    await wrapper.get('[data-testid="select-option-2"]').trigger('click')
-    await nextTick()
-    expect(modelCards(wrapper).filter((card) => card.text().includes('gpt-5.5'))).toHaveLength(1)
-    expect(groupEntries(wrapper)).toHaveLength(1)
-    expect(groupEntries(wrapper)[0].text()).toContain('Pro')
-    expect(modelCards(wrapper).map((card) => card.text()).join('\n')).not.toContain('Plus Data Sharing')
+    const toggle = wrapper.get('[data-testid="model-pricing-toggle"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
 
-    await wrapper.findAll('[data-testid="select-option-all"]').at(-1)!.trigger('click')
-    await wrapper.get('[data-testid="marketplace-search"]').setValue('Plus Data Sharing')
-    await nextTick()
-    expect(groupEntries(wrapper)).toHaveLength(1)
-    const entryText = groupEntries(wrapper).map((entry) => entry.text()).join('\n')
-    expect(entryText).toContain('Plus Data Sharing')
-    expect(entryText).not.toContain('Pro Data Sharing')
-
-    await wrapper.get('[data-testid="marketplace-search"]').setValue('')
-    await wrapper.get('[data-testid="select-option-token"]').trigger('click')
-    await nextTick()
-    expect(modelCards(wrapper).filter((card) => card.text().includes('gpt-5.5'))).toHaveLength(1)
-    expect(modelCards(wrapper).some((card) => card.text().includes('legacy-unpriced'))).toBe(false)
-  })
-
-  it('点击分组条目会打开对应分组定价弹窗', async () => {
-    localStorage.setItem('tokenrouter:model-marketplace:view-mode', 'model-group')
-    const wrapper = await mountMarketplace()
-    const groupEntry = groupEntries(wrapper)[0]
-
-    expect(groupEntry.exists()).toBe(true)
-    await groupEntry.trigger('click')
+    await toggle.trigger('click')
     await nextTick()
 
-    const dialog = wrapper.get('[data-testid="pricing-dialog"]')
-    expect(dialog.get('h2').text()).toBe('Plus · marketplace.groupDetail')
-    expect(dialog.text()).toContain('GPT 5.5')
-    expect(dialog.text()).toContain('gpt-5.5')
-    expect(dialog.text().match(/Plus/g)).toHaveLength(1)
-    expect(dialog.text()).toContain('marketplace.imageInput')
-    expect(dialog.text()).toContain('marketplace.fastImageInput')
-  })
+    // 面板原地展开，展示完整定价（标准计费行），且 fast mode 切换可用。
+    const sections = wrapper.findAll('[data-testid="marketplace-group-section"]')
+    const firstCard = sections[0].findAll('article')[0]
+    expect(firstCard.text()).toContain('marketplace.input')
+    expect(firstCard.text()).toContain('marketplace.imageInput')
+    expect(firstCard.text()).toContain('marketplace.output')
 
-  it('分组-模型模式下定价弹窗不重复显示分组名称', async () => {
-    const wrapper = await mountMarketplace()
-
-    const pricingButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('marketplace.viewPricing'))
-
-    expect(pricingButton?.exists()).toBe(true)
-    await pricingButton!.trigger('click')
+    const fastSwitch = firstCard.get('[data-testid="pricing-fast-switch"]')
+    await fastSwitch.findAll('button')[1].trigger('click')
     await nextTick()
 
-    const dialog = wrapper.get('[data-testid="pricing-dialog"]')
-    expect(dialog.get('h2').text()).toBe('GPT 5.5 · marketplace.pricingDetail')
-    expect(dialog.text()).toContain('GPT 5.5')
-    expect(dialog.text()).toContain('gpt-5.5')
-    expect(dialog.text()).not.toContain('Plus')
+    // fast mode 下展示 fast 加价行，标准行隐藏。
+    expect(firstCard.text()).toContain('marketplace.fastImageInput')
+    expect(firstCard.text()).not.toContain('marketplace.imageInput')
+
+    await wrapper.get('[data-testid="model-pricing-toggle"]').trigger('click')
+    await nextTick()
+    expect(wrapper.get('[data-testid="model-pricing-toggle"]').attributes('aria-expanded')).toBe('false')
   })
 })
