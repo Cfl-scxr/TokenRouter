@@ -252,6 +252,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/creative',
+    name: 'CreativeStudio',
+    component: () => import('@/views/user/CreativeStudioView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Creative',
+      titleKey: 'creative.title',
+      descriptionKey: 'creative.description',
+      hidePageHeading: true
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
@@ -963,7 +976,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/affiliates',
       '/subscriptions',
       '/redeem',
-      '/affiliate'
+      '/affiliate',
+      '/creative'
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {

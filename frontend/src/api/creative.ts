@@ -1,0 +1,155 @@
+/**
+ * Creative Studio（创作台）API
+ * 全部走 apiClient（JWT 会话认证），不涉及、不携带任何 API Key。
+ */
+
+import { apiClient } from './client'
+
+// ==================== 类型定义 ====================
+
+// 创作台支持的操作类型，以服务端返回的 operations 为准
+export type CreativeOperation = 'generate' | 'edit' | 'inpaint' | (string & {})
+
+// 模型目录项：分组 + 模型的合成选项
+export interface CreativeModelOption {
+  group_id: string
+  group_name: string
+  model: string
+  operations: CreativeOperation[]
+  image_sizes: string[]
+  price_1k: number
+}
+
+// run 终态集合，轮询遇到这些状态即停止
+export const CREATIVE_RUN_TERMINAL_STATUSES: readonly string[] = [
+  'succeeded',
+  'failed',
+  'cancelled',
+  'result_lost',
+]
+
+export type CreativeRunStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'result_lost'
+  | (string & {})
+
+export type CreativeOutputStatus = 'succeeded' | 'failed' | 'cancelled' | (string & {})
+
+// 单个输出位的元信息（图片本体不落库，transient 存储）
+export interface CreativeRunOutput {
+  output_index: number
+  status: CreativeOutputStatus
+  mime_type?: string
+  byte_size?: number
+  transient_expires_at?: number | null
+  acked_at?: number | null
+  error_code?: string
+  error_message?: string
+}
+
+export interface CreativeRun {
+  id: string
+  status: CreativeRunStatus
+  operation: CreativeOperation
+  model: string
+  group_id: string
+  requested_output_count: number
+  estimated_cost?: number
+  hold_amount?: number
+  actual_cost?: number | null
+  error_code?: string
+  error_message?: string
+  created_at?: number
+  started_at?: number | null
+  completed_at?: number | null
+  cancelled_at?: number | null
+  outputs?: CreativeRunOutput[]
+}
+
+// 列表接口分页结构（兼容直接返回数组的宽松处理在调用方完成）
+export interface CreativeRunsPage {
+  items: CreativeRun[]
+  total: number
+}
+
+// ==================== API 方法 ====================
+
+/**
+ * 获取创作台可用模型目录（分组 + 模型 + 支持操作 + 支持尺寸）
+ */
+export async function getCreativeModels(): Promise<CreativeModelOption[]> {
+  const { data } = await apiClient.get<CreativeModelOption[]>('/creative/models')
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * 创建创作 run（multipart/form-data）
+ * @param form 已组好的表单（源图、mask、prompt 等）
+ * @param idempotencyKey 可选幂等键：同一表单重试时复用同一 key
+ */
+export async function createCreativeRun(
+  form: FormData,
+  idempotencyKey?: string,
+): Promise<CreativeRun> {
+  const { data } = await apiClient.post<CreativeRun>('/creative/runs', form, {
+    headers: {
+      // 必须覆盖实例默认的 application/json，否则 transformRequest 会把 FormData 序列化成 JSON
+      'Content-Type': 'multipart/form-data',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
+  })
+  return data
+}
+
+/**
+ * 查询 run 列表。服务端可能返回 {items,total} 也可能直接返回数组，这里宽松归一化。
+ */
+export async function getCreativeRuns(page = 1, pageSize = 20): Promise<CreativeRunsPage> {
+  const { data } = await apiClient.get<CreativeRunsPage | CreativeRun[]>('/creative/runs', {
+    params: { page, page_size: pageSize },
+  })
+  if (Array.isArray(data)) {
+    return { items: data, total: data.length }
+  }
+  const items = Array.isArray(data?.items) ? data.items : []
+  return { items, total: typeof data?.total === 'number' ? data.total : items.length }
+}
+
+/**
+ * 查询单个 run 详情（含 outputs 元信息）
+ */
+export async function getCreativeRun(id: string): Promise<CreativeRun> {
+  const { data } = await apiClient.get<CreativeRun>(`/creative/runs/${encodeURIComponent(id)}`)
+  return data
+}
+
+/**
+ * 获取输出图片二进制（transient，取回后应立即本地保存并 ack）。
+ * 注意：二进制响应不适用 {code,message,data} envelope。
+ */
+export async function getCreativeRunOutputContent(runId: string, index: number): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(
+    `/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/content`,
+    { responseType: 'blob' },
+  )
+  return data
+}
+
+/**
+ * 确认输出已持久化到本地（服务端据此清理 transient 资源）
+ */
+export async function ackCreativeRunOutput(runId: string, index: number): Promise<void> {
+  await apiClient.post(`/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/ack`)
+}
+
+/**
+ * 取消进行中的 run
+ */
+export async function cancelCreativeRun(id: string): Promise<CreativeRun> {
+  const { data } = await apiClient.post<CreativeRun>(`/creative/runs/${encodeURIComponent(id)}/cancel`)
+  return data
+}
