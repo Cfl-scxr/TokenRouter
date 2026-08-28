@@ -14,6 +14,8 @@
 - [请求关联](#请求关联)：正确透传 request ID。
 - [变更规则](#变更规则)：新增接口时检查。
 
+新增创作台路由时读取[创作台](../domains/creative_studio.md)领域文档核对生命周期、幂等与留存边界。
+
 ## 全局入口
 
 `SetupRouter` 在一个 Gin engine 上安装共同中间件并依次注册 common、auth、user、admin、gateway、payment 和 page routes。主要全局顺序为：
@@ -65,6 +67,20 @@ RequestLogger
 OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC 同时保留 `GET` 与 `POST`。未启用腾讯天御或阿里云验证码时，`GET` 继续以 `302` 跳转保持兼容；任一动作验证码启用后，匿名登录必须用 `POST`，腾讯票据使用 `tencent_captcha_ticket` 与 `tencent_captcha_randstr`，阿里云的 `captchaVerifyParam` 复用 `turnstile_token` 字段，成功响应的 `data.authorize_url` 由前端再导航。`*/bind/start` 是当前用户绑定入口，不消费匿名登录验证码。Passkey 登录的 `/auth/passkey/login/begin` 使用相同的提供方字段映射，`finish` 只接受 ceremony session 和 WebAuthn credential。
 
 `POST /api/v1/auth/oauth/google/one-tap` 接受浏览器 GIS 返回的 `credential`、本地 `redirect` 及可选 `aff_code`/`promo_code`。credential 上限为 16 KiB，入口按客户端 IP 使用 Redis `20 次/分钟` fail-close 限流；不接收 Client Secret，也不能记录 token 或未验证 claims。验证和已有用户登录成功时，统一 envelope 的 `data` 返回 `status=authenticated` 与标准 `access_token`、`refresh_token`、`expires_in`、`token_type`；新用户只返回 `status=registration_required` 与本地 redirect，并通过 HttpOnly pending cookies 继续 `/auth/oauth/callback` 的既有补全状态机。One Tap 设置或 Google OAuth 配置无效、backend mode、腾讯/阿里云动作验证码启用、注册关闭、token 无效或用户状态不可登录时拒绝。Turnstile 单独开启时不新增该入口的校验范围。
+
+创作台（Creative Studio）是 `/api/v1/creative/*` 用户 JWT 路由族（`routes/user.go`，统一 envelope），供个人图片生成/编辑/局部重绘任务使用：
+
+```text
+GET  /api/v1/creative/models
+POST /api/v1/creative/runs
+GET  /api/v1/creative/runs
+GET  /api/v1/creative/runs/{id}
+GET  /api/v1/creative/runs/{id}/outputs/{index}/content
+POST /api/v1/creative/runs/{id}/outputs/{index}/ack
+POST /api/v1/creative/runs/{id}/cancel
+```
+
+`POST /creative/runs` 接受 `multipart/form-data`（`group_id`/`model`/`operation`/`prompt`/`source_images[]`/`mask`/`image_size`/`aspect_ratio`/`output_count`/`response_mime_type`），只接受上传文件、不接受远程 URL，并受 `Idempotency-Key` 头约束：同键同体重放返回原任务（`idempotent_replay=true`），同键不同体返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`。输出内容路由在临时输出过期或丢失时返回 410 语义（`CREATIVE_OUTPUT_EXPIRED`/`CREATIVE_RESULT_LOST`）并把任务降级为 `result_lost`；ack 删除服务端临时输出。服务端只保存任务元数据，图片与 prompt 明文只存于 Redis 临时键，细节与限制见[创作台](../domains/creative_studio.md)。
 
 部分下载路由使用短期签名票据，以支持浏览器原生下载大文件；票据只授权一个预生成资源，不能等价为用户 JWT。模型列表、用量和既有批任务管理即使跳过消费余额检查，仍要执行 Key 身份和资源归属验证。
 
