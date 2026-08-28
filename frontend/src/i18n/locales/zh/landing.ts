@@ -124,7 +124,7 @@ batchImageGuide: {
     },
     featured: {
       byProvider: 'by {provider}',
-      discountOff: 'Up to {percent}% off'
+      discountOff: '最高优惠{percent}%'
     },
     stats: {
       todayTokens: '今日总 Token 量',
