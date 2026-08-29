@@ -2,7 +2,7 @@
   <AppLayout>
     <div class="flex flex-col gap-4">
       <!-- 三栏工作区：桌面横排，移动端纵向堆叠 -->
-      <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)]">
+      <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)] lg:flex-row">
         <!-- 左：控制面板 -->
         <div class="w-full flex-shrink-0 rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900 lg:w-80">
           <CreativeControlPanel :studio="studio" @generate="onGenerate" @load-from-canvas="onLoadFromCanvas" />
