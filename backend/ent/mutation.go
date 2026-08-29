@@ -17329,6 +17329,7 @@ type CreativeRunMutation struct {
 	error_message                       *string
 	attempt_count                       *int
 	addattempt_count                    *int
+	allowance_reserved                  *bool
 	version                             *int64
 	addversion                          *int64
 	started_at                          *time.Time
@@ -18874,6 +18875,42 @@ func (m *CreativeRunMutation) ResetAttemptCount() {
 	m.addattempt_count = nil
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (m *CreativeRunMutation) SetAllowanceReserved(b bool) {
+	m.allowance_reserved = &b
+}
+
+// AllowanceReserved returns the value of the "allowance_reserved" field in the mutation.
+func (m *CreativeRunMutation) AllowanceReserved() (r bool, exists bool) {
+	v := m.allowance_reserved
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowanceReserved returns the old "allowance_reserved" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldAllowanceReserved(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowanceReserved is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowanceReserved requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowanceReserved: %w", err)
+	}
+	return oldValue.AllowanceReserved, nil
+}
+
+// ResetAllowanceReserved resets all changes to the "allowance_reserved" field.
+func (m *CreativeRunMutation) ResetAllowanceReserved() {
+	m.allowance_reserved = nil
+}
+
 // SetVersion sets the "version" field.
 func (m *CreativeRunMutation) SetVersion(i int64) {
 	m.version = &i
@@ -19111,7 +19148,7 @@ func (m *CreativeRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CreativeRunMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 35)
 	if m.created_at != nil {
 		fields = append(fields, creativerun.FieldCreatedAt)
 	}
@@ -19202,6 +19239,9 @@ func (m *CreativeRunMutation) Fields() []string {
 	if m.attempt_count != nil {
 		fields = append(fields, creativerun.FieldAttemptCount)
 	}
+	if m.allowance_reserved != nil {
+		fields = append(fields, creativerun.FieldAllowanceReserved)
+	}
 	if m.version != nil {
 		fields = append(fields, creativerun.FieldVersion)
 	}
@@ -19282,6 +19322,8 @@ func (m *CreativeRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorMessage()
 	case creativerun.FieldAttemptCount:
 		return m.AttemptCount()
+	case creativerun.FieldAllowanceReserved:
+		return m.AllowanceReserved()
 	case creativerun.FieldVersion:
 		return m.Version()
 	case creativerun.FieldStartedAt:
@@ -19359,6 +19401,8 @@ func (m *CreativeRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldErrorMessage(ctx)
 	case creativerun.FieldAttemptCount:
 		return m.OldAttemptCount(ctx)
+	case creativerun.FieldAllowanceReserved:
+		return m.OldAllowanceReserved(ctx)
 	case creativerun.FieldVersion:
 		return m.OldVersion(ctx)
 	case creativerun.FieldStartedAt:
@@ -19585,6 +19629,13 @@ func (m *CreativeRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAttemptCount(v)
+		return nil
+	case creativerun.FieldAllowanceReserved:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowanceReserved(v)
 		return nil
 	case creativerun.FieldVersion:
 		v, ok := value.(int64)
@@ -19980,6 +20031,9 @@ func (m *CreativeRunMutation) ResetField(name string) error {
 		return nil
 	case creativerun.FieldAttemptCount:
 		m.ResetAttemptCount()
+		return nil
+	case creativerun.FieldAllowanceReserved:
+		m.ResetAllowanceReserved()
 		return nil
 	case creativerun.FieldVersion:
 		m.ResetVersion()

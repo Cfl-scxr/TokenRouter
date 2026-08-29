@@ -473,6 +473,7 @@ func creativeRunEntityToService(entity *dbent.CreativeRun) *service.CreativeRun 
 		ActualCost:                  entity.ActualCost,
 		BalanceHoldAmount:           entity.BalanceHoldAmount,
 		SubscriptionHoldAllocations: entity.SubscriptionHoldAllocations,
+		AllowanceReserved:           entity.AllowanceReserved,
 		BaseUnitPrice:               entity.BaseUnitPrice,
 		SubscriptionRateMultiplier:  entity.SubscriptionRateMultiplier,
 		BalanceRateMultiplier:       entity.BalanceRateMultiplier,

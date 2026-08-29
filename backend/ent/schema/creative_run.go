@@ -72,6 +72,8 @@ func (CreativeRun) Fields() []ent.Field {
 		field.String("error_code").Optional().Nillable().MaxLen(128),
 		field.String("error_message").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Int("attempt_count").Default(0),
+		// 额度预记标记：与 batch_image_jobs.allowance_reserved 同语义，预占时置 true，捕获/释放后复位。
+		field.Bool("allowance_reserved").Default(false),
 		// version 乐观锁：状态转换时 +1。
 		field.Int64("version").Default(1),
 		field.Time("started_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),

@@ -539,6 +539,20 @@ func (_u *CreativeRunUpdate) AddAttemptCount(v int) *CreativeRunUpdate {
 	return _u
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_u *CreativeRunUpdate) SetAllowanceReserved(v bool) *CreativeRunUpdate {
+	_u.mutation.SetAllowanceReserved(v)
+	return _u
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableAllowanceReserved(v *bool) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetAllowanceReserved(*v)
+	}
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *CreativeRunUpdate) SetVersion(v int64) *CreativeRunUpdate {
 	_u.mutation.ResetVersion()
@@ -878,6 +892,9 @@ func (_u *CreativeRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.AddedAttemptCount(); ok {
 		_spec.AddField(creativerun.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowanceReserved(); ok {
+		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)
@@ -1432,6 +1449,20 @@ func (_u *CreativeRunUpdateOne) AddAttemptCount(v int) *CreativeRunUpdateOne {
 	return _u
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_u *CreativeRunUpdateOne) SetAllowanceReserved(v bool) *CreativeRunUpdateOne {
+	_u.mutation.SetAllowanceReserved(v)
+	return _u
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableAllowanceReserved(v *bool) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetAllowanceReserved(*v)
+	}
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *CreativeRunUpdateOne) SetVersion(v int64) *CreativeRunUpdateOne {
 	_u.mutation.ResetVersion()
@@ -1801,6 +1832,9 @@ func (_u *CreativeRunUpdateOne) sqlSave(ctx context.Context) (_node *CreativeRun
 	}
 	if value, ok := _u.mutation.AddedAttemptCount(); ok {
 		_spec.AddField(creativerun.FieldAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowanceReserved(); ok {
+		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)

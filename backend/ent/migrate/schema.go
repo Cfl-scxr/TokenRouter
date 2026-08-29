@@ -747,6 +747,7 @@ var (
 		{Name: "error_code", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "allowance_reserved", Type: field.TypeBool, Default: false},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},

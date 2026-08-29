@@ -199,6 +199,11 @@ func AttemptCount(v int) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldAttemptCount, v))
 }
 
+// AllowanceReserved applies equality check predicate on the "allowance_reserved" field. It's identical to AllowanceReservedEQ.
+func AllowanceReserved(v bool) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldAllowanceReserved, v))
+}
+
 // Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
 func Version(v int64) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldVersion, v))
@@ -1732,6 +1737,16 @@ func AttemptCountLT(v int) predicate.CreativeRun {
 // AttemptCountLTE applies the LTE predicate on the "attempt_count" field.
 func AttemptCountLTE(v int) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldLTE(FieldAttemptCount, v))
+}
+
+// AllowanceReservedEQ applies the EQ predicate on the "allowance_reserved" field.
+func AllowanceReservedEQ(v bool) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldAllowanceReserved, v))
+}
+
+// AllowanceReservedNEQ applies the NEQ predicate on the "allowance_reserved" field.
+func AllowanceReservedNEQ(v bool) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldAllowanceReserved, v))
 }
 
 // VersionEQ applies the EQ predicate on the "version" field.

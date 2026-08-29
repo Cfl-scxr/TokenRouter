@@ -79,7 +79,8 @@ func buildCreativeHoldCommand(run *CreativeRun, requestID string, actualBaseAmou
 		DisablePlanGroupRateMultiplier:  !run.PlanGroupRateEnabled,
 		BalanceHoldAmount:               run.BalanceHoldAmount,
 		SubscriptionHoldAllocations:     cloneBillingAllocations(run.SubscriptionHoldAllocations),
-		AllowanceReserved:               true,
+		AllowanceReserved:               run.AllowanceReserved,
+		CreativeEntity:                  true,
 		ReservedAt:                      run.CreatedAt,
 		RequestPayloadHash:              strings.TrimSpace(run.RequestFingerprint),
 	}
@@ -101,6 +102,9 @@ func reserveCreativeBalanceHold(ctx context.Context, repo UsageBillingRepository
 	if err != nil {
 		return err
 	}
+	// 预占阶段按新任务预记语义统计 API Key/成员额度，并在任务行上落预记标记；
+	// 捕获/释放阶段则使用任务行上持久化的 run.AllowanceReserved。
+	cmd.AllowanceReserved = true
 	result, err := repo.ReserveBatchImageBalance(ctx, cmd)
 	if err != nil {
 		if errors.Is(err, ErrBatchImageInsufficientBalance) {

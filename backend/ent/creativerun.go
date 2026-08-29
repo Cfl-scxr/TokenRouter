@@ -79,6 +79,8 @@ type CreativeRun struct {
 	ErrorMessage *string `json:"error_message,omitempty"`
 	// AttemptCount holds the value of the "attempt_count" field.
 	AttemptCount int `json:"attempt_count,omitempty"`
+	// AllowanceReserved holds the value of the "allowance_reserved" field.
+	AllowanceReserved bool `json:"allowance_reserved,omitempty"`
 	// Version holds the value of the "version" field.
 	Version int64 `json:"version,omitempty"`
 	// StartedAt holds the value of the "started_at" field.
@@ -97,7 +99,7 @@ func (*CreativeRun) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case creativerun.FieldSubscriptionHoldAllocations:
 			values[i] = new([]byte)
-		case creativerun.FieldPlanGroupRateMultiplierEnabled:
+		case creativerun.FieldPlanGroupRateMultiplierEnabled, creativerun.FieldAllowanceReserved:
 			values[i] = new(sql.NullBool)
 		case creativerun.FieldEstimatedCost, creativerun.FieldHoldAmount, creativerun.FieldActualCost, creativerun.FieldBalanceHoldAmount, creativerun.FieldBaseUnitPrice, creativerun.FieldSubscriptionRateMultiplier, creativerun.FieldBalanceRateMultiplier:
 			values[i] = new(sql.NullFloat64)
@@ -316,6 +318,12 @@ func (_m *CreativeRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AttemptCount = int(value.Int64)
 			}
+		case creativerun.FieldAllowanceReserved:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allowance_reserved", values[i])
+			} else if value.Valid {
+				_m.AllowanceReserved = value.Bool
+			}
 		case creativerun.FieldVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field version", values[i])
@@ -480,6 +488,9 @@ func (_m *CreativeRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("attempt_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AttemptCount))
+	builder.WriteString(", ")
+	builder.WriteString("allowance_reserved=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowanceReserved))
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))

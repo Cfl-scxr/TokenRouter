@@ -74,6 +74,8 @@ const (
 	FieldErrorMessage = "error_message"
 	// FieldAttemptCount holds the string denoting the attempt_count field in the database.
 	FieldAttemptCount = "attempt_count"
+	// FieldAllowanceReserved holds the string denoting the allowance_reserved field in the database.
+	FieldAllowanceReserved = "allowance_reserved"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -119,6 +121,7 @@ var Columns = []string{
 	FieldErrorCode,
 	FieldErrorMessage,
 	FieldAttemptCount,
+	FieldAllowanceReserved,
 	FieldVersion,
 	FieldStartedAt,
 	FieldCompletedAt,
@@ -194,6 +197,8 @@ var (
 	ErrorCodeValidator func(string) error
 	// DefaultAttemptCount holds the default value on creation for the "attempt_count" field.
 	DefaultAttemptCount int
+	// DefaultAllowanceReserved holds the default value on creation for the "allowance_reserved" field.
+	DefaultAllowanceReserved bool
 	// DefaultVersion holds the default value on creation for the "version" field.
 	DefaultVersion int64
 )
@@ -349,6 +354,11 @@ func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
 // ByAttemptCount orders the results by the attempt_count field.
 func ByAttemptCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAttemptCount, opts...).ToFunc()
+}
+
+// ByAllowanceReserved orders the results by the allowance_reserved field.
+func ByAllowanceReserved(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowanceReserved, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

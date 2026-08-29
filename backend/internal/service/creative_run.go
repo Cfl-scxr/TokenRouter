@@ -101,6 +101,8 @@ type CreativeRun struct {
 	ActualCost                  *float64
 	BalanceHoldAmount           float64
 	SubscriptionHoldAllocations []domain.BillingAllocation
+	// AllowanceReserved 与 batch_image_jobs.allowance_reserved 同语义：额度预记标记。
+	AllowanceReserved           bool
 	BaseUnitPrice               float64
 	SubscriptionRateMultiplier  float64
 	BalanceRateMultiplier       float64

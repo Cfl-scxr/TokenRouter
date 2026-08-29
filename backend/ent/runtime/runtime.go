@@ -838,8 +838,12 @@ func init() {
 	creativerunDescAttemptCount := creativerunFields[27].Descriptor()
 	// creativerun.DefaultAttemptCount holds the default value on creation for the attempt_count field.
 	creativerun.DefaultAttemptCount = creativerunDescAttemptCount.Default.(int)
+	// creativerunDescAllowanceReserved is the schema descriptor for allowance_reserved field.
+	creativerunDescAllowanceReserved := creativerunFields[28].Descriptor()
+	// creativerun.DefaultAllowanceReserved holds the default value on creation for the allowance_reserved field.
+	creativerun.DefaultAllowanceReserved = creativerunDescAllowanceReserved.Default.(bool)
 	// creativerunDescVersion is the schema descriptor for version field.
-	creativerunDescVersion := creativerunFields[28].Descriptor()
+	creativerunDescVersion := creativerunFields[29].Descriptor()
 	// creativerun.DefaultVersion holds the default value on creation for the version field.
 	creativerun.DefaultVersion = creativerunDescVersion.Default.(int64)
 	creativerunoutputMixin := schema.CreativeRunOutput{}.Mixin()

@@ -371,6 +371,20 @@ func (_c *CreativeRunCreate) SetNillableAttemptCount(v *int) *CreativeRunCreate 
 	return _c
 }
 
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (_c *CreativeRunCreate) SetAllowanceReserved(v bool) *CreativeRunCreate {
+	_c.mutation.SetAllowanceReserved(v)
+	return _c
+}
+
+// SetNillableAllowanceReserved sets the "allowance_reserved" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableAllowanceReserved(v *bool) *CreativeRunCreate {
+	if v != nil {
+		_c.SetAllowanceReserved(*v)
+	}
+	return _c
+}
+
 // SetVersion sets the "version" field.
 func (_c *CreativeRunCreate) SetVersion(v int64) *CreativeRunCreate {
 	_c.mutation.SetVersion(v)
@@ -526,6 +540,10 @@ func (_c *CreativeRunCreate) defaults() {
 		v := creativerun.DefaultAttemptCount
 		_c.mutation.SetAttemptCount(v)
 	}
+	if _, ok := _c.mutation.AllowanceReserved(); !ok {
+		v := creativerun.DefaultAllowanceReserved
+		_c.mutation.SetAllowanceReserved(v)
+	}
 	if _, ok := _c.mutation.Version(); !ok {
 		v := creativerun.DefaultVersion
 		_c.mutation.SetVersion(v)
@@ -665,6 +683,9 @@ func (_c *CreativeRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.AttemptCount(); !ok {
 		return &ValidationError{Name: "attempt_count", err: errors.New(`ent: missing required field "CreativeRun.attempt_count"`)}
+	}
+	if _, ok := _c.mutation.AllowanceReserved(); !ok {
+		return &ValidationError{Name: "allowance_reserved", err: errors.New(`ent: missing required field "CreativeRun.allowance_reserved"`)}
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "CreativeRun.version"`)}
@@ -815,6 +836,10 @@ func (_c *CreativeRunCreate) createSpec() (*CreativeRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AttemptCount(); ok {
 		_spec.SetField(creativerun.FieldAttemptCount, field.TypeInt, value)
 		_node.AttemptCount = value
+	}
+	if value, ok := _c.mutation.AllowanceReserved(); ok {
+		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
+		_node.AllowanceReserved = value
 	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)
@@ -1331,6 +1356,18 @@ func (u *CreativeRunUpsert) UpdateAttemptCount() *CreativeRunUpsert {
 // AddAttemptCount adds v to the "attempt_count" field.
 func (u *CreativeRunUpsert) AddAttemptCount(v int) *CreativeRunUpsert {
 	u.Add(creativerun.FieldAttemptCount, v)
+	return u
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *CreativeRunUpsert) SetAllowanceReserved(v bool) *CreativeRunUpsert {
+	u.Set(creativerun.FieldAllowanceReserved, v)
+	return u
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateAllowanceReserved() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldAllowanceReserved)
 	return u
 }
 
@@ -1976,6 +2013,20 @@ func (u *CreativeRunUpsertOne) AddAttemptCount(v int) *CreativeRunUpsertOne {
 func (u *CreativeRunUpsertOne) UpdateAttemptCount() *CreativeRunUpsertOne {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateAttemptCount()
+	})
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *CreativeRunUpsertOne) SetAllowanceReserved(v bool) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetAllowanceReserved(v)
+	})
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateAllowanceReserved() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateAllowanceReserved()
 	})
 }
 
@@ -2799,6 +2850,20 @@ func (u *CreativeRunUpsertBulk) AddAttemptCount(v int) *CreativeRunUpsertBulk {
 func (u *CreativeRunUpsertBulk) UpdateAttemptCount() *CreativeRunUpsertBulk {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateAttemptCount()
+	})
+}
+
+// SetAllowanceReserved sets the "allowance_reserved" field.
+func (u *CreativeRunUpsertBulk) SetAllowanceReserved(v bool) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetAllowanceReserved(v)
+	})
+}
+
+// UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateAllowanceReserved() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateAllowanceReserved()
 	})
 }
 
