@@ -1,6 +1,7 @@
 /**
  * 创作台核心状态机
- * 职责：模型目录、参数选择与持久恢复、创建 run（幂等重试）、轮询收割输出、历史关联本地素材。
+ * 职责：模型目录、参数选择与持久恢复、创建 run（幂等重试）、轮询收割输出、历史关联本地素材、画布桥接。
+ * 源图 / mask 不再经状态机管理：由视图在点击生成时从画布收集（选中的图片 + 画笔 mask）。
  * 轮询定时器在 composable 内注册 onBeforeUnmount 清理。
  */
 
@@ -22,18 +23,15 @@ import {
 import {
   LocalStoreQuotaError,
   clearAll,
-  deleteAsset,
   listAssets,
-  loadAsset,
   loadSetting,
-  localAssetKey,
   outputAssetKey,
   saveAsset,
   saveSetting,
   type LocalAsset,
 } from '@/utils/creativeLocalStore'
 
-// 生成参数来源：画布导出 + 本地上传的合成
+// 生成参数来源：视图在点击生成时从画布收集（选中的源图 + 画笔 mask）
 export interface CreativeExportInput {
   sourceBlobs: Blob[]
   maskBlob: Blob | null
@@ -51,13 +49,20 @@ interface CreativeSelectionSettings {
 const SETTINGS_KEY = 'creative:selection'
 // 清空本机数据的时间水位线：此后的历史列表只展示该时间之后创建的服务端任务
 const CLEARED_AT_KEY = 'creative:clearedAt'
-const MASK_KEY = localAssetKey('mask', 'current')
 const PROMPT_MAX_LENGTH = 8000
 
 // 轮询节奏：前 10 秒每 1s，之后每 3s
 const POLL_FAST_INTERVAL = 1000
 const POLL_SLOW_INTERVAL = 3000
 const POLL_FAST_WINDOW = 10000
+
+// 画布桥接：视图注册后，收割成功的输出自动放上画布，历史点击可平移视角到已上板的输出
+export interface CreativeCanvasBridge {
+  // 收割成功（save + ack 后）把输出图片放到画布
+  placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): void
+  // 视角平移到指定输出；输出不在画布上时返回 false
+  panToRunOutput(runId: string, outputIndex: number): boolean
+}
 
 // group + model 合成选项 key
 export function creativeOptionKey(option: Pick<CreativeModelOption, 'group_id' | 'model'>): string {
@@ -77,8 +82,6 @@ export function useCreativeStudio() {
   const imageSize = ref('')
   const aspectRatio = ref('1:1')
   const outputCount = ref(1)
-  const sourceAssets = ref<LocalAsset[]>([])
-  const maskAsset = ref<LocalAsset | null>(null)
   const currentRun = ref<CreativeRun | null>(null)
   const runHistory = ref<CreativeRun[]>([])
   const loadingHistory = ref(false)
@@ -91,6 +94,8 @@ export function useCreativeStudio() {
   const outputAssetMap = ref<Map<string, LocalAsset>>(new Map())
   // 当前表单提交意图的幂等键：失败后重试复用，成功后重置
   const activeIdempotencyKey = ref('')
+  // 画布桥接实例（视图在挂载时注册，卸载时可传 null 解绑）
+  let canvasBridge: CreativeCanvasBridge | null = null
 
   // ==================== 计算属性 ====================
 
@@ -114,9 +119,7 @@ export function useCreativeStudio() {
     if (!selectedOption.value || busy.value) return false
     if (!operationOptions.value.includes(operation.value)) return false
     if (prompt.value.length > PROMPT_MAX_LENGTH) return false
-    if ((operation.value === 'edit' || operation.value === 'inpaint') && sourceAssets.value.length === 0)
-      return false
-    if (operation.value === 'inpaint' && !maskAsset.value) return false
+    // 源图 / mask 由画布在点击生成时即时收集，这里不做前置拦截
     return true
   })
 
@@ -189,46 +192,21 @@ export function useCreativeStudio() {
     { flush: 'post' },
   )
 
-  // ==================== 本地素材 ====================
+  // ==================== 画布桥接 ====================
 
-  // 上传/画布导出图作为源图：入本地库并加入当前表单
-  async function addSourceAsset(blob: Blob): Promise<LocalAsset> {
-    const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const asset: LocalAsset = {
-      key: localAssetKey('source', localId),
-      kind: 'source',
-      blob,
-      createdAt: Date.now(),
-    }
+  // 视图挂载画布后注册桥接；传入 null 解绑（组件卸载时）
+  function registerCanvasBridge(bridge: CreativeCanvasBridge | null): void {
+    canvasBridge = bridge
+  }
+
+  // 历史列表点击：委托画布平移视角；画布未就绪或输出不在画布上时返回 false
+  function panToRunOutput(runId: string, outputIndex: number): boolean {
     try {
-      await saveAsset(asset)
+      return canvasBridge?.panToRunOutput(runId, outputIndex) ?? false
     } catch (e) {
-      // 配额不足给出明确提示，其余按原样抛出
-      if (e instanceof LocalStoreQuotaError) {
-        error.value = t('creative.error.quotaExceeded')
-      }
-      throw e
+      console.error('Failed to pan to creative output:', e)
+      return false
     }
-    sourceAssets.value = [...sourceAssets.value, asset]
-    return asset
-  }
-
-  async function removeSourceAsset(key: string): Promise<void> {
-    await deleteAsset(key).catch(() => {
-      // 本地删除失败不阻塞表单状态
-    })
-    sourceAssets.value = sourceAssets.value.filter((a) => a.key !== key)
-  }
-
-  async function setMaskAsset(blob: Blob): Promise<void> {
-    const asset: LocalAsset = { key: MASK_KEY, kind: 'mask', blob, createdAt: Date.now() }
-    await saveAsset(asset)
-    maskAsset.value = asset
-  }
-
-  async function clearMask(): Promise<void> {
-    await deleteAsset(MASK_KEY).catch(() => {})
-    maskAsset.value = null
   }
 
   // ==================== 创建 run ====================
@@ -338,7 +316,7 @@ export function useCreativeStudio() {
     pollTimer = setTimeout(() => void tick(), POLL_FAST_INTERVAL)
   }
 
-  // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack
+  // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack → 放上画布
   async function harvestOutputs(run: CreativeRun): Promise<void> {
     const outputs = Array.isArray(run.outputs) ? run.outputs : []
     for (const output of outputs) {
@@ -355,6 +333,12 @@ export function useCreativeStudio() {
           createdAt: Date.now(),
         })
         await ackCreativeRunOutput(run.id, output.output_index)
+        // 本地保存 + ack 成功后再上画布；画布异常不影响收割结果
+        try {
+          canvasBridge?.placeOutput({ blob, runId: run.id, outputIndex: output.output_index })
+        } catch (e) {
+          console.error(`Failed to place creative output ${key} on canvas:`, e)
+        }
         missingOutputKeys.value.delete(key)
       } catch (e) {
         // 单个输出 transient 取回失败（410 / result_lost）只标记 missing，不中断其它输出；
@@ -390,8 +374,8 @@ export function useCreativeStudio() {
             )
           : page.items
       runHistory.value = items
-      const [sources, outputs] = await Promise.all([listAssets('source'), listAssets('output')])
-      sourceAssets.value = sources
+      // 只需输出素材索引（missing 判定用）；源图 / mask 素材已由画布自行管理
+      const outputs = await listAssets('output')
       const map = new Map(outputs.map((a) => [a.key, a]))
       outputAssetMap.value = map
       const missing = new Set<string>()
@@ -403,9 +387,6 @@ export function useCreativeStudio() {
         }
       }
       missingOutputKeys.value = missing
-      if (!maskAsset.value) {
-        maskAsset.value = await loadAsset(MASK_KEY)
-      }
       if (currentRun.value) {
         const fresh = page.items.find((r) => r.id === currentRun.value?.id)
         if (fresh) currentRun.value = fresh
@@ -419,15 +400,23 @@ export function useCreativeStudio() {
 
   // ==================== 取消与清空 ====================
 
-  async function cancelRun(): Promise<boolean> {
-    if (!currentRun.value || CREATIVE_RUN_TERMINAL_STATUSES.includes(currentRun.value.status)) {
+  // 取消 queued/running 任务；不传 runId 时取消当前任务，传 runId 可取消历史中的进行中任务
+  async function cancelRun(runId?: string): Promise<boolean> {
+    const target = runId
+      ? (runHistory.value.find((r) => r.id === runId) ?? (currentRun.value?.id === runId ? currentRun.value : null))
+      : currentRun.value
+    if (!target || CREATIVE_RUN_TERMINAL_STATUSES.includes(target.status)) {
       return false
     }
     try {
-      const run = await cancelCreativeRun(currentRun.value.id)
-      currentRun.value = run
+      const run = await cancelCreativeRun(target.id)
+      // 无参取消（= 取消当前任务）沿用旧语义直接回写 currentRun；
+      // 指定 runId 时仅当取消的正是当前任务才回写并停止轮询
+      if (!runId || currentRun.value?.id === run.id) {
+        currentRun.value = run
+        stopPolling()
+      }
       upsertRunInHistory(run)
-      stopPolling()
       await refreshHistory()
       return true
     } catch (e) {
@@ -449,8 +438,6 @@ export function useCreativeStudio() {
     await saveSetting(CLEARED_AT_KEY, Date.now()).catch(() => {
       // 水位线写入失败不影响清空本身
     })
-    sourceAssets.value = []
-    maskAsset.value = null
     currentRun.value = null
     runHistory.value = []
     outputAssetMap.value = new Map()
@@ -481,8 +468,6 @@ export function useCreativeStudio() {
     imageSize,
     aspectRatio,
     outputCount,
-    sourceAssets,
-    maskAsset,
     currentRun,
     runHistory,
     loadingHistory,
@@ -499,13 +484,11 @@ export function useCreativeStudio() {
     // 方法
     loadModels,
     selectOption,
-    addSourceAsset,
-    removeSourceAsset,
-    setMaskAsset,
-    clearMask,
     createRun,
     refreshHistory,
     cancelRun,
     clearLocalData,
+    registerCanvasBridge,
+    panToRunOutput,
   }
 }

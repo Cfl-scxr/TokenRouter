@@ -28,6 +28,14 @@
       :disabled="!studio.selectedOption.value"
       @update:model-value="onOperationChange"
     />
+    <!-- 图生图 / 局部重绘需要先在画布中选中一张源图 -->
+    <p v-if="studio.operation.value === 'edit'" class="mt-2 rounded-md border border-primary-900/10 bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-400">
+      {{ t('creative.panel.selectImageHint') }}
+    </p>
+    <!-- 局部重绘额外需要画笔 mask -->
+    <p v-else-if="studio.operation.value === 'inpaint'" class="mt-2 rounded-md border border-primary-900/10 bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-400">
+      {{ t('creative.panel.maskHint') }}
+    </p>
 
     <!-- prompt -->
     <label class="panel-label mt-4">{{ t('creative.panel.prompt') }}</label>
@@ -41,16 +49,12 @@
       {{ promptLength }}/{{ PROMPT_MAX }}
     </p>
 
-    <!-- 源图上传 -->
+    <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
     <label class="panel-label">{{ t('creative.panel.sourceImages') }}</label>
     <div class="flex flex-wrap items-center gap-2">
       <button type="button" class="panel-upload-btn" @click="fileInputRef?.click()">
         <Icon name="upload" size="sm" />
         {{ t('creative.panel.uploadSource') }}
-      </button>
-      <button type="button" class="panel-upload-btn" @click="emit('load-from-canvas')">
-        <Icon name="download" size="sm" />
-        {{ t('creative.panel.loadFromCanvas') }}
       </button>
       <input
         ref="fileInputRef"
@@ -62,48 +66,6 @@
       />
     </div>
     <p class="mt-1 text-xs text-gray-400 dark:text-dark-400">{{ t('creative.panel.uploadHint') }}</p>
-
-    <!-- 源图缩略图 -->
-    <div v-if="studio.sourceAssets.value.length" class="mt-2 grid grid-cols-3 gap-2">
-      <div v-for="asset in studio.sourceAssets.value" :key="asset.key" class="group relative">
-        <img :src="urlFor(asset.key, asset.blob)" :alt="asset.key" class="h-20 w-full rounded-md border border-primary-900/10 object-cover dark:border-dark-600" />
-        <!-- 删除 -->
-        <button
-          type="button"
-          class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-80 hover:opacity-100"
-          @click="onRemoveSource(asset.key)"
-        >
-          <Icon name="x" size="sm" />
-        </button>
-        <!-- 载入画布：把该素材加载到中间画布进行编辑 / 画笔 -->
-        <button
-          type="button"
-          :title="t('creative.panel.sendToCanvas')"
-          class="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-80 hover:opacity-100"
-          @click="emit('send-to-canvas', asset.blob)"
-        >
-          <Icon name="modalityImage" size="sm" />
-        </button>
-      </div>
-    </div>
-
-    <!-- mask（inpaint 必填） -->
-    <template v-if="studio.operation.value === 'inpaint'">
-      <label class="panel-label mt-4">{{ t('creative.panel.mask') }}</label>
-      <div v-if="studio.maskAsset.value" class="relative w-24">
-        <img :src="urlFor(studio.maskAsset.value.key, studio.maskAsset.value.blob)" :alt="studio.maskAsset.value.key" class="h-20 w-24 rounded-md border border-primary-900/10 object-cover dark:border-dark-600" />
-        <button
-          type="button"
-          class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-80 hover:opacity-100"
-          @click="onClearMask"
-        >
-          <Icon name="x" size="sm" />
-        </button>
-      </div>
-      <p v-else class="rounded-md border border-dashed border-primary-900/20 px-3 py-2 text-xs text-gray-400 dark:border-dark-600 dark:text-dark-400">
-        {{ t('creative.panel.maskHint') }}
-      </p>
-    </template>
 
     <!-- 尺寸 / 比例 / 数量 -->
     <div class="mt-4 grid grid-cols-2 gap-3">
@@ -144,14 +106,27 @@
       {{ studio.error.value }}
     </p>
 
-    <!-- 裁剪弹窗队列：每张源图依次进入 -->
+    <!-- 清空本机创作数据（确认弹窗由视图承载） -->
+    <div class="mt-auto pt-6">
+      <button
+        type="button"
+        class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+        @click="emit('clear-requested')"
+      >
+        <Icon name="trash" size="sm" />
+        {{ t('creative.history.clearData') }}
+      </button>
+    </div>
+
+    <!-- 裁剪弹窗队列：每张图片依次进入，确认/跳过后直接放上画布 -->
     <CropperModal :show="cropQueue.length > 0" :blob="cropQueue[0] ?? null" @confirm="onCropConfirm" @skip="onCropConfirm" @cancel="onCropCancel" />
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 创作台左侧面板：模型/操作/prompt/源图上传（裁剪流程）/尺寸/生成。
+ * 创作台左侧面板：模型/操作/prompt/上传（裁剪流程）/尺寸/生成/清空本机数据。
+ * 上传不再维护源图缩略图列表：裁剪确认后通过 uploaded 事件交给画布放到当前视角中心。
  * 状态全部经由 props 传入的 studio（useCreativeStudio 返回值）读写。
  */
 import { computed, ref } from 'vue'
@@ -160,7 +135,6 @@ import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
-import { useBlobUrlMap } from './useBlobUrlMap'
 import { useAppStore } from '@/stores/app'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 import { creativeOptionKey } from '@/composables/useCreativeStudio'
@@ -173,8 +147,8 @@ interface Props {
 
 interface Emits {
   (e: 'generate'): void
-  (e: 'load-from-canvas'): void
-  (e: 'send-to-canvas', blob: Blob): void
+  (e: 'uploaded', blob: Blob): void
+  (e: 'clear-requested'): void
 }
 
 const props = defineProps<Props>()
@@ -182,7 +156,6 @@ const props = defineProps<Props>()
 const studio = props.studio
 const emit = defineEmits<Emits>()
 const { t } = useI18n()
-const { urlFor } = useBlobUrlMap()
 const appStore = useAppStore()
 
 const PROMPT_MAX = 8000
@@ -268,27 +241,15 @@ function onFilesPicked(event: Event): void {
   cropQueue.value = [...cropQueue.value, ...files]
 }
 
-// 裁剪确认（跳过也走这里，直接保留原图）
-async function onCropConfirm(blob: Blob): Promise<void> {
-  try {
-    await studio.addSourceAsset(blob)
-  } catch (error) {
-    console.error('Failed to save source asset:', error)
-  }
+// 裁剪确认（跳过也走这里，直接保留原图）：交给画布放到当前视角中心
+function onCropConfirm(blob: Blob): void {
+  emit('uploaded', blob)
   cropQueue.value = cropQueue.value.slice(1)
 }
 
 // 取消裁剪：丢弃剩余队列
 function onCropCancel(): void {
   cropQueue.value = []
-}
-
-function onRemoveSource(key: string): void {
-  void studio.removeSourceAsset(key)
-}
-
-function onClearMask(): void {
-  void studio.clearMask()
 }
 </script>
 

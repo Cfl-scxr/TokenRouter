@@ -157,14 +157,11 @@ describe('useCreativeStudio', () => {
     it('成功路径：FormData 字段齐全并启动轮询', async () => {
       const { studio } = await setupStudio()
       studio.prompt.value = '一只猫'
-      await studio.addSourceAsset(new Blob(['src'], { type: 'image/png' }))
+      const sourceBlob = new Blob(['src'], { type: 'image/png' })
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'queued' }))
       mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'succeeded' }))
 
-      const ok = await studio.createRun({
-        sourceBlobs: studio.sourceAssets.value.map((a) => a.blob),
-        maskBlob: null,
-      })
+      const ok = await studio.createRun({ sourceBlobs: [sourceBlob], maskBlob: null })
 
       expect(ok).toBe(true)
       expect(studio.error.value).toBe('')
@@ -190,12 +187,10 @@ describe('useCreativeStudio', () => {
     it('inpaint 时附加 mask 文件与幂等键', async () => {
       const { studio } = await setupStudio()
       studio.operation.value = 'inpaint'
-      await studio.addSourceAsset(new Blob(['src']))
-      await studio.setMaskAsset(new Blob(['mask']))
 
       const ok = await studio.createRun({
-        sourceBlobs: studio.sourceAssets.value.map((a) => a.blob),
-        maskBlob: studio.maskAsset.value?.blob ?? null,
+        sourceBlobs: [new Blob(['src'])],
+        maskBlob: new Blob(['mask']),
       })
 
       expect(ok).toBe(true)
@@ -396,6 +391,80 @@ describe('useCreativeStudio', () => {
     })
   })
 
+  describe('画布桥接', () => {
+    function succeededRunWithTwoOutputs() {
+      return makeRun({
+        id: 'run-1',
+        status: 'succeeded',
+        outputs: [
+          { output_index: 0, status: 'succeeded' },
+          { output_index: 1, status: 'succeeded' },
+        ],
+      })
+    }
+
+    it('收割成功（save + ack 后）经桥接把输出放上画布', async () => {
+      const { studio } = await setupStudio()
+      const blob0 = new Blob(['img-0'], { type: 'image/png' })
+      const blob1 = new Blob(['img-1'], { type: 'image/png' })
+      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+      mockedApi.getCreativeRunOutputContent.mockImplementation((_runId: string, index: number) =>
+        Promise.resolve(index === 0 ? blob0 : blob1),
+      )
+      const bridge = { placeOutput: vi.fn(), panToRunOutput: vi.fn() }
+      studio.registerCanvasBridge(bridge)
+
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await vi.advanceTimersByTimeAsync(1000)
+
+      // 先 save + ack，再上板
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(2)
+      expect(bridge.placeOutput).toHaveBeenCalledTimes(2)
+      expect(bridge.placeOutput).toHaveBeenNthCalledWith(1, { blob: blob0, runId: 'run-1', outputIndex: 0 })
+      expect(bridge.placeOutput).toHaveBeenNthCalledWith(2, { blob: blob1, runId: 'run-1', outputIndex: 1 })
+      expect(studio.missingOutputKeys.value.size).toBe(0)
+    })
+
+    it('桥接 placeOutput 抛异常不影响收割与 ack', async () => {
+      const { studio } = await setupStudio()
+      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+      const bridge = {
+        placeOutput: vi.fn(() => {
+          throw new Error('canvas not ready')
+        }),
+        panToRunOutput: vi.fn(),
+      }
+      studio.registerCanvasBridge(bridge)
+
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(2)
+      expect(studio.missingOutputKeys.value.size).toBe(0)
+    })
+
+    it('panToRunOutput 委托桥接；未注册或桥接异常时返回 false', async () => {
+      const { studio } = await setupStudio()
+
+      // 未注册桥接：不命中
+      expect(studio.panToRunOutput('run-9', 0)).toBe(false)
+
+      const bridge = { placeOutput: vi.fn(), panToRunOutput: vi.fn().mockReturnValue(true) }
+      studio.registerCanvasBridge(bridge)
+      expect(studio.panToRunOutput('run-9', 2)).toBe(true)
+      expect(bridge.panToRunOutput).toHaveBeenCalledWith('run-9', 2)
+
+      // 桥接抛异常时吞掉并返回 false
+      studio.registerCanvasBridge({
+        placeOutput: vi.fn(),
+        panToRunOutput: () => {
+          throw new Error('boom')
+        },
+      })
+      expect(studio.panToRunOutput('run-9', 2)).toBe(false)
+    })
+  })
+
   describe('取消与清空', () => {
     it('cancelRun 调 API 并刷新历史', async () => {
       const { studio } = await setupStudio()
@@ -421,6 +490,22 @@ describe('useCreativeStudio', () => {
       expect(studio.error.value).toBe('creative.error.cancelFailed')
     })
 
+    it('cancelRun 支持取消历史中的指定进行中任务', async () => {
+      const { studio } = await setupStudio()
+      const cancelled = makeRun({ id: 'run-7', status: 'cancelled' })
+      studio.runHistory.value = [makeRun({ id: 'run-7', status: 'running' })]
+      mockedApi.cancelCreativeRun.mockResolvedValue(cancelled)
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [cancelled], total: 1 })
+
+      const ok = await studio.cancelRun('run-7')
+
+      expect(ok).toBe(true)
+      expect(mockedApi.cancelCreativeRun).toHaveBeenCalledWith('run-7')
+      // 非当前任务的取消不影响 currentRun 与轮询
+      expect(studio.currentRun.value).toBeNull()
+      expect(studio.runHistory.value.map((run) => run.status)).toEqual(['cancelled'])
+    })
+
     it('clearLocalData 失败时写入错误文案并向上抛出', async () => {
       const { studio } = await setupStudio()
       mockedStore.clearAll.mockRejectedValue(new Error('disk full'))
@@ -441,7 +526,6 @@ describe('useCreativeStudio', () => {
       expect(mockedStore.saveSetting).toHaveBeenCalledWith('creative:clearedAt', expect.any(Number))
       expect(studio.currentRun.value).toBeNull()
       expect(studio.runHistory.value).toEqual([])
-      expect(studio.sourceAssets.value).toEqual([])
       expect(studio.missingOutputKeys.value.size).toBe(0)
     })
   })

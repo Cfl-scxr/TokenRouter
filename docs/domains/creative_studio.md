@@ -167,10 +167,12 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 ## 前端本地存储边界
 
-前端 `/creative` 页面要求登录，simple 模式隐藏入口，路由带 `requiresCreative` 守卫（公开设置 `creative_enabled === false` 时用户跳 `/dashboard`、管理员跳 `/admin/settings`），侧栏入口由公开设置 `creative_enabled !== false` 门控；模型目录为空时控制面板展示空态文案（功能关闭提示联系管理员，否则提示分组未配置图片生成）：
+前端 `/creative` 页面要求登录，simple 模式隐藏入口，路由带 `requiresCreative` 守卫（公开设置 `creative_enabled === false` 时用户跳 `/dashboard`、管理员跳 `/admin/settings`），侧栏入口由公开设置 `creative_enabled !== false` 门控；模型目录为空时控制面板展示空态文案（功能关闭提示联系管理员，否则提示分组未配置图片生成）。页面是无限画布工作台（左侧面板 + 满幅画布，移动端面板在上、画布在下）：
 
-- 输出收割：任务轮询前 10 秒每 1 秒、之后每 3 秒；终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack；单个输出取回失败（410/`result_lost`）只标记该输出缺失，不中断其它输出。
-- 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/mask/输出 blob）、`scenes`（画布 JSON 快照）和 `settings`（参数选择恢复）；图片绝不以 base64 进入 localStorage。
+- 画布交互：空白拖拽平移视角、滚轮以光标为中心缩放（0.2–3）；图片可点选、拖动、删除；历史默认折叠为画布右上角悬浮列表，点击任务行时若其输出已在本画布上（按 runId + outputIndex 匹配对象 data）则视角平移过去，进行中的任务可行内取消。
+- 生成输入：文生图不需要选图；图生图 / 局部重绘以画布当前选中的图片为源图，局部重绘另附画笔导出的 mask（白底透明 PNG，尺寸拉伸回源图自然尺寸）；画笔是唯一画布工具，白色轨迹作为 mask path 画在图片上层。
+- 输出上板：任务轮询前 10 秒每 1 秒、之后每 3 秒；终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack，随后自动把输出图片放上画布（上一个放置位置右侧 40px、约 2200px 换行）并平移视角到新图中心；单个输出取回失败（410/`result_lost`）只标记该输出缺失，不中断其它输出。
+- 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/输出 blob）、`scenes`（画布 JSON 快照，图片 src 以 `asset://<key>` 占位、刷新后回 assets 取 blob 恢复，缺失的图跳过不阻塞）和 `settings`（参数选择恢复）；画布变更防抖约 1 秒存快照，恢复时重建 runId + outputIndex → 画布对象的注册表；图片绝不以 base64 进入 localStorage。
 - 丢失边界：服务端标记成功但本地无对应 blob 的输出显示“素材缺失”，前端不会向服务端重新拉取恢复；本地配额不足时提示用户下载备份；清理浏览器站点数据会清空全部本地素材，且没有任何跨设备同步。
 - 幂等重试：创建任务失败重试复用同一 Idempotency-Key，成功后重置。
 
