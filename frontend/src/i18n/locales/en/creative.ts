@@ -52,6 +52,7 @@ export default {
       paintToggleOn: 'Start painting',
       paintToggleOff: 'Pause painting to pan',
       clearMask: 'Clear paint',
+      downloadSelected: 'Download selected image',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
       settings: 'Settings',

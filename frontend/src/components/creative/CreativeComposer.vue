@@ -2,7 +2,7 @@
   <!-- 聊天式输入框：底部居中或跟随选中图片；左下调参入口，右下费用 + 发送 -->
   <div
     ref="rootRef"
-    class="relative w-[min(600px,calc(100vw-2rem))] rounded-2xl border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
+    class="relative w-[min(600px,calc(100vw-2rem))] rounded-[24px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
   >
     <!-- 提示词输入区（高度随内容自适应，上限约 6 行） -->
     <div class="relative">
@@ -16,12 +16,6 @@
         @input="autosize"
         @keydown="onKeydown"
       ></textarea>
-      <span
-        class="pointer-events-none absolute right-3 top-2 text-[10px] tabular-nums"
-        :class="promptLength > PROMPT_MAX ? 'text-red-500' : 'text-gray-300 dark:text-dark-500'"
-      >
-        {{ promptLength }}/{{ PROMPT_MAX }}
-      </span>
     </div>
 
     <!-- 前置提示：图生图 / 局部重绘未选中源图时引导（选中后输入框已跟随图片，无需再提示） -->
@@ -33,39 +27,147 @@
 
     <!-- 底栏：左下 = 模型 / 参数 / 操作 三个调参入口；右下 = 预估费用 + 发送 -->
     <div class="flex items-center gap-1.5 px-3 pb-3">
-      <button
-        type="button"
-        class="composer-chip"
-        :class="openPanel === 'model' && 'composer-chip-active'"
-        :title="t('creative.composer.model')"
-        @click="togglePanel('model')"
-      >
-        <Icon name="sparkles" size="xs" class="flex-shrink-0" />
-        <span class="max-w-28 truncate">{{ modelChipLabel }}</span>
-        <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'model' && 'rotate-180'" />
-      </button>
-      <button
-        type="button"
-        class="composer-chip"
-        :class="openPanel === 'params' && 'composer-chip-active'"
-        :title="t('creative.composer.params')"
-        @click="togglePanel('params')"
-      >
-        <Icon name="filter" size="xs" class="flex-shrink-0" />
-        <span class="max-w-24 truncate">{{ paramsChipLabel }}</span>
-        <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'params' && 'rotate-180'" />
-      </button>
-      <button
-        type="button"
-        class="composer-chip"
-        :class="openPanel === 'operation' && 'composer-chip-active'"
-        :title="t('creative.composer.operation')"
-        @click="togglePanel('operation')"
-      >
-        <Icon name="swap" size="xs" class="flex-shrink-0" />
-        <span class="max-w-24 truncate">{{ operationChipLabel }}</span>
-        <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'operation' && 'rotate-180'" />
-      </button>
+      <!-- 模型：弹层锚定在该按钮上方 -->
+      <span class="relative">
+        <button
+          type="button"
+          class="composer-chip"
+          :class="openPanel === 'model' && 'composer-chip-active'"
+          :title="t('creative.composer.model')"
+          @click="togglePanel('model')"
+        >
+          <Icon name="sparkles" size="xs" class="flex-shrink-0" />
+          <span class="max-w-28 truncate">{{ modelChipLabel }}</span>
+          <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'model' && 'rotate-180'" />
+        </button>
+        <div
+          v-if="openPanel === 'model'"
+          class="chip-popover"
+        >
+          <p v-if="showModelsEmptyHint" class="rounded-md bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+            {{ modelsEmptyHintText }}
+          </p>
+          <button
+            v-for="option in studio.models.value"
+            :key="creativeOptionKey(option)"
+            type="button"
+            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+            :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
+            @click="selectModel(option)"
+          >
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-xs font-medium text-gray-800 dark:text-gray-100">{{ option.model }}</span>
+              <span class="block truncate text-[11px] text-gray-400 dark:text-dark-400">{{ option.group_name }}</span>
+            </span>
+            <Icon v-if="studio.selectedOptionKey.value === creativeOptionKey(option)" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
+          </button>
+        </div>
+      </span>
+
+      <!-- 参数：弹层锚定在该按钮上方 -->
+      <span class="relative">
+        <button
+          type="button"
+          class="composer-chip"
+          :class="openPanel === 'params' && 'composer-chip-active'"
+          :title="t('creative.composer.params')"
+          @click="togglePanel('params')"
+        >
+          <Icon name="filter" size="xs" class="flex-shrink-0" />
+          <span class="max-w-24 truncate">{{ paramsChipLabel }}</span>
+          <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'params' && 'rotate-180'" />
+        </button>
+        <div
+          v-if="openPanel === 'params'"
+          class="chip-popover"
+        >
+          <div class="space-y-3 p-3">
+            <div>
+              <p class="param-label">{{ t('creative.panel.imageSize') }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="size in studio.imageSizeOptions.value"
+                  :key="size"
+                  type="button"
+                  class="param-chip"
+                  :class="studio.imageSize.value === size && 'param-chip-active'"
+                  @click="setImageSize(size)"
+                >
+                  {{ size }}
+                </button>
+                <span v-if="!studio.imageSizeOptions.value.length" class="text-[11px] text-gray-400 dark:text-dark-400">—</span>
+              </div>
+            </div>
+            <div>
+              <p class="param-label">{{ t('creative.panel.aspectRatio') }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="ratio in ASPECT_RATIOS"
+                  :key="ratio"
+                  type="button"
+                  class="param-chip"
+                  :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
+                  @click="setAspectRatio(ratio)"
+                >
+                  {{ t(`creative.aspects.${ratio.replace(':', 'x')}`) }}
+                </button>
+              </div>
+            </div>
+            <div>
+              <p class="param-label">{{ t('creative.panel.outputCount') }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="count in [1, 2, 3, 4]"
+                  :key="count"
+                  type="button"
+                  class="param-chip"
+                  :class="studio.outputCount.value === count && 'param-chip-active'"
+                  @click="setOutputCount(count)"
+                >
+                  {{ t('creative.panel.outputCountOption', { n: count }) }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </span>
+
+      <!-- 操作：弹层锚定在该按钮上方 -->
+      <span class="relative">
+        <button
+          type="button"
+          class="composer-chip"
+          :class="openPanel === 'operation' && 'composer-chip-active'"
+          :title="t('creative.composer.operation')"
+          @click="togglePanel('operation')"
+        >
+          <Icon name="swap" size="xs" class="flex-shrink-0" />
+          <span class="max-w-24 truncate">{{ operationChipLabel }}</span>
+          <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'operation' && 'rotate-180'" />
+        </button>
+        <div
+          v-if="openPanel === 'operation'"
+          class="chip-popover"
+        >
+          <p v-if="!studio.operationOptions.value.length" class="px-2.5 py-2 text-[11px] text-gray-400 dark:text-dark-400">
+            {{ t('creative.composer.selectModelFirst') }}
+          </p>
+          <button
+            v-for="op in studio.operationOptions.value"
+            :key="op"
+            type="button"
+            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+            :class="studio.operation.value === op && 'bg-primary-600/5 dark:bg-primary-900/20'"
+            @click="selectOperation(op)"
+          >
+            <span class="min-w-0 flex-1">
+              <span class="block text-xs font-medium text-gray-800 dark:text-gray-100">{{ t(`creative.operations.${op}`, op) }}</span>
+              <span class="block text-[11px] text-gray-400 dark:text-dark-400">{{ t(`creative.operationsDesc.${op}`) }}</span>
+            </span>
+            <Icon v-if="studio.operation.value === op" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
+          </button>
+        </div>
+      </span>
 
       <div class="ml-auto flex items-center gap-2">
         <span v-if="studio.estimatedCost.value !== null" class="whitespace-nowrap text-[11px] text-gray-400 dark:text-dark-400">
@@ -83,104 +185,6 @@
         </button>
       </div>
     </div>
-
-    <!-- 展开面板：模型 / 参数 / 操作（点击外部自动收起） -->
-    <div
-      v-if="openPanel"
-      class="absolute bottom-full left-3 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-xl border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
-    >
-      <!-- 模型列表：分组 + 模型名单选 -->
-      <div v-if="openPanel === 'model'" class="max-h-72 overflow-y-auto p-1.5">
-        <p v-if="showModelsEmptyHint" class="rounded-md bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
-          {{ modelsEmptyHintText }}
-        </p>
-        <button
-          v-for="option in studio.models.value"
-          :key="creativeOptionKey(option)"
-          type="button"
-          class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
-          :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
-          @click="selectModel(option)"
-        >
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-xs font-medium text-gray-800 dark:text-gray-100">{{ option.model }}</span>
-            <span class="block truncate text-[11px] text-gray-400 dark:text-dark-400">{{ option.group_name }}</span>
-          </span>
-          <Icon v-if="studio.selectedOptionKey.value === creativeOptionKey(option)" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
-        </button>
-      </div>
-
-      <!-- 参数：尺寸 / 比例 / 数量，chips 单选 -->
-      <div v-else-if="openPanel === 'params'" class="space-y-3 p-3">
-        <div>
-          <p class="param-label">{{ t('creative.panel.imageSize') }}</p>
-          <div class="flex flex-wrap gap-1.5">
-            <button
-              v-for="size in studio.imageSizeOptions.value"
-              :key="size"
-              type="button"
-              class="param-chip"
-              :class="studio.imageSize.value === size && 'param-chip-active'"
-              @click="setImageSize(size)"
-            >
-              {{ size }}
-            </button>
-            <span v-if="!studio.imageSizeOptions.value.length" class="text-[11px] text-gray-400 dark:text-dark-400">—</span>
-          </div>
-        </div>
-        <div>
-          <p class="param-label">{{ t('creative.panel.aspectRatio') }}</p>
-          <div class="flex flex-wrap gap-1.5">
-            <button
-              v-for="ratio in ASPECT_RATIOS"
-              :key="ratio"
-              type="button"
-              class="param-chip"
-              :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
-              @click="setAspectRatio(ratio)"
-            >
-              {{ t(`creative.aspects.${ratio.replace(':', 'x')}`) }}
-            </button>
-          </div>
-        </div>
-        <div>
-          <p class="param-label">{{ t('creative.panel.outputCount') }}</p>
-          <div class="flex flex-wrap gap-1.5">
-            <button
-              v-for="count in [1, 2, 3, 4]"
-              :key="count"
-              type="button"
-              class="param-chip"
-              :class="studio.outputCount.value === count && 'param-chip-active'"
-              @click="setOutputCount(count)"
-            >
-              {{ t('creative.panel.outputCountOption', { n: count }) }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 操作：文生图 / 图生图 / 局部重绘，带说明 -->
-      <div v-else class="p-1.5">
-        <p v-if="!studio.operationOptions.value.length" class="px-2.5 py-2 text-[11px] text-gray-400 dark:text-dark-400">
-          {{ t('creative.composer.selectModelFirst') }}
-        </p>
-        <button
-          v-for="op in studio.operationOptions.value"
-          :key="op"
-          type="button"
-          class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
-          :class="studio.operation.value === op && 'bg-primary-600/5 dark:bg-primary-900/20'"
-          @click="selectOperation(op)"
-        >
-          <span class="min-w-0 flex-1">
-            <span class="block text-xs font-medium text-gray-800 dark:text-gray-100">{{ t(`creative.operations.${op}`, op) }}</span>
-            <span class="block text-[11px] text-gray-400 dark:text-dark-400">{{ t(`creative.operationsDesc.${op}`) }}</span>
-          </span>
-          <Icon v-if="studio.operation.value === op" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -188,6 +192,7 @@
 /**
  * 创作台聊天式输入框（替代旧左侧面板）：
  * - 主体为提示词输入区 + 右下圆形发送按钮；左下三个调参 chip 展开模型 / 参数 / 操作面板
+ * - 弹层面板锚定在对应 chip 上方（而非整个输入框上方）
  * - 位置由父级控制（底部居中或跟随选中图片），本组件只负责内容与发送
  * - 状态全部经由 props 传入的 studio（useCreativeStudio 返回值）读写
  */
@@ -221,7 +226,6 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const { formatBalanceAmount } = useBalanceDisplay()
 
-const PROMPT_MAX = 8000
 // 输入框自适应高度上限（约 6 行）
 const TEXTAREA_MAX_HEIGHT = 160
 
@@ -243,8 +247,6 @@ const prompt = computed({
     studio.prompt.value = value
   },
 })
-
-const promptLength = computed(() => studio.prompt.value.length)
 
 // 图生图 / 局部重绘且未选中图片时的引导提示
 const operationHint = computed(() => {
@@ -333,6 +335,13 @@ function autosize(): void {
 
 .composer-chip-active {
   @apply border-primary-500/50 text-primary-700 dark:border-primary-500/50 dark:text-primary-300;
+}
+
+/* 调参弹层：锚定在所点击 chip 的正上方 */
+.chip-popover {
+  @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-xl border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
+  @apply max-h-72 overflow-y-auto p-1.5;
+  @apply dark:border-dark-600 dark:bg-dark-900/95;
 }
 
 .param-label {

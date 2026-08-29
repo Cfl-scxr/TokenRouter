@@ -19,14 +19,22 @@
         >
           <Icon name="cog" size="md" />
         </button>
-        <!-- 向下展开的设置面板 -->
+        <!-- 向下展开的设置面板：清空画布 + 清空本机创作数据 -->
         <div
           v-if="settingsOpen"
           class="absolute left-0 top-12 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
         >
           <button
             type="button"
-            class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+            class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
+            @click="onResetCanvas"
+          >
+            <Icon name="trash" size="sm" />
+            {{ t('creative.canvas.reset') }}
+          </button>
+          <button
+            type="button"
+            class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
             @click="onClearRequested"
           >
             <Icon name="trash" size="sm" />
@@ -74,7 +82,7 @@
  * - 输入框默认底部居中；画布选中图片时跟随到图片下方（随平移 / 缩放实时跟踪，越界自动夹取）
  * - 生成时从画布收集输入：edit/inpaint 取当前选中图片的原始 blob，inpaint 另取画笔 mask 导出
  * - 注册画布桥接：收割成功的输出自动上板；历史里的输出可一键导入画布
- * - 左上角设置（清空本机创作数据）、右上角历史、顶部工具栏（上传 / 局部重绘画笔组 / 删除 / 清空）
+ * - 左上角设置（清空画布 / 清空本机创作数据）、右上角历史、顶部工具栏（上传 / 下载 / 局部重绘画笔组 / 删除）
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -271,6 +279,12 @@ async function onGenerate(): Promise<void> {
 
 function onCanvasError(message: string): void {
   studio.error.value = message
+}
+
+// 设置弹层里的清空画布入口：收起弹层并清空画布全部对象
+function onResetCanvas(): void {
+  settingsOpen.value = false
+  canvasRef.value?.resetCanvas()
 }
 
 // 设置弹层里的清空入口：收起弹层并弹出确认

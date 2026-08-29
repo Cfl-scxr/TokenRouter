@@ -52,6 +52,7 @@ export default {
       paintToggleOn: '开始涂抹',
       paintToggleOff: '暂停涂抹，移动视角',
       clearMask: '清除涂抹',
+      downloadSelected: '下载选中图片',
       removeSelected: '移除选中图片',
       reset: '清空画布',
       settings: '设置',

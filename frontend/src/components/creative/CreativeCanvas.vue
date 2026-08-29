@@ -19,6 +19,16 @@
         class="hidden"
         @change="onFilesPicked"
       />
+      <!-- 下载选中图片到本地 -->
+      <button
+        type="button"
+        class="canvas-tool-btn"
+        :disabled="!selectedImage"
+        :title="t('creative.canvas.downloadSelected')"
+        @click="downloadSelected"
+      >
+        <Icon name="download" size="sm" />
+      </button>
 
       <!-- 画笔组：仅局部重绘模式可用（选中图片后自动进入涂抹，可用开关暂停去移动视角） -->
       <template v-if="isInpaint">
@@ -93,9 +103,6 @@
       >
         <Icon name="x" size="sm" />
       </button>
-      <button type="button" class="canvas-tool-btn" :title="t('creative.canvas.reset')" @click="resetCanvas">
-        <Icon name="trash" size="sm" />
-      </button>
     </div>
 
     <!-- 局部重绘未选中图片：引导点击选择目标图片 -->
@@ -125,11 +132,12 @@
  * - 图片对象可点选 / 拖动 / Delete 删除；生成输出自动按"上一个放置位置右侧 40px、约 2200px 换行"上板并平滑平移视角
  * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
  *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
- * - 工具栏：上传（裁剪后上板）、画笔组（仅局部重绘）、删除选中、清空画布
+ * - 工具栏：上传、下载选中、画笔组（仅局部重绘）、删除选中；清空画布收在左上角设置里
  * - 场景快照（含 data 自定义属性，图片 src 以 asset:// 占位）防抖存入 IndexedDB，刷新后恢复并重建输出注册表
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { saveAs } from 'file-saver'
 import { Canvas, FabricImage, PencilBrush, Point, type FabricObject, type TMat2D } from 'fabric'
 import { SquarePencilBrush } from './SquarePencilBrush'
 import Icon from '@/components/icons/Icon.vue'
@@ -344,6 +352,16 @@ function bindCanvasEvents(): void {
   canvas.on('object:modified', () => {
     updateSelectedRect()
     scheduleSceneSave()
+  })
+  // 拖图 / 缩放 / 旋转过程中持续同步选中包围盒（这些操作只画 upper canvas，不触发 after:render）
+  canvas.on('object:moving', () => {
+    updateSelectedRect()
+  })
+  canvas.on('object:scaling', () => {
+    updateSelectedRect()
+  })
+  canvas.on('object:rotating', () => {
+    updateSelectedRect()
   })
   canvas.on('object:removed', () => {
     if (!canvas?.getObjects().some((object) => objectData(object).kind === 'mask')) {
@@ -794,6 +812,14 @@ function removeSelected(): void {
   canvas.remove(active)
   canvas.discardActiveObject()
   canvas.requestRenderAll()
+}
+
+// 下载选中图片的原始 blob 到本地（与历史下载一致走 file-saver）
+async function downloadSelected(): Promise<void> {
+  const blob = await getSelectedImageBlob()
+  if (!blob) return
+  const extension = (blob.type || 'image/png').split('/')[1] || 'png'
+  saveAs(blob, `creative-image-${Date.now()}.${extension}`)
 }
 
 function resetCanvas(): void {
