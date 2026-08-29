@@ -304,6 +304,7 @@ onMounted(() => {
     defaultCursor: 'grab',
   })
   bindCanvasEvents()
+  bindLongPressRefToggle()
   // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
   container.addEventListener('contextmenu', suppressContextMenu)
   resizeObserver = new ResizeObserver(fitToContainer)
@@ -315,6 +316,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  unbindLongPressRefToggle()
   containerRef.value?.removeEventListener('contextmenu', suppressContextMenu)
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -706,6 +708,72 @@ function syncOutlineToObject(rect: Rect, object: FabricObject): void {
   const height = ((object as unknown as { height?: number }).height ?? 0) * (object.scaleY ?? 1)
   rect.set({ left: object.left, top: object.top, width, height, angle: object.angle ?? 0 })
   rect.setCoords()
+}
+
+// ==================== 移动端参考图长按加选（桌面端用 Shift+点击） ====================
+
+const LONG_PRESS_MS = 550
+const LONG_PRESS_SLOP_PX = 10
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressStart: { x: number; y: number } | null = null
+// 按下瞬间的参考集快照：按下时 fabric 会立即单选替换，长按切换需基于按下前状态计算
+let longPressPreRefs: FabricObject[] = []
+
+function onLongPressPointerDown(event: PointerEvent): void {
+  if (!canvas || !isEdit.value || event.pointerType === 'mouse') return
+  const image = canvas.findTarget(event)
+  if (!(image instanceof FabricImage)) return
+  longPressPreRefs = [...editRefs.value]
+  longPressStart = { x: event.clientX, y: event.clientY }
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    const wasMember = longPressPreRefs.includes(image)
+    editRefs.value = wasMember
+      ? longPressPreRefs.filter((item) => item !== image)
+      : [...longPressPreRefs, image]
+    // 长按后的合成 mouse 事件可能触发 selection 同步，抑制一次
+    suppressEditRefSync = true
+    // 触觉反馈（支持的设备）
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(15)
+    }
+  }, LONG_PRESS_MS)
+}
+
+function onLongPressPointerMove(event: PointerEvent): void {
+  if (!longPressStart) return
+  const moved = Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y)
+  if (moved > LONG_PRESS_SLOP_PX) {
+    cancelLongPress()
+  }
+}
+
+function cancelLongPress(): void {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  longPressStart = null
+  longPressPreRefs = []
+}
+
+function bindLongPressRefToggle(): void {
+  const el = canvas?.upperCanvasEl
+  if (!el) return
+  el.addEventListener('pointerdown', onLongPressPointerDown)
+  el.addEventListener('pointermove', onLongPressPointerMove)
+  el.addEventListener('pointerup', cancelLongPress)
+  el.addEventListener('pointercancel', cancelLongPress)
+}
+
+function unbindLongPressRefToggle(): void {
+  cancelLongPress()
+  const el = canvas?.upperCanvasEl
+  if (!el) return
+  el.removeEventListener('pointerdown', onLongPressPointerDown)
+  el.removeEventListener('pointermove', onLongPressPointerMove)
+  el.removeEventListener('pointerup', cancelLongPress)
+  el.removeEventListener('pointercancel', cancelLongPress)
 }
 
 // mask 撤销栈上限，防止长会话无限增长
