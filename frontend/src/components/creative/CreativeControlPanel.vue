@@ -11,6 +11,13 @@
       :disabled="studio.loadingModels.value"
       @update:model-value="onModelChange"
     />
+    <!-- 模型目录空态：区分功能被管理员关闭与分组未配置图片生成 -->
+    <p
+      v-if="showModelsEmptyHint"
+      class="mt-2 rounded-md border border-primary-900/10 bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-400"
+    >
+      {{ modelsEmptyHintText }}
+    </p>
 
     <!-- 操作选择 -->
     <label class="panel-label mt-4">{{ t('creative.panel.operation') }}</label>
@@ -144,6 +151,7 @@ import TextArea from '@/components/common/TextArea.vue'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
 import { useBlobUrlMap } from './useBlobUrlMap'
+import { useAppStore } from '@/stores/app'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 import { creativeOptionKey } from '@/composables/useCreativeStudio'
 
@@ -164,6 +172,7 @@ const studio = props.studio
 const emit = defineEmits<Emits>()
 const { t } = useI18n()
 const { urlFor } = useBlobUrlMap()
+const appStore = useAppStore()
 
 const PROMPT_MAX = 8000
 
@@ -172,6 +181,18 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const cropQueue = ref<Blob[]>([])
 
 const promptLength = computed(() => studio.prompt.value.length)
+
+// 模型目录加载完成且为空时展示空态提示（加载失败时 models 同样为空，伴随 error 红条展示）
+const showModelsEmptyHint = computed(
+  () => !studio.loadingModels.value && studio.models.value.length === 0,
+)
+
+// 功能被管理员关闭时提示联系管理员开启，否则提示分组未配置图片生成
+const modelsEmptyHintText = computed(() =>
+  appStore.cachedPublicSettings?.creative_enabled === false
+    ? t('creative.panel.studioDisabled')
+    : t('creative.panel.noModelsAvailable'),
+)
 
 // "group_name — model" 合成选项
 const modelSelectOptions = computed(() =>

@@ -143,7 +143,6 @@ import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
-import { useCreativeStudioAccess } from '@/composables/useCreativeStudioAccess'
 
 interface NavItem {
   path: string
@@ -164,7 +163,6 @@ const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
-const { canUseCreativeStudio, refreshCreativeStudioAccess } = useCreativeStudioAccess()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
@@ -581,8 +579,8 @@ const ChevronDownIcon = {
 
 // 批量图片入口还需要用户 API Key 和分组权限同时满足。
 const flagBatchImageAccess = () => canUseBatchImage.value
-// 创作台入口依赖服务端模型目录：目录为空（未上线/拉取失败）时不展示。
-const flagCreativeStudioAccess = () => canUseCreativeStudio.value
+// 创作台入口由功能开关控制（默认开），可用模型以页面内目录为准。
+const flagCreativeStudioAccess = () => appStore.cachedPublicSettings?.creative_enabled !== false
 const flagTeamAccess = () => appStore.cachedPublicSettings?.team_enabled !== false
 const flagDataSharingAccess = () => appStore.cachedPublicSettings?.data_sharing_enabled !== false
 const flagUsageRankingAccess = () => appStore.cachedPublicSettings?.usage_ranking_enabled !== false
@@ -851,7 +849,6 @@ watch(
 
 onMounted(() => {
   void refreshBatchImageAccess()
-  void refreshCreativeStudioAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
   }

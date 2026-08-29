@@ -7,11 +7,11 @@
     <AppHeader />
 
     <!-- Sidebar and Main Content Area -->
-    <AppSidebar />
+    <AppSidebar v-if="!hideSidebar" />
 
     <div
       class="relative z-10 min-h-screen min-w-0 pt-14 transition-all duration-300"
-      :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-56']"
+      :class="[hideSidebar ? '' : sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-56']"
     >
       <!-- Main Content -->
       <main
@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import '@/styles/onboarding.css'
 import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
@@ -46,7 +47,10 @@ import AppHeader from './AppHeader.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
+// 全屏工作区页面（如创作台）通过路由 meta 隐藏侧栏并取消内容区缩进。
+const hideSidebar = computed(() => route.meta.hideSidebar === true)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const { replayTour, startTeamTour } = useOnboardingTour({

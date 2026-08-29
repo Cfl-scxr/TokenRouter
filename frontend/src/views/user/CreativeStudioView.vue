@@ -1,12 +1,6 @@
 <template>
   <AppLayout>
     <div class="flex flex-col gap-4">
-      <!-- 隐私提示条 -->
-      <div class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
-        <Icon name="exclamationTriangle" size="sm" class="mt-0.5 flex-shrink-0" />
-        <p>{{ t('creative.privacyNotice') }}</p>
-      </div>
-
       <!-- 三栏工作区：桌面横排，移动端纵向堆叠 -->
       <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)]">
         <!-- 左：控制面板 -->
@@ -55,7 +49,7 @@
 
 <script setup lang="ts">
 /**
- * 创作台主视图：隐私提示 + 三栏工作区（控制面板 / 画布 / 结果与历史）。
+ * 创作台主视图：三栏工作区（控制面板 / 画布 / 结果与历史）。
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
 import { onMounted, ref } from 'vue'

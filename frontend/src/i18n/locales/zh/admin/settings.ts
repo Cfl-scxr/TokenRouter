@@ -121,6 +121,12 @@ dataSharing: {
           enabled: '启用数据共享',
           enabledHint: '关闭后隐藏相关页面入口，并阻止通过地址直接访问。'
         },
+        creative: {
+          title: '创作台',
+          description: '控制用户创作台页面是否开放。',
+          enabled: '启用创作台',
+          enabledHint: '关闭后隐藏创作台入口，模型列表返回为空并阻止创建任务。'
+        },
         riskControl: {
           title: '风控中心',
           description: '启用内容审计菜单和全端点请求审核入口。默认关闭。',

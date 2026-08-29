@@ -123,6 +123,12 @@ dataSharing: {
           enabled: 'Enable Data Sharing',
           enabledHint: 'When off, related page entries are hidden and direct URL access is blocked.'
         },
+        creative: {
+          title: 'Creative Studio',
+          description: 'Control whether the user-facing Creative Studio page is available.',
+          enabled: 'Enable Creative Studio',
+          enabledHint: 'When off, the studio entry is hidden, the model list is empty, and run creation is blocked.'
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

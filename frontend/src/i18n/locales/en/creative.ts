@@ -2,8 +2,6 @@ export default {
   creative: {
     title: 'Creative Studio',
     description: 'Generate and edit images with AI models; assets stay in this browser only.',
-    privacyNotice:
-      'Images are sent to the model provider you select. TokenRouter does not keep image content; originals, masks and results are stored only in this browser.',
     panel: {
       title: 'Create',
       model: 'Model',
@@ -25,6 +23,9 @@ export default {
       generate: 'Generate',
       generating: 'Submitting...',
       estimatedCost: 'Estimated cost: {cost}',
+      // 模型目录为空时的空态提示：区分功能被管理员关闭与分组未配置图片生成。
+      studioDisabled: 'Creative Studio is disabled. Please contact your administrator to enable it.',
+      noModelsAvailable: 'No image generation models are available. Please ask your administrator to configure a group with image generation enabled.',
     },
     operations: {
       generate: 'Generate',

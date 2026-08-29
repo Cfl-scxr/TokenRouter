@@ -699,6 +699,7 @@ export interface SystemSettings {
   // 页面功能开关
   team_enabled: boolean;
   data_sharing_enabled: boolean;
+  creative_enabled: boolean;
   risk_control_enabled: boolean;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
@@ -1015,6 +1016,7 @@ export interface UpdateSettingsRequest {
   // 页面功能开关
   team_enabled?: boolean;
   data_sharing_enabled?: boolean;
+  creative_enabled?: boolean;
   risk_control_enabled?: boolean;
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;

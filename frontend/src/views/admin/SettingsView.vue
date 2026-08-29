@@ -7481,6 +7481,30 @@
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.creative.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.creative.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.features.creative.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.creative.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.creative_enabled" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
                 {{ t("admin.settings.features.affiliate.title") }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -9753,6 +9777,7 @@ const form = reactive<SettingsForm>({
   // 页面功能开关默认开启，兼容升级前行为。
   team_enabled: true,
   data_sharing_enabled: true,
+  creative_enabled: true,
   risk_control_enabled: false,
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
@@ -11639,6 +11664,7 @@ async function saveSettings() {
       // 页面功能开关
       team_enabled: form.team_enabled,
       data_sharing_enabled: form.data_sharing_enabled,
+      creative_enabled: form.creative_enabled,
       risk_control_enabled: form.risk_control_enabled,
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds: Math.max(

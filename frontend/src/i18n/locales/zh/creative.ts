@@ -2,8 +2,6 @@ export default {
   creative: {
     title: '创作台',
     description: '使用 AI 模型生成与编辑图片，素材仅保存在当前浏览器。',
-    privacyNotice:
-      '图片会发送给你所选模型供应商，TokenRouter 不保存图片本体；原图、mask 与结果仅保存在当前浏览器。',
     panel: {
       title: '创作',
       model: '模型',
@@ -25,6 +23,9 @@ export default {
       generate: '开始生成',
       generating: '提交中...',
       estimatedCost: '预估费用：{cost}',
+      // 模型目录为空时的空态提示：区分功能被管理员关闭与分组未配置图片生成。
+      studioDisabled: '创作台功能已关闭，请联系管理员开启。',
+      noModelsAvailable: '暂无可用的图片生成模型，请联系管理员配置支持图片生成的分组。',
     },
     operations: {
       generate: '文生图',

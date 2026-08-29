@@ -258,10 +258,12 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      requiresCreative: true,
       title: 'Creative',
       titleKey: 'creative.title',
       descriptionKey: 'creative.description',
-      hidePageHeading: true
+      hidePageHeading: true,
+      hideSidebar: true
     }
   },
   {
@@ -904,6 +906,7 @@ router.beforeEach(async (to, _from, next) => {
     || to.meta.requiresTeam
     || to.meta.requiresDataSharing
     || to.meta.requiresUsageRanking
+    || to.meta.requiresCreative
   if (requiresPublicFeature && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
@@ -954,6 +957,15 @@ router.beforeEach(async (to, _from, next) => {
     to.meta.requiresUsageRanking &&
     appStore.publicSettingsLoaded &&
     appStore.cachedPublicSettings?.usage_ranking_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
+  if (
+    to.meta.requiresCreative &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.creative_enabled === false
   ) {
     next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
     return
