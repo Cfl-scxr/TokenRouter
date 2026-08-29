@@ -42,6 +42,16 @@
         >
           <Icon name="edit" size="sm" />
         </button>
+        <!-- 清除当前所有涂抹笔迹 -->
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :disabled="!hasMaskStrokes"
+          :title="t('creative.canvas.clearMask')"
+          @click="clearMask"
+        >
+          <Icon name="trash" size="sm" />
+        </button>
         <!-- 橡皮模式：拖动擦除碰到的笔迹（与涂抹互斥） -->
         <button
           type="button"
@@ -57,7 +67,7 @@
             <path d="m5 11 9 9" />
           </svg>
         </button>
-        <!-- 画笔粗细滑块：8–96 -->
+        <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高，避免轨道/滑块与相邻按钮重叠） -->
         <div class="flex items-center gap-1.5 px-1">
           <input
             v-model.number="brushSize"
@@ -65,7 +75,7 @@
             min="8"
             max="96"
             step="1"
-            class="w-16 cursor-pointer accent-primary-600 sm:w-24"
+            class="h-8 w-16 cursor-pointer accent-primary-500 sm:w-24"
             :title="t('creative.canvas.brushSize')"
           />
           <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
@@ -92,16 +102,6 @@
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="7" y="7" width="10" height="10" />
           </svg>
-        </button>
-        <!-- 清除当前所有涂抹笔迹 -->
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :disabled="!hasMaskStrokes"
-          :title="t('creative.canvas.clearMask')"
-          @click="clearMask"
-        >
-          <Icon name="trash" size="sm" />
         </button>
       </template>
 
@@ -189,8 +189,8 @@ const MAX_ZOOM = 3
 // 输出自动上板的排布参数
 const PLACE_GAP = 40
 const PLACE_WRAP_X = 2200
-// 上传图片的上板缩放：原始图过大，按 1/4 线性尺寸（1/16 面积）放置，blob 本身不变
-const UPLOAD_PLACE_SCALE = 0.25
+// 图片上板缩放（上传与生成输出统一）：原始图过大，按 1/4 线性尺寸（1/16 面积）放置，blob 本身不变
+const PLACE_SCALE = 0.25
 // 图片 src 在场景快照中的占位协议，恢复时回 IndexedDB 取 blob
 const ASSET_PROTOCOL = 'asset://'
 // mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
@@ -798,16 +798,24 @@ async function placeOutput(asset: { blob: Blob; runId: string; outputIndex: numb
   const assetKey = outputAssetKey(asset.runId, asset.outputIndex)
   runtimeBlobs.set(assetKey, asset.blob)
   try {
+    // 生成输出与上传图统一按 1/4 尺寸上板；排布、换行与视角定位均按缩放后尺寸计算
     const size = await probeImageSize(asset.blob)
-    const position = nextPlacementPoint(size.width, size.height)
-    const image = await addImageToScene(asset.blob, { assetKey, runId: asset.runId, outputIndex: asset.outputIndex }, position)
+    const placedWidth = size.width * PLACE_SCALE
+    const placedHeight = size.height * PLACE_SCALE
+    const position = nextPlacementPoint(placedWidth, placedHeight)
+    const image = await addImageToScene(
+      asset.blob,
+      { assetKey, runId: asset.runId, outputIndex: asset.outputIndex },
+      position,
+      PLACE_SCALE,
+    )
     if (!image) return
     lastPlaced = {
-      right: position.x + size.width,
+      right: position.x + placedWidth,
       top: position.y,
-      bottom: position.y + size.height,
+      bottom: position.y + placedHeight,
     }
-    panToScenePoint({ x: position.x + size.width / 2, y: position.y + size.height / 2 })
+    panToScenePoint({ x: position.x + placedWidth / 2, y: position.y + placedHeight / 2 })
     scheduleSceneSave()
   } catch (error) {
     console.error('Failed to place creative output:', error)
@@ -832,10 +840,10 @@ async function addUploadedImage(blob: Blob): Promise<void> {
   }
   runtimeBlobs.set(assetKey, blob)
   try {
-    // 上传图按 1/4 尺寸上板（原始 blob 不变，源图仍发全分辨率给模型）
+    // 上传图按 1/4 尺寸上板（与生成输出统一；原始 blob 不变，源图仍发全分辨率给模型）
     const size = await probeImageSize(blob)
     const center = viewCenterScene()
-    const scale = UPLOAD_PLACE_SCALE
+    const scale = PLACE_SCALE
     await addImageToScene(
       blob,
       { assetKey },
