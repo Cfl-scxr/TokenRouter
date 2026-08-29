@@ -52,19 +52,16 @@
         >
           <Icon name="trash" size="sm" />
         </button>
-        <!-- 橡皮模式：拖动擦除碰到的笔迹（与涂抹互斥） -->
+        <!-- 撤销上一笔涂抹（同 Ctrl/Cmd+Z） -->
         <button
           type="button"
           class="canvas-tool-btn"
-          :class="eraseMode && 'canvas-tool-btn-active'"
-          :disabled="!hasMaskStrokes && !eraseMode"
-          :title="t('creative.canvas.eraseMode')"
-          @click="toggleEraseMode"
+          :disabled="!canUndoMask"
+          :title="t('creative.canvas.undoMask')"
+          @click="undoMask"
         >
           <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
-            <path d="M22 21H7" />
-            <path d="m5 11 9 9" />
+            <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
           </svg>
         </button>
         <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高；轨道/滑块配色见 .brush-size） -->
@@ -257,8 +254,6 @@ const selectedImage = shallowRef<FabricObject | null>(null)
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
 const paintSuspended = ref(false)
-// 橡皮模式：与涂抹互斥，开启时暂停涂抹，拖动移除碰到的笔迹
-const eraseMode = ref(false)
 // 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
 let anchorOutline: Rect | null = null
 
@@ -267,8 +262,6 @@ let resizeObserver: ResizeObserver | null = null
 let sceneSaveTimer: ReturnType<typeof setTimeout> | null = null
 // 平移拖拽状态：pointerId 统一鼠标 / 触摸
 let isPanning = false
-// 橡皮拖拽状态：按住左键拖动连续擦除
-let isErasing = false
 let lastClientX = 0
 let lastClientY = 0
 // 平滑平移动画的 rAF 句柄
@@ -277,6 +270,13 @@ let panAnimFrame: number | null = null
 const runtimeBlobs = new Map<string, Blob>()
 // 上一个放置位置（场景坐标，right/bottom 为右缘 / 下缘）
 let lastPlaced: { right: number; top: number; bottom: number } | null = null
+// mask 笔迹撤销栈（LIFO，上限见 MASK_UNDO_LIMIT）：记录笔迹新增与整体清除
+type MaskUndoEntry =
+  | { type: 'add'; path: FabricObject }
+  | { type: 'clear'; paths: FabricObject[] }
+const maskUndoStack: MaskUndoEntry[] = []
+// mask 笔迹共享裁剪框（限制笔迹不画出目标图片；fabric 允许跨对象共享 clipPath 实例）
+let maskClipRect: Rect | null = null
 // 画笔模式下被锁定对象的原始交互状态
 let lockedStates: Map<FabricObject, { selectable: boolean; evented: boolean }> | null = null
 
@@ -343,27 +343,13 @@ function bindCanvasEvents(): void {
       if (isPanButton(event.e)) startPan(event.e)
       return
     }
-    if (eraseMode.value) {
-      if (isPanButton(event.e)) {
-        startPan(event.e)
-        return
-      }
-      isErasing = true
-      eraseMaskAt(event.e)
-      return
-    }
     if (event.target) return
     if (!isPrimaryPointer(event.e)) return
     startPan(event.e)
     canvas.discardActiveObject()
   })
   canvas.on('mouse:move', (event) => {
-    if (!canvas) return
-    if (isErasing) {
-      eraseMaskAt(event.e)
-      return
-    }
-    if (!isPanning) return
+    if (!canvas || !isPanning) return
     const client = clientPoint(event.e)
     const dx = client.x - lastClientX
     const dy = client.y - lastClientY
@@ -377,10 +363,7 @@ function bindCanvasEvents(): void {
     syncDotGrid()
     scheduleSceneSave()
   })
-  canvas.on('mouse:up', () => {
-    isErasing = false
-    stopPanning()
-  })
+  canvas.on('mouse:up', () => stopPanning())
   canvas.on('mouse:wheel', (event) => {
     if (!canvas) return
     event.e.preventDefault()
@@ -392,13 +375,17 @@ function bindCanvasEvents(): void {
     syncDotGrid()
     scheduleSceneSave()
   })
-  // 画笔落笔完成：标记为 mask 轨迹，画在图片上层、不参与选中
+  // 画笔落笔完成：标记为 mask 轨迹，画在图片上层、不参与选中；入撤销栈并套用图片范围裁剪
   canvas.on('path:created', (event) => {
     const path = event.path as FabricObject | undefined
     if (path && painting.value) {
       setObjectData(path, { kind: 'mask' })
       path.set({ selectable: false, evented: false })
+      if (maskClipRect) {
+        path.clipPath = maskClipRect
+      }
       hasMaskStrokes.value = true
+      pushMaskUndo({ type: 'add', path })
     }
     scheduleSceneSave()
   })
@@ -476,11 +463,17 @@ function pickImage(target: FabricObject | undefined): FabricObject | null {
   return target instanceof FabricImage ? target : null
 }
 
-// Delete / Backspace 删除选中对象（输入控件聚焦时不拦截；涂抹模式下不拦截，避免误删 mask 的锚定图片）
+// Delete / Backspace 删除选中对象；Ctrl / Cmd + Z 撤销上一笔涂抹（输入控件聚焦时不拦截）
 function onKeyDown(event: KeyboardEvent): void {
-  if (!canvas || painting.value || event.key !== 'Delete' && event.key !== 'Backspace') return
+  if (!canvas) return
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+    event.preventDefault()
+    undoMask()
+    return
+  }
+  if (painting.value || event.key !== 'Delete' && event.key !== 'Backspace') return
   const active = canvas.getActiveObject()
   if (!active) return
   event.preventDefault()
@@ -496,14 +489,12 @@ const isInpaint = computed(() => props.operation === 'inpaint')
 // 图生图模式（未选中源图时展示引导胶囊）
 const isEdit = computed(() => props.operation === 'edit')
 
-// 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记。
-// 换选同时退出橡皮模式，保证涂抹与橡皮互斥（否则两模式同开、落笔互相抢占）
+// 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记
 function onImageSelected(image: FabricObject | null): void {
   selectedImage.value = image
   if (image && isInpaint.value) {
     inpaintAnchor.value = image
     paintSuspended.value = false
-    eraseMode.value = false
   }
 }
 
@@ -531,6 +522,7 @@ function enterPainting(): void {
   if (!canvas || painting.value || !isInpaint.value || !inpaintAnchor.value) return
   painting.value = true
   lockAllObjects()
+  refreshMaskClip()
   canvas.freeDrawingBrush = makeBrush()
   canvas.isDrawingMode = true
   canvas.defaultCursor = 'crosshair'
@@ -577,46 +569,67 @@ function removeAnchorOutline(): void {
   anchorOutline = null
 }
 
-// 工具栏涂抹开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复；与橡皮互斥
+// 刷新 mask 笔迹的共享裁剪框：限制笔迹只能落在锚点图片的轴对齐包围盒内（场景坐标）。
+// 进入涂抹 / 换锚点时调用；锚点涂抹期间被锁定不会移动，无需持续刷新。
+function refreshMaskClip(): void {
+  maskClipRect = null
+  if (!canvas || !inpaintAnchor.value) return
+  const vpt = canvas.viewportTransform
+  const zoom = canvas.getZoom() || 1
+  // getBoundingRect 返回视口坐标，换算回场景坐标作为 absolutePositioned 裁剪框
+  const vp = inpaintAnchor.value.getBoundingRect()
+  maskClipRect = new Rect({
+    left: (vp.left - vpt[4]) / zoom,
+    top: (vp.top - vpt[5]) / zoom,
+    width: vp.width / zoom,
+    height: vp.height / zoom,
+  })
+  maskClipRect.absolutePositioned = true
+  // 局部变量收窄类型（forEach 闭包内无法收窄模块级 let）
+  const clip = maskClipRect
+  canvas.getObjects().forEach((object) => {
+    if (objectData(object).kind === 'mask') {
+      object.clipPath = clip
+    }
+  })
+}
+
+// 工具栏涂抹开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复
 function togglePainting(): void {
-  eraseMode.value = false
   paintSuspended.value = painting.value
 }
 
-// 工具栏橡皮开关：开启即暂停涂抹，拖动移除碰到的笔迹；关闭后恢复涂抹
-function toggleEraseMode(): void {
-  eraseMode.value = !eraseMode.value
-  if (eraseMode.value) {
-    paintSuspended.value = true
-    if (canvas) canvas.defaultCursor = 'cell'
-  } else {
-    paintSuspended.value = false
+// mask 撤销栈上限，防止长会话无限增长
+const MASK_UNDO_LIMIT = 50
+
+// 撤销是否可用（工具栏按钮置灰依据）
+const canUndoMask = ref(false)
+
+function pushMaskUndo(entry: MaskUndoEntry): void {
+  maskUndoStack.push(entry)
+  if (maskUndoStack.length > MASK_UNDO_LIMIT) {
+    maskUndoStack.shift()
   }
+  canUndoMask.value = true
 }
 
-// 切走操作时退出橡皮模式（watch 触发的 syncPainting 负责恢复光标与涂抹态）
-watch(isInpaint, (inpaint) => {
-  if (!inpaint) eraseMode.value = false
-})
-
-// 擦除视口坐标点命中的最上层 mask 笔迹（命中判定：笔迹包围盒加少量容差）
-function eraseMaskAt(event: Event): void {
+// 撤销上一笔：新增 → 移除该笔迹；清除 → 整体恢复被清除的笔迹
+function undoMask(): void {
   if (!canvas) return
-  const mouse = event as MouseEvent
-  const slop = 6
-  const masks = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
-  for (let i = masks.length - 1; i >= 0; i--) {
-    const rect = masks[i].getBoundingRect()
-    if (
-      mouse.offsetX >= rect.left - slop &&
-      mouse.offsetX <= rect.left + rect.width + slop &&
-      mouse.offsetY >= rect.top - slop &&
-      mouse.offsetY <= rect.top + rect.height + slop
-    ) {
-      canvas.remove(masks[i])
-      return
-    }
+  const entry = maskUndoStack.pop()
+  if (!entry) {
+    canUndoMask.value = false
+    return
   }
+  if (entry.type === 'add') {
+    canvas.remove(entry.path)
+  } else {
+    entry.paths.forEach((path) => canvas!.add(path))
+    hasMaskStrokes.value = true
+  }
+  canUndoMask.value = maskUndoStack.length > 0
+  canvas.requestRenderAll()
+  scheduleSceneSave()
 }
 
 function setBrushShape(shape: BrushShape): void {
@@ -629,14 +642,14 @@ watch(brushSize, (size) => {
   if (canvas?.freeDrawingBrush) canvas.freeDrawingBrush.width = size
 })
 
-// 清除全部 mask 笔迹
+// 清除全部 mask 笔迹（整体入撤销栈，可一步恢复）
 function clearMask(): void {
   if (!canvas) return
-  canvas
-    .getObjects()
-    .filter((object) => objectData(object).kind === 'mask')
-    .forEach((object) => canvas!.remove(object))
+  const paths = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
+  if (!paths.length) return
+  paths.forEach((object) => canvas!.remove(object))
   hasMaskStrokes.value = false
+  pushMaskUndo({ type: 'clear', paths })
 }
 
 function lockAllObjects(): void {
@@ -953,8 +966,9 @@ function resetCanvas(): void {
   stopPanAnim()
   inpaintAnchor.value = null
   paintSuspended.value = false
-  eraseMode.value = false
-  isErasing = false
+  maskUndoStack.length = 0
+  canUndoMask.value = false
+  maskClipRect = null
   exitPainting()
   removeAnchorOutline()
   canvas.discardActiveObject()

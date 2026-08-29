@@ -51,8 +51,8 @@ export default {
       // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
       paintToggleOn: '开始涂抹',
       paintToggleOff: '暂停涂抹，移动视角',
-      // 橡皮模式：拖动移除碰到的笔迹
-      eraseMode: '擦除笔迹',
+      // 撤销上一笔涂抹（同 Ctrl/Cmd+Z）
+      undoMask: '撤销上一笔',
       clearMask: '清除全部涂抹',
       downloadSelected: '下载选中图片',
       removeSelected: '移除选中图片',
