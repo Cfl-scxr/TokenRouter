@@ -43,7 +43,6 @@ func TestCreativeTransientStoreRoundTrip(t *testing.T) {
 		Model:       "gemini-3.1-flash-image",
 		Operation:   service.CreativeOperationInpaint,
 		Prompt:      "临时 prompt",
-		OutputCount: 2,
 		SourceCount: 2,
 		HasMask:     true,
 	}
@@ -51,7 +50,6 @@ func TestCreativeTransientStoreRoundTrip(t *testing.T) {
 	loaded, err := store.LoadPayload(ctx, runID)
 	require.NoError(t, err)
 	require.Equal(t, payload.Prompt, loaded.Prompt)
-	require.Equal(t, payload.OutputCount, loaded.OutputCount)
 
 	require.NoError(t, store.SaveInput(ctx, runID, 0, []byte("img0")))
 	require.NoError(t, store.SaveInput(ctx, runID, 1, []byte("img1")))

@@ -254,8 +254,6 @@ type CreativeConfig struct {
 	MaxAssetBytes int64 `mapstructure:"max_asset_bytes"`
 	// MaxTotalInputBytes 单次任务输入总大小上限（字节）。
 	MaxTotalInputBytes int64 `mapstructure:"max_total_input_bytes"`
-	// MaxOutputCount 单次任务最大输出数量（1-4）。
-	MaxOutputCount int `mapstructure:"max_output_count"`
 	// MaxPromptChars prompt 最大字符数。
 	MaxPromptChars              int    `mapstructure:"max_prompt_chars"`
 	DefaultResponseMimeType     string `mapstructure:"default_response_mime_type"`
@@ -2273,7 +2271,6 @@ func setDefaults() {
 	viper.SetDefault("creative.transient_ttl_seconds", 1800)
 	viper.SetDefault("creative.max_asset_bytes", 33554432)
 	viper.SetDefault("creative.max_total_input_bytes", 67108864)
-	viper.SetDefault("creative.max_output_count", 4)
 	viper.SetDefault("creative.max_prompt_chars", 8000)
 	viper.SetDefault("creative.default_response_mime_type", "image/png")
 	viper.SetDefault("creative.default_image_size", "1K")
@@ -3181,9 +3178,6 @@ func (c *Config) Validate() error {
 		}
 		if c.Creative.MaxTotalInputBytes < c.Creative.MaxAssetBytes {
 			return fmt.Errorf("creative.max_total_input_bytes cannot be smaller than creative.max_asset_bytes")
-		}
-		if c.Creative.MaxOutputCount < 1 || c.Creative.MaxOutputCount > 4 {
-			return fmt.Errorf("creative.max_output_count must be between 1 and 4")
 		}
 		if c.Creative.MaxPromptChars <= 0 {
 			return fmt.Errorf("creative.max_prompt_chars must be positive")

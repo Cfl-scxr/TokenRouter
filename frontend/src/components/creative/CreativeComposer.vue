@@ -111,21 +111,6 @@
                 </button>
               </div>
             </div>
-            <div>
-              <p class="param-label">{{ t('creative.panel.outputCount') }}</p>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="count in [1, 2, 3, 4]"
-                  :key="count"
-                  type="button"
-                  class="param-chip"
-                  :class="studio.outputCount.value === count && 'param-chip-active'"
-                  @click="setOutputCount(count)"
-                >
-                  {{ t('creative.panel.outputCountOption', { n: count }) }}
-                </button>
-              </div>
-            </div>
             <!-- 画质：仅 OpenAI 平台模型下发 qualities 时展示 -->
             <div v-if="studio.qualityOptions.value.length">
               <p class="param-label">{{ t('creative.panel.quality') }}</p>
@@ -312,10 +297,6 @@ function ratioPreviewStyle(ratio: string): { width: string; height: string } {
   const width = Math.min(22, Math.round(w * scale))
   const height = Math.min(22, Math.round(h * scale))
   return { width: `${width}px`, height: `${height}px` }
-}
-
-function setOutputCount(count: number): void {
-  studio.outputCount.value = count
 }
 
 // 画质选择（经别名写入，避免模板内联赋值触发 prop mutation 校验）

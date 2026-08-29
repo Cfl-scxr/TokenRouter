@@ -9,7 +9,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   CREATIVE_RUN_TERMINAL_STATUSES,
-  cancelCreativeRun,
   createCreativeRun,
   getCreativeModels,
   getCreativeRun,
@@ -43,7 +42,6 @@ interface CreativeSelectionSettings {
   operation: string
   imageSize: string
   aspectRatio: string
-  outputCount: number
   quality: string
 }
 
@@ -82,7 +80,6 @@ export function useCreativeStudio() {
   const prompt = ref('')
   const imageSize = ref('')
   const aspectRatio = ref('1:1')
-  const outputCount = ref(1)
   // 生图画质档位（low/medium/high），仅 OpenAI 平台模型可选，空串 = 不指定（上游默认）
   const quality = ref('')
   const currentRun = ref<CreativeRun | null>(null)
@@ -113,12 +110,18 @@ export function useCreativeStudio() {
   // 可选画质档位（模型不支持时为空，参数面板隐藏画质行）
   const qualityOptions = computed(() => selectedOption.value?.qualities ?? [])
 
-  // 估算费用：price_1k 为 1K 单价，2K 按两倍估算，供用户提交前参考
+  // 估算费用直接使用模型目录返回的档位价格，避免创作台与模型广场价格口径不一致。
   const estimatedCost = computed(() => {
     const option = selectedOption.value
-    if (!option || typeof option.price_1k !== 'number') return null
-    const sizeMultiplier = imageSize.value === '2K' ? 2 : 1
-    return option.price_1k * sizeMultiplier * outputCount.value
+    if (!option) return null
+    switch (imageSize.value) {
+      case '2K':
+        return option.price_2k
+      case '4K':
+        return option.price_4k
+      default:
+        return option.price_1k
+    }
   })
 
   const canGenerate = computed(() => {
@@ -158,7 +161,6 @@ export function useCreativeStudio() {
       if (saved.operation) operation.value = saved.operation
       if (saved.imageSize) imageSize.value = saved.imageSize
       if (saved.aspectRatio) aspectRatio.value = saved.aspectRatio
-      if (typeof saved.outputCount === 'number') outputCount.value = saved.outputCount
       if (typeof saved.quality === 'string') quality.value = saved.quality
       normalizeSelection()
     } catch (e) {
@@ -189,14 +191,13 @@ export function useCreativeStudio() {
 
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, outputCount, quality],
+    [selectedOptionKey, operation, imageSize, aspectRatio, quality],
     () => {
       const snapshot: CreativeSelectionSettings = {
         optionKey: selectedOptionKey.value,
         operation: operation.value,
         imageSize: imageSize.value,
         aspectRatio: aspectRatio.value,
-        outputCount: outputCount.value,
         quality: quality.value,
       }
       void saveSetting(SETTINGS_KEY, snapshot).catch(() => {
@@ -266,7 +267,6 @@ export function useCreativeStudio() {
       form.append('prompt', prompt.value)
       form.append('image_size', imageSize.value)
       form.append('aspect_ratio', aspectRatio.value)
-      form.append('output_count', String(outputCount.value))
       form.append('response_mime_type', 'image/png')
       // 画质仅 OpenAI 平台模型可选，非空才提交（空 = 上游默认）
       if (quality.value) {
@@ -419,32 +419,7 @@ export function useCreativeStudio() {
     }
   }
 
-  // ==================== 取消与清空 ====================
-
-  // 取消 queued/running 任务；不传 runId 时取消当前任务，传 runId 可取消历史中的进行中任务
-  async function cancelRun(runId?: string): Promise<boolean> {
-    const target = runId
-      ? (runHistory.value.find((r) => r.id === runId) ?? (currentRun.value?.id === runId ? currentRun.value : null))
-      : currentRun.value
-    if (!target || CREATIVE_RUN_TERMINAL_STATUSES.includes(target.status)) {
-      return false
-    }
-    try {
-      const run = await cancelCreativeRun(target.id)
-      // 无参取消（= 取消当前任务）沿用旧语义直接回写 currentRun；
-      // 指定 runId 时仅当取消的正是当前任务才回写并停止轮询
-      if (!runId || currentRun.value?.id === run.id) {
-        currentRun.value = run
-        stopPolling()
-      }
-      upsertRunInHistory(run)
-      await refreshHistory()
-      return true
-    } catch (e) {
-      error.value = extractErrorMessage(e) || t('creative.error.cancelFailed')
-      return false
-    }
-  }
+  // ==================== 本地数据 ====================
 
   // 清空本机创作数据（素材 + 场景 + 设置）并重置内存状态；
   // 同时记录清空时间水位线，此后的历史列表只展示该时间之后创建的服务端任务。
@@ -488,7 +463,6 @@ export function useCreativeStudio() {
     prompt,
     imageSize,
     aspectRatio,
-    outputCount,
     quality,
     currentRun,
     runHistory,
@@ -509,7 +483,6 @@ export function useCreativeStudio() {
     selectOption,
     createRun,
     refreshHistory,
-    cancelRun,
     clearLocalData,
     registerCanvasBridge,
     importOutputToCanvas,

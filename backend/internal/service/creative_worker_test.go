@@ -14,7 +14,7 @@ import (
 type creativeFakeExecutor struct {
 	result *CreativeExecuteResult
 	err    error
-	// onExecute 可在执行期间修改仓储状态（模拟取消竞争）。
+	// onExecute 可在执行期间修改仓储状态（模拟状态竞争）。
 	onExecute func(runID string)
 	calls     int
 }
@@ -91,7 +91,7 @@ func seedCreativeRun(f *creativeWorkerFixture, runID string, withPayload bool) {
 		{RunID: runID, OutputIndex: 0, Status: CreativeRunOutputStatusPending},
 	}
 	if withPayload {
-		f.store.payloads[runID] = &CreativeRunPayload{RunID: runID, Prompt: "p", OutputCount: 1}
+		f.store.payloads[runID] = &CreativeRunPayload{RunID: runID, Prompt: "p"}
 	}
 }
 
@@ -112,6 +112,7 @@ func TestCreativeWorkerSuccessPath(t *testing.T) {
 	require.Equal(t, CreativeRunStatusSucceeded, run.Status)
 	require.NotNil(t, run.AccountID)
 	require.Equal(t, int64(55), *run.AccountID)
+	require.Equal(t, 1, f.repo.setAccountN)
 	require.NotNil(t, run.ActualCost)
 	// 输出行进入 succeeded，临时输出已保存。
 	output := f.repo.outputs[runID][0]
@@ -170,7 +171,7 @@ func TestCreativeWorkerNonRetryableError(t *testing.T) {
 	require.Equal(t, 1, f.billing.releaseN)
 }
 
-// TestCreativeWorkerCancelRace 校验执行期间被取消：仍捕获计费，但保留 cancelled 终态。
+// TestCreativeWorkerCancelRace 校验执行期间进入 cancelled：仍捕获计费，但保留该终态。
 func TestCreativeWorkerCancelRace(t *testing.T) {
 	f := newCreativeWorkerFixture()
 	runID := "crun_workercancel001"
@@ -179,7 +180,7 @@ func TestCreativeWorkerCancelRace(t *testing.T) {
 		Outputs:   []CreativeOutput{{Index: 0, Bytes: []byte("img"), Mime: "image/png"}},
 		AccountID: 55,
 	}
-	// 模拟执行期间用户取消：execute 返回前把任务置为 cancelled 并释放预占。
+	// 模拟执行期间进入 cancelled：execute 返回前把任务置为 cancelled。
 	f.exec.onExecute = func(runID string) {
 		run := f.repo.runs[runID]
 		run.Status = CreativeRunStatusCancelled
@@ -217,7 +218,7 @@ func TestCreativeWorkerPayloadLost(t *testing.T) {
 	require.Equal(t, 0, f.billing.captureN)
 }
 
-// TestCreativeWorkerCancelBeforeExecute 校验执行前发现已取消：不调用上游，直接清理出队。
+// TestCreativeWorkerCancelBeforeExecute 校验执行前发现已 cancelled：不调用上游，直接清理出队。
 func TestCreativeWorkerCancelBeforeExecute(t *testing.T) {
 	f := newCreativeWorkerFixture()
 	runID := "crun_workerprecancel1"
@@ -228,7 +229,7 @@ func TestCreativeWorkerCancelBeforeExecute(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, result.Terminal)
 	require.Equal(t, 0, f.exec.calls)
-	// 任务在入队前已被用户取消并释放过预占：worker 只幂等清理，不重复释放。
+	// 任务在入队前已释放预占：worker 只幂等清理，不重复释放。
 	require.Equal(t, 0, f.billing.releaseN)
 }
 

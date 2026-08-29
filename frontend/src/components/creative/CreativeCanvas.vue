@@ -171,7 +171,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
-import { Canvas, FabricImage, PencilBrush, Point, Rect, StaticCanvas, type FabricObject, type TMat2D } from 'fabric'
+import { Canvas, FabricImage, PencilBrush, Point, Rect, StaticCanvas, Text as FabricText, type FabricObject, type TMat2D } from 'fabric'
 import { SquarePencilBrush } from './SquarePencilBrush'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
@@ -218,14 +218,38 @@ const MASK_COLOR = '#ffffff'
 const MASK_TINT = '#a855f7'
 const MASK_OPACITY = 0.55
 const MASK_PREVIEW_TINT = `rgba(168, 85, 247, ${MASK_OPACITY})`
-// 涂抹锚点描边 / 编辑参考图描边（运行时辅助对象，不进快照、不进 mask）
+// 涂抹锚点描边 / 编辑参考图描边 / 分辨率标记（运行时辅助对象，不进快照、不进 mask）
 const ANCHOR_OUTLINE_KIND = 'anchor-outline'
 const REF_OUTLINE_KIND = 'ref-outline'
+const RESOLUTION_TAG_KIND = 'resolution-tag'
 const ANCHOR_OUTLINE_STYLE = {
   fill: 'transparent',
   stroke: 'rgba(0, 210, 255, 0.7)',
   strokeWidth: 1.5,
   strokeDashArray: [6, 4],
+}
+// 选中图片右下角的分辨率标记（场景辅助对象，不参与交互与持久化）
+const RESOLUTION_TAG_PADDING_X = 5
+const RESOLUTION_TAG_PADDING_Y = 3
+const RESOLUTION_TAG_OFFSET = 8
+const RESOLUTION_TAG_TEXT_STYLE = {
+  fill: '#ffffff',
+  fontSize: 11,
+  fontFamily: 'sans-serif',
+  fontWeight: '500',
+  originX: 'left' as const,
+  originY: 'top' as const,
+  selectable: false,
+  evented: false,
+}
+const RESOLUTION_TAG_BACKGROUND_STYLE = {
+  fill: 'rgba(8, 12, 20, 0.78)',
+  rx: 4,
+  ry: 4,
+  originX: 'left' as const,
+  originY: 'top' as const,
+  selectable: false,
+  evented: false,
 }
 // 圆点网格的场景间距（px，缩放 1 时）
 const GRID_SPACING = 20
@@ -257,6 +281,68 @@ function objectData(object: FabricObject): Record<string, unknown> {
 function setObjectData(object: FabricObject, data: Record<string, unknown>): void {
   const target = object as unknown as ObjectWithData
   target.data = data
+}
+
+// 读取图片原始像素尺寸：优先使用快照中的数据，兼容旧场景则回退到图片元素本身
+function imageResolution(image: FabricImage): ImageResolution | null {
+  const stored = objectData(image).resolution
+  if (stored && typeof stored === 'object') {
+    const value = stored as { width?: unknown; height?: unknown }
+    const width = typeof value.width === 'number' ? Math.round(value.width) : 0
+    const height = typeof value.height === 'number' ? Math.round(value.height) : 0
+    if (width > 0 && height > 0) return { width, height }
+  }
+  const element = image.getElement() as Partial<HTMLImageElement>
+  const width = Math.round(Number(element.naturalWidth || element.width || 0))
+  const height = Math.round(Number(element.naturalHeight || element.height || 0))
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
+function removeResolutionTag(): void {
+  if (canvas && resolutionTag) {
+    canvas.remove(resolutionTag.background, resolutionTag.text)
+  }
+  resolutionTag = null
+}
+
+// 按图片场景包围盒右下角定位标记；对象处于 ActiveSelection 时先刷新绝对坐标
+function refreshResolutionTag(image: FabricImage | null): void {
+  if (!canvas || !image) {
+    removeResolutionTag()
+    return
+  }
+  const resolution = imageResolution(image)
+  if (!resolution) {
+    removeResolutionTag()
+    return
+  }
+  const label = `${resolution.width}x${resolution.height}`
+  if (!resolutionTag || resolutionTag.image !== image || resolutionTag.text.text !== label) {
+    removeResolutionTag()
+    const text = new FabricText(label, RESOLUTION_TAG_TEXT_STYLE)
+    const textWidth = text.width ?? 0
+    const textHeight = text.height ?? 0
+    const background = new Rect({
+      ...RESOLUTION_TAG_BACKGROUND_STYLE,
+      width: textWidth + RESOLUTION_TAG_PADDING_X * 2,
+      height: textHeight + RESOLUTION_TAG_PADDING_Y * 2,
+    })
+    setObjectData(background, { kind: RESOLUTION_TAG_KIND })
+    setObjectData(text, { kind: RESOLUTION_TAG_KIND })
+    canvas.add(background, text)
+    resolutionTag = { image, background, text }
+  }
+  image.setCoords()
+  const bounds = image.getBoundingRect()
+  const backgroundWidth = resolutionTag.background.width ?? 0
+  const backgroundHeight = resolutionTag.background.height ?? 0
+  const left = bounds.left + bounds.width - backgroundWidth - RESOLUTION_TAG_OFFSET
+  const top = bounds.top + bounds.height - backgroundHeight - RESOLUTION_TAG_OFFSET
+  resolutionTag.background.set({ left, top })
+  resolutionTag.text.set({ left: left + RESOLUTION_TAG_PADDING_X, top: top + RESOLUTION_TAG_PADDING_Y })
+  resolutionTag.background.setCoords()
+  resolutionTag.text.setCoords()
+  canvas.requestRenderAll()
 }
 
 // 返回当前会话中的全部 mask 路径；画笔路径位于独立画布，普通对象仍位于主画布
@@ -291,6 +377,8 @@ function removeMaskPath(path: FabricObject): void {
 }
 
 type BrushShape = 'round' | 'square'
+type ImageResolution = { width: number; height: number }
+type ResolutionTag = { image: FabricImage; background: Rect; text: FabricText }
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasElRef = ref<HTMLCanvasElement | null>(null)
@@ -319,6 +407,8 @@ const boxSelectMode = ref(false)
 let anchorOutline: Rect | null = null
 // 编辑参考图描边对象表：图片对象 → 描边矩形（运行时辅助）
 const refOutlines = new Map<FabricObject, Rect>()
+// 当前单选图片的分辨率标记
+let resolutionTag: ResolutionTag | null = null
 
 let canvas: Canvas | null = null
 // mask 使用独立静态画布，整层透明度只合成一次
@@ -492,17 +582,21 @@ function bindCanvasEvents(): void {
   })
   canvas.on('object:modified', () => {
     refreshRefOutlines()
+    refreshResolutionTag(selectedImage.value instanceof FabricImage ? selectedImage.value : null)
     scheduleSceneSave()
   })
   // 拖图 / 缩放 / 旋转过程持续同步参考图描边（这些操作只画 upper canvas）
   canvas.on('object:moving', () => {
     refreshRefOutlines()
+    refreshResolutionTag(selectedImage.value instanceof FabricImage ? selectedImage.value : null)
   })
   canvas.on('object:scaling', () => {
     refreshRefOutlines()
+    refreshResolutionTag(selectedImage.value instanceof FabricImage ? selectedImage.value : null)
   })
   canvas.on('object:rotating', () => {
     refreshRefOutlines()
+    refreshResolutionTag(selectedImage.value instanceof FabricImage ? selectedImage.value : null)
   })
   canvas.on('object:removed', (event) => {
     // 锚点图片被删除时同步清空，涂抹模式随之退出；参考图集合同步剔除
@@ -511,6 +605,9 @@ function bindCanvasEvents(): void {
     }
     if (event.target && editRefs.value.includes(event.target)) {
       editRefs.value = editRefs.value.filter((item) => item !== event.target)
+    }
+    if (event.target === resolutionTag?.image) {
+      removeResolutionTag()
     }
     if (!getMaskPaths().length) {
       hasMaskStrokes.value = false
@@ -530,7 +627,11 @@ function bindCanvasEvents(): void {
     // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空；
     // 编辑模式的参考图集合与选中态解耦，取消选中不影响已选参考
     if (!painting.value) {
+      removeResolutionTag()
       inpaintAnchor.value = null
+    } else {
+      // 涂抹期间活动选中态会被 Fabric 清掉，标签仍跟随当前涂抹锚点
+      refreshResolutionTag(inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null)
     }
   })
 }
@@ -612,6 +713,7 @@ const isEdit = computed(() => props.operation === 'edit')
 // 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记
 function onImageSelected(image: FabricObject | null): void {
   selectedImage.value = image
+  refreshResolutionTag(image instanceof FabricImage ? image : null)
   if (image && isInpaint.value) {
     inpaintAnchor.value = image
     paintSuspended.value = false
@@ -998,14 +1100,17 @@ async function addImageToScene(
       scaleX: scale,
       scaleY: scale,
     })
+    const resolution = imageResolution(image)
     setObjectData(image, {
       kind: 'image',
       assetKey: meta.assetKey,
+      ...(resolution ? { resolution } : {}),
       ...(meta.runId !== undefined ? { runId: meta.runId, outputIndex: meta.outputIndex } : {}),
     })
     canvas.add(image)
     canvas.setActiveObject(image)
     selectedImage.value = image
+    refreshResolutionTag(image)
     canvas.requestRenderAll()
     return image
   } catch (error) {
@@ -1208,6 +1313,7 @@ function resetCanvas(): void {
   paintSuspended.value = false
   editRefs.value = []
   if (boxSelectMode.value) setBoxSelectMode(false)
+  removeResolutionTag()
   refOutlines.clear()
   maskUndoStack.length = 0
   canUndoMask.value = false
@@ -1243,7 +1349,7 @@ function persistSceneNow(): void {
 }
 
 // 序列化（含自定义 data）：图片像素不进快照，src 用 asset://<assetKey> 占位；
-// 锚点/参考图描边是运行时辅助对象，不持久化
+// 锚点/参考图描边和分辨率标记是运行时辅助对象，不持久化
 function snapshotScene(): string {
   if (!canvas) return '{}'
   const json = canvas.toObject(['data']) as { objects?: Array<Record<string, unknown> & ObjectWithData> }
@@ -1257,6 +1363,7 @@ function snapshotScene(): string {
     (object) =>
       object.data?.kind !== ANCHOR_OUTLINE_KIND &&
       object.data?.kind !== REF_OUTLINE_KIND &&
+      object.data?.kind !== RESOLUTION_TAG_KIND &&
       object.data?.kind !== 'mask',
   )
   return JSON.stringify(json)
@@ -1274,7 +1381,11 @@ async function restoreScene(): Promise<void> {
     const restored: typeof objects = []
     for (const object of objects) {
       // 旧快照里可能残留锚点/参考图描边等运行时辅助对象，直接跳过
-      if (object.data?.kind === ANCHOR_OUTLINE_KIND || object.data?.kind === REF_OUTLINE_KIND) {
+      if (
+        object.data?.kind === ANCHOR_OUTLINE_KIND ||
+        object.data?.kind === REF_OUTLINE_KIND ||
+        object.data?.kind === RESOLUTION_TAG_KIND
+      ) {
         continue
       }
       // mask 笔迹是会话级草稿（退出画笔即丢弃），不应跨刷新复活：

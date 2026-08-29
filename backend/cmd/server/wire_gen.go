@@ -316,7 +316,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	creativeUserGroupRateRepository := service.ProvideCreativeUserGroupRateRepository(userGroupRateRepository)
 	creativeRunQueue := repository.NewCreativeQueue(redisClient, configConfig)
 	creativeTransientStore := repository.NewCreativeTransientStore(redisClient, configConfig)
-	creativePublicService := service.NewCreativePublicService(creativeRunRepository, creativeManagedKeyRepository, creativeUserRepository, creativeAccountRepository, creativeGroupRepository, creativeUserGroupRateRepository, creativeRunQueue, creativeTransientStore, usageBillingRepository, usageLogRepository, billingService, contentModerationService, apiKeyAuthCacheInvalidator, settingService, configConfig)
+	creativePublicService := service.NewCreativePublicService(creativeRunRepository, creativeManagedKeyRepository, creativeUserRepository, creativeAccountRepository, creativeGroupRepository, creativeUserGroupRateRepository, creativeRunQueue, creativeTransientStore, usageBillingRepository, usageLogRepository, billingService, modelPricingResolver, contentModerationService, apiKeyAuthCacheInvalidator, settingService, configConfig)
 	creativeHandler := handler.NewCreativeHandler(creativePublicService)
 	handlerTeamHandler := handler.NewTeamHandler(teamService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)

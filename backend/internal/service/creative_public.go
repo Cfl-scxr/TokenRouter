@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	defaultCreativeMaxOutputCount = 4
 	defaultCreativeMaxPromptChars = 8000
 	defaultCreativeResponseMime   = "image/png"
 	defaultCreativeImageSize      = "1K"
@@ -36,7 +35,7 @@ const (
 // ErrCreativeContentBlocked 是内容审核命中后的拒绝错误。
 var ErrCreativeContentBlocked = infraerrors.New(403, "CREATIVE_CONTENT_BLOCKED", "creative content failed moderation")
 
-// CreativePublicService 是创作台的用户侧服务：模型列表、任务创建、查询、取消与输出获取。
+// CreativePublicService 是创作台的用户侧服务：模型列表、任务创建、查询与输出获取。
 type CreativePublicService struct {
 	Repo              CreativeRunRepository
 	ApiKeyRepo        CreativeManagedKeyRepository
@@ -49,6 +48,7 @@ type CreativePublicService struct {
 	BillingRepo       UsageBillingRepository
 	UsageLogRepo      UsageLogRepository
 	Pricing           *BillingService
+	PricingResolver   *ModelPricingResolver
 	Moderation        *ContentModerationService
 	AuthCache         APIKeyAuthCacheInvalidator
 	Settings          CreativeSettingReader
@@ -102,6 +102,7 @@ func NewCreativePublicService(
 	billingRepo UsageBillingRepository,
 	usageLogRepo UsageLogRepository,
 	pricing *BillingService,
+	pricingResolver *ModelPricingResolver,
 	moderation *ContentModerationService,
 	authCache APIKeyAuthCacheInvalidator,
 	settings CreativeSettingReader,
@@ -119,6 +120,7 @@ func NewCreativePublicService(
 		BillingRepo:       billingRepo,
 		UsageLogRepo:      usageLogRepo,
 		Pricing:           pricing,
+		PricingResolver:   pricingResolver,
 		Moderation:        moderation,
 		AuthCache:         authCache,
 		Settings:          settings,
@@ -180,7 +182,7 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 		}
 		sort.Strings(modelNames)
 		for _, model := range modelNames {
-			// 尺寸按“分组+模型”解析：分组未配置图片价时回退平台默认档位。
+			// 尺寸按“分组+模型”解析：渠道/分组未配置覆盖价时回退平台默认档位。
 			imageSizes := creativeImageSizesForGroupModel(group, model)
 			if len(imageSizes) == 0 {
 				continue
@@ -192,22 +194,48 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 				Operations: operations,
 				ImageSizes: imageSizes,
 				Qualities:  creativeQualitiesForPlatform(group.Platform),
-				Price1K:    s.creativePrice1K(group, model),
+				Price1K:    s.creativePrice(ctx, group, model, "1K"),
+				Price2K:    s.creativePrice(ctx, group, model, "2K"),
+				Price4K:    s.creativePrice(ctx, group, model, "4K"),
 			})
 		}
 	}
 	return out, nil
 }
 
-// creativePrice1K 返回 1K 档位展示价格：分组显式价优先，未配置时按默认价解析（与网关计费一致）。
-func (s *CreativePublicService) creativePrice1K(group *Group, model string) float64 {
-	if group != nil && group.ImagePrice1K != nil {
-		return *group.ImagePrice1K
+// creativePrice 返回指定尺寸的展示单价：统一定价优先，并乘模型广场使用的分组图片倍率。
+func (s *CreativePublicService) creativePrice(ctx context.Context, group *Group, model, imageSize string) float64 {
+	if unitPrice, ok := s.creativeResolvedImageUnitPrice(ctx, group, model, imageSize); ok {
+		return unitPrice * marketplaceImageRateMultiplier(group)
+	}
+	if group != nil {
+		if price := group.GetImagePrice(imageSize); price != nil {
+			return *price * marketplaceImageRateMultiplier(group)
+		}
 	}
 	if s.Pricing == nil {
 		return 0
 	}
-	return s.Pricing.CalculateImageCost(model, "1K", 1, nil, 1).TotalCost
+	return s.Pricing.CalculateImageCost(model, imageSize, 1, nil, 1).TotalCost * marketplaceImageRateMultiplier(group)
+}
+
+// creativeResolvedImageUnitPrice 从统一定价解析器读取渠道或分组的图片单价。
+func (s *CreativePublicService) creativeResolvedImageUnitPrice(ctx context.Context, group *Group, model, imageSize string) (float64, bool) {
+	if s == nil || s.PricingResolver == nil || group == nil {
+		return 0, false
+	}
+	groupID := group.ID
+	resolved := s.PricingResolver.Resolve(ctx, PricingInput{Model: model, GroupID: &groupID, Group: group})
+	if resolved == nil || (resolved.Mode != BillingModeImage && resolved.Mode != BillingModePerRequest) {
+		return 0, false
+	}
+	if price, ok := s.PricingResolver.GetRequestTierPriceValue(resolved, imageSize); ok {
+		return price, true
+	}
+	if resolved.DefaultPerRequestPrice > 0 || (resolved.channelPricing != nil && resolved.channelPricing.PerRequestPrice != nil) {
+		return resolved.DefaultPerRequestPrice, true
+	}
+	return 0, false
 }
 
 // creativeOperationsForPlatform 返回分组平台支持的操作集合。
@@ -242,12 +270,12 @@ func creativeImageSizesForGroup(group *Group) []string {
 }
 
 // creativeDefaultImageSizesForPlatform 返回分组未配置图片价时的平台默认尺寸档位，
-// 与网关按默认价计费的口径一致：openai 上游支持 1024/1536 两档（2K 映射 1536，4K 无更高分辨率不开放），
+// 与网关按默认价计费的口径一致：OpenAI GPT Image 2 支持 1K/2K/4K 三档，
 // grok 支持 1K/2K，gemini 原生支持 1K/2K/4K。
 func creativeDefaultImageSizesForPlatform(platform string) []string {
 	switch strings.TrimSpace(platform) {
 	case PlatformOpenAI:
-		return []string{"1K", "2K"}
+		return []string{"1K", "2K", "4K"}
 	case PlatformGrok:
 		return []string{"1K", "2K"}
 	case PlatformGemini:
@@ -265,16 +293,37 @@ func creativeQualitiesForPlatform(platform string) []string {
 	return nil
 }
 
-// creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位：
-// 分组显式配置了图片价时按配置返回；未配置时回退平台默认档位（按默认价计费，与网关一致）。
+// creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位。
+// 分组显式配置了图片价时按配置返回；GPT Image 2 的 4K 缺少覆盖价时仍回退默认价开放。
 func creativeImageSizesForGroupModel(group *Group, model string) []string {
 	if sizes := creativeImageSizesForGroup(group); len(sizes) > 0 {
+		if group != nil && group.Platform == PlatformOpenAI && isCreativeGPTImage2Model(model) && !containsCreativeImageSize(sizes, "4K") {
+			// GPT Image 2 支持 4K；分组未填写 4K 价格时沿用模型默认价，不因缺少覆盖值隐藏能力。
+			return append(sizes, "4K")
+		}
 		return sizes
 	}
 	if group == nil {
 		return nil
 	}
-	return creativeDefaultImageSizesForPlatform(group.Platform)
+	sizes := creativeDefaultImageSizesForPlatform(group.Platform)
+	if group.Platform == PlatformOpenAI && !isCreativeGPTImage2Model(model) {
+		return []string{"1K", "2K"}
+	}
+	return sizes
+}
+
+func isCreativeGPTImage2Model(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-2")
+}
+
+func containsCreativeImageSize(sizes []string, target string) bool {
+	for _, size := range sizes {
+		if size == target {
+			return true
+		}
+	}
+	return false
 }
 
 // creativeModelsForGroup 从分组可调度的账号映射中收集图片模型。
@@ -521,7 +570,6 @@ func (s *CreativePublicService) saveRunTransient(ctx context.Context, run *Creat
 		Prompt:             validated.prompt,
 		ImageSize:          run.ImageSize,
 		AspectRatio:        run.AspectRatio,
-		OutputCount:        run.RequestedOutputCount,
 		ResponseMIMEType:   run.ResponseMIMEType,
 		Quality:            validated.quality,
 		SourceCount:        len(validated.sources),
@@ -595,13 +643,8 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		return nil, ErrCreativePromptTooLong
 	}
 
-	outputCount := params.OutputCount
-	if outputCount == 0 {
-		outputCount = 1
-	}
-	if outputCount < 1 || outputCount > s.maxOutputCount() {
-		return nil, ErrCreativeInvalidParams
-	}
+	// 创作台一次提交固定生成一张，多张图片通过重复提交任务获取。
+	outputCount := 1
 
 	imageSize := strings.TrimSpace(params.ImageSize)
 	if imageSize == "" {
@@ -702,7 +745,6 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		ImageSize:        imageSize,
 		AspectRatio:      aspectRatio,
 		Quality:          quality,
-		OutputCount:      outputCount,
 		ResponseMIMEType: responseMIME,
 	})
 	return &validatedCreativeParams{
@@ -793,7 +835,6 @@ type creativeFingerprintPayload struct {
 	ImageSize        string   `json:"image_size"`
 	AspectRatio      string   `json:"aspect_ratio"`
 	Quality          string   `json:"quality,omitempty"`
-	OutputCount      int      `json:"output_count"`
 	ResponseMIMEType string   `json:"response_mime_type"`
 }
 
@@ -924,11 +965,14 @@ func (s *CreativePublicService) resolveCreativePricing(ctx context.Context, user
 		Price4K: group.ImagePrice4K,
 	}
 	baseUnitPrice := 0.0
-	if unit := group.GetImagePrice(validated.imageSize); unit != nil && *unit >= 0 {
-		baseUnitPrice = *unit
-	}
 	estimatedCost := 0.0
-	if s.Pricing != nil {
+	if resolvedUnitPrice, ok := s.creativeResolvedImageUnitPrice(ctx, group, validated.model, validated.imageSize); ok {
+		baseUnitPrice = resolvedUnitPrice
+		estimatedCost = resolvedUnitPrice * float64(validated.outputCount) * effective
+	} else if unit := group.GetImagePrice(validated.imageSize); unit != nil && *unit >= 0 {
+		baseUnitPrice = *unit
+		estimatedCost = baseUnitPrice * float64(validated.outputCount) * effective
+	} else if s.Pricing != nil {
 		breakdown := s.Pricing.CalculateImageCost(validated.model, validated.imageSize, validated.outputCount, imagePriceConfig, effective)
 		estimatedCost = breakdown.ActualCost
 		if validated.outputCount > 0 {
@@ -989,7 +1033,7 @@ func (s *CreativePublicService) ensureCreativeManagedKey(ctx context.Context, us
 }
 
 // ---------------------------------------------------------------------------
-// 查询 / 取消 / 输出
+// 查询 / 输出
 // ---------------------------------------------------------------------------
 
 func (s *CreativePublicService) getRunPublic(ctx context.Context, runID string) (*CreativeRunPublic, error) {
@@ -1045,40 +1089,6 @@ func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filt
 		data = append(data, CreativeRunToPublic(run, outputs))
 	}
 	return &CreativeListRunsResponse{Data: data, HasMore: len(data) == filter.Limit}, nil
-}
-
-// CancelRun 取消 queued/running 任务：置 cancelled + 释放预占 + 清理暂存；终态返回 409。
-func (s *CreativePublicService) CancelRun(ctx context.Context, userID int64, runID string) (*CreativeRunPublic, error) {
-	if !s.enabled(ctx) {
-		return nil, ErrCreativeDisabled
-	}
-	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
-	if err != nil {
-		return nil, err
-	}
-	if IsTerminalCreativeRunStatus(run.Status) {
-		return nil, ErrCreativeRunNotCancellable
-	}
-	if err := s.Repo.TransitionCreativeRunStatus(ctx, run.RunID, CreativeRunStatusCancelled, CreativeRunTransitionOptions{}); err != nil {
-		return nil, err
-	}
-	if err := releaseCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
-		logger.L().Warn("creative.cancel_release_failed",
-			zap.String("run_id", run.RunID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-	s.invalidateCreativeAuthCache(ctx, userID)
-	if s.TransientStore != nil {
-		if err := s.TransientStore.DeleteRunTransient(ctx, run.RunID, 0, run.RequestedOutputCount); err != nil {
-			logger.L().Warn("creative.cancel_transient_cleanup_failed",
-				zap.String("run_id", run.RunID),
-				zap.Error(err),
-			)
-		}
-	}
-	return s.GetRun(ctx, userID, runID)
 }
 
 // CreativeOutputContent 是输出内容的返回结构。
@@ -1228,7 +1238,7 @@ type CreativeOutputResult struct {
 
 // SucceedRun 结算成功路径：保存临时输出 → 捕获实际费用 → 写 usage_logs → 终态 succeeded。
 // 幂等：重复调用或任务已终态时直接返回，不重复扣费。
-// 执行期间被用户取消（状态已是 cancelled）时：仍按 provider 实际成功结果捕获并记录用量，
+// 任务在执行期间进入 cancelled 时：仍按 provider 实际成功结果捕获并记录用量，
 // 但保留 cancelled 终态，不覆盖为 succeeded。
 func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, accountID int64, results []CreativeOutputResult) (*CreativeRunPublic, error) {
 	if s == nil || s.Repo == nil {
@@ -1244,6 +1254,11 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 		return s.getRunPublic(ctx, runID)
 	}
 	if accountID > 0 {
+		if run.AccountID == nil || *run.AccountID != accountID {
+			if err := s.Repo.SetCreativeRunAccountID(ctx, runID, accountID, time.Now()); err != nil {
+				return nil, err
+			}
+		}
 		run.AccountID = &accountID
 	}
 	transientTTL := s.transientTTL()
@@ -1272,7 +1287,7 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 			return nil, err
 		}
 	}
-	if run.AccountID == nil {
+	if run.AccountID == nil || *run.AccountID <= 0 {
 		// 执行账号是 usage_logs 的必填上下文；缺失时保持未结算而不是写脏数据。
 		return nil, ErrBatchImageSettlementMissingAccountID
 	}
@@ -1286,7 +1301,7 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 		actualCost = *run.ActualCost
 	}
 	if keepCancelled {
-		// 执行期间被用户取消：资金已按实际成功结果捕获、用量已记录，
+		// 任务在执行期间进入 cancelled：资金已按实际成功结果捕获、用量已记录，
 		// 但任务终态保持 cancelled，绝不回写为 succeeded。
 		return s.getRunPublic(ctx, runID)
 	}
@@ -1343,7 +1358,7 @@ func (s *CreativePublicService) FailRun(ctx context.Context, runID, errorCode, e
 	return nil
 }
 
-// CancelRunByWorker 是 worker 侧的取消入口（如执行前发现任务已被用户取消）。
+// CancelRunByWorker 是 worker 侧处理既有 cancelled 状态的入口。
 func (s *CreativePublicService) CancelRunByWorker(ctx context.Context, runID string) error {
 	if s == nil || s.Repo == nil {
 		return nil
@@ -1461,13 +1476,6 @@ func (s *CreativePublicService) recordCreativeUsageLog(ctx context.Context, run 
 // ---------------------------------------------------------------------------
 // 配置访问 helper
 // ---------------------------------------------------------------------------
-
-func (s *CreativePublicService) maxOutputCount() int {
-	if s != nil && s.Config != nil && s.Config.Creative.MaxOutputCount > 0 {
-		return s.Config.Creative.MaxOutputCount
-	}
-	return defaultCreativeMaxOutputCount
-}
 
 func (s *CreativePublicService) maxPromptChars() int {
 	if s != nil && s.Config != nil && s.Config.Creative.MaxPromptChars > 0 {

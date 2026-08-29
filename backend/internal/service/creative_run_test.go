@@ -81,7 +81,6 @@ func TestBuildCreativeRequestFingerprint(t *testing.T) {
 		ImageSHA256:      []string{sha256Hex([]byte("img"))},
 		ImageSize:        "1K",
 		AspectRatio:      "1:1",
-		OutputCount:      2,
 		ResponseMIMEType: "image/png",
 	}
 	first := buildCreativeRequestFingerprint(base)
@@ -91,10 +90,6 @@ func TestBuildCreativeRequestFingerprint(t *testing.T) {
 	changedPrompt := base
 	changedPrompt.PromptSHA256 = sha256Hex([]byte("world"))
 	require.NotEqual(t, first, buildCreativeRequestFingerprint(changedPrompt))
-
-	changedCount := base
-	changedCount.OutputCount = 3
-	require.NotEqual(t, first, buildCreativeRequestFingerprint(changedCount))
 
 	changedGroup := base
 	changedGroup.GroupID = 13

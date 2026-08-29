@@ -52,15 +52,6 @@
                 {{ t(`creative.status.${run.status}`, run.status) }}
               </span>
               <span class="min-w-0 flex-1 truncate text-xs text-gray-600 dark:text-gray-300">{{ run.model }}</span>
-              <button
-                v-if="isActive(run)"
-                type="button"
-                class="flex-shrink-0 text-gray-400 transition-colors hover:text-red-500"
-                :title="t('creative.history.cancel')"
-                @click.stop="cancel(run.id)"
-              >
-                <Icon name="xCircle" size="sm" />
-              </button>
               <Icon
                 name="chevronDown"
                 size="sm"
@@ -74,12 +65,18 @@
             </div>
           </button>
 
-          <!-- 原地向下展开：显示本地图片，提供导入画布 / 下载 -->
+          <!-- 进行中的任务只显示加载状态，终态任务才显示素材与操作按钮。 -->
           <div
             v-if="expandedRunId === run.id"
             class="space-y-2 border-t border-primary-900/10 px-3 pb-3 pt-2 dark:border-dark-600"
           >
-            <template v-if="run.outputs?.length">
+            <div v-if="isActive(run)" class="flex items-center gap-3 py-2 text-xs text-gray-500 dark:text-dark-300">
+              <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950">
+                <Icon name="refresh" size="md" class="animate-spin text-primary-500" />
+              </div>
+              <span>{{ t(`creative.status.${run.status}`, run.status) }}</span>
+            </div>
+            <template v-else-if="run.outputs?.length">
               <div v-for="output in run.outputs" :key="output.output_index" class="flex items-center gap-2">
                 <div
                   class="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950"
@@ -132,9 +129,9 @@
 /**
  * 创作 run 历史（悬浮层）：
  * - 画布右上角图标按钮展开 / 收起；列表每行 = 状态徽章 + 模型名 + 时间（+ 实际费用）
- * - 点击行原地向下展开：显示本地保存的输出图片，提供「导入到画布」和「下载」；
+ * - 点击行原地向下展开：终态任务显示本地保存的输出图片，提供「导入到画布」和「下载」；
  *   本地素材缺失时按钮禁用并展示缺失占位
- * - 进行中的任务行内提供取消按钮（可取消历史里的任意进行中任务）
+ * - 进行中的任务只展示加载状态，不提供素材操作或取消入口
  */
 import { h, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -245,10 +242,6 @@ function formatRunTime(timestamp: number | undefined): string {
   if (!timestamp) return ''
   const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp
   return formatDateTime(new Date(ms))
-}
-
-async function cancel(runId: string): Promise<void> {
-  await studio.cancelRun(runId)
 }
 
 function refresh(): void {

@@ -12,7 +12,6 @@ vi.mock('@/i18n', () => ({
 import { apiClient } from '@/api/client'
 import {
   ackCreativeRunOutput,
-  cancelCreativeRun,
   createCreativeRun,
   getCreativeRun,
   getCreativeRunOutputContent,
@@ -136,7 +135,7 @@ describe('creative API', () => {
     })
   })
 
-  describe('getCreativeRun / ackCreativeRunOutput / cancelCreativeRun', () => {
+  describe('getCreativeRun / ackCreativeRunOutput', () => {
     it('查询单个 run 详情', async () => {
       adapter.mockResolvedValue(jsonResponse({ id: 'run-4', status: 'running' }))
 
@@ -158,15 +157,5 @@ describe('creative API', () => {
       expect(config.url).toBe('/creative/runs/run-4/outputs/1/ack')
     })
 
-    it('取消进行中的 run', async () => {
-      adapter.mockResolvedValue(jsonResponse({ id: 'run-4', status: 'cancelled' }))
-
-      const run = await cancelCreativeRun('run-4')
-
-      expect(run.status).toBe('cancelled')
-      const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
-      expect(config.method).toBe('post')
-      expect(config.url).toBe('/creative/runs/run-4/cancel')
-    })
   })
 })

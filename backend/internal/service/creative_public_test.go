@@ -27,6 +27,7 @@ type creativeFakeRunRepo struct {
 	createErr    error
 	createParams []CreateCreativeRunParams
 	transition   []string
+	setAccountN  int
 }
 
 func newCreativeFakeRunRepo() *creativeFakeRunRepo {
@@ -149,8 +150,22 @@ func (r *creativeFakeRunRepo) MarkCreativeRunRunning(ctx context.Context, runID 
 		return ErrCreativeInvalidTransition
 	}
 	run.Status = CreativeRunStatusRunning
-	run.AccountID = &accountID
+	if accountID > 0 {
+		run.AccountID = &accountID
+	}
 	run.StartedAt = &now
+	return nil
+}
+
+func (r *creativeFakeRunRepo) SetCreativeRunAccountID(ctx context.Context, runID string, accountID int64, now time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return ErrCreativeRunNotFound
+	}
+	if accountID > 0 {
+		run.AccountID = &accountID
+		r.setAccountN++
+	}
 	return nil
 }
 
@@ -541,7 +556,6 @@ func newCreativeTestService() *CreativePublicService {
 				TransientTTLSeconds:     1800,
 				MaxAssetBytes:           33554432,
 				MaxTotalInputBytes:      67108864,
-				MaxOutputCount:          4,
 				MaxPromptChars:          8000,
 				DefaultResponseMimeType: "image/png",
 				DefaultImageSize:        "1K",
@@ -566,7 +580,6 @@ func validCreateParams() CreateCreativeRunParamsPublic {
 		Operation:    CreativeOperationGenerate,
 		Prompt:       "画一只猫",
 		ImageSize:    "1K",
-		OutputCount:  1,
 		ResponseMIME: "image/png",
 	}
 }
@@ -607,14 +620,6 @@ func TestValidateCreateParams(t *testing.T) {
 		params.Operation = CreativeOperationInpaint
 		_, err := svc.validateCreateParams(context.Background(), 7, &params)
 		require.ErrorIs(t, err, ErrCreativeOperationUnsupported)
-	})
-
-	t.Run("输出数量超出上限", func(t *testing.T) {
-		svc := newCreativeTestService()
-		params := validCreateParams()
-		params.OutputCount = 5
-		_, err := svc.validateCreateParams(context.Background(), 7, &params)
-		require.ErrorIs(t, err, ErrCreativeInvalidParams)
 	})
 
 	t.Run("prompt 超长", func(t *testing.T) {
@@ -705,7 +710,6 @@ func TestValidateCreateParams(t *testing.T) {
 		params := validCreateParams()
 		params.Operation = CreativeOperationInpaint
 		params.ImageSize = ""
-		params.OutputCount = 0
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
 		params.Mask = &CreativeInputImage{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}
 		validated, err := svc.validateCreateParams(context.Background(), 7, &params)

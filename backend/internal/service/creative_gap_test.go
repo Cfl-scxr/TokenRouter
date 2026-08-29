@@ -64,9 +64,6 @@ func TestCreativeOwnershipEnforced(t *testing.T) {
 	err = svc.AckOutput(ctx, 7, runID, 0)
 	require.ErrorIs(t, err, ErrCreativeRunNotFound)
 
-	_, err = svc.CancelRun(ctx, 7, runID)
-	require.ErrorIs(t, err, ErrCreativeRunNotFound)
-
 	// 本人访问不受影响。
 	got, err := svc.GetRun(ctx, 99, runID)
 	require.NoError(t, err)
@@ -287,6 +284,7 @@ func TestCreativeListModelsFiltersAndContent(t *testing.T) {
 		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
 		require.Equal(t, []string{"1K", "2K"}, item.ImageSizes)
 		require.InDelta(t, 0.02, item.Price1K, 1e-9)
+		require.InDelta(t, 0.04, item.Price2K, 1e-9)
 		require.Equal(t, "gemini-3.1-flash-image", item.Model)
 	}
 }
@@ -305,7 +303,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	groupRepo := svc.GroupRepo.(*creativeFakeGroupRepo)
 	accountRepo := svc.AccountRepo.(*creativeFakeAccountRepo)
 
-	// openai 分组：无显式图片价、账号无映射 → 候选回退 + 尺寸回退 ["1K","2K"]（2K 映射 1536）。
+	// openai 分组：无显式图片价、账号无映射 → 候选回退 + GPT Image 2 支持三档尺寸。
 	openaiGroup := newCreativeTestGroup()
 	openaiGroup.ID = 21
 	openaiGroup.Name = "ChatGPT Image"
@@ -388,14 +386,15 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		byGroup[item.GroupID] = append(byGroup[item.GroupID], item)
 	}
 
-	// openai 无映射回退：两个候选模型、1K/2K 档位（2K 映射 1536）、默认价大于 0。
+	// openai 无映射回退：两个候选模型、默认价大于 0；GPT Image 2 额外开放 4K。
 	require.Len(t, byGroup[21], 2)
 	for _, item := range byGroup[21] {
-		require.Equal(t, []string{"1K", "2K"}, item.ImageSizes)
 		require.Equal(t, []string{"low", "medium", "high"}, item.Qualities)
 		require.Greater(t, item.Price1K, 0.0)
 		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
 	}
+	require.Equal(t, []string{"1K", "2K"}, byModel(byGroup[21], "gpt-image-1").ImageSizes)
+	require.Equal(t, []string{"1K", "2K", "4K"}, byModel(byGroup[21], "gpt-image-2").ImageSizes)
 	require.ElementsMatch(t, []string{"gpt-image-1", "gpt-image-2"},
 		[]string{byGroup[21][0].Model, byGroup[21][1].Model})
 
@@ -413,11 +412,43 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.Equal(t, []string{"1K", "2K"}, byGroup[23][0].ImageSizes)
 	require.Equal(t, []string{"generate"}, byGroup[23][0].Operations)
 
-	// 显式价格优先：只返回配置的 1K 档与分组价。
+	// GPT Image 2 即使未配置 4K 覆盖价，也开放 4K 并回退默认价格。
 	require.Len(t, byGroup[24], 1)
 	require.Equal(t, "gpt-image-2", byGroup[24][0].Model)
-	require.Equal(t, []string{"1K"}, byGroup[24][0].ImageSizes)
+	require.Equal(t, []string{"1K", "4K"}, byGroup[24][0].ImageSizes)
 	require.InDelta(t, 0.02, byGroup[24][0].Price1K, 1e-9)
+}
+
+func byModel(models []CreativeModelPublic, model string) CreativeModelPublic {
+	for _, item := range models {
+		if item.Model == model {
+			return item
+		}
+	}
+	return CreativeModelPublic{}
+}
+
+// TestCreativePricingUsesResolvedChannelPrice 校验创作台与模型广场共用渠道图片定价。
+func TestCreativePricingUsesResolvedChannelPrice(t *testing.T) {
+	price := 1.0
+	resolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        PlatformOpenAI,
+		Models:          []string{"gpt-image-2"},
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &price,
+	}})
+	svc := newCreativeTestService()
+	svc.PricingResolver = resolver
+	group := newCreativeTestGroup()
+	group.ID = 100
+	group.Platform = PlatformOpenAI
+	group.ImagePrice1K = nil
+	group.ImagePrice2K = nil
+	group.ImagePrice4K = nil
+
+	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "1K"), 1e-9)
+	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "2K"), 1e-9)
+	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "4K"), 1e-9)
 }
 
 // TestCreativeListRunsIncludesOutputs 校验历史列表携带输出元数据：

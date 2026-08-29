@@ -60,13 +60,11 @@ var (
 	ErrCreativeGroupImageDisabled   = infraerrors.New(http.StatusForbidden, "CREATIVE_GROUP_IMAGE_DISABLED", "image generation is disabled for this group")
 
 	ErrCreativeRunIdempotencyConflict = infraerrors.New(http.StatusConflict, "CREATIVE_IDEMPOTENCY_CONFLICT", "idempotency key reused with different creative request")
-	ErrCreativeRunNotCancellable      = infraerrors.New(http.StatusConflict, "CREATIVE_RUN_NOT_CANCELLABLE", "creative run is already in terminal state")
-
-	ErrCreativeOutputNotFound  = infraerrors.New(http.StatusNotFound, "CREATIVE_OUTPUT_NOT_FOUND", "creative run output not found")
-	ErrCreativeOutputNotReady  = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_NOT_READY", "creative run output is not ready")
-	ErrCreativeOutputExpired   = infraerrors.New(http.StatusGone, "CREATIVE_OUTPUT_EXPIRED", "creative run output has expired")
-	ErrCreativeResultLost      = infraerrors.New(http.StatusGone, "CREATIVE_RESULT_LOST", "creative run result has been lost")
-	ErrCreativeTransientFailed = infraerrors.New(http.StatusBadGateway, "CREATIVE_TRANSIENT_FAILED", "creative transient store operation failed")
+	ErrCreativeOutputNotFound         = infraerrors.New(http.StatusNotFound, "CREATIVE_OUTPUT_NOT_FOUND", "creative run output not found")
+	ErrCreativeOutputNotReady         = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_NOT_READY", "creative run output is not ready")
+	ErrCreativeOutputExpired          = infraerrors.New(http.StatusGone, "CREATIVE_OUTPUT_EXPIRED", "creative run output has expired")
+	ErrCreativeResultLost             = infraerrors.New(http.StatusGone, "CREATIVE_RESULT_LOST", "creative run result has been lost")
+	ErrCreativeTransientFailed        = infraerrors.New(http.StatusBadGateway, "CREATIVE_TRANSIENT_FAILED", "creative transient store operation failed")
 
 	ErrCreativeBillingHoldFailed     = infraerrors.New(http.StatusBadGateway, "CREATIVE_BILLING_HOLD_FAILED", "creative balance hold failed")
 	ErrCreativeInsufficientBalance   = infraerrors.New(http.StatusPaymentRequired, "CREATIVE_INSUFFICIENT_BALANCE", "insufficient balance for creative run")
@@ -102,11 +100,11 @@ type CreativeRun struct {
 	BalanceHoldAmount           float64
 	SubscriptionHoldAllocations []domain.BillingAllocation
 	// AllowanceReserved 与 batch_image_jobs.allowance_reserved 同语义：额度预记标记。
-	AllowanceReserved           bool
-	BaseUnitPrice               float64
-	SubscriptionRateMultiplier  float64
-	BalanceRateMultiplier       float64
-	PlanGroupRateEnabled        bool
+	AllowanceReserved          bool
+	BaseUnitPrice              float64
+	SubscriptionRateMultiplier float64
+	BalanceRateMultiplier      float64
+	PlanGroupRateEnabled       bool
 
 	ErrorCode    *string
 	ErrorMessage *string
@@ -186,6 +184,8 @@ type CreativeRunRepository interface {
 	TransitionCreativeRunStatus(ctx context.Context, runID, toStatus string, opts CreativeRunTransitionOptions) error
 	// MarkCreativeRunRunning 幂等地把任务标记为执行中并回填账号，重复调用不产生副作用。
 	MarkCreativeRunRunning(ctx context.Context, runID string, accountID int64, now time.Time) error
+	// SetCreativeRunAccountID 在执行结果确定后补写真实上游账号，避免 worker 先推进状态时丢失账号信息。
+	SetCreativeRunAccountID(ctx context.Context, runID string, accountID int64, now time.Time) error
 	// MarkCreativeRunSucceeded 记录实际成本并进入终态，仅在 running 时生效。
 	MarkCreativeRunSucceeded(ctx context.Context, runID string, actualCost float64, now time.Time) error
 	// UpdateCreativeRunOutput 幂等更新输出行；已 acked 的行不允许被覆盖。
@@ -213,7 +213,6 @@ type CreativeRunPayload struct {
 	Prompt             string `json:"prompt"`
 	ImageSize          string `json:"image_size"`
 	AspectRatio        string `json:"aspect_ratio"`
-	OutputCount        int    `json:"output_count"`
 	ResponseMIMEType   string `json:"response_mime_type"`
 	Quality            string `json:"quality,omitempty"`
 	SourceCount        int    `json:"source_count"`
@@ -241,7 +240,6 @@ type CreateCreativeRunParamsPublic struct {
 	Mask         *CreativeInputImage
 	ImageSize    string
 	AspectRatio  string
-	OutputCount  int
 	ResponseMIME string
 	// Quality 为 OpenAI 平台可选画质（low/medium/high/auto），其余平台忽略。
 	Quality string
@@ -294,6 +292,8 @@ type CreativeModelPublic struct {
 	ImageSizes []string `json:"image_sizes"`
 	Qualities  []string `json:"qualities,omitempty"`
 	Price1K    float64  `json:"price_1k"`
+	Price2K    float64  `json:"price_2k"`
+	Price4K    float64  `json:"price_4k"`
 }
 
 // CreativeModelsResponse 是 ListModels 的响应体。

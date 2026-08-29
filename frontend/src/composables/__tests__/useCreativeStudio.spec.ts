@@ -19,7 +19,6 @@ vi.mock('@/api/creative', () => ({
   getCreativeRun: vi.fn(),
   getCreativeRunOutputContent: vi.fn(),
   ackCreativeRunOutput: vi.fn(),
-  cancelCreativeRun: vi.fn(),
 }))
 
 // 保留真实工具（key 组合、错误类），只 mock 存储副作用
@@ -52,6 +51,8 @@ const MODEL = {
   operations: ['generate', 'edit', 'inpaint'],
   image_sizes: ['1K', '2K'],
   price_1k: 2,
+  price_2k: 3,
+  price_4k: 4,
 }
 
 function makeRun(partial: Partial<CreativeRun> & Pick<CreativeRun, 'id' | 'status'>): CreativeRun {
@@ -91,8 +92,6 @@ describe('useCreativeStudio', () => {
     mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-1', status: 'succeeded' }))
     mockedApi.getCreativeRunOutputContent.mockResolvedValue(new Blob(['img'], { type: 'image/png' }))
     mockedApi.ackCreativeRunOutput.mockResolvedValue(undefined)
-    mockedApi.cancelCreativeRun.mockResolvedValue(makeRun({ id: 'run-1', status: 'cancelled' }))
-
     mockedStore.saveAsset.mockResolvedValue({} as localStore.LocalAsset)
     mockedStore.deleteAsset.mockResolvedValue(undefined)
     mockedStore.loadAsset.mockResolvedValue(null)
@@ -168,6 +167,19 @@ describe('useCreativeStudio', () => {
     })
   })
 
+  describe('estimatedCost 定价', () => {
+    it('按所选尺寸读取模型目录的实际档位价格', async () => {
+      const { studio } = await setupStudio()
+
+      studio.imageSize.value = '1K'
+      expect(studio.estimatedCost.value).toBe(2)
+      studio.imageSize.value = '2K'
+      expect(studio.estimatedCost.value).toBe(3)
+      studio.imageSize.value = '4K'
+      expect(studio.estimatedCost.value).toBe(4)
+    })
+  })
+
   describe('createRun 提交', () => {
     it('成功路径：FormData 字段齐全并启动轮询', async () => {
       const { studio } = await setupStudio()
@@ -189,7 +201,7 @@ describe('useCreativeStudio', () => {
       expect(form.get('prompt')).toBe('一只猫')
       expect(form.get('image_size')).toBe('1K')
       expect(form.get('aspect_ratio')).toBe('1:1')
-      expect(form.get('output_count')).toBe('1')
+      expect(form.get('output_count')).toBeNull()
       expect(form.get('response_mime_type')).toBe('image/png')
       expect(form.getAll('source_images[]')).toHaveLength(1)
 
@@ -484,47 +496,7 @@ describe('useCreativeStudio', () => {
     })
   })
 
-  describe('取消与清空', () => {
-    it('cancelRun 调 API 并刷新历史', async () => {
-      const { studio } = await setupStudio()
-      studio.currentRun.value = makeRun({ id: 'run-5', status: 'running' })
-
-      const ok = await studio.cancelRun()
-
-      expect(ok).toBe(true)
-      expect(mockedApi.cancelCreativeRun).toHaveBeenCalledWith('run-5')
-      expect(mockedApi.getCreativeRuns).toHaveBeenCalled()
-      expect(studio.currentRun.value?.status).toBe('cancelled')
-    })
-
-    it('cancelRun 失败时写入错误文案并返回 false', async () => {
-      const { studio } = await setupStudio()
-      studio.currentRun.value = makeRun({ id: 'run-6', status: 'running' })
-      mockedApi.cancelCreativeRun.mockRejectedValue({})
-
-      const ok = await studio.cancelRun()
-
-      expect(ok).toBe(false)
-      // 错误对象无 message 时落到 i18n 兜底文案（t 被 mock 为原样返回 key）
-      expect(studio.error.value).toBe('creative.error.cancelFailed')
-    })
-
-    it('cancelRun 支持取消历史中的指定进行中任务', async () => {
-      const { studio } = await setupStudio()
-      const cancelled = makeRun({ id: 'run-7', status: 'cancelled' })
-      studio.runHistory.value = [makeRun({ id: 'run-7', status: 'running' })]
-      mockedApi.cancelCreativeRun.mockResolvedValue(cancelled)
-      mockedApi.getCreativeRuns.mockResolvedValue({ items: [cancelled], total: 1 })
-
-      const ok = await studio.cancelRun('run-7')
-
-      expect(ok).toBe(true)
-      expect(mockedApi.cancelCreativeRun).toHaveBeenCalledWith('run-7')
-      // 非当前任务的取消不影响 currentRun 与轮询
-      expect(studio.currentRun.value).toBeNull()
-      expect(studio.runHistory.value.map((run) => run.status)).toEqual(['cancelled'])
-    })
-
+  describe('本地数据', () => {
     it('clearLocalData 失败时写入错误文案并向上抛出', async () => {
       const { studio } = await setupStudio()
       mockedStore.clearAll.mockRejectedValue(new Error('disk full'))

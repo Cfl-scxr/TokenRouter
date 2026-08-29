@@ -55,7 +55,6 @@ type creativeCreateRunRequest struct {
 	Mask         *service.CreativeInputImage
 	ImageSize    string
 	AspectRatio  string
-	OutputCount  int
 	ResponseMIME string
 	Quality      string
 }
@@ -82,7 +81,6 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		Mask:         req.Mask,
 		ImageSize:    req.ImageSize,
 		AspectRatio:  req.AspectRatio,
-		OutputCount:  req.OutputCount,
 		ResponseMIME: req.ResponseMIME,
 		Quality:      req.Quality,
 	}, c.GetHeader("Idempotency-Key"))
@@ -94,7 +92,7 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 }
 
 // parseCreativeCreateRunMultipart 手工解析 multipart 表单：
-// 字段 group_id/model/operation/prompt/image_size/aspect_ratio/output_count/response_mime_type，
+// 字段 group_id/model/operation/prompt/image_size/aspect_ratio/response_mime_type，
 // 文件字段 source_images（多文件）与 mask（单文件）。只接受上传文件，不接受远程 URL。
 func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest, error) {
 	contentType := c.GetHeader("Content-Type")
@@ -164,15 +162,6 @@ func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest,
 			req.ImageSize = value
 		case "aspect_ratio":
 			req.AspectRatio = value
-		case "output_count":
-			if value == "" {
-				continue
-			}
-			outputCount, parseErr := strconv.Atoi(value)
-			if parseErr != nil {
-				return nil, service.ErrCreativeInvalidParams
-			}
-			req.OutputCount = outputCount
 		case "response_mime_type":
 			req.ResponseMIME = value
 		case "quality":
@@ -238,22 +227,6 @@ func (h *CreativeHandler) GetRun(c *gin.Context) {
 		return
 	}
 	got, err := h.service.GetRun(c.Request.Context(), subject.UserID, c.Param("id"))
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, got)
-}
-
-// CancelRun 取消任务。
-// POST /api/v1/creative/runs/:id/cancel
-func (h *CreativeHandler) CancelRun(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
-	if !ok {
-		response.Unauthorized(c, "User not authenticated")
-		return
-	}
-	got, err := h.service.CancelRun(c.Request.Context(), subject.UserID, c.Param("id"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

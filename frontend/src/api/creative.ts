@@ -19,7 +19,10 @@ export interface CreativeModelOption {
   image_sizes: string[]
   // 可选画质档位（low/medium/high），仅 OpenAI 平台模型下发
   qualities?: string[]
+  // 三档图片展示单价，直接使用服务端统一定价结果
   price_1k: number
+  price_2k: number
+  price_4k: number
 }
 
 // run 终态集合，轮询遇到这些状态即停止
@@ -146,12 +149,4 @@ export async function getCreativeRunOutputContent(runId: string, index: number):
  */
 export async function ackCreativeRunOutput(runId: string, index: number): Promise<void> {
   await apiClient.post(`/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/ack`)
-}
-
-/**
- * 取消进行中的 run
- */
-export async function cancelCreativeRun(id: string): Promise<CreativeRun> {
-  const { data } = await apiClient.post<CreativeRun>(`/creative/runs/${encodeURIComponent(id)}/cancel`)
-  return data
 }

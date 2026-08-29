@@ -113,8 +113,21 @@ func (r *smokeFakeRunRepo) MarkCreativeRunRunning(ctx context.Context, runID str
 		return service.ErrCreativeInvalidTransition
 	}
 	run.Status = service.CreativeRunStatusRunning
-	run.AccountID = &accountID
+	if accountID > 0 {
+		run.AccountID = &accountID
+	}
 	run.StartedAt = &now
+	return nil
+}
+
+func (r *smokeFakeRunRepo) SetCreativeRunAccountID(ctx context.Context, runID string, accountID int64, now time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return service.ErrCreativeRunNotFound
+	}
+	if accountID > 0 {
+		run.AccountID = &accountID
+	}
 	return nil
 }
 
@@ -301,7 +314,6 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 			TransientTTLSeconds:     1800,
 			MaxAssetBytes:           33554432,
 			MaxTotalInputBytes:      67108864,
-			MaxOutputCount:          4,
 			MaxPromptChars:          8000,
 			DefaultResponseMimeType: "image/png",
 			DefaultImageSize:        "1K",
@@ -333,6 +345,7 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		nil, // Settings 未注入：仅按进程配置 creative.enabled 门控
 		cfg,
 	)
@@ -356,7 +369,6 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 		Prompt:       "smoke prompt",
 		SourceImages: []service.CreativeInputImage{{Bytes: png, Mime: "image/png"}},
 		ImageSize:    "1K",
-		OutputCount:  1,
 		ResponseMIME: "image/png",
 	}, "smoke-idem-key")
 	require.NoError(t, err)

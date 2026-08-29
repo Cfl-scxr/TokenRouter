@@ -244,11 +244,11 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 		return CreativeProcessResult{Terminal: true}, nil
 	}
 
-	// 幂等推进 running；执行期间被取消时 MarkRunning 对终态任务无副作用。
+	// 幂等推进 running；任务已处于终态时 MarkRunning 无副作用。
 	if err := w.service.MarkRunning(ctx, runID, 0); err != nil {
 		return CreativeProcessResult{}, err
 	}
-	// 执行前再次检查：用户已取消则不再调用上游。
+	// 执行前再次检查：任务已进入 cancelled 则不再调用上游。
 	current, err := w.repo.GetCreativeRunByRunID(ctx, runID)
 	if err != nil {
 		return CreativeProcessResult{}, err

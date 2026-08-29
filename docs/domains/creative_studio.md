@@ -36,10 +36,9 @@ GET  /api/v1/creative/runs
 GET  /api/v1/creative/runs/{id}
 GET  /api/v1/creative/runs/{id}/outputs/{index}/content
 POST /api/v1/creative/runs/{id}/outputs/{index}/ack
-POST /api/v1/creative/runs/{id}/cancel
 ```
 
-`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且配置了图片尺寸价格的分组。Gemini（含 Vertex 账号）与 OpenAI 分组支持 `generate`/`edit`/`inpaint`，Grok 分组仅支持 `generate`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
+`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k, price_2k, price_4k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。Gemini（含 Vertex 账号）与 OpenAI 分组支持 `generate`/`edit`/`inpaint`，Grok 分组仅支持 `generate`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
 
 `POST /creative/runs` 接受 `multipart/form-data`，只接受上传文件，不接受远程 URL：
 
@@ -53,7 +52,6 @@ POST /api/v1/creative/runs/{id}/cancel
 | `mask` | 文件，单个 | 局部重绘蒙版，仅 `inpaint` 允许携带 |
 | `image_size` | 文本 | 可选，`1K`/`2K`/`4K`，默认 `1K` |
 | `aspect_ratio` | 文本 | 可选，不超过 16 字符 |
-| `output_count` | 文本 | 可选，1-4，默认 1 |
 | `response_mime_type` | 文本 | 可选，`image/png`/`image/jpeg`/`image/webp`，默认 `image/png` |
 
 请求限制（默认值来自 `creative.*` 配置）：
@@ -72,8 +70,6 @@ POST /api/v1/creative/runs/{id}/cancel
 
 `POST .../outputs/{index}/ack` 用于客户端确认输出已保存到本地：删除对应临时输出键并把输出标记为 `acked`，重复 ack 幂等成功。
 
-`POST /creative/runs/{id}/cancel` 取消 queued/running 任务：置 `cancelled`、释放预占并尽力清理临时键；任务已终态返回 `409 CREATIVE_RUN_NOT_CANCELLABLE`。
-
 ## 生命周期
 
 任务状态机：
@@ -81,7 +77,7 @@ POST /api/v1/creative/runs/{id}/cancel
 ```text
 queued -> running -> succeeded
 queued -> running -> failed
-queued -> running -> cancelled
+queued -> running -> cancelled（仅保留内部状态竞态）
 queued -> running -> result_lost
 succeeded -> result_lost
 ```
@@ -92,7 +88,7 @@ succeeded -> result_lost
 - worker 加载不到 payload 或输入（TTL 过期，provider 未执行）时标记 `result_lost` 并释放预占；上游已确认成功但结果丢失的路径保持计费（见[计费](#计费)）。
 - 输出读取路径发现临时输出过期或缺失时，把 `succeeded` 任务降级为 `result_lost`（错误码 `RESULT_EXPIRED`）并返回 410。
 
-worker 从 Redis 预留任务后先幂等推进 `running` 并回填执行账号；执行前再次检查取消。执行期间被用户取消的任务：provider 若已成功，仍按实际成功输出捕获费用并记录用量，但终态保持 `cancelled`，绝不回写为 `succeeded`。
+worker 从 Redis 预留任务后先幂等推进 `running`，provider 返回结果后在结算前持久化真实执行账号；执行前检查任务是否已处于 `cancelled`。历史竞态任务若 provider 已成功，仍按实际成功输出捕获费用并记录用量，但终态保持 `cancelled`，绝不回写为 `succeeded`。
 
 执行错误的重试边界：网络层错误、429 与 5xx 视为可重试，按 `max_execute_attempts`（默认 3，含首次）递增尝试并重排；其余 4xx 不可重试直接 `failed`。结算失败的按错误重试预算重排（上限为执行次数的两倍），超限后保留当前状态出队。
 
@@ -114,20 +110,20 @@ worker 从 Redis 预留任务后先幂等推进 `running` 并回填执行账号�
 
 ## 计费
 
-创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按基础单价乘输出数估价，快照订阅/余额倍率；没有批量折扣与账号倍率。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
+创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按基础单价乘固定单张输出估价，快照订阅/余额倍率；没有批量折扣与账号倍率。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
 
 ```text
 creative_hold:{run_id}      创建任务时预占
 creative_capture:{run_id}   成功时按成功输出数捕获
-creative_release:{run_id}   失败/取消/未执行丢失时释放
+creative_release:{run_id}   失败/内部取消/未执行丢失时释放
 creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 ```
 
 - 创建任务时先估价并冻结（auto 模式先预留订阅额度、只冻结未覆盖部分的钱包余额）；免费分组（估价为 0）跳过资金动作。
 - 成功时按实际成功输出数捕获，并写一条 `usage_logs`：`BillingMode` 为 `"image"`，`ImageCount` 为成功输出数，`request_id` 为 `creative_settle:{run_id}`，入站端点记录 `/v1/creative/runs`，上游端点记录 `creative:{operation}`。
-- 失败与取消通过幂等路径释放全部未使用预占；指纹冲突按已释放处理，避免毒消息循环。
+- 失败与内部取消状态通过幂等路径释放全部未使用预占；指纹冲突按已释放处理，避免毒消息循环。
 - provider 已成功但结果丢失（`result_lost` 且已捕获）时保持计费；payload 过期导致 provider 未执行的 `result_lost` 释放预占。
-- 执行期间被取消但 provider 已成功：费用按实际成功输出捕获、用量照写，终态保持 `cancelled`。
+- 任务执行期间进入 `cancelled` 但 provider 已成功：费用按实际成功输出捕获、用量照写，终态保持 `cancelled`。
 
 生产准确价格由分组图片定价配置解析，本文不定义价格数值。
 
@@ -163,13 +159,13 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 - `grok`：仅 `generate`（xAI images generations，OpenAI 协议兼容）；`edit`/`inpaint` 直接拒绝。
 - `gemini`：统一使用原生 `generateContent`，prompt 与源图/mask 以 inlineData 放入 parts；`inpaint` 时 mask 作为额外 inline 图片附加。凭据按账号类型选择：API Key 账号用 `x-goog-api-key`，Vertex 服务账号与 OAuth 用 Bearer token。
 
-模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按上述平台候选回退并经过账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回；未配置时回退平台默认档位（OpenAI `1K`、Grok `1K/2K`、Gemini `1K/2K/4K`），按默认价计费，与网关一致。
+模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按上述平台候选回退并经过账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回；GPT Image 2 即使分组未填写 4K 覆盖价也会开放 `4K` 并沿用默认价；完全未配置时回退平台默认档位（GPT Image 2 为 `1K/2K/4K`，其它 OpenAI 图片模型为 `1K/2K`，Grok 为 `1K/2K`，Gemini 为 `1K/2K/4K`）。接口同时返回按模型广场分组倍率计算的三档展示单价，创作台预估费用直接使用所选档位价格，与模型广场一致。
 
 ## 前端本地存储边界
 
 前端 `/creative` 页面要求登录，simple 模式隐藏入口，路由带 `requiresCreative` 守卫（公开设置 `creative_enabled === false` 时用户跳 `/dashboard`、管理员跳 `/admin/settings`），侧栏入口由公开设置 `creative_enabled !== false` 门控；模型目录为空时控制面板展示空态文案（功能关闭提示联系管理员，否则提示分组未配置图片生成）。页面是无限画布工作台（左侧面板 + 满幅画布，移动端面板在上、画布在下）：
 
-- 画布交互：空白拖拽平移视角、滚轮以光标为中心缩放（0.2–3）；图片可点选、拖动、删除；历史默认折叠为画布右上角悬浮列表，点击任务行时若其输出已在本画布上（按 runId + outputIndex 匹配对象 data）则视角平移过去，进行中的任务可行内取消。
+- 画布交互：空白拖拽平移视角、滚轮以光标为中心缩放（0.2–3）；图片可点选、拖动、删除；历史默认折叠为画布右上角悬浮列表，点击任务行时若其输出已在本画布上（按 runId + outputIndex 匹配对象 data）则视角平移过去；进行中的任务只显示加载状态，不提供素材操作或取消入口。
 - 生成输入：文生图不需要选图；图生图 / 局部重绘以画布当前选中的图片为源图，局部重绘另附画笔导出的 mask（白底透明 PNG，尺寸拉伸回源图自然尺寸）；画笔是唯一画布工具，白色轨迹作为 mask path 画在图片上层。
 - 输出上板：任务轮询前 10 秒每 1 秒、之后每 3 秒；终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack，随后自动把输出图片放上画布（上一个放置位置右侧 40px、约 2200px 换行）并平移视角到新图中心；单个输出取回失败（410/`result_lost`）只标记该输出缺失，不中断其它输出。
 - 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/输出 blob）、`scenes`（画布 JSON 快照，图片 src 以 `asset://<key>` 占位、刷新后回 assets 取 blob 恢复，缺失的图跳过不阻塞）和 `settings`（参数选择恢复）；画布变更防抖约 1 秒存快照，恢复时重建 runId + outputIndex → 画布对象的注册表；图片绝不以 base64 进入 localStorage。
@@ -187,7 +183,6 @@ creative:
   transient_ttl_seconds: 1800         # 输入载荷与临时输出保留时间（秒）
   max_asset_bytes: 33554432           # 单文件上传上限（32 MiB）
   max_total_input_bytes: 67108864     # 单次任务输入总量上限（64 MiB）
-  max_output_count: 4                 # 单次任务最大输出数量（1-4）
   max_prompt_chars: 8000              # prompt 最大字符数
   default_response_mime_type: "image/png"
   default_image_size: "1K"
@@ -210,7 +205,7 @@ creative:
   max_execute_attempts: 3             # provider 瞬时错误最大执行次数（含首次）
 ```
 
-校验约束：`max_total_input_bytes` 不得小于 `max_asset_bytes`；`max_output_count` 必须在 1-4；启用队列时所有队列键非空。与批量图片不同，创作台的 `enabled` 与 `queue_enabled` 默认开启，但缺少 Redis 时任务创建会失败。
+校验约束：`max_total_input_bytes` 不得小于 `max_asset_bytes`；启用队列时所有队列键非空。创作台每次提交固定生成一张图片，多张图片请重复提交任务。与批量图片不同，创作台的 `enabled` 与 `queue_enabled` 默认开启，但缺少 Redis 时任务创建会失败。
 
 除进程配置外，创作台还有数据库运行时开关 `creative_enabled`（默认 true，管理端"功能特性"页可切换，经公开设置下发给前端）：仅当进程配置 `creative.enabled` 与运行时开关同时开启时创作台才可用，管理服务 `enabled()` 判定在请求期读取该开关。
 
@@ -218,7 +213,7 @@ creative:
 
 - 确认 Redis 可用（临时存储与队列都依赖 Redis）。
 - 确认 `creative.enabled`、数据库运行时开关 `creative_enabled` 与 `creative.queue_enabled`。
-- 确认目标分组启用图片生成；未配置图片尺寸价格或账号模型映射时会按平台默认值回退，但显式配置可精确控制可用档位与模型。
+- 确认目标分组启用图片生成；未配置图片尺寸价格或账号模型映射时会按平台默认值回退，GPT Image 2 缺少 4K 覆盖价时仍使用默认价开放 4K。
 - 确认上游账号凭据有效（Gemini apikey/Vertex/OAuth、OpenAI、xAI）。
 - 确认分组图片定价与倍率，验证估价的 hold/capture/release 行为。
 - 明白临时输出默认 30 分钟过期：通知用户及时取回，或按需调大 `transient_ttl_seconds`。
@@ -230,7 +225,7 @@ creative:
 - 日志与审核记录不含 base64 图片或 prompt 明文（审核走无媒体留存模式）。
 - 备份不包含创作台素材本体（素材不在 PostgreSQL 中）；恢复数据库不会恢复 Redis 临时输出。
 - 全部路由按用户隔离资源归属；隐藏执行 Key 不暴露存在性。
-- 取消与失败路径释放预占并清理临时键；ack 即删输出。
+- 内部取消与失败路径释放预占并清理临时键；ack 即删输出。
 - 不向客户端泄露上游凭据、代理或 provider 原始响应；错误消息截断到 500 字符并脱敏。
 
 相关 Project Doc：[批量图片作业](batch_image_jobs.md)、[内容审核与风险处置](content_moderation.md)、[路由与结算](routing_and_billing.md)、[HTTP 接口边界](../interfaces/http_api.md)、[配置边界](../interfaces/configuration.md)、[系统架构](../architecture/system_architecture.md)、[可观测性与数据生命周期](../operations/observability_and_data_lifecycle.md)和[领域目录](index.md)。

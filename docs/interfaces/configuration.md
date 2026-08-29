@@ -47,7 +47,7 @@
 
 时区的优先级是标准 `TZ`、兼容 `TIMEZONE`、配置文件、默认 `Asia/Shanghai`。`TZ` 非空时必须显式覆盖 `TIMEZONE`，使容器运行时、应用本地日统计和 PostgreSQL 连接时区使用同一部署者选择；无效 IANA 名称仍在启动校验中失败。
 
-创作台（Creative Studio）属于启动时进程配置 `creative`：功能与队列开关、临时数据 TTL（`transient_ttl_seconds`，默认 1800 秒）、上传与 prompt 限制（`max_asset_bytes` 默认 32 MiB、`max_total_input_bytes` 默认 64 MiB 且不得小于单文件上限、`max_output_count` 必须 1-4、`max_prompt_chars` 默认 8000）、上游执行参数（`execute_timeout_seconds`、`max_execute_attempts`）和 `creative:queue:*` 队列键/TTL 都在启动校验，修改后需要重启。与 `batch_image` 不同，`enabled` 与 `queue_enabled` 默认开启，但临时存储与队列依赖 Redis，Redis 不可用时任务创建 fail-close。完整键清单见 `deploy/config.example.yaml` 和[创作台](../domains/creative_studio.md)。
+创作台（Creative Studio）属于启动时进程配置 `creative`：功能与队列开关、临时数据 TTL（`transient_ttl_seconds`，默认 1800 秒）、上传与 prompt 限制（`max_asset_bytes` 默认 32 MiB、`max_total_input_bytes` 默认 64 MiB 且不得小于单文件上限、`max_prompt_chars` 默认 8000）、上游执行参数（`execute_timeout_seconds`、`max_execute_attempts`）和 `creative:queue:*` 队列键/TTL 都在启动校验，修改后需要重启。创作台每次提交固定生成一张图片，多张图片请重复提交任务。与 `batch_image` 不同，`enabled` 与 `queue_enabled` 默认开启，但临时存储与队列依赖 Redis，Redis 不可用时任务创建 fail-close。完整键清单见 `deploy/config.example.yaml` 和[创作台](../domains/creative_studio.md)。
 
 加载完成后会做字符串规范化、枚举回退、派生默认、文件读取和完整 `Validate`。无效安全 header、URL、数值范围、模式组合或必要 secret 会让启动失败；不应等到某个请求首次使用时才发现。自动生成的 TOTP key 只适合开发，`EncryptionKeyConfigured=false` 会阻止后台把 TOTP 当成生产可用配置。
 

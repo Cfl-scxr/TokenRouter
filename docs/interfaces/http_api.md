@@ -77,10 +77,9 @@ GET  /api/v1/creative/runs
 GET  /api/v1/creative/runs/{id}
 GET  /api/v1/creative/runs/{id}/outputs/{index}/content
 POST /api/v1/creative/runs/{id}/outputs/{index}/ack
-POST /api/v1/creative/runs/{id}/cancel
 ```
 
-`POST /creative/runs` 接受 `multipart/form-data`（`group_id`/`model`/`operation`/`prompt`/`source_images[]`/`mask`/`image_size`/`aspect_ratio`/`output_count`/`response_mime_type`），只接受上传文件、不接受远程 URL，并受 `Idempotency-Key` 头约束：同键同体重放返回原任务（`idempotent_replay=true`），同键不同体返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`。输出内容路由在临时输出过期或丢失时返回 410 语义（`CREATIVE_OUTPUT_EXPIRED`/`CREATIVE_RESULT_LOST`）并把任务降级为 `result_lost`；ack 删除服务端临时输出。服务端只保存任务元数据，图片与 prompt 明文只存于 Redis 临时键，细节与限制见[创作台](../domains/creative_studio.md)。
+`POST /creative/runs` 接受 `multipart/form-data`（`group_id`/`model`/`operation`/`prompt`/`source_images[]`/`mask`/`image_size`/`aspect_ratio`/`response_mime_type`），每次提交固定生成一张图片，多张图片请重复提交任务。接口只接受上传文件、不接受远程 URL，并受 `Idempotency-Key` 头约束：同键同体重放返回原任务（`idempotent_replay=true`），同键不同体返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`。输出内容路由在临时输出过期或丢失时返回 410 语义（`CREATIVE_OUTPUT_EXPIRED`/`CREATIVE_RESULT_LOST`）并把任务降级为 `result_lost`；ack 删除服务端临时输出。服务端只保存任务元数据，图片与 prompt 明文只存于 Redis 临时键，细节与限制见[创作台](../domains/creative_studio.md)。
 
 部分下载路由使用短期签名票据，以支持浏览器原生下载大文件；票据只授权一个预生成资源，不能等价为用户 JWT。模型列表、用量和既有批任务管理即使跳过消费余额检查，仍要执行 Key 身份和资源归属验证。
 

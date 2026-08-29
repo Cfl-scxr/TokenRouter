@@ -243,15 +243,30 @@ func normalizeCreativeOutputs(outputs []CreativeOutput, requested int) ([]Creati
 	return out, nil
 }
 
-// creativeOpenAIImageSize 把创作台的尺寸档位映射为 OpenAI images 协议支持的 size 值。
-// gpt-image 系列仅支持 1024x1024 / 1536x1024 / 1024x1536 / auto。
+// creativeOpenAIImageSize 把创作台尺寸档位映射为 OpenAI images 协议支持的像素尺寸。
+// 4K 档位遵守 GPT Image 2 的 3840 最大边长和约 8.3MP 总像素上限。
 func creativeOpenAIImageSize(imageSize, aspectRatio string) string {
 	tier := NormalizeImageBillingTierOrDefault(imageSize)
+	ratio := strings.TrimSpace(aspectRatio)
+	if tier == ImageBillingSize4K {
+		switch ratio {
+		case "16:9":
+			return "3840x2160"
+		case "9:16":
+			return "2160x3840"
+		case "4:3":
+			return "3264x2448"
+		case "3:4":
+			return "2448x3264"
+		default:
+			return "2880x2880"
+		}
+	}
 	base := 1024
 	if tier != ImageBillingSize1K {
 		base = 1536
 	}
-	switch strings.TrimSpace(aspectRatio) {
+	switch ratio {
 	case "16:9", "3:2", "4:3", "2:1", "19.5:9", "20:9":
 		return fmt.Sprintf("%dx%d", base+base/2, base)
 	case "9:16", "3:4", "2:3", "1:2", "9:19.5", "9:20":

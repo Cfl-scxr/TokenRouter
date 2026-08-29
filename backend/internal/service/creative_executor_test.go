@@ -115,7 +115,10 @@ func TestCreativeOpenAIImageSize(t *testing.T) {
 	require.Equal(t, "1536x1024", creativeOpenAIImageSize("1K", "16:9"))
 	require.Equal(t, "1024x1536", creativeOpenAIImageSize("1K", "9:16"))
 	require.Equal(t, "1536x1536", creativeOpenAIImageSize("2K", ""))
-	require.Equal(t, "1536x1536", creativeOpenAIImageSize("4K", "1:1"))
+	require.Equal(t, "2880x2880", creativeOpenAIImageSize("4K", "1:1"))
+	require.Equal(t, "3840x2160", creativeOpenAIImageSize("4K", "16:9"))
+	require.Equal(t, "2160x3840", creativeOpenAIImageSize("4K", "9:16"))
+	require.Equal(t, "3264x2448", creativeOpenAIImageSize("4K", "4:3"))
 }
 
 // TestCreativeGrokOperationMatrix grok 平台仅支持 generate。
@@ -185,6 +188,13 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.Equal(t, "application/json", contentType)
 	require.Contains(t, string(body), `"model":"gpt-image-2"`)
 	require.Contains(t, string(body), `"response_format":"b64_json"`)
+
+	// GPT Image 2 的 4K 横向尺寸使用真实的 3840x2160 像素值。
+	run = CreativeRun{Operation: CreativeOperationGenerate, ImageSize: "4K", AspectRatio: "16:9", RequestedOutputCount: 1}
+	body, contentType, err = buildCreativeOpenAIRequestBody(run, payload, "gpt-image-2")
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.Contains(t, string(body), `"size":"3840x2160"`)
 
 	// inpaint：multipart，含 image/mask/model/prompt 字段。
 	run = CreativeRun{Operation: CreativeOperationInpaint, ImageSize: "1K"}

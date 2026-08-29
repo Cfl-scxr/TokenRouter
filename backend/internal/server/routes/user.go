@@ -166,7 +166,6 @@ func RegisterUserRoutes(
 			creative.GET("/runs/:id", h.Creative.GetRun)
 			creative.GET("/runs/:id/outputs/:index/content", h.Creative.GetOutputContent)
 			creative.POST("/runs/:id/outputs/:index/ack", h.Creative.AckOutput)
-			creative.POST("/runs/:id/cancel", h.Creative.CancelRun)
 		}
 
 		// 公告（用户可见）
