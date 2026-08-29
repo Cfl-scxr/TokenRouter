@@ -55,6 +55,8 @@ export default {
       brushSize: 'Brush size',
       shapeRound: 'Round stroke',
       shapeSquare: 'Square stroke',
+      // 框选画布对象：三种创作模式均可开启
+      boxSelect: 'Select by dragging a box',
       // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
       paintToggleOn: 'Start painting',
       paintToggleOff: 'Pause painting to pan',
@@ -62,21 +64,20 @@ export default {
       undoMask: 'Undo last stroke',
       clearMask: 'Clear all paint',
       downloadSelected: 'Download selected image',
-      // 框选参考图工具：开启后空白拖拽画选框
-      boxSelect: 'Select references by dragging',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
       backToDashboard: 'Back to dashboard',
       settings: 'Settings',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: 'Click an image on the canvas, then paint the area to redraw',
-      // 图生图未选择参考图时的引导（点击单选，或用工具栏框选多张）
-      editPickHint: 'Tap an image as reference, or drag a box with the toolbar tool',
+      // 图生图未选择参考图时的引导（点击单选，或直接拖拽框选多张）
+      editPickHint: 'Tap an image as reference, or drag a box to select multiple images',
       // 涂抹开始前的引导：紫色笔迹即重绘区域
       maskPaintHint: 'Paint the purple area to redraw; it becomes the mask on export',
     },
     result: {
       actualCost: 'Actual cost: {cost}',
+      missing: 'Missing',
     },
     history: {
       title: 'History',

@@ -55,6 +55,8 @@ export default {
       brushSize: '画笔粗细',
       shapeRound: '圆头笔迹',
       shapeSquare: '方头笔迹',
+      // 框选画布对象：三种创作模式均可开启
+      boxSelect: '框选画布对象',
       // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
       paintToggleOn: '开始涂抹',
       paintToggleOff: '暂停涂抹，移动视角',
@@ -62,21 +64,20 @@ export default {
       undoMask: '撤销上一笔',
       clearMask: '清除全部涂抹',
       downloadSelected: '下载选中图片',
-      // 框选参考图工具：开启后空白拖拽画选框
-      boxSelect: '框选参考图',
       removeSelected: '移除选中图片',
       reset: '清空画布',
       backToDashboard: '返回仪表盘',
       settings: '设置',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: '点击画布中的一张图片，在其上涂抹要重绘的区域',
-      // 图生图未选择参考图时的引导（点击单选，或用工具栏框选多张）
-      editPickHint: '点击图片选择参考图，或用工具栏框选多张',
+      // 图生图未选择参考图时的引导（点击单选，或直接拖拽框选多张）
+      editPickHint: '点击图片选择参考图，或直接拖拽框选多张',
       // 涂抹开始前的引导：紫色笔迹即重绘区域
       maskPaintHint: '在图片上涂抹紫色区域，即要重绘的部分（导出时自动转为 mask）',
     },
     result: {
       actualCost: '实际费用：{cost}',
+      missing: '素材缺失',
     },
     history: {
       title: '历史记录',

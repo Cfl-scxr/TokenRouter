@@ -2,6 +2,8 @@
   <!-- 画布即整个背景：透明无边框，圆点网格铺满 -->
   <div ref="containerRef" class="dot-grid relative h-full w-full overflow-hidden">
     <canvas ref="canvasElRef"></canvas>
+    <!-- 独立 mask 画布：先以不透明颜色合成，再整体设置透明度，避免笔迹重叠变深 -->
+    <canvas ref="maskCanvasElRef" class="mask-overlay"></canvas>
 
     <!-- 浮动工具栏（移动端底部，桌面端顶部）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
@@ -30,21 +32,19 @@
         <Icon name="download" size="sm" />
       </button>
 
-      <!-- 框选参考图工具：仅图生图模式；开启后空白拖拽画选框，框内图片全部设为参考图 -->
-      <template v-if="isEdit">
-        <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :class="boxSelectMode && 'canvas-tool-btn-active'"
-          :title="t('creative.canvas.boxSelect')"
-          @click="setBoxSelectMode(!boxSelectMode)"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2">
-            <rect x="4" y="4" width="16" height="16" rx="2" />
-          </svg>
-        </button>
-      </template>
+      <!-- 框选参考图 / 画布对象工具：三种模式都可用，开启后空白拖拽画选框 -->
+      <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
+      <button
+        type="button"
+        class="canvas-tool-btn"
+        :class="boxSelectMode && 'canvas-tool-btn-active'"
+        :title="t('creative.canvas.boxSelect')"
+        @click="setBoxSelectMode(!boxSelectMode)"
+      >
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+        </svg>
+      </button>
 
       <!-- 画笔组：仅局部重绘模式可用（选中图片后自动进入涂抹，可用开关暂停去移动视角） -->
       <template v-if="isInpaint">
@@ -165,13 +165,13 @@
  * - 图片对象可点选 / 拖动 / Delete 删除；生成输出自动按"上一个放置位置右侧 40px、约 2200px 换行"上板并平滑平移视角
  * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
  *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
- * - 工具栏：上传、下载选中、画笔组（仅局部重绘）、删除选中；清空画布收在左上角设置里
+ * - 工具栏：上传、下载选中、框选、画笔组（仅局部重绘）、删除选中；清空画布收在左上角设置里
  * - 场景快照（含 data 自定义属性，图片 src 以 asset:// 占位）防抖存入 IndexedDB，刷新后恢复并重建输出注册表
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
-import { Canvas, FabricImage, PencilBrush, Point, Rect, type FabricObject, type TMat2D } from 'fabric'
+import { Canvas, FabricImage, PencilBrush, Point, Rect, StaticCanvas, type FabricObject, type TMat2D } from 'fabric'
 import { SquarePencilBrush } from './SquarePencilBrush'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
@@ -213,9 +213,11 @@ const PLACE_WRAP_X = 2200
 const PLACE_SCALE = 0.25
 // 图片 src 在场景快照中的占位协议，恢复时回 IndexedDB 取 blob
 const ASSET_PROTOCOL = 'asset://'
-// mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
+// mask 导出色；画布内使用不透明紫色笔迹，再通过统一图层透明度显示
 const MASK_COLOR = '#ffffff'
-const MASK_TINT = 'rgba(168, 85, 247, 0.55)'
+const MASK_TINT = '#a855f7'
+const MASK_OPACITY = 0.55
+const MASK_PREVIEW_TINT = `rgba(168, 85, 247, ${MASK_OPACITY})`
 // 涂抹锚点描边 / 编辑参考图描边（运行时辅助对象，不进快照、不进 mask）
 const ANCHOR_OUTLINE_KIND = 'anchor-outline'
 const REF_OUTLINE_KIND = 'ref-outline'
@@ -237,6 +239,12 @@ function syncDotGrid(): void {
   const spacing = GRID_SPACING * canvas.getZoom()
   el.style.backgroundPosition = `${vpt[4]}px ${vpt[5]}px`
   el.style.backgroundSize = `${spacing}px ${spacing}px`
+  // 独立 mask 画布必须与主画布共享视口变换，保证平移和缩放时笔迹跟随图片
+  if (maskCanvas) {
+    maskCanvas.setViewportTransform([...vpt] as TMat2D)
+    // mask 画布关闭了自动增删重绘，视口变化后需主动刷新，否则下一笔才会显示新位置
+    maskCanvas.requestRenderAll()
+  }
 }
 
 // fabric 7 类型未声明自定义 data 属性，运行时允许挂任意键，这里做最小封装
@@ -251,10 +259,42 @@ function setObjectData(object: FabricObject, data: Record<string, unknown>): voi
   target.data = data
 }
 
+// 返回当前会话中的全部 mask 路径；画笔路径位于独立画布，普通对象仍位于主画布
+function getMaskPaths(): FabricObject[] {
+  if (!canvas) return []
+  const paths = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
+  if (maskCanvas) {
+    paths.push(...maskCanvas.getObjects().filter((object) => objectData(object).kind === 'mask'))
+  }
+  return paths
+}
+
+// 把 mask 路径加入独立画布，并重新套用当前目标图片的裁剪框
+function addMaskPath(path: FabricObject): void {
+  if (maskCanvas) {
+    maskCanvas.add(path)
+    if (maskClipRect) path.clipPath = maskClipRect
+    maskCanvas.requestRenderAll()
+  } else {
+    canvas?.add(path)
+  }
+}
+
+// 从 mask 所在画布移除路径，供撤销、清除和退出画笔模式复用
+function removeMaskPath(path: FabricObject): void {
+  if (maskCanvas?.getObjects().includes(path)) {
+    maskCanvas.remove(path)
+    maskCanvas.requestRenderAll()
+  } else {
+    canvas?.remove(path)
+  }
+}
+
 type BrushShape = 'round' | 'square'
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasElRef = ref<HTMLCanvasElement | null>(null)
+const maskCanvasElRef = ref<HTMLCanvasElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 // 待裁剪队列：确认/跳过一张后自动出队下一张
 const cropQueue = ref<Blob[]>([])
@@ -273,7 +313,7 @@ const inpaintAnchor = shallowRef<FabricObject | null>(null)
 const paintSuspended = ref(false)
 // 编辑模式（edit）的参考图集合：点击图片 = 单选替换，框选工具 = 批量替换为框内图片
 const editRefs = shallowRef<FabricObject[]>([])
-// 框选工具开关：开启后空白拖拽绘制选框，框选的图片全部设为参考图
+// 框选工具开关：三种模式均可开启，空白拖拽绘制选框
 const boxSelectMode = ref(false)
 // 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
 let anchorOutline: Rect | null = null
@@ -281,6 +321,8 @@ let anchorOutline: Rect | null = null
 const refOutlines = new Map<FabricObject, Rect>()
 
 let canvas: Canvas | null = null
+// mask 使用独立静态画布，整层透明度只合成一次
+let maskCanvas: StaticCanvas | null = null
 let resizeObserver: ResizeObserver | null = null
 let sceneSaveTimer: ReturnType<typeof setTimeout> | null = null
 // 平移拖拽状态：pointerId 统一鼠标 / 触摸
@@ -315,11 +357,23 @@ onMounted(() => {
     preserveObjectStacking: true,
     // 背景透明，圆点网格由容器 CSS 透出；导出的 mask 带 alpha
     backgroundColor: '',
-    // 空白拖拽用于平移视角，不做框选
+    // 默认关闭组选；点击框选工具后由交互同步逻辑开启
     selection: false,
     defaultCursor: 'grab',
   })
+  const maskElement = maskCanvasElRef.value
+  if (maskElement) {
+    maskElement.style.opacity = String(MASK_OPACITY)
+    maskCanvas = new StaticCanvas(maskElement, {
+      width: canvas.getWidth(),
+      height: canvas.getHeight(),
+      backgroundColor: '',
+      renderOnAddRemove: false,
+    })
+    maskCanvas.setViewportTransform([...canvas.viewportTransform] as TMat2D)
+  }
   bindCanvasEvents()
+  syncCanvasSelection()
   // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
   container.addEventListener('contextmenu', suppressContextMenu)
   resizeObserver = new ResizeObserver(fitToContainer)
@@ -341,6 +395,10 @@ onBeforeUnmount(() => {
     void canvas.dispose()
     canvas = null
   }
+  if (maskCanvas) {
+    void maskCanvas.dispose()
+    maskCanvas = null
+  }
 })
 
 // 画布逻辑尺寸跟随容器（无上界，配合平移形成无限画布）
@@ -349,6 +407,7 @@ function fitToContainer(): void {
   const { clientWidth, clientHeight } = containerRef.value
   if (clientWidth <= 0 || clientHeight <= 0) return
   canvas.setDimensions({ width: Math.floor(clientWidth), height: Math.floor(clientHeight) })
+  maskCanvas?.setDimensions({ width: Math.floor(clientWidth), height: Math.floor(clientHeight) })
 }
 
 // ==================== 事件绑定 ====================
@@ -359,16 +418,20 @@ function suppressContextMenu(event: Event): void {
 
 function bindCanvasEvents(): void {
   if (!canvas) return
-  // 空白处按下左键 / 单指 = 平移视角；涂抹模式下左键落笔，橡皮模式下左键擦除，中键 / 右键拖拽平移
+  // 空白处按下左键 / 单指 = 平移视角；框选工具开启时交给 Fabric 绘制选框；中键 / 右键始终可平移
   canvas.on('mouse:down', (event) => {
     if (!canvas) return
     if (painting.value) {
       if (isPanButton(event.e)) startPan(event.e)
       return
     }
+    if (isPanButton(event.e)) {
+      startPan(event.e)
+      return
+    }
     if (event.target) return
     if (!isPrimaryPointer(event.e)) return
-    // 框选模式下空白拖拽交给 fabric 绘制选框，不做平移
+    // 框选工具开启时空白拖拽交给 Fabric 绘制选框，不做平移
     if (boxSelectMode.value) return
     startPan(event.e)
     canvas.discardActiveObject()
@@ -406,8 +469,18 @@ function bindCanvasEvents(): void {
     if (path && painting.value) {
       setObjectData(path, { kind: 'mask' })
       path.set({ selectable: false, evented: false })
+      // 预览画笔带透明度，落笔后改为不透明颜色交给独立画布统一合成
+      path.set({
+        fill: path.fill ? MASK_TINT : path.fill,
+        stroke: path.stroke ? MASK_TINT : path.stroke,
+      })
       if (maskClipRect) {
         path.clipPath = maskClipRect
+      }
+      // 将每笔路径移入独立画布，先合成不透明笔迹，再由画布整体设置透明度
+      if (maskCanvas) {
+        canvas?.remove(path)
+        addMaskPath(path)
       }
       hasMaskStrokes.value = true
       pushMaskUndo({ type: 'add', path })
@@ -439,18 +512,18 @@ function bindCanvasEvents(): void {
     if (event.target && editRefs.value.includes(event.target)) {
       editRefs.value = editRefs.value.filter((item) => item !== event.target)
     }
-    if (!canvas?.getObjects().some((object) => objectData(object).kind === 'mask')) {
+    if (!getMaskPaths().length) {
       hasMaskStrokes.value = false
     }
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
     syncEditRefFromSelection(event.selected)
-    onImageSelected(pickImage(event.selected?.[0]))
+    onImageSelected(event.selected?.length === 1 ? pickImage(event.selected[0]) : null)
   })
   canvas.on('selection:updated', (event) => {
     syncEditRefFromSelection(event.selected)
-    onImageSelected(pickImage(event.selected?.[0]))
+    onImageSelected(event.selected?.length === 1 ? pickImage(event.selected[0]) : null)
   })
   canvas.on('selection:cleared', () => {
     selectedImage.value = null
@@ -472,7 +545,7 @@ function startPan(event: Event): void {
   canvas.defaultCursor = 'grabbing'
 }
 
-// 涂抹模式下用于平移的按键：鼠标中键 / 右键
+// 画布平移的备用按键：鼠标中键 / 右键
 function isPanButton(event: Event): boolean {
   const mouse = event as MouseEvent
   return typeof mouse.button === 'number' && (mouse.button === 1 || mouse.button === 2)
@@ -480,7 +553,7 @@ function isPanButton(event: Event): boolean {
 
 function stopPanning(): void {
   isPanning = false
-  if (canvas) canvas.defaultCursor = painting.value ? 'crosshair' : 'grab'
+  if (canvas) canvas.defaultCursor = boxSelectMode.value || painting.value ? 'crosshair' : 'grab'
 }
 
 // 鼠标左键或单指触摸才可平移
@@ -571,7 +644,8 @@ function makeBrush(): PencilBrush {
   const brush =
     brushShape.value === 'square' ? new SquarePencilBrush(canvas!) : new PencilBrush(canvas!)
   // 展示用紫色叠加层；导出 mask 时才统一改回白色
-  brush.color = MASK_TINT
+  // 预览直接绘制在主画布上，保留与独立 mask 画布一致的视觉透明度
+  brush.color = MASK_PREVIEW_TINT
   brush.width = brushSize.value
   return brush
 }
@@ -585,6 +659,7 @@ function enterPainting(): void {
   canvas.freeDrawingBrush = makeBrush()
   canvas.isDrawingMode = true
   canvas.defaultCursor = 'crosshair'
+  syncCanvasSelection()
   canvas.requestRenderAll()
 }
 
@@ -595,6 +670,7 @@ function exitPainting(): void {
   canvas.freeDrawingBrush = undefined
   unlockAllObjects()
   canvas.defaultCursor = 'grab'
+  syncCanvasSelection()
   // 退出画笔模式即丢弃全部笔迹：mask 是会话级草稿，不保留到下次涂抹
   discardMaskStrokes()
   canvas.requestRenderAll()
@@ -642,14 +718,15 @@ function refreshMaskClip(): void {
     top: vp.top,
     width: vp.width,
     height: vp.height,
+    // getBoundingRect 给出包围盒左上角；显式使用左上原点，避免 Fabric 默认中心原点造成半尺寸偏移
+    originX: 'left',
+    originY: 'top',
   })
   maskClipRect.absolutePositioned = true
   // 局部变量收窄类型（forEach 闭包内无法收窄模块级 let）
   const clip = maskClipRect
-  canvas.getObjects().forEach((object) => {
-    if (objectData(object).kind === 'mask') {
-      object.clipPath = clip
-    }
+  getMaskPaths().forEach((object) => {
+    object.clipPath = clip
   })
 }
 
@@ -669,23 +746,30 @@ function syncEditRefFromSelection(selected: FabricObject[] | undefined): void {
   }
 }
 
-// 框选工具开关：开启后 fabric 组选生效，空白拖拽画选框；关闭恢复默认（空白拖拽平移）
-function setBoxSelectMode(on: boolean): void {
-  boxSelectMode.value = on
-  if (canvas) {
-    canvas.selection = on
-    canvas.defaultCursor = on ? 'crosshair' : 'grab'
-    canvas.requestRenderAll()
-  }
+// 同步框选工具状态：开启时 Fabric 接管空白拖拽，关闭时恢复空白拖拽平移
+function syncCanvasSelection(): void {
+  if (!canvas) return
+  canvas.selection = boxSelectMode.value && !painting.value
+  canvas.defaultCursor = boxSelectMode.value || painting.value ? 'crosshair' : 'grab'
+  canvas.requestRenderAll()
 }
 
-// 参考图集合变化 → 同步描边；离开编辑模式 → 清空集合并退出框选
+// 框选工具开关：三种模式都可用；关闭后空白拖拽恢复平移
+function setBoxSelectMode(on: boolean): void {
+  boxSelectMode.value = on
+  syncCanvasSelection()
+}
+
+// 参考图集合变化 → 同步描边；离开编辑模式 → 清空集合
 watch(editRefs, refreshRefOutlines)
 watch(isEdit, (edit) => {
   if (!edit) {
     editRefs.value = []
-    if (boxSelectMode.value) setBoxSelectMode(false)
+  } else if (canvas) {
+    // 切入 edit 时沿用其它模式下已经框选的对象，避免必须重新拖一次选框
+    syncEditRefFromSelection(canvas.getActiveObjects())
   }
+  syncCanvasSelection()
 })
 
 // 参考图描边：为集合内每张图片维护一个青色虚线框，拖动/缩放时跟随
@@ -703,6 +787,9 @@ function refreshRefOutlines(): void {
     if (!rect) {
       rect = new Rect({
         ...ANCHOR_OUTLINE_STYLE,
+        // 参考图可能处于 Fabric ActiveSelection 中，描边位置统一按绝对包围盒的左上角解释
+        originX: 'left',
+        originY: 'top',
         selectable: false,
         evented: false,
       })
@@ -715,11 +802,12 @@ function refreshRefOutlines(): void {
   canvas.requestRenderAll()
 }
 
-// 描边矩形对齐对象位置（含缩放与角度）
+// 描边矩形对齐对象的绝对包围盒；ActiveSelection 中不能直接使用对象的 left/top 组内坐标
 function syncOutlineToObject(rect: Rect, object: FabricObject): void {
-  const width = ((object as unknown as { width?: number }).width ?? 0) * (object.scaleX ?? 1)
-  const height = ((object as unknown as { height?: number }).height ?? 0) * (object.scaleY ?? 1)
-  rect.set({ left: object.left, top: object.top, width, height, angle: object.angle ?? 0 })
+  // ActiveSelection 会改变对象的父级，先刷新角点缓存，避免沿用入组前的场景坐标
+  object.setCoords()
+  const bounds = object.getBoundingRect()
+  rect.set({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, angle: 0 })
   rect.setCoords()
 }
 
@@ -746,9 +834,12 @@ function undoMask(): void {
     return
   }
   if (entry.type === 'add') {
-    canvas.remove(entry.path)
+    removeMaskPath(entry.path)
+    hasMaskStrokes.value = getMaskPaths().length > 0
   } else {
-    entry.paths.forEach((path) => canvas!.add(path))
+    entry.paths.forEach((path) => {
+      addMaskPath(path)
+    })
     hasMaskStrokes.value = true
   }
   canUndoMask.value = maskUndoStack.length > 0
@@ -769,9 +860,9 @@ watch(brushSize, (size) => {
 // 清除全部 mask 笔迹（整体入撤销栈，可一步恢复）
 function clearMask(): void {
   if (!canvas) return
-  const paths = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
+  const paths = getMaskPaths()
   if (!paths.length) return
-  paths.forEach((object) => canvas!.remove(object))
+  paths.forEach(removeMaskPath)
   hasMaskStrokes.value = false
   pushMaskUndo({ type: 'clear', paths })
 }
@@ -780,10 +871,7 @@ function clearMask(): void {
 // 避免丢弃的草稿被 Ctrl+Z / 撤销按钮复活
 function discardMaskStrokes(): void {
   if (!canvas) return
-  canvas
-    .getObjects()
-    .filter((object) => objectData(object).kind === 'mask')
-    .forEach((object) => canvas!.remove(object))
+  getMaskPaths().forEach(removeMaskPath)
   hasMaskStrokes.value = false
   maskUndoStack.length = 0
   canUndoMask.value = false
@@ -1042,48 +1130,42 @@ async function getEditRefBlobs(): Promise<Blob[]> {
   return blobs
 }
 
-// 导出 mask：选中图片 → 取其场景包围盒 → 临时单位阵视口 + 隐藏非 mask 对象
+// 导出 mask：选中图片 → 独立 mask 画布切到单位阵视口
 // → 展示色笔迹临时改回纯白 → toCanvasElement 裁剪 → 离屏拉伸到原图自然尺寸 → 透明底 PNG
 async function getMaskBlob(): Promise<Blob | null> {
-  if (!canvas) return null
+  if (!canvas || !maskCanvas) return null
   const image = selectedImageObject()
   if (!image) return null
-  const maskObjects = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
+  const maskObjects = getMaskPaths()
   if (!maskObjects.length) return null
 
   const rect = image.getBoundingRect()
-  const hidden: FabricObject[] = []
-  canvas.getObjects().forEach((object) => {
-    if (objectData(object).kind !== 'mask' && object.visible) {
-      object.visible = false
-      hidden.push(object)
-    }
-  })
   // 展示用紫色叠加层，导出必须是不透明的纯白轨迹：渲染前统一改色，结束后恢复
-  const strokeBackup = maskObjects.map((object) => ({ object, stroke: object.stroke }))
-  strokeBackup.forEach(({ object }) => {
-    object.set('stroke', MASK_COLOR)
+  const styleBackup = maskObjects.map((object) => ({ object, fill: object.fill, stroke: object.stroke }))
+  styleBackup.forEach(({ object }) => {
+    object.set({
+      fill: object.fill ? MASK_COLOR : object.fill,
+      stroke: object.stroke ? MASK_COLOR : object.stroke,
+    })
   })
-  const viewport = canvas.viewportTransform
+  const viewport = [...maskCanvas.viewportTransform] as TMat2D
   // 单位阵视口：裁剪框即场景坐标系下的包围盒
-  canvas.viewportTransform = [1, 0, 0, 1, 0, 0]
+  maskCanvas.setViewportTransform([1, 0, 0, 1, 0, 0])
   let element: HTMLCanvasElement
   try {
-    element = canvas.toCanvasElement(1, {
+    element = maskCanvas.toCanvasElement(1, {
       left: rect.left,
       top: rect.top,
       width: rect.width,
       height: rect.height,
     })
   } finally {
-    canvas.viewportTransform = viewport
-    strokeBackup.forEach(({ object, stroke }) => {
-      object.set('stroke', stroke ?? null)
-    })
-    hidden.forEach((object) => {
-      object.visible = true
+    maskCanvas.setViewportTransform(viewport)
+    styleBackup.forEach(({ object, fill, stroke }) => {
+      object.set({ fill: fill ?? null, stroke: stroke ?? null })
     })
     canvas.requestRenderAll()
+    maskCanvas.requestRenderAll()
     syncDotGrid()
   }
 
@@ -1172,7 +1254,10 @@ function snapshotScene(): string {
     }
   }
   json.objects = (json.objects ?? []).filter(
-    (object) => object.data?.kind !== ANCHOR_OUTLINE_KIND && object.data?.kind !== REF_OUTLINE_KIND,
+    (object) =>
+      object.data?.kind !== ANCHOR_OUTLINE_KIND &&
+      object.data?.kind !== REF_OUTLINE_KIND &&
+      object.data?.kind !== 'mask',
   )
   return JSON.stringify(json)
 }
@@ -1226,7 +1311,7 @@ async function restoreScene(): Promise<void> {
     canvas.requestRenderAll()
     // 恢复的视口/缩放同步到圆点网格
     syncDotGrid()
-    hasMaskStrokes.value = canvas.getObjects().some((object) => objectData(object).kind === 'mask')
+    hasMaskStrokes.value = getMaskPaths().length > 0
   } catch (error) {
     console.error('Failed to restore creative scene:', error)
   }
@@ -1276,6 +1361,11 @@ defineExpose({
 
 .dark .dot-grid {
   background-image: radial-gradient(circle, rgb(255 255 255 / 0.14) 1px, transparent 1px);
+}
+
+/* mask 独立画布只展示，不拦截主画布的指针事件；整层透明度避免笔迹重叠变深 */
+.mask-overlay {
+  @apply pointer-events-none absolute inset-0 z-[1];
 }
 
 .canvas-tool-btn {
