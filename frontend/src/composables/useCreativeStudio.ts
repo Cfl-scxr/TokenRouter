@@ -49,6 +49,8 @@ interface CreativeSelectionSettings {
 }
 
 const SETTINGS_KEY = 'creative:selection'
+// 清空本机数据的时间水位线：此后的历史列表只展示该时间之后创建的服务端任务
+const CLEARED_AT_KEY = 'creative:clearedAt'
 const MASK_KEY = localAssetKey('mask', 'current')
 const PROMPT_MAX_LENGTH = 8000
 
@@ -374,18 +376,26 @@ export function useCreativeStudio() {
     else runHistory.value.unshift(run)
   }
 
-  // 拉取服务端历史 + 本地输出素材索引；服务端标记成功但本地无 blob 的输出记为 missing
+  // 拉取服务端历史 + 本地输出素材索引；服务端标记成功但本地无 blob 的输出记为 missing。
+  // 历史列表只展示本机清空时间之后创建的任务：更早的任务元数据仍在服务端，仅不再展示。
   async function refreshHistory(): Promise<void> {
     loadingHistory.value = true
     try {
       const page = await getCreativeRuns(1, 20)
-      runHistory.value = page.items
+      const clearedAt = await loadSetting<number>(CLEARED_AT_KEY)
+      const items =
+        typeof clearedAt === 'number' && clearedAt > 0
+          ? page.items.filter(
+              (run) => typeof run.created_at !== 'number' || run.created_at * 1000 > clearedAt,
+            )
+          : page.items
+      runHistory.value = items
       const [sources, outputs] = await Promise.all([listAssets('source'), listAssets('output')])
       sourceAssets.value = sources
       const map = new Map(outputs.map((a) => [a.key, a]))
       outputAssetMap.value = map
       const missing = new Set<string>()
-      for (const run of page.items) {
+      for (const run of items) {
         for (const output of run.outputs ?? []) {
           if (output.status !== 'succeeded') continue
           const key = outputAssetKey(run.id, output.output_index)
@@ -426,7 +436,8 @@ export function useCreativeStudio() {
     }
   }
 
-  // 清空本机创作数据（素材 + 场景 + 设置）并重置内存状态
+  // 清空本机创作数据（素材 + 场景 + 设置）并重置内存状态；
+  // 同时记录清空时间水位线，此后的历史列表只展示该时间之后创建的服务端任务。
   async function clearLocalData(): Promise<void> {
     stopPolling()
     try {
@@ -435,6 +446,9 @@ export function useCreativeStudio() {
       error.value = extractErrorMessage(e) || t('creative.error.clearFailed')
       throw e
     }
+    await saveSetting(CLEARED_AT_KEY, Date.now()).catch(() => {
+      // 水位线写入失败不影响清空本身
+    })
     sourceAssets.value = []
     maskAsset.value = null
     currentRun.value = null

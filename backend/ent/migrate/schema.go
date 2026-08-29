@@ -778,11 +778,6 @@ var (
 				},
 			},
 			{
-				Name:    "creativerun_request_fingerprint",
-				Unique:  true,
-				Columns: []*schema.Column{CreativeRunsColumns[16]},
-			},
-			{
 				Name:    "creativerun_user_id_idempotency_key",
 				Unique:  true,
 				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[17]},

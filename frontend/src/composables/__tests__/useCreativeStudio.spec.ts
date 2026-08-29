@@ -437,6 +437,8 @@ describe('useCreativeStudio', () => {
       await studio.clearLocalData()
 
       expect(mockedStore.clearAll).toHaveBeenCalledTimes(1)
+      // 清空后写入时间水位线，供历史列表过滤旧任务
+      expect(mockedStore.saveSetting).toHaveBeenCalledWith('creative:clearedAt', expect.any(Number))
       expect(studio.currentRun.value).toBeNull()
       expect(studio.runHistory.value).toEqual([])
       expect(studio.sourceAssets.value).toEqual([])
@@ -445,6 +447,25 @@ describe('useCreativeStudio', () => {
   })
 
   describe('refreshHistory', () => {
+    it('按清空水位线隐藏旧任务，新任务仍展示', async () => {
+      const { studio } = await setupStudio()
+      const now = Date.now()
+      mockedStore.loadSetting.mockImplementation((key: string) =>
+        key === 'creative:clearedAt' ? Promise.resolve(now - 1000) : Promise.resolve(null),
+      )
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [
+          makeRun({ id: 'old-run', status: 'succeeded', created_at: Math.floor((now - 2000) / 1000) }),
+          makeRun({ id: 'new-run', status: 'succeeded', created_at: Math.floor(now / 1000) }),
+        ],
+        total: 2,
+      })
+
+      await studio.refreshHistory()
+
+      expect(studio.runHistory.value.map((r) => r.id)).toEqual(['new-run'])
+    })
+
     it('服务端 outputs 与本地素材关联，缺 blob 标 missing 且不向服务端请求恢复', async () => {
       const { studio } = await setupStudio()
       const run = makeRun({

@@ -740,9 +740,15 @@ func TestCreateRunIdempotency(t *testing.T) {
 	_, err = svc.CreateRun(ctx, 7, conflictParams, "idem-key-1")
 	require.ErrorIs(t, err, ErrCreativeRunIdempotencyConflict)
 
-	// 计费预占与入队各发生一次（重放不重复扣费/入队）。
-	require.Equal(t, 1, svc.BillingRepo.(*creativeFakeBillingRepo).reserveN)
-	require.Len(t, svc.Queue.(*creativeFakeQueue).enqueued, 1)
+	// 相同请求体 + 不同 Key：不得冲突（指纹不做全局唯一，允许正常重试）。
+	retry, err := svc.CreateRun(ctx, 7, validCreateParams(), "idem-key-2")
+	require.NoError(t, err)
+	require.False(t, retry.IdempotentReplay)
+	require.NotEqual(t, first.ID, retry.ID)
+
+	// 计费预占与入队各发生两次（重放不重复扣费/入队）。
+	require.Equal(t, 2, svc.BillingRepo.(*creativeFakeBillingRepo).reserveN)
+	require.Len(t, svc.Queue.(*creativeFakeQueue).enqueued, 2)
 }
 
 // TestEnsureCreativeManagedKey 校验隐藏执行 Key 的幂等供应。

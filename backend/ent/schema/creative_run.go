@@ -87,7 +87,6 @@ func (CreativeRun) Indexes() []ent.Index {
 		index.Fields("run_id").Unique(),
 		index.Fields("user_id", "created_at"),
 		index.Fields("status").Annotations(entsql.IndexWhere("status IN ('queued', 'running')")),
-		index.Fields("request_fingerprint").Unique(),
 		index.Fields("user_id", "idempotency_key").
 			Unique().
 			Annotations(entsql.IndexWhere("idempotency_key IS NOT NULL AND idempotency_key <> ''")),

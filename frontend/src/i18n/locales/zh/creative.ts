@@ -80,7 +80,7 @@ export default {
       clearSuccess: '本机创作数据已清空。',
       confirmClearTitle: '清空本机创作数据？',
       confirmClearMessage:
-        '将永久删除本机保存的源图、mask、生成结果与画布场景，已生成的图片无法找回；不会影响账户余额。',
+        '将永久删除本机保存的源图、mask、生成结果与画布场景，历史记录也会从本机列表隐藏（任务元数据仍保留在服务端）；已生成的图片无法找回，且不会影响账户余额。',
     },
     status: {
       queued: '排队中',
