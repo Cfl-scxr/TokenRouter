@@ -47,7 +47,7 @@
             v-for="option in studio.models.value"
             :key="creativeOptionKey(option)"
             type="button"
-            class="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+            class="flex w-full items-center gap-2 rounded-[18px] px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
             :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
             @click="selectModel(option)"
           >
@@ -170,7 +170,7 @@
             v-for="op in studio.operationOptions.value"
             :key="op"
             type="button"
-            class="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+            class="flex w-full items-center gap-2 rounded-[18px] px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
             :class="studio.operation.value === op && 'bg-primary-600/5 dark:bg-primary-900/20'"
             @click="selectOperation(op)"
           >
