@@ -3,35 +3,39 @@ export default {
     title: 'Creative Studio',
     description: 'Generate and edit images with AI models; assets stay in this browser only.',
     panel: {
-      title: 'Create',
       model: 'Model',
-      selectModelPlaceholder: 'Select a model',
-      operation: 'Operation',
-      selectOperation: 'Select an operation',
-      prompt: 'Prompt',
-      promptPlaceholder: 'Describe the image you want to create...',
-      sourceImages: 'Upload image',
-      uploadSource: 'Upload image',
-      uploadHint: 'PNG / JPEG / WebP. The cropped image is placed at the current canvas center.',
       // Edit / inpaint prerequisite hint (also shown as the form error when generating without a selection)
       selectImageHint: 'Select an image on the canvas before generating.',
       // Inpaint hint: select an image and paint the area to redraw with the brush
-      maskHint: 'Select an image on the canvas and paint the area to redraw with the brush.',
+      maskHint: 'Select an image on the canvas first, then paint the area to redraw with the brush.',
       imageSize: 'Image size',
       aspectRatio: 'Aspect ratio',
       outputCount: 'Output count',
       outputCountOption: '{n} image | {n} images',
-      generate: 'Generate',
-      generating: 'Submitting...',
       estimatedCost: 'Estimated cost: {cost}',
+      uploadSource: 'Upload image',
+      promptPlaceholder: 'Describe the image you want to create...',
       // 模型目录为空时的空态提示：区分功能被管理员关闭与分组未配置图片生成。
       studioDisabled: 'Creative Studio is disabled. Please contact your administrator to enable it.',
       noModelsAvailable: 'No image generation models are available. Please ask your administrator to configure a group with image generation enabled.',
+    },
+    composer: {
+      send: 'Send',
+      model: 'Model',
+      params: 'Params',
+      operation: 'Operation',
+      selectModel: 'Select a model',
+      selectModelFirst: 'Select a model first.',
     },
     operations: {
       generate: 'Generate',
       edit: 'Edit',
       inpaint: 'Inpaint',
+    },
+    operationsDesc: {
+      generate: 'Generate an image from the prompt alone',
+      edit: 'Edit using the selected canvas image as reference',
+      inpaint: 'Paint over the selected image to redraw that area',
     },
     aspects: {
       '1x1': '1:1',
@@ -41,14 +45,20 @@ export default {
       '9x16': '9:16',
     },
     canvas: {
-      brush: 'Mask brush',
       brushSize: 'Brush size',
       shapeRound: 'Round stroke',
       shapeSquare: 'Square stroke',
+      // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
+      paintToggleOn: 'Start painting',
+      paintToggleOff: 'Pause painting to pan',
+      clearMask: 'Clear paint',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
       settings: 'Settings',
-      maskBrushHint: 'Paint the area to redraw on the image; the white stroke is the mask',
+      // 局部重绘未选中图片时的引导
+      inpaintPickHint: 'Click an image on the canvas, then paint the area to redraw',
+      // 涂抹开始前的引导：紫色笔迹即重绘区域
+      maskPaintHint: 'Paint the purple area to redraw; it becomes the mask on export',
     },
     result: {
       actualCost: 'Actual cost: {cost}',

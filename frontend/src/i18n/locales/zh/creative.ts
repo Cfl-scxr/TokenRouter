@@ -3,35 +3,39 @@ export default {
     title: '创作台',
     description: '使用 AI 模型生成与编辑图片，素材仅保存在当前浏览器。',
     panel: {
-      title: '创作',
       model: '模型',
-      selectModelPlaceholder: '请选择模型',
-      operation: '操作',
-      selectOperation: '请选择操作',
-      prompt: '提示词',
-      promptPlaceholder: '描述想要生成的画面...',
-      sourceImages: '上传图片',
-      uploadSource: '上传图片',
-      uploadHint: '支持 PNG / JPEG / WebP，裁剪确认后直接放到画布当前视角中心。',
       // 图生图 / 局部重绘前置条件提示（未选中图片时点击生成也会作为表单错误提示）
       selectImageHint: '请先在画布中选中一张图片，再开始生成。',
-      // 局部重绘提示：选中图片并用画笔绘制要重绘的区域
-      maskHint: '选中画布中的一张图片，并用画笔涂抹要重绘的区域。',
+      // 局部重绘提示：选中图片后用画笔涂抹要重绘的区域
+      maskHint: '请先在画布中选中一张图片，然后用画笔涂抹要重绘的区域。',
       imageSize: '图片尺寸',
       aspectRatio: '画面比例',
       outputCount: '输出数量',
       outputCountOption: '{n} 张',
-      generate: '开始生成',
-      generating: '提交中...',
       estimatedCost: '预估费用：{cost}',
+      uploadSource: '上传图片',
+      promptPlaceholder: '描述想要生成的画面...',
       // 模型目录为空时的空态提示：区分功能被管理员关闭与分组未配置图片生成。
       studioDisabled: '创作台功能已关闭，请联系管理员开启。',
       noModelsAvailable: '暂无可用的图片生成模型，请联系管理员配置支持图片生成的分组。',
+    },
+    composer: {
+      send: '发送',
+      model: '模型',
+      params: '参数',
+      operation: '操作',
+      selectModel: '选择模型',
+      selectModelFirst: '请先选择模型。',
     },
     operations: {
       generate: '文生图',
       edit: '图生图',
       inpaint: '局部重绘',
+    },
+    operationsDesc: {
+      generate: '直接根据提示词生成图片',
+      edit: '以画布中选中的图片为参考进行编辑',
+      inpaint: '涂抹选中图片的区域并重新绘制',
     },
     aspects: {
       '1x1': '1:1',
@@ -41,14 +45,20 @@ export default {
       '9x16': '9:16',
     },
     canvas: {
-      brush: 'Mask 画笔',
       brushSize: '画笔粗细',
       shapeRound: '圆头笔迹',
       shapeSquare: '方头笔迹',
+      // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
+      paintToggleOn: '开始涂抹',
+      paintToggleOff: '暂停涂抹，移动视角',
+      clearMask: '清除涂抹',
       removeSelected: '移除选中图片',
       reset: '清空画布',
       settings: '设置',
-      maskBrushHint: '在图片上涂抹要重绘的区域，白色笔迹即 mask',
+      // 局部重绘未选中图片时的引导
+      inpaintPickHint: '点击画布中的一张图片，在其上涂抹要重绘的区域',
+      // 涂抹开始前的引导：紫色笔迹即重绘区域
+      maskPaintHint: '在图片上涂抹紫色区域，即要重绘的部分（导出时自动转为 mask）',
     },
     result: {
       actualCost: '实际费用：{cost}',

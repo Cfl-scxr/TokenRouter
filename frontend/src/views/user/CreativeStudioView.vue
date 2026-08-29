@@ -2,20 +2,14 @@
   <AppLayout>
     <!-- 整个内容区即无限画布背景：负外边距抵消 app-main 四周内边距，画布铺满全幅（含顶部，点阵直达 header 边界） -->
     <div
+      ref="stageRef"
       class="relative -mx-4 -mb-4 -mt-4 h-[calc(100dvh-3.5rem)] md:-mx-6 md:-mb-6 md:-mt-5 lg:-mx-8 lg:-mb-8 lg:-mt-4"
     >
-      <CreativeCanvas ref="canvasRef" class="absolute inset-0" @error="onCanvasError" />
+      <CreativeCanvas ref="canvasRef" class="absolute inset-0" :operation="studio.operation.value" @error="onCanvasError" />
       <CreativeRunHistory :studio="studio" />
 
-      <!-- 控制面板：桌面端左侧浮动卡片；移动端顶部浮层，均压在画布之上 -->
-      <div
-        class="absolute inset-x-3 top-3 z-10 flex max-h-[58dvh] flex-col overflow-y-auto rounded-xl border border-primary-900/10 bg-white/95 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95 lg:bottom-3 lg:left-3 lg:right-auto lg:max-h-none lg:w-80"
-      >
-        <CreativeControlPanel :studio="studio" @generate="onGenerate" @uploaded="onUploaded" />
-      </div>
-
-      <!-- 设置：右下角齿轮按钮，样式与历史按钮一致；点击向上展开设置项 -->
-      <div class="absolute bottom-3 right-3 z-20">
+      <!-- 设置：左上角齿轮按钮，点击向下展开设置项 -->
+      <div class="absolute left-3 top-3 z-20">
         <button
           type="button"
           class="flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
@@ -25,10 +19,10 @@
         >
           <Icon name="cog" size="md" />
         </button>
-        <!-- 向上展开的设置面板 -->
+        <!-- 向下展开的设置面板 -->
         <div
           v-if="settingsOpen"
-          class="absolute bottom-12 right-0 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
+          class="absolute left-0 top-12 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
         >
           <button
             type="button"
@@ -41,10 +35,19 @@
         </div>
       </div>
 
-      <!-- 生成状态胶囊：移动端左下（工具栏上方），桌面端底部居中（避开左右角标） -->
+      <!-- 聊天式输入框：无选中时底部居中；选中图片时跟随到图片下方（位置由 composerStyle 计算） -->
+      <div ref="composerSlotRef" class="absolute z-30" :style="composerStyle">
+        <CreativeComposer
+          :studio="studio"
+          :has-selection="hasSelection"
+          @generate="onGenerate"
+        />
+      </div>
+
+      <!-- 生成状态胶囊：移动端顶部居中，桌面端左下角 -->
       <div
         v-if="pillState && !pillHidden"
-        class="absolute bottom-14 left-3 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-1/2 lg:right-auto lg:-translate-x-1/2"
+        class="absolute left-1/2 top-3 z-10 flex max-w-[calc(100%-6rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-3 lg:top-auto lg:max-w-[calc(100%-24rem)] lg:translate-x-0"
         :class="pillState.toneClass"
       >
         <Icon v-if="pillState.spinning" name="refresh" size="sm" class="animate-spin" />
@@ -67,19 +70,19 @@
 
 <script setup lang="ts">
 /**
- * 创作台主视图：左侧控制面板 + 无限画布工作台。
+ * 创作台主视图：全幅无限画布 + 聊天式输入框。
+ * - 输入框默认底部居中；画布选中图片时跟随到图片下方（随平移 / 缩放实时跟踪，越界自动夹取）
  * - 生成时从画布收集输入：edit/inpaint 取当前选中图片的原始 blob，inpaint 另取画笔 mask 导出
  * - 注册画布桥接：收割成功的输出自动上板；历史里的输出可一键导入画布
- * - 右下角设置按钮（齿轮）向上展开设置项，收纳"清空本机创作数据"
- * - 画布浮动状态胶囊反馈生成状态（终态非成功几秒后自动消隐，成功保持到下次生成）
+ * - 左上角设置（清空本机创作数据）、右上角历史、顶部工具栏（上传 / 局部重绘画笔组 / 删除 / 清空）
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import CreativeControlPanel from '@/components/creative/CreativeControlPanel.vue'
+import CreativeComposer from '@/components/creative/CreativeComposer.vue'
 import CreativeCanvas from '@/components/creative/CreativeCanvas.vue'
 import CreativeRunHistory from '@/components/creative/CreativeRunHistory.vue'
 import { CREATIVE_RUN_TERMINAL_STATUSES } from '@/api/creative'
@@ -91,12 +94,55 @@ const appStore = useAppStore()
 const studio = useCreativeStudio()
 
 const canvasRef = ref<InstanceType<typeof CreativeCanvas> | null>(null)
+const stageRef = ref<HTMLDivElement | null>(null)
+const composerSlotRef = ref<HTMLDivElement | null>(null)
 const showClearConfirm = ref(false)
-// 右下角设置弹层
+// 设置弹层开关（齿轮在画布左上角，弹层向下展开）
 const settingsOpen = ref(false)
 // 终态（非成功）状态胶囊几秒后自动消隐
 let pillHideTimer: ReturnType<typeof setTimeout> | null = null
 const pillHidden = ref(false)
+
+// ==================== 输入框定位 ====================
+
+// 舞台（画布容器）与输入框的实测尺寸，用于跟随定位的夹取计算
+const stageSize = reactive({ width: 0, height: 0 })
+const composerSize = reactive({ width: 0, height: 0 })
+let stageObserver: ResizeObserver | null = null
+let composerObserver: ResizeObserver | null = null
+
+// 当前选中图片的画布视口包围盒（未选中为 null；expose 的 ref 在实例上自动解包）
+const selectedRect = computed(() => canvasRef.value?.selectedRect ?? null)
+const hasSelection = computed(() => selectedRect.value !== null)
+
+// 输入框定位样式：无选中 → 底部居中；有选中 → 跟随图片下方（下方放不下时放到上方，再不行夹取在可视区内）
+const composerStyle = computed<Record<string, string>>(() => {
+  const rect = selectedRect.value
+  if (!rect) {
+    return { left: '50%', bottom: '16px', transform: 'translateX(-50%)' }
+  }
+  const pad = 8
+  const gap = 12
+  const width = composerSize.width || 600
+  const height = composerSize.height || 130
+  const viewWidth = stageSize.width || 800
+  const viewHeight = stageSize.height || 600
+  const style: Record<string, string> = {}
+  style.left = `${clamp(rect.left + rect.width / 2 - width / 2, pad, Math.max(pad, viewWidth - width - pad))}px`
+  let top = rect.top + rect.height + gap
+  if (top + height > viewHeight - pad) {
+    const above = rect.top - height - gap
+    top = above >= pad ? above : Math.max(pad, viewHeight - height - pad)
+  }
+  style.top = `${top}px`
+  return style
+})
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+// ==================== 生命周期 ====================
 
 onMounted(() => {
   // 画布桥接：收割自动上板 + 历史输出导入画布；桥接方法自身保证异常不外溢
@@ -108,6 +154,25 @@ onMounted(() => {
       void canvasRef.value?.placeOutput({ blob, runId, outputIndex })
     },
   })
+  // 实测舞台与输入框尺寸（夹取用），尺寸变化实时更新
+  if (stageRef.value) {
+    const syncStage = () => {
+      stageSize.width = stageRef.value?.clientWidth ?? 0
+      stageSize.height = stageRef.value?.clientHeight ?? 0
+    }
+    syncStage()
+    stageObserver = new ResizeObserver(syncStage)
+    stageObserver.observe(stageRef.value)
+  }
+  if (composerSlotRef.value) {
+    const syncComposer = () => {
+      composerSize.width = composerSlotRef.value?.clientWidth ?? 0
+      composerSize.height = composerSlotRef.value?.clientHeight ?? 0
+    }
+    syncComposer()
+    composerObserver = new ResizeObserver(syncComposer)
+    composerObserver.observe(composerSlotRef.value)
+  }
   void studio.loadModels()
   void studio.refreshHistory()
 })
@@ -115,6 +180,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   studio.registerCanvasBridge(null)
   if (pillHideTimer) clearTimeout(pillHideTimer)
+  stageObserver?.disconnect()
+  composerObserver?.disconnect()
 })
 
 // ==================== 生成状态胶囊 ====================
@@ -200,11 +267,6 @@ async function onGenerate(): Promise<void> {
     }
   }
   await studio.createRun({ sourceBlobs, maskBlob })
-}
-
-// 上传裁剪结果：直接放上画布当前视角中心
-function onUploaded(blob: Blob): void {
-  void canvasRef.value?.addUploadedImage(blob)
 }
 
 function onCanvasError(message: string): void {

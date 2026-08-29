@@ -3,57 +3,87 @@
   <div ref="containerRef" class="dot-grid relative h-full w-full overflow-hidden">
     <canvas ref="canvasElRef"></canvas>
 
-    <!-- 浮动工具栏：画笔 / 粗细 / 形状 / 移除选中 / 清空画布（移动端底部，桌面端顶部） -->
+    <!-- 浮动工具栏（移动端底部，桌面端顶部）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
       class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-auto lg:top-3"
     >
-      <button
-        type="button"
-        class="canvas-tool-btn"
-        :class="brushOn && 'canvas-tool-btn-active'"
-        :title="t('creative.canvas.brush')"
-        @click="setBrushOn(!brushOn)"
-      >
-        <Icon name="edit" size="sm" />
+      <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
+      <button type="button" class="canvas-tool-btn" :title="t('creative.panel.uploadSource')" @click="fileInputRef?.click()">
+        <Icon name="upload" size="sm" />
       </button>
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        class="hidden"
+        @change="onFilesPicked"
+      />
+
+      <!-- 画笔组：仅局部重绘模式可用（选中图片后自动进入涂抹，可用开关暂停去移动视角） -->
+      <template v-if="isInpaint">
+        <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :class="painting && 'canvas-tool-btn-active'"
+          :title="painting ? t('creative.canvas.paintToggleOff') : t('creative.canvas.paintToggleOn')"
+          @click="togglePainting"
+        >
+          <Icon name="edit" size="sm" />
+        </button>
+        <!-- 画笔粗细滑块：8–96 -->
+        <div class="flex items-center gap-1.5 px-1">
+          <input
+            v-model.number="brushSize"
+            type="range"
+            min="8"
+            max="96"
+            step="1"
+            class="w-16 cursor-pointer accent-primary-600 sm:w-24"
+            :title="t('creative.canvas.brushSize')"
+          />
+          <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
+        </div>
+        <!-- 笔迹形状：圆头 / 方头 -->
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :class="brushShape === 'round' && 'canvas-tool-btn-active'"
+          :title="t('creative.canvas.shapeRound')"
+          @click="setBrushShape('round')"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :class="brushShape === 'square' && 'canvas-tool-btn-active'"
+          :title="t('creative.canvas.shapeSquare')"
+          @click="setBrushShape('square')"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="7" y="7" width="10" height="10" />
+          </svg>
+        </button>
+        <!-- 清除当前所有涂抹笔迹 -->
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :disabled="!hasMaskStrokes"
+          :title="t('creative.canvas.clearMask')"
+          @click="clearMask"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 4.5l3 3L9 18H6v-3L16.5 4.5zM14.25 6.75l3 3" />
+          </svg>
+        </button>
+      </template>
+
       <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
-      <!-- 画笔粗细滑块：8–96 -->
-      <div class="flex items-center gap-1.5 px-1">
-        <input
-          v-model.number="brushSize"
-          type="range"
-          min="8"
-          max="96"
-          step="1"
-          class="w-24 cursor-pointer accent-primary-600"
-          :title="t('creative.canvas.brushSize')"
-        />
-        <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
-      </div>
-      <!-- 笔迹形状：圆头 / 方头 -->
-      <button
-        type="button"
-        class="canvas-tool-btn"
-        :class="brushShape === 'round' && 'canvas-tool-btn-active'"
-        :title="t('creative.canvas.shapeRound')"
-        @click="setBrushShape('round')"
-      >
-        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="5" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="canvas-tool-btn"
-        :class="brushShape === 'square' && 'canvas-tool-btn-active'"
-        :title="t('creative.canvas.shapeSquare')"
-        @click="setBrushShape('square')"
-      >
-        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
-          <rect x="7" y="7" width="10" height="10" />
-        </svg>
-      </button>
-      <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
+      <!-- 删除选中图片 -->
       <button
         type="button"
         class="canvas-tool-btn"
@@ -68,13 +98,23 @@
       </button>
     </div>
 
-    <!-- 画笔模式提示 -->
+    <!-- 局部重绘未选中图片：引导点击选择目标图片 -->
     <div
-      v-if="brushOn"
+      v-if="isInpaint && !selectedImage"
       class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
     >
-      {{ t('creative.canvas.maskBrushHint') }}
+      {{ t('creative.canvas.inpaintPickHint') }}
     </div>
+    <!-- 涂抹引导：首次落笔前提示紫色笔迹即重绘区域 -->
+    <div
+      v-else-if="painting && !hasMaskStrokes"
+      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
+    >
+      {{ t('creative.canvas.maskPaintHint') }}
+    </div>
+
+    <!-- 裁剪弹窗队列：每张图片依次进入，确认/跳过后直接放上画布 -->
+    <CropperModal :show="cropQueue.length > 0" :blob="cropQueue[0] ?? null" @confirm="onCropConfirm" @skip="onCropConfirm" @cancel="onCropCancel" />
   </div>
 </template>
 
@@ -83,14 +123,18 @@
  * 创作台无限画布（fabric 7）
  * - 逻辑尺寸跟随容器；空白处拖拽平移视角（改 viewportTransform），滚轮以光标为中心缩放（0.2–3）
  * - 图片对象可点选 / 拖动 / Delete 删除；生成输出自动按"上一个放置位置右侧 40px、约 2200px 换行"上板并平滑平移视角
- * - 画笔即 mask 工具：白色轨迹作为 path 对象画在图片上层，data.kind = 'mask'，可导出透明底 PNG
+ * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
+ *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
+ * - 工具栏：上传（裁剪后上板）、画笔组（仅局部重绘）、删除选中、清空画布
  * - 场景快照（含 data 自定义属性，图片 src 以 asset:// 占位）防抖存入 IndexedDB，刷新后恢复并重建输出注册表
  */
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Canvas, FabricImage, PencilBrush, Point, type FabricObject, type TMat2D } from 'fabric'
 import { SquarePencilBrush } from './SquarePencilBrush'
 import Icon from '@/components/icons/Icon.vue'
+import CropperModal from './CropperModal.vue'
+import type { CreativeOperation } from '@/api/creative'
 import {
   LocalStoreQuotaError,
   loadAsset,
@@ -101,10 +145,16 @@ import {
   saveSceneJson,
 } from '@/utils/creativeLocalStore'
 
+interface Props {
+  // 当前操作：局部重绘时启用画笔组并在选中图片后自动进入涂抹模式
+  operation: CreativeOperation
+}
+
 interface Emits {
   (e: 'error', message: string): void
 }
 
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 const { t } = useI18n()
 
@@ -120,8 +170,9 @@ const PLACE_GAP = 40
 const PLACE_WRAP_X = 2200
 // 图片 src 在场景快照中的占位协议，恢复时回 IndexedDB 取 blob
 const ASSET_PROTOCOL = 'asset://'
-// mask 画笔颜色（导出为白底透明 PNG 的白色轨迹）
+// mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
 const MASK_COLOR = '#ffffff'
+const MASK_TINT = 'rgba(168, 85, 247, 0.55)'
 
 // 圆点网格跟随视角平移：背景位置 = 视口平移分量，拖动时网格与图片同步滑动；
 // 间距保持恒定（不随缩放变化），避免放大缩小时点密度晃动。
@@ -148,8 +199,16 @@ type BrushShape = 'round' | 'square'
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasElRef = ref<HTMLCanvasElement | null>(null)
-// 画笔开关 / 粗细（8–96）/ 形状
-const brushOn = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+// 待裁剪队列：确认/跳过一张后自动出队下一张
+const cropQueue = ref<Blob[]>([])
+// 涂抹模式开关：局部重绘 + 选中图片时自动开启（工具栏可暂停）
+const painting = ref(false)
+// 是否已有 mask 笔迹（控制"清除涂抹"按钮可用态）
+const hasMaskStrokes = ref(false)
+// 当前选中图片的画布视口包围盒（相对画布容器，用于输入框跟随定位）
+const selectedRect = shallowRef<{ left: number; top: number; width: number; height: number } | null>(null)
+// 画笔粗细（8–96）/ 形状
 const brushSize = ref(28)
 const brushShape = ref<BrushShape>('round')
 // 当前选中的图片对象（普通对象不展示移除入口）
@@ -188,15 +247,19 @@ onMounted(() => {
     defaultCursor: 'grab',
   })
   bindCanvasEvents()
+  // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
+  container.addEventListener('contextmenu', suppressContextMenu)
   resizeObserver = new ResizeObserver(fitToContainer)
   resizeObserver.observe(container)
   window.addEventListener('keydown', onKeyDown)
   syncDotGrid()
+  updateSelectedRect()
   void restoreScene()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  containerRef.value?.removeEventListener('contextmenu', suppressContextMenu)
   resizeObserver?.disconnect()
   resizeObserver = null
   stopPanAnim()
@@ -218,19 +281,23 @@ function fitToContainer(): void {
 
 // ==================== 事件绑定 ====================
 
+function suppressContextMenu(event: Event): void {
+  event.preventDefault()
+}
+
 function bindCanvasEvents(): void {
   if (!canvas) return
-  // 空白处按下左键 / 单指 = 平移视角
+  // 空白处按下左键 / 单指 = 平移视角；涂抹模式下左键落笔，中键 / 右键拖拽平移
   canvas.on('mouse:down', (event) => {
-    if (!canvas || brushOn.value) return
+    if (!canvas) return
+    if (painting.value) {
+      if (isPanButton(event.e)) startPan(event.e)
+      return
+    }
     if (event.target) return
     if (!isPrimaryPointer(event.e)) return
-    isPanning = true
-    const client = clientPoint(event.e)
-    lastClientX = client.x
-    lastClientY = client.y
+    startPan(event.e)
     canvas.discardActiveObject()
-    canvas.defaultCursor = 'grabbing'
   })
   canvas.on('mouse:move', (event) => {
     if (!canvas || !isPanning) return
@@ -245,6 +312,7 @@ function bindCanvasEvents(): void {
     vpt[5] += dy
     canvas.setViewportTransform(vpt)
     syncDotGrid()
+    updateSelectedRect()
     scheduleSceneSave()
   })
   canvas.on('mouse:up', () => stopPanning())
@@ -257,38 +325,69 @@ function bindCanvasEvents(): void {
     const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * 0.999 ** wheel.deltaY))
     canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), next)
     syncDotGrid()
+    updateSelectedRect()
     scheduleSceneSave()
   })
   // 画笔落笔完成：标记为 mask 轨迹，画在图片上层、不参与选中
   canvas.on('path:created', (event) => {
     const path = event.path as FabricObject | undefined
-    if (path && brushOn.value) {
+    if (path && painting.value) {
       setObjectData(path, { kind: 'mask' })
       path.set({ selectable: false, evented: false })
+      hasMaskStrokes.value = true
     }
     scheduleSceneSave()
   })
   canvas.on('object:added', () => {
     scheduleSceneSave()
   })
-  canvas.on('object:modified', () => scheduleSceneSave())
+  canvas.on('object:modified', () => {
+    updateSelectedRect()
+    scheduleSceneSave()
+  })
   canvas.on('object:removed', () => {
+    if (!canvas?.getObjects().some((object) => objectData(object).kind === 'mask')) {
+      hasMaskStrokes.value = false
+    }
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
     selectedImage.value = pickImage(event.selected?.[0])
+    updateSelectedRect()
   })
   canvas.on('selection:updated', (event) => {
     selectedImage.value = pickImage(event.selected?.[0])
+    updateSelectedRect()
   })
   canvas.on('selection:cleared', () => {
     selectedImage.value = null
+    updateSelectedRect()
   })
+  // 每次渲染后同步选中图片的视口包围盒（覆盖平移 / 缩放 / 拖图 / 动画过程）
+  canvas.on('after:render', () => {
+    updateSelectedRect()
+  })
+}
+
+// 平移拖拽开始（坐标记录 + 抓手光标）
+function startPan(event: Event): void {
+  if (!canvas) return
+  isPanning = true
+  const client = clientPoint(event)
+  lastClientX = client.x
+  lastClientY = client.y
+  canvas.defaultCursor = 'grabbing'
+}
+
+// 涂抹模式下用于平移的按键：鼠标中键 / 右键
+function isPanButton(event: Event): boolean {
+  const mouse = event as MouseEvent
+  return typeof mouse.button === 'number' && (mouse.button === 1 || mouse.button === 2)
 }
 
 function stopPanning(): void {
   isPanning = false
-  if (canvas) canvas.defaultCursor = brushOn.value ? 'crosshair' : 'grab'
+  if (canvas) canvas.defaultCursor = painting.value ? 'crosshair' : 'grab'
 }
 
 // 鼠标左键或单指触摸才可平移
@@ -313,9 +412,9 @@ function pickImage(target: FabricObject | undefined): FabricObject | null {
   return target instanceof FabricImage ? target : null
 }
 
-// Delete / Backspace 删除选中对象（输入控件聚焦时不拦截）
+// Delete / Backspace 删除选中对象（输入控件聚焦时不拦截；涂抹模式下不拦截，避免误删 mask 的锚定图片）
 function onKeyDown(event: KeyboardEvent): void {
-  if (!canvas || event.key !== 'Delete' && event.key !== 'Backspace') return
+  if (!canvas || painting.value || event.key !== 'Delete' && event.key !== 'Backspace') return
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
   const active = canvas.getActiveObject()
@@ -326,44 +425,73 @@ function onKeyDown(event: KeyboardEvent): void {
   canvas.requestRenderAll()
 }
 
-// ==================== 画笔（mask）模式 ====================
+// ==================== 涂抹（mask）模式 ====================
+
+// 仅局部重绘开放画笔组与涂抹模式
+const isInpaint = computed(() => props.operation === 'inpaint')
+
+// 操作或选中图片变化时自动进出涂抹模式：
+// 局部重绘选中图片 → 自动开始涂抹；换选图片同样自动进入；取消选择 / 切走操作 → 退出
+watch([isInpaint, selectedImage], ([inpaint, image]) => {
+  if (inpaint && image) enterPainting()
+  else exitPainting()
+})
 
 function makeBrush(): PencilBrush {
   const brush =
     brushShape.value === 'square' ? new SquarePencilBrush(canvas!) : new PencilBrush(canvas!)
-  brush.color = MASK_COLOR
+  // 展示用紫色叠加层；导出 mask 时才统一改回白色
+  brush.color = MASK_TINT
   brush.width = brushSize.value
   return brush
 }
 
-function setBrushOn(on: boolean): void {
-  if (!canvas) return
-  brushOn.value = on
-  if (on) {
-    canvas.discardActiveObject()
-    selectedImage.value = null
-    lockAllObjects()
-    canvas.freeDrawingBrush = makeBrush()
-    canvas.isDrawingMode = true
-    canvas.defaultCursor = 'crosshair'
-  } else {
-    canvas.isDrawingMode = false
-    canvas.freeDrawingBrush = undefined
-    unlockAllObjects()
-    canvas.defaultCursor = 'grab'
-  }
+// 进入涂抹：锁定全部对象（保留选中图片的选中框作为锚点），仅落笔作画
+function enterPainting(): void {
+  if (!canvas || painting.value || !isInpaint.value || !selectedImage.value) return
+  painting.value = true
+  lockAllObjects()
+  canvas.freeDrawingBrush = makeBrush()
+  canvas.isDrawingMode = true
+  canvas.defaultCursor = 'crosshair'
   canvas.requestRenderAll()
+}
+
+function exitPainting(): void {
+  if (!canvas || !painting.value) return
+  painting.value = false
+  canvas.isDrawingMode = false
+  canvas.freeDrawingBrush = undefined
+  unlockAllObjects()
+  canvas.defaultCursor = 'grab'
+  canvas.requestRenderAll()
+}
+
+// 工具栏开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复
+function togglePainting(): void {
+  if (painting.value) exitPainting()
+  else enterPainting()
 }
 
 function setBrushShape(shape: BrushShape): void {
   brushShape.value = shape
-  // 画笔开启时立即换笔，保证下一次落笔即新形状
-  if (brushOn.value && canvas) canvas.freeDrawingBrush = makeBrush()
+  // 涂抹开启时立即换笔，保证下一次落笔即新形状
+  if (painting.value && canvas) canvas.freeDrawingBrush = makeBrush()
 }
 
 watch(brushSize, (size) => {
   if (canvas?.freeDrawingBrush) canvas.freeDrawingBrush.width = size
 })
+
+// 清除全部 mask 笔迹
+function clearMask(): void {
+  if (!canvas) return
+  canvas
+    .getObjects()
+    .filter((object) => objectData(object).kind === 'mask')
+    .forEach((object) => canvas!.remove(object))
+  hasMaskStrokes.value = false
+}
 
 function lockAllObjects(): void {
   if (!canvas) return
@@ -418,6 +546,7 @@ function panToScenePoint(point: { x: number; y: number }): void {
     vpt[5] = startY + (targetY - startY) * eased
     canvas.setViewportTransform(vpt)
     syncDotGrid()
+    updateSelectedRect()
     if (progress < 1) {
       panAnimFrame = requestAnimationFrame(step)
     } else {
@@ -561,6 +690,27 @@ function selectedImageObject(): FabricImage | null {
   return active instanceof FabricImage ? active : null
 }
 
+// 同步选中图片的视口包围盒（供输入框跟随定位）；变化幅度小于 0.5px 时不更新，避免渲染循环里频繁触发
+function updateSelectedRect(): void {
+  if (!canvas) return
+  const active = canvas.getActiveObject()
+  if (!(active instanceof FabricImage)) {
+    if (selectedRect.value) selectedRect.value = null
+    return
+  }
+  const rect = active.getBoundingRect()
+  const current = selectedRect.value
+  if (
+    !current ||
+    Math.abs(current.left - rect.left) > 0.5 ||
+    Math.abs(current.top - rect.top) > 0.5 ||
+    Math.abs(current.width - rect.width) > 0.5 ||
+    Math.abs(current.height - rect.height) > 0.5
+  ) {
+    selectedRect.value = { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+  }
+}
+
 // 选中图片的原始 blob：运行时缓存优先，缺失时回 IndexedDB 取
 async function getSelectedImageBlob(): Promise<Blob | null> {
   const image = selectedImageObject()
@@ -578,7 +728,7 @@ async function getSelectedImageBlob(): Promise<Blob | null> {
 }
 
 // 导出 mask：选中图片 → 取其场景包围盒 → 临时单位阵视口 + 隐藏非 mask 对象
-// → toCanvasElement 裁剪 → 离屏拉伸到原图自然尺寸 → 透明底 PNG（白色轨迹）
+// → 展示色笔迹临时改回纯白 → toCanvasElement 裁剪 → 离屏拉伸到原图自然尺寸 → 透明底 PNG
 async function getMaskBlob(): Promise<Blob | null> {
   if (!canvas) return null
   const image = selectedImageObject()
@@ -594,6 +744,11 @@ async function getMaskBlob(): Promise<Blob | null> {
       hidden.push(object)
     }
   })
+  // 展示用紫色叠加层，导出必须是不透明的纯白轨迹：渲染前统一改色，结束后恢复
+  const strokeBackup = maskObjects.map((object) => ({ object, stroke: object.stroke }))
+  strokeBackup.forEach(({ object }) => {
+    object.set('stroke', MASK_COLOR)
+  })
   const viewport = canvas.viewportTransform
   // 单位阵视口：裁剪框即场景坐标系下的包围盒
   canvas.viewportTransform = [1, 0, 0, 1, 0, 0]
@@ -607,6 +762,9 @@ async function getMaskBlob(): Promise<Blob | null> {
     })
   } finally {
     canvas.viewportTransform = viewport
+    strokeBackup.forEach(({ object, stroke }) => {
+      object.set('stroke', stroke ?? null)
+    })
     hidden.forEach((object) => {
       object.visible = true
     })
@@ -641,12 +799,13 @@ function removeSelected(): void {
 function resetCanvas(): void {
   if (!canvas) return
   stopPanAnim()
-  if (brushOn.value) setBrushOn(false)
+  exitPainting()
   canvas.discardActiveObject()
   canvas.clear()
   canvas.backgroundColor = ''
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
   syncDotGrid()
+  hasMaskStrokes.value = false
   lastPlaced = null
   runtimeBlobs.clear()
   selectedImage.value = null
@@ -720,11 +879,35 @@ async function restoreScene(): Promise<void> {
     await canvas.loadFromJSON(parsed as never)
     pendingUrls.forEach((url) => URL.revokeObjectURL(url))
     canvas.requestRenderAll()
-    // 恢复的视口/缩放同步到圆点网格
+    // 恢复的视口/缩放同步到圆点网格与选中包围盒
     syncDotGrid()
+    updateSelectedRect()
+    hasMaskStrokes.value = canvas.getObjects().some((object) => objectData(object).kind === 'mask')
   } catch (error) {
     console.error('Failed to restore creative scene:', error)
   }
+}
+
+// ==================== 上传（裁剪流程） ====================
+
+// 选择文件后全部进入裁剪队列
+function onFilesPicked(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? []).filter((file) => file.type.startsWith('image/'))
+  input.value = ''
+  if (!files.length) return
+  cropQueue.value = [...cropQueue.value, ...files]
+}
+
+// 裁剪确认（跳过也走这里，直接保留原图）：放上画布当前视角中心
+function onCropConfirm(blob: Blob): void {
+  cropQueue.value = cropQueue.value.slice(1)
+  void addUploadedImage(blob)
+}
+
+// 取消裁剪：丢弃剩余队列
+function onCropCancel(): void {
+  cropQueue.value = []
 }
 
 defineExpose({
@@ -733,6 +916,11 @@ defineExpose({
   getSelectedImageBlob,
   getMaskBlob,
   resetCanvas,
+  clearMask,
+  // 选中图片的视口包围盒（null = 未选中），供输入框跟随定位
+  selectedRect,
+  // 是否已有 mask 笔迹
+  hasMaskStrokes,
 })
 </script>
 
