@@ -62,8 +62,10 @@ import CreativeCanvas from '@/components/creative/CreativeCanvas.vue'
 import CreativeResultGrid from '@/components/creative/CreativeResultGrid.vue'
 import CreativeRunHistory from '@/components/creative/CreativeRunHistory.vue'
 import { useCreativeStudio } from '@/composables/useCreativeStudio'
+import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
+const appStore = useAppStore()
 const studio = useCreativeStudio()
 
 const canvasRef = ref<InstanceType<typeof CreativeCanvas> | null>(null)
@@ -120,8 +122,10 @@ async function onClearLocalData(): Promise<void> {
   try {
     await studio.clearLocalData()
     canvasRef.value?.resetCanvas()
+    appStore.showSuccess(t('creative.history.clearSuccess'))
   } catch {
-    // 清空失败时错误信息已写入 studio.error
+    // 清空失败时给出明确提示，错误详情已写入 studio.error
+    appStore.showError(t('creative.error.clearFailed'))
   }
 }
 </script>

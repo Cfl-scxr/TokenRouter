@@ -77,6 +77,7 @@ export default {
       noOutputs: '无输出元信息。',
       cancel: '取消任务',
       clearData: '清空本机创作数据',
+      clearSuccess: '本机创作数据已清空。',
       confirmClearTitle: '清空本机创作数据？',
       confirmClearMessage:
         '将永久删除本机保存的源图、mask、生成结果与画布场景，已生成的图片无法找回；不会影响账户余额。',

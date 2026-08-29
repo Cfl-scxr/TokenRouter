@@ -77,6 +77,7 @@ export default {
       noOutputs: 'No output metadata.',
       cancel: 'Cancel run',
       clearData: 'Clear local creative data',
+      clearSuccess: 'Local creative data cleared.',
       confirmClearTitle: 'Clear local creative data?',
       confirmClearMessage:
         'This permanently deletes locally stored source images, masks, results and canvas scenes. Images already generated cannot be recovered. This does not affect your account balance.',
