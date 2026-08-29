@@ -105,6 +105,8 @@
                   :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
                   @click="setAspectRatio(ratio)"
                 >
+                  <!-- 比例预览小方框：直观展示宽高比 -->
+                  <span class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
                   {{ t(`creative.aspects.${ratio.replace(':', 'x')}`) }}
                 </button>
               </div>
@@ -302,6 +304,16 @@ function setAspectRatio(ratio: string): void {
   studio.aspectRatio.value = ratio
 }
 
+// 比例预览框尺寸（宽×高，px）：以 1:1 为 14px 基准按比例缩放，上限 22px
+function ratioPreviewStyle(ratio: string): { width: string; height: string } {
+  const [w, h] = ratio.split(':').map((part) => Number(part) || 1)
+  const base = 14
+  const scale = base / Math.min(w, h)
+  const width = Math.min(22, Math.round(w * scale))
+  const height = Math.min(22, Math.round(h * scale))
+  return { width: `${width}px`, height: `${height}px` }
+}
+
 function setOutputCount(count: number): void {
   studio.outputCount.value = count
 }
@@ -363,5 +375,10 @@ function autosize(): void {
 
 .param-chip-active {
   @apply border-primary-500 bg-primary-600/10 text-primary-700 dark:border-primary-500 dark:text-primary-300;
+}
+
+/* 比例预览小方框：内联尺寸由 ratioPreviewStyle 计算 */
+.ratio-preview {
+  @apply inline-block flex-shrink-0 rounded-[3px] border-[1.5px] border-current opacity-70;
 }
 </style>
