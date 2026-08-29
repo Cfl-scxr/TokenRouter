@@ -62,14 +62,16 @@ export default {
       undoMask: 'Undo last stroke',
       clearMask: 'Clear all paint',
       downloadSelected: 'Download selected image',
+      // 框选参考图工具：开启后空白拖拽画选框
+      boxSelect: 'Select references by dragging',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
       backToDashboard: 'Back to dashboard',
       settings: 'Settings',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: 'Click an image on the canvas, then paint the area to redraw',
-      // 图生图未选择参考图时的引导（点击单选；Shift+点击或长按可加选/取消）
-      editPickHint: 'Tap an image as reference; Shift+click or long-press to add more',
+      // 图生图未选择参考图时的引导（点击单选，或用工具栏框选多张）
+      editPickHint: 'Tap an image as reference, or drag a box with the toolbar tool',
       // 涂抹开始前的引导：紫色笔迹即重绘区域
       maskPaintHint: 'Paint the purple area to redraw; it becomes the mask on export',
     },

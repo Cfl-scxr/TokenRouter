@@ -30,6 +30,22 @@
         <Icon name="download" size="sm" />
       </button>
 
+      <!-- 框选参考图工具：仅图生图模式；开启后空白拖拽画选框，框内图片全部设为参考图 -->
+      <template v-if="isEdit">
+        <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :class="boxSelectMode && 'canvas-tool-btn-active'"
+          :title="t('creative.canvas.boxSelect')"
+          @click="setBoxSelectMode(!boxSelectMode)"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+          </svg>
+        </button>
+      </template>
+
       <!-- 画笔组：仅局部重绘模式可用（选中图片后自动进入涂抹，可用开关暂停去移动视角） -->
       <template v-if="isInpaint">
         <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
@@ -255,10 +271,10 @@ const selectedImage = shallowRef<FabricObject | null>(null)
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
 const paintSuspended = ref(false)
-// 编辑模式（edit）的参考图集合：普通点击图片 = 单选替换，Shift+点击 = 加选/取消
+// 编辑模式（edit）的参考图集合：点击图片 = 单选替换，框选工具 = 批量替换为框内图片
 const editRefs = shallowRef<FabricObject[]>([])
-// Shift+点击加选参考图时抑制 selection 事件的单选同步（事件在 mouse:down 之后触发）
-let suppressEditRefSync = false
+// 框选工具开关：开启后空白拖拽绘制选框，框选的图片全部设为参考图
+const boxSelectMode = ref(false)
 // 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
 let anchorOutline: Rect | null = null
 // 编辑参考图描边对象表：图片对象 → 描边矩形（运行时辅助）
@@ -304,7 +320,6 @@ onMounted(() => {
     defaultCursor: 'grab',
   })
   bindCanvasEvents()
-  bindLongPressRefToggle()
   // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
   container.addEventListener('contextmenu', suppressContextMenu)
   resizeObserver = new ResizeObserver(fitToContainer)
@@ -316,7 +331,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  unbindLongPressRefToggle()
   containerRef.value?.removeEventListener('contextmenu', suppressContextMenu)
   resizeObserver?.disconnect()
   resizeObserver = null
@@ -352,14 +366,10 @@ function bindCanvasEvents(): void {
       if (isPanButton(event.e)) startPan(event.e)
       return
     }
-    // 编辑模式下 Shift+点击图片：加选/取消参考图（不触发平移与单选替换）
-    if (isEdit.value && event.target instanceof FabricImage && isAdditiveClick(event.e)) {
-      suppressEditRefSync = true
-      toggleEditRef(event.target)
-      return
-    }
     if (event.target) return
     if (!isPrimaryPointer(event.e)) return
+    // 框选模式下空白拖拽交给 fabric 绘制选框，不做平移
+    if (boxSelectMode.value) return
     startPan(event.e)
     canvas.discardActiveObject()
   })
@@ -435,11 +445,11 @@ function bindCanvasEvents(): void {
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
-    syncEditRefFromSelection(pickImage(event.selected?.[0]))
+    syncEditRefFromSelection(event.selected)
     onImageSelected(pickImage(event.selected?.[0]))
   })
   canvas.on('selection:updated', (event) => {
-    syncEditRefFromSelection(pickImage(event.selected?.[0]))
+    syncEditRefFromSelection(event.selected)
     onImageSelected(pickImage(event.selected?.[0]))
   })
   canvas.on('selection:cleared', () => {
@@ -466,12 +476,6 @@ function startPan(event: Event): void {
 function isPanButton(event: Event): boolean {
   const mouse = event as MouseEvent
   return typeof mouse.button === 'number' && (mouse.button === 1 || mouse.button === 2)
-}
-
-// 加选手势：Shift+左键（编辑模式加选/取消参考图）
-function isAdditiveClick(event: Event): boolean {
-  const mouse = event as MouseEvent
-  return typeof mouse.button === 'number' && mouse.button === 0 && mouse.shiftKey === true
 }
 
 function stopPanning(): void {
@@ -501,11 +505,16 @@ function pickImage(target: FabricObject | undefined): FabricObject | null {
   return target instanceof FabricImage ? target : null
 }
 
-// Delete / Backspace 删除选中对象；Ctrl / Cmd + Z 撤销上一笔涂抹（输入控件聚焦时不拦截）
+// Delete / Backspace 删除选中对象；Ctrl / Cmd + Z 撤销上一笔涂抹；Esc 退出框选（输入控件聚焦时不拦截）
 function onKeyDown(event: KeyboardEvent): void {
   if (!canvas) return
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+  if (event.key === 'Escape' && boxSelectMode.value) {
+    event.preventDefault()
+    setBoxSelectMode(false)
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
     event.preventDefault()
     undoMask()
@@ -644,34 +653,33 @@ function togglePainting(): void {
   paintSuspended.value = painting.value
 }
 
-// ==================== 编辑模式参考图多选 ====================
+// ==================== 编辑模式参考图选择 ====================
 
-// 普通点击（非 Shift）：参考图单选替换；Shift 加选已在 mouse:down 处理并置抑制标记
-function syncEditRefFromSelection(image: FabricObject | null): void {
-  if (!isEdit.value || !image) return
-  if (suppressEditRefSync) {
-    suppressEditRefSync = false
-    return
-  }
-  editRefs.value = [image]
-}
-
-// Shift+点击：图片在参考集中则移除，否则加入
-function toggleEditRef(image: FabricObject): void {
-  if (!isEdit.value) return
-  if (editRefs.value.includes(image)) {
-    editRefs.value = editRefs.value.filter((item) => item !== image)
-  } else {
-    editRefs.value = [...editRefs.value, image]
+// 点击或框选变化时同步参考集：单点选中为 1 个元素，框选为框内全部图片；统一替换整个集合
+function syncEditRefFromSelection(selected: FabricObject[] | undefined): void {
+  if (!isEdit.value || !selected?.length) return
+  const images = selected.filter((object): object is FabricObject => object instanceof FabricImage)
+  if (images.length) {
+    editRefs.value = images
   }
 }
 
-// 参考图集合变化 → 同步描边；离开编辑模式 → 清空集合
+// 框选工具开关：开启后 fabric 组选生效，空白拖拽画选框；关闭恢复默认（空白拖拽平移）
+function setBoxSelectMode(on: boolean): void {
+  boxSelectMode.value = on
+  if (canvas) {
+    canvas.selection = on
+    canvas.defaultCursor = on ? 'crosshair' : 'grab'
+    canvas.requestRenderAll()
+  }
+}
+
+// 参考图集合变化 → 同步描边；离开编辑模式 → 清空集合并退出框选
 watch(editRefs, refreshRefOutlines)
 watch(isEdit, (edit) => {
   if (!edit) {
     editRefs.value = []
-    suppressEditRefSync = false
+    if (boxSelectMode.value) setBoxSelectMode(false)
   }
 })
 
@@ -708,72 +716,6 @@ function syncOutlineToObject(rect: Rect, object: FabricObject): void {
   const height = ((object as unknown as { height?: number }).height ?? 0) * (object.scaleY ?? 1)
   rect.set({ left: object.left, top: object.top, width, height, angle: object.angle ?? 0 })
   rect.setCoords()
-}
-
-// ==================== 移动端参考图长按加选（桌面端用 Shift+点击） ====================
-
-const LONG_PRESS_MS = 550
-const LONG_PRESS_SLOP_PX = 10
-let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressStart: { x: number; y: number } | null = null
-// 按下瞬间的参考集快照：按下时 fabric 会立即单选替换，长按切换需基于按下前状态计算
-let longPressPreRefs: FabricObject[] = []
-
-function onLongPressPointerDown(event: PointerEvent): void {
-  if (!canvas || !isEdit.value || event.pointerType === 'mouse') return
-  const image = canvas.findTarget(event)
-  if (!(image instanceof FabricImage)) return
-  longPressPreRefs = [...editRefs.value]
-  longPressStart = { x: event.clientX, y: event.clientY }
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    const wasMember = longPressPreRefs.includes(image)
-    editRefs.value = wasMember
-      ? longPressPreRefs.filter((item) => item !== image)
-      : [...longPressPreRefs, image]
-    // 长按后的合成 mouse 事件可能触发 selection 同步，抑制一次
-    suppressEditRefSync = true
-    // 触觉反馈（支持的设备）
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate(15)
-    }
-  }, LONG_PRESS_MS)
-}
-
-function onLongPressPointerMove(event: PointerEvent): void {
-  if (!longPressStart) return
-  const moved = Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y)
-  if (moved > LONG_PRESS_SLOP_PX) {
-    cancelLongPress()
-  }
-}
-
-function cancelLongPress(): void {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }
-  longPressStart = null
-  longPressPreRefs = []
-}
-
-function bindLongPressRefToggle(): void {
-  const el = canvas?.upperCanvasEl
-  if (!el) return
-  el.addEventListener('pointerdown', onLongPressPointerDown)
-  el.addEventListener('pointermove', onLongPressPointerMove)
-  el.addEventListener('pointerup', cancelLongPress)
-  el.addEventListener('pointercancel', cancelLongPress)
-}
-
-function unbindLongPressRefToggle(): void {
-  cancelLongPress()
-  const el = canvas?.upperCanvasEl
-  if (!el) return
-  el.removeEventListener('pointerdown', onLongPressPointerDown)
-  el.removeEventListener('pointermove', onLongPressPointerMove)
-  el.removeEventListener('pointerup', cancelLongPress)
-  el.removeEventListener('pointercancel', cancelLongPress)
 }
 
 // mask 撤销栈上限，防止长会话无限增长
@@ -1165,7 +1107,7 @@ function resetCanvas(): void {
   inpaintAnchor.value = null
   paintSuspended.value = false
   editRefs.value = []
-  suppressEditRefSync = false
+  if (boxSelectMode.value) setBoxSelectMode(false)
   refOutlines.clear()
   maskUndoStack.length = 0
   canUndoMask.value = false

@@ -62,14 +62,16 @@ export default {
       undoMask: '撤销上一笔',
       clearMask: '清除全部涂抹',
       downloadSelected: '下载选中图片',
+      // 框选参考图工具：开启后空白拖拽画选框
+      boxSelect: '框选参考图',
       removeSelected: '移除选中图片',
       reset: '清空画布',
       backToDashboard: '返回仪表盘',
       settings: '设置',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: '点击画布中的一张图片，在其上涂抹要重绘的区域',
-      // 图生图未选择参考图时的引导（点击单选；Shift+点击或长按可加选/取消）
-      editPickHint: '点击图片选择参考图，Shift+点击或长按可加选',
+      // 图生图未选择参考图时的引导（点击单选，或用工具栏框选多张）
+      editPickHint: '点击图片选择参考图，或用工具栏框选多张',
       // 涂抹开始前的引导：紫色笔迹即重绘区域
       maskPaintHint: '在图片上涂抹紫色区域，即要重绘的部分（导出时自动转为 mask）',
     },
