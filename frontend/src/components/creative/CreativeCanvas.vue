@@ -1192,6 +1192,11 @@ async function restoreScene(): Promise<void> {
       if (object.data?.kind === ANCHOR_OUTLINE_KIND || object.data?.kind === REF_OUTLINE_KIND) {
         continue
       }
+      // mask 笔迹是会话级草稿（退出画笔即丢弃），不应跨刷新复活：
+      // 历史快照里残留的笔迹位置可能与拖动后的图片错位，直接丢弃
+      if (object.data?.kind === 'mask') {
+        continue
+      }
       const assetKey = object.data?.assetKey
       if (object.type === 'image' && typeof assetKey === 'string') {
         const blob = await loadAsset(assetKey)
