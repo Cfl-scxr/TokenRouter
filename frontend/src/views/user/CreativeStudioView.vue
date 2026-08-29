@@ -2,9 +2,9 @@
   <AppLayout>
     <!-- 上 = 控制面板，下 = 无限画布（移动端画布约 65dvh） -->
     <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)] lg:flex-row">
-      <!-- 左 / 上：控制面板 -->
+      <!-- 左 / 上：控制面板（桌面端内部滚动，prompt 拖拽调整不挤压画布） -->
       <div
-        class="flex max-h-[60dvh] w-full flex-shrink-0 flex-col overflow-hidden rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900 lg:h-auto lg:max-h-none lg:w-80"
+        class="flex max-h-[60dvh] w-full flex-shrink-0 flex-col overflow-y-auto rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900 lg:max-h-full lg:w-80"
       >
         <CreativeControlPanel :studio="studio" @generate="onGenerate" @uploaded="onUploaded" @clear-requested="showClearConfirm = true" />
       </div>

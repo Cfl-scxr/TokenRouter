@@ -118,6 +118,8 @@ export function useCreativeStudio() {
   const canGenerate = computed(() => {
     if (!selectedOption.value || busy.value) return false
     if (!operationOptions.value.includes(operation.value)) return false
+    // 提示词为空（纯空白）时禁止提交
+    if (prompt.value.trim().length === 0) return false
     if (prompt.value.length > PROMPT_MAX_LENGTH) return false
     // 源图 / mask 由画布在点击生成时即时收集，这里不做前置拦截
     return true

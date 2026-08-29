@@ -153,6 +153,21 @@ describe('useCreativeStudio', () => {
     })
   })
 
+  describe('canGenerate 表单门禁', () => {
+    it('提示词为空或纯空白时禁止生成', async () => {
+      const { studio } = await setupStudio()
+
+      studio.prompt.value = ''
+      expect(studio.canGenerate.value).toBe(false)
+
+      studio.prompt.value = '   '
+      expect(studio.canGenerate.value).toBe(false)
+
+      studio.prompt.value = '一只猫'
+      expect(studio.canGenerate.value).toBe(true)
+    })
+  })
+
   describe('createRun 提交', () => {
     it('成功路径：FormData 字段齐全并启动轮询', async () => {
       const { studio } = await setupStudio()

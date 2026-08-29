@@ -40,6 +40,7 @@
     <!-- prompt -->
     <label class="panel-label mt-4">{{ t('creative.panel.prompt') }}</label>
     <TextArea
+      class="creative-prompt"
       :model-value="studio.prompt.value"
       :placeholder="t('creative.panel.promptPlaceholder')"
       :rows="5"
@@ -91,12 +92,12 @@
     <!-- 生成按钮 -->
     <button
       type="button"
-      class="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      class="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
       :disabled="!studio.canGenerate.value"
       @click="emit('generate')"
     >
-      <Icon v-if="studio.busy.value" name="refresh" size="sm" class="animate-spin" />
-      <Icon v-else name="sparkles" size="sm" />
+      <Icon v-if="studio.busy.value" name="refresh" size="md" class="animate-spin" />
+      <Icon v-else name="sparkles" size="md" />
       {{ studio.busy.value ? t('creative.panel.generating') : t('creative.panel.generate') }}
     </button>
     <p v-if="studio.estimatedCost.value !== null" class="mt-2 text-center text-xs text-gray-400 dark:text-dark-400">
@@ -256,6 +257,12 @@ function onCropCancel(): void {
 <style scoped>
 .panel-label {
   @apply mb-1.5 block text-xs font-medium text-gray-500 dark:text-dark-400;
+}
+
+/* 拖拽调整 prompt 框大小时禁用过渡并限制最大高度，避免拖拽卡顿 */
+:deep(.creative-prompt textarea) {
+  max-height: 40vh;
+  transition: none;
 }
 
 .panel-upload-btn {
