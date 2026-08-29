@@ -21,7 +21,7 @@
     <!-- 错误提示（前置引导已收进画布胶囊） -->
     <p v-if="studio.error.value" class="px-4 pb-1.5 text-xs text-red-600 dark:text-red-400">{{ studio.error.value }}</p>
 
-    <!-- 底栏：左下 = 模型 / 参数 / 操作 三个调参入口；右下 = 预估费用 + 发送 -->
+    <!-- 底栏：左下 = 模型 / 参数 / 操作 三个调参入口；右下 = 预估费用 + 发送（预估费用窄屏隐藏，避免把发送按钮挤出屏幕） -->
     <div class="flex items-center gap-1.5 px-3 pb-3">
       <!-- 模型：弹层锚定在该按钮上方 -->
       <span class="relative">
@@ -30,15 +30,18 @@
           class="composer-chip"
           :class="openPanel === 'model' && 'composer-chip-active'"
           :title="t('creative.composer.model')"
-          @click="togglePanel('model')"
+          @click="togglePanel('model', $event)"
         >
-          <Icon name="sparkles" size="xs" class="flex-shrink-0" />
+          <!-- 行首图标：已选模型显示厂家品牌 logo（ProviderIcon 解析，未知品牌回落首字母），未选模型用 sparkles -->
+          <ProviderIcon v-if="modelBrandName" :brand="modelBrandName" size="13px" class="flex-shrink-0" />
+          <Icon v-else name="sparkles" size="xs" class="flex-shrink-0" />
           <span class="max-w-28 truncate">{{ modelChipLabel }}</span>
           <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'model' && 'rotate-180'" />
         </button>
         <div
           v-if="openPanel === 'model'"
           class="chip-popover"
+          :style="popoverStyle"
         >
           <p v-if="showModelsEmptyHint" class="rounded-md bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
             {{ modelsEmptyHintText }}
@@ -51,6 +54,7 @@
             :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
             @click="selectModel(option)"
           >
+            <ProviderIcon :brand="option.model" size="16px" class="flex-shrink-0" />
             <span class="min-w-0 flex-1">
               <span class="block truncate text-xs font-medium text-gray-800 dark:text-gray-100">{{ option.model }}</span>
               <span class="block truncate text-[11px] text-gray-400 dark:text-dark-400">{{ option.group_name }}</span>
@@ -67,7 +71,7 @@
           class="composer-chip"
           :class="openPanel === 'params' && 'composer-chip-active'"
           :title="t('creative.composer.params')"
-          @click="togglePanel('params')"
+          @click="togglePanel('params', $event)"
         >
           <Icon name="filter" size="xs" class="flex-shrink-0" />
           <span class="max-w-24 truncate">{{ paramsChipLabel }}</span>
@@ -76,6 +80,7 @@
         <div
           v-if="openPanel === 'params'"
           class="chip-popover"
+          :style="popoverStyle"
         >
           <div class="space-y-3 p-3">
             <div>
@@ -138,7 +143,7 @@
           class="composer-chip"
           :class="openPanel === 'operation' && 'composer-chip-active'"
           :title="t('creative.composer.operation')"
-          @click="togglePanel('operation')"
+          @click="togglePanel('operation', $event)"
         >
           <Icon name="swap" size="xs" class="flex-shrink-0" />
           <span class="max-w-24 truncate">{{ operationChipLabel }}</span>
@@ -147,6 +152,7 @@
         <div
           v-if="openPanel === 'operation'"
           class="chip-popover"
+          :style="popoverStyle"
         >
           <p v-if="!studio.operationOptions.value.length" class="px-2.5 py-2 text-[11px] text-gray-400 dark:text-dark-400">
             {{ t('creative.composer.selectModelFirst') }}
@@ -169,7 +175,7 @@
       </span>
 
       <div class="ml-auto flex items-center gap-2">
-        <span v-if="studio.estimatedCost.value !== null" class="whitespace-nowrap text-[11px] text-gray-400 dark:text-dark-400">
+        <span v-if="studio.estimatedCost.value !== null" class="max-sm:hidden whitespace-nowrap text-[11px] text-gray-400 dark:text-dark-400">
           {{ t('creative.panel.estimatedCost', { cost: formatBalanceAmount(studio.estimatedCost.value, { fractionDigits: 3 }) }) }}
         </span>
         <button
@@ -191,14 +197,16 @@
 /**
  * 创作台聊天式输入框（替代旧左侧面板）：
  * - 主体为提示词输入区 + 右下圆形发送按钮；左下三个调参 chip 展开模型 / 参数 / 操作面板
- * - 弹层面板锚定在对应 chip 上方（而非整个输入框上方）
+ * - 弹层面板锚定在对应 chip 上方（而非整个输入框上方）；窄屏右侧空间不足时自动向左回退，钳制在输入框内防止超出屏幕
+ * - 模型 chip 行首展示厂家品牌 logo（ProviderIcon 按模型名解析，未知品牌回落首字母），弹层列表每行同理，chip 文字保持中性色
  * - 位置由父级控制（底部居中或跟随选中图片），本组件只负责内容与发送
  * - 状态全部经由 props 传入的 studio（useCreativeStudio 返回值）读写
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { onClickOutside } from '@vueuse/core'
+import { onClickOutside, useEventListener } from '@vueuse/core'
 import Icon from '@/components/icons/Icon.vue'
+import ProviderIcon from '@/components/common/ProviderIcon.vue'
 import { useAppStore } from '@/stores/app'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
@@ -232,10 +240,16 @@ const rootRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 // 当前展开的调参面板（同时只开一个）
 const openPanel = ref<'model' | 'params' | 'operation' | null>(null)
+// 调参弹层的水平定位（内联样式）：宽度取 320px、输入框宽、视口宽 - 3.5rem 三者最小值，
+// 左侧位置钳制在输入框范围内——窄屏下 chip 右侧空间不足时自动向左回退，避免弹层超出屏幕
+const popoverStyle = ref<{ left: string; width: string }>({ left: '0px', width: '' })
+// 当前展开面板对应的 chip 按钮（窗口缩放时据此重算弹层定位）
+let panelAnchor: HTMLElement | null = null
 
 // 点击输入框外部时收起调参面板
 onClickOutside(rootRef, () => {
   openPanel.value = null
+  panelAnchor = null
 })
 
 const prompt = computed({
@@ -257,6 +271,9 @@ const modelsEmptyHintText = computed(() =>
     : t('creative.panel.noModelsAvailable'),
 )
 
+// 模型 chip 行首图标：已选模型名（供 ProviderIcon 解析厂家 logo，未知品牌回落首字母），未选中为 null 显示 sparkles
+const modelBrandName = computed(() => studio.selectedOption.value?.model ?? null)
+
 // 三个 chip 的当前值标签
 const modelChipLabel = computed(() => {
   const option = studio.selectedOption.value
@@ -265,9 +282,29 @@ const modelChipLabel = computed(() => {
 const paramsChipLabel = computed(() => t('creative.composer.params'))
 const operationChipLabel = computed(() => t(`creative.operations.${studio.operation.value}`, studio.operation.value))
 
-function togglePanel(panel: 'model' | 'params' | 'operation'): void {
+// 展开 / 收起调参面板；展开时同步计算弹层定位（宽度 + 水平钳制）
+function togglePanel(panel: 'model' | 'params' | 'operation', event: MouseEvent): void {
   openPanel.value = openPanel.value === panel ? null : panel
+  panelAnchor = openPanel.value ? (event.currentTarget as HTMLElement) : null
+  if (panelAnchor) layoutPopover(panelAnchor)
 }
+
+// 弹层水平定位：chip 左侧偏移钳制到 [0, 输入框宽 - 弹层宽]，保证弹层整体落在输入框内
+function layoutPopover(anchor: HTMLElement | null): void {
+  const root = rootRef.value
+  // chip 按钮外层即定位用的 span（position: relative）
+  const chipSpan = anchor?.parentElement
+  if (!root || !chipSpan) return
+  const rootWidth = root.clientWidth
+  const width = Math.min(320, rootWidth, window.innerWidth - 56)
+  const chipOffset = chipSpan.offsetLeft
+  const left = Math.min(Math.max(chipOffset, 0), Math.max(rootWidth - width, 0))
+  // 弹层绝对定位于 chip 的 span 内，这里换算成相对 span 的偏移（负值即向左回退）
+  popoverStyle.value = { left: `${left - chipOffset}px`, width: `${width}px` }
+}
+
+// 窗口尺寸变化（如旋转屏幕）时重算已展开弹层的定位，避免错位溢出
+useEventListener(window, 'resize', () => layoutPopover(panelAnchor))
 
 // 选择模型后收起面板；参数面板支持连续调整，不自动收起
 function selectModel(option: CreativeModelOption): void {
@@ -337,7 +374,8 @@ function autosize(): void {
   @apply border-primary-500/50 text-primary-700 dark:border-primary-500/50 dark:text-primary-300;
 }
 
-/* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致；高度随内容自适应，不内嵌滚动条 */
+/* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致；高度随内容自适应，不内嵌滚动条。
+   此处宽度仅为初始值，展开时由 layoutPopover 写入内联样式（宽度三路取小、位置钳制在输入框内，防止窄屏溢出屏幕） */
 .chip-popover {
   @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-[24px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
   @apply p-1.5;

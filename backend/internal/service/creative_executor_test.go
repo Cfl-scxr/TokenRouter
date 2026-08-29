@@ -224,7 +224,24 @@ func TestBuildCreativeGeminiRequest(t *testing.T) {
 	require.Equal(t, "image/jpeg", parts[1].InlineData.MimeType)
 	require.Equal(t, base64.StdEncoding.EncodeToString([]byte("mask")), parts[2].InlineData.Data)
 	require.Equal(t, []string{"TEXT", "IMAGE"}, request.GenerationConfig.ResponseModalities)
-	require.Equal(t, "2K", request.GenerationConfig.ImageSize)
-	require.Equal(t, "16:9", request.GenerationConfig.AspectRatio)
+	require.NotNil(t, request.GenerationConfig.ImageConfig)
+	require.Equal(t, "2K", request.GenerationConfig.ImageConfig.ImageSize)
+	require.Equal(t, "16:9", request.GenerationConfig.ImageConfig.AspectRatio)
 	require.Equal(t, "image/png", request.GenerationConfig.ResponseMimeType)
+
+	// 必须校验序列化后的层级，避免只检查内存结构而漏掉真实上游请求格式。
+	body, err := json.Marshal(request)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"contents":[{"parts":[{"text":"重绘"},{"inlineData":{"mimeType":"image/jpeg","data":"c3Jj"}},{"inlineData":{"mimeType":"image/png","data":"bWFzaw=="}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"2K","aspectRatio":"16:9"},"responseMimeType":"image/png"}}`, string(body))
+}
+
+func TestParseCreativeGeminiImageOutputsUsesFinalImagePart(t *testing.T) {
+	thought := base64.StdEncoding.EncodeToString([]byte("thought-image"))
+	final := base64.StdEncoding.EncodeToString([]byte("final-image"))
+	body := fmt.Sprintf(`{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":%q}},{"inlineData":{"mimeType":"image/png","data":%q}}]}}]}`, thought, final)
+
+	outputs, err := parseCreativeGeminiImageOutputs([]byte(body), 1)
+	require.NoError(t, err)
+	require.Len(t, outputs, 1)
+	require.Equal(t, []byte("final-image"), outputs[0].Bytes)
 }

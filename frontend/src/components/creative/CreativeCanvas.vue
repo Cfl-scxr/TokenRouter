@@ -5,9 +5,9 @@
     <!-- 独立 mask 画布：先以不透明颜色合成，再整体设置透明度，避免笔迹重叠变深 -->
     <canvas ref="maskCanvasElRef" class="mask-overlay"></canvas>
 
-    <!-- 浮动工具栏（移动端底部，桌面端顶部）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
+    <!-- 浮动工具栏（顶部居中，含移动端；窄屏限宽并换行成圆角矩形，避免与左上角设置、右上角历史按钮重叠）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
-      class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-auto lg:top-3"
+      class="absolute left-1/2 top-3 z-10 flex max-sm:max-w-[calc(100%-7.5rem)] max-sm:flex-wrap max-sm:justify-center max-sm:rounded-2xl -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
     >
       <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
       <button type="button" class="canvas-tool-btn" :title="t('creative.panel.uploadSource')" @click="fileInputRef?.click()">
@@ -131,24 +131,24 @@
       </button>
     </div>
 
-    <!-- 局部重绘未选中图片：引导点击选择目标图片（位于工具栏下方，避免重叠） -->
+    <!-- 局部重绘未选中图片：引导点击选择目标图片（位于顶部工具栏下方；移动端工具栏可能换行，留白更大） -->
     <div
       v-if="isInpaint && !inpaintAnchor"
-      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
+      class="pointer-events-none absolute left-1/2 top-28 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:top-16"
     >
       {{ t('creative.canvas.inpaintPickHint') }}
     </div>
     <!-- 图生图未选择参考图：同款胶囊引导（点击单选，Shift+点击加选） -->
     <div
       v-else-if="isEdit && !editRefs.length"
-      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
+      class="pointer-events-none absolute left-1/2 top-28 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:top-16"
     >
       {{ t('creative.canvas.editPickHint') }}
     </div>
     <!-- 涂抹引导：首次落笔前提示紫色笔迹即重绘区域 -->
     <div
       v-else-if="painting && !hasMaskStrokes"
-      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
+      class="pointer-events-none absolute left-1/2 top-28 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:top-16"
     >
       {{ t('creative.canvas.maskPaintHint') }}
     </div>

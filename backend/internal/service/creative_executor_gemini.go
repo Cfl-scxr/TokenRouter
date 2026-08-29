@@ -15,10 +15,15 @@ import (
 
 // creativeGeminiGenerationConfig 是创作台 Gemini generateContent 的生成配置。
 type creativeGeminiGenerationConfig struct {
-	ResponseModalities []string `json:"responseModalities"`
-	ImageSize          string   `json:"imageSize,omitempty"`
-	AspectRatio        string   `json:"aspectRatio,omitempty"`
-	ResponseMimeType   string   `json:"responseMimeType,omitempty"`
+	ResponseModalities []string                   `json:"responseModalities"`
+	ImageConfig        *creativeGeminiImageConfig `json:"imageConfig,omitempty"`
+	ResponseMimeType   string                     `json:"responseMimeType,omitempty"`
+}
+
+// creativeGeminiImageConfig 是 Gemini 图片生成专用配置；imageSize 必须位于 imageConfig 内。
+type creativeGeminiImageConfig struct {
+	ImageSize   string `json:"imageSize,omitempty"`
+	AspectRatio string `json:"aspectRatio,omitempty"`
 }
 
 // creativeGeminiGenerateRequest 是创作台 Gemini generateContent 请求体。
@@ -177,10 +182,13 @@ func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, ups
 			Data:     base64.StdEncoding.EncodeToString(payload.Mask.Bytes),
 		}})
 	}
+	imageConfig := &creativeGeminiImageConfig{
+		ImageSize:   strings.TrimSpace(run.ImageSize),
+		AspectRatio: strings.TrimSpace(run.AspectRatio),
+	}
 	config := creativeGeminiGenerationConfig{
 		ResponseModalities: []string{"TEXT", "IMAGE"},
-		ImageSize:          strings.TrimSpace(run.ImageSize),
-		AspectRatio:        strings.TrimSpace(run.AspectRatio),
+		ImageConfig:        imageConfig,
 		ResponseMimeType:   strings.TrimSpace(run.ResponseMIMEType),
 	}
 	return creativeGeminiGenerateRequest{
@@ -220,12 +228,16 @@ func parseCreativeGeminiImageOutputs(body []byte, maxCount int) ([]CreativeOutpu
 			mime = decoded.Mime
 		}
 		outputs = append(outputs, CreativeOutput{Index: len(outputs), Bytes: decoded.Bytes, Mime: mime})
-		if maxCount > 0 && len(outputs) >= maxCount {
-			break
-		}
 	}
 	if len(outputs) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "gemini upstream returned no image output")
+	}
+	// Vertex 高分辨率生成可能先返回 thought image，再返回最终图片；最终图片位于最后一个 image part。
+	if maxCount > 0 && len(outputs) > maxCount {
+		outputs = outputs[len(outputs)-maxCount:]
+	}
+	for index := range outputs {
+		outputs[index].Index = index
 	}
 	return outputs, nil
 }

@@ -398,11 +398,10 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.ElementsMatch(t, []string{"gpt-image-1", "gpt-image-2"},
 		[]string{byGroup[21][0].Model, byGroup[21][1].Model})
 
-	// gemini 无映射回退：默认候选命中白名单的模型、完整三档尺寸。
+	// gemini 无映射回退：固定 1K 模型只开放 1K，支持高分辨率的模型开放三档尺寸。
 	require.Len(t, byGroup[22], 2)
-	for _, item := range byGroup[22] {
-		require.Equal(t, []string{"1K", "2K", "4K"}, item.ImageSizes)
-	}
+	require.Equal(t, []string{"1K"}, byModel(byGroup[22], "gemini-2.5-flash-image").ImageSizes)
+	require.Equal(t, []string{"1K", "2K", "4K"}, byModel(byGroup[22], "gemini-3-pro-image").ImageSizes)
 	require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
 		[]string{byGroup[22][0].Model, byGroup[22][1].Model})
 
@@ -426,6 +425,58 @@ func byModel(models []CreativeModelPublic, model string) CreativeModelPublic {
 		}
 	}
 	return CreativeModelPublic{}
+}
+
+func TestCreativeFilterImageSizesForModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		model    string
+		input    []string
+		want     []string
+	}{
+		{
+			name:     "gemini 2.5 image is 1K only",
+			platform: PlatformGemini,
+			model:    "gemini-2.5-flash-image-preview",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K"},
+		},
+		{
+			name:     "gemini lite image is 1K only",
+			platform: PlatformGemini,
+			model:    "models/gemini-3.1-flash-lite-image",
+			input:    []string{"1K", "4K"},
+			want:     []string{"1K"},
+		},
+		{
+			name:     "gemini 3 pro keeps configured tiers",
+			platform: PlatformGemini,
+			model:    "gemini-3-pro-image",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K", "2K", "4K"},
+		},
+		{
+			name:     "custom model keeps configured tiers",
+			platform: PlatformGemini,
+			model:    "custom-image-model",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K", "2K", "4K"},
+		},
+		{
+			name:     "non gemini is unchanged",
+			platform: PlatformOpenAI,
+			model:    "gpt-image-2",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K", "2K", "4K"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, creativeFilterImageSizesForModel(tt.platform, tt.model, tt.input))
+		})
+	}
 }
 
 // TestCreativePricingUsesResolvedChannelPrice 校验创作台与模型广场共用渠道图片定价。

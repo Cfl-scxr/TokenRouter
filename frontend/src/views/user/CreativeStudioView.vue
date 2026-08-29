@@ -59,10 +59,10 @@
         />
       </div>
 
-      <!-- 生成状态胶囊：移动端顶部居中，桌面端左下角 -->
+      <!-- 生成状态胶囊：移动端顶部居中（工具栏下方，移动端工具栏可能换行到两行），桌面端左下角 -->
       <div
         v-if="pillState && !pillHidden"
-        class="absolute left-1/2 top-3 z-10 flex max-w-[calc(100%-6rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-3 lg:top-auto lg:max-w-[calc(100%-24rem)] lg:translate-x-0"
+        class="absolute left-1/2 top-28 z-10 flex max-w-[calc(100%-6rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-3 lg:top-auto lg:max-w-[calc(100%-24rem)] lg:translate-x-0"
         :class="pillState.toneClass"
       >
         <Icon v-if="pillState.spinning" name="refresh" size="sm" class="animate-spin" />

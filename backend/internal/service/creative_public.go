@@ -271,7 +271,7 @@ func creativeImageSizesForGroup(group *Group) []string {
 
 // creativeDefaultImageSizesForPlatform 返回分组未配置图片价时的平台默认尺寸档位，
 // 与网关按默认价计费的口径一致：OpenAI GPT Image 2 支持 1K/2K/4K 三档，
-// grok 支持 1K/2K，gemini 原生支持 1K/2K/4K。
+// grok 支持 1K/2K，Gemini 先按平台默认开放三档，再由模型能力过滤。
 func creativeDefaultImageSizesForPlatform(platform string) []string {
 	switch strings.TrimSpace(platform) {
 	case PlatformOpenAI:
@@ -294,23 +294,53 @@ func creativeQualitiesForPlatform(platform string) []string {
 }
 
 // creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位。
-// 分组显式配置了图片价时按配置返回；GPT Image 2 的 4K 缺少覆盖价时仍回退默认价开放。
+// 分组显式配置了图片价时按配置返回；最终结果会按已知模型能力过滤。
 func creativeImageSizesForGroupModel(group *Group, model string) []string {
-	if sizes := creativeImageSizesForGroup(group); len(sizes) > 0 {
-		if group != nil && group.Platform == PlatformOpenAI && isCreativeGPTImage2Model(model) && !containsCreativeImageSize(sizes, "4K") {
+	if explicitSizes := creativeImageSizesForGroup(group); len(explicitSizes) > 0 {
+		if group != nil && group.Platform == PlatformOpenAI && isCreativeGPTImage2Model(model) && !containsCreativeImageSize(explicitSizes, "4K") {
 			// GPT Image 2 支持 4K；分组未填写 4K 价格时沿用模型默认价，不因缺少覆盖值隐藏能力。
-			return append(sizes, "4K")
+			explicitSizes = append(explicitSizes, "4K")
 		}
-		return sizes
+		return creativeFilterImageSizesForModel(group.Platform, model, explicitSizes)
 	}
 	if group == nil {
 		return nil
 	}
 	sizes := creativeDefaultImageSizesForPlatform(group.Platform)
 	if group.Platform == PlatformOpenAI && !isCreativeGPTImage2Model(model) {
-		return []string{"1K", "2K"}
+		sizes = []string{"1K", "2K"}
 	}
-	return sizes
+	return creativeFilterImageSizesForModel(group.Platform, model, sizes)
+}
+
+// creativeFilterImageSizesForModel 按已知模型能力收窄 Gemini 尺寸档位。
+// 未知模型保留平台/分组配置，避免误伤供应商自定义模型；已知固定 1K 模型永远不开放高分辨率。
+func creativeFilterImageSizesForModel(platform, model string, sizes []string) []string {
+	if strings.TrimSpace(platform) != PlatformGemini || !isCreativeGemini1KOnlyModel(model) {
+		return sizes
+	}
+	filtered := make([]string, 0, 1)
+	for _, size := range sizes {
+		if strings.EqualFold(strings.TrimSpace(size), ImageBillingSize1K) {
+			filtered = append(filtered, ImageBillingSize1K)
+		}
+	}
+	return filtered
+}
+
+// isCreativeGemini1KOnlyModel 判断官方已知只输出 1K 的 Gemini 图片模型。
+func isCreativeGemini1KOnlyModel(model string) bool {
+	model = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	switch {
+	case strings.HasPrefix(model, "gemini-2.5-flash-image"):
+		return true
+	case strings.HasPrefix(model, "gemini-3.1-flash-lite-image"):
+		return true
+	case model == "gemini-2.0-flash-exp-image-generation":
+		return true
+	default:
+		return false
+	}
 }
 
 func isCreativeGPTImage2Model(model string) bool {
