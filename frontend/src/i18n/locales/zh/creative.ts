@@ -57,6 +57,7 @@ export default {
       downloadSelected: '下载选中图片',
       removeSelected: '移除选中图片',
       reset: '清空画布',
+      backToDashboard: '返回仪表盘',
       settings: '设置',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: '点击画布中的一张图片，在其上涂抹要重绘的区域',

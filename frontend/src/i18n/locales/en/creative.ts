@@ -57,6 +57,7 @@ export default {
       downloadSelected: 'Download selected image',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
+      backToDashboard: 'Back to dashboard',
       settings: 'Settings',
       // 局部重绘未选中图片时的引导
       inpaintPickHint: 'Click an image on the canvas, then paint the area to redraw',

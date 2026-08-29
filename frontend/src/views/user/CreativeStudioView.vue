@@ -19,7 +19,7 @@
         >
           <Icon name="cog" size="md" />
         </button>
-        <!-- 向下展开的设置面板：清空画布 + 清空本机创作数据 -->
+        <!-- 向下展开的设置面板：返回仪表盘 / 清空画布 / 清空本机创作数据 -->
         <div
           v-if="settingsOpen"
           class="absolute left-0 top-12 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
@@ -27,6 +27,14 @@
           <button
             type="button"
             class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
+            @click="onBackToDashboard"
+          >
+            <Icon name="home" size="sm" />
+            {{ t('creative.canvas.backToDashboard') }}
+          </button>
+          <button
+            type="button"
+            class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
             @click="onResetCanvas"
           >
             <Icon name="trash" size="sm" />
@@ -86,6 +94,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -97,6 +106,7 @@ import { useCreativeStudio } from '@/composables/useCreativeStudio'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 const studio = useCreativeStudio()
 
@@ -217,6 +227,12 @@ async function onGenerate(): Promise<void> {
 
 function onCanvasError(message: string): void {
   studio.error.value = message
+}
+
+// 设置弹层里的返回仪表盘入口：收起弹层并跳转
+function onBackToDashboard(): void {
+  settingsOpen.value = false
+  void router.push('/dashboard')
 }
 
 // 设置弹层里的清空画布入口：收起弹层并清空画布全部对象

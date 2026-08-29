@@ -498,6 +498,15 @@ function onImageSelected(image: FabricObject | null): void {
   }
 }
 
+// 切到局部重绘时若已有选中图片（此前在其它操作下选中），直接登记为锚点并自动进入涂抹；
+// 必须先于 syncPainting 的 watch 注册，保证同一 tick 内先登记锚点再判断涂抹条件
+watch(isInpaint, (inpaint) => {
+  if (inpaint && !inpaintAnchor.value && selectedImage.value) {
+    inpaintAnchor.value = selectedImage.value
+    paintSuspended.value = false
+  }
+})
+
 // 涂抹条件 = 局部重绘 + 有锚点图片 + 未手动暂停；任一条件变化统一经 syncPainting 进出
 watch([isInpaint, inpaintAnchor, paintSuspended], syncPainting)
 
