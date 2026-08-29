@@ -198,12 +198,19 @@ watch(
 
 // ==================== 生成与画布输入采集 ====================
 
-// 提交生成：edit/inpaint 用当前选中图片作源图，inpaint 另附画笔 mask
+// 提交生成：edit 取画布上全部图片作多参考图；inpaint 取选中图片 + 画笔 mask
 async function onGenerate(): Promise<void> {
   const operation = studio.operation.value
   let sourceBlobs: Blob[] = []
   let maskBlob: Blob | null = null
-  if (operation === 'edit' || operation === 'inpaint') {
+  if (operation === 'edit') {
+    // OpenAI/Gemini 编辑协议均支持多参考图：以画布上的全部图片为参考集
+    sourceBlobs = (await canvasRef.value?.getAllImageBlobs()) ?? []
+    if (!sourceBlobs.length) {
+      studio.error.value = t('creative.panel.selectImageHint')
+      return
+    }
+  } else if (operation === 'inpaint') {
     const blob = await canvasRef.value?.getSelectedImageBlob()
     if (!blob) {
       studio.error.value = t('creative.panel.selectImageHint')

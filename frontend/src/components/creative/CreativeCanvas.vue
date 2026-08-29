@@ -583,15 +583,13 @@ function removeAnchorOutline(): void {
 function refreshMaskClip(): void {
   maskClipRect = null
   if (!canvas || !inpaintAnchor.value) return
-  const vpt = canvas.viewportTransform
-  const zoom = canvas.getZoom() || 1
-  // getBoundingRect 返回视口坐标，换算回场景坐标作为 absolutePositioned 裁剪框
+  // getBoundingRect 返回场景坐标（fabric 7 getCoords 为 scene plane），无需视口换算
   const vp = inpaintAnchor.value.getBoundingRect()
   maskClipRect = new Rect({
-    left: (vp.left - vpt[4]) / zoom,
-    top: (vp.top - vpt[5]) / zoom,
-    width: vp.width / zoom,
-    height: vp.height / zoom,
+    left: vp.left,
+    top: vp.top,
+    width: vp.width,
+    height: vp.height,
   })
   maskClipRect.absolutePositioned = true
   // 局部变量收窄类型（forEach 闭包内无法收窄模块级 let）
@@ -893,6 +891,28 @@ async function getSelectedImageBlob(): Promise<Blob | null> {
   return null
 }
 
+// 画布上全部图片对象的原始 blob（edit 多参考图）：按对象顺序收集，解析失败的跳过
+async function getAllImageBlobs(): Promise<Blob[]> {
+  if (!canvas) return []
+  const images = canvas.getObjects().filter((object): object is FabricImage => object instanceof FabricImage)
+  const blobs: Blob[] = []
+  for (const image of images) {
+    const assetKey = objectData(image).assetKey
+    if (typeof assetKey !== 'string') continue
+    const cached = runtimeBlobs.get(assetKey)
+    if (cached) {
+      blobs.push(cached)
+      continue
+    }
+    const asset = await loadAsset(assetKey).catch(() => null)
+    if (asset) {
+      runtimeBlobs.set(assetKey, asset.blob)
+      blobs.push(asset.blob)
+    }
+  }
+  return blobs
+}
+
 // 导出 mask：选中图片 → 取其场景包围盒 → 临时单位阵视口 + 隐藏非 mask 对象
 // → 展示色笔迹临时改回纯白 → toCanvasElement 裁剪 → 离屏拉伸到原图自然尺寸 → 透明底 PNG
 async function getMaskBlob(): Promise<Blob | null> {
@@ -1099,6 +1119,7 @@ defineExpose({
   placeOutput,
   addUploadedImage,
   getSelectedImageBlob,
+  getAllImageBlobs,
   getMaskBlob,
   resetCanvas,
   clearMask,
