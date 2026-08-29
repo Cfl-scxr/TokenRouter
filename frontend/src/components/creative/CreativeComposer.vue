@@ -356,10 +356,10 @@ function autosize(): void {
   @apply border-primary-500/50 text-primary-700 dark:border-primary-500/50 dark:text-primary-300;
 }
 
-/* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致 */
+/* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致；高度随内容自适应，不内嵌滚动条 */
 .chip-popover {
   @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-[24px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
-  @apply max-h-72 overflow-y-auto p-1.5;
+  @apply p-1.5;
   @apply dark:border-dark-600 dark:bg-dark-900/95;
 }
 
