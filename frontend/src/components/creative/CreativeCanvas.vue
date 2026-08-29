@@ -125,6 +125,13 @@
     >
       {{ t('creative.canvas.inpaintPickHint') }}
     </div>
+    <!-- 图生图未选中源图：同款胶囊引导 -->
+    <div
+      v-else-if="isEdit && !selectedImage"
+      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
+    >
+      {{ t('creative.panel.selectImageHint') }}
+    </div>
     <!-- 涂抹引导：首次落笔前提示紫色笔迹即重绘区域 -->
     <div
       v-else-if="painting && !hasMaskStrokes"
@@ -239,10 +246,8 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const cropQueue = ref<Blob[]>([])
 // 涂抹模式开关：局部重绘 + 锚定图片时自动开启（工具栏可暂停）
 const painting = ref(false)
-// 是否已有 mask 笔迹（控制"清除涂抹"按钮可用态）
+// 是否已有 mask 笔迹（控制"清除涂抹"/橡皮按钮可用态）
 const hasMaskStrokes = ref(false)
-// 当前关联图片（选中或涂抹锚点）的画布视口包围盒（相对画布容器，供父级判断选中态）
-const selectedRect = shallowRef<{ left: number; top: number; width: number; height: number } | null>(null)
 // 画笔粗细（8–96）/ 形状
 const brushSize = ref(28)
 const brushShape = ref<BrushShape>('round')
@@ -298,7 +303,6 @@ onMounted(() => {
   resizeObserver.observe(container)
   window.addEventListener('keydown', onKeyDown)
   syncDotGrid()
-  updateSelectedRect()
   void restoreScene()
 })
 
@@ -371,7 +375,6 @@ function bindCanvasEvents(): void {
     vpt[5] += dy
     canvas.setViewportTransform(vpt)
     syncDotGrid()
-    updateSelectedRect()
     scheduleSceneSave()
   })
   canvas.on('mouse:up', () => {
@@ -387,7 +390,6 @@ function bindCanvasEvents(): void {
     const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * 0.999 ** wheel.deltaY))
     canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), next)
     syncDotGrid()
-    updateSelectedRect()
     scheduleSceneSave()
   })
   // 画笔落笔完成：标记为 mask 轨迹，画在图片上层、不参与选中
@@ -404,18 +406,7 @@ function bindCanvasEvents(): void {
     scheduleSceneSave()
   })
   canvas.on('object:modified', () => {
-    updateSelectedRect()
     scheduleSceneSave()
-  })
-  // 拖图 / 缩放 / 旋转过程中持续同步选中包围盒（这些操作只画 upper canvas，不触发 after:render）
-  canvas.on('object:moving', () => {
-    updateSelectedRect()
-  })
-  canvas.on('object:scaling', () => {
-    updateSelectedRect()
-  })
-  canvas.on('object:rotating', () => {
-    updateSelectedRect()
   })
   canvas.on('object:removed', (event) => {
     // 锚点图片被删除时同步清空，涂抹模式随之退出
@@ -429,23 +420,16 @@ function bindCanvasEvents(): void {
   })
   canvas.on('selection:created', (event) => {
     onImageSelected(pickImage(event.selected?.[0]))
-    updateSelectedRect()
   })
   canvas.on('selection:updated', (event) => {
     onImageSelected(pickImage(event.selected?.[0]))
-    updateSelectedRect()
   })
   canvas.on('selection:cleared', () => {
     selectedImage.value = null
-    updateSelectedRect()
     // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空
     if (!painting.value) {
       inpaintAnchor.value = null
     }
-  })
-  // 每次渲染后同步选中图片的视口包围盒（覆盖平移 / 缩放 / 拖图 / 动画过程）
-  canvas.on('after:render', () => {
-    updateSelectedRect()
   })
 }
 
@@ -509,13 +493,17 @@ function onKeyDown(event: KeyboardEvent): void {
 
 // 仅局部重绘开放画笔组与涂抹模式
 const isInpaint = computed(() => props.operation === 'inpaint')
+// 图生图模式（未选中源图时展示引导胶囊）
+const isEdit = computed(() => props.operation === 'edit')
 
-// 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记
+// 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记。
+// 换选同时退出橡皮模式，保证涂抹与橡皮互斥（否则两模式同开、落笔互相抢占）
 function onImageSelected(image: FabricObject | null): void {
   selectedImage.value = image
   if (image && isInpaint.value) {
     inpaintAnchor.value = image
     paintSuspended.value = false
+    eraseMode.value = false
   }
 }
 
@@ -704,7 +692,6 @@ function panToScenePoint(point: { x: number; y: number }): void {
     vpt[5] = startY + (targetY - startY) * eased
     canvas.setViewportTransform(vpt)
     syncDotGrid()
-    updateSelectedRect()
     if (progress < 1) {
       panAnimFrame = requestAnimationFrame(step)
     } else {
@@ -866,27 +853,6 @@ function selectedImageObject(): FabricImage | null {
   const active = canvas.getActiveObject()
   if (active instanceof FabricImage) return active
   return inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null
-}
-
-// 同步关联图片的视口包围盒（供父级判断选中态）；变化幅度小于 0.5px 时不更新，避免渲染循环里频繁触发
-function updateSelectedRect(): void {
-  if (!canvas) return
-  const image = selectedImageObject()
-  if (!image) {
-    if (selectedRect.value) selectedRect.value = null
-    return
-  }
-  const rect = image.getBoundingRect()
-  const current = selectedRect.value
-  if (
-    !current ||
-    Math.abs(current.left - rect.left) > 0.5 ||
-    Math.abs(current.top - rect.top) > 0.5 ||
-    Math.abs(current.width - rect.width) > 0.5 ||
-    Math.abs(current.height - rect.height) > 0.5
-  ) {
-    selectedRect.value = { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
-  }
 }
 
 // 选中图片的原始 blob：运行时缓存优先，缺失时回 IndexedDB 取
@@ -1076,9 +1042,8 @@ async function restoreScene(): Promise<void> {
     await canvas.loadFromJSON(parsed as never)
     pendingUrls.forEach((url) => URL.revokeObjectURL(url))
     canvas.requestRenderAll()
-    // 恢复的视口/缩放同步到圆点网格与选中包围盒
+    // 恢复的视口/缩放同步到圆点网格
     syncDotGrid()
-    updateSelectedRect()
     hasMaskStrokes.value = canvas.getObjects().some((object) => objectData(object).kind === 'mask')
   } catch (error) {
     console.error('Failed to restore creative scene:', error)
@@ -1114,8 +1079,6 @@ defineExpose({
   getMaskBlob,
   resetCanvas,
   clearMask,
-  // 选中图片的视口包围盒（null = 未选中），供输入框跟随定位
-  selectedRect,
   // 是否已有 mask 笔迹
   hasMaskStrokes,
 })

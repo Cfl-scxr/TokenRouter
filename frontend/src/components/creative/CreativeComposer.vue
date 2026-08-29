@@ -18,11 +18,7 @@
       ></textarea>
     </div>
 
-    <!-- 前置提示：图生图 / 局部重绘未选中源图时引导（选中后输入框已跟随图片，无需再提示） -->
-    <p v-if="operationHint" class="flex items-center gap-1.5 px-4 pb-1.5 text-xs text-amber-600 dark:text-amber-400">
-      <Icon name="infoCircle" size="xs" class="flex-shrink-0" />
-      {{ operationHint }}
-    </p>
+    <!-- 错误提示（前置引导已收进画布胶囊） -->
     <p v-if="studio.error.value" class="px-4 pb-1.5 text-xs text-red-600 dark:text-red-400">{{ studio.error.value }}</p>
 
     <!-- 底栏：左下 = 模型 / 参数 / 操作 三个调参入口；右下 = 预估费用 + 发送 -->
@@ -210,8 +206,6 @@ type Studio = ReturnType<typeof useCreativeStudio>
 
 interface Props {
   studio: Studio
-  // 画布当前是否有选中的图片（用于图生图 / 局部重绘的前置提示）
-  hasSelection: boolean
 }
 
 interface Emits {
@@ -246,14 +240,6 @@ const prompt = computed({
   set: (value: string) => {
     studio.prompt.value = value
   },
-})
-
-// 图生图 / 局部重绘且未选中图片时的引导提示
-const operationHint = computed(() => {
-  if (props.hasSelection || !studio.selectedOption.value) return ''
-  if (studio.operation.value === 'edit') return t('creative.panel.selectImageHint')
-  if (studio.operation.value === 'inpaint') return t('creative.panel.maskHint')
-  return ''
 })
 
 // 模型目录为空时的空态提示（加载失败时 models 同样为空，伴随 error 红条展示）

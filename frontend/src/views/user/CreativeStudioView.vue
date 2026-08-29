@@ -47,7 +47,6 @@
       <div class="absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
         <CreativeComposer
           :studio="studio"
-          :has-selection="hasSelection"
           @generate="onGenerate"
         />
       </div>
@@ -109,10 +108,6 @@ const settingsOpen = ref(false)
 // 终态（非成功）状态胶囊几秒后自动消隐
 let pillHideTimer: ReturnType<typeof setTimeout> | null = null
 const pillHidden = ref(false)
-
-// 当前选中图片的画布视口包围盒（未选中为 null；expose 的 ref 在实例上自动解包）
-const selectedRect = computed(() => canvasRef.value?.selectedRect ?? null)
-const hasSelection = computed(() => selectedRect.value !== null)
 
 // ==================== 生命周期 ====================
 
