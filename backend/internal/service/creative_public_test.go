@@ -550,6 +550,10 @@ func newCreativeTestService() *CreativePublicService {
 		Queue:             &creativeFakeQueue{},
 		TransientStore:    newCreativeFakeTransient(),
 		BillingRepo:       &creativeFakeBillingRepo{},
+		Settings: &creativeFakeSettingReader{enabled: true, models: []CreativeModelSetting{
+			{GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
+			{GroupID: 12, Model: "grok-imagine", Operations: []string{CreativeOperationGenerate}},
+		}},
 		Config: &config.Config{
 			Creative: config.CreativeConfig{
 				Enabled:                 true,
@@ -778,10 +782,15 @@ func TestEnsureCreativeManagedKey(t *testing.T) {
 // creativeFakeSettingReader 是 CreativeSettingReader 的测试替身。
 type creativeFakeSettingReader struct {
 	enabled bool
+	models  []CreativeModelSetting
 }
 
 func (f *creativeFakeSettingReader) IsCreativeEnabled(ctx context.Context) bool {
 	return f.enabled
+}
+
+func (f *creativeFakeSettingReader) GetCreativeModelSettings(ctx context.Context) []CreativeModelSetting {
+	return append([]CreativeModelSetting(nil), f.models...)
 }
 
 // TestCreativeEnabledGate 校验数据库运行时开关 creative_enabled 的门控语义：
@@ -807,7 +816,9 @@ func TestCreativeEnabledGate(t *testing.T) {
 
 	t.Run("运行时开启时 ListModels 正常返回", func(t *testing.T) {
 		svc := newCreativeTestService()
-		svc.Settings = &creativeFakeSettingReader{enabled: true}
+		svc.Settings = &creativeFakeSettingReader{enabled: true, models: []CreativeModelSetting{{
+			GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate},
+		}}}
 
 		models, err := svc.ListModels(context.Background(), 7)
 		require.NoError(t, err)
@@ -823,4 +834,31 @@ func TestCreativeEnabledGate(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, models.Data)
 	})
+}
+
+func TestCreativeModelSettingsFilterAndCreateValidation(t *testing.T) {
+	svc := newCreativeTestService()
+	svc.Settings = &creativeFakeSettingReader{
+		enabled: true,
+		models: []CreativeModelSetting{{
+			GroupID:    12,
+			Model:      "gemini-3.1-flash-image",
+			Operations: []string{CreativeOperationEdit},
+		}},
+	}
+
+	models, err := svc.ListModels(context.Background(), 7)
+	require.NoError(t, err)
+	require.Len(t, models.Data, 1)
+	require.Equal(t, []string{CreativeOperationEdit}, models.Data[0].Operations)
+
+	params := validCreateParams()
+	params.Operation = CreativeOperationGenerate
+	_, err = svc.validateCreateParams(context.Background(), 7, &params)
+	require.ErrorIs(t, err, ErrCreativeOperationUnsupported)
+
+	params.Operation = CreativeOperationEdit
+	params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
+	_, err = svc.validateCreateParams(context.Background(), 7, &params)
+	require.NoError(t, err)
 }

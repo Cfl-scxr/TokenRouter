@@ -407,6 +407,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyFooterLinks] = settings.FooterLinks
 	updates[SettingKeyFooterText] = strings.TrimSpace(settings.FooterText)
 	updates[SettingKeyHomeFeaturedModels] = settings.HomeFeaturedModels
+	creativeModelSettingsJSON, normalizedCreativeModelSettings, err := marshalCreativeModelSettings(settings.CreativeModelSettings)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CREATIVE_MODEL_SETTINGS", err.Error())
+	}
+	settings.CreativeModelSettings = normalizedCreativeModelSettings
+	updates[SettingKeyCreativeModelSettings] = creativeModelSettingsJSON
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)

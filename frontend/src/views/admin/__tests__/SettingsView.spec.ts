@@ -6,6 +6,7 @@ import SettingsView from "../SettingsView.vue";
 
 const {
   getSettings,
+  getCreativeModelCandidates,
   updateSettings,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
@@ -42,6 +43,7 @@ const {
   getMarketplaceStats,
 } = vi.hoisted(() => ({
   getSettings: vi.fn(),
+  getCreativeModelCandidates: vi.fn(),
   updateSettings: vi.fn(),
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
@@ -111,6 +113,7 @@ vi.mock("@/api", () => ({
   adminAPI: {
     settings: {
       getSettings,
+      getCreativeModelCandidates,
       updateSettings,
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
@@ -617,6 +620,8 @@ const baseSettingsResponse = {
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   payment_enabled: true,
+  creative_enabled: true,
+  creative_model_settings: [],
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -775,6 +780,7 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
+    getCreativeModelCandidates.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
@@ -805,6 +811,7 @@ describe("admin SettingsView payment visible method controls", () => {
     localeRef.value = "zh-CN";
 
     getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    getCreativeModelCandidates.mockResolvedValue([]);
     updateSettings.mockImplementation(async (payload) => ({
       ...baseSettingsResponse,
       ...payload,
@@ -934,6 +941,7 @@ describe("admin SettingsView payment visible method controls", () => {
       usage_ranking_show_requests: false,
       usage_ranking_show_actual_cost: false,
     });
+    getCreativeModelCandidates.mockResolvedValue([]);
 
     const wrapper = mountView();
     await flushPromises();
@@ -2241,11 +2249,42 @@ describe("admin SettingsView payment visible method controls", () => {
       "auto_pause_5h_disabled",
     );
   });
+
+  it("loads creative model candidates and submits the configured capability subset", async () => {
+    const creativeSettings = [{
+      group_id: 12,
+      model: "gpt-image-2",
+      operations: ["generate", "inpaint"],
+    }];
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      creative_model_settings: creativeSettings,
+    });
+    getCreativeModelCandidates.mockResolvedValue([{
+      group_id: 12,
+      group_name: "Images",
+      platform: "openai",
+      model: "gpt-image-2",
+      operations: ["generate", "edit", "inpaint"],
+    }]);
+
+    const wrapper = mountView();
+    await flushPromises();
+    expect(getCreativeModelCandidates).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("admin.settings.features.creative.modelSettings.title");
+
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ creative_model_settings: creativeSettings }),
+    );
+  });
 });
 
 describe("admin SettingsView security tab controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
+    getCreativeModelCandidates.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
@@ -2276,6 +2315,7 @@ describe("admin SettingsView security tab controls", () => {
       ...baseSettingsResponse,
       payment_visible_method_wxpay_source: "official_wxpay",
     });
+    getCreativeModelCandidates.mockResolvedValue([]);
     updateSettings.mockImplementation(async (payload) => ({
       ...baseSettingsResponse,
       payment_visible_method_wxpay_source: "official_wxpay",
@@ -2629,6 +2669,7 @@ describe("admin SettingsView security tab controls", () => {
 describe("admin SettingsView platform quota matrix", () => {
   beforeEach(() => {
     getSettings.mockReset();
+    getCreativeModelCandidates.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
@@ -2652,6 +2693,7 @@ describe("admin SettingsView platform quota matrix", () => {
     localeRef.value = "zh-CN";
 
     getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    getCreativeModelCandidates.mockResolvedValue([]);
     updateSettings.mockImplementation(async (payload) => ({
       ...baseSettingsResponse,
       ...payload,

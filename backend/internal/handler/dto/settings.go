@@ -147,35 +147,36 @@ type SystemSettings struct {
 	GoogleOAuthRedirectURL            string `json:"google_oauth_redirect_url"`
 	GoogleOAuthFrontendRedirectURL    string `json:"google_oauth_frontend_redirect_url"`
 
-	SiteName                    string            `json:"site_name"`
-	SiteLogo                    string            `json:"site_logo"`
-	SiteSubtitle                string            `json:"site_subtitle"`
-	SiteNameZh                  string            `json:"site_name_zh"`
-	SiteNameEn                  string            `json:"site_name_en"`
-	SiteTitleZh                 string            `json:"site_title_zh"`
-	SiteTitleEn                 string            `json:"site_title_en"`
-	SiteSubtitleZh              string            `json:"site_subtitle_zh"`
-	SiteSubtitleEn              string            `json:"site_subtitle_en"`
-	APIBaseURL                  string            `json:"api_base_url"`
-	ContactInfo                 string            `json:"contact_info"`
-	DocURL                      string            `json:"doc_url"`
-	HomeContent                 string            `json:"home_content"`
-	HideCcsImportButton         bool              `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled bool              `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     string            `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int               `json:"table_default_page_size"`
-	TablePageSizeOptions        []int             `json:"table_page_size_options"`
-	UsageRankingLimit           int               `json:"usage_ranking_limit"`
-	UsageRankingEnabled         bool              `json:"usage_ranking_enabled"`
-	UsageRankingSortBy          string            `json:"usage_ranking_sort_by"`
-	UsageRankingShowTotalTokens bool              `json:"usage_ranking_show_total_tokens"`
-	UsageRankingShowRequests    bool              `json:"usage_ranking_show_requests"`
-	UsageRankingShowActualCost  bool              `json:"usage_ranking_show_actual_cost"`
-	CustomMenuItems             []CustomMenuItem  `json:"custom_menu_items"`
-	CustomEndpoints             []CustomEndpoint  `json:"custom_endpoints"`
-	FooterLinks                 []FooterLinkGroup `json:"footer_links"`
-	FooterText                  string            `json:"footer_text"`
-	HomeFeaturedModels          []string          `json:"home_featured_models"`
+	SiteName                    string                         `json:"site_name"`
+	SiteLogo                    string                         `json:"site_logo"`
+	SiteSubtitle                string                         `json:"site_subtitle"`
+	SiteNameZh                  string                         `json:"site_name_zh"`
+	SiteNameEn                  string                         `json:"site_name_en"`
+	SiteTitleZh                 string                         `json:"site_title_zh"`
+	SiteTitleEn                 string                         `json:"site_title_en"`
+	SiteSubtitleZh              string                         `json:"site_subtitle_zh"`
+	SiteSubtitleEn              string                         `json:"site_subtitle_en"`
+	APIBaseURL                  string                         `json:"api_base_url"`
+	ContactInfo                 string                         `json:"contact_info"`
+	DocURL                      string                         `json:"doc_url"`
+	HomeContent                 string                         `json:"home_content"`
+	HideCcsImportButton         bool                           `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled bool                           `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     string                         `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                            `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                          `json:"table_page_size_options"`
+	UsageRankingLimit           int                            `json:"usage_ranking_limit"`
+	UsageRankingEnabled         bool                           `json:"usage_ranking_enabled"`
+	UsageRankingSortBy          string                         `json:"usage_ranking_sort_by"`
+	UsageRankingShowTotalTokens bool                           `json:"usage_ranking_show_total_tokens"`
+	UsageRankingShowRequests    bool                           `json:"usage_ranking_show_requests"`
+	UsageRankingShowActualCost  bool                           `json:"usage_ranking_show_actual_cost"`
+	CustomMenuItems             []CustomMenuItem               `json:"custom_menu_items"`
+	CustomEndpoints             []CustomEndpoint               `json:"custom_endpoints"`
+	FooterLinks                 []FooterLinkGroup              `json:"footer_links"`
+	FooterText                  string                         `json:"footer_text"`
+	HomeFeaturedModels          []string                       `json:"home_featured_models"`
+	CreativeModelSettings       []service.CreativeModelSetting `json:"creative_model_settings"`
 
 	DefaultConcurrency                   int                          `json:"default_concurrency"`
 	DefaultBalance                       float64                      `json:"default_balance"`

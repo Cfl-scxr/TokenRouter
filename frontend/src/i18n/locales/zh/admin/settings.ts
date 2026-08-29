@@ -125,7 +125,27 @@ dataSharing: {
           title: '创作台',
           description: '控制用户创作台页面是否开放。',
           enabled: '启用创作台',
-          enabledHint: '关闭后隐藏创作台入口，模型列表返回为空并阻止创建任务。'
+          enabledHint: '关闭后隐藏创作台入口，模型列表返回为空并阻止创建任务。',
+          modelSettings: {
+            title: '生图模型与能力',
+            description: '仅允许所选分组中的模型用于创作台；空列表表示创作台无法使用生图模型。',
+            add: '添加模型',
+            remove: '删除模型',
+            modelColumn: '模型',
+            operationsColumn: '能力',
+            selectModel: '选择分组和模型',
+            loading: '正在加载可用模型…',
+            loadError: '候选模型加载失败，当前配置仍会保留。',
+            empty: '未配置模型，创作台无法使用生图模型。',
+            unavailable: '当前不可用',
+            unavailableHint: '该模型当前不在候选列表中，配置会保留，恢复后自动生效。',
+            validationError: '每个模型至少需要保留一项能力，且不能重复选择同一分组和模型。',
+            operations: {
+              generate: '文生图',
+              edit: '图生图',
+              inpaint: '局部重绘',
+            },
+          },
         },
         riskControl: {
           title: '风控中心',

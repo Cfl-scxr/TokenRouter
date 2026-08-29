@@ -127,7 +127,27 @@ dataSharing: {
           title: 'Creative Studio',
           description: 'Control whether the user-facing Creative Studio page is available.',
           enabled: 'Enable Creative Studio',
-          enabledHint: 'When off, the studio entry is hidden, the model list is empty, and run creation is blocked.'
+          enabledHint: 'When off, the studio entry is hidden, the model list is empty, and run creation is blocked.',
+          modelSettings: {
+            title: 'Image Models and Capabilities',
+            description: 'Only selected models in the selected groups can be used by Creative Studio. An empty list disables all image models.',
+            add: 'Add model',
+            remove: 'Remove model',
+            modelColumn: 'Model',
+            operationsColumn: 'Capabilities',
+            selectModel: 'Select group and model',
+            loading: 'Loading available models...',
+            loadError: 'Could not load model candidates; the current configuration is preserved.',
+            empty: 'No models configured. Creative Studio cannot use image models.',
+            unavailable: 'Currently unavailable',
+            unavailableHint: 'This model is not currently in the candidate list. The configuration is preserved and will apply when it returns.',
+            validationError: 'Keep at least one capability for every model and do not select the same group and model twice.',
+            operations: {
+              generate: 'Text to image',
+              edit: 'Image to image',
+              inpaint: 'Inpainting',
+            },
+          },
         },
         riskControl: {
           title: 'Risk Control',

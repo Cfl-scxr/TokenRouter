@@ -2,6 +2,7 @@ package admin
 
 import (
 	"log/slog"
+	"reflect"
 
 	"github.com/TokenFlux/TokenRouter/internal/handler/dto"
 	"github.com/TokenFlux/TokenRouter/internal/server/middleware"
@@ -67,6 +68,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CreativeEnabled != after.CreativeEnabled {
 		changed = append(changed, "creative_enabled")
+	}
+	if !reflect.DeepEqual(before.CreativeModelSettings, after.CreativeModelSettings) {
+		changed = append(changed, "creative_model_settings")
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")

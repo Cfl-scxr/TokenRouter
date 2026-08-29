@@ -3,11 +3,15 @@
 package admin
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/service"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,6 +84,61 @@ func TestUpdateSettingsCreativeEnabledPartialSemantics(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "false", repo2.values[service.SettingKeyCreativeEnabled],
 		"未发送 creative_enabled 时必须保留存储值")
+}
+
+func TestUpdateSettingsCreativeModelSettingsPartialSemantics(t *testing.T) {
+	stored := `[{"group_id":12,"model":"gpt-image-2","operations":["generate"]}]`
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCreativeModelSettings: stored,
+	})
+
+	// 省略字段时保持现有白名单，不因整份设置表单的其它字段而清空。
+	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, stored, repo.values[service.SettingKeyCreativeModelSettings])
+
+	// 显式空数组表示管理员主动关闭全部生图模型。
+	rec = doUpdateSettings(t, h, map[string]any{"creative_model_settings": []any{}}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, "[]", repo.values[service.SettingKeyCreativeModelSettings])
+
+	// 非法能力在保存前拒绝，原值不被覆盖。
+	rec = doUpdateSettings(t, h, map[string]any{
+		"creative_model_settings": []map[string]any{{
+			"group_id":   12,
+			"model":      "gpt-image-2",
+			"operations": []string{"upscale"},
+		}},
+	}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.JSONEq(t, "[]", repo.values[service.SettingKeyCreativeModelSettings])
+}
+
+type creativeModelCandidateReaderStub struct {
+	candidates []service.CreativeModelCandidate
+}
+
+func (s *creativeModelCandidateReaderStub) ListCreativeModelCandidates(context.Context) ([]service.CreativeModelCandidate, error) {
+	return s.candidates, nil
+}
+
+func TestListCreativeModelCandidates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerRepoStub{values: map[string]string{}}, &config.Config{}), nil, nil, nil, nil, nil, nil)
+	h.SetCreativeModelReader(&creativeModelCandidateReaderStub{candidates: []service.CreativeModelCandidate{{
+		GroupID:    12,
+		GroupName:  "Exclusive Images",
+		Platform:   "grok",
+		Model:      "grok-imagine",
+		Operations: []string{service.CreativeOperationGenerate},
+	}}})
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/creative-model-candidates", nil)
+	h.ListCreativeModelCandidates(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Exclusive Images")
+	require.Contains(t, rec.Body.String(), "grok-imagine")
 }
 
 func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {

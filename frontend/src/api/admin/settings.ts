@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from "../client";
+import type { CreativeOperation } from "../creative";
 import type {
   CustomEndpoint,
   CustomMenuItem,
@@ -16,6 +17,22 @@ export interface PaymentMethodFeeConfig {
   enabled: boolean;
   fixed_fee: number;
   fee_rate: number;
+}
+
+/** 创作台全局生图模型白名单项。 */
+export interface CreativeModelSetting {
+  group_id: number;
+  model: string;
+  operations: CreativeOperation[];
+}
+
+/** 管理员配置创作台模型时可选择的候选项。 */
+export interface CreativeModelCandidate {
+  group_id: number;
+  group_name: string;
+  platform: string;
+  model: string;
+  operations: CreativeOperation[];
 }
 
 export interface DefaultSubscriptionSetting {
@@ -700,6 +717,7 @@ export interface SystemSettings {
   team_enabled: boolean;
   data_sharing_enabled: boolean;
   creative_enabled: boolean;
+  creative_model_settings: CreativeModelSetting[];
   risk_control_enabled: boolean;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
@@ -888,6 +906,7 @@ export interface UpdateSettingsRequest {
   footer_links?: FooterLinkGroup[];
   footer_text?: string;
   home_featured_models?: string[];
+  creative_model_settings?: CreativeModelSetting[];
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;
@@ -1085,6 +1104,14 @@ export interface UpdateSettingsRequest {
 export async function getSettings(): Promise<SystemSettings> {
   const { data } = await apiClient.get<SystemSettings>("/admin/settings");
   return data;
+}
+
+/** 获取不受当前用户分组权限限制的创作台模型候选。 */
+export async function getCreativeModelCandidates(): Promise<CreativeModelCandidate[]> {
+  const { data } = await apiClient.get<CreativeModelCandidate[]>(
+    "/admin/settings/creative-model-candidates",
+  );
+  return Array.isArray(data) ? data : [];
 }
 
 /**
@@ -1725,6 +1752,7 @@ export async function backfillPreAggregation(days: number): Promise<{ status: st
 
 export const settingsAPI = {
   getSettings,
+  getCreativeModelCandidates,
   updateSettings,
   testSmtpConnection,
   sendTestEmail,

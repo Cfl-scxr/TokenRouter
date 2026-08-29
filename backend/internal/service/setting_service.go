@@ -629,6 +629,22 @@ func (s *SettingService) IsCreativeEnabled(ctx context.Context) bool {
 	return value != "false"
 }
 
+// GetCreativeModelSettings 读取创作台模型白名单；缺失、损坏或读取失败均按空列表处理。
+// 空列表是明确的 fail-closed 语义，不会因为数据库异常误放行生图模型。
+func (s *SettingService) GetCreativeModelSettings(ctx context.Context) []CreativeModelSetting {
+	if s == nil || s.settingRepo == nil {
+		return []CreativeModelSetting{}
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyCreativeModelSettings)
+	if err != nil {
+		if !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to read creative model settings", "error", err)
+		}
+		return []CreativeModelSetting{}
+	}
+	return parseCreativeModelSettings(raw)
+}
+
 // SetDefaultSubscriptionPlanReader injects an optional plan reader for default subscription validation.
 func (s *SettingService) SetDefaultSubscriptionPlanReader(reader DefaultSubscriptionPlanReader) {
 	s.defaultSubPlanReader = reader

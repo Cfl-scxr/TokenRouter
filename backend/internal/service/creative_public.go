@@ -59,6 +59,8 @@ type CreativePublicService struct {
 type CreativeSettingReader interface {
 	// IsCreativeEnabled 读取数据库开关 creative_enabled，缺省视为开启。
 	IsCreativeEnabled(ctx context.Context) bool
+	// GetCreativeModelSettings 读取创作台模型白名单；缺失或异常时返回空列表。
+	GetCreativeModelSettings(ctx context.Context) []CreativeModelSetting
 }
 
 // 以下窄接口只依赖真正用到的方法，便于单测替身实现；生产环境由现有仓储实现。
@@ -134,9 +136,9 @@ func (s *CreativePublicService) enabled(ctx context.Context) bool {
 	if s == nil || s.Repo == nil || s.GroupRepo == nil || s.Config == nil || !s.Config.Creative.Enabled {
 		return false
 	}
-	// Settings 未注入（如部分集成测试）时只按进程配置门控。
+	// 设置服务缺失时无法确认白名单，按 fail-closed 处理。
 	if s.Settings == nil {
-		return true
+		return false
 	}
 	return s.Settings.IsCreativeEnabled(ctx)
 }
@@ -155,6 +157,10 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 	if err != nil || user == nil {
 		return nil, ErrUserNotFound
 	}
+	modelSettings := creativeModelSettingsIndex(s.creativeModelSettings(ctx))
+	if len(modelSettings) == 0 {
+		return &CreativeModelsResponse{Data: make([]CreativeModelPublic, 0)}, nil
+	}
 	groups, err := s.GroupRepo.ListActive(ctx)
 	if err != nil {
 		return nil, err
@@ -168,8 +174,8 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 		if !group.AllowImageGeneration || !group.IsActive() {
 			continue
 		}
-		operations := creativeOperationsForPlatform(group.Platform)
-		if len(operations) == 0 {
+		platformOperations := creativeOperationsForPlatform(group.Platform)
+		if len(platformOperations) == 0 {
 			continue
 		}
 		models, err := s.creativeModelsForGroup(ctx, group)
@@ -182,6 +188,10 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 		}
 		sort.Strings(modelNames)
 		for _, model := range modelNames {
+			operations, configured := creativeOperationsForModel(modelSettings, group.ID, model, platformOperations)
+			if !configured || len(operations) == 0 {
+				continue
+			}
 			// 尺寸按“分组+模型”解析：渠道/分组未配置覆盖价时回退平台默认档位。
 			imageSizes := creativeImageSizesForGroupModel(group, model)
 			if len(imageSizes) == 0 {
@@ -201,6 +211,58 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 		}
 	}
 	return out, nil
+}
+
+// ListCreativeModelCandidates 返回管理端配置创作台白名单时可选择的当前模型。
+// 候选不按用户权限过滤，但仍严格复用创作台的分组、账号和平台模型解析逻辑。
+func (s *CreativePublicService) ListCreativeModelCandidates(ctx context.Context) ([]CreativeModelCandidate, error) {
+	if s == nil || s.GroupRepo == nil {
+		return nil, errors.New("creative group repository is not configured")
+	}
+	groups, err := s.GroupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CreativeModelCandidate, 0)
+	for i := range groups {
+		group := &groups[i]
+		if !group.IsActive() || !group.AllowImageGeneration {
+			continue
+		}
+		operations := creativeOperationsForPlatform(group.Platform)
+		if len(operations) == 0 {
+			continue
+		}
+		models, err := s.creativeModelsForGroup(ctx, group)
+		if err != nil {
+			return nil, err
+		}
+		modelNames := make([]string, 0, len(models))
+		for model := range models {
+			if len(creativeImageSizesForGroupModel(group, model)) == 0 {
+				continue
+			}
+			modelNames = append(modelNames, model)
+		}
+		sort.Strings(modelNames)
+		for _, model := range modelNames {
+			out = append(out, CreativeModelCandidate{
+				GroupID:    group.ID,
+				GroupName:  group.Name,
+				Platform:   group.Platform,
+				Model:      model,
+				Operations: append([]string(nil), operations...),
+			})
+		}
+	}
+	return out, nil
+}
+
+func (s *CreativePublicService) creativeModelSettings(ctx context.Context) []CreativeModelSetting {
+	if s == nil || s.Settings == nil {
+		return []CreativeModelSetting{}
+	}
+	return s.Settings.GetCreativeModelSettings(ctx)
 }
 
 // creativePrice 返回指定尺寸的展示单价：统一定价优先，并乘模型广场使用的分组图片倍率。
@@ -646,6 +708,15 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		return nil, ErrCreativeGroupImageDisabled
 	}
 	model := strings.TrimSpace(params.Model)
+	modelSettings := creativeModelSettingsIndex(s.creativeModelSettings(ctx))
+	configuredOperations, configured := creativeOperationsForModel(modelSettings, group.ID, model, operations)
+	if !configured {
+		return nil, ErrCreativeInvalidModel
+	}
+	operations = configuredOperations
+	if len(operations) == 0 {
+		return nil, ErrCreativeOperationUnsupported
+	}
 	models, err := s.creativeModelsForGroup(ctx, group)
 	if err != nil {
 		return nil, err

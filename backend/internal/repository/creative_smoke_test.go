@@ -301,6 +301,18 @@ func (r *smokeFakeRateRepo) GetByUserAndGroup(ctx context.Context, userID, group
 	return nil, nil
 }
 
+type smokeCreativeSettingReader struct{}
+
+func (smokeCreativeSettingReader) IsCreativeEnabled(context.Context) bool { return true }
+
+func (smokeCreativeSettingReader) GetCreativeModelSettings(context.Context) []service.CreativeModelSetting {
+	return []service.CreativeModelSetting{{
+		GroupID:    12,
+		Model:      "gemini-3.1-flash-image",
+		Operations: []string{service.CreativeOperationGenerate, service.CreativeOperationEdit, service.CreativeOperationInpaint},
+	}}
+}
+
 // TestCreativeFullChainSmoke 串起创作台全链路（真实 Redis 队列 + 真实 transient store）。
 func TestCreativeFullChainSmoke(t *testing.T) {
 	server := miniredis.RunT(t)
@@ -346,7 +358,7 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil, // Settings 未注入：仅按进程配置 creative.enabled 门控
+		smokeCreativeSettingReader{},
 		cfg,
 	)
 	worker := service.NewCreativeRunWorker(queue, repo, store, &smokeFakeExecutor{}, svc, service.CreativeWorkerOptions{
