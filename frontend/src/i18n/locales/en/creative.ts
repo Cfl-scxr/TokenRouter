@@ -51,7 +51,9 @@ export default {
       // 涂抹开关：暂停涂抹后可平移视角 / 换选图片，再点恢复涂抹
       paintToggleOn: 'Start painting',
       paintToggleOff: 'Pause painting to pan',
-      clearMask: 'Clear paint',
+      // 橡皮模式：拖动移除碰到的笔迹
+      eraseMode: 'Erase strokes',
+      clearMask: 'Clear all paint',
       downloadSelected: 'Download selected image',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',

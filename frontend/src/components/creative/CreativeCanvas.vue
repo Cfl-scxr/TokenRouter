@@ -42,6 +42,21 @@
         >
           <Icon name="edit" size="sm" />
         </button>
+        <!-- 橡皮模式：拖动擦除碰到的笔迹（与涂抹互斥） -->
+        <button
+          type="button"
+          class="canvas-tool-btn"
+          :class="eraseMode && 'canvas-tool-btn-active'"
+          :disabled="!hasMaskStrokes && !eraseMode"
+          :title="t('creative.canvas.eraseMode')"
+          @click="toggleEraseMode"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+            <path d="M22 21H7" />
+            <path d="m5 11 9 9" />
+          </svg>
+        </button>
         <!-- 画笔粗细滑块：8–96 -->
         <div class="flex items-center gap-1.5 px-1">
           <input
@@ -86,9 +101,7 @@
           :title="t('creative.canvas.clearMask')"
           @click="clearMask"
         >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 4.5l3 3L9 18H6v-3L16.5 4.5zM14.25 6.75l3 3" />
-          </svg>
+          <Icon name="trash" size="sm" />
         </button>
       </template>
 
@@ -239,6 +252,8 @@ const selectedImage = shallowRef<FabricObject | null>(null)
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
 const paintSuspended = ref(false)
+// 橡皮模式：与涂抹互斥，开启时暂停涂抹，拖动移除碰到的笔迹
+const eraseMode = ref(false)
 // 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
 let anchorOutline: Rect | null = null
 
@@ -247,6 +262,8 @@ let resizeObserver: ResizeObserver | null = null
 let sceneSaveTimer: ReturnType<typeof setTimeout> | null = null
 // 平移拖拽状态：pointerId 统一鼠标 / 触摸
 let isPanning = false
+// 橡皮拖拽状态：按住左键拖动连续擦除
+let isErasing = false
 let lastClientX = 0
 let lastClientY = 0
 // 平滑平移动画的 rAF 句柄
@@ -315,11 +332,20 @@ function suppressContextMenu(event: Event): void {
 
 function bindCanvasEvents(): void {
   if (!canvas) return
-  // 空白处按下左键 / 单指 = 平移视角；涂抹模式下左键落笔，中键 / 右键拖拽平移
+  // 空白处按下左键 / 单指 = 平移视角；涂抹模式下左键落笔，橡皮模式下左键擦除，中键 / 右键拖拽平移
   canvas.on('mouse:down', (event) => {
     if (!canvas) return
     if (painting.value) {
       if (isPanButton(event.e)) startPan(event.e)
+      return
+    }
+    if (eraseMode.value) {
+      if (isPanButton(event.e)) {
+        startPan(event.e)
+        return
+      }
+      isErasing = true
+      eraseMaskAt(event.e)
       return
     }
     if (event.target) return
@@ -328,7 +354,12 @@ function bindCanvasEvents(): void {
     canvas.discardActiveObject()
   })
   canvas.on('mouse:move', (event) => {
-    if (!canvas || !isPanning) return
+    if (!canvas) return
+    if (isErasing) {
+      eraseMaskAt(event.e)
+      return
+    }
+    if (!isPanning) return
     const client = clientPoint(event.e)
     const dx = client.x - lastClientX
     const dy = client.y - lastClientY
@@ -343,7 +374,10 @@ function bindCanvasEvents(): void {
     updateSelectedRect()
     scheduleSceneSave()
   })
-  canvas.on('mouse:up', () => stopPanning())
+  canvas.on('mouse:up', () => {
+    isErasing = false
+    stopPanning()
+  })
   canvas.on('mouse:wheel', (event) => {
     if (!canvas) return
     event.e.preventDefault()
@@ -555,9 +589,46 @@ function removeAnchorOutline(): void {
   anchorOutline = null
 }
 
-// 工具栏开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复
+// 工具栏涂抹开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复；与橡皮互斥
 function togglePainting(): void {
+  eraseMode.value = false
   paintSuspended.value = painting.value
+}
+
+// 工具栏橡皮开关：开启即暂停涂抹，拖动移除碰到的笔迹；关闭后恢复涂抹
+function toggleEraseMode(): void {
+  eraseMode.value = !eraseMode.value
+  if (eraseMode.value) {
+    paintSuspended.value = true
+    if (canvas) canvas.defaultCursor = 'cell'
+  } else {
+    paintSuspended.value = false
+  }
+}
+
+// 切走操作时退出橡皮模式（watch 触发的 syncPainting 负责恢复光标与涂抹态）
+watch(isInpaint, (inpaint) => {
+  if (!inpaint) eraseMode.value = false
+})
+
+// 擦除视口坐标点命中的最上层 mask 笔迹（命中判定：笔迹包围盒加少量容差）
+function eraseMaskAt(event: Event): void {
+  if (!canvas) return
+  const mouse = event as MouseEvent
+  const slop = 6
+  const masks = canvas.getObjects().filter((object) => objectData(object).kind === 'mask')
+  for (let i = masks.length - 1; i >= 0; i--) {
+    const rect = masks[i].getBoundingRect()
+    if (
+      mouse.offsetX >= rect.left - slop &&
+      mouse.offsetX <= rect.left + rect.width + slop &&
+      mouse.offsetY >= rect.top - slop &&
+      mouse.offsetY <= rect.top + rect.height + slop
+    ) {
+      canvas.remove(masks[i])
+      return
+    }
+  }
 }
 
 function setBrushShape(shape: BrushShape): void {
@@ -908,6 +979,8 @@ function resetCanvas(): void {
   stopPanAnim()
   inpaintAnchor.value = null
   paintSuspended.value = false
+  eraseMode.value = false
+  isErasing = false
   exitPainting()
   removeAnchorOutline()
   canvas.discardActiveObject()
