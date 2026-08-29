@@ -122,6 +122,19 @@ const PLACE_WRAP_X = 2200
 const ASSET_PROTOCOL = 'asset://'
 // mask 画笔颜色（导出为白底透明 PNG 的白色轨迹）
 const MASK_COLOR = '#ffffff'
+// 圆点网格基准间距（px，缩放 1 时）
+const DOT_GRID_SIZE = 20
+
+// 圆点网格跟随视角移动：背景位置 = 视口平移分量，间距 = 基准 × 当前缩放，
+// 让网格像画在世界坐标系里一样，拖动/缩放时与图片同步。
+function syncDotGrid(): void {
+  const el = containerRef.value
+  if (!el || !canvas) return
+  const vpt = canvas.viewportTransform
+  el.style.backgroundPosition = `${vpt[4]}px ${vpt[5]}px`
+  const size = DOT_GRID_SIZE * canvas.getZoom()
+  el.style.backgroundSize = `${size}px ${size}px`
+}
 
 // fabric 7 类型未声明自定义 data 属性，运行时允许挂任意键，这里做最小封装
 type ObjectWithData = { data?: Record<string, unknown> }
@@ -184,6 +197,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(fitToContainer)
   resizeObserver.observe(container)
   window.addEventListener('keydown', onKeyDown)
+  syncDotGrid()
   void restoreScene()
 })
 
@@ -236,6 +250,7 @@ function bindCanvasEvents(): void {
     vpt[4] += dx
     vpt[5] += dy
     canvas.setViewportTransform(vpt)
+    syncDotGrid()
     scheduleSceneSave()
   })
   canvas.on('mouse:up', () => stopPanning())
@@ -247,6 +262,7 @@ function bindCanvasEvents(): void {
     // 以光标位置为缩放中心（zoomToPoint 接收画布元素坐标系内的点）
     const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * 0.999 ** wheel.deltaY))
     canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), next)
+    syncDotGrid()
     scheduleSceneSave()
   })
   // 画笔落笔完成：标记为 mask 轨迹，画在图片上层、不参与选中
@@ -409,6 +425,7 @@ function panToScenePoint(point: { x: number; y: number }): void {
     vpt[4] = startX + (targetX - startX) * eased
     vpt[5] = startY + (targetY - startY) * eased
     canvas.setViewportTransform(vpt)
+    syncDotGrid()
     if (progress < 1) {
       panAnimFrame = requestAnimationFrame(step)
     } else {
@@ -602,6 +619,7 @@ async function getMaskBlob(): Promise<Blob | null> {
       object.visible = true
     })
     canvas.requestRenderAll()
+    syncDotGrid()
   }
 
   // 拉伸回原图自然尺寸，与服务端"mask 尺寸必须与源图一致"的校验对齐
@@ -636,6 +654,7 @@ function resetCanvas(): void {
   canvas.clear()
   canvas.backgroundColor = ''
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+  syncDotGrid()
   lastPlaced = null
   outputRegistry.clear()
   runtimeBlobs.clear()
@@ -740,6 +759,8 @@ async function restoreScene(): Promise<void> {
     pendingUrls.forEach((url) => URL.revokeObjectURL(url))
     canvas.getObjects().forEach(registerOutputObject)
     canvas.requestRenderAll()
+    // 恢复的视口/缩放同步到圆点网格
+    syncDotGrid()
   } catch (error) {
     console.error('Failed to restore creative scene:', error)
   }
