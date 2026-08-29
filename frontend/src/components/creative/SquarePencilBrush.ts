@@ -7,13 +7,12 @@
  *   实例覆写无法拦截，因此方头笔必须走全量重绘路径（clearContext + _render）。
  * - 落笔结束 _finalizeAndAddPath 依次调用可覆写的实例方法 convertPointsToSVGPath / createPath 生成最终 Path。
  *
- * 方头笔迹 = 不平滑的直线折线 + strokeLineCap 'butt' + strokeLineJoin 'miter'：
- * 笔画端点与拐角呈方形，与圆头笔（二次贝塞尔平滑 + round 帽）区分。
- * 单点单击生成一条长度等于笔宽的水平线段，butt 帽下恰好渲染为 笔宽×笔宽 的方块；
- * 预览阶段对单点用 fillRect 画同样的方块，保证预览与最终 Path 视觉一致。
+ * 方头笔迹用「等间距方形印章」实现：沿轨迹以 width/2 为步长插值出一串轴对齐方块，
+ * 预览直接 fillRect 这些方块，最终 Path 用同样方块的填充子路径。
+ * 这样斜向快速移动不会出现描边折线的斜接尖角 / 圆帽残留，预览与最终笔迹逐像素一致。
  */
 
-import { PencilBrush, type Path, type Point, type TEvent, type TSimplePathData } from 'fabric'
+import { Path, PencilBrush, Point, type TEvent, type TSimplePathData } from 'fabric'
 
 export class SquarePencilBrush extends PencilBrush {
   /**
@@ -30,54 +29,75 @@ export class SquarePencilBrush extends PencilBrush {
   }
 
   /**
-   * 在 contextTop 上绘制方头预览：单点画方块，其余画 butt/miter 折线。
-   * 画笔样式（strokeStyle/lineWidth）由父类 _reset 里的 _setBrushStyles 设置。
+   * 沿轨迹插值出等间距（width/2）的印章中心点；
+   * 相邻点距离不足步长时至少保留端点，保证快速斜向移动下笔迹连续。
    */
+  private stampCenters(points: Point[]): Point[] {
+    const step = Math.max(1, this.width / 2)
+    const centers: Point[] = []
+    const push = (x: number, y: number) => {
+      const last = centers[centers.length - 1]
+      if (!last || Math.hypot(x - last.x, y - last.y) >= step * 0.9) {
+        centers.push(new Point(x, y))
+      }
+    }
+    push(points[0].x, points[0].y)
+    for (let i = 1; i < points.length; i++) {
+      const from = points[i - 1]
+      const to = points[i]
+      const dist = Math.hypot(to.x - from.x, to.y - from.y)
+      const segments = Math.max(1, Math.ceil(dist / step))
+      for (let s = 1; s <= segments; s++) {
+        push(from.x + ((to.x - from.x) * s) / segments, from.y + ((to.y - from.y) * s) / segments)
+      }
+    }
+    return centers
+  }
+
+  /** 在 contextTop 上绘制方头预览：所有印章轴对齐 fillRect，任意方向粗细一致 */
   override _render(ctx: CanvasRenderingContext2D = this.canvas.contextTop): void {
     const points = this._points
     if (!points.length) return
     this._saveAndTransform(ctx)
-    if (points.length === 1) {
-      const half = this.width / 2
-      ctx.fillStyle = this.color
-      ctx.fillRect(points[0].x - half, points[0].y - half, this.width, this.width)
-    } else {
-      ctx.lineCap = 'butt'
-      ctx.lineJoin = 'miter'
-      ctx.beginPath()
-      ctx.moveTo(points[0].x, points[0].y)
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y)
-      }
-      ctx.stroke()
+    ctx.fillStyle = this.color
+    const half = this.width / 2
+    for (const center of this.stampCenters(points)) {
+      ctx.fillRect(center.x - half, center.y - half, this.width, this.width)
     }
     ctx.restore()
   }
 
   /**
-   * 点集 → SVG path：不做曲线平滑，直接输出直线折线；
-   * 单点单击输出一条长度等于笔宽的水平线段（配合 butt 帽渲染为方块）。
+   * 点集 → 填充方块子路径（M/L 闭合，不用 Z，兼容 TSimplePathData 最简命令集），
+   * 与预览印章一一对应，保证最终 Path 与预览视觉一致。
    */
   override convertPointsToSVGPath(points: Point[]): TSimplePathData {
-    if (!points.length) return []
-    if (points.length === 1) {
-      const half = this.width / 2
-      return [
-        ['M', points[0].x - half, points[0].y],
-        ['L', points[0].x + half, points[0].y],
-      ]
-    }
-    const path: TSimplePathData = [['M', points[0].x, points[0].y]]
-    for (let i = 1; i < points.length; i++) {
-      path.push(['L', points[i].x, points[i].y])
+    const path: TSimplePathData = []
+    if (!points.length) return path
+    const half = this.width / 2
+    for (const center of this.stampCenters(points)) {
+      const left = center.x - half
+      const top = center.y - half
+      const right = center.x + half
+      const bottom = center.y + half
+      path.push(
+        ['M', left, top],
+        ['L', right, top],
+        ['L', right, bottom],
+        ['L', left, bottom],
+        ['L', left, top],
+      )
     }
     return path
   }
 
-  /** 最终 Path 使用方头端帽与斜接拐角，与预览一致 */
+  /** 最终 Path 用填充方块而非描边，彻底避免斜向描边的帽/接问题 */
   override createPath(pathData: TSimplePathData): Path {
-    const path = super.createPath(pathData)
-    path.set({ strokeLineCap: 'butt', strokeLineJoin: 'miter' })
+    const path = new Path(pathData, {
+      fill: this.color,
+      stroke: '',
+      strokeWidth: 0,
+    })
     return path
   }
 }

@@ -1,13 +1,11 @@
 <template>
-  <div
-    ref="containerRef"
-    class="dot-grid relative h-full w-full overflow-hidden rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900"
-  >
+  <!-- 画布即整个背景：透明无边框，圆点网格铺满 -->
+  <div ref="containerRef" class="dot-grid relative h-full w-full overflow-hidden">
     <canvas ref="canvasElRef"></canvas>
 
-    <!-- 浮动工具栏：画笔 / 粗细 / 形状 / 移除选中 / 清空画布 -->
+    <!-- 浮动工具栏：画笔 / 粗细 / 形状 / 移除选中 / 清空画布（移动端底部，桌面端顶部） -->
     <div
-      class="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
+      class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-auto lg:top-3"
     >
       <button
         type="button"
@@ -73,7 +71,7 @@
     <!-- 画笔模式提示 -->
     <div
       v-if="brushOn"
-      class="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15"
+      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
     >
       {{ t('creative.canvas.maskBrushHint') }}
     </div>

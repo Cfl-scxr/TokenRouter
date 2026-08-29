@@ -2,7 +2,7 @@
   <!-- 历史入口：画布区域右上角的手写 SVG 图标按钮 -->
   <button
     type="button"
-    class="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
+    class="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
     :class="open && 'text-primary-700 dark:text-primary-300'"
     :title="t('creative.history.toggle')"
     @click="open = !open"
@@ -13,7 +13,7 @@
   <!-- 悬浮历史列表：点击展开 / 收起，选择行后不自动收起 -->
   <div
     v-if="open"
-    class="absolute right-3 top-14 z-10 flex max-h-[70%] w-80 flex-col overflow-hidden rounded-xl border border-primary-900/10 bg-white/95 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
+    class="absolute right-3 top-14 z-20 flex max-h-[70%] w-80 flex-col overflow-hidden rounded-xl border border-primary-900/10 bg-white/95 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
   >
     <div class="flex items-center gap-2 border-b border-primary-900/10 px-3 py-2 dark:border-dark-600">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-400">

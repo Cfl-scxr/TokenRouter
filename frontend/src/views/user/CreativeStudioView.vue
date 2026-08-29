@@ -1,29 +1,28 @@
 <template>
   <AppLayout>
-    <!-- 上 = 控制面板，下 = 无限画布（移动端画布约 65dvh） -->
-    <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)] lg:flex-row">
-      <!-- 左 / 上：控制面板（桌面端内部滚动，prompt 拖拽调整不挤压画布） -->
+    <!-- 整个内容区即无限画布背景：负外边距抵消 app-main 内边距，画布铺满全幅 -->
+    <div
+      class="relative -mx-4 -mb-4 h-[calc(100dvh-4.5rem)] md:-mx-6 md:-mb-6 md:h-[calc(100dvh-4.75rem)] lg:-mx-8 lg:-mb-8 lg:h-[calc(100dvh-4.5rem)]"
+    >
+      <CreativeCanvas ref="canvasRef" class="absolute inset-0" @error="onCanvasError" />
+      <CreativeRunHistory :studio="studio" />
+
+      <!-- 控制面板：桌面端左侧浮动卡片；移动端顶部浮层，均压在画布之上 -->
       <div
-        class="flex max-h-[60dvh] w-full flex-shrink-0 flex-col overflow-y-auto rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900 lg:max-h-full lg:w-80"
+        class="absolute inset-x-3 top-3 z-10 flex max-h-[58dvh] flex-col overflow-y-auto rounded-xl border border-primary-900/10 bg-white/95 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95 lg:bottom-3 lg:left-3 lg:right-auto lg:max-h-none lg:w-80"
       >
         <CreativeControlPanel :studio="studio" @generate="onGenerate" @uploaded="onUploaded" @clear-requested="showClearConfirm = true" />
       </div>
 
-      <!-- 画布工作区：无限画布 + 状态胶囊 + 悬浮历史 -->
-      <div class="relative h-[65dvh] w-full flex-shrink-0 lg:h-auto lg:min-w-0 lg:flex-1">
-        <CreativeCanvas ref="canvasRef" class="absolute inset-0" @error="onCanvasError" />
-        <CreativeRunHistory :studio="studio" />
-
-        <!-- 生成状态胶囊：左上角浮动 -->
-        <div
-          v-if="pillState && !pillHidden"
-          class="absolute left-3 top-3 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
-          :class="pillState.toneClass"
-        >
-          <Icon v-if="pillState.spinning" name="refresh" size="sm" class="animate-spin" />
-          <span class="whitespace-nowrap font-medium">{{ pillState.text }}</span>
-          <span v-if="pillState.detail" class="truncate text-gray-500 dark:text-dark-400">{{ pillState.detail }}</span>
-        </div>
+      <!-- 生成状态胶囊：移动端左下（工具栏上方），桌面端右下角 -->
+      <div
+        v-if="pillState && !pillHidden"
+        class="absolute bottom-14 left-3 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-auto lg:right-3"
+        :class="pillState.toneClass"
+      >
+        <Icon v-if="pillState.spinning" name="refresh" size="sm" class="animate-spin" />
+        <span class="whitespace-nowrap font-medium">{{ pillState.text }}</span>
+        <span v-if="pillState.detail" class="truncate text-gray-500 dark:text-dark-400">{{ pillState.detail }}</span>
       </div>
     </div>
 
