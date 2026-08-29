@@ -191,6 +191,7 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 				Model:      model,
 				Operations: operations,
 				ImageSizes: imageSizes,
+				Qualities:  creativeQualitiesForPlatform(group.Platform),
 				Price1K:    s.creativePrice1K(group, model),
 			})
 		}
@@ -241,12 +242,12 @@ func creativeImageSizesForGroup(group *Group) []string {
 }
 
 // creativeDefaultImageSizesForPlatform 返回分组未配置图片价时的平台默认尺寸档位，
-// 与网关按默认价计费的口径一致：openai 上游仅一种分辨率档（按宽高比映射），grok 支持 1K/2K，
-// gemini 原生支持 1K/2K/4K。
+// 与网关按默认价计费的口径一致：openai 上游支持 1024/1536 两档（2K 映射 1536，4K 无更高分辨率不开放），
+// grok 支持 1K/2K，gemini 原生支持 1K/2K/4K。
 func creativeDefaultImageSizesForPlatform(platform string) []string {
 	switch strings.TrimSpace(platform) {
 	case PlatformOpenAI:
-		return []string{"1K"}
+		return []string{"1K", "2K"}
 	case PlatformGrok:
 		return []string{"1K", "2K"}
 	case PlatformGemini:
@@ -254,6 +255,14 @@ func creativeDefaultImageSizesForPlatform(platform string) []string {
 	default:
 		return nil
 	}
+}
+
+// creativeQualitiesForPlatform 返回平台支持的生图画质档位（OpenAI gpt-image 系列独有）。
+func creativeQualitiesForPlatform(platform string) []string {
+	if strings.TrimSpace(platform) == PlatformOpenAI {
+		return []string{"low", "medium", "high"}
+	}
+	return nil
 }
 
 // creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位：
@@ -379,6 +388,7 @@ type validatedCreativeParams struct {
 	promptHash   string
 	imageSize    string
 	aspectRatio  string
+	quality      string
 	outputCount  int
 	responseMIME string
 	sources      []CreativeInputImage
@@ -513,6 +523,7 @@ func (s *CreativePublicService) saveRunTransient(ctx context.Context, run *Creat
 		AspectRatio:        run.AspectRatio,
 		OutputCount:        run.RequestedOutputCount,
 		ResponseMIMEType:   run.ResponseMIMEType,
+		Quality:            validated.quality,
 		SourceCount:        len(validated.sources),
 		HasMask:            validated.mask != nil,
 		RequestFingerprint: run.RequestFingerprint,
@@ -606,6 +617,18 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if len(aspectRatio) > 16 {
 		return nil, ErrCreativeInvalidParams
 	}
+	// 画质档位仅 OpenAI 平台（gpt-image 系列）支持；其余平台传入视为非法参数。
+	quality := strings.ToLower(strings.TrimSpace(params.Quality))
+	if quality != "" {
+		switch quality {
+		case "low", "medium", "high", "auto":
+		default:
+			return nil, ErrCreativeInvalidParams
+		}
+		if strings.TrimSpace(group.Platform) != PlatformOpenAI {
+			return nil, ErrCreativeInvalidParams
+		}
+	}
 	responseMIME := strings.TrimSpace(params.ResponseMIME)
 	if responseMIME == "" {
 		responseMIME = s.defaultResponseMimeType()
@@ -678,6 +701,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		MaskSHA256:       creativeImageHash(mask),
 		ImageSize:        imageSize,
 		AspectRatio:      aspectRatio,
+		Quality:          quality,
 		OutputCount:      outputCount,
 		ResponseMIMEType: responseMIME,
 	})
@@ -689,6 +713,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		promptHash:   promptHash,
 		imageSize:    imageSize,
 		aspectRatio:  aspectRatio,
+		quality:      quality,
 		outputCount:  outputCount,
 		responseMIME: responseMIME,
 		sources:      sources,
@@ -767,6 +792,7 @@ type creativeFingerprintPayload struct {
 	MaskSHA256       string   `json:"mask_sha256,omitempty"`
 	ImageSize        string   `json:"image_size"`
 	AspectRatio      string   `json:"aspect_ratio"`
+	Quality          string   `json:"quality,omitempty"`
 	OutputCount      int      `json:"output_count"`
 	ResponseMIMEType string   `json:"response_mime_type"`
 }

@@ -305,7 +305,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	groupRepo := svc.GroupRepo.(*creativeFakeGroupRepo)
 	accountRepo := svc.AccountRepo.(*creativeFakeAccountRepo)
 
-	// openai 分组：无显式图片价、账号无映射 → 候选回退 + 尺寸回退 ["1K"]。
+	// openai 分组：无显式图片价、账号无映射 → 候选回退 + 尺寸回退 ["1K","2K"]（2K 映射 1536）。
 	openaiGroup := newCreativeTestGroup()
 	openaiGroup.ID = 21
 	openaiGroup.Name = "ChatGPT Image"
@@ -388,10 +388,11 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		byGroup[item.GroupID] = append(byGroup[item.GroupID], item)
 	}
 
-	// openai 无映射回退：两个候选模型、仅 1K 档位、默认价大于 0。
+	// openai 无映射回退：两个候选模型、1K/2K 档位（2K 映射 1536）、默认价大于 0。
 	require.Len(t, byGroup[21], 2)
 	for _, item := range byGroup[21] {
-		require.Equal(t, []string{"1K"}, item.ImageSizes)
+		require.Equal(t, []string{"1K", "2K"}, item.ImageSizes)
+		require.Equal(t, []string{"low", "medium", "high"}, item.Qualities)
 		require.Greater(t, item.Price1K, 0.0)
 		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
 	}

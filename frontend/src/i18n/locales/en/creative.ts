@@ -12,6 +12,7 @@ export default {
       aspectRatio: 'Aspect ratio',
       outputCount: 'Output count',
       outputCountOption: '{n} image | {n} images',
+      quality: 'Quality',
       estimatedCost: 'Estimated cost: {cost}',
       uploadSource: 'Upload image',
       promptPlaceholder: 'Describe the image you want to create...',
@@ -43,6 +44,12 @@ export default {
       '3x4': '3:4',
       '16x9': '16:9',
       '9x16': '9:16',
+    },
+    // 生图画质档位（OpenAI gpt-image 系列；再次点击已选项取消选择 = 上游默认）
+    qualities: {
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
     },
     canvas: {
       brushSize: 'Brush size',

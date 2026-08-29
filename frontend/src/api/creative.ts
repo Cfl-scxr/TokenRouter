@@ -17,6 +17,8 @@ export interface CreativeModelOption {
   model: string
   operations: CreativeOperation[]
   image_sizes: string[]
+  // 可选画质档位（low/medium/high），仅 OpenAI 平台模型下发
+  qualities?: string[]
   price_1k: number
 }
 

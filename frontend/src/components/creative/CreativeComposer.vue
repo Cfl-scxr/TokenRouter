@@ -124,6 +124,22 @@
                 </button>
               </div>
             </div>
+            <!-- 画质：仅 OpenAI 平台模型下发 qualities 时展示 -->
+            <div v-if="studio.qualityOptions.value.length">
+              <p class="param-label">{{ t('creative.panel.quality') }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="option in studio.qualityOptions.value"
+                  :key="option"
+                  type="button"
+                  class="param-chip"
+                  :class="studio.quality.value === option && 'param-chip-active'"
+                  @click="setQuality(option)"
+                >
+                  {{ t(`creative.qualities.${option}`, option) }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </span>
@@ -288,6 +304,11 @@ function setAspectRatio(ratio: string): void {
 
 function setOutputCount(count: number): void {
   studio.outputCount.value = count
+}
+
+// 画质选择（经别名写入，避免模板内联赋值触发 prop mutation 校验）
+function setQuality(option: string): void {
+  studio.quality.value = studio.quality.value === option ? '' : option
 }
 
 // Ctrl / Cmd + Enter 发送；普通 Enter 换行

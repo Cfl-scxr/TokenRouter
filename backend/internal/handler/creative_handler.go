@@ -57,6 +57,7 @@ type creativeCreateRunRequest struct {
 	AspectRatio  string
 	OutputCount  int
 	ResponseMIME string
+	Quality      string
 }
 
 // CreateRun 解析 multipart/form-data 并创建创作台任务。
@@ -83,6 +84,7 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		AspectRatio:  req.AspectRatio,
 		OutputCount:  req.OutputCount,
 		ResponseMIME: req.ResponseMIME,
+		Quality:      req.Quality,
 	}, c.GetHeader("Idempotency-Key"))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -173,6 +175,8 @@ func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest,
 			req.OutputCount = outputCount
 		case "response_mime_type":
 			req.ResponseMIME = value
+		case "quality":
+			req.Quality = value
 		}
 	}
 	if req.GroupID <= 0 {

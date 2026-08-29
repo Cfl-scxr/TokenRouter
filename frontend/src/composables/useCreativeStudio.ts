@@ -44,6 +44,7 @@ interface CreativeSelectionSettings {
   imageSize: string
   aspectRatio: string
   outputCount: number
+  quality: string
 }
 
 const SETTINGS_KEY = 'creative:selection'
@@ -82,6 +83,8 @@ export function useCreativeStudio() {
   const imageSize = ref('')
   const aspectRatio = ref('1:1')
   const outputCount = ref(1)
+  // 生图画质档位（low/medium/high），仅 OpenAI 平台模型可选，空串 = 不指定（上游默认）
+  const quality = ref('')
   const currentRun = ref<CreativeRun | null>(null)
   const runHistory = ref<CreativeRun[]>([])
   const loadingHistory = ref(false)
@@ -106,6 +109,9 @@ export function useCreativeStudio() {
   const operationOptions = computed(() => selectedOption.value?.operations ?? [])
 
   const imageSizeOptions = computed(() => selectedOption.value?.image_sizes ?? [])
+
+  // 可选画质档位（模型不支持时为空，参数面板隐藏画质行）
+  const qualityOptions = computed(() => selectedOption.value?.qualities ?? [])
 
   // 估算费用：price_1k 为 1K 单价，2K 按两倍估算，供用户提交前参考
   const estimatedCost = computed(() => {
@@ -153,13 +159,14 @@ export function useCreativeStudio() {
       if (saved.imageSize) imageSize.value = saved.imageSize
       if (saved.aspectRatio) aspectRatio.value = saved.aspectRatio
       if (typeof saved.outputCount === 'number') outputCount.value = saved.outputCount
+      if (typeof saved.quality === 'string') quality.value = saved.quality
       normalizeSelection()
     } catch (e) {
       console.error('Failed to restore creative settings:', e)
     }
   }
 
-  // 选择变更后兜底：operation/imageSize 必须在选项能力范围内
+  // 选择变更后兜底：operation/imageSize/quality 必须在选项能力范围内
   function normalizeSelection(): void {
     const option = selectedOption.value
     if (!option) return
@@ -168,6 +175,10 @@ export function useCreativeStudio() {
     }
     if (!option.image_sizes.includes(imageSize.value)) {
       imageSize.value = option.image_sizes[0] ?? ''
+    }
+    const qualities = option.qualities ?? []
+    if (quality.value && !qualities.includes(quality.value)) {
+      quality.value = ''
     }
   }
 
@@ -178,7 +189,7 @@ export function useCreativeStudio() {
 
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, outputCount],
+    [selectedOptionKey, operation, imageSize, aspectRatio, outputCount, quality],
     () => {
       const snapshot: CreativeSelectionSettings = {
         optionKey: selectedOptionKey.value,
@@ -186,6 +197,7 @@ export function useCreativeStudio() {
         imageSize: imageSize.value,
         aspectRatio: aspectRatio.value,
         outputCount: outputCount.value,
+        quality: quality.value,
       }
       void saveSetting(SETTINGS_KEY, snapshot).catch(() => {
         // 设置持久化失败不影响使用
@@ -256,6 +268,10 @@ export function useCreativeStudio() {
       form.append('aspect_ratio', aspectRatio.value)
       form.append('output_count', String(outputCount.value))
       form.append('response_mime_type', 'image/png')
+      // 画质仅 OpenAI 平台模型可选，非空才提交（空 = 上游默认）
+      if (quality.value) {
+        form.append('quality', quality.value)
+      }
       exported.sourceBlobs.forEach((blob, index) => {
         form.append('source_images[]', blob, `source-${index}.png`)
       })
@@ -473,6 +489,7 @@ export function useCreativeStudio() {
     imageSize,
     aspectRatio,
     outputCount,
+    quality,
     currentRun,
     runHistory,
     loadingHistory,
@@ -484,6 +501,7 @@ export function useCreativeStudio() {
     // 计算
     operationOptions,
     imageSizeOptions,
+    qualityOptions,
     estimatedCost,
     canGenerate,
     // 方法

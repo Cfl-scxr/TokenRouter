@@ -215,6 +215,7 @@ type CreativeRunPayload struct {
 	AspectRatio        string `json:"aspect_ratio"`
 	OutputCount        int    `json:"output_count"`
 	ResponseMIMEType   string `json:"response_mime_type"`
+	Quality            string `json:"quality,omitempty"`
 	SourceCount        int    `json:"source_count"`
 	HasMask            bool   `json:"has_mask"`
 	RequestFingerprint string `json:"request_fingerprint"`
@@ -242,6 +243,8 @@ type CreateCreativeRunParamsPublic struct {
 	AspectRatio  string
 	OutputCount  int
 	ResponseMIME string
+	// Quality 为 OpenAI 平台可选画质（low/medium/high/auto），其余平台忽略。
+	Quality string
 }
 
 // CreativeRunPublic 是任务对客户端的展示结构。
@@ -289,6 +292,7 @@ type CreativeModelPublic struct {
 	Model      string   `json:"model"`
 	Operations []string `json:"operations"`
 	ImageSizes []string `json:"image_sizes"`
+	Qualities  []string `json:"qualities,omitempty"`
 	Price1K    float64  `json:"price_1k"`
 }
 

@@ -89,15 +89,20 @@ func (e *CreativeExecutor) creativeOpenAIURL(account *Account, endpoint string) 
 
 // buildCreativeOpenAIRequestBody 构造 OpenAI images 请求体：
 // generate 为 JSON；edit/inpaint 为 multipart（image 多文件、mask、model、prompt）。
+// quality 仅 OpenAI 平台校验通过，非空时透传给上游。
 func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload, upstreamModel string) ([]byte, string, error) {
 	if run.Operation == CreativeOperationGenerate {
-		body, err := json.Marshal(map[string]any{
+		bodyMap := map[string]any{
 			"model":           upstreamModel,
 			"prompt":          payload.Prompt,
 			"n":               max(run.RequestedOutputCount, 1),
 			"response_format": "b64_json",
 			"size":            creativeOpenAIImageSize(run.ImageSize, run.AspectRatio),
-		})
+		}
+		if quality := strings.TrimSpace(payload.Quality); quality != "" {
+			bodyMap["quality"] = quality
+		}
+		body, err := json.Marshal(bodyMap)
 		if err != nil {
 			return nil, "", err
 		}
@@ -132,6 +137,11 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 	}
 	if err := writer.WriteField("response_format", "b64_json"); err != nil {
 		return nil, "", err
+	}
+	if quality := strings.TrimSpace(payload.Quality); quality != "" {
+		if err := writer.WriteField("quality", quality); err != nil {
+			return nil, "", err
+		}
 	}
 	if err := writer.Close(); err != nil {
 		return nil, "", err

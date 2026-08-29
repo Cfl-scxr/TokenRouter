@@ -12,6 +12,7 @@ export default {
       aspectRatio: '画面比例',
       outputCount: '输出数量',
       outputCountOption: '{n} 张',
+      quality: '画质',
       estimatedCost: '预估费用：{cost}',
       uploadSource: '上传图片',
       promptPlaceholder: '描述想要生成的画面...',
@@ -43,6 +44,12 @@ export default {
       '3x4': '3:4',
       '16x9': '16:9',
       '9x16': '9:16',
+    },
+    // 生图画质档位（OpenAI gpt-image 系列；再次点击已选项取消选择 = 上游默认）
+    qualities: {
+      low: '低',
+      medium: '中',
+      high: '高',
     },
     canvas: {
       brushSize: '画笔粗细',
