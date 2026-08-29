@@ -168,8 +168,6 @@ let lastClientX = 0
 let lastClientY = 0
 // 平滑平移动画的 rAF 句柄
 let panAnimFrame: number | null = null
-// 输出注册表：runId:outputIndex → 画布对象（历史点击平移用）
-const outputRegistry = new Map<string, FabricObject>()
 // 图片原始 blob 的运行时缓存：assetKey → blob（生成时取源图，避免反复读 IndexedDB）
 const runtimeBlobs = new Map<string, Blob>()
 // 上一个放置位置（场景坐标，right/bottom 为右缘 / 下缘）
@@ -274,13 +272,11 @@ function bindCanvasEvents(): void {
     }
     scheduleSceneSave()
   })
-  canvas.on('object:added', (event) => {
-    registerOutputObject(event.target as FabricObject)
+  canvas.on('object:added', () => {
     scheduleSceneSave()
   })
   canvas.on('object:modified', () => scheduleSceneSave())
-  canvas.on('object:removed', (event) => {
-    unregisterOutputObject(event.target as FabricObject)
+  canvas.on('object:removed', () => {
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
@@ -656,40 +652,10 @@ function resetCanvas(): void {
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
   syncDotGrid()
   lastPlaced = null
-  outputRegistry.clear()
   runtimeBlobs.clear()
   selectedImage.value = null
   canvas.requestRenderAll()
   scheduleSceneSave()
-}
-
-// ==================== 输出注册表（历史点击平移） ====================
-
-function registerOutputObject(object: FabricObject): void {
-  const data = objectData(object)
-  if (data.kind === 'image' && typeof data.runId === 'string' && typeof data.outputIndex === 'number') {
-    outputRegistry.set(`${data.runId}:${data.outputIndex}`, object)
-  }
-}
-
-function unregisterOutputObject(object: FabricObject): void {
-  const data = objectData(object)
-  if (data.kind === 'image' && typeof data.runId === 'string' && typeof data.outputIndex === 'number') {
-    outputRegistry.delete(`${data.runId}:${data.outputIndex}`)
-  }
-}
-
-// 历史列表点击：输出在画布上时选中并平滑平移过去，返回是否命中
-function panToRunOutput(runId: string, outputIndex: number): boolean {
-  if (!canvas) return false
-  const object = outputRegistry.get(`${runId}:${outputIndex}`)
-  if (!object || !canvas.getObjects().includes(object)) return false
-  const rect = object.getBoundingRect()
-  canvas.setActiveObject(object)
-  selectedImage.value = object
-  canvas.requestRenderAll()
-  panToScenePoint({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
-  return true
 }
 
 // ==================== 场景持久化 ====================
@@ -757,7 +723,6 @@ async function restoreScene(): Promise<void> {
     parsed.objects = restored
     await canvas.loadFromJSON(parsed as never)
     pendingUrls.forEach((url) => URL.revokeObjectURL(url))
-    canvas.getObjects().forEach(registerOutputObject)
     canvas.requestRenderAll()
     // 恢复的视口/缩放同步到圆点网格
     syncDotGrid()
@@ -768,7 +733,6 @@ async function restoreScene(): Promise<void> {
 
 defineExpose({
   placeOutput,
-  panToRunOutput,
   addUploadedImage,
   getSelectedImageBlob,
   getMaskBlob,

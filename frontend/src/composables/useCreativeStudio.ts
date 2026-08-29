@@ -56,12 +56,12 @@ const POLL_FAST_INTERVAL = 1000
 const POLL_SLOW_INTERVAL = 3000
 const POLL_FAST_WINDOW = 10000
 
-// 画布桥接：视图注册后，收割成功的输出自动放上画布，历史点击可平移视角到已上板的输出
+// 画布桥接：视图注册后，收割成功的输出自动放上画布，历史里的输出可一键导入画布
 export interface CreativeCanvasBridge {
   // 收割成功（save + ack 后）把输出图片放到画布
   placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): void
-  // 视角平移到指定输出；输出不在画布上时返回 false
-  panToRunOutput(runId: string, outputIndex: number): boolean
+  // 把历史里的本地输出素材放到画布（与自动上板同一入口）
+  importToCanvas(blob: Blob, runId: string, outputIndex: number): void
 }
 
 // group + model 合成选项 key
@@ -201,12 +201,15 @@ export function useCreativeStudio() {
     canvasBridge = bridge
   }
 
-  // 历史列表点击：委托画布平移视角；画布未就绪或输出不在画布上时返回 false
-  function panToRunOutput(runId: string, outputIndex: number): boolean {
+  // 历史里的输出导入画布：取本地素材调用画布桥接；素材缺失或画布未就绪时返回 false
+  function importOutputToCanvas(runId: string, outputIndex: number): boolean {
+    const asset = outputAssetMap.value.get(outputAssetKey(runId, outputIndex))
+    if (!asset || !canvasBridge) return false
     try {
-      return canvasBridge?.panToRunOutput(runId, outputIndex) ?? false
+      canvasBridge.importToCanvas(asset.blob, runId, outputIndex)
+      return true
     } catch (e) {
-      console.error('Failed to pan to creative output:', e)
+      console.error('Failed to import creative output to canvas:', e)
       return false
     }
   }
@@ -491,6 +494,6 @@ export function useCreativeStudio() {
     cancelRun,
     clearLocalData,
     registerCanvasBridge,
-    panToRunOutput,
+    importOutputToCanvas,
   }
 }

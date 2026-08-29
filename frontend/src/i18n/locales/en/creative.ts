@@ -47,6 +47,7 @@ export default {
       shapeSquare: 'Square stroke',
       removeSelected: 'Remove selected image',
       reset: 'Clear canvas',
+      settings: 'Settings',
       maskBrushHint: 'Paint the area to redraw on the image; the white stroke is the mask',
     },
     result: {
@@ -57,6 +58,8 @@ export default {
       toggle: 'Toggle run history',
       empty: 'No creative runs yet.',
       cancel: 'Cancel run',
+      importToCanvas: 'Send to canvas',
+      download: 'Download',
       clearData: 'Clear local creative data',
       clearSuccess: 'Local creative data cleared.',
       confirmClearTitle: 'Clear local creative data?',

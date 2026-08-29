@@ -42,28 +42,82 @@
         <div
           v-for="run in studio.runHistory.value"
           :key="run.id"
-          class="cursor-pointer rounded-lg border border-primary-900/10 px-3 py-2 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-800"
+          class="rounded-lg border border-primary-900/10 transition-colors dark:border-dark-600"
           :class="studio.currentRun.value?.id === run.id && 'border-primary-500 dark:border-primary-500'"
-          @click="locateRun(run)"
         >
-          <div class="flex items-center gap-2">
-            <span class="status-badge flex-shrink-0" :class="`status-${run.status}`">
-              {{ t(`creative.status.${run.status}`, run.status) }}
-            </span>
-            <span class="min-w-0 flex-1 truncate text-xs text-gray-600 dark:text-gray-300">{{ run.model }}</span>
-            <button
-              v-if="isActive(run)"
-              type="button"
-              class="flex-shrink-0 text-gray-400 transition-colors hover:text-red-500"
-              :title="t('creative.history.cancel')"
-              @click.stop="cancel(run.id)"
-            >
-              <Icon name="xCircle" size="sm" />
-            </button>
-          </div>
-          <div class="mt-1 flex items-center gap-2 text-[11px] text-gray-400 dark:text-dark-400">
-            <span>{{ formatRunTime(run.created_at) }}</span>
-            <span v-if="run.actual_cost != null" class="ml-auto">{{ t('creative.result.actualCost', { cost: run.actual_cost }) }}</span>
+          <!-- 行头：点击原地展开 / 收起 -->
+          <button type="button" class="w-full px-3 py-2 text-left" @click="toggleRun(run.id)">
+            <div class="flex items-center gap-2">
+              <span class="status-badge flex-shrink-0" :class="`status-${run.status}`">
+                {{ t(`creative.status.${run.status}`, run.status) }}
+              </span>
+              <span class="min-w-0 flex-1 truncate text-xs text-gray-600 dark:text-gray-300">{{ run.model }}</span>
+              <button
+                v-if="isActive(run)"
+                type="button"
+                class="flex-shrink-0 text-gray-400 transition-colors hover:text-red-500"
+                :title="t('creative.history.cancel')"
+                @click.stop="cancel(run.id)"
+              >
+                <Icon name="xCircle" size="sm" />
+              </button>
+              <Icon
+                name="chevronDown"
+                size="sm"
+                class="flex-shrink-0 text-gray-400 transition-transform dark:text-dark-400"
+                :class="expandedRunId === run.id && 'rotate-180'"
+              />
+            </div>
+            <div class="mt-1 flex items-center gap-2 text-[11px] text-gray-400 dark:text-dark-400">
+              <span>{{ formatRunTime(run.created_at) }}</span>
+              <span v-if="run.actual_cost != null" class="ml-auto">{{ t('creative.result.actualCost', { cost: run.actual_cost }) }}</span>
+            </div>
+          </button>
+
+          <!-- 原地向下展开：显示本地图片，提供导入画布 / 下载 -->
+          <div
+            v-if="expandedRunId === run.id"
+            class="space-y-2 border-t border-primary-900/10 px-3 pb-3 pt-2 dark:border-dark-600"
+          >
+            <template v-if="run.outputs?.length">
+              <div v-for="output in run.outputs" :key="output.output_index" class="flex items-center gap-2">
+                <div
+                  class="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950"
+                >
+                  <img
+                    v-if="assetFor(run.id, output.output_index)"
+                    :src="urlForAsset(outputAssetKey(run.id, output.output_index), assetFor(run.id, output.output_index)!.blob)"
+                    :alt="`output-${output.output_index}`"
+                    class="h-full w-full object-cover"
+                  />
+                  <div v-else class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-gray-300 dark:text-dark-600">
+                    <Icon name="modalityImage" size="sm" />
+                    <span class="scale-90 text-[10px]">{{ t('creative.result.missing') }}</span>
+                  </div>
+                </div>
+                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <button
+                    type="button"
+                    class="flex items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                    :disabled="!assetFor(run.id, output.output_index)"
+                    @click="importToCanvas(run.id, output.output_index)"
+                  >
+                    <Icon name="plus" size="sm" />
+                    {{ t('creative.history.importToCanvas') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="flex items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                    :disabled="!assetFor(run.id, output.output_index)"
+                    @click="downloadOutput(run.id, output.output_index, output.mime_type)"
+                  >
+                    <Icon name="download" size="sm" />
+                    {{ t('creative.history.download') }}
+                  </button>
+                </div>
+              </div>
+            </template>
+            <p v-else class="py-1 text-[11px] text-gray-400 dark:text-dark-400">{{ t('creative.history.noOutputs') }}</p>
           </div>
         </div>
       </div>
@@ -78,14 +132,17 @@
 /**
  * 创作 run 历史（悬浮层）：
  * - 画布右上角图标按钮展开 / 收起；列表每行 = 状态徽章 + 模型名 + 时间（+ 实际费用）
- * - 点击行：该任务的输出已在本画布上时视角平移过去（按 runId + outputIndex 匹配），不在画布则不动；点击行不自动收起
+ * - 点击行原地向下展开：显示本地保存的输出图片，提供「导入到画布」和「下载」；
+ *   本地素材缺失时按钮禁用并展示缺失占位
  * - 进行中的任务行内提供取消按钮（可取消历史里的任意进行中任务）
  */
-import { h, ref } from 'vue'
+import { h, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { saveAs } from 'file-saver'
 import Icon from '@/components/icons/Icon.vue'
 import type { CreativeRun } from '@/api/creative'
 import { formatDateTime } from '@/utils/format'
+import { outputAssetKey, type LocalAsset } from '@/utils/creativeLocalStore'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 
 type Studio = ReturnType<typeof useCreativeStudio>
@@ -101,6 +158,55 @@ const { t } = useI18n()
 
 // 历史面板展开状态：默认折叠
 const open = ref(false)
+// 原地展开的历史任务 id（同时只展开一条）
+const expandedRunId = ref<string | null>(null)
+
+// 展开区的 objectURL 缓存：切换收起或卸载时统一回收
+const expandedUrls = new Map<string, string>()
+
+function toggleRun(runId: string): void {
+  expandedRunId.value = expandedRunId.value === runId ? null : runId
+}
+
+function assetFor(runId: string, outputIndex: number): LocalAsset | null {
+  return studio.outputAssetMap.value.get(outputAssetKey(runId, outputIndex)) ?? null
+}
+
+function urlForAsset(key: string, blob: Blob): string {
+  const cached = expandedUrls.get(key)
+  if (cached) return cached
+  const url = URL.createObjectURL(blob)
+  expandedUrls.set(key, url)
+  return url
+}
+
+function revokeExpandedUrls(): void {
+  expandedUrls.forEach((url) => URL.revokeObjectURL(url))
+  expandedUrls.clear()
+}
+
+// 切换展开行 / 收起面板时回收上一批 objectURL；组件卸载兜底回收
+watch(expandedRunId, revokeExpandedUrls)
+watch(open, (value) => {
+  if (!value) {
+    expandedRunId.value = null
+    revokeExpandedUrls()
+  }
+})
+onBeforeUnmount(revokeExpandedUrls)
+
+// 导入画布：把本地保存的输出素材放上画布（走画布桥接）
+function importToCanvas(runId: string, outputIndex: number): void {
+  studio.importOutputToCanvas(runId, outputIndex)
+}
+
+// 下载本地保存的输出素材
+function downloadOutput(runId: string, outputIndex: number, mimeType?: string): void {
+  const asset = assetFor(runId, outputIndex)
+  if (!asset) return
+  const extension = (mimeType || asset.blob.type || 'image/png').split('/')[1] || 'png'
+  saveAs(asset.blob, `creative-${runId.slice(0, 12)}-${outputIndex}.${extension}`)
+}
 
 // 历史（回旋时钟）图标：手写 SVG，仿 🕘 样式，风格对齐 AppSidebar 内手写图标
 const HistoryIcon = {
@@ -137,16 +243,6 @@ function formatRunTime(timestamp: number | undefined): string {
   if (!timestamp) return ''
   const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp
   return formatDateTime(new Date(ms))
-}
-
-// 点击历史行：依次尝试该任务各输出，已在画布上的直接平移过去
-function locateRun(run: CreativeRun): void {
-  const outputs = run.outputs?.length
-    ? run.outputs.map((output) => output.output_index)
-    : Array.from({ length: run.requested_output_count ?? 1 }, (_, index) => index)
-  for (const outputIndex of outputs) {
-    if (studio.panToRunOutput(run.id, outputIndex)) return
-  }
 }
 
 async function cancel(runId: string): Promise<void> {

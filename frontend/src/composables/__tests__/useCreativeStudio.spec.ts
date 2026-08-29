@@ -426,7 +426,7 @@ describe('useCreativeStudio', () => {
       mockedApi.getCreativeRunOutputContent.mockImplementation((_runId: string, index: number) =>
         Promise.resolve(index === 0 ? blob0 : blob1),
       )
-      const bridge = { placeOutput: vi.fn(), panToRunOutput: vi.fn() }
+      const bridge = { placeOutput: vi.fn(), importToCanvas: vi.fn() }
       studio.registerCanvasBridge(bridge)
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
@@ -447,7 +447,7 @@ describe('useCreativeStudio', () => {
         placeOutput: vi.fn(() => {
           throw new Error('canvas not ready')
         }),
-        panToRunOutput: vi.fn(),
+        importToCanvas: vi.fn(),
       }
       studio.registerCanvasBridge(bridge)
 
@@ -458,25 +458,29 @@ describe('useCreativeStudio', () => {
       expect(studio.missingOutputKeys.value.size).toBe(0)
     })
 
-    it('panToRunOutput 委托桥接；未注册或桥接异常时返回 false', async () => {
+    it('importOutputToCanvas 取本地素材委托桥接；素材缺失或桥接异常时返回 false', async () => {
       const { studio } = await setupStudio()
 
-      // 未注册桥接：不命中
-      expect(studio.panToRunOutput('run-9', 0)).toBe(false)
-
-      const bridge = { placeOutput: vi.fn(), panToRunOutput: vi.fn().mockReturnValue(true) }
+      // 本地无素材：不调用桥接
+      const bridge = { placeOutput: vi.fn(), importToCanvas: vi.fn() }
       studio.registerCanvasBridge(bridge)
-      expect(studio.panToRunOutput('run-9', 2)).toBe(true)
-      expect(bridge.panToRunOutput).toHaveBeenCalledWith('run-9', 2)
+      expect(studio.importOutputToCanvas('run-9', 0)).toBe(false)
+      expect(bridge.importToCanvas).not.toHaveBeenCalled()
+
+      // 本地有素材：委托桥接导入
+      const blob = new Blob(['img'], { type: 'image/png' })
+      studio.outputAssetMap.value = new Map([['output:run-9:0', { key: 'output:run-9:0', kind: 'output', blob, createdAt: 1 }]])
+      expect(studio.importOutputToCanvas('run-9', 0)).toBe(true)
+      expect(bridge.importToCanvas).toHaveBeenCalledWith(blob, 'run-9', 0)
 
       // 桥接抛异常时吞掉并返回 false
       studio.registerCanvasBridge({
         placeOutput: vi.fn(),
-        panToRunOutput: () => {
+        importToCanvas: () => {
           throw new Error('boom')
         },
       })
-      expect(studio.panToRunOutput('run-9', 2)).toBe(false)
+      expect(studio.importOutputToCanvas('run-9', 0)).toBe(false)
     })
   })
 

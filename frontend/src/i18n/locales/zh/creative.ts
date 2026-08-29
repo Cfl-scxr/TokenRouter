@@ -47,6 +47,7 @@ export default {
       shapeSquare: '方头笔迹',
       removeSelected: '移除选中图片',
       reset: '清空画布',
+      settings: '设置',
       maskBrushHint: '在图片上涂抹要重绘的区域，白色笔迹即 mask',
     },
     result: {
@@ -57,6 +58,8 @@ export default {
       toggle: '展开 / 收起历史记录',
       empty: '暂无创作记录。',
       cancel: '取消任务',
+      importToCanvas: '导入到画布',
+      download: '下载',
       clearData: '清空本机创作数据',
       clearSuccess: '本机创作数据已清空。',
       confirmClearTitle: '清空本机创作数据？',

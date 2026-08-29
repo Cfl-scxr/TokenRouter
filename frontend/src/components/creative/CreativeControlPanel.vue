@@ -89,15 +89,15 @@
       </div>
     </div>
 
-    <!-- 生成按钮 -->
+    <!-- 生成按钮（与清空按钮同尺寸） -->
     <button
       type="button"
-      class="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      class="mt-6 flex h-9 w-full items-center justify-center gap-1.5 rounded-control bg-primary-600 text-xs font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
       :disabled="!studio.canGenerate.value"
       @click="emit('generate')"
     >
-      <Icon v-if="studio.busy.value" name="refresh" size="md" class="animate-spin" />
-      <Icon v-else name="sparkles" size="md" />
+      <Icon v-if="studio.busy.value" name="refresh" size="sm" class="animate-spin" />
+      <Icon v-else name="sparkles" size="sm" />
       {{ studio.busy.value ? t('creative.panel.generating') : t('creative.panel.generate') }}
     </button>
     <p v-if="studio.estimatedCost.value !== null" class="mt-2 text-center text-xs text-gray-400 dark:text-dark-400">
@@ -106,18 +106,6 @@
     <p v-if="studio.error.value" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-400">
       {{ studio.error.value }}
     </p>
-
-    <!-- 清空本机创作数据（确认弹窗由视图承载） -->
-    <div class="mt-auto pt-6">
-      <button
-        type="button"
-        class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
-        @click="emit('clear-requested')"
-      >
-        <Icon name="trash" size="sm" />
-        {{ t('creative.history.clearData') }}
-      </button>
-    </div>
 
     <!-- 裁剪弹窗队列：每张图片依次进入，确认/跳过后直接放上画布 -->
     <CropperModal :show="cropQueue.length > 0" :blob="cropQueue[0] ?? null" @confirm="onCropConfirm" @skip="onCropConfirm" @cancel="onCropCancel" />
@@ -149,7 +137,6 @@ interface Props {
 interface Emits {
   (e: 'generate'): void
   (e: 'uploaded', blob: Blob): void
-  (e: 'clear-requested'): void
 }
 
 const props = defineProps<Props>()

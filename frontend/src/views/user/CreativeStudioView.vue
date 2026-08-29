@@ -11,13 +11,40 @@
       <div
         class="absolute inset-x-3 top-3 z-10 flex max-h-[58dvh] flex-col overflow-y-auto rounded-xl border border-primary-900/10 bg-white/95 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95 lg:bottom-3 lg:left-3 lg:right-auto lg:max-h-none lg:w-80"
       >
-        <CreativeControlPanel :studio="studio" @generate="onGenerate" @uploaded="onUploaded" @clear-requested="showClearConfirm = true" />
+        <CreativeControlPanel :studio="studio" @generate="onGenerate" @uploaded="onUploaded" />
       </div>
 
-      <!-- 生成状态胶囊：移动端左下（工具栏上方），桌面端右下角 -->
+      <!-- 设置：右下角齿轮按钮，样式与历史按钮一致；点击向上展开设置项 -->
+      <div class="absolute bottom-3 right-3 z-20">
+        <button
+          type="button"
+          class="flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
+          :class="settingsOpen && 'text-primary-700 dark:text-primary-300'"
+          :title="t('creative.canvas.settings')"
+          @click="settingsOpen = !settingsOpen"
+        >
+          <Icon name="cog" size="md" />
+        </button>
+        <!-- 向上展开的设置面板 -->
+        <div
+          v-if="settingsOpen"
+          class="absolute bottom-12 right-0 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
+        >
+          <button
+            type="button"
+            class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+            @click="onClearRequested"
+          >
+            <Icon name="trash" size="sm" />
+            {{ t('creative.history.clearData') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 生成状态胶囊：移动端左下（工具栏上方），桌面端底部居中（避开左右角标） -->
       <div
         v-if="pillState && !pillHidden"
-        class="absolute bottom-14 left-3 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-auto lg:right-3"
+        class="absolute bottom-14 left-3 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-full border border-primary-900/10 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-3 lg:left-1/2 lg:right-auto lg:-translate-x-1/2"
         :class="pillState.toneClass"
       >
         <Icon v-if="pillState.spinning" name="refresh" size="sm" class="animate-spin" />
@@ -42,8 +69,9 @@
 /**
  * 创作台主视图：左侧控制面板 + 无限画布工作台。
  * - 生成时从画布收集输入：edit/inpaint 取当前选中图片的原始 blob，inpaint 另取画笔 mask 导出
- * - 注册画布桥接：收割成功的输出自动上板；历史点击平移到已上板的输出
- * - 画布左上角浮动状态胶囊反馈生成状态（终态非成功几秒后自动消隐，成功保持到下次生成）
+ * - 注册画布桥接：收割成功的输出自动上板；历史里的输出可一键导入画布
+ * - 右下角设置按钮（齿轮）向上展开设置项，收纳"清空本机创作数据"
+ * - 画布浮动状态胶囊反馈生成状态（终态非成功几秒后自动消隐，成功保持到下次生成）
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -64,17 +92,21 @@ const studio = useCreativeStudio()
 
 const canvasRef = ref<InstanceType<typeof CreativeCanvas> | null>(null)
 const showClearConfirm = ref(false)
+// 右下角设置弹层
+const settingsOpen = ref(false)
 // 终态（非成功）状态胶囊几秒后自动消隐
 let pillHideTimer: ReturnType<typeof setTimeout> | null = null
 const pillHidden = ref(false)
 
 onMounted(() => {
-  // 画布桥接：收割上板 + 历史平移；桥接方法自身保证异常不外溢
+  // 画布桥接：收割自动上板 + 历史输出导入画布；桥接方法自身保证异常不外溢
   studio.registerCanvasBridge({
     placeOutput: (asset) => {
       void canvasRef.value?.placeOutput(asset)
     },
-    panToRunOutput: (runId, outputIndex) => canvasRef.value?.panToRunOutput(runId, outputIndex) ?? false,
+    importToCanvas: (blob, runId, outputIndex) => {
+      void canvasRef.value?.placeOutput({ blob, runId, outputIndex })
+    },
   })
   void studio.loadModels()
   void studio.refreshHistory()
@@ -177,6 +209,12 @@ function onUploaded(blob: Blob): void {
 
 function onCanvasError(message: string): void {
   studio.error.value = message
+}
+
+// 设置弹层里的清空入口：收起弹层并弹出确认
+function onClearRequested(): void {
+  settingsOpen.value = false
+  showClearConfirm.value = true
 }
 
 async function onClearLocalData(): Promise<void> {
