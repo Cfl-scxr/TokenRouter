@@ -561,6 +561,9 @@ function syncPainting(): void {
   const shouldPaint = isInpaint.value && inpaintAnchor.value !== null && !paintSuspended.value
   if (shouldPaint) enterPainting()
   else exitPainting()
+  // 锚点切换（生成结果/上传自动上板改选新图）时 painting 可能未中断，
+  // enterPainting 直接跳过，必须在此同步刷新笔迹裁剪框，否则会裁在旧锚点位置
+  if (painting.value) refreshMaskClip()
   updateAnchorOutline()
 }
 
