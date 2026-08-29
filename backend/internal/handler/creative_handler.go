@@ -41,7 +41,8 @@ func (h *CreativeHandler) ListModels(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, got)
+	// 面板 envelope 的 data 直接放数组，避免再包一层 {data: [...]}。
+	response.Success(c, got.Data)
 }
 
 // creativeCreateRunRequest 是创建任务 multipart 报文的解析结果。
@@ -220,7 +221,8 @@ func (h *CreativeHandler) ListRuns(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, got)
+	// 面板 envelope 的 data 直接放数组，前端按数组或 {items,total} 宽容解析。
+	response.Success(c, got.Data)
 }
 
 // GetRun 返回单个任务详情。
