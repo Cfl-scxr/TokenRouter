@@ -170,10 +170,6 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 		if len(operations) == 0 {
 			continue
 		}
-		imageSizes := creativeImageSizesForGroup(group)
-		if len(imageSizes) == 0 {
-			continue
-		}
 		models, err := s.creativeModelsForGroup(ctx, group)
 		if err != nil {
 			return nil, err
@@ -183,22 +179,34 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 			modelNames = append(modelNames, model)
 		}
 		sort.Strings(modelNames)
-		price1k := 0.0
-		if group.ImagePrice1K != nil {
-			price1k = *group.ImagePrice1K
-		}
 		for _, model := range modelNames {
+			// 尺寸按“分组+模型”解析：分组未配置图片价时回退平台默认档位。
+			imageSizes := creativeImageSizesForGroupModel(group, model)
+			if len(imageSizes) == 0 {
+				continue
+			}
 			out.Data = append(out.Data, CreativeModelPublic{
 				GroupID:    group.ID,
 				GroupName:  group.Name,
 				Model:      model,
 				Operations: operations,
 				ImageSizes: imageSizes,
-				Price1K:    price1k,
+				Price1K:    s.creativePrice1K(group, model),
 			})
 		}
 	}
 	return out, nil
+}
+
+// creativePrice1K 返回 1K 档位展示价格：分组显式价优先，未配置时按默认价解析（与网关计费一致）。
+func (s *CreativePublicService) creativePrice1K(group *Group, model string) float64 {
+	if group != nil && group.ImagePrice1K != nil {
+		return *group.ImagePrice1K
+	}
+	if s.Pricing == nil {
+		return 0
+	}
+	return s.Pricing.CalculateImageCost(model, "1K", 1, nil, 1).TotalCost
 }
 
 // creativeOperationsForPlatform 返回分组平台支持的操作集合。
@@ -214,7 +222,7 @@ func creativeOperationsForPlatform(platform string) []string {
 	}
 }
 
-// creativeImageSizesForGroup 返回分组配置了价格的尺寸列表。
+// creativeImageSizesForGroup 返回分组显式配置了价格的尺寸列表。
 func creativeImageSizesForGroup(group *Group) []string {
 	if group == nil {
 		return nil
@@ -230,6 +238,34 @@ func creativeImageSizesForGroup(group *Group) []string {
 		sizes = append(sizes, "4K")
 	}
 	return sizes
+}
+
+// creativeDefaultImageSizesForPlatform 返回分组未配置图片价时的平台默认尺寸档位，
+// 与网关按默认价计费的口径一致：openai 上游仅一种分辨率档（按宽高比映射），grok 支持 1K/2K，
+// gemini 原生支持 1K/2K/4K。
+func creativeDefaultImageSizesForPlatform(platform string) []string {
+	switch strings.TrimSpace(platform) {
+	case PlatformOpenAI:
+		return []string{"1K"}
+	case PlatformGrok:
+		return []string{"1K", "2K"}
+	case PlatformGemini:
+		return []string{"1K", "2K", "4K"}
+	default:
+		return nil
+	}
+}
+
+// creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位：
+// 分组显式配置了图片价时按配置返回；未配置时回退平台默认档位（按默认价计费，与网关一致）。
+func creativeImageSizesForGroupModel(group *Group, model string) []string {
+	if sizes := creativeImageSizesForGroup(group); len(sizes) > 0 {
+		return sizes
+	}
+	if group == nil {
+		return nil
+	}
+	return creativeDefaultImageSizesForPlatform(group.Platform)
 }
 
 // creativeModelsForGroup 从分组可调度的账号映射中收集图片模型。
@@ -249,6 +285,15 @@ func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, grou
 		}
 		switch group.Platform {
 		case PlatformGemini:
+			if len(account.GetModelMapping()) == 0 {
+				// 未配置映射时回退到 gemini 图片模型候选集合（与批量图片默认一致），按账号白名单过滤。
+				for _, model := range defaultBatchImageModelCandidates() {
+					if account.IsModelSupported(model) {
+						out[model] = struct{}{}
+					}
+				}
+				continue
+			}
 			// 复用批量图片的 gemini 图片模型候选展开逻辑（含 vertex）。
 			for _, model := range batchImageModelsFromAccountMapping(account) {
 				out[model] = struct{}{}
@@ -267,13 +312,25 @@ func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, grou
 }
 
 // creativeExpandAccountModels 展开账号模型映射，通配符按候选集合匹配，再按谓词过滤图片模型。
+// 账号未配置模型映射时等价于网关全量透传，回退到平台图片模型候选并按账号最终白名单过滤。
 func creativeExpandAccountModels(account *Account, candidates []string, matches func(string) bool) []string {
 	if account == nil || matches == nil {
 		return nil
 	}
 	mapping := account.GetModelMapping()
 	if len(mapping) == 0 {
-		return nil
+		models := make(map[string]struct{})
+		for _, candidate := range candidates {
+			if matches(candidate) && account.IsModelSupported(candidate) {
+				models[candidate] = struct{}{}
+			}
+		}
+		out := make([]string, 0, len(models))
+		for model := range models {
+			out = append(out, model)
+		}
+		sort.Strings(out)
+		return out
 	}
 	models := make(map[string]struct{})
 	for model := range mapping {

@@ -290,3 +290,131 @@ func TestCreativeListModelsFiltersAndContent(t *testing.T) {
 		require.Equal(t, "gemini-3.1-flash-image", item.Model)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ListModels 回退：账号无映射 / 分组无显式图片价
+// ---------------------------------------------------------------------------
+
+// TestCreativeListModelsFallbacks 覆盖两类真实部署形态：
+// 1) 账号未配置 model_mapping（网关全量透传语义）时应回退平台图片模型候选；
+// 2) 分组未显式配置 image_price_* 时应回退平台默认尺寸档位（按默认价计费）。
+func TestCreativeListModelsFallbacks(t *testing.T) {
+	svc := newCreativeTestService()
+	svc.Pricing = &BillingService{}
+	ctx := context.Background()
+	groupRepo := svc.GroupRepo.(*creativeFakeGroupRepo)
+	accountRepo := svc.AccountRepo.(*creativeFakeAccountRepo)
+
+	// openai 分组：无显式图片价、账号无映射 → 候选回退 + 尺寸回退 ["1K"]。
+	openaiGroup := newCreativeTestGroup()
+	openaiGroup.ID = 21
+	openaiGroup.Name = "ChatGPT Image"
+	openaiGroup.Platform = PlatformOpenAI
+	openaiGroup.ImagePrice1K = nil
+	openaiGroup.ImagePrice2K = nil
+	groupRepo.byID[21] = openaiGroup
+	groupRepo.active = append(groupRepo.active, *openaiGroup)
+	accountRepo.byGroup[21] = []Account{{
+		ID:          61,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_whitelist": []string{"gpt-image-1", "gpt-image-2"},
+		},
+	}}
+
+	// gemini 分组：无显式图片价、账号无映射 → 默认候选 + 尺寸回退 ["1K","2K","4K"]。
+	geminiGroup := newCreativeTestGroup()
+	geminiGroup.ID = 22
+	geminiGroup.ImagePrice1K = nil
+	geminiGroup.ImagePrice2K = nil
+	groupRepo.byID[22] = geminiGroup
+	groupRepo.active = append(groupRepo.active, *geminiGroup)
+	accountRepo.byGroup[22] = []Account{{
+		ID:          62,
+		Platform:    PlatformGemini,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_whitelist": []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
+		},
+	}}
+
+	// grok 分组：无显式图片价 → 尺寸回退 ["1K","2K"]，操作仅 generate。
+	grokGroup := newCreativeTestGroup()
+	grokGroup.ID = 23
+	grokGroup.Name = "Grok Imagine"
+	grokGroup.Platform = PlatformGrok
+	grokGroup.ImagePrice1K = nil
+	grokGroup.ImagePrice2K = nil
+	groupRepo.byID[23] = grokGroup
+	groupRepo.active = append(groupRepo.active, *grokGroup)
+	accountRepo.byGroup[23] = []Account{{
+		ID:          63,
+		Platform:    PlatformGrok,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_whitelist": []string{"grok-imagine-image-1.0"},
+		},
+	}}
+
+	// openai 分组：显式只配 1K 价 → 尺寸只返回 ["1K"]（显式配置优先），模型来自映射。
+	pricedGroup := newCreativeTestGroup()
+	pricedGroup.ID = 24
+	pricedGroup.Name = "GPT Image Priced"
+	pricedGroup.Platform = PlatformOpenAI
+	price1k := 0.02
+	pricedGroup.ImagePrice1K = &price1k
+	pricedGroup.ImagePrice2K = nil
+	groupRepo.byID[24] = pricedGroup
+	groupRepo.active = append(groupRepo.active, *pricedGroup)
+	accountRepo.byGroup[24] = []Account{{
+		ID:          64,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-image-2": "gpt-image-2"},
+		},
+	}}
+
+	got, err := svc.ListModels(ctx, 7)
+	require.NoError(t, err)
+
+	byGroup := map[int64][]CreativeModelPublic{}
+	for _, item := range got.Data {
+		byGroup[item.GroupID] = append(byGroup[item.GroupID], item)
+	}
+
+	// openai 无映射回退：两个候选模型、仅 1K 档位、默认价大于 0。
+	require.Len(t, byGroup[21], 2)
+	for _, item := range byGroup[21] {
+		require.Equal(t, []string{"1K"}, item.ImageSizes)
+		require.Greater(t, item.Price1K, 0.0)
+		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
+	}
+	require.ElementsMatch(t, []string{"gpt-image-1", "gpt-image-2"},
+		[]string{byGroup[21][0].Model, byGroup[21][1].Model})
+
+	// gemini 无映射回退：默认候选命中白名单的模型、完整三档尺寸。
+	require.Len(t, byGroup[22], 2)
+	for _, item := range byGroup[22] {
+		require.Equal(t, []string{"1K", "2K", "4K"}, item.ImageSizes)
+	}
+	require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
+		[]string{byGroup[22][0].Model, byGroup[22][1].Model})
+
+	// grok 回退：1K/2K 档 + 仅 generate。
+	require.Len(t, byGroup[23], 1)
+	require.Equal(t, "grok-imagine-image-1.0", byGroup[23][0].Model)
+	require.Equal(t, []string{"1K", "2K"}, byGroup[23][0].ImageSizes)
+	require.Equal(t, []string{"generate"}, byGroup[23][0].Operations)
+
+	// 显式价格优先：只返回配置的 1K 档与分组价。
+	require.Len(t, byGroup[24], 1)
+	require.Equal(t, "gpt-image-2", byGroup[24][0].Model)
+	require.Equal(t, []string{"1K"}, byGroup[24][0].ImageSizes)
+	require.InDelta(t, 0.02, byGroup[24][0].Price1K, 1e-9)
+}

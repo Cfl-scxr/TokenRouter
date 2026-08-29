@@ -163,7 +163,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 - `grok`：仅 `generate`（xAI images generations，OpenAI 协议兼容）；`edit`/`inpaint` 直接拒绝。
 - `gemini`：统一使用原生 `generateContent`，prompt 与源图/mask 以 inlineData 放入 parts；`inpaint` 时 mask 作为额外 inline 图片附加。凭据按账号类型选择：API Key 账号用 `x-goog-api-key`，Vertex 服务账号与 OAuth 用 Bearer token。
 
-模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。
+模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按上述平台候选回退并经过账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回；未配置时回退平台默认档位（OpenAI `1K`、Grok `1K/2K`、Gemini `1K/2K/4K`），按默认价计费，与网关一致。
 
 ## 前端本地存储边界
 
@@ -171,7 +171,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 - 输出收割：任务轮询前 10 秒每 1 秒、之后每 3 秒；终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack；单个输出取回失败（410/`result_lost`）只标记该输出缺失，不中断其它输出。
 - 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/mask/输出 blob）、`scenes`（画布 JSON 快照）和 `settings`（参数选择恢复）；图片绝不以 base64 进入 localStorage。
-- 丢失边界：服务端标记成功但本地无对应 blob 的输出显示“素材缺失”，前端不会向服务端重新拉取恢复；本地配额不足时提示用户下载备份；页面顶部常驻隐私提示条；清理浏览器站点数据会清空全部本地素材，且没有任何跨设备同步。
+- 丢失边界：服务端标记成功但本地无对应 blob 的输出显示“素材缺失”，前端不会向服务端重新拉取恢复；本地配额不足时提示用户下载备份；清理浏览器站点数据会清空全部本地素材，且没有任何跨设备同步。
 - 幂等重试：创建任务失败重试复用同一 Idempotency-Key，成功后重置。
 
 ## 配置
@@ -216,7 +216,7 @@ creative:
 
 - 确认 Redis 可用（临时存储与队列都依赖 Redis）。
 - 确认 `creative.enabled`、数据库运行时开关 `creative_enabled` 与 `creative.queue_enabled`。
-- 确认目标分组启用图片生成、配置图片尺寸价格，且账号模型映射包含图片模型。
+- 确认目标分组启用图片生成；未配置图片尺寸价格或账号模型映射时会按平台默认值回退，但显式配置可精确控制可用档位与模型。
 - 确认上游账号凭据有效（Gemini apikey/Vertex/OAuth、OpenAI、xAI）。
 - 确认分组图片定价与倍率，验证估价的 hold/capture/release 行为。
 - 明白临时输出默认 30 分钟过期：通知用户及时取回，或按需调大 `transient_ttl_seconds`。
