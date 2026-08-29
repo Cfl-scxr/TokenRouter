@@ -89,15 +89,15 @@
       </div>
     </div>
 
-    <!-- 生成按钮（与清空按钮同尺寸） -->
+    <!-- 生成按钮（主操作，大尺寸突出） -->
     <button
       type="button"
-      class="mt-6 flex h-9 w-full items-center justify-center gap-1.5 rounded-control bg-primary-600 text-xs font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      class="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
       :disabled="!studio.canGenerate.value"
       @click="emit('generate')"
     >
-      <Icon v-if="studio.busy.value" name="refresh" size="sm" class="animate-spin" />
-      <Icon v-else name="sparkles" size="sm" />
+      <Icon v-if="studio.busy.value" name="refresh" size="md" class="animate-spin" />
+      <Icon v-else name="sparkles" size="md" />
       {{ studio.busy.value ? t('creative.panel.generating') : t('creative.panel.generate') }}
     </button>
     <p v-if="studio.estimatedCost.value !== null" class="mt-2 text-center text-xs text-gray-400 dark:text-dark-400">
