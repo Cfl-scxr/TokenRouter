@@ -418,3 +418,19 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.Equal(t, []string{"1K"}, byGroup[24][0].ImageSizes)
 	require.InDelta(t, 0.02, byGroup[24][0].Price1K, 1e-9)
 }
+
+// TestCreativeListRunsIncludesOutputs 校验历史列表携带输出元数据：
+// 前端历史组件依赖 outputs 关联本地素材与缺失占位，列表不能只返回任务壳。
+func TestCreativeListRunsIncludesOutputs(t *testing.T) {
+	svc := newCreativeTestService()
+	ctx := context.Background()
+	runID := "crun_listoutputs001"
+	seedOwnedRun(t, svc, runID, 7, CreativeRunStatusSucceeded)
+
+	got, err := svc.ListRuns(ctx, 7, CreativeRunFilter{Limit: 20})
+	require.NoError(t, err)
+	require.Len(t, got.Data, 1)
+	require.Len(t, got.Data[0].Outputs, 1)
+	require.Equal(t, 0, got.Data[0].Outputs[0].Index)
+	require.Equal(t, "image/png", got.Data[0].Outputs[0].MimeType)
+}

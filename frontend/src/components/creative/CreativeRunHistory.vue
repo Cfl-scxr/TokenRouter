@@ -46,8 +46,9 @@
                 class="h-full w-full object-cover"
               />
               <div v-else class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-gray-300 dark:text-dark-600">
-                <Icon :name="output.status === 'succeeded' ? 'exclamationTriangle' : 'modalityImage'" size="sm" />
-                <span v-if="output.status === 'succeeded'" class="scale-90 text-[10px]">{{ t('creative.result.missing') }}</span>
+                <!-- 服务端确认成功（含客户端已 ack）但本地无素材时展示缺失标记 -->
+                <Icon :name="isOutputPresent(output) ? 'exclamationTriangle' : 'modalityImage'" size="sm" />
+                <span v-if="isOutputPresent(output)" class="scale-90 text-[10px]">{{ t('creative.result.missing') }}</span>
               </div>
               <button
                 v-if="assetFor(run.id, output.output_index)"
@@ -117,8 +118,14 @@ function isActive(run: CreativeRun): boolean {
   return run.status === 'queued' || run.status === 'running'
 }
 
+// 输出在服务端已确认成功（succeeded）或客户端已确认接收（acked）
+function isOutputPresent(output: CreativeRunOutput): boolean {
+  return output.status === 'succeeded' || output.status === 'acked'
+}
+
 function progressText(run: CreativeRun): string {
-  const succeeded = (run.outputs ?? []).filter((o) => o.status === 'succeeded').length
+  // succeeded 与 acked（客户端已确认接收）都计入完成进度
+  const succeeded = (run.outputs ?? []).filter((o) => o.status === 'succeeded' || o.status === 'acked').length
   return `${succeeded}/${run.requested_output_count ?? '?'}`
 }
 

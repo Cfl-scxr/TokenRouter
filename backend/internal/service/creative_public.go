@@ -1011,7 +1011,12 @@ func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filt
 	}
 	data := make([]*CreativeRunPublic, 0, len(runs))
 	for _, run := range runs {
-		data = append(data, CreativeRunToPublic(run, nil))
+		// 历史列表同样需要输出元数据，否则前端无法关联本地素材与缺失占位。
+		outputs, err := s.Repo.ListCreativeRunOutputs(ctx, run.RunID)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, CreativeRunToPublic(run, outputs))
 	}
 	return &CreativeListRunsResponse{Data: data, HasMore: len(data) == filter.Limit}, nil
 }
