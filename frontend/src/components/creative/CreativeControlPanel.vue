@@ -92,7 +92,7 @@
     <!-- 生成按钮（主操作，大尺寸突出） -->
     <button
       type="button"
-      class="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+      class="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-primary-600 text-base font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
       :disabled="!studio.canGenerate.value"
       @click="emit('generate')"
     >
@@ -255,7 +255,7 @@ function onCropCancel(): void {
 }
 
 .panel-upload-btn {
-  @apply inline-flex items-center gap-1.5 rounded-control border border-primary-900/10 bg-white px-3 py-2 text-xs text-gray-600 transition-colors;
+  @apply inline-flex h-11 items-center gap-1.5 rounded-control border border-primary-900/10 bg-white px-3 text-xs text-gray-600 transition-colors;
   @apply hover:border-black/20 hover:text-gray-900;
   @apply dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-600 dark:hover:text-gray-100;
 }
