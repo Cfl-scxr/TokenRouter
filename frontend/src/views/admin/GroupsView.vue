@@ -5918,10 +5918,10 @@ const handleCreateGroup = async () => {
     if (onboardingStore.isCurrentStep('[data-tour="group-form-submit"]')) {
       onboardingStore.nextStep(500);
     }
-  } catch (error: any) {
-    appStore.showError(
-      error.response?.data?.detail || error.message || t("admin.groups.failedToCreate"),
-    );
+    } catch (error: any) {
+      appStore.showError(
+        extractApiErrorMessage(error, t("admin.groups.failedToCreate")),
+      );
     console.error("Error creating group:", error);
     // Don't advance tour on error
   } finally {
@@ -6183,10 +6183,10 @@ const handleUpdateGroup = async () => {
     closeEditModal();
     loadGroups();
     loadUnavailableFallbackGroups();
-  } catch (error: any) {
-    appStore.showError(
-      error.response?.data?.detail || error.message || t("admin.groups.failedToUpdate"),
-    );
+    } catch (error: any) {
+      appStore.showError(
+        extractApiErrorMessage(error, t("admin.groups.failedToUpdate")),
+      );
     console.error("Error updating group:", error);
   } finally {
     submitting.value = false;
