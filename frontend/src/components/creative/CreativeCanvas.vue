@@ -181,14 +181,18 @@ const ASSET_PROTOCOL = 'asset://'
 // mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
 const MASK_COLOR = '#ffffff'
 const MASK_TINT = 'rgba(168, 85, 247, 0.55)'
+// 圆点网格的场景间距（px，缩放 1 时）
+const GRID_SPACING = 20
 
-// 圆点网格跟随视角平移：背景位置 = 视口平移分量，拖动时网格与图片同步滑动；
-// 间距保持恒定（不随缩放变化），避免放大缩小时点密度晃动。
+// 圆点网格锚定场景坐标：背景位置 = 视口平移分量，间距 = 场景间距 × 缩放系数；
+// 因此平移时网格与图片同步滑动，缩小变密、放大变稀疏，与画布缩放观感一致。
 function syncDotGrid(): void {
   const el = containerRef.value
   if (!el || !canvas) return
   const vpt = canvas.viewportTransform
+  const spacing = GRID_SPACING * canvas.getZoom()
   el.style.backgroundPosition = `${vpt[4]}px ${vpt[5]}px`
+  el.style.backgroundSize = `${spacing}px ${spacing}px`
 }
 
 // fabric 7 类型未声明自定义 data 属性，运行时允许挂任意键，这里做最小封装
