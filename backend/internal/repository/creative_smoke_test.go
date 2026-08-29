@@ -333,6 +333,7 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // Settings 未注入：仅按进程配置 creative.enabled 门控
 		cfg,
 	)
 	worker := service.NewCreativeRunWorker(queue, repo, store, &smokeFakeExecutor{}, svc, service.CreativeWorkerOptions{

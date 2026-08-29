@@ -764,3 +764,53 @@ func TestEnsureCreativeManagedKey(t *testing.T) {
 	require.Equal(t, key.ID, reused.ID)
 	require.Equal(t, 1, svc.ApiKeyRepo.(*creativeFakeManagedKeyRepo).createN)
 }
+
+// creativeFakeSettingReader 是 CreativeSettingReader 的测试替身。
+type creativeFakeSettingReader struct {
+	enabled bool
+}
+
+func (f *creativeFakeSettingReader) IsCreativeEnabled(ctx context.Context) bool {
+	return f.enabled
+}
+
+// TestCreativeEnabledGate 校验数据库运行时开关 creative_enabled 的门控语义：
+// 关闭时 ListModels 返回空列表（前端展示"已停用"空态），CreateRun 返回 ErrCreativeDisabled。
+func TestCreativeEnabledGate(t *testing.T) {
+	t.Run("运行时关闭时 ListModels 返回空列表", func(t *testing.T) {
+		svc := newCreativeTestService()
+		svc.Settings = &creativeFakeSettingReader{enabled: false}
+
+		models, err := svc.ListModels(context.Background(), 7)
+		require.NoError(t, err)
+		require.NotNil(t, models)
+		require.Empty(t, models.Data)
+	})
+
+	t.Run("运行时关闭时 CreateRun 拒绝", func(t *testing.T) {
+		svc := newCreativeTestService()
+		svc.Settings = &creativeFakeSettingReader{enabled: false}
+
+		_, err := svc.CreateRun(context.Background(), 7, validCreateParams(), "")
+		require.ErrorIs(t, err, ErrCreativeDisabled)
+	})
+
+	t.Run("运行时开启时 ListModels 正常返回", func(t *testing.T) {
+		svc := newCreativeTestService()
+		svc.Settings = &creativeFakeSettingReader{enabled: true}
+
+		models, err := svc.ListModels(context.Background(), 7)
+		require.NoError(t, err)
+		require.NotEmpty(t, models.Data)
+	})
+
+	t.Run("进程配置关闭时运行时开关无法打开", func(t *testing.T) {
+		svc := newCreativeTestService()
+		svc.Config.Creative.Enabled = false
+		svc.Settings = &creativeFakeSettingReader{enabled: true}
+
+		models, err := svc.ListModels(context.Background(), 7)
+		require.NoError(t, err)
+		require.Empty(t, models.Data)
+	})
+}

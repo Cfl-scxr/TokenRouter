@@ -65,6 +65,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DataSharingEnabled != after.DataSharingEnabled {
 		changed = append(changed, "data_sharing_enabled")
 	}
+	if before.CreativeEnabled != after.CreativeEnabled {
+		changed = append(changed, "creative_enabled")
+	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
 	}

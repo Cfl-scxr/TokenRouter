@@ -218,6 +218,7 @@ const (
 	SettingKeyAffiliateAdminRechargeEnabled       = "affiliate_admin_recharge_enabled" // 管理员充值是否产生返利
 	SettingKeyTeamEnabled                         = "team_enabled"                     // 是否显示团队功能相关页面
 	SettingKeyDataSharingEnabled                  = "data_sharing_enabled"             // 是否显示数据共享相关页面
+	SettingKeyCreativeEnabled                     = "creative_enabled"                 // 创作台功能开关
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"             // 是否启用风控中心入口与内容审计链路
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"      // cyber_policy 命中后的会话本地屏蔽开关
 	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds"  // cyber_policy 会话本地屏蔽时长（秒）

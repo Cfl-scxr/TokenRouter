@@ -285,6 +285,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultBalance:                                   settings.DefaultBalance,
 		TeamEnabled:                                      settings.TeamEnabled,
 		DataSharingEnabled:                               settings.DataSharingEnabled,
+		CreativeEnabled:                                  settings.CreativeEnabled,
 		RiskControlEnabled:                               settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                         settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                      settings.CyberSessionBlockTTLSeconds,

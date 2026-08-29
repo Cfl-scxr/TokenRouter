@@ -876,6 +876,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	NewCreativePublicService,
+	wire.Bind(new(CreativeSettingReader), new(*SettingService)),
 	ProvideCreativeUserRepository,
 	ProvideCreativeGroupRepository,
 	ProvideCreativeAccountRepository,

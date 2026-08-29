@@ -239,10 +239,12 @@ func TestSettingService_PageFeatureFlagsArePersisted(t *testing.T) {
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		TeamEnabled:        true,
 		DataSharingEnabled: false,
+		CreativeEnabled:    false,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "true", repo.updates[SettingKeyTeamEnabled])
 	require.Equal(t, "false", repo.updates[SettingKeyDataSharingEnabled])
+	require.Equal(t, "false", repo.updates[SettingKeyCreativeEnabled])
 }
 
 func (s *defaultSubPlanReaderStub) GetByID(ctx context.Context, id int64) (*SubscriptionPlan, error) {
@@ -725,6 +727,29 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPUsesStoredValue(t
 	got := svc.parseSettings(map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"})
 
 	require.False(t, got.APIKeyACLTrustForwardedIP)
+}
+
+// 创作台开关与 TeamEnabled 同款"缺省 true"语义：键缺失时开启，显式 "false" 才关闭。
+func TestSettingService_ParseSettings_CreativeEnabledDefaultsTrue(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	got := svc.parseSettings(map[string]string{})
+	require.True(t, got.CreativeEnabled)
+
+	got = svc.parseSettings(map[string]string{SettingKeyCreativeEnabled: "false"})
+	require.False(t, got.CreativeEnabled)
+}
+
+// IsCreativeEnabled 是创作台请求期门控读取：显式 "false" 关闭，键缺失或读取失败默认开启。
+func TestSettingService_IsCreativeEnabled(t *testing.T) {
+	repo := &settingUpdateRepoStub{values: map[string]string{SettingKeyCreativeEnabled: "false"}}
+	svc := NewSettingService(repo, &config.Config{})
+	require.False(t, svc.IsCreativeEnabled(context.Background()))
+
+	// 键缺失（旧版本库未写入）时默认开启。
+	repo = &settingUpdateRepoStub{values: map[string]string{}}
+	svc = NewSettingService(repo, &config.Config{})
+	require.True(t, svc.IsCreativeEnabled(context.Background()))
 }
 
 func TestSettingService_ParseSettings_ForwardedClientIPHeaders(t *testing.T) {

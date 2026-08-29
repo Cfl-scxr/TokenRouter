@@ -186,6 +186,8 @@ type SystemSettings struct {
 	// TeamEnabled 和 DataSharingEnabled 控制对应功能页面的入口与访问。
 	TeamEnabled        bool
 	DataSharingEnabled bool
+	// CreativeEnabled 控制创作台页面入口与 API 访问（进程配置 creative.enabled 仍为前置条件）。
+	CreativeEnabled bool
 	// RiskControlEnabled 控制风控中心入口和网关内容审计总开关。
 	RiskControlEnabled                   bool
 	CyberSessionBlockEnabled             bool
@@ -396,6 +398,8 @@ type PublicSettings struct {
 	TeamEnabled              bool
 	TeamSelfServiceEnabled   bool
 	DataSharingEnabled       bool // 暴露给前端用于控制数据共享页面入口
+	// CreativeEnabled 暴露给前端用于控制创作台页面入口与路由守卫。
+	CreativeEnabled bool
 	OIDCOAuthEnabled         bool
 	OIDCOAuthProviderName    string
 	GitHubOAuthEnabled       bool

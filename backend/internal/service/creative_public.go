@@ -51,7 +51,14 @@ type CreativePublicService struct {
 	Pricing           *BillingService
 	Moderation        *ContentModerationService
 	AuthCache         APIKeyAuthCacheInvalidator
+	Settings          CreativeSettingReader
 	Config            *config.Config
+}
+
+// CreativeSettingReader 是创作台运行时开关的读取接口，由 SettingService 实现。
+type CreativeSettingReader interface {
+	// IsCreativeEnabled 读取数据库开关 creative_enabled，缺省视为开启。
+	IsCreativeEnabled(ctx context.Context) bool
 }
 
 // 以下窄接口只依赖真正用到的方法，便于单测替身实现；生产环境由现有仓储实现。
@@ -97,6 +104,7 @@ func NewCreativePublicService(
 	pricing *BillingService,
 	moderation *ContentModerationService,
 	authCache APIKeyAuthCacheInvalidator,
+	settings CreativeSettingReader,
 	cfg *config.Config,
 ) *CreativePublicService {
 	return &CreativePublicService{
@@ -113,12 +121,22 @@ func NewCreativePublicService(
 		Pricing:           pricing,
 		Moderation:        moderation,
 		AuthCache:         authCache,
+		Settings:          settings,
 		Config:            cfg,
 	}
 }
 
-func (s *CreativePublicService) enabled() bool {
-	return s != nil && s.Repo != nil && s.GroupRepo != nil && s.Config != nil && s.Config.Creative.Enabled
+// enabled 判定创作台是否可用：进程配置 creative.enabled 为前置条件，
+// 再叠加数据库运行时开关 creative_enabled（缺省开启）。
+func (s *CreativePublicService) enabled(ctx context.Context) bool {
+	if s == nil || s.Repo == nil || s.GroupRepo == nil || s.Config == nil || !s.Config.Creative.Enabled {
+		return false
+	}
+	// Settings 未注入（如部分集成测试）时只按进程配置门控。
+	if s.Settings == nil {
+		return true
+	}
+	return s.Settings.IsCreativeEnabled(ctx)
 }
 
 // ---------------------------------------------------------------------------
@@ -127,8 +145,9 @@ func (s *CreativePublicService) enabled() bool {
 
 // ListModels 返回当前用户可用的分组与图片模型组合。
 func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*CreativeModelsResponse, error) {
-	if !s.enabled() {
-		return nil, ErrCreativeDisabled
+	if !s.enabled(ctx) {
+		// 开关关闭时返回空列表而非错误：前端据此展示"已停用"空态，而不是报错。
+		return &CreativeModelsResponse{Data: make([]CreativeModelPublic, 0)}, nil
 	}
 	user, err := s.UserRepo.GetByID(ctx, userID)
 	if err != nil || user == nil {
@@ -312,7 +331,7 @@ type validatedCreativeParams struct {
 
 // CreateRun 创建创作台任务：校验 → 审核 → 幂等 → 估价 → 供应隐藏 Key → 建行 → 预占 → 暂存 → 入队。
 func (s *CreativePublicService) CreateRun(ctx context.Context, userID int64, params CreateCreativeRunParamsPublic, idempotencyKey string) (*CreativeRunPublic, error) {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
 	validated, err := s.validateCreateParams(ctx, userID, &params)
@@ -904,7 +923,7 @@ func (s *CreativePublicService) getRunPublic(ctx context.Context, runID string) 
 
 // GetRun 返回单个任务（含输出元数据），校验所有权。
 func (s *CreativePublicService) GetRun(ctx context.Context, userID int64, runID string) (*CreativeRunPublic, error) {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
 	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
@@ -920,7 +939,7 @@ func (s *CreativePublicService) GetRun(ctx context.Context, userID int64, runID 
 
 // ListRuns 返回当前用户的任务列表（created_at desc 分页）。
 func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filter CreativeRunFilter) (*CreativeListRunsResponse, error) {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
 	if filter.Limit <= 0 || filter.Limit > 100 {
@@ -942,7 +961,7 @@ func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filt
 
 // CancelRun 取消 queued/running 任务：置 cancelled + 释放预占 + 清理暂存；终态返回 409。
 func (s *CreativePublicService) CancelRun(ctx context.Context, userID int64, runID string) (*CreativeRunPublic, error) {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
 	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
@@ -983,7 +1002,7 @@ type CreativeOutputContent struct {
 // GetOutputContent 校验所有权与输出状态后从临时存储读取图片字节。
 // 过期或缺失时：任务为 succeeded 则转 result_lost，并返回明确错误，绝不明示成功。
 func (s *CreativePublicService) GetOutputContent(ctx context.Context, userID int64, runID string, outputIndex int) (*CreativeOutputContent, error) {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
 	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
@@ -1044,7 +1063,7 @@ func (s *CreativePublicService) markRunResultLostBestEffort(ctx context.Context,
 
 // AckOutput 在客户端确认保存后删除临时输出并标记 acked，幂等。
 func (s *CreativePublicService) AckOutput(ctx context.Context, userID int64, runID string, outputIndex int) error {
-	if !s.enabled() {
+	if !s.enabled(ctx) {
 		return ErrCreativeDisabled
 	}
 	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)

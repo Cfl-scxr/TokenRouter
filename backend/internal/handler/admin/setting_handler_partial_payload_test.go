@@ -63,6 +63,25 @@ func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
 	require.Equal(t, "new@example.com", repo.values[service.SettingKeySMTPFrom])
 }
 
+// 创作台开关与 team/data_sharing 同款部分更新语义：显式发送时写入，省略时保留存储值。
+func TestUpdateSettingsCreativeEnabledPartialSemantics(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCreativeEnabled: "true",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"creative_enabled": false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyCreativeEnabled])
+
+	h2, repo2 := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCreativeEnabled: "false",
+	})
+	rec = doUpdateSettings(t, h2, map[string]any{"risk_control_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo2.values[service.SettingKeyCreativeEnabled],
+		"未发送 creative_enabled 时必须保留存储值")
+}
+
 func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyGrokDefaultBaseURLMode: service.GrokDefaultBaseURLModeCLI,

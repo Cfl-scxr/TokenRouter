@@ -181,6 +181,7 @@ type SystemSettings struct {
 	DefaultBalance                       float64                      `json:"default_balance"`
 	TeamEnabled                          bool                         `json:"team_enabled"`         // 团队功能页面开关
 	DataSharingEnabled                   bool                         `json:"data_sharing_enabled"` // 数据共享页面开关
+	CreativeEnabled                      bool                         `json:"creative_enabled"`     // 创作台功能开关
 	RiskControlEnabled                   bool                         `json:"risk_control_enabled"` // 风控中心功能开关
 	CyberSessionBlockEnabled             bool                         `json:"cyber_session_block_enabled"`
 	CyberSessionBlockTTLSeconds          int                          `json:"cyber_session_block_ttl_seconds"`
@@ -419,6 +420,7 @@ type PublicSettings struct {
 	TeamEnabled                         bool                     `json:"team_enabled"`
 	TeamSelfServiceEnabled              bool                     `json:"team_self_service_enabled"`
 	DataSharingEnabled                  bool                     `json:"data_sharing_enabled"`
+	CreativeEnabled                     bool                     `json:"creative_enabled"`
 	Version                             string                   `json:"version"`
 	// 服务器全局时区与当前 UTC 偏移，供前端标注高峰计费窗口等服务端本地时间。
 	ServerTimezone              string  `json:"server_timezone"`
