@@ -1,8 +1,8 @@
 <template>
   <AppLayout>
-    <!-- 整个内容区即无限画布背景：负外边距抵消 app-main 内边距，画布铺满全幅 -->
+    <!-- 整个内容区即无限画布背景：负外边距抵消 app-main 四周内边距，画布铺满全幅（含顶部，点阵直达 header 边界） -->
     <div
-      class="relative -mx-4 -mb-4 h-[calc(100dvh-4.5rem)] md:-mx-6 md:-mb-6 md:h-[calc(100dvh-4.75rem)] lg:-mx-8 lg:-mb-8 lg:h-[calc(100dvh-4.5rem)]"
+      class="relative -mx-4 -mb-4 -mt-4 h-[calc(100dvh-3.5rem)] md:-mx-6 md:-mb-6 md:-mt-5 lg:-mx-8 lg:-mb-8 lg:-mt-4"
     >
       <CreativeCanvas ref="canvasRef" class="absolute inset-0" @error="onCanvasError" />
       <CreativeRunHistory :studio="studio" />
