@@ -43,8 +43,8 @@
         </div>
       </div>
 
-      <!-- 聊天式输入框：无选中时底部居中；选中图片时跟随到图片下方（位置由 composerStyle 计算） -->
-      <div ref="composerSlotRef" class="absolute z-30" :style="composerStyle">
+      <!-- 聊天式输入框：固定底部居中，不随选中图片移动 -->
+      <div class="absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
         <CreativeComposer
           :studio="studio"
           :has-selection="hasSelection"
@@ -79,13 +79,13 @@
 <script setup lang="ts">
 /**
  * 创作台主视图：全幅无限画布 + 聊天式输入框。
- * - 输入框默认底部居中；画布选中图片时跟随到图片下方（随平移 / 缩放实时跟踪，越界自动夹取）
+ * - 输入框固定底部居中（早期试过跟随选中图片，缩放场景下位置不稳定，按用户要求回退为固定）
  * - 生成时从画布收集输入：edit/inpaint 取当前选中图片的原始 blob，inpaint 另取画笔 mask 导出
  * - 注册画布桥接：收割成功的输出自动上板；历史里的输出可一键导入画布
  * - 左上角设置（清空画布 / 清空本机创作数据）、右上角历史、顶部工具栏（上传 / 下载 / 局部重绘画笔组 / 删除）
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -103,7 +103,6 @@ const studio = useCreativeStudio()
 
 const canvasRef = ref<InstanceType<typeof CreativeCanvas> | null>(null)
 const stageRef = ref<HTMLDivElement | null>(null)
-const composerSlotRef = ref<HTMLDivElement | null>(null)
 const showClearConfirm = ref(false)
 // 设置弹层开关（齿轮在画布左上角，弹层向下展开）
 const settingsOpen = ref(false)
@@ -111,44 +110,9 @@ const settingsOpen = ref(false)
 let pillHideTimer: ReturnType<typeof setTimeout> | null = null
 const pillHidden = ref(false)
 
-// ==================== 输入框定位 ====================
-
-// 舞台（画布容器）与输入框的实测尺寸，用于跟随定位的夹取计算
-const stageSize = reactive({ width: 0, height: 0 })
-const composerSize = reactive({ width: 0, height: 0 })
-let stageObserver: ResizeObserver | null = null
-let composerObserver: ResizeObserver | null = null
-
 // 当前选中图片的画布视口包围盒（未选中为 null；expose 的 ref 在实例上自动解包）
 const selectedRect = computed(() => canvasRef.value?.selectedRect ?? null)
 const hasSelection = computed(() => selectedRect.value !== null)
-
-// 输入框定位样式：无选中 → 底部居中；有选中 → 跟随图片下方（下方放不下时放到上方，再不行夹取在可视区内）
-const composerStyle = computed<Record<string, string>>(() => {
-  const rect = selectedRect.value
-  if (!rect) {
-    return { left: '50%', bottom: '16px', transform: 'translateX(-50%)' }
-  }
-  const pad = 8
-  const gap = 12
-  const width = composerSize.width || 600
-  const height = composerSize.height || 130
-  const viewWidth = stageSize.width || 800
-  const viewHeight = stageSize.height || 600
-  const style: Record<string, string> = {}
-  style.left = `${clamp(rect.left + rect.width / 2 - width / 2, pad, Math.max(pad, viewWidth - width - pad))}px`
-  let top = rect.top + rect.height + gap
-  if (top + height > viewHeight - pad) {
-    const above = rect.top - height - gap
-    top = above >= pad ? above : Math.max(pad, viewHeight - height - pad)
-  }
-  style.top = `${top}px`
-  return style
-})
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
 
 // ==================== 生命周期 ====================
 
@@ -162,25 +126,6 @@ onMounted(() => {
       void canvasRef.value?.placeOutput({ blob, runId, outputIndex })
     },
   })
-  // 实测舞台与输入框尺寸（夹取用），尺寸变化实时更新
-  if (stageRef.value) {
-    const syncStage = () => {
-      stageSize.width = stageRef.value?.clientWidth ?? 0
-      stageSize.height = stageRef.value?.clientHeight ?? 0
-    }
-    syncStage()
-    stageObserver = new ResizeObserver(syncStage)
-    stageObserver.observe(stageRef.value)
-  }
-  if (composerSlotRef.value) {
-    const syncComposer = () => {
-      composerSize.width = composerSlotRef.value?.clientWidth ?? 0
-      composerSize.height = composerSlotRef.value?.clientHeight ?? 0
-    }
-    syncComposer()
-    composerObserver = new ResizeObserver(syncComposer)
-    composerObserver.observe(composerSlotRef.value)
-  }
   void studio.loadModels()
   void studio.refreshHistory()
 })
@@ -188,8 +133,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   studio.registerCanvasBridge(null)
   if (pillHideTimer) clearTimeout(pillHideTimer)
-  stageObserver?.disconnect()
-  composerObserver?.disconnect()
 })
 
 // ==================== 生成状态胶囊 ====================
