@@ -107,7 +107,7 @@
 
     <!-- 局部重绘未选中图片：引导点击选择目标图片 -->
     <div
-      v-if="isInpaint && !selectedImage"
+      v-if="isInpaint && !inpaintAnchor"
       class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
     >
       {{ t('creative.canvas.inpaintPickHint') }}
@@ -138,7 +138,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
-import { Canvas, FabricImage, PencilBrush, Point, type FabricObject, type TMat2D } from 'fabric'
+import { Canvas, FabricImage, PencilBrush, Point, Rect, type FabricObject, type TMat2D } from 'fabric'
 import { SquarePencilBrush } from './SquarePencilBrush'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
@@ -181,6 +181,14 @@ const ASSET_PROTOCOL = 'asset://'
 // mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
 const MASK_COLOR = '#ffffff'
 const MASK_TINT = 'rgba(168, 85, 247, 0.55)'
+// 涂抹锚点描边（运行时辅助对象，不进快照、不进 mask）
+const ANCHOR_OUTLINE_KIND = 'anchor-outline'
+const ANCHOR_OUTLINE_STYLE = {
+  fill: 'transparent',
+  stroke: 'rgba(0, 210, 255, 0.7)',
+  strokeWidth: 1.5,
+  strokeDashArray: [6, 4],
+}
 // 圆点网格的场景间距（px，缩放 1 时）
 const GRID_SPACING = 20
 
@@ -214,17 +222,23 @@ const canvasElRef = ref<HTMLCanvasElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 // 待裁剪队列：确认/跳过一张后自动出队下一张
 const cropQueue = ref<Blob[]>([])
-// 涂抹模式开关：局部重绘 + 选中图片时自动开启（工具栏可暂停）
+// 涂抹模式开关：局部重绘 + 锚定图片时自动开启（工具栏可暂停）
 const painting = ref(false)
 // 是否已有 mask 笔迹（控制"清除涂抹"按钮可用态）
 const hasMaskStrokes = ref(false)
-// 当前选中图片的画布视口包围盒（相对画布容器，用于输入框跟随定位）
+// 当前关联图片（选中或涂抹锚点）的画布视口包围盒（相对画布容器，供父级判断选中态）
 const selectedRect = shallowRef<{ left: number; top: number; width: number; height: number } | null>(null)
 // 画笔粗细（8–96）/ 形状
 const brushSize = ref(28)
 const brushShape = ref<BrushShape>('round')
-// 当前选中的图片对象（普通对象不展示移除入口）
+// 当前选中的图片对象（fabric 活动对象；画笔落笔时 fabric 会丢弃选中，不能作为 mask 锚点依据）
 const selectedImage = shallowRef<FabricObject | null>(null)
+// mask 锚定的图片对象：选中图片时设置，与 fabric 选中态解耦，避免画笔落笔自动丢弃选中后涂抹被中断
+const inpaintAnchor = shallowRef<FabricObject | null>(null)
+// 手动暂停涂抹（移动视角 / 换选图片后再恢复）
+const paintSuspended = ref(false)
+// 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
+let anchorOutline: Rect | null = null
 
 let canvas: Canvas | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -367,23 +381,31 @@ function bindCanvasEvents(): void {
   canvas.on('object:rotating', () => {
     updateSelectedRect()
   })
-  canvas.on('object:removed', () => {
+  canvas.on('object:removed', (event) => {
+    // 锚点图片被删除时同步清空，涂抹模式随之退出
+    if (event.target && inpaintAnchor.value === event.target) {
+      inpaintAnchor.value = null
+    }
     if (!canvas?.getObjects().some((object) => objectData(object).kind === 'mask')) {
       hasMaskStrokes.value = false
     }
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
-    selectedImage.value = pickImage(event.selected?.[0])
+    onImageSelected(pickImage(event.selected?.[0]))
     updateSelectedRect()
   })
   canvas.on('selection:updated', (event) => {
-    selectedImage.value = pickImage(event.selected?.[0])
+    onImageSelected(pickImage(event.selected?.[0]))
     updateSelectedRect()
   })
   canvas.on('selection:cleared', () => {
     selectedImage.value = null
     updateSelectedRect()
+    // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空
+    if (!painting.value) {
+      inpaintAnchor.value = null
+    }
   })
   // 每次渲染后同步选中图片的视口包围盒（覆盖平移 / 缩放 / 拖图 / 动画过程）
   canvas.on('after:render', () => {
@@ -452,12 +474,24 @@ function onKeyDown(event: KeyboardEvent): void {
 // 仅局部重绘开放画笔组与涂抹模式
 const isInpaint = computed(() => props.operation === 'inpaint')
 
-// 操作或选中图片变化时自动进出涂抹模式：
-// 局部重绘选中图片 → 自动开始涂抹；换选图片同样自动进入；取消选择 / 切走操作 → 退出
-watch([isInpaint, selectedImage], ([inpaint, image]) => {
-  if (inpaint && image) enterPainting()
+// 选中图片时登记为涂抹锚点（换选自动切换）；仅局部重绘模式下登记
+function onImageSelected(image: FabricObject | null): void {
+  selectedImage.value = image
+  if (image && isInpaint.value) {
+    inpaintAnchor.value = image
+    paintSuspended.value = false
+  }
+}
+
+// 涂抹条件 = 局部重绘 + 有锚点图片 + 未手动暂停；任一条件变化统一经 syncPainting 进出
+watch([isInpaint, inpaintAnchor, paintSuspended], syncPainting)
+
+function syncPainting(): void {
+  const shouldPaint = isInpaint.value && inpaintAnchor.value !== null && !paintSuspended.value
+  if (shouldPaint) enterPainting()
   else exitPainting()
-})
+  updateAnchorOutline()
+}
 
 function makeBrush(): PencilBrush {
   const brush =
@@ -468,9 +502,9 @@ function makeBrush(): PencilBrush {
   return brush
 }
 
-// 进入涂抹：锁定全部对象（保留选中图片的选中框作为锚点），仅落笔作画
+// 进入涂抹：锁定全部对象，仅落笔作画（锚点用独立描边标示，不依赖 fabric 选中态）
 function enterPainting(): void {
-  if (!canvas || painting.value || !isInpaint.value || !selectedImage.value) return
+  if (!canvas || painting.value || !isInpaint.value || !inpaintAnchor.value) return
   painting.value = true
   lockAllObjects()
   canvas.freeDrawingBrush = makeBrush()
@@ -489,10 +523,39 @@ function exitPainting(): void {
   canvas.requestRenderAll()
 }
 
+// 锚点描边：涂抹期间在目标图片外围画一圈青色虚线，避免"在涂哪张图"失焦
+function updateAnchorOutline(): void {
+  const anchor = inpaintAnchor.value
+  if (!canvas || !anchor || !painting.value) {
+    removeAnchorOutline()
+    return
+  }
+  if (!anchorOutline) {
+    anchorOutline = new Rect({
+      ...ANCHOR_OUTLINE_STYLE,
+      selectable: false,
+      evented: false,
+    })
+    setObjectData(anchorOutline, { kind: ANCHOR_OUTLINE_KIND })
+    canvas.add(anchorOutline)
+  }
+  const width = ((anchor as unknown as { width?: number }).width ?? 0) * (anchor.scaleX ?? 1)
+  const height = ((anchor as unknown as { height?: number }).height ?? 0) * (anchor.scaleY ?? 1)
+  anchorOutline.set({ left: anchor.left, top: anchor.top, width, height, angle: anchor.angle ?? 0 })
+  anchorOutline.setCoords()
+  canvas.requestRenderAll()
+}
+
+function removeAnchorOutline(): void {
+  if (anchorOutline && canvas) {
+    canvas.remove(anchorOutline)
+  }
+  anchorOutline = null
+}
+
 // 工具栏开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复
 function togglePainting(): void {
-  if (painting.value) exitPainting()
-  else enterPainting()
+  paintSuspended.value = painting.value
 }
 
 function setBrushShape(shape: BrushShape): void {
@@ -705,22 +768,24 @@ async function addUploadedImage(blob: Blob): Promise<void> {
 
 // ==================== 生成输入采集 ====================
 
-// 当前选中的图片对象
+// 当前关联图片对象：优先 fabric 活动对象，缺失时回退到涂抹锚点
+// （画笔落笔时 fabric 会自动丢弃选中，涂抹期间锚点才是可靠的图片引用）
 function selectedImageObject(): FabricImage | null {
   if (!canvas) return null
   const active = canvas.getActiveObject()
-  return active instanceof FabricImage ? active : null
+  if (active instanceof FabricImage) return active
+  return inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null
 }
 
-// 同步选中图片的视口包围盒（供输入框跟随定位）；变化幅度小于 0.5px 时不更新，避免渲染循环里频繁触发
+// 同步关联图片的视口包围盒（供父级判断选中态）；变化幅度小于 0.5px 时不更新，避免渲染循环里频繁触发
 function updateSelectedRect(): void {
   if (!canvas) return
-  const active = canvas.getActiveObject()
-  if (!(active instanceof FabricImage)) {
+  const image = selectedImageObject()
+  if (!image) {
     if (selectedRect.value) selectedRect.value = null
     return
   }
-  const rect = active.getBoundingRect()
+  const rect = image.getBoundingRect()
   const current = selectedRect.value
   if (
     !current ||
@@ -829,7 +894,10 @@ async function downloadSelected(): Promise<void> {
 function resetCanvas(): void {
   if (!canvas) return
   stopPanAnim()
+  inpaintAnchor.value = null
+  paintSuspended.value = false
   exitPainting()
+  removeAnchorOutline()
   canvas.discardActiveObject()
   canvas.clear()
   canvas.backgroundColor = ''
@@ -858,7 +926,8 @@ function persistSceneNow(): void {
   })
 }
 
-// 序列化（含自定义 data）：图片像素不进快照，src 用 asset://<assetKey> 占位
+// 序列化（含自定义 data）：图片像素不进快照，src 用 asset://<assetKey> 占位；
+// 锚点描边是运行时辅助对象，不持久化
 function snapshotScene(): string {
   if (!canvas) return '{}'
   const json = canvas.toObject(['data']) as { objects?: Array<Record<string, unknown> & ObjectWithData> }
@@ -868,6 +937,7 @@ function snapshotScene(): string {
       object.src = `${ASSET_PROTOCOL}${assetKey}`
     }
   }
+  json.objects = (json.objects ?? []).filter((object) => object.data?.kind !== ANCHOR_OUTLINE_KIND)
   return JSON.stringify(json)
 }
 
@@ -882,6 +952,10 @@ async function restoreScene(): Promise<void> {
     const pendingUrls: string[] = []
     const restored: typeof objects = []
     for (const object of objects) {
+      // 旧快照里可能残留锚点描边等运行时辅助对象，直接跳过
+      if (object.data?.kind === ANCHOR_OUTLINE_KIND) {
+        continue
+      }
       const assetKey = object.data?.assetKey
       if (object.type === 'image' && typeof assetKey === 'string') {
         const blob = await loadAsset(assetKey)
