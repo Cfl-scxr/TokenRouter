@@ -39,7 +39,7 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 POST /api/v1/creative/runs/{id}/cancel
 ```
 
-`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且配置了图片尺寸价格的分组。Gemini（含 Vertex 账号）与 OpenAI 分组支持 `generate`/`edit`/`inpaint`，Grok 分组仅支持 `generate`。
+`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且配置了图片尺寸价格的分组。Gemini（含 Vertex 账号）与 OpenAI 分组支持 `generate`/`edit`/`inpaint`，Grok 分组仅支持 `generate`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
 
 `POST /creative/runs` 接受 `multipart/form-data`，只接受上传文件，不接受远程 URL：
 
@@ -167,7 +167,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 ## 前端本地存储边界
 
-前端 `/creative` 页面要求登录，simple 模式隐藏入口，侧栏可见性取决于 `GET /creative/models` 是否返回非空（`getCreativeModels`）：
+前端 `/creative` 页面要求登录，simple 模式隐藏入口，路由带 `requiresCreative` 守卫（公开设置 `creative_enabled === false` 时用户跳 `/dashboard`、管理员跳 `/admin/settings`），侧栏入口由公开设置 `creative_enabled !== false` 门控；模型目录为空时控制面板展示空态文案（功能关闭提示联系管理员，否则提示分组未配置图片生成）：
 
 - 输出收割：任务轮询前 10 秒每 1 秒、之后每 3 秒；终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack；单个输出取回失败（410/`result_lost`）只标记该输出缺失，不中断其它输出。
 - 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/mask/输出 blob）、`scenes`（画布 JSON 快照）和 `settings`（参数选择恢复）；图片绝不以 base64 进入 localStorage。
@@ -210,10 +210,12 @@ creative:
 
 校验约束：`max_total_input_bytes` 不得小于 `max_asset_bytes`；`max_output_count` 必须在 1-4；启用队列时所有队列键非空。与批量图片不同，创作台的 `enabled` 与 `queue_enabled` 默认开启，但缺少 Redis 时任务创建会失败。
 
+除进程配置外，创作台还有数据库运行时开关 `creative_enabled`（默认 true，管理端"功能特性"页可切换，经公开设置下发给前端）：仅当进程配置 `creative.enabled` 与运行时开关同时开启时创作台才可用，管理服务 `enabled()` 判定在请求期读取该开关。
+
 ## 运维检查清单
 
 - 确认 Redis 可用（临时存储与队列都依赖 Redis）。
-- 确认 `creative.enabled` 与 `creative.queue_enabled`。
+- 确认 `creative.enabled`、数据库运行时开关 `creative_enabled` 与 `creative.queue_enabled`。
 - 确认目标分组启用图片生成、配置图片尺寸价格，且账号模型映射包含图片模型。
 - 确认上游账号凭据有效（Gemini apikey/Vertex/OAuth、OpenAI、xAI）。
 - 确认分组图片定价与倍率，验证估价的 hold/capture/release 行为。
