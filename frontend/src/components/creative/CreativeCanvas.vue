@@ -67,7 +67,7 @@
             <path d="m5 11 9 9" />
           </svg>
         </button>
-        <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高，避免轨道/滑块与相邻按钮重叠） -->
+        <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高；轨道/滑块配色见 .brush-size） -->
         <div class="flex items-center gap-1.5 px-1">
           <input
             v-model.number="brushSize"
@@ -75,7 +75,7 @@
             min="8"
             max="96"
             step="1"
-            class="h-8 w-16 cursor-pointer accent-primary-500 sm:w-24"
+            class="brush-size h-8 w-16 cursor-pointer sm:w-24"
             :title="t('creative.canvas.brushSize')"
           />
           <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
@@ -118,17 +118,17 @@
       </button>
     </div>
 
-    <!-- 局部重绘未选中图片：引导点击选择目标图片 -->
+    <!-- 局部重绘未选中图片：引导点击选择目标图片（位于工具栏下方，避免重叠） -->
     <div
       v-if="isInpaint && !inpaintAnchor"
-      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
+      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
     >
       {{ t('creative.canvas.inpaintPickHint') }}
     </div>
     <!-- 涂抹引导：首次落笔前提示紫色笔迹即重绘区域 -->
     <div
       v-else-if="painting && !hasMaskStrokes"
-      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-14"
+      class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
     >
       {{ t('creative.canvas.maskPaintHint') }}
     </div>
@@ -1141,5 +1141,52 @@ defineExpose({
 
 .canvas-tool-btn-active {
   @apply bg-primary-600/10 text-primary-700 dark:text-primary-300;
+}
+
+/* 画笔粗细滑块自定义配色：accent-color 对未填充轨道的着色在浅色模式下过深；
+   浅色模式用浅灰轨道 + 品牌青滑块，深色模式用暗色轨道（配色对齐项目 dark-700） */
+.brush-size {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.brush-size::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(209 213 219);
+}
+
+.dark .brush-size::-webkit-slider-runnable-track {
+  background: rgb(41 41 46);
+}
+
+.brush-size::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -5px;
+  height: 16px;
+  width: 16px;
+  border: none;
+  border-radius: 9999px;
+  background: rgb(0 210 255);
+}
+
+.brush-size::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(209 213 219);
+}
+
+.dark .brush-size::-moz-range-track {
+  background: rgb(41 41 46);
+}
+
+.brush-size::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border: none;
+  border-radius: 9999px;
+  background: rgb(0 210 255);
 }
 </style>
