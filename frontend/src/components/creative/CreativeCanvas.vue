@@ -122,12 +122,12 @@
     >
       {{ t('creative.canvas.inpaintPickHint') }}
     </div>
-    <!-- 图生图未选中源图：同款胶囊引导 -->
+    <!-- 图生图未选择参考图：同款胶囊引导（点击单选，Shift+点击加选） -->
     <div
-      v-else-if="isEdit && !selectedImage"
+      v-else-if="isEdit && !editRefs.length"
       class="pointer-events-none absolute bottom-16 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs text-white dark:bg-white/15 lg:bottom-auto lg:top-16"
     >
-      {{ t('creative.panel.selectImageHint') }}
+      {{ t('creative.canvas.editPickHint') }}
     </div>
     <!-- 涂抹引导：首次落笔前提示紫色笔迹即重绘区域 -->
     <div
@@ -200,8 +200,9 @@ const ASSET_PROTOCOL = 'asset://'
 // mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
 const MASK_COLOR = '#ffffff'
 const MASK_TINT = 'rgba(168, 85, 247, 0.55)'
-// 涂抹锚点描边（运行时辅助对象，不进快照、不进 mask）
+// 涂抹锚点描边 / 编辑参考图描边（运行时辅助对象，不进快照、不进 mask）
 const ANCHOR_OUTLINE_KIND = 'anchor-outline'
+const REF_OUTLINE_KIND = 'ref-outline'
 const ANCHOR_OUTLINE_STYLE = {
   fill: 'transparent',
   stroke: 'rgba(0, 210, 255, 0.7)',
@@ -254,8 +255,14 @@ const selectedImage = shallowRef<FabricObject | null>(null)
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
 const paintSuspended = ref(false)
+// 编辑模式（edit）的参考图集合：普通点击图片 = 单选替换，Shift+点击 = 加选/取消
+const editRefs = shallowRef<FabricObject[]>([])
+// Shift+点击加选参考图时抑制 selection 事件的单选同步（事件在 mouse:down 之后触发）
+let suppressEditRefSync = false
 // 锚点描边对象（运行时辅助，涂抹期间标示目标图片）
 let anchorOutline: Rect | null = null
+// 编辑参考图描边对象表：图片对象 → 描边矩形（运行时辅助）
+const refOutlines = new Map<FabricObject, Rect>()
 
 let canvas: Canvas | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -343,6 +350,12 @@ function bindCanvasEvents(): void {
       if (isPanButton(event.e)) startPan(event.e)
       return
     }
+    // 编辑模式下 Shift+点击图片：加选/取消参考图（不触发平移与单选替换）
+    if (isEdit.value && event.target instanceof FabricImage && isAdditiveClick(event.e)) {
+      suppressEditRefSync = true
+      toggleEditRef(event.target)
+      return
+    }
     if (event.target) return
     if (!isPrimaryPointer(event.e)) return
     startPan(event.e)
@@ -393,12 +406,26 @@ function bindCanvasEvents(): void {
     scheduleSceneSave()
   })
   canvas.on('object:modified', () => {
+    refreshRefOutlines()
     scheduleSceneSave()
   })
+  // 拖图 / 缩放 / 旋转过程持续同步参考图描边（这些操作只画 upper canvas）
+  canvas.on('object:moving', () => {
+    refreshRefOutlines()
+  })
+  canvas.on('object:scaling', () => {
+    refreshRefOutlines()
+  })
+  canvas.on('object:rotating', () => {
+    refreshRefOutlines()
+  })
   canvas.on('object:removed', (event) => {
-    // 锚点图片被删除时同步清空，涂抹模式随之退出
+    // 锚点图片被删除时同步清空，涂抹模式随之退出；参考图集合同步剔除
     if (event.target && inpaintAnchor.value === event.target) {
       inpaintAnchor.value = null
+    }
+    if (event.target && editRefs.value.includes(event.target)) {
+      editRefs.value = editRefs.value.filter((item) => item !== event.target)
     }
     if (!canvas?.getObjects().some((object) => objectData(object).kind === 'mask')) {
       hasMaskStrokes.value = false
@@ -406,14 +433,17 @@ function bindCanvasEvents(): void {
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
+    syncEditRefFromSelection(pickImage(event.selected?.[0]))
     onImageSelected(pickImage(event.selected?.[0]))
   })
   canvas.on('selection:updated', (event) => {
+    syncEditRefFromSelection(pickImage(event.selected?.[0]))
     onImageSelected(pickImage(event.selected?.[0]))
   })
   canvas.on('selection:cleared', () => {
     selectedImage.value = null
-    // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空
+    // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空；
+    // 编辑模式的参考图集合与选中态解耦，取消选中不影响已选参考
     if (!painting.value) {
       inpaintAnchor.value = null
     }
@@ -434,6 +464,12 @@ function startPan(event: Event): void {
 function isPanButton(event: Event): boolean {
   const mouse = event as MouseEvent
   return typeof mouse.button === 'number' && (mouse.button === 1 || mouse.button === 2)
+}
+
+// 加选手势：Shift+左键（编辑模式加选/取消参考图）
+function isAdditiveClick(event: Event): boolean {
+  const mouse = event as MouseEvent
+  return typeof mouse.button === 'number' && mouse.button === 0 && mouse.shiftKey === true
 }
 
 function stopPanning(): void {
@@ -604,6 +640,72 @@ function refreshMaskClip(): void {
 // 工具栏涂抹开关：暂停涂抹去移动视角 / 换选图片，再次点击恢复
 function togglePainting(): void {
   paintSuspended.value = painting.value
+}
+
+// ==================== 编辑模式参考图多选 ====================
+
+// 普通点击（非 Shift）：参考图单选替换；Shift 加选已在 mouse:down 处理并置抑制标记
+function syncEditRefFromSelection(image: FabricObject | null): void {
+  if (!isEdit.value || !image) return
+  if (suppressEditRefSync) {
+    suppressEditRefSync = false
+    return
+  }
+  editRefs.value = [image]
+}
+
+// Shift+点击：图片在参考集中则移除，否则加入
+function toggleEditRef(image: FabricObject): void {
+  if (!isEdit.value) return
+  if (editRefs.value.includes(image)) {
+    editRefs.value = editRefs.value.filter((item) => item !== image)
+  } else {
+    editRefs.value = [...editRefs.value, image]
+  }
+}
+
+// 参考图集合变化 → 同步描边；离开编辑模式 → 清空集合
+watch(editRefs, refreshRefOutlines)
+watch(isEdit, (edit) => {
+  if (!edit) {
+    editRefs.value = []
+    suppressEditRefSync = false
+  }
+})
+
+// 参考图描边：为集合内每张图片维护一个青色虚线框，拖动/缩放时跟随
+function refreshRefOutlines(): void {
+  if (!canvas) return
+  const current = editRefs.value
+  refOutlines.forEach((rect, object) => {
+    if (!current.includes(object)) {
+      canvas!.remove(rect)
+      refOutlines.delete(object)
+    }
+  })
+  current.forEach((object) => {
+    let rect = refOutlines.get(object)
+    if (!rect) {
+      rect = new Rect({
+        ...ANCHOR_OUTLINE_STYLE,
+        selectable: false,
+        evented: false,
+      })
+      setObjectData(rect, { kind: REF_OUTLINE_KIND })
+      refOutlines.set(object, rect)
+      canvas!.add(rect)
+    }
+    syncOutlineToObject(rect, object)
+  })
+  canvas.requestRenderAll()
+}
+
+// 描边矩形对齐对象位置（含缩放与角度）
+function syncOutlineToObject(rect: Rect, object: FabricObject): void {
+  const width = ((object as unknown as { width?: number }).width ?? 0) * (object.scaleX ?? 1)
+  const height = ((object as unknown as { height?: number }).height ?? 0) * (object.scaleY ?? 1)
+  rect.set({ left: object.left, top: object.top, width, height, angle: object.angle ?? 0 })
+  rect.setCoords()
 }
 
 // mask 撤销栈上限，防止长会话无限增长
@@ -891,12 +993,11 @@ async function getSelectedImageBlob(): Promise<Blob | null> {
   return null
 }
 
-// 画布上全部图片对象的原始 blob（edit 多参考图）：按对象顺序收集，解析失败的跳过
-async function getAllImageBlobs(): Promise<Blob[]> {
-  if (!canvas) return []
-  const images = canvas.getObjects().filter((object): object is FabricImage => object instanceof FabricImage)
+// 编辑模式已选参考图的原始 blob（按画布对象顺序收集，解析失败的跳过）
+async function getEditRefBlobs(): Promise<Blob[]> {
   const blobs: Blob[] = []
-  for (const image of images) {
+  for (const image of editRefs.value) {
+    if (!(image instanceof FabricImage)) continue
     const assetKey = objectData(image).assetKey
     if (typeof assetKey !== 'string') continue
     const cached = runtimeBlobs.get(assetKey)
@@ -995,6 +1096,9 @@ function resetCanvas(): void {
   stopPanAnim()
   inpaintAnchor.value = null
   paintSuspended.value = false
+  editRefs.value = []
+  suppressEditRefSync = false
+  refOutlines.clear()
   maskUndoStack.length = 0
   canUndoMask.value = false
   maskClipRect = null
@@ -1029,7 +1133,7 @@ function persistSceneNow(): void {
 }
 
 // 序列化（含自定义 data）：图片像素不进快照，src 用 asset://<assetKey> 占位；
-// 锚点描边是运行时辅助对象，不持久化
+// 锚点/参考图描边是运行时辅助对象，不持久化
 function snapshotScene(): string {
   if (!canvas) return '{}'
   const json = canvas.toObject(['data']) as { objects?: Array<Record<string, unknown> & ObjectWithData> }
@@ -1039,7 +1143,9 @@ function snapshotScene(): string {
       object.src = `${ASSET_PROTOCOL}${assetKey}`
     }
   }
-  json.objects = (json.objects ?? []).filter((object) => object.data?.kind !== ANCHOR_OUTLINE_KIND)
+  json.objects = (json.objects ?? []).filter(
+    (object) => object.data?.kind !== ANCHOR_OUTLINE_KIND && object.data?.kind !== REF_OUTLINE_KIND,
+  )
   return JSON.stringify(json)
 }
 
@@ -1054,8 +1160,8 @@ async function restoreScene(): Promise<void> {
     const pendingUrls: string[] = []
     const restored: typeof objects = []
     for (const object of objects) {
-      // 旧快照里可能残留锚点描边等运行时辅助对象，直接跳过
-      if (object.data?.kind === ANCHOR_OUTLINE_KIND) {
+      // 旧快照里可能残留锚点/参考图描边等运行时辅助对象，直接跳过
+      if (object.data?.kind === ANCHOR_OUTLINE_KIND || object.data?.kind === REF_OUTLINE_KIND) {
         continue
       }
       const assetKey = object.data?.assetKey
@@ -1119,7 +1225,7 @@ defineExpose({
   placeOutput,
   addUploadedImage,
   getSelectedImageBlob,
-  getAllImageBlobs,
+  getEditRefBlobs,
   getMaskBlob,
   resetCanvas,
   clearMask,

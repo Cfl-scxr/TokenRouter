@@ -204,8 +204,8 @@ async function onGenerate(): Promise<void> {
   let sourceBlobs: Blob[] = []
   let maskBlob: Blob | null = null
   if (operation === 'edit') {
-    // OpenAI/Gemini 编辑协议均支持多参考图：以画布上的全部图片为参考集
-    sourceBlobs = (await canvasRef.value?.getAllImageBlobs()) ?? []
+    // 编辑模式以用户选择的参考图集合为准（点击单选、Shift 加选）
+    sourceBlobs = (await canvasRef.value?.getEditRefBlobs()) ?? []
     if (!sourceBlobs.length) {
       studio.error.value = t('creative.panel.selectImageHint')
       return
