@@ -592,6 +592,8 @@ function exitPainting(): void {
   canvas.freeDrawingBrush = undefined
   unlockAllObjects()
   canvas.defaultCursor = 'grab'
+  // 退出画笔模式即丢弃全部笔迹：mask 是会话级草稿，不保留到下次涂抹
+  discardMaskStrokes()
   canvas.requestRenderAll()
 }
 
@@ -769,6 +771,19 @@ function clearMask(): void {
   paths.forEach((object) => canvas!.remove(object))
   hasMaskStrokes.value = false
   pushMaskUndo({ type: 'clear', paths })
+}
+
+// 静默丢弃全部笔迹（退出画笔模式用）：不入撤销栈并清空撤销栈，
+// 避免丢弃的草稿被 Ctrl+Z / 撤销按钮复活
+function discardMaskStrokes(): void {
+  if (!canvas) return
+  canvas
+    .getObjects()
+    .filter((object) => objectData(object).kind === 'mask')
+    .forEach((object) => canvas!.remove(object))
+  hasMaskStrokes.value = false
+  maskUndoStack.length = 0
+  canUndoMask.value = false
 }
 
 function lockAllObjects(): void {
