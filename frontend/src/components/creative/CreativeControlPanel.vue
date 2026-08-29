@@ -101,7 +101,7 @@
       {{ studio.busy.value ? t('creative.panel.generating') : t('creative.panel.generate') }}
     </button>
     <p v-if="studio.estimatedCost.value !== null" class="mt-2 text-center text-xs text-gray-400 dark:text-dark-400">
-      {{ t('creative.panel.estimatedCost', { cost: studio.estimatedCost.value }) }}
+      {{ t('creative.panel.estimatedCost', { cost: formatBalanceAmount(studio.estimatedCost.value, { fractionDigits: 3 }) }) }}
     </p>
     <p v-if="studio.error.value" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-500/10 dark:text-red-400">
       {{ studio.error.value }}
@@ -125,6 +125,7 @@ import TextArea from '@/components/common/TextArea.vue'
 import Icon from '@/components/icons/Icon.vue'
 import CropperModal from './CropperModal.vue'
 import { useAppStore } from '@/stores/app'
+import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 import { creativeOptionKey } from '@/composables/useCreativeStudio'
 
@@ -145,6 +146,7 @@ const studio = props.studio
 const emit = defineEmits<Emits>()
 const { t } = useI18n()
 const appStore = useAppStore()
+const { formatBalanceAmount } = useBalanceDisplay()
 
 const PROMPT_MAX = 8000
 

@@ -70,7 +70,7 @@
             </div>
             <div class="mt-1 flex items-center gap-2 text-[11px] text-gray-400 dark:text-dark-400">
               <span>{{ formatRunTime(run.created_at) }}</span>
-              <span v-if="run.actual_cost != null" class="ml-auto">{{ t('creative.result.actualCost', { cost: run.actual_cost }) }}</span>
+              <span v-if="run.actual_cost != null" class="ml-auto">{{ t('creative.result.actualCost', { cost: formatBalanceAmount(run.actual_cost, { fractionDigits: 3 }) }) }}</span>
             </div>
           </button>
 
@@ -143,6 +143,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { CreativeRun } from '@/api/creative'
 import { formatDateTime } from '@/utils/format'
 import { outputAssetKey, type LocalAsset } from '@/utils/creativeLocalStore'
+import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 
 type Studio = ReturnType<typeof useCreativeStudio>
@@ -155,6 +156,7 @@ const props = defineProps<Props>()
 // 本地别名：studio 为 props 传入的共享状态机，子组件经它读写
 const studio = props.studio
 const { t } = useI18n()
+const { formatBalanceAmount } = useBalanceDisplay()
 
 // 历史面板展开状态：默认折叠
 const open = ref(false)
