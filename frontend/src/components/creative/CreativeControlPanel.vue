@@ -67,12 +67,22 @@
     <div v-if="studio.sourceAssets.value.length" class="mt-2 grid grid-cols-3 gap-2">
       <div v-for="asset in studio.sourceAssets.value" :key="asset.key" class="group relative">
         <img :src="urlFor(asset.key, asset.blob)" :alt="asset.key" class="h-20 w-full rounded-md border border-primary-900/10 object-cover dark:border-dark-600" />
+        <!-- 删除 -->
         <button
           type="button"
           class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-80 hover:opacity-100"
           @click="onRemoveSource(asset.key)"
         >
           <Icon name="x" size="sm" />
+        </button>
+        <!-- 载入画布：把该素材加载到中间画布进行编辑 / 画笔 -->
+        <button
+          type="button"
+          :title="t('creative.panel.sendToCanvas')"
+          class="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded bg-black/60 text-white opacity-80 hover:opacity-100"
+          @click="emit('send-to-canvas', asset.blob)"
+        >
+          <Icon name="modalityImage" size="sm" />
         </button>
       </div>
     </div>
@@ -164,6 +174,7 @@ interface Props {
 interface Emits {
   (e: 'generate'): void
   (e: 'load-from-canvas'): void
+  (e: 'send-to-canvas', blob: Blob): void
 }
 
 const props = defineProps<Props>()

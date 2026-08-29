@@ -13,6 +13,7 @@ export default {
       sourceImages: '源图',
       uploadSource: '上传图片',
       uploadHint: '支持 PNG / JPEG / WebP，每张图片可先裁剪再加入列表。',
+      sendToCanvas: '载入画布',
       loadFromCanvas: '从画布载入源图',
       mask: 'Mask（重绘区域）',
       maskHint: '请先在画布上用画笔工具绘制 mask。',

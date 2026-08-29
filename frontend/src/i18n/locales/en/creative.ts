@@ -13,6 +13,7 @@ export default {
       sourceImages: 'Source images',
       uploadSource: 'Upload',
       uploadHint: 'PNG / JPEG / WebP. Each image can be cropped before joining the list.',
+      sendToCanvas: 'Send to canvas',
       loadFromCanvas: 'Load from canvas',
       mask: 'Mask (inpainting area)',
       maskHint: 'Paint the mask on the canvas with the brush tool first.',

@@ -5,7 +5,7 @@
       <div class="flex flex-col gap-4 lg:h-[calc(100dvh-10rem)] lg:flex-row">
         <!-- 左：控制面板 -->
         <div class="w-full flex-shrink-0 rounded-xl border border-primary-900/10 bg-white dark:border-dark-600 dark:bg-dark-900 lg:w-80">
-          <CreativeControlPanel :studio="studio" @generate="onGenerate" @load-from-canvas="onLoadFromCanvas" />
+          <CreativeControlPanel :studio="studio" @generate="onGenerate" @load-from-canvas="onLoadFromCanvas" @send-to-canvas="onSendToCanvas" />
         </div>
 
         <!-- 中：画布 -->
@@ -111,6 +111,15 @@ async function onUseAsSource(blob: Blob): Promise<void> {
 // 画布导出的合成图直接入库
 async function onComposite(blob: Blob): Promise<void> {
   await studio.addSourceAsset(blob)
+}
+
+// 源图缩略图载入画布：在中间画布继续编辑 / 绘制 mask
+async function onSendToCanvas(blob: Blob): Promise<void> {
+  try {
+    await canvasRef.value?.loadBlobAsImage(blob)
+  } catch {
+    studio.error.value = t('creative.error.loadImageFailed')
+  }
 }
 
 function onCanvasError(message: string): void {
