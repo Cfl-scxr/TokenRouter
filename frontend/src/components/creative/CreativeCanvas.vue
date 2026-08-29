@@ -5,7 +5,7 @@
 
     <!-- 浮动工具栏（移动端底部，桌面端顶部）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
-      class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-auto lg:top-3"
+      class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90 lg:bottom-auto lg:top-3"
     >
       <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
       <button type="button" class="canvas-tool-btn" :title="t('creative.panel.uploadSource')" @click="fileInputRef?.click()">
@@ -176,6 +176,8 @@ const MAX_ZOOM = 3
 // 输出自动上板的排布参数
 const PLACE_GAP = 40
 const PLACE_WRAP_X = 2200
+// 上传图片的上板缩放：原始图过大，按 1/4 线性尺寸（1/16 面积）放置，blob 本身不变
+const UPLOAD_PLACE_SCALE = 0.25
 // 图片 src 在场景快照中的占位协议，恢复时回 IndexedDB 取 blob
 const ASSET_PROTOCOL = 'asset://'
 // mask 导出色（导出为白底透明 PNG 的白色轨迹）；展示用紫色叠加层，二者分离避免白图上看不见笔迹
@@ -683,11 +685,12 @@ function nextPlacementPoint(width: number, height: number): { x: number; y: numb
   return { x, y }
 }
 
-// 把图片 blob 放上画布：左上角定位于 position，登记 data 与运行时 blob
+// 把图片 blob 放上画布：左上角定位于 position，按 scale 缩放显示（原始 blob 不受影响），登记 data 与运行时 blob
 async function addImageToScene(
   blob: Blob,
   meta: { assetKey: string; runId?: string; outputIndex?: number },
   position: { x: number; y: number },
+  scale = 1,
 ): Promise<FabricImage | null> {
   if (!canvas) return null
   const url = URL.createObjectURL(blob)
@@ -696,6 +699,8 @@ async function addImageToScene(
     image.set({
       left: position.x,
       top: position.y,
+      scaleX: scale,
+      scaleY: scale,
     })
     setObjectData(image, {
       kind: 'image',
@@ -756,9 +761,16 @@ async function addUploadedImage(blob: Blob): Promise<void> {
   }
   runtimeBlobs.set(assetKey, blob)
   try {
+    // 上传图按 1/4 尺寸上板（原始 blob 不变，源图仍发全分辨率给模型）
     const size = await probeImageSize(blob)
     const center = viewCenterScene()
-    await addImageToScene(blob, { assetKey }, { x: center.x - size.width / 2, y: center.y - size.height / 2 })
+    const scale = UPLOAD_PLACE_SCALE
+    await addImageToScene(
+      blob,
+      { assetKey },
+      { x: center.x - (size.width * scale) / 2, y: center.y - (size.height * scale) / 2 },
+      scale,
+    )
     scheduleSceneSave()
   } catch (error) {
     console.error('Failed to place uploaded image:', error)
