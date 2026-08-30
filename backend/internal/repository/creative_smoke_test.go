@@ -392,7 +392,6 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 		Prompt:       "smoke prompt",
 		SourceImages: []service.CreativeInputImage{{Bytes: png, Mime: "image/png"}},
 		ImageSize:    "1K",
-		ResponseMIME: "image/png",
 	}, "smoke-idem-key")
 	require.NoError(t, err)
 	require.Equal(t, service.CreativeRunStatusQueued, created.Status)

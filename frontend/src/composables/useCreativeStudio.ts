@@ -46,8 +46,12 @@ interface CreativeSelectionSettings {
   imageSize: string
   aspectRatio: string
   quality: string
-  // 兼容旧记录：历史版本没有保存提示词草稿
-  prompt?: string
+  outputFormat: string
+  outputCompression: number | null
+  background: string
+  thinkingLevel: string
+  outputCount: number
+  prompt: string
 }
 
 const SETTINGS_KEY = 'creative:selection'
@@ -83,8 +87,13 @@ export function useCreativeStudio() {
   const prompt = ref('')
   const imageSize = ref('')
   const aspectRatio = ref('1:1')
-  // 生图画质档位（low/medium/high），仅 OpenAI 平台模型可选，空串 = 不指定（上游默认）
+  // 模型级画质档位，空串表示沿用上游默认值。
   const quality = ref('')
+  const outputFormat = ref('')
+  const outputCompression = ref<number | null>(null)
+  const background = ref('')
+  const thinkingLevel = ref('')
+  const outputCount = ref(1)
   const currentRun = ref<CreativeRun | null>(null)
   const runHistory = ref<CreativeRun[]>([])
   const loadingHistory = ref(false)
@@ -131,21 +140,45 @@ export function useCreativeStudio() {
 
   const imageSizeOptions = computed(() => selectedOption.value?.image_sizes ?? [])
 
+  const aspectRatioOptions = computed(() => selectedOption.value?.aspect_ratios ?? [])
+
   // 可选画质档位（模型不支持时为空，参数面板隐藏画质行）
   const qualityOptions = computed(() => selectedOption.value?.qualities ?? [])
+
+  const outputFormatOptions = computed(() => selectedOption.value?.output_formats ?? [])
+
+  const outputCompressionRange = computed(() => selectedOption.value?.output_compression ?? null)
+
+  const backgroundOptions = computed(() => {
+    const options = selectedOption.value?.background_options ?? []
+    return outputFormat.value === 'jpeg' ? options.filter((option) => option !== 'transparent') : options
+  })
+
+  const thinkingLevelOptions = computed(() => selectedOption.value?.thinking_levels ?? [])
+
+  const maxOutputCount = computed(() => Math.max(1, selectedOption.value?.max_output_count ?? 1))
+
+  const maxReferenceImages = computed(() => Math.max(1, selectedOption.value?.max_reference_images ?? 1))
 
   // 估算费用直接使用模型目录返回的档位价格，避免创作台与模型广场价格口径不一致。
   const estimatedCost = computed(() => {
     const option = selectedOption.value
     if (!option) return null
+    let unitPrice: number
     switch (imageSize.value) {
+      case '512':
+        unitPrice = option.price_512 ?? option.price_1k
+        break
       case '2K':
-        return option.price_2k
+        unitPrice = option.price_2k
+        break
       case '4K':
-        return option.price_4k
+        unitPrice = option.price_4k
+        break
       default:
-        return option.price_1k
+        unitPrice = option.price_1k
     }
+    return unitPrice * outputCount.value
   })
 
   const canGenerate = computed(() => {
@@ -186,6 +219,11 @@ export function useCreativeStudio() {
       if (saved.imageSize) imageSize.value = saved.imageSize
       if (saved.aspectRatio) aspectRatio.value = saved.aspectRatio
       if (typeof saved.quality === 'string') quality.value = saved.quality
+      if (typeof saved.outputFormat === 'string') outputFormat.value = saved.outputFormat
+      if (typeof saved.outputCompression === 'number') outputCompression.value = saved.outputCompression
+      if (typeof saved.background === 'string') background.value = saved.background
+      if (typeof saved.thinkingLevel === 'string') thinkingLevel.value = saved.thinkingLevel
+      if (typeof saved.outputCount === 'number') outputCount.value = saved.outputCount
       if (typeof saved.prompt === 'string') prompt.value = saved.prompt.slice(0, PROMPT_MAX_LENGTH)
       normalizeSelection()
     } catch (e) {
@@ -196,7 +234,7 @@ export function useCreativeStudio() {
     }
   }
 
-  // 选择变更后兜底：operation/imageSize/quality 必须在选项能力范围内
+  // 选择变更后兜底：所有参数必须落在服务端返回的模型能力范围内。
   function normalizeSelection(): void {
     const option = selectedOption.value
     if (!option) return
@@ -204,12 +242,37 @@ export function useCreativeStudio() {
       operation.value = option.operations[0] ?? 'generate'
     }
     if (!option.image_sizes.includes(imageSize.value)) {
-      imageSize.value = option.image_sizes[0] ?? ''
+      imageSize.value = option.image_sizes.includes('1K') ? '1K' : (option.image_sizes[0] ?? '')
+    }
+    const aspectRatios = option.aspect_ratios ?? []
+    if (!aspectRatios.includes(aspectRatio.value)) {
+      aspectRatio.value = aspectRatios[0] ?? ''
     }
     const qualities = option.qualities ?? []
     if (quality.value && !qualities.includes(quality.value)) {
       quality.value = ''
     }
+    const outputFormats = option.output_formats ?? []
+    if (!outputFormats.includes(outputFormat.value)) {
+      outputFormat.value = outputFormats[0] ?? ''
+    }
+    const compressionRange = option.output_compression
+    const compressionEnabled = compressionRange && (outputFormat.value === 'jpeg' || outputFormat.value === 'webp')
+    if (compressionEnabled && compressionRange) {
+      const current = outputCompression.value ?? compressionRange.max
+      outputCompression.value = Math.min(compressionRange.max, Math.max(compressionRange.min, current))
+    } else {
+      outputCompression.value = null
+    }
+    const backgrounds = backgroundOptions.value
+    if (background.value && !backgrounds.includes(background.value)) {
+      background.value = ''
+    }
+    const thinkingLevels = option.thinking_levels ?? []
+    if (thinkingLevel.value && !thinkingLevels.includes(thinkingLevel.value)) {
+      thinkingLevel.value = ''
+    }
+    outputCount.value = Math.min(Math.max(1, outputCount.value), Math.max(1, option.max_output_count ?? 1))
   }
 
   function selectOption(key: string): void {
@@ -224,6 +287,11 @@ export function useCreativeStudio() {
       imageSize: imageSize.value,
       aspectRatio: aspectRatio.value,
       quality: quality.value,
+      outputFormat: outputFormat.value,
+      outputCompression: outputCompression.value,
+      background: background.value,
+      thinkingLevel: thinkingLevel.value,
+      outputCount: outputCount.value,
       prompt: prompt.value.slice(0, PROMPT_MAX_LENGTH),
     }
   }
@@ -264,11 +332,14 @@ export function useCreativeStudio() {
 
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, quality, prompt],
+    [selectedOptionKey, operation, imageSize, aspectRatio, quality, outputFormat, outputCompression, background, thinkingLevel, outputCount, prompt],
     scheduleSelectionSettingsSave,
     // 使用同步 watcher 先记录脏状态，确保 pagehide 触发时能拿到最新提示词。
     { flush: 'sync' },
   )
+
+  // 输出格式变化时同步压缩和背景约束，避免提交服务端会拒绝的组合。
+  watch(outputFormat, normalizeSelection)
 
   // ==================== 画布桥接 ====================
 
@@ -365,6 +436,10 @@ export function useCreativeStudio() {
       error.value = t('creative.error.maskRequired')
       return false
     }
+    if (exported.sourceBlobs.length > maxReferenceImages.value) {
+      error.value = t('creative.error.referenceLimit', { max: maxReferenceImages.value })
+      return false
+    }
 
     busy.value = true
     error.value = ''
@@ -382,10 +457,21 @@ export function useCreativeStudio() {
       form.append('prompt', prompt.value)
       form.append('image_size', imageSize.value)
       form.append('aspect_ratio', aspectRatio.value)
-      form.append('response_mime_type', 'image/png')
-      // 画质仅 OpenAI 平台模型可选，非空才提交（空 = 上游默认）
+      form.append('output_count', String(outputCount.value))
       if (quality.value) {
         form.append('quality', quality.value)
+      }
+      if (outputFormat.value) {
+        form.append('output_format', outputFormat.value)
+      }
+      if (outputCompression.value !== null) {
+        form.append('output_compression', String(outputCompression.value))
+      }
+      if (background.value) {
+        form.append('background', background.value)
+      }
+      if (thinkingLevel.value) {
+        form.append('thinking_level', thinkingLevel.value)
       }
       exported.sourceBlobs.forEach((blob, index) => {
         form.append('source_images[]', blob, `source-${index}.png`)
@@ -743,6 +829,11 @@ export function useCreativeStudio() {
     imageSize,
     aspectRatio,
     quality,
+    outputFormat,
+    outputCompression,
+    background,
+    thinkingLevel,
+    outputCount,
     currentRun,
     runHistory,
     loadingHistory,
@@ -754,7 +845,14 @@ export function useCreativeStudio() {
     // 计算
     operationOptions,
     imageSizeOptions,
+    aspectRatioOptions,
     qualityOptions,
+    outputFormatOptions,
+    outputCompressionRange,
+    backgroundOptions,
+    thinkingLevelOptions,
+    maxOutputCount,
+    maxReferenceImages,
     estimatedCost,
     canGenerate,
     // 方法

@@ -11,6 +11,11 @@ export default {
       imageSize: '图片尺寸',
       aspectRatio: '画面比例',
       quality: '画质',
+      outputFormat: '输出格式',
+      outputCompression: '压缩质量',
+      background: '背景',
+      thinkingLevel: '思考强度',
+      outputCount: '生成数量',
       estimatedCost: '{cost}',
       uploadSource: '上传图片',
       promptPlaceholder: '描述想要生成的画面...',
@@ -43,10 +48,27 @@ export default {
       '16x9': '16:9',
       '9x16': '9:16',
     },
-    // 生图画质档位（OpenAI gpt-image 系列；再次点击已选项取消选择 = 上游默认）
+    // 生图画质档位由模型目录下发；再次点击已选项取消选择表示使用上游默认。
     qualities: {
       low: '低',
       medium: '中',
+      high: '高',
+      auto: '自动',
+    },
+    outputFormats: {
+      png: 'PNG',
+      jpeg: 'JPEG',
+      webp: 'WebP',
+    },
+    backgrounds: {
+      default: '上游默认',
+      auto: '自动',
+      opaque: '不透明',
+      transparent: '透明',
+    },
+    thinkingLevels: {
+      default: '模型默认',
+      minimal: '最少',
       high: '高',
     },
     canvas: {
@@ -111,6 +133,7 @@ export default {
       promptTooLong: '提示词超过 8000 字。',
       sourceRequired: '图生图 / 局部重绘至少需要一张源图。',
       maskRequired: '局部重绘需要 mask，请先选中图片并用画笔绘制要重绘的区域。',
+      referenceLimit: '当前模型最多支持 {max} 张参考图。',
       submitFailed: '提交生成失败，请重试。',
       historyFailed: '历史记录加载失败，请检查当前浏览器存储权限后重试。',
       workspaceUnavailable: '当前浏览器工作区不可用，请允许本站使用本地存储后重试。',

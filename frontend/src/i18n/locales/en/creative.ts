@@ -11,6 +11,11 @@ export default {
       imageSize: 'Image size',
       aspectRatio: 'Aspect ratio',
       quality: 'Quality',
+      outputFormat: 'Output format',
+      outputCompression: 'Compression quality',
+      background: 'Background',
+      thinkingLevel: 'Thinking level',
+      outputCount: 'Output count',
       estimatedCost: '{cost}',
       uploadSource: 'Upload image',
       promptPlaceholder: 'Describe the image you want to create...',
@@ -43,10 +48,27 @@ export default {
       '16x9': '16:9',
       '9x16': '9:16',
     },
-    // 生图画质档位（OpenAI gpt-image 系列；再次点击已选项取消选择 = 上游默认）
+    // 生图画质档位由模型目录下发；再次点击已选项取消选择表示使用上游默认。
     qualities: {
       low: 'Low',
       medium: 'Medium',
+      high: 'High',
+      auto: 'Auto',
+    },
+    outputFormats: {
+      png: 'PNG',
+      jpeg: 'JPEG',
+      webp: 'WebP',
+    },
+    backgrounds: {
+      default: 'Provider default',
+      auto: 'Auto',
+      opaque: 'Opaque',
+      transparent: 'Transparent',
+    },
+    thinkingLevels: {
+      default: 'Model default',
+      minimal: 'Minimal',
       high: 'High',
     },
     canvas: {
@@ -111,6 +133,7 @@ export default {
       promptTooLong: 'Prompt exceeds 8000 characters.',
       sourceRequired: 'Edit and inpaint operations require at least one source image.',
       maskRequired: 'Inpaint requires a mask. Select an image and paint the area with the brush first.',
+      referenceLimit: 'This model supports at most {max} reference images.',
       submitFailed: 'Failed to submit the creative run. Please retry.',
       historyFailed: 'Failed to load run history. Check this browser storage permission and retry.',
       workspaceUnavailable: 'This browser workspace is unavailable. Allow local storage for this site and retry.',

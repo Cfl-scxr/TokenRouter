@@ -305,6 +305,9 @@ func normalizeCreativeOutputs(outputs []CreativeOutput, requested int) ([]Creati
 	if len(out) == 0 {
 		return nil, creativeNonRetryableError("provider returned no usable image output")
 	}
+	if requested > 0 && len(out) < requested {
+		return nil, creativeNonRetryableError("provider returned %d image outputs, expected %d", len(out), requested)
+	}
 	if requested > 0 && len(out) > requested {
 		out = out[:requested]
 	}
@@ -360,6 +363,9 @@ func creativeGrokAspectRatio(aspectRatio string) string {
 	aspectRatio = strings.TrimSpace(aspectRatio)
 	if aspectRatio == "" {
 		return ""
+	}
+	if aspectRatio == "auto" {
+		return aspectRatio
 	}
 	for _, candidate := range grokImagineAspectRatioValues {
 		if candidate.label == aspectRatio {

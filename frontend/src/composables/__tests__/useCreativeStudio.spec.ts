@@ -54,8 +54,16 @@ const MODEL = {
   group_name: 'Group A',
   model: 'model-x',
   operations: ['generate', 'edit', 'inpaint'],
-  image_sizes: ['1K', '2K'],
-  qualities: ['low', 'medium', 'high'],
+  image_sizes: ['512', '1K', '2K'],
+  aspect_ratios: ['1:1', '4:3', '16:9'],
+  qualities: ['low', 'medium', 'high', 'auto'],
+  output_formats: ['png', 'jpeg', 'webp'],
+  output_compression: { min: 0, max: 100, step: 1 },
+  background_options: ['auto', 'opaque', 'transparent'],
+  thinking_levels: [],
+  max_output_count: 3,
+  max_reference_images: 16,
+  price_512: 1.5,
   price_1k: 2,
   price_2k: 3,
   price_4k: 4,
@@ -125,13 +133,18 @@ describe('useCreativeStudio', () => {
   }
 
   describe('创作参数本地持久化', () => {
-    it('恢复包含提示词的新设置记录，并兼容没有提示词的旧记录', async () => {
+    it('恢复完整的模型参数与提示词设置', async () => {
       mockedStore.loadSetting.mockResolvedValueOnce({
         optionKey: creativeOptionKey(MODEL),
         operation: 'edit',
         imageSize: '2K',
         aspectRatio: '4:3',
         quality: 'high',
+        outputFormat: 'webp',
+        outputCompression: 76,
+        background: 'transparent',
+        thinkingLevel: '',
+        outputCount: 3,
         prompt: '恢复的提示词',
       })
       const { studio, wrapper } = mountStudio()
@@ -143,19 +156,11 @@ describe('useCreativeStudio', () => {
       expect(studio.imageSize.value).toBe('2K')
       expect(studio.aspectRatio.value).toBe('4:3')
       expect(studio.quality.value).toBe('high')
+      expect(studio.outputFormat.value).toBe('webp')
+      expect(studio.outputCompression.value).toBe(76)
+      expect(studio.background.value).toBe('transparent')
+      expect(studio.outputCount.value).toBe(3)
       wrapper.unmount()
-
-      mockedStore.loadSetting.mockResolvedValueOnce({
-        optionKey: creativeOptionKey(MODEL),
-        operation: 'generate',
-        imageSize: '1K',
-        aspectRatio: '1:1',
-        quality: '',
-      })
-      const second = mountStudio()
-      await second.studio.loadModels()
-      expect(second.studio.prompt.value).toBe('')
-      second.wrapper.unmount()
     })
 
     it('提示词输入使用防抖写入，并在页面隐藏时立即刷新', async () => {
@@ -250,6 +255,12 @@ describe('useCreativeStudio', () => {
       expect(studio.estimatedCost.value).toBe(3)
       studio.imageSize.value = '4K'
       expect(studio.estimatedCost.value).toBe(4)
+		studio.imageSize.value = '512'
+		expect(studio.estimatedCost.value).toBe(1.5)
+
+		studio.imageSize.value = '2K'
+		studio.outputCount.value = 3
+		expect(studio.estimatedCost.value).toBe(9)
     })
   })
 
@@ -257,6 +268,11 @@ describe('useCreativeStudio', () => {
     it('成功路径：FormData 字段齐全并启动轮询', async () => {
       const { studio } = await setupStudio()
       studio.prompt.value = '一只猫'
+		studio.quality.value = 'high'
+		studio.outputFormat.value = 'jpeg'
+		studio.background.value = 'opaque'
+		studio.outputCount.value = 2
+		await Promise.resolve()
       const sourceBlob = new Blob(['src'], { type: 'image/png' })
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'queued' }))
       mockedApi.getCreativeRuns.mockResolvedValue({
@@ -277,8 +293,12 @@ describe('useCreativeStudio', () => {
       expect(form.get('prompt')).toBe('一只猫')
       expect(form.get('image_size')).toBe('1K')
       expect(form.get('aspect_ratio')).toBe('1:1')
-      expect(form.get('output_count')).toBeNull()
-      expect(form.get('response_mime_type')).toBe('image/png')
+		expect(form.get('output_count')).toBe('2')
+		expect(form.get('quality')).toBe('high')
+		expect(form.get('output_format')).toBe('jpeg')
+		expect(form.get('output_compression')).toBe('100')
+		expect(form.get('background')).toBe('opaque')
+		expect(form.get('response_mime_type')).toBeNull()
       expect(form.getAll('source_images[]')).toHaveLength(1)
 
       // 进入轮询：前进 3s 后发出第一次批量列表查询

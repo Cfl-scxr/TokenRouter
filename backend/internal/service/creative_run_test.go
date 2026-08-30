@@ -74,14 +74,15 @@ func TestNewCreativeRunID(t *testing.T) {
 // TestBuildCreativeRequestFingerprint 校验指纹确定性：输入不变指纹不变，任一字段变化指纹变化。
 func TestBuildCreativeRequestFingerprint(t *testing.T) {
 	base := creativeFingerprintPayload{
-		GroupID:          12,
-		Model:            "gemini-3.1-flash-image",
-		Operation:        CreativeOperationGenerate,
-		PromptSHA256:     sha256Hex([]byte("hello")),
-		ImageSHA256:      []string{sha256Hex([]byte("img"))},
-		ImageSize:        "1K",
-		AspectRatio:      "1:1",
-		ResponseMIMEType: "image/png",
+		GroupID:      12,
+		Model:        "gemini-3.1-flash-image",
+		Operation:    CreativeOperationGenerate,
+		PromptSHA256: sha256Hex([]byte("hello")),
+		ImageSHA256:  []string{sha256Hex([]byte("img"))},
+		ImageSize:    "1K",
+		AspectRatio:  "1:1",
+		OutputFormat: "png",
+		OutputCount:  1,
 	}
 	first := buildCreativeRequestFingerprint(base)
 	require.NotEmpty(t, first)

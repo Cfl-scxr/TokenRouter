@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -89,7 +90,7 @@ func (e *CreativeExecutor) creativeOpenAIURL(account *Account, endpoint string) 
 
 // buildCreativeOpenAIRequestBody 构造 OpenAI images 请求体：
 // generate 为 JSON；edit/inpaint 为 multipart（image 多文件、mask、model、prompt）。
-// quality 仅 OpenAI 平台校验通过，非空时透传给上游。
+// 所有可选输出参数均已经过模型能力校验，生成与编辑请求保持同一语义。
 func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload, upstreamModel string) ([]byte, string, error) {
 	if run.Operation == CreativeOperationGenerate {
 		bodyMap := map[string]any{
@@ -101,6 +102,15 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 		}
 		if quality := strings.TrimSpace(payload.Quality); quality != "" {
 			bodyMap["quality"] = quality
+		}
+		if outputFormat := strings.TrimSpace(payload.OutputFormat); outputFormat != "" {
+			bodyMap["output_format"] = outputFormat
+		}
+		if payload.OutputCompression != nil {
+			bodyMap["output_compression"] = *payload.OutputCompression
+		}
+		if background := strings.TrimSpace(payload.Background); background != "" {
+			bodyMap["background"] = background
 		}
 		body, err := json.Marshal(bodyMap)
 		if err != nil {
@@ -138,8 +148,29 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 	if err := writer.WriteField("response_format", "b64_json"); err != nil {
 		return nil, "", err
 	}
+	if err := writer.WriteField("size", creativeOpenAIImageSize(run.ImageSize, run.AspectRatio)); err != nil {
+		return nil, "", err
+	}
+	if err := writer.WriteField("n", strconv.Itoa(max(run.RequestedOutputCount, 1))); err != nil {
+		return nil, "", err
+	}
 	if quality := strings.TrimSpace(payload.Quality); quality != "" {
 		if err := writer.WriteField("quality", quality); err != nil {
+			return nil, "", err
+		}
+	}
+	if outputFormat := strings.TrimSpace(payload.OutputFormat); outputFormat != "" {
+		if err := writer.WriteField("output_format", outputFormat); err != nil {
+			return nil, "", err
+		}
+	}
+	if payload.OutputCompression != nil {
+		if err := writer.WriteField("output_compression", strconv.Itoa(*payload.OutputCompression)); err != nil {
+			return nil, "", err
+		}
+	}
+	if background := strings.TrimSpace(payload.Background); background != "" {
+		if err := writer.WriteField("background", background); err != nil {
 			return nil, "", err
 		}
 	}

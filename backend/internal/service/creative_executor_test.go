@@ -84,10 +84,15 @@ func TestNormalizeCreativeOutputs(t *testing.T) {
 		{Index: 0, Bytes: []byte("same"), Mime: "image/png"},
 		{Index: 1, Bytes: []byte("same"), Mime: "image/png"},
 		{Index: 2, Bytes: []byte("other"), Mime: "image/png"},
-	}, 4)
+	}, 2)
 	require.NoError(t, err)
 	require.Len(t, outputs, 2)
 	require.Equal(t, []byte("other"), outputs[1].Bytes)
+
+	// 返回数量少于请求数量时整体失败，避免留下 pending 输出行。
+	_, err = normalizeCreativeOutputs([]CreativeOutput{{Index: 0, Bytes: []byte("only"), Mime: "image/png"}}, 2)
+	require.Error(t, err)
+	require.False(t, IsRetryableCreativeError(err))
 
 	// requested 截断并重排行号。
 	outputs, err = normalizeCreativeOutputs([]CreativeOutput{
@@ -208,7 +213,7 @@ func TestCreativeGeminiConfiguredImageWhitelistCandidates(t *testing.T) {
 // TestBuildCreativeGrokRequest 校验 grok 请求体构造。
 func TestBuildCreativeGrokRequest(t *testing.T) {
 	run := CreativeRun{ImageSize: "2K", AspectRatio: "16:9", RequestedOutputCount: 2}
-	payload := CreativeRunPayload{Prompt: "画猫"}
+	payload := CreativeRunPayload{Prompt: "画猫", Quality: "low"}
 	request := buildCreativeGrokRequest(run, payload, "grok-imagine")
 	require.Equal(t, "grok-imagine", request["model"])
 	require.Equal(t, "画猫", request["prompt"])
@@ -216,6 +221,7 @@ func TestBuildCreativeGrokRequest(t *testing.T) {
 	require.Equal(t, "b64_json", request["response_format"])
 	require.Equal(t, "2k", request["resolution"])
 	require.Equal(t, "16:9", request["aspect_ratio"])
+	require.Equal(t, "low", request["quality"])
 
 	// 不支持的 aspect_ratio 不落字段；1K 映射 1k。
 	run = CreativeRun{ImageSize: "1K", AspectRatio: "21:99"}
@@ -227,9 +233,10 @@ func TestBuildCreativeGrokRequest(t *testing.T) {
 
 // TestBuildCreativeGrokEditRequest 校验 Grok 单图与多图编辑 JSON 结构。
 func TestBuildCreativeGrokEditRequest(t *testing.T) {
-	run := CreativeRun{ImageSize: "2K", AspectRatio: "16:9"}
+	run := CreativeRun{ImageSize: "2K", AspectRatio: "16:9", RequestedOutputCount: 2}
 	payload := CreativeRunPayload{
-		Prompt: "edit image",
+		Prompt:  "edit image",
+		Quality: "medium",
 		Sources: []CreativeInputImage{
 			{Bytes: []byte("first"), Mime: "image/png"},
 			{Bytes: []byte("second"), Mime: "image/jpeg"},
@@ -241,6 +248,8 @@ func TestBuildCreativeGrokEditRequest(t *testing.T) {
 	require.Equal(t, "b64_json", request["response_format"])
 	require.Equal(t, "2k", request["resolution"])
 	require.Equal(t, "16:9", request["aspect_ratio"])
+	require.Equal(t, 2, request["n"])
+	require.Equal(t, "medium", request["quality"])
 	require.NotContains(t, request, "image")
 	images, ok := request["images"].([]map[string]string)
 	require.True(t, ok)
@@ -288,7 +297,7 @@ func TestExecuteCreativeGrokEditUsesJSONEditEndpoint(t *testing.T) {
 	require.Equal(t, "b64_json", editBody["response_format"])
 	require.Equal(t, "2k", editBody["resolution"])
 	require.Equal(t, "16:9", editBody["aspect_ratio"])
-	require.NotContains(t, editBody, "n")
+	require.Equal(t, float64(1), editBody["n"])
 	image, ok := editBody["image"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "image_url", image["type"])
@@ -304,12 +313,26 @@ func TestExecuteCreativeGrokEditUsesJSONEditEndpoint(t *testing.T) {
 func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	// generate：JSON。
 	run := CreativeRun{Operation: CreativeOperationGenerate, ImageSize: "1K", RequestedOutputCount: 2}
-	payload := CreativeRunPayload{Prompt: "hello"}
+	compression := 55
+	payload := CreativeRunPayload{
+		Prompt:            "hello",
+		Quality:           "high",
+		OutputFormat:      "webp",
+		OutputCompression: &compression,
+		Background:        "opaque",
+	}
 	body, contentType, err := buildCreativeOpenAIRequestBody(run, payload, "gpt-image-2")
 	require.NoError(t, err)
 	require.Equal(t, "application/json", contentType)
-	require.Contains(t, string(body), `"model":"gpt-image-2"`)
-	require.Contains(t, string(body), `"response_format":"b64_json"`)
+	var generateBody map[string]any
+	require.NoError(t, json.Unmarshal(body, &generateBody))
+	require.Equal(t, "gpt-image-2", generateBody["model"])
+	require.Equal(t, "b64_json", generateBody["response_format"])
+	require.Equal(t, float64(2), generateBody["n"])
+	require.Equal(t, "high", generateBody["quality"])
+	require.Equal(t, "webp", generateBody["output_format"])
+	require.Equal(t, float64(55), generateBody["output_compression"])
+	require.Equal(t, "opaque", generateBody["background"])
 
 	// GPT Image 2 的 4K 横向尺寸使用真实的 3840x2160 像素值。
 	run = CreativeRun{Operation: CreativeOperationGenerate, ImageSize: "4K", AspectRatio: "16:9", RequestedOutputCount: 1}
@@ -319,8 +342,16 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.Contains(t, string(body), `"size":"3840x2160"`)
 
 	// inpaint：multipart，含 image/mask/model/prompt 字段。
-	run = CreativeRun{Operation: CreativeOperationInpaint, ImageSize: "1K"}
-	payload = CreativeRunPayload{Prompt: "inpaint me", Sources: []CreativeInputImage{{Bytes: []byte("img"), Mime: "image/png"}}, Mask: &CreativeInputImage{Bytes: []byte("mask"), Mime: "image/png"}}
+	run = CreativeRun{Operation: CreativeOperationInpaint, ImageSize: "1K", AspectRatio: "1:1", RequestedOutputCount: 2}
+	payload = CreativeRunPayload{
+		Prompt:            "inpaint me",
+		Sources:           []CreativeInputImage{{Bytes: []byte("img"), Mime: "image/png"}},
+		Mask:              &CreativeInputImage{Bytes: []byte("mask"), Mime: "image/png"},
+		Quality:           "high",
+		OutputFormat:      "webp",
+		OutputCompression: &compression,
+		Background:        "opaque",
+	}
 	body, contentType, err = buildCreativeOpenAIRequestBody(run, payload, "gpt-image-2")
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(contentType, "multipart/form-data"))
@@ -328,14 +359,21 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.Contains(t, string(body), `name="mask"`)
 	require.Contains(t, string(body), `name="model"`)
 	require.Contains(t, string(body), `name="prompt"`)
+	require.Contains(t, string(body), `name="size"`)
+	require.Contains(t, string(body), `name="n"`)
+	require.Contains(t, string(body), `name="quality"`)
+	require.Contains(t, string(body), `name="output_format"`)
+	require.Contains(t, string(body), `name="output_compression"`)
+	require.Contains(t, string(body), `name="background"`)
 }
 
 // TestBuildCreativeGeminiRequest 校验 Gemini edit 请求体构造，且不附加独立 mask。
 func TestBuildCreativeGeminiRequest(t *testing.T) {
-	run := CreativeRun{Operation: CreativeOperationEdit, ImageSize: "2K", AspectRatio: "16:9", ResponseMIMEType: "image/png"}
+	run := CreativeRun{Operation: CreativeOperationEdit, ImageSize: "2K", AspectRatio: "16:9"}
 	payload := CreativeRunPayload{
-		Prompt:  "重绘",
-		Sources: []CreativeInputImage{{Bytes: []byte("src"), Mime: "image/jpeg"}},
+		Prompt:        "重绘",
+		ThinkingLevel: "high",
+		Sources:       []CreativeInputImage{{Bytes: []byte("src"), Mime: "image/jpeg"}},
 	}
 	request := buildCreativeGeminiRequest(run, payload, "gemini-3.1-flash-image")
 	require.Len(t, request.Contents, 1)
@@ -347,12 +385,14 @@ func TestBuildCreativeGeminiRequest(t *testing.T) {
 	require.NotNil(t, request.GenerationConfig.ImageConfig)
 	require.Equal(t, "2K", request.GenerationConfig.ImageConfig.ImageSize)
 	require.Equal(t, "16:9", request.GenerationConfig.ImageConfig.AspectRatio)
-	require.Equal(t, "image/png", request.GenerationConfig.ResponseMimeType)
+	require.NotNil(t, request.GenerationConfig.ThinkingConfig)
+	require.Equal(t, "high", request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+	require.False(t, request.GenerationConfig.ThinkingConfig.IncludeThoughts)
 
 	// 必须校验序列化后的层级，避免只检查内存结构而漏掉真实上游请求格式。
 	body, err := json.Marshal(request)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"contents":[{"parts":[{"text":"重绘"},{"inlineData":{"mimeType":"image/jpeg","data":"c3Jj"}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"2K","aspectRatio":"16:9"},"responseMimeType":"image/png"}}`, string(body))
+	require.JSONEq(t, `{"contents":[{"parts":[{"text":"重绘"},{"inlineData":{"mimeType":"image/jpeg","data":"c3Jj"}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"2K","aspectRatio":"16:9"},"thinkingConfig":{"thinkingLevel":"high","includeThoughts":false}}}`, string(body))
 }
 
 // TestCreativeGeminiInpaintIsRejectedBeforeUpstream 校验历史 Gemini inpaint 任务不会触发上游请求。

@@ -10,6 +10,13 @@ import { apiClient } from './client'
 // 创作台支持的操作类型，以服务端返回的 operations 为准
 export type CreativeOperation = 'generate' | 'edit' | 'inpaint' | (string & {})
 
+// 服务端下发的数值参数范围；当前用于 OpenAI 图片压缩级别。
+export interface CreativeNumericRange {
+  min: number
+  max: number
+  step: number
+}
+
 // 模型目录项：分组 + 模型的合成选项
 export interface CreativeModelOption {
   group_id: string
@@ -17,9 +24,16 @@ export interface CreativeModelOption {
   model: string
   operations: CreativeOperation[]
   image_sizes: string[]
-  // 可选画质档位（low/medium/high），仅 OpenAI 平台模型下发
-  qualities?: string[]
-  // 三档图片展示单价，直接使用服务端统一定价结果
+  aspect_ratios: string[]
+  qualities: string[]
+  output_formats: string[]
+  output_compression?: CreativeNumericRange | null
+  background_options?: string[]
+  thinking_levels?: string[]
+  max_output_count?: number
+  max_reference_images?: number
+  // 图片展示单价，直接使用服务端统一定价结果；512 仅供支持该档位的 Gemini 模型使用
+  price_512?: number
   price_1k: number
   price_2k: number
   price_4k: number
@@ -63,6 +77,7 @@ export interface CreativeRun {
   model: string
   group_id: string
   requested_output_count: number
+  output_format?: string
   estimated_cost?: number
   hold_amount?: number
   actual_cost?: number | null

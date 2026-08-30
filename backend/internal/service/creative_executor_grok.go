@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 )
 
 // executeGrok 执行 Grok 平台任务：generate 与 edit 分别使用 xAI 图片端点。
@@ -86,6 +87,9 @@ func buildCreativeGrokRequest(run CreativeRun, payload CreativeRunPayload, upstr
 	if aspectRatio := creativeGrokAspectRatio(run.AspectRatio); aspectRatio != "" {
 		request["aspect_ratio"] = aspectRatio
 	}
+	if quality := strings.TrimSpace(payload.Quality); quality != "" {
+		request["quality"] = quality
+	}
 	return request
 }
 
@@ -95,11 +99,15 @@ func buildCreativeGrokEditRequest(run CreativeRun, payload CreativeRunPayload, u
 	request := map[string]any{
 		"model":           upstreamModel,
 		"prompt":          payload.Prompt,
+		"n":               max(run.RequestedOutputCount, 1),
 		"response_format": "b64_json",
 		"resolution":      creativeGrokImageResolution(run.ImageSize),
 	}
 	if aspectRatio := creativeGrokAspectRatio(run.AspectRatio); aspectRatio != "" {
 		request["aspect_ratio"] = aspectRatio
+	}
+	if quality := strings.TrimSpace(payload.Quality); quality != "" {
+		request["quality"] = quality
 	}
 
 	images := make([]map[string]string, 0, len(payload.Sources))

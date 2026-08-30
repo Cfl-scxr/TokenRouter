@@ -15,15 +15,21 @@ import (
 
 // creativeGeminiGenerationConfig 是创作台 Gemini generateContent 的生成配置。
 type creativeGeminiGenerationConfig struct {
-	ResponseModalities []string                   `json:"responseModalities"`
-	ImageConfig        *creativeGeminiImageConfig `json:"imageConfig,omitempty"`
-	ResponseMimeType   string                     `json:"responseMimeType,omitempty"`
+	ResponseModalities []string                      `json:"responseModalities"`
+	ImageConfig        *creativeGeminiImageConfig    `json:"imageConfig,omitempty"`
+	ThinkingConfig     *creativeGeminiThinkingConfig `json:"thinkingConfig,omitempty"`
 }
 
 // creativeGeminiImageConfig 是 Gemini 图片生成专用配置；imageSize 必须位于 imageConfig 内。
 type creativeGeminiImageConfig struct {
 	ImageSize   string `json:"imageSize,omitempty"`
 	AspectRatio string `json:"aspectRatio,omitempty"`
+}
+
+// creativeGeminiThinkingConfig 控制 Gemini 图片模型的思考强度；中间思考内容固定不返回。
+type creativeGeminiThinkingConfig struct {
+	ThinkingLevel   string `json:"thinkingLevel"`
+	IncludeThoughts bool   `json:"includeThoughts"`
 }
 
 // creativeGeminiGenerateRequest 是创作台 Gemini generateContent 请求体。
@@ -185,7 +191,12 @@ func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, ups
 	config := creativeGeminiGenerationConfig{
 		ResponseModalities: []string{"TEXT", "IMAGE"},
 		ImageConfig:        imageConfig,
-		ResponseMimeType:   strings.TrimSpace(run.ResponseMIMEType),
+	}
+	if thinkingLevel := strings.TrimSpace(payload.ThinkingLevel); thinkingLevel != "" {
+		config.ThinkingConfig = &creativeGeminiThinkingConfig{
+			ThinkingLevel:   thinkingLevel,
+			IncludeThoughts: false,
+		}
 	}
 	return creativeGeminiGenerateRequest{
 		Contents:         []geminiContent{{Parts: parts}},

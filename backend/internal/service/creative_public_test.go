@@ -591,12 +591,11 @@ func makeTestPNG(t *testing.T, width, height int) []byte {
 
 func validCreateParams() CreateCreativeRunParamsPublic {
 	return CreateCreativeRunParamsPublic{
-		GroupID:      12,
-		Model:        "gemini-3.1-flash-image",
-		Operation:    CreativeOperationGenerate,
-		Prompt:       "画一只猫",
-		ImageSize:    "1K",
-		ResponseMIME: "image/png",
+		GroupID:   12,
+		Model:     "gemini-3.1-flash-image",
+		Operation: CreativeOperationGenerate,
+		Prompt:    "画一只猫",
+		ImageSize: "1K",
 	}
 }
 
@@ -619,8 +618,101 @@ func configureOpenAICreativeTestService(svc *CreativePublicService) {
 	}}
 }
 
+// configureGrok2CreativeTestService 将校验夹具切换到支持质量与多输出的 Grok 2.0。
+func configureGrok2CreativeTestService(svc *CreativePublicService) {
+	group := newCreativeTestGroup()
+	group.Name = "Grok Imagine 2"
+	group.Platform = PlatformGrok
+	svc.GroupRepo.(*creativeFakeGroupRepo).byID[group.ID] = group
+	svc.AccountRepo.(*creativeFakeAccountRepo).byGroup[group.ID] = []Account{{
+		ID:          58,
+		Platform:    PlatformGrok,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"model_mapping": map[string]any{"grok-imagine-image-2.0": "grok-imagine-image-2.0"}},
+	}}
+	svc.Settings.(*creativeFakeSettingReader).models = []CreativeModelSetting{{
+		GroupID: group.ID, Model: "grok-imagine-image-2.0",
+		Operations: []string{CreativeOperationGenerate, CreativeOperationEdit},
+	}}
+}
+
 // TestValidateCreateParams 覆盖 CreateRun 的参数校验矩阵。
 func TestValidateCreateParams(t *testing.T) {
+	t.Run("OpenAI 模型参数和多输出通过", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
+		compression := 72
+		params := validCreateParams()
+		params.Model = "gpt-image-2"
+		params.AspectRatio = "16:9"
+		params.Quality = "auto"
+		params.OutputFormat = "webp"
+		params.OutputCompression = &compression
+		params.Background = "transparent"
+		params.OutputCount = 10
+		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, 10, validated.outputCount)
+		require.Equal(t, "webp", validated.outputFormat)
+		require.Equal(t, 72, *validated.outputCompression)
+		require.Equal(t, "transparent", validated.background)
+	})
+
+	t.Run("OpenAI 非法输出组合被拒绝", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
+		params := validCreateParams()
+		params.Model = "gpt-image-2"
+		params.OutputFormat = "jpeg"
+		params.Background = "transparent"
+		_, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+
+		compression := 50
+		params.OutputFormat = "png"
+		params.Background = ""
+		params.OutputCompression = &compression
+		_, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+
+		params.OutputCompression = nil
+		params.OutputCount = 11
+		_, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+	})
+
+	t.Run("Grok 2.0 质量比例和多输出通过", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureGrok2CreativeTestService(svc)
+		params := validCreateParams()
+		params.Model = "grok-imagine-image-2.0"
+		params.AspectRatio = "21:9"
+		params.Quality = "low"
+		params.OutputCount = 10
+		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "low", validated.quality)
+		require.Equal(t, "21:9", validated.aspectRatio)
+		require.Equal(t, 10, validated.outputCount)
+	})
+
+	t.Run("Gemini 3.1 支持 512 和思考强度但保持单输出", func(t *testing.T) {
+		svc := newCreativeTestService()
+		params := validCreateParams()
+		params.ImageSize = "512"
+		params.AspectRatio = "21:9"
+		params.ThinkingLevel = "high"
+		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "512", validated.imageSize)
+		require.Equal(t, "high", validated.thinkingLevel)
+
+		params.OutputCount = 2
+		_, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+	})
+
 	t.Run("模型不存在", func(t *testing.T) {
 		svc := newCreativeTestService()
 		params := validCreateParams()
@@ -844,6 +936,27 @@ func TestCreateRunIdempotency(t *testing.T) {
 	// 计费预占与入队各发生两次（重放不重复扣费/入队）。
 	require.Equal(t, 2, svc.BillingRepo.(*creativeFakeBillingRepo).reserveN)
 	require.Len(t, svc.Queue.(*creativeFakeQueue).enqueued, 2)
+}
+
+// TestCreativePricingIgnoresQualityAndMultipliesOutputs 校验质量不改价，多输出仍按张数计费。
+func TestCreativePricingIgnoresQualityAndMultipliesOutputs(t *testing.T) {
+	svc := newCreativeTestService()
+	configureOpenAICreativeTestService(svc)
+	high := validCreateParams()
+	high.Model = "gpt-image-2"
+	high.Quality = "high"
+	high.OutputCount = 3
+	highRun, err := svc.CreateRun(context.Background(), testCreativeScope(7), high, "quality-high")
+	require.NoError(t, err)
+
+	low := high
+	low.Quality = "low"
+	lowRun, err := svc.CreateRun(context.Background(), testCreativeScope(7), low, "quality-low")
+	require.NoError(t, err)
+
+	require.Equal(t, highRun.EstimatedCost, lowRun.EstimatedCost)
+	require.InDelta(t, highRun.EstimatedCost, highRun.HoldAmount, 1e-9)
+	require.Len(t, svc.Repo.(*creativeFakeRunRepo).outputs[highRun.ID], 3)
 }
 
 // TestCreativeWorkspaceScopeIsolation 校验同一用户的不同浏览器工作区互不可见且幂等键隔离。

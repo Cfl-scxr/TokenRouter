@@ -197,16 +197,25 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 			if len(imageSizes) == 0 {
 				continue
 			}
+			capabilities := creativeCapabilitiesForModel(group.Platform, model)
 			out.Data = append(out.Data, CreativeModelPublic{
-				GroupID:    group.ID,
-				GroupName:  group.Name,
-				Model:      model,
-				Operations: operations,
-				ImageSizes: imageSizes,
-				Qualities:  creativeQualitiesForPlatform(group.Platform),
-				Price1K:    s.creativePrice(ctx, group, model, "1K"),
-				Price2K:    s.creativePrice(ctx, group, model, "2K"),
-				Price4K:    s.creativePrice(ctx, group, model, "4K"),
+				GroupID:            group.ID,
+				GroupName:          group.Name,
+				Model:              model,
+				Operations:         operations,
+				ImageSizes:         imageSizes,
+				AspectRatios:       capabilities.aspectRatios,
+				Qualities:          capabilities.qualities,
+				OutputFormats:      capabilities.outputFormats,
+				OutputCompression:  capabilities.outputCompression,
+				BackgroundOptions:  capabilities.backgroundOptions,
+				ThinkingLevels:     capabilities.thinkingLevels,
+				MaxOutputCount:     capabilities.maxOutputCount,
+				MaxReferenceImages: capabilities.maxReferenceImages,
+				Price512:           s.creativePrice(ctx, group, model, "512"),
+				Price1K:            s.creativePrice(ctx, group, model, "1K"),
+				Price2K:            s.creativePrice(ctx, group, model, "2K"),
+				Price4K:            s.creativePrice(ctx, group, model, "4K"),
 			})
 		}
 	}
@@ -347,12 +356,95 @@ func creativeDefaultImageSizesForPlatform(platform string) []string {
 	}
 }
 
-// creativeQualitiesForPlatform 返回平台支持的生图画质档位（OpenAI gpt-image 系列独有）。
-func creativeQualitiesForPlatform(platform string) []string {
-	if strings.TrimSpace(platform) == PlatformOpenAI {
-		return []string{"low", "medium", "high"}
+// creativeModelCapabilities 描述单个上游模型可稳定暴露给创作台的参数集合。
+type creativeModelCapabilities struct {
+	aspectRatios       []string
+	qualities          []string
+	outputFormats      []string
+	outputCompression  *CreativeNumericRange
+	backgroundOptions  []string
+	thinkingLevels     []string
+	maxOutputCount     int
+	maxReferenceImages int
+}
+
+// creativeCapabilitiesForModel 按平台与具体模型生成前端能力，未知能力始终返回空集合。
+func creativeCapabilitiesForModel(platform, model string) creativeModelCapabilities {
+	capabilities := creativeModelCapabilities{
+		aspectRatios:       []string{},
+		qualities:          []string{},
+		outputFormats:      []string{},
+		backgroundOptions:  []string{},
+		thinkingLevels:     []string{},
+		maxOutputCount:     1,
+		maxReferenceImages: 1,
 	}
-	return nil
+	normalizedPlatform := strings.TrimSpace(platform)
+	normalizedModel := creativeNormalizedModelID(model)
+	switch normalizedPlatform {
+	case PlatformOpenAI:
+		if !IsGPTImageGenerationModel(normalizedModel) {
+			return capabilities
+		}
+		capabilities.aspectRatios = []string{"1:1", "4:3", "3:4", "16:9", "9:16"}
+		capabilities.qualities = []string{"low", "medium", "high", "auto"}
+		capabilities.outputFormats = []string{"png", "jpeg", "webp"}
+		capabilities.outputCompression = &CreativeNumericRange{Min: 0, Max: 100, Step: 1}
+		capabilities.backgroundOptions = []string{"auto", "opaque"}
+		if isCreativeGPTImage2Model(normalizedModel) {
+			capabilities.backgroundOptions = append(capabilities.backgroundOptions, "transparent")
+		}
+		capabilities.maxOutputCount = 10
+		capabilities.maxReferenceImages = 16
+	case PlatformGrok:
+		if !isGrokImageGenerationModel(normalizedModel) {
+			return capabilities
+		}
+		capabilities.aspectRatios = []string{
+			"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2",
+			"19.5:9", "9:19.5", "20:9", "9:20", "21:9", "5:2", "auto",
+		}
+		if normalizedModel == "grok-imagine-image-2.0" {
+			capabilities.qualities = []string{"low", "medium"}
+		}
+		capabilities.maxOutputCount = 10
+		capabilities.maxReferenceImages = grokMediaMaxEditSourceImages
+	case PlatformGemini:
+		if !isImageGenerationModel(normalizedModel) && !strings.Contains(normalizedModel, "image") {
+			return capabilities
+		}
+		capabilities.aspectRatios = []string{
+			"1:1", "1:4", "4:1", "1:8", "8:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9",
+		}
+		if isCreativeGeminiThinkingLevelModel(normalizedModel) {
+			capabilities.thinkingLevels = []string{"minimal", "high"}
+		}
+		capabilities.maxReferenceImages = creativeGeminiMaxReferenceImages(normalizedModel)
+	}
+	return capabilities
+}
+
+func creativeNormalizedModelID(model string) string {
+	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+}
+
+func isCreativeGeminiThinkingLevelModel(model string) bool {
+	model = creativeNormalizedModelID(model)
+	return strings.HasPrefix(model, "gemini-3.1-flash-image") || strings.HasPrefix(model, "gemini-3.1-flash-lite-image")
+}
+
+func creativeGeminiMaxReferenceImages(model string) int {
+	model = creativeNormalizedModelID(model)
+	switch {
+	case strings.HasPrefix(model, "gemini-3.1-flash-image"), strings.HasPrefix(model, "gemini-3.1-flash-lite-image"):
+		return 14
+	case strings.Contains(model, "pro-image"):
+		return 14
+	case strings.Contains(model, "flash-image"):
+		return 3
+	default:
+		return 1
+	}
 }
 
 // creativeImageSizesForGroupModel 返回分组内某模型可用的尺寸档位。
@@ -375,11 +467,28 @@ func creativeImageSizesForGroupModel(group *Group, model string) []string {
 	return creativeFilterImageSizesForModel(group.Platform, model, sizes)
 }
 
-// creativeFilterImageSizesForModel 按已知模型能力收窄 Gemini 尺寸档位。
+// creativeFilterImageSizesForModel 按已知模型能力收窄各平台尺寸档位。
 // 未知模型保留平台/分组配置，避免误伤供应商自定义模型；已知固定 1K 模型永远不开放高分辨率。
 func creativeFilterImageSizesForModel(platform, model string, sizes []string) []string {
-	if strings.TrimSpace(platform) != PlatformGemini || !isCreativeGemini1KOnlyModel(model) {
-		return sizes
+	platform = strings.TrimSpace(platform)
+	if platform == PlatformGrok && isGrokImageGenerationModel(model) {
+		return creativeFilterImageSizes(sizes, ImageBillingSize1K, ImageBillingSize2K)
+	}
+	if platform == PlatformOpenAI && IsGPTImageGenerationModel(model) && !isCreativeGPTImage2Model(model) {
+		return creativeFilterImageSizes(sizes, ImageBillingSize1K, ImageBillingSize2K)
+	}
+	if platform != PlatformGemini {
+		return append([]string(nil), sizes...)
+	}
+	if isCreativeGemini512Model(model) {
+		filtered := append([]string(nil), sizes...)
+		if containsCreativeImageSize(filtered, ImageBillingSize1K) && !containsCreativeImageSize(filtered, "512") {
+			filtered = append([]string{"512"}, filtered...)
+		}
+		return filtered
+	}
+	if !isCreativeGemini1KOnlyModel(model) {
+		return append([]string(nil), sizes...)
 	}
 	filtered := make([]string, 0, 1)
 	for _, size := range sizes {
@@ -390,9 +499,26 @@ func creativeFilterImageSizesForModel(platform, model string, sizes []string) []
 	return filtered
 }
 
+// creativeFilterImageSizes 保留模型实际支持的计费档位并维持分组配置顺序。
+func creativeFilterImageSizes(sizes []string, allowed ...string) []string {
+	filtered := make([]string, 0, len(sizes))
+	for _, size := range sizes {
+		if containsCreativeImageSize(allowed, size) {
+			filtered = append(filtered, size)
+		}
+	}
+	return filtered
+}
+
+// isCreativeGemini512Model 判断支持 512 输出且同时保留高分辨率档位的 Gemini 图片模型。
+func isCreativeGemini512Model(model string) bool {
+	model = creativeNormalizedModelID(model)
+	return strings.HasPrefix(model, "gemini-3.1-flash-image") && !strings.HasPrefix(model, "gemini-3.1-flash-lite-image")
+}
+
 // isCreativeGemini1KOnlyModel 判断官方已知只输出 1K 的 Gemini 图片模型。
 func isCreativeGemini1KOnlyModel(model string) bool {
-	model = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	model = creativeNormalizedModelID(model)
 	switch {
 	case strings.HasPrefix(model, "gemini-2.5-flash-image"):
 		return true
@@ -411,11 +537,48 @@ func isCreativeGPTImage2Model(model string) bool {
 
 func containsCreativeImageSize(sizes []string, target string) bool {
 	for _, size := range sizes {
-		if size == target {
+		if strings.EqualFold(strings.TrimSpace(size), strings.TrimSpace(target)) {
 			return true
 		}
 	}
 	return false
+}
+
+func creativeCanonicalOption(value string, options []string) (string, bool) {
+	value = strings.TrimSpace(value)
+	for _, option := range options {
+		if strings.EqualFold(strings.TrimSpace(option), value) {
+			return option, true
+		}
+	}
+	return "", false
+}
+
+func creativeContainsOption(options []string, value string) bool {
+	_, ok := creativeCanonicalOption(value, options)
+	return ok
+}
+
+func creativeOutputFormatMIME(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "jpeg", "jpg":
+		return "image/jpeg"
+	case "webp":
+		return "image/webp"
+	default:
+		return "image/png"
+	}
+}
+
+func creativeOutputFormatFromMIME(mime string) string {
+	switch strings.ToLower(strings.TrimSpace(mime)) {
+	case "image/jpeg", "image/jpg":
+		return "jpeg"
+	case "image/webp":
+		return "webp"
+	default:
+		return "png"
+	}
 }
 
 // creativeModelsForGroup 从分组可调度的账号映射中收集图片模型。
@@ -552,19 +715,22 @@ func defaultCreativeGrokModelCandidates() []string {
 
 // validatedCreativeParams 是校验通过的创建参数。
 type validatedCreativeParams struct {
-	group        *Group
-	model        string
-	operation    string
-	prompt       string
-	promptHash   string
-	imageSize    string
-	aspectRatio  string
-	quality      string
-	outputCount  int
-	responseMIME string
-	sources      []CreativeInputImage
-	mask         *CreativeInputImage
-	fingerprint  string
+	group             *Group
+	model             string
+	operation         string
+	prompt            string
+	promptHash        string
+	imageSize         string
+	aspectRatio       string
+	quality           string
+	outputFormat      string
+	outputCompression *int
+	background        string
+	thinkingLevel     string
+	outputCount       int
+	sources           []CreativeInputImage
+	mask              *CreativeInputImage
+	fingerprint       string
 }
 
 // CreateRun 创建创作台任务：校验 → 审核 → 幂等 → 估价 → 供应隐藏 Key → 建行 → 预占 → 暂存 → 入队。
@@ -628,7 +794,7 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, scope CreativeRun
 		RequestedOutputCount:       validated.outputCount,
 		ImageSize:                  validated.imageSize,
 		AspectRatio:                validated.aspectRatio,
-		ResponseMIMEType:           validated.responseMIME,
+		ResponseMIMEType:           creativeOutputFormatMIME(validated.outputFormat),
 		PromptHash:                 validated.promptHash,
 		RequestFingerprint:         validated.fingerprint,
 		IdempotencyKey:             creativeStringPtr(idempotencyKey),
@@ -699,7 +865,10 @@ func (s *CreativePublicService) saveRunTransient(ctx context.Context, run *Creat
 		Prompt:             validated.prompt,
 		ImageSize:          run.ImageSize,
 		AspectRatio:        run.AspectRatio,
-		ResponseMIMEType:   run.ResponseMIMEType,
+		OutputFormat:       validated.outputFormat,
+		OutputCompression:  validated.outputCompression,
+		Background:         validated.background,
+		ThinkingLevel:      validated.thinkingLevel,
 		Quality:            validated.quality,
 		SourceCount:        len(validated.sources),
 		HasMask:            validated.mask != nil,
@@ -772,7 +941,8 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if !operationAllowed {
 		return nil, ErrCreativeOperationUnsupported
 	}
-	if strings.TrimSpace(group.Platform) == PlatformGrok && operation == CreativeOperationEdit && len(params.SourceImages) > grokMediaMaxEditSourceImages {
+	capabilities := creativeCapabilitiesForModel(group.Platform, model)
+	if operation != CreativeOperationGenerate && capabilities.maxReferenceImages > 0 && len(params.SourceImages) > capabilities.maxReferenceImages {
 		return nil, ErrCreativeInvalidParams
 	}
 
@@ -784,44 +954,61 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		return nil, ErrCreativePromptTooLong
 	}
 
-	// 创作台一次提交固定生成一张，多张图片通过重复提交任务获取。
-	outputCount := 1
+	outputCount := params.OutputCount
+	if outputCount == 0 {
+		outputCount = 1
+	}
+	if outputCount < 1 || outputCount > capabilities.maxOutputCount {
+		return nil, ErrCreativeInvalidParams
+	}
 
 	imageSize := strings.TrimSpace(params.ImageSize)
 	if imageSize == "" {
 		imageSize = s.defaultImageSize()
 	}
-	switch strings.ToUpper(imageSize) {
-	case "1K", "2K", "4K":
-		imageSize = strings.ToUpper(imageSize)
-	default:
+	imageSize, supported := creativeCanonicalOption(imageSize, creativeImageSizesForGroupModel(group, model))
+	if !supported {
 		return nil, ErrCreativeInvalidParams
 	}
 	aspectRatio := strings.TrimSpace(params.AspectRatio)
-	if len(aspectRatio) > 16 {
+	if aspectRatio != "" {
+		aspectRatio, supported = creativeCanonicalOption(aspectRatio, capabilities.aspectRatios)
+		if !supported {
+			return nil, ErrCreativeInvalidParams
+		}
+	}
+	quality := strings.ToLower(strings.TrimSpace(params.Quality))
+	if quality != "" && !creativeContainsOption(capabilities.qualities, quality) {
 		return nil, ErrCreativeInvalidParams
 	}
-	// 画质档位仅 OpenAI 平台（gpt-image 系列）支持；其余平台传入视为非法参数。
-	quality := strings.ToLower(strings.TrimSpace(params.Quality))
-	if quality != "" {
-		switch quality {
-		case "low", "medium", "high", "auto":
-		default:
+	outputFormat := strings.ToLower(strings.TrimSpace(params.OutputFormat))
+	if outputFormat == "" {
+		outputFormat = "png"
+	} else if !creativeContainsOption(capabilities.outputFormats, outputFormat) {
+		return nil, ErrCreativeInvalidParams
+	}
+	var outputCompression *int
+	if params.OutputCompression != nil {
+		rangeConfig := capabilities.outputCompression
+		value := *params.OutputCompression
+		if rangeConfig == nil || (outputFormat != "jpeg" && outputFormat != "webp") || value < rangeConfig.Min || value > rangeConfig.Max {
 			return nil, ErrCreativeInvalidParams
 		}
-		if strings.TrimSpace(group.Platform) != PlatformOpenAI {
+		if rangeConfig.Step > 1 && (value-rangeConfig.Min)%rangeConfig.Step != 0 {
 			return nil, ErrCreativeInvalidParams
 		}
+		outputCompression = &value
 	}
-	responseMIME := strings.TrimSpace(params.ResponseMIME)
-	if responseMIME == "" {
-		responseMIME = s.defaultResponseMimeType()
+	background := strings.ToLower(strings.TrimSpace(params.Background))
+	if background != "" && !creativeContainsOption(capabilities.backgroundOptions, background) {
+		return nil, ErrCreativeInvalidParams
 	}
-	switch strings.ToLower(responseMIME) {
-	case "image/png", "image/jpeg", "image/webp":
-		responseMIME = strings.ToLower(responseMIME)
-	default:
-		return nil, ErrCreativeInvalidMime
+	if background == "transparent" && outputFormat == "jpeg" {
+		return nil, ErrCreativeInvalidParams
+	}
+	thinkingLevel := strings.ToLower(strings.TrimSpace(params.ThinkingLevel))
+	if thinkingLevel != "" && !creativeContainsOption(capabilities.thinkingLevels, thinkingLevel) {
+		return nil, ErrCreativeInvalidParams
 	}
 
 	sources := make([]CreativeInputImage, 0, len(params.SourceImages))
@@ -877,31 +1064,38 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 
 	promptHash := sha256Hex([]byte(prompt))
 	fingerprint := buildCreativeRequestFingerprint(creativeFingerprintPayload{
-		GroupID:          group.ID,
-		Model:            model,
-		Operation:        operation,
-		PromptSHA256:     promptHash,
-		ImageSHA256:      creativeImageHashes(sources),
-		MaskSHA256:       creativeImageHash(mask),
-		ImageSize:        imageSize,
-		AspectRatio:      aspectRatio,
-		Quality:          quality,
-		ResponseMIMEType: responseMIME,
+		GroupID:           group.ID,
+		Model:             model,
+		Operation:         operation,
+		PromptSHA256:      promptHash,
+		ImageSHA256:       creativeImageHashes(sources),
+		MaskSHA256:        creativeImageHash(mask),
+		ImageSize:         imageSize,
+		AspectRatio:       aspectRatio,
+		Quality:           quality,
+		OutputFormat:      outputFormat,
+		OutputCompression: outputCompression,
+		Background:        background,
+		ThinkingLevel:     thinkingLevel,
+		OutputCount:       outputCount,
 	})
 	return &validatedCreativeParams{
-		group:        group,
-		model:        model,
-		operation:    operation,
-		prompt:       prompt,
-		promptHash:   promptHash,
-		imageSize:    imageSize,
-		aspectRatio:  aspectRatio,
-		quality:      quality,
-		outputCount:  outputCount,
-		responseMIME: responseMIME,
-		sources:      sources,
-		mask:         mask,
-		fingerprint:  fingerprint,
+		group:             group,
+		model:             model,
+		operation:         operation,
+		prompt:            prompt,
+		promptHash:        promptHash,
+		imageSize:         imageSize,
+		aspectRatio:       aspectRatio,
+		quality:           quality,
+		outputFormat:      outputFormat,
+		outputCompression: outputCompression,
+		background:        background,
+		thinkingLevel:     thinkingLevel,
+		outputCount:       outputCount,
+		sources:           sources,
+		mask:              mask,
+		fingerprint:       fingerprint,
 	}, nil
 }
 
@@ -967,16 +1161,20 @@ func creativeImageDimensions(data []byte, mime string) (int, int, error) {
 
 // creativeFingerprintPayload 是请求指纹的 canonical JSON 载体（字段顺序固定）。
 type creativeFingerprintPayload struct {
-	GroupID          int64    `json:"group_id"`
-	Model            string   `json:"model"`
-	Operation        string   `json:"operation"`
-	PromptSHA256     string   `json:"prompt_sha256"`
-	ImageSHA256      []string `json:"image_sha256"`
-	MaskSHA256       string   `json:"mask_sha256,omitempty"`
-	ImageSize        string   `json:"image_size"`
-	AspectRatio      string   `json:"aspect_ratio"`
-	Quality          string   `json:"quality,omitempty"`
-	ResponseMIMEType string   `json:"response_mime_type"`
+	GroupID           int64    `json:"group_id"`
+	Model             string   `json:"model"`
+	Operation         string   `json:"operation"`
+	PromptSHA256      string   `json:"prompt_sha256"`
+	ImageSHA256       []string `json:"image_sha256"`
+	MaskSHA256        string   `json:"mask_sha256,omitempty"`
+	ImageSize         string   `json:"image_size"`
+	AspectRatio       string   `json:"aspect_ratio"`
+	Quality           string   `json:"quality,omitempty"`
+	OutputFormat      string   `json:"output_format"`
+	OutputCompression *int     `json:"output_compression,omitempty"`
+	Background        string   `json:"background,omitempty"`
+	ThinkingLevel     string   `json:"thinking_level,omitempty"`
+	OutputCount       int      `json:"output_count"`
 }
 
 // buildCreativeRequestFingerprint 计算幂等指纹：canonical JSON 的 sha256。

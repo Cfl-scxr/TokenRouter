@@ -87,56 +87,110 @@
             class="chip-popover"
             :style="popoverStyle"
           >
-            <div class="space-y-3 p-3">
-            <div>
-              <p class="param-label">{{ t('creative.panel.imageSize') }}</p>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="size in studio.imageSizeOptions.value"
-                  :key="size"
-                  type="button"
-                  class="param-chip"
-                  :class="studio.imageSize.value === size && 'param-chip-active'"
-                  @click="setImageSize(size)"
-                >
-                  {{ size }}
-                </button>
-                <span v-if="!studio.imageSizeOptions.value.length" class="text-[11px] text-gray-400 dark:text-dark-400">—</span>
+            <div class="max-h-[min(70vh,32rem)] space-y-3 overflow-y-auto p-3">
+              <div>
+                <p class="param-label">{{ t('creative.panel.imageSize') }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="size in studio.imageSizeOptions.value"
+                    :key="size"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.imageSize.value === size && 'param-chip-active'"
+                    @click="setImageSize(size)"
+                  >
+                    {{ size }}
+                  </button>
+                  <span v-if="!studio.imageSizeOptions.value.length" class="text-[11px] text-gray-400 dark:text-dark-400">—</span>
+                </div>
               </div>
-            </div>
-            <div>
-              <p class="param-label">{{ t('creative.panel.aspectRatio') }}</p>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="ratio in ASPECT_RATIOS"
-                  :key="ratio"
-                  type="button"
-                  class="param-chip"
-                  :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
-                  @click="setAspectRatio(ratio)"
-                >
-                  <!-- 比例预览小方框：直观展示宽高比 -->
-                  <span class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
-                  {{ t(`creative.aspects.${ratio.replace(':', 'x')}`) }}
-                </button>
+              <div>
+                <p class="param-label">{{ t('creative.panel.aspectRatio') }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="ratio in studio.aspectRatioOptions.value"
+                    :key="ratio"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
+                    @click="setAspectRatio(ratio)"
+                  >
+                    <!-- 比例预览小方框：直观展示宽高比 -->
+                    <span class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
+                    {{ ratio }}
+                  </button>
+                </div>
               </div>
-            </div>
-            <!-- 画质：仅 OpenAI 平台模型下发 qualities 时展示 -->
-            <div v-if="studio.qualityOptions.value.length">
-              <p class="param-label">{{ t('creative.panel.quality') }}</p>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="option in studio.qualityOptions.value"
-                  :key="option"
-                  type="button"
-                  class="param-chip"
-                  :class="studio.quality.value === option && 'param-chip-active'"
-                  @click="setQuality(option)"
-                >
-                  {{ t(`creative.qualities.${option}`, option) }}
-                </button>
+              <div v-if="studio.qualityOptions.value.length">
+                <p class="param-label">{{ t('creative.panel.quality') }}</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="option in studio.qualityOptions.value"
+                    :key="option"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.quality.value === option && 'param-chip-active'"
+                    @click="setQuality(option)"
+                  >
+                    {{ t(`creative.qualities.${option}`, option) }}
+                  </button>
+                </div>
               </div>
-            </div>
+              <div v-if="studio.outputFormatOptions.value.length">
+                <p class="param-label">{{ t('creative.panel.outputFormat') }}</p>
+                <Select
+                  :model-value="studio.outputFormat.value"
+                  :options="outputFormatSelectOptions"
+                  :searchable="false"
+                  @update:model-value="setOutputFormat"
+                />
+              </div>
+              <div v-if="studio.outputCompressionRange.value && (studio.outputFormat.value === 'jpeg' || studio.outputFormat.value === 'webp')">
+                <div class="mb-1.5 flex items-center justify-between gap-2">
+                  <p class="param-label mb-0">{{ t('creative.panel.outputCompression') }}</p>
+                  <span class="text-[11px] tabular-nums text-gray-500 dark:text-dark-300">{{ studio.outputCompression.value }}%</span>
+                </div>
+                <input
+                  type="range"
+                  class="compression-slider"
+                  :min="studio.outputCompressionRange.value.min"
+                  :max="studio.outputCompressionRange.value.max"
+                  :step="studio.outputCompressionRange.value.step"
+                  :value="studio.outputCompression.value ?? studio.outputCompressionRange.value.max"
+                  @input="setOutputCompression"
+                />
+              </div>
+              <div v-if="studio.backgroundOptions.value.length">
+                <p class="param-label">{{ t('creative.panel.background') }}</p>
+                <Select
+                  :model-value="studio.background.value"
+                  :options="backgroundSelectOptions"
+                  :placeholder="t('creative.backgrounds.default')"
+                  :searchable="false"
+                  clearable
+                  @update:model-value="setBackground"
+                />
+              </div>
+              <div v-if="studio.thinkingLevelOptions.value.length">
+                <p class="param-label">{{ t('creative.panel.thinkingLevel') }}</p>
+                <Select
+                  :model-value="studio.thinkingLevel.value"
+                  :options="thinkingLevelSelectOptions"
+                  :placeholder="t('creative.thinkingLevels.default')"
+                  :searchable="false"
+                  clearable
+                  @update:model-value="setThinkingLevel"
+                />
+              </div>
+              <div v-if="studio.maxOutputCount.value > 1">
+                <p class="param-label">{{ t('creative.panel.outputCount') }}</p>
+                <Select
+                  :model-value="studio.outputCount.value"
+                  :options="outputCountSelectOptions"
+                  :searchable="false"
+                  @update:model-value="setOutputCount"
+                />
+              </div>
             </div>
           </div>
         </Transition>
@@ -216,6 +270,7 @@ import { useI18n } from 'vue-i18n'
 import { onClickOutside, useEventListener } from '@vueuse/core'
 import Icon from '@/components/icons/Icon.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { useAppStore } from '@/stores/app'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
@@ -242,8 +297,6 @@ const { formatBalanceAmount } = useBalanceDisplay()
 
 // 输入框自适应高度上限（约 6 行）
 const TEXTAREA_MAX_HEIGHT = 160
-
-const ASPECT_RATIOS = ['1:1', '4:3', '3:4', '16:9', '9:16']
 
 const rootRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -290,6 +343,34 @@ const modelChipLabel = computed(() => {
 })
 const paramsChipLabel = computed(() => t('creative.composer.params'))
 const operationChipLabel = computed(() => t(`creative.operations.${studio.operation.value}`, studio.operation.value))
+
+const outputFormatSelectOptions = computed<SelectOption[]>(() =>
+  studio.outputFormatOptions.value.map((option) => ({
+    value: option,
+    label: t(`creative.outputFormats.${option}`, option.toUpperCase()),
+  })),
+)
+
+const backgroundSelectOptions = computed<SelectOption[]>(() =>
+  studio.backgroundOptions.value.map((option) => ({
+    value: option,
+    label: t(`creative.backgrounds.${option}`, option),
+  })),
+)
+
+const thinkingLevelSelectOptions = computed<SelectOption[]>(() =>
+  studio.thinkingLevelOptions.value.map((option) => ({
+    value: option,
+    label: t(`creative.thinkingLevels.${option}`, option),
+  })),
+)
+
+const outputCountSelectOptions = computed<SelectOption[]>(() =>
+  Array.from({ length: studio.maxOutputCount.value }, (_, index) => ({
+    value: index + 1,
+    label: String(index + 1),
+  })),
+)
 
 // 展开 / 收起调参面板；展开时同步计算弹层定位（宽度 + 水平钳制）
 function togglePanel(panel: 'model' | 'params' | 'operation', event: MouseEvent): void {
@@ -350,6 +431,28 @@ function setQuality(option: string): void {
   studio.quality.value = studio.quality.value === option ? '' : option
 }
 
+function setOutputFormat(value: string | number | boolean | null): void {
+  studio.outputFormat.value = typeof value === 'string' ? value : ''
+}
+
+function setOutputCompression(event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value)
+  studio.outputCompression.value = Number.isFinite(value) ? value : null
+}
+
+function setBackground(value: string | number | boolean | null): void {
+  studio.background.value = typeof value === 'string' ? value : ''
+}
+
+function setThinkingLevel(value: string | number | boolean | null): void {
+  studio.thinkingLevel.value = typeof value === 'string' ? value : ''
+}
+
+function setOutputCount(value: string | number | boolean | null): void {
+  const count = Number(value)
+  studio.outputCount.value = Number.isInteger(count) ? count : 1
+}
+
 // Ctrl / Cmd + Enter 发送；普通 Enter 换行
 function onKeydown(event: KeyboardEvent): void {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -383,7 +486,7 @@ function autosize(): void {
   @apply border-primary-500/50 text-primary-700 dark:border-primary-500/50 dark:text-primary-300;
 }
 
-/* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致；高度随内容自适应，不内嵌滚动条。
+/* 调参弹层：锚定在所点击 chip 的正上方，内容超过视口时由内层滚动。
    此处宽度仅为初始值，展开时由 layoutPopover 写入内联样式（宽度三路取小、位置钳制在输入框内，防止窄屏溢出屏幕） */
 .chip-popover {
   @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-[16px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
@@ -423,6 +526,10 @@ function autosize(): void {
 
 .param-chip-active {
   @apply border-primary-500 bg-primary-600/10 text-primary-700 dark:border-primary-500 dark:text-primary-300;
+}
+
+.compression-slider {
+  @apply h-2 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-primary-600 dark:bg-dark-600;
 }
 
 /* 比例预览小方框：内联尺寸由 ratioPreviewStyle 计算 */

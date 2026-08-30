@@ -356,7 +356,7 @@ func TestCreativeListModelsFiltersAndContent(t *testing.T) {
 	for _, item := range got.Data {
 		require.Equal(t, int64(12), item.GroupID, "无图片权限或不受支持的分组不得进入模型列表")
 		require.Equal(t, []string{"generate", "edit"}, item.Operations)
-		require.Equal(t, []string{"1K", "2K"}, item.ImageSizes)
+		require.Equal(t, []string{"512", "1K", "2K"}, item.ImageSizes)
 		require.InDelta(t, 0.02, item.Price1K, 1e-9)
 		require.InDelta(t, 0.04, item.Price2K, 1e-9)
 		require.Equal(t, "gemini-3.1-flash-image", item.Model)
@@ -409,7 +409,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		Status:      StatusActive,
 		Schedulable: true,
 		Credentials: map[string]any{
-			"model_whitelist": []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
+			"model_whitelist": []string{"gemini-2.5-flash-image", "gemini-3-pro-image", "gemini-3.1-flash-image"},
 		},
 	}}
 
@@ -428,7 +428,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		Status:      StatusActive,
 		Schedulable: true,
 		Credentials: map[string]any{
-			"model_whitelist": []string{"grok-imagine-image-1.0"},
+			"model_whitelist": []string{"grok-imagine-image-1.0", "grok-imagine-image-2.0"},
 		},
 	}}
 
@@ -456,7 +456,9 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		CreativeModelSetting{GroupID: 21, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
 		CreativeModelSetting{GroupID: 22, Model: "gemini-2.5-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
 		CreativeModelSetting{GroupID: 22, Model: "gemini-3-pro-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+		CreativeModelSetting{GroupID: 22, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
 		CreativeModelSetting{GroupID: 23, Model: "grok-imagine-image-1.0", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+		CreativeModelSetting{GroupID: 23, Model: "grok-imagine-image-2.0", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
 		CreativeModelSetting{GroupID: 24, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
 	)
 
@@ -471,7 +473,15 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	// openai 无映射回退：两个候选模型、默认价大于 0；GPT Image 2 额外开放 4K。
 	require.Len(t, byGroup[21], 2)
 	for _, item := range byGroup[21] {
-		require.Equal(t, []string{"low", "medium", "high"}, item.Qualities)
+		require.Equal(t, []string{"low", "medium", "high", "auto"}, item.Qualities)
+		require.Equal(t, []string{"png", "jpeg", "webp"}, item.OutputFormats)
+		if item.Model == "gpt-image-2" {
+			require.Equal(t, []string{"auto", "opaque", "transparent"}, item.BackgroundOptions)
+		} else {
+			require.Equal(t, []string{"auto", "opaque"}, item.BackgroundOptions)
+		}
+		require.Equal(t, 10, item.MaxOutputCount)
+		require.Equal(t, 16, item.MaxReferenceImages)
 		require.Greater(t, item.Price1K, 0.0)
 		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
 	}
@@ -481,17 +491,29 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		[]string{byGroup[21][0].Model, byGroup[21][1].Model})
 
 	// gemini 无映射回退：固定 1K 模型只开放 1K，支持高分辨率的模型开放三档尺寸。
-	require.Len(t, byGroup[22], 2)
+	require.Len(t, byGroup[22], 3)
 	require.Equal(t, []string{"1K"}, byModel(byGroup[22], "gemini-2.5-flash-image").ImageSizes)
 	require.Equal(t, []string{"1K", "2K", "4K"}, byModel(byGroup[22], "gemini-3-pro-image").ImageSizes)
-	require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
-		[]string{byGroup[22][0].Model, byGroup[22][1].Model})
+	flash31 := byModel(byGroup[22], "gemini-3.1-flash-image")
+	require.Equal(t, []string{"512", "1K", "2K", "4K"}, flash31.ImageSizes)
+	require.Equal(t, []string{"minimal", "high"}, flash31.ThinkingLevels)
+	require.Equal(t, 14, flash31.MaxReferenceImages)
+	require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "gemini-3-pro-image", "gemini-3.1-flash-image"},
+		[]string{byGroup[22][0].Model, byGroup[22][1].Model, byGroup[22][2].Model})
 
 	// grok 回退：1K/2K 档 + generate/edit。
-	require.Len(t, byGroup[23], 1)
-	require.Equal(t, "grok-imagine-image-1.0", byGroup[23][0].Model)
-	require.Equal(t, []string{"1K", "2K"}, byGroup[23][0].ImageSizes)
-	require.Equal(t, []string{"generate", "edit"}, byGroup[23][0].Operations)
+	require.Len(t, byGroup[23], 2)
+	grok1 := byModel(byGroup[23], "grok-imagine-image-1.0")
+	require.Equal(t, []string{"1K", "2K"}, grok1.ImageSizes)
+	require.Empty(t, grok1.Qualities)
+	require.Equal(t, []string{"generate", "edit"}, grok1.Operations)
+	grok2 := byModel(byGroup[23], "grok-imagine-image-2.0")
+	require.Equal(t, []string{"low", "medium"}, grok2.Qualities)
+	require.Contains(t, grok2.AspectRatios, "21:9")
+	require.Contains(t, grok2.AspectRatios, "5:2")
+	require.Contains(t, grok2.AspectRatios, "auto")
+	require.Equal(t, 10, grok2.MaxOutputCount)
+	require.Equal(t, 3, grok2.MaxReferenceImages)
 
 	// GPT Image 2 即使未配置 4K 覆盖价，也开放 4K 并回退默认价格。
 	require.Len(t, byGroup[24], 1)
@@ -539,6 +561,13 @@ func TestCreativeFilterImageSizesForModel(t *testing.T) {
 			want:     []string{"1K", "2K", "4K"},
 		},
 		{
+			name:     "gemini 3.1 flash prepends 512 tier",
+			platform: PlatformGemini,
+			model:    "gemini-3.1-flash-image",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"512", "1K", "2K", "4K"},
+		},
+		{
 			name:     "custom model keeps configured tiers",
 			platform: PlatformGemini,
 			model:    "custom-image-model",
@@ -551,6 +580,20 @@ func TestCreativeFilterImageSizesForModel(t *testing.T) {
 			model:    "gpt-image-2",
 			input:    []string{"1K", "2K", "4K"},
 			want:     []string{"1K", "2K", "4K"},
+		},
+		{
+			name:     "grok image models only expose 1K and 2K",
+			platform: PlatformGrok,
+			model:    "grok-imagine-image-2.0",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K", "2K"},
+		},
+		{
+			name:     "older gpt image models do not expose 4K",
+			platform: PlatformOpenAI,
+			model:    "gpt-image-1",
+			input:    []string{"1K", "2K", "4K"},
+			want:     []string{"1K", "2K"},
 		},
 	}
 
@@ -582,6 +625,32 @@ func TestCreativePricingUsesResolvedChannelPrice(t *testing.T) {
 	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "1K"), 1e-9)
 	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "2K"), 1e-9)
 	require.InDelta(t, 1, svc.creativePrice(context.Background(), group, "gpt-image-2", "4K"), 1e-9)
+
+	// Gemini 512 优先匹配渠道自定义 tier；未配置 512 时回退渠道默认价格。
+	price512 := 0.5
+	defaultPrice := 1.25
+	resolver = newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        PlatformGemini,
+		Models:          []string{"gemini-3.1-flash-image"},
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &defaultPrice,
+		Intervals: []PricingInterval{{
+			TierLabel:       "512",
+			PerRequestPrice: &price512,
+		}},
+	}})
+	svc.PricingResolver = resolver
+	geminiGroup := newCreativeTestGroup()
+	geminiGroup.ID = 100
+	require.InDelta(t, price512, svc.creativePrice(context.Background(), geminiGroup, "gemini-3.1-flash-image", "512"), 1e-9)
+	resolver = newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        PlatformGemini,
+		Models:          []string{"gemini-3.1-flash-image"},
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &defaultPrice,
+	}})
+	svc.PricingResolver = resolver
+	require.InDelta(t, defaultPrice, svc.creativePrice(context.Background(), geminiGroup, "gemini-3.1-flash-image", "512"), 1e-9)
 }
 
 // TestCreativeListRunsIncludesOutputs 校验历史列表携带输出元数据：

@@ -56,16 +56,20 @@ func (h *CreativeHandler) ListModels(c *gin.Context) {
 
 // creativeCreateRunRequest 是创建任务 multipart 报文的解析结果。
 type creativeCreateRunRequest struct {
-	GroupID      int64
-	Model        string
-	Operation    string
-	Prompt       string
-	SourceImages []service.CreativeInputImage
-	Mask         *service.CreativeInputImage
-	ImageSize    string
-	AspectRatio  string
-	ResponseMIME string
-	Quality      string
+	GroupID           int64
+	Model             string
+	Operation         string
+	Prompt            string
+	SourceImages      []service.CreativeInputImage
+	Mask              *service.CreativeInputImage
+	ImageSize         string
+	AspectRatio       string
+	Quality           string
+	OutputFormat      string
+	OutputCompression *int
+	Background        string
+	ThinkingLevel     string
+	OutputCount       int
 }
 
 // CreateRun 解析 multipart/form-data 并创建创作台任务。
@@ -87,16 +91,20 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		return
 	}
 	got, err := h.service.CreateRun(c.Request.Context(), scope, service.CreateCreativeRunParamsPublic{
-		GroupID:      req.GroupID,
-		Model:        req.Model,
-		Operation:    req.Operation,
-		Prompt:       req.Prompt,
-		SourceImages: req.SourceImages,
-		Mask:         req.Mask,
-		ImageSize:    req.ImageSize,
-		AspectRatio:  req.AspectRatio,
-		ResponseMIME: req.ResponseMIME,
-		Quality:      req.Quality,
+		GroupID:           req.GroupID,
+		Model:             req.Model,
+		Operation:         req.Operation,
+		Prompt:            req.Prompt,
+		SourceImages:      req.SourceImages,
+		Mask:              req.Mask,
+		ImageSize:         req.ImageSize,
+		AspectRatio:       req.AspectRatio,
+		Quality:           req.Quality,
+		OutputFormat:      req.OutputFormat,
+		OutputCompression: req.OutputCompression,
+		Background:        req.Background,
+		ThinkingLevel:     req.ThinkingLevel,
+		OutputCount:       req.OutputCount,
 	}, c.GetHeader("Idempotency-Key"))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -106,7 +114,8 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 }
 
 // parseCreativeCreateRunMultipart 手工解析 multipart 表单：
-// 字段 group_id/model/operation/prompt/image_size/aspect_ratio/response_mime_type，
+// 字段 group_id/model/operation/prompt/image_size/aspect_ratio/quality/output_format/
+// output_compression/background/thinking_level/output_count，
 // 文件字段 source_images（多文件）与 mask（单文件）。只接受上传文件，不接受远程 URL。
 func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest, error) {
 	contentType := c.GetHeader("Content-Type")
@@ -176,10 +185,26 @@ func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest,
 			req.ImageSize = value
 		case "aspect_ratio":
 			req.AspectRatio = value
-		case "response_mime_type":
-			req.ResponseMIME = value
 		case "quality":
 			req.Quality = value
+		case "output_format":
+			req.OutputFormat = strings.ToLower(value)
+		case "output_compression":
+			compression, parseErr := strconv.Atoi(value)
+			if parseErr != nil {
+				return nil, service.ErrCreativeInvalidParams
+			}
+			req.OutputCompression = &compression
+		case "background":
+			req.Background = strings.ToLower(value)
+		case "thinking_level":
+			req.ThinkingLevel = strings.ToLower(value)
+		case "output_count":
+			outputCount, parseErr := strconv.Atoi(value)
+			if parseErr != nil {
+				return nil, service.ErrCreativeInvalidParams
+			}
+			req.OutputCount = outputCount
 		}
 	}
 	if req.GroupID <= 0 {

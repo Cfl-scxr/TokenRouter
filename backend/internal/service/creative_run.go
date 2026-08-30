@@ -261,7 +261,10 @@ type CreativeRunPayload struct {
 	Prompt             string `json:"prompt"`
 	ImageSize          string `json:"image_size"`
 	AspectRatio        string `json:"aspect_ratio"`
-	ResponseMIMEType   string `json:"response_mime_type"`
+	OutputFormat       string `json:"output_format"`
+	OutputCompression  *int   `json:"output_compression,omitempty"`
+	Background         string `json:"background,omitempty"`
+	ThinkingLevel      string `json:"thinking_level,omitempty"`
 	Quality            string `json:"quality,omitempty"`
 	SourceCount        int    `json:"source_count"`
 	HasMask            bool   `json:"has_mask"`
@@ -280,17 +283,20 @@ type CreativeInputImage struct {
 
 // CreateCreativeRunParamsPublic 是 CreateRun 的入参（由 handler 解析 multipart 后组装）。
 type CreateCreativeRunParamsPublic struct {
-	GroupID      int64
-	Model        string
-	Operation    string
-	Prompt       string
-	SourceImages []CreativeInputImage
-	Mask         *CreativeInputImage
-	ImageSize    string
-	AspectRatio  string
-	ResponseMIME string
-	// Quality 为 OpenAI 平台可选画质（low/medium/high/auto），其余平台忽略。
-	Quality string
+	GroupID           int64
+	Model             string
+	Operation         string
+	Prompt            string
+	SourceImages      []CreativeInputImage
+	Mask              *CreativeInputImage
+	ImageSize         string
+	AspectRatio       string
+	Quality           string
+	OutputFormat      string
+	OutputCompression *int
+	Background        string
+	ThinkingLevel     string
+	OutputCount       int
 }
 
 // CreativeRunPublic 是任务对客户端的展示结构。
@@ -303,7 +309,7 @@ type CreativeRunPublic struct {
 	RequestedOutputCount int                       `json:"requested_output_count"`
 	ImageSize            string                    `json:"image_size"`
 	AspectRatio          string                    `json:"aspect_ratio"`
-	ResponseMIMEType     string                    `json:"response_mime_type"`
+	OutputFormat         string                    `json:"output_format"`
 	GroupID              int64                     `json:"group_id"`
 	EstimatedCost        float64                   `json:"estimated_cost"`
 	HoldAmount           float64                   `json:"hold_amount"`
@@ -333,15 +339,30 @@ type CreativeRunOutputPublic struct {
 
 // CreativeModelPublic 是 ListModels 返回的可用模型条目。
 type CreativeModelPublic struct {
-	GroupID    int64    `json:"group_id"`
-	GroupName  string   `json:"group_name"`
-	Model      string   `json:"model"`
-	Operations []string `json:"operations"`
-	ImageSizes []string `json:"image_sizes"`
-	Qualities  []string `json:"qualities,omitempty"`
-	Price1K    float64  `json:"price_1k"`
-	Price2K    float64  `json:"price_2k"`
-	Price4K    float64  `json:"price_4k"`
+	GroupID            int64                 `json:"group_id"`
+	GroupName          string                `json:"group_name"`
+	Model              string                `json:"model"`
+	Operations         []string              `json:"operations"`
+	ImageSizes         []string              `json:"image_sizes"`
+	AspectRatios       []string              `json:"aspect_ratios"`
+	Qualities          []string              `json:"qualities"`
+	OutputFormats      []string              `json:"output_formats"`
+	OutputCompression  *CreativeNumericRange `json:"output_compression"`
+	BackgroundOptions  []string              `json:"background_options"`
+	ThinkingLevels     []string              `json:"thinking_levels"`
+	MaxOutputCount     int                   `json:"max_output_count"`
+	MaxReferenceImages int                   `json:"max_reference_images"`
+	Price512           float64               `json:"price_512"`
+	Price1K            float64               `json:"price_1k"`
+	Price2K            float64               `json:"price_2k"`
+	Price4K            float64               `json:"price_4k"`
+}
+
+// CreativeNumericRange 描述创作台数值参数的闭区间和步长。
+type CreativeNumericRange struct {
+	Min  int `json:"min"`
+	Max  int `json:"max"`
+	Step int `json:"step"`
 }
 
 // CreativeModelsResponse 是 ListModels 的响应体。
@@ -427,7 +448,7 @@ func CreativeRunToPublic(run *CreativeRun, outputs []*CreativeRunOutput) *Creati
 		RequestedOutputCount: run.RequestedOutputCount,
 		ImageSize:            run.ImageSize,
 		AspectRatio:          run.AspectRatio,
-		ResponseMIMEType:     run.ResponseMIMEType,
+		OutputFormat:         creativeOutputFormatFromMIME(run.ResponseMIMEType),
 		GroupID:              run.GroupID,
 		EstimatedCost:        run.EstimatedCost,
 		HoldAmount:           holdAmount,
