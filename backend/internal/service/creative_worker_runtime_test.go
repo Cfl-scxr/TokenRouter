@@ -41,6 +41,57 @@ func TestCreativeWorkerRuntimeStartStopAndScale(t *testing.T) {
 	require.False(t, runtime.Running())
 }
 
+// TestCreativeWorkerRuntimeStatus 验证状态快照如实反映运行状态、池规模与忙碌 worker 数量。
+func TestCreativeWorkerRuntimeStatus(t *testing.T) {
+	stopped := NewCreativeWorkerRuntime(nil, &config.Config{
+		Creative: config.CreativeConfig{QueueEnabled: true},
+	}, nil)
+	require.Equal(t, CreativeWorkerStatus{}, stopped.Status())
+
+	fixture := newCreativeWorkerFixture()
+	seedCreativeRun(fixture, "crun_status_1", true)
+	seedCreativeRun(fixture, "crun_status_2", true)
+	fixture.service.UserRepo.(*creativeFakeUserRepo).user.Concurrency = 2
+
+	repo := &parallelCreativeRunRepo{creativeFakeRunRepo: fixture.repo}
+	transient := &parallelCreativeTransient{creativeFakeTransient: fixture.store}
+	billing := &parallelCreativeBilling{creativeFakeBillingRepo: fixture.billing}
+	fixture.service.Repo = repo
+	fixture.service.TransientStore = transient
+	fixture.service.BillingRepo = billing
+	queue := &parallelCreativeQueue{ready: make(chan string, 2)}
+	executor := &overlappingCreativeExecutor{
+		overlapped: make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	worker := NewCreativeRunWorker(queue, repo, transient, executor, fixture.service, fixture.worker.opts, NewConcurrencyService(&parallelCreativeUserCache{}))
+	runtime := NewCreativeWorkerRuntime(worker, &config.Config{
+		Creative: config.CreativeConfig{QueueEnabled: true},
+	})
+	runtime.SetWorkerCount(2)
+	runtime.Start()
+	t.Cleanup(func() {
+		executor.allow()
+		runtime.Stop()
+	})
+
+	queue.ready <- "crun_status_1"
+	queue.ready <- "crun_status_2"
+	select {
+	case <-executor.overlapped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("两个创作台任务未同时进入 provider")
+	}
+	require.Eventually(t, func() bool {
+		status := runtime.Status()
+		return status.Running && status.WorkerCount == 2 && status.BusyWorkers == 2
+	}, 2*time.Second, 10*time.Millisecond)
+
+	executor.allow()
+	runtime.Stop()
+	require.Equal(t, CreativeWorkerStatus{}, runtime.Status())
+}
+
 // parallelCreativeQueue 是只用于并行验收的内存队列，保留真实 worker 的 Reserve/锁/确认路径。
 type parallelCreativeQueue struct {
 	ready chan string

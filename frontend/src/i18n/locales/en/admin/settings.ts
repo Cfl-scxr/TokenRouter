@@ -131,6 +131,7 @@ dataSharing: {
           workerCount: 'Worker count',
           workerCountHint: 'Controls how many Creative Studio tasks can run at once. Default: 128; changes apply immediately.',
           workerCountInvalid: 'Worker count must be a positive integer.',
+          workerUsage: 'Current usage',
           modelSettings: {
             title: 'Image Models and Capabilities',
             description: 'Only selected models in the selected groups can be used by Creative Studio. An empty list disables all image models.',

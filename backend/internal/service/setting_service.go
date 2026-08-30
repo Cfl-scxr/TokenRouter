@@ -200,6 +200,7 @@ type SettingService struct {
 	cfg                         *config.Config
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
 	creativeWorkerCountCallback func(int)
+	creativeWorkerStatusCallback func() CreativeWorkerStatus
 	version                     string // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
 	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
@@ -449,6 +450,22 @@ func (s *SettingService) SetCreativeWorkerCountCallback(callback func(int)) {
 		return
 	}
 	s.creativeWorkerCountCallback = callback
+}
+
+// SetCreativeWorkerStatusCallback 设置创作台 worker 池状态读取回调。
+func (s *SettingService) SetCreativeWorkerStatusCallback(callback func() CreativeWorkerStatus) {
+	if s == nil {
+		return
+	}
+	s.creativeWorkerStatusCallback = callback
+}
+
+// CreativeWorkerStatus 返回创作台 worker 池状态快照；回调未注入时返回未运行的零值快照。
+func (s *SettingService) CreativeWorkerStatus() CreativeWorkerStatus {
+	if s == nil || s.creativeWorkerStatusCallback == nil {
+		return CreativeWorkerStatus{}
+	}
+	return s.creativeWorkerStatusCallback()
 }
 
 // SetVersion sets the application version for injection into public settings

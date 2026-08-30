@@ -51,6 +51,10 @@ vi.mock('fabric', () => {
     selectable = true
     evented = true
 
+    constructor(values?: Record<string, unknown>) {
+      if (values) Object.assign(this, values)
+    }
+
     set(values: Record<string, unknown>): this {
       Object.assign(this, values)
       return this
@@ -90,13 +94,19 @@ vi.mock('fabric', () => {
     backgroundColor = ''
     objects: MockObject[] = []
     active: MockObject | null = null
+    listeners: Record<string, Array<(event: any) => void>> = {}
 
     constructor() {
       if (!fabricState.main) fabricState.main = this
       else fabricState.mask = this
     }
 
-    on(): void {}
+    on(name: string, handler: (event: any) => void): void {
+      this.listeners[name] = [...(this.listeners[name] ?? []), handler]
+    }
+    emit(name: string, event: any): void {
+      this.listeners[name]?.forEach((handler) => handler(event))
+    }
     getWidth(): number { return this.width }
     getHeight(): number { return this.height }
     getZoom(): number { return this.viewportTransform[0] }
@@ -107,6 +117,10 @@ vi.mock('fabric', () => {
     setViewportTransform(value: [number, number, number, number, number, number]): void {
       this.viewportTransform = value
     }
+    zoomToPoint = vi.fn((_point: MockPoint, zoom: number): void => {
+      this.viewportTransform[0] = zoom
+      this.viewportTransform[3] = zoom
+    })
     setDimensions(value: { width: number; height: number }): void {
       this.width = value.width
       this.height = value.height
@@ -167,6 +181,32 @@ function makeDropEvent(dataTransfer: Record<string, unknown>): DragEvent {
 async function drop(wrapper: ReturnType<typeof mount>, dataTransfer: Record<string, unknown>): Promise<void> {
   wrapper.find('.dot-grid').element.dispatchEvent(makeDropEvent(dataTransfer))
   await flushPromises()
+}
+
+function makeWheelEvent(overrides: Partial<{
+  deltaX: number
+  deltaY: number
+  deltaMode: number
+  ctrlKey: boolean
+  offsetX: number
+  offsetY: number
+}> = {}): WheelEvent {
+  const event = new Event('wheel', { bubbles: true, cancelable: true }) as WheelEvent
+  Object.defineProperties(event, {
+    deltaX: { configurable: true, value: overrides.deltaX ?? 0 },
+    deltaY: { configurable: true, value: overrides.deltaY ?? 0 },
+    deltaMode: { configurable: true, value: overrides.deltaMode ?? 0 },
+    ctrlKey: { configurable: true, value: overrides.ctrlKey ?? false },
+    offsetX: { configurable: true, value: overrides.offsetX ?? 120 },
+    offsetY: { configurable: true, value: overrides.offsetY ?? 80 },
+  })
+  return event
+}
+
+function emitWheel(overrides: Parameters<typeof makeWheelEvent>[0] = {}): WheelEvent {
+  const event = makeWheelEvent(overrides)
+  fabricState.main.emit('mouse:wheel', { e: event })
+  return event
 }
 
 function mountCanvas() {
@@ -295,6 +335,75 @@ describe('CreativeCanvas 拖放', () => {
     expect(storeMocks.saveAsset).not.toHaveBeenCalled()
     expect(fabricState.images).toHaveLength(0)
     expect(wrapper.emitted('error')).toEqual([['creative.error.dropUnsupported']])
+    wrapper.unmount()
+  })
+
+  it('普通 wheel 只按跟手方向平移画布，不触发缩放', () => {
+    const wrapper = mountCanvas()
+    const event = emitWheel({ deltaX: 12, deltaY: -8 })
+
+    expect(fabricState.main.viewportTransform).toEqual([1, 0, 0, 1, -12, 8])
+    expect(fabricState.main.zoomToPoint).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(true)
+    expect(event.cancelBubble).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('按 wheel 单位将行和页换算为画布像素', () => {
+    const wrapper = mountCanvas()
+    emitWheel({ deltaX: 2, deltaY: 3, deltaMode: 1 })
+    expect(fabricState.main.viewportTransform).toEqual([1, 0, 0, 1, -32, -48])
+
+    fabricState.main.setViewportTransform([1, 0, 0, 1, 0, 0])
+    emitWheel({ deltaX: 1, deltaY: 1, deltaMode: 2 })
+    expect(fabricState.main.viewportTransform).toEqual([1, 0, 0, 1, -800, -600])
+    wrapper.unmount()
+  })
+
+  it('ctrlKey wheel 以光标为中心缩放并使用加快后的灵敏度', () => {
+    const wrapper = mountCanvas()
+    const event = emitWheel({ deltaY: 10, ctrlKey: true, offsetX: 230, offsetY: 170 })
+    const [point, zoom] = fabricState.main.zoomToPoint.mock.calls[0]
+
+    expect(point).toMatchObject({ x: 230, y: 170 })
+    expect(zoom).toBeCloseTo(0.995 ** 10, 10)
+    expect(fabricState.main.viewportTransform.slice(4)).toEqual([0, 0])
+    expect(event.defaultPrevented).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('捏合缩放保持 0.2 到 3 的边界', () => {
+    const wrapper = mountCanvas()
+    fabricState.main.setViewportTransform([3, 0, 0, 3, 0, 0])
+    emitWheel({ deltaY: -100, ctrlKey: true })
+    expect(fabricState.main.getZoom()).toBe(3)
+
+    fabricState.main.setViewportTransform([0.2, 0, 0, 0.2, 0, 0])
+    emitWheel({ deltaY: 100, ctrlKey: true })
+    expect(fabricState.main.getZoom()).toBe(0.2)
+    wrapper.unmount()
+  })
+
+  it('局部重绘选中图片时，锚点描边与图片左上角对齐', async () => {
+    const wrapper = mount(CreativeCanvas, {
+      props: { operation: 'inpaint' },
+      global: { stubs: { CropperModal: true, Icon: true } },
+    })
+    const source = new File(['image'], 'source.png', { type: 'image/png' })
+    await (wrapper.vm as unknown as { addUploadedImage: (blob: Blob) => Promise<void> }).addUploadedImage(source)
+    const image = fabricState.images[0]
+    fabricState.main.emit('selection:created', { selected: [image] })
+    await flushPromises()
+
+    const outline = fabricState.main.objects.find((object: { data?: Record<string, unknown> }) => object.data?.kind === 'anchor-outline')
+    expect(outline).toMatchObject({
+      left: image.left,
+      top: image.top,
+      width: image.width * image.scaleX,
+      height: image.height * image.scaleY,
+      originX: 'left',
+      originY: 'top',
+    })
     wrapper.unmount()
   })
 })

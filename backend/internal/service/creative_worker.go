@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
@@ -152,6 +153,8 @@ type CreativeRunWorker struct {
 	service     *CreativePublicService
 	concurrency *ConcurrencyService
 	opts        CreativeWorkerOptions
+	// busy 记录正在处理任务的 worker 数量，供管理端展示当前使用情况。
+	busy atomic.Int32
 }
 
 // NewCreativeRunWorker 创建创作台 worker。
@@ -221,6 +224,14 @@ func sleepOrCreativeWorkerStop(ctx context.Context, delay time.Duration, stop <-
 	}
 }
 
+// BusyCount 返回正在处理任务的 worker 数量。
+func (w *CreativeRunWorker) BusyCount() int {
+	if w == nil {
+		return 0
+	}
+	return int(w.busy.Load())
+}
+
 // RunOnce 处理一个队列任务。
 func (w *CreativeRunWorker) RunOnce(ctx context.Context) error {
 	return w.runOnce(ctx, nil)
@@ -263,7 +274,9 @@ func (w *CreativeRunWorker) runOnce(ctx context.Context, stop <-chan struct{}) e
 	hbDone := make(chan struct{})
 	go w.runJobHeartbeat(ctx, reserved.RunID, lock, hbStop, hbDone)
 
+	w.busy.Add(1)
 	result, processErr := w.process(ctx, reserved.RunID)
+	w.busy.Add(-1)
 	close(hbStop)
 	<-hbDone
 	if processErr != nil {

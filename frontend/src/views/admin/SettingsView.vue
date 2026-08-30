@@ -7516,8 +7516,26 @@
                   min="1"
                   step="1"
                   required
-                  class="form-input w-32"
+                  class="input w-32"
                 />
+              </div>
+
+              <!-- 当前 worker 使用情况：进度条 + 忙碌/总数，数据来自运行时状态轮询。 -->
+              <div class="mt-4">
+                <p class="mb-1.5 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.features.creative.workerUsage") }}
+                </p>
+                <div class="flex items-center gap-3">
+                  <div class="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                    <div
+                      class="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                      :style="{ width: `${creativeWorkerUsagePercent}%` }"
+                    ></div>
+                  </div>
+                  <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-white">
+                    {{ creativeWorkerUsageText }}
+                  </span>
+                </div>
               </div>
 
               <div class="mt-6 border-t border-gray-100 pt-5 dark:border-dark-700">
@@ -8952,7 +8970,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick, watch } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { adminAPI } from "@/api";
@@ -8989,6 +9007,7 @@ import type {
   UsageRankingSortBy,
   CreativeModelCandidate,
   CreativeModelSetting,
+  CreativeWorkerStatus,
 } from "@/api/admin/settings";
 import type { CreativeOperation } from "@/api/creative";
 import type { LoginAgreementDocument, MarketplaceGroup, NotifyEmailEntry, Proxy } from "@/types";
@@ -9929,6 +9948,77 @@ const creativeOperationChoices: CreativeOperation[] = [
 const creativeModelCandidates = ref<CreativeModelCandidate[]>([]);
 const creativeModelCandidatesLoading = ref(false);
 const creativeModelCandidatesError = ref(false);
+
+// 创作台 worker 使用情况：进入功能标签页时轮询运行时状态，离开时停止，避免后台空转。
+const creativeWorkerStatus = ref<CreativeWorkerStatus | null>(null);
+let creativeWorkerStatusTimer: number | null = null;
+
+const creativeWorkerUsageTotal = computed(() => {
+  const status = creativeWorkerStatus.value;
+  if (status?.running && status.worker_count > 0) {
+    return status.worker_count;
+  }
+  return Math.max(0, Math.floor(Number(form.creative_worker_count)) || 0);
+});
+const creativeWorkerUsageBusy = computed(() => {
+  const status = creativeWorkerStatus.value;
+  if (!status?.running) {
+    return 0;
+  }
+  return Math.min(Math.max(status.busy_workers, 0), creativeWorkerUsageTotal.value);
+});
+const creativeWorkerUsagePercent = computed(() => {
+  const total = creativeWorkerUsageTotal.value;
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(Math.round((creativeWorkerUsageBusy.value / total) * 100), 100);
+});
+const creativeWorkerUsageText = computed(
+  () => `${creativeWorkerUsageBusy.value}/${creativeWorkerUsageTotal.value}`,
+);
+
+async function loadCreativeWorkerStatus() {
+  try {
+    creativeWorkerStatus.value = await adminAPI.settings.getCreativeWorkerStatus();
+  } catch {
+    // 轮询失败静默处理：保留上一次成功快照，不打断设置页操作。
+  }
+}
+
+function startCreativeWorkerStatusPolling() {
+  if (creativeWorkerStatusTimer !== null) {
+    return;
+  }
+  void loadCreativeWorkerStatus();
+  creativeWorkerStatusTimer = window.setInterval(() => {
+    void loadCreativeWorkerStatus();
+  }, 5000);
+}
+
+function stopCreativeWorkerStatusPolling() {
+  if (creativeWorkerStatusTimer === null) {
+    return;
+  }
+  window.clearInterval(creativeWorkerStatusTimer);
+  creativeWorkerStatusTimer = null;
+}
+
+watch(
+  activeTab,
+  (tab) => {
+    if (tab === "features") {
+      startCreativeWorkerStatusPolling();
+    } else {
+      stopCreativeWorkerStatusPolling();
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  stopCreativeWorkerStatusPolling();
+});
 
 function creativeModelSettingKey(item: Pick<CreativeModelSetting, "group_id" | "model">): string {
   return `${item.group_id}::${item.model}`;

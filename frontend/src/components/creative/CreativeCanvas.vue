@@ -172,7 +172,7 @@
 <script setup lang="ts">
 /**
  * 创作台无限画布（fabric 7）
- * - 逻辑尺寸跟随容器；空白处拖拽平移视角（改 viewportTransform），滚轮以光标为中心缩放（0.2–3）
+ * - 逻辑尺寸跟随容器；空白处拖拽或普通 wheel 平移视角，触控板捏合（ctrlKey wheel）以光标为中心缩放（0.2–3）
  * - 图片对象可点选 / 拖动 / Delete 删除；生成输出自动按"上一个放置位置右侧 40px、约 2200px 换行"上板并平滑平移视角
  * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
  *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
@@ -223,6 +223,12 @@ const SCENE_SAVE_DEBOUNCE = 1000
 // 缩放范围
 const MIN_ZOOM = 0.2
 const MAX_ZOOM = 3
+// 触控板捏合缩放灵敏度：相对最初的 0.999 系数约提升五倍
+const ZOOM_WHEEL_FACTOR = 0.995
+// 非像素 wheel 的常用换算；触控板通常使用像素模式，鼠标滚轮常使用行模式
+const WHEEL_LINE_HEIGHT = 16
+const WHEEL_DELTA_MODE_LINE = 1
+const WHEEL_DELTA_MODE_PAGE = 2
 // 输出自动上板的排布参数
 const PLACE_GAP = 40
 const PLACE_WRAP_X = 2200
@@ -644,12 +650,22 @@ function bindCanvasEvents(): void {
   canvas.on('mouse:up', () => stopPanning())
   canvas.on('mouse:wheel', (event) => {
     if (!canvas) return
-    event.e.preventDefault()
-    event.e.stopPropagation()
     const wheel = event.e as WheelEvent
-    // 以光标位置为缩放中心（zoomToPoint 接收画布元素坐标系内的点）
-    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * 0.999 ** wheel.deltaY))
-    canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), next)
+    wheel.preventDefault()
+    wheel.stopPropagation()
+    if (wheel.ctrlKey) {
+      // 浏览器会给触控板捏合 wheel 标记 ctrlKey；以光标位置为缩放中心。
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * ZOOM_WHEEL_FACTOR ** wheel.deltaY))
+      canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), next)
+    } else {
+      // 普通双指滚动沿手指方向平移画布，取反 wheel delta 抵消浏览器滚动语义。
+      const dx = normalizeWheelDelta(wheel.deltaX, wheel.deltaMode, canvas.getWidth())
+      const dy = normalizeWheelDelta(wheel.deltaY, wheel.deltaMode, canvas.getHeight())
+      const vpt = [...canvas.viewportTransform] as TMat2D
+      vpt[4] -= dx
+      vpt[5] -= dy
+      canvas.setViewportTransform(vpt)
+    }
     syncDotGrid()
     scheduleSceneSave()
   })
@@ -737,6 +753,14 @@ function bindCanvasEvents(): void {
       refreshResolutionTag(inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null)
     }
   })
+}
+
+// 将 wheel 的像素、行、页三种单位统一成画布像素，避免鼠标滚轮平移过慢。
+function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
+  if (!Number.isFinite(delta) || delta === 0) return 0
+  if (deltaMode === WHEEL_DELTA_MODE_LINE) return delta * WHEEL_LINE_HEIGHT
+  if (deltaMode === WHEEL_DELTA_MODE_PAGE) return delta * pageSize
+  return delta
 }
 
 // 平移拖拽开始（坐标记录 + 抓手光标）
@@ -892,6 +916,9 @@ function updateAnchorOutline(): void {
   if (!anchorOutline) {
     anchorOutline = new Rect({
       ...ANCHOR_OUTLINE_STYLE,
+      // 图片使用左上角定位，描边也必须使用相同原点，避免按默认中心原点产生半尺寸偏移。
+      originX: 'left',
+      originY: 'top',
       selectable: false,
       evented: false,
     })

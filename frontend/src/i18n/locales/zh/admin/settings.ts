@@ -129,6 +129,7 @@ dataSharing: {
           workerCount: 'Worker 数量',
           workerCountHint: '控制创作台同时处理的任务数，默认 128；修改后立即生效。',
           workerCountInvalid: 'Worker 数量必须是大于 0 的整数。',
+          workerUsage: '当前使用情况',
           modelSettings: {
             title: '生图模型与能力',
             description: '仅允许所选分组中的模型用于创作台；空列表表示创作台无法使用生图模型。',

@@ -5,6 +5,7 @@ import type { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { apiClient } from "@/api/client";
 import {
   getCreativeModelCandidates,
+  getCreativeWorkerStatus,
   updateSettings,
 } from "@/api/admin/settings";
 
@@ -44,6 +45,16 @@ describe("creative model settings API", () => {
     const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig;
     expect(config.method).toBe("get");
     expect(config.url).toBe("/admin/settings/creative-model-candidates");
+  });
+
+  it("读取创作台 worker 池状态快照", async () => {
+    const status = { running: true, worker_count: 128, busy_workers: 60 };
+    adapter.mockResolvedValue(jsonResponse(status));
+
+    await expect(getCreativeWorkerStatus()).resolves.toEqual(status);
+    const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig;
+    expect(config.method).toBe("get");
+    expect(config.url).toBe("/admin/settings/creative-worker-status");
   });
 
   it("保存创作台模型配置字段", async () => {

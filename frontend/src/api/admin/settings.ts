@@ -35,6 +35,13 @@ export interface CreativeModelCandidate {
   operations: CreativeOperation[];
 }
 
+/** 创作台任务 worker 池状态快照。 */
+export interface CreativeWorkerStatus {
+  running: boolean;
+  worker_count: number;
+  busy_workers: number;
+}
+
 export interface DefaultSubscriptionSetting {
   plan_id: number;
 }
@@ -1116,6 +1123,14 @@ export async function getCreativeModelCandidates(): Promise<CreativeModelCandida
   return Array.isArray(data) ? data : [];
 }
 
+/** 获取创作台任务 worker 池状态快照，用于展示当前 worker 使用情况。 */
+export async function getCreativeWorkerStatus(): Promise<CreativeWorkerStatus> {
+  const { data } = await apiClient.get<CreativeWorkerStatus>(
+    "/admin/settings/creative-worker-status",
+  );
+  return data;
+}
+
 /**
  * Update system settings
  * @param settings - Partial settings to update
@@ -1755,6 +1770,7 @@ export async function backfillPreAggregation(days: number): Promise<{ status: st
 export const settingsAPI = {
   getSettings,
   getCreativeModelCandidates,
+  getCreativeWorkerStatus,
   updateSettings,
   testSmtpConnection,
   sendTestEmail,

@@ -7,6 +7,7 @@ import SettingsView from "../SettingsView.vue";
 const {
   getSettings,
   getCreativeModelCandidates,
+  getCreativeWorkerStatus,
   updateSettings,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
@@ -44,6 +45,7 @@ const {
 } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   getCreativeModelCandidates: vi.fn(),
+  getCreativeWorkerStatus: vi.fn(),
   updateSettings: vi.fn(),
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
@@ -114,6 +116,7 @@ vi.mock("@/api", () => ({
     settings: {
       getSettings,
       getCreativeModelCandidates,
+      getCreativeWorkerStatus,
       updateSettings,
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,

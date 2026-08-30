@@ -119,6 +119,16 @@ func (h *SettingHandler) ListCreativeModelCandidates(c *gin.Context) {
 	response.Success(c, candidates)
 }
 
+// GetCreativeWorkerStatus 返回创作台任务 worker 池状态快照，供管理端展示当前使用情况。
+// GET /api/v1/admin/settings/creative-worker-status
+func (h *SettingHandler) GetCreativeWorkerStatus(c *gin.Context) {
+	if h == nil || h.settingService == nil {
+		response.Error(c, 500, "setting service is not configured")
+		return
+	}
+	response.Success(c, h.settingService.CreativeWorkerStatus())
+}
+
 // SetNotificationEmailService 注入通知邮件模板服务，并保持既有构造函数签名不变。
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService

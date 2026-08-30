@@ -435,17 +435,7 @@ func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, grou
 		}
 		switch group.Platform {
 		case PlatformGemini:
-			if len(account.GetModelMapping()) == 0 {
-				// 未配置映射时回退到 gemini 图片模型候选集合（与批量图片默认一致），按账号白名单过滤。
-				for _, model := range defaultBatchImageModelCandidates() {
-					if account.IsModelSupported(model) {
-						out[model] = struct{}{}
-					}
-				}
-				continue
-			}
-			// 复用批量图片的 gemini 图片模型候选展开逻辑（含 vertex）。
-			for _, model := range batchImageModelsFromAccountMapping(account) {
+			for _, model := range creativeGeminiModelsForAccount(account) {
 				out[model] = struct{}{}
 			}
 		case PlatformOpenAI:
@@ -461,6 +451,42 @@ func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, grou
 	return out, nil
 }
 
+// creativeGeminiModelsForAccount 展开 Gemini 账号的创作台图片模型候选。
+// 有映射时保留批量图片的映射语义；无映射时还要纳入显式白名单中的图片变体。
+func creativeGeminiModelsForAccount(account *Account) []string {
+	if account == nil {
+		return nil
+	}
+	if len(account.GetModelMapping()) > 0 {
+		// 复用批量图片的 Gemini 图片模型候选展开逻辑（含 Vertex）。
+		return batchImageModelsFromAccountMapping(account)
+	}
+
+	models := make(map[string]struct{})
+	candidateModels := append([]string(nil), defaultBatchImageModelCandidates()...)
+	candidateModels = append(candidateModels, account.GetConfiguredRequestModels()...)
+	for _, model := range candidateModels {
+		model = strings.TrimSpace(model)
+		if !isCreativeGeminiImageModel(model) || !account.IsModelSupported(model) {
+			continue
+		}
+		models[model] = struct{}{}
+	}
+
+	out := make([]string, 0, len(models))
+	for model := range models {
+		out = append(out, model)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// isCreativeGeminiImageModel 按 Gemini 图片模型的命名约定识别显式白名单变体。
+func isCreativeGeminiImageModel(model string) bool {
+	model = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	return strings.HasPrefix(model, "gemini-") && strings.Contains(model, "image")
+}
+
 // creativeExpandAccountModels 展开账号模型映射，通配符按候选集合匹配，再按谓词过滤图片模型。
 // 账号未配置模型映射时等价于网关全量透传，回退到平台图片模型候选并按账号最终白名单过滤。
 func creativeExpandAccountModels(account *Account, candidates []string, matches func(string) bool) []string {
@@ -470,7 +496,11 @@ func creativeExpandAccountModels(account *Account, candidates []string, matches 
 	mapping := account.GetModelMapping()
 	if len(mapping) == 0 {
 		models := make(map[string]struct{})
-		for _, candidate := range candidates {
+		// 显式白名单可能包含代理侧的图片模型变体，不能只依赖平台默认候选表。
+		candidateModels := append([]string(nil), candidates...)
+		candidateModels = append(candidateModels, account.GetConfiguredRequestModels()...)
+		for _, candidate := range candidateModels {
+			candidate = strings.TrimSpace(candidate)
 			if matches(candidate) && account.IsModelSupported(candidate) {
 				models[candidate] = struct{}{}
 			}
@@ -513,7 +543,7 @@ func defaultCreativeOpenAIModelCandidates() []string {
 }
 
 func defaultCreativeGrokModelCandidates() []string {
-	return []string{"grok-imagine", "grok-imagine-edit", "grok-imagine-image-1.0", "grok-imagine-image-2.0"}
+	return []string{"grok-imagine", "grok-imagine-edit", "grok-imagine-image", "grok-imagine-image-quality", "grok-imagine-image-1.0", "grok-imagine-image-2.0"}
 }
 
 // ---------------------------------------------------------------------------

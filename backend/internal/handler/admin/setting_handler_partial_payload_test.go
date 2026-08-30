@@ -209,6 +209,34 @@ func TestListCreativeModelCandidates(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "grok-imagine")
 }
 
+// TestGetCreativeWorkerStatus 验证创作台 worker 状态接口返回回调快照，未注入回调时返回未运行零值。
+func TestGetCreativeWorkerStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewSettingService(&settingHandlerRepoStub{values: map[string]string{}}, &config.Config{})
+	h := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/creative-worker-status", nil)
+	h.GetCreativeWorkerStatus(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"running":false`)
+	require.Contains(t, rec.Body.String(), `"worker_count":0`)
+	require.Contains(t, rec.Body.String(), `"busy_workers":0`)
+
+	svc.SetCreativeWorkerStatusCallback(func() service.CreativeWorkerStatus {
+		return service.CreativeWorkerStatus{Running: true, WorkerCount: 128, BusyWorkers: 60}
+	})
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/creative-worker-status", nil)
+	h.GetCreativeWorkerStatus(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"running":true`)
+	require.Contains(t, rec.Body.String(), `"worker_count":128`)
+	require.Contains(t, rec.Body.String(), `"busy_workers":60`)
+}
+
 func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyGrokDefaultBaseURLMode: service.GrokDefaultBaseURLModeCLI,

@@ -12,6 +12,13 @@ import (
 // DefaultCreativeWorkerCount 是创作台任务 worker 的默认并发数。
 const DefaultCreativeWorkerCount = 128
 
+// CreativeWorkerStatus 是创作台 worker 池状态快照，供管理端展示当前使用情况。
+type CreativeWorkerStatus struct {
+	Running     bool `json:"running"`
+	WorkerCount int  `json:"worker_count"`
+	BusyWorkers int  `json:"busy_workers"`
+}
+
 type creativeWorkerHandle struct {
 	id       uint64
 	stop     chan struct{}
@@ -63,6 +70,7 @@ func ProvideCreativeWorkerRuntime(
 	runtime := NewCreativeWorkerRuntime(worker, cfg, settingService)
 	if settingService != nil {
 		settingService.SetCreativeWorkerCountCallback(runtime.SetWorkerCount)
+		settingService.SetCreativeWorkerStatusCallback(runtime.Status)
 	}
 	runtime.Start()
 	return runtime
@@ -151,6 +159,28 @@ func (r *CreativeWorkerRuntime) WorkerCount() int {
 		return DefaultCreativeWorkerCount
 	}
 	return r.desiredWorkerCount
+}
+
+// Status 返回 worker 池状态快照；未运行时返回 running=false 的零值快照。
+func (r *CreativeWorkerRuntime) Status() CreativeWorkerStatus {
+	if r == nil || r.worker == nil {
+		return CreativeWorkerStatus{}
+	}
+	r.mu.Lock()
+	running := r.cancel != nil
+	workerCount := 0
+	if running {
+		workerCount = r.activeWorkerCountLocked()
+	}
+	r.mu.Unlock()
+	if !running {
+		return CreativeWorkerStatus{Running: false}
+	}
+	return CreativeWorkerStatus{
+		Running:     true,
+		WorkerCount: workerCount,
+		BusyWorkers: r.worker.BusyCount(),
+	}
 }
 
 // reconcileWorkersLocked 使 worker 数量向 desiredWorkerCount 收敛；调用方必须持有 mu。

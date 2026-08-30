@@ -184,7 +184,7 @@
       </span>
 
       <div class="ml-auto flex items-center gap-2">
-        <span v-if="studio.estimatedCost.value !== null" class="max-sm:hidden whitespace-nowrap text-[11px] text-gray-400 dark:text-dark-400">
+        <span v-if="studio.estimatedCost.value !== null" class="max-sm:hidden whitespace-nowrap text-sm text-black dark:text-white">
           {{ t('creative.panel.estimatedCost', { cost: formatBalanceAmount(studio.estimatedCost.value, { fractionDigits: 3 }) }) }}
         </span>
         <button
