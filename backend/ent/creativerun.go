@@ -27,6 +27,8 @@ type CreativeRun struct {
 	RunID string `json:"run_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID *string `json:"workspace_id,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID int64 `json:"group_id,omitempty"`
 	// APIKeyID holds the value of the "api_key_id" field.
@@ -105,7 +107,7 @@ func (*CreativeRun) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case creativerun.FieldID, creativerun.FieldUserID, creativerun.FieldGroupID, creativerun.FieldAPIKeyID, creativerun.FieldAccountID, creativerun.FieldRequestedOutputCount, creativerun.FieldAttemptCount, creativerun.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case creativerun.FieldRunID, creativerun.FieldModel, creativerun.FieldRequestedModel, creativerun.FieldOperation, creativerun.FieldImageSize, creativerun.FieldAspectRatio, creativerun.FieldResponseMimeType, creativerun.FieldPromptHash, creativerun.FieldRequestFingerprint, creativerun.FieldIdempotencyKey, creativerun.FieldStatus, creativerun.FieldErrorCode, creativerun.FieldErrorMessage:
+		case creativerun.FieldRunID, creativerun.FieldWorkspaceID, creativerun.FieldModel, creativerun.FieldRequestedModel, creativerun.FieldOperation, creativerun.FieldImageSize, creativerun.FieldAspectRatio, creativerun.FieldResponseMimeType, creativerun.FieldPromptHash, creativerun.FieldRequestFingerprint, creativerun.FieldIdempotencyKey, creativerun.FieldStatus, creativerun.FieldErrorCode, creativerun.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case creativerun.FieldCreatedAt, creativerun.FieldUpdatedAt, creativerun.FieldStartedAt, creativerun.FieldCompletedAt, creativerun.FieldCancelledAt:
 			values[i] = new(sql.NullTime)
@@ -153,6 +155,13 @@ func (_m *CreativeRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case creativerun.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = new(string)
+				*_m.WorkspaceID = value.String
 			}
 		case creativerun.FieldGroupID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -398,6 +407,11 @@ func (_m *CreativeRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
+	builder.WriteString(", ")
+	if v := _m.WorkspaceID; v != nil {
+		builder.WriteString("workspace_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("group_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.GroupID))

@@ -63,6 +63,20 @@ func (_c *CreativeRunCreate) SetUserID(v int64) *CreativeRunCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *CreativeRunCreate) SetWorkspaceID(v string) *CreativeRunCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableWorkspaceID(v *string) *CreativeRunCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetGroupID sets the "group_id" field.
 func (_c *CreativeRunCreate) SetGroupID(v int64) *CreativeRunCreate {
 	_c.mutation.SetGroupID(v)
@@ -569,6 +583,11 @@ func (_c *CreativeRunCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "CreativeRun.user_id"`)}
 	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := creativerun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.workspace_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.GroupID(); !ok {
 		return &ValidationError{Name: "group_id", err: errors.New(`ent: missing required field "CreativeRun.group_id"`)}
 	}
@@ -732,6 +751,10 @@ func (_c *CreativeRunCreate) createSpec() (*CreativeRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UserID(); ok {
 		_spec.SetField(creativerun.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(creativerun.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = &value
 	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(creativerun.FieldGroupID, field.TypeInt64, value)
@@ -936,6 +959,24 @@ func (u *CreativeRunUpsert) UpdateUserID() *CreativeRunUpsert {
 // AddUserID adds v to the "user_id" field.
 func (u *CreativeRunUpsert) AddUserID(v int64) *CreativeRunUpsert {
 	u.Add(creativerun.FieldUserID, v)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CreativeRunUpsert) SetWorkspaceID(v string) *CreativeRunUpsert {
+	u.Set(creativerun.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateWorkspaceID() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldWorkspaceID)
+	return u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *CreativeRunUpsert) ClearWorkspaceID() *CreativeRunUpsert {
+	u.SetNull(creativerun.FieldWorkspaceID)
 	return u
 }
 
@@ -1523,6 +1564,27 @@ func (u *CreativeRunUpsertOne) AddUserID(v int64) *CreativeRunUpsertOne {
 func (u *CreativeRunUpsertOne) UpdateUserID() *CreativeRunUpsertOne {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CreativeRunUpsertOne) SetWorkspaceID(v string) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateWorkspaceID() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateWorkspaceID()
+	})
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *CreativeRunUpsertOne) ClearWorkspaceID() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearWorkspaceID()
 	})
 }
 
@@ -2360,6 +2422,27 @@ func (u *CreativeRunUpsertBulk) AddUserID(v int64) *CreativeRunUpsertBulk {
 func (u *CreativeRunUpsertBulk) UpdateUserID() *CreativeRunUpsertBulk {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CreativeRunUpsertBulk) SetWorkspaceID(v string) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateWorkspaceID() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateWorkspaceID()
+	})
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (u *CreativeRunUpsertBulk) ClearWorkspaceID() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearWorkspaceID()
 	})
 }
 

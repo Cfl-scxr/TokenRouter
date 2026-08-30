@@ -22,6 +22,8 @@ const (
 	FieldRunID = "run_id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
 	// FieldAPIKeyID holds the string denoting the api_key_id field in the database.
@@ -95,6 +97,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldRunID,
 	FieldUserID,
+	FieldWorkspaceID,
 	FieldGroupID,
 	FieldAPIKeyID,
 	FieldAccountID,
@@ -147,6 +150,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// RunIDValidator is a validator for the "run_id" field. It is called by the builders before save.
 	RunIDValidator func(string) error
+	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	WorkspaceIDValidator func(string) error
 	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
 	ModelValidator func(string) error
 	// DefaultRequestedModel holds the default value on creation for the "requested_model" field.
@@ -229,6 +234,11 @@ func ByRunID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // ByGroupID orders the results by the group_id field.

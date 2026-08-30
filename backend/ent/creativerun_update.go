@@ -57,6 +57,26 @@ func (_u *CreativeRunUpdate) AddUserID(v int64) *CreativeRunUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *CreativeRunUpdate) SetWorkspaceID(v string) *CreativeRunUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableWorkspaceID(v *string) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (_u *CreativeRunUpdate) ClearWorkspaceID() *CreativeRunUpdate {
+	_u.mutation.ClearWorkspaceID()
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *CreativeRunUpdate) SetGroupID(v int64) *CreativeRunUpdate {
 	_u.mutation.ResetGroupID()
@@ -677,6 +697,11 @@ func (_u *CreativeRunUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CreativeRunUpdate) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := creativerun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.workspace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Model(); ok {
 		if err := creativerun.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.model": %w`, err)}
@@ -755,6 +780,12 @@ func (_u *CreativeRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(creativerun.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(creativerun.FieldWorkspaceID, field.TypeString, value)
+	}
+	if _u.mutation.WorkspaceIDCleared() {
+		_spec.ClearField(creativerun.FieldWorkspaceID, field.TypeString)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(creativerun.FieldGroupID, field.TypeInt64, value)
@@ -964,6 +995,26 @@ func (_u *CreativeRunUpdateOne) SetNillableUserID(v *int64) *CreativeRunUpdateOn
 // AddUserID adds value to the "user_id" field.
 func (_u *CreativeRunUpdateOne) AddUserID(v int64) *CreativeRunUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *CreativeRunUpdateOne) SetWorkspaceID(v string) *CreativeRunUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableWorkspaceID(v *string) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (_u *CreativeRunUpdateOne) ClearWorkspaceID() *CreativeRunUpdateOne {
+	_u.mutation.ClearWorkspaceID()
 	return _u
 }
 
@@ -1600,6 +1651,11 @@ func (_u *CreativeRunUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *CreativeRunUpdateOne) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := creativerun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.workspace_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Model(); ok {
 		if err := creativerun.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.model": %w`, err)}
@@ -1695,6 +1751,12 @@ func (_u *CreativeRunUpdateOne) sqlSave(ctx context.Context) (_node *CreativeRun
 	}
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(creativerun.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(creativerun.FieldWorkspaceID, field.TypeString, value)
+	}
+	if _u.mutation.WorkspaceIDCleared() {
+		_spec.ClearField(creativerun.FieldWorkspaceID, field.TypeString)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(creativerun.FieldGroupID, field.TypeInt64, value)

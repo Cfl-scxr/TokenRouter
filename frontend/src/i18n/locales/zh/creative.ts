@@ -87,7 +87,7 @@ export default {
       clearSuccess: '本机创作数据已清空。',
       confirmClearTitle: '清空本机创作数据？',
       confirmClearMessage:
-        '将永久删除本机保存的源图、mask、生成结果与画布场景，历史记录也会从本机列表隐藏（任务元数据仍保留在服务端）；已生成的图片无法找回，且不会影响账户余额。',
+        '将永久删除本机保存的源图、mask、生成结果与画布场景，并重置当前浏览器工作区；旧历史会从本机列表隐藏（任务元数据仍保留在服务端），后续任务进入新的工作区。已生成的图片无法找回，且不会影响账户余额。',
     },
     status: {
       queued: '排队中',
@@ -112,6 +112,8 @@ export default {
       sourceRequired: '图生图 / 局部重绘至少需要一张源图。',
       maskRequired: '局部重绘需要 mask，请先选中图片并用画笔绘制要重绘的区域。',
       submitFailed: '提交生成失败，请重试。',
+      historyFailed: '历史记录加载失败，请检查当前浏览器存储权限后重试。',
+      workspaceUnavailable: '当前浏览器工作区不可用，请允许本站使用本地存储后重试。',
       clearFailed: '清空本机数据失败。',
       loadImageFailed: '图片加载失败。',
       quotaExceeded: '本地存储空间不足，请先下载备份素材。',

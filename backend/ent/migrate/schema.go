@@ -721,6 +721,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "run_id", Type: field.TypeString, Size: 64},
 		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "workspace_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "group_id", Type: field.TypeInt64},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
@@ -770,19 +771,24 @@ var (
 				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[1]},
 			},
 			{
+				Name:    "creativerun_user_id_workspace_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[5], CreativeRunsColumns[1]},
+			},
+			{
 				Name:    "creativerun_status",
 				Unique:  false,
-				Columns: []*schema.Column{CreativeRunsColumns[18]},
+				Columns: []*schema.Column{CreativeRunsColumns[19]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "status IN ('queued', 'running')",
 				},
 			},
 			{
-				Name:    "creativerun_user_id_idempotency_key",
+				Name:    "creativerun_user_id_workspace_id_idempotency_key",
 				Unique:  true,
-				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[17]},
+				Columns: []*schema.Column{CreativeRunsColumns[4], CreativeRunsColumns[5], CreativeRunsColumns[18]},
 				Annotation: &entsql.IndexAnnotation{
-					Where: "idempotency_key IS NOT NULL AND idempotency_key <> ''",
+					Where: "workspace_id IS NOT NULL AND idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
 			},
 		},

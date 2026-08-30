@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/domain"
 	infraerrors "github.com/TokenFlux/TokenRouter/internal/pkg/errors"
+	"github.com/google/uuid"
 )
 
 // 创作台（Creative Studio）操作类型。
@@ -41,10 +43,12 @@ const (
 const CreativeManagedBy = "creative_studio"
 
 var (
-	ErrCreativeDisabled     = infraerrors.New(http.StatusNotFound, "CREATIVE_DISABLED", "creative studio is disabled")
-	ErrCreativeRunNotFound  = infraerrors.New(http.StatusNotFound, "CREATIVE_RUN_NOT_FOUND", "creative run not found")
-	ErrCreativeRunExists    = infraerrors.New(http.StatusConflict, "CREATIVE_RUN_EXISTS", "creative run already exists")
-	ErrCreativeOutputExists = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_EXISTS", "creative run output already exists")
+	ErrCreativeDisabled          = infraerrors.New(http.StatusNotFound, "CREATIVE_DISABLED", "creative studio is disabled")
+	ErrCreativeRunNotFound       = infraerrors.New(http.StatusNotFound, "CREATIVE_RUN_NOT_FOUND", "creative run not found")
+	ErrCreativeRunExists         = infraerrors.New(http.StatusConflict, "CREATIVE_RUN_EXISTS", "creative run already exists")
+	ErrCreativeOutputExists      = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_EXISTS", "creative run output already exists")
+	ErrCreativeWorkspaceRequired = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_REQUIRED", "creative workspace id is required")
+	ErrCreativeWorkspaceInvalid  = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_INVALID", "creative workspace id is invalid")
 
 	ErrCreativeInvalidTransition    = infraerrors.New(http.StatusBadRequest, "CREATIVE_INVALID_TRANSITION", "invalid creative run status transition")
 	ErrCreativeInvalidParams        = infraerrors.New(http.StatusBadRequest, "CREATIVE_INVALID_PARAMS", "invalid creative run parameters")
@@ -71,12 +75,55 @@ var (
 	ErrCreativeSettlementBillingFail = infraerrors.New(http.StatusBadGateway, "CREATIVE_SETTLEMENT_BILLING_FAILED", "creative settlement billing failed")
 )
 
+// CreativeWorkspaceHeader 是创作台浏览器工作区请求头名称。
+const CreativeWorkspaceHeader = "X-Creative-Workspace-ID"
+
+// CreativeRunScope 将用户身份与浏览器工作区绑定，所有用户侧任务访问都必须携带。
+type CreativeRunScope struct {
+	UserID      int64
+	WorkspaceID string
+}
+
+// NormalizeCreativeWorkspaceID 校验并规范化创作台工作区 UUID。
+func NormalizeCreativeWorkspaceID(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", ErrCreativeWorkspaceRequired
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil || parsed == uuid.Nil {
+		return "", ErrCreativeWorkspaceInvalid
+	}
+	return strings.ToLower(parsed.String()), nil
+}
+
+// ValidateCreativeRunScope 防止内部调用绕过工作区校验。
+func ValidateCreativeRunScope(scope CreativeRunScope) error {
+	_, err := NormalizeCreativeRunScope(scope)
+	return err
+}
+
+// NormalizeCreativeRunScope 校验用户身份并将工作区 UUID 规范化为小写。
+func NormalizeCreativeRunScope(scope CreativeRunScope) (CreativeRunScope, error) {
+	if scope.UserID <= 0 {
+		return CreativeRunScope{}, ErrCreativeRunNotFound
+	}
+	normalizedWorkspaceID, err := NormalizeCreativeWorkspaceID(scope.WorkspaceID)
+	if err != nil {
+		return CreativeRunScope{}, err
+	}
+	scope.WorkspaceID = normalizedWorkspaceID
+	return scope, nil
+}
+
 // CreativeRun 是创作台异步任务的元数据。
 // 隐私红线：结构体中禁止出现 prompt 明文、图片字节、mask 或 provider 响应本体。
 type CreativeRun struct {
-	ID                   int64
-	RunID                string
-	UserID               int64
+	ID     int64
+	RunID  string
+	UserID int64
+	// WorkspaceID 为空表示迁移前旧任务，用户侧工作区查询会将其隐藏。
+	WorkspaceID          *string
 	GroupID              int64
 	APIKeyID             int64
 	AccountID            *int64
@@ -139,6 +186,7 @@ type CreativeRunOutput struct {
 type CreateCreativeRunParams struct {
 	RunID                      string
 	UserID                     int64
+	WorkspaceID                string
 	GroupID                    int64
 	APIKeyID                   int64
 	Model                      string
@@ -177,9 +225,9 @@ type CreativeRunFilter struct {
 type CreativeRunRepository interface {
 	CreateCreativeRun(ctx context.Context, params CreateCreativeRunParams) (*CreativeRun, error)
 	GetCreativeRunByRunID(ctx context.Context, runID string) (*CreativeRun, error)
-	GetCreativeRunByRunIDForOwner(ctx context.Context, userID int64, runID string) (*CreativeRun, error)
-	GetCreativeRunByIdempotencyKey(ctx context.Context, userID int64, key string) (*CreativeRun, error)
-	ListCreativeRunsForOwner(ctx context.Context, userID int64, filter CreativeRunFilter) ([]*CreativeRun, error)
+	GetCreativeRunByRunIDForOwner(ctx context.Context, scope CreativeRunScope, runID string) (*CreativeRun, error)
+	GetCreativeRunByIdempotencyKey(ctx context.Context, scope CreativeRunScope, key string) (*CreativeRun, error)
+	ListCreativeRunsForOwner(ctx context.Context, scope CreativeRunScope, filter CreativeRunFilter) ([]*CreativeRun, error)
 	// TransitionCreativeRunStatus 带 version 乐观锁与 CanTransitionCreativeRun 校验。
 	TransitionCreativeRunStatus(ctx context.Context, runID, toStatus string, opts CreativeRunTransitionOptions) error
 	// MarkCreativeRunRunning 幂等地把任务标记为执行中并回填账号，重复调用不产生副作用。

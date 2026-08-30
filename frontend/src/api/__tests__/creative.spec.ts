@@ -19,6 +19,8 @@ import {
   getCreativeRuns,
 } from '@/api/creative'
 
+const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111'
+
 function jsonResponse(data: unknown) {
   return {
     status: 200,
@@ -51,7 +53,7 @@ describe('creative API', () => {
       const form = new FormData()
       form.append('prompt', 'hello')
       form.append('operation', 'generate')
-      const run = await createCreativeRun(form, 'idem-key-123')
+      const run = await createCreativeRun(form, WORKSPACE_ID, 'idem-key-123')
 
       expect(run.id).toBe('run-1')
       expect(adapter).toHaveBeenCalledTimes(1)
@@ -64,13 +66,14 @@ describe('creative API', () => {
       expect((config.data as FormData).get('prompt')).toBe('hello')
       // 覆盖实例默认的 application/json，让 axios 走 multipart
       expect(String(config.headers.get('Content-Type'))).toContain('multipart/form-data')
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
       expect(config.headers.get('Idempotency-Key')).toBe('idem-key-123')
     })
 
     it('不传幂等键时不附加 Idempotency-Key 头', async () => {
       adapter.mockResolvedValue(jsonResponse({ id: 'run-2', status: 'queued' }))
 
-      await createCreativeRun(new FormData())
+      await createCreativeRun(new FormData(), WORKSPACE_ID)
 
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.headers.get('Idempotency-Key')).toBeFalsy()
@@ -79,7 +82,7 @@ describe('creative API', () => {
     it('请求不携带任何 API Key 相关头；Authorization 仅为 JWT 拦截器注入', async () => {
       adapter.mockResolvedValue(jsonResponse({ id: 'run-3', status: 'queued' }))
 
-      await createCreativeRun(new FormData())
+      await createCreativeRun(new FormData(), WORKSPACE_ID)
 
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.headers.get('x-api-key')).toBeFalsy()
@@ -91,7 +94,7 @@ describe('creative API', () => {
       // 登录态下 Authorization 来自 client 拦截器的 Bearer JWT，而非本模块
       localStorage.setItem('auth_token', 'jwt-token-abc')
       adapter.mockClear()
-      await createCreativeRun(new FormData())
+      await createCreativeRun(new FormData(), WORKSPACE_ID)
       const authed = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(authed.headers.get('Authorization')).toBe('Bearer jwt-token-abc')
     })
@@ -102,12 +105,13 @@ describe('creative API', () => {
       const blob = new Blob(['png-bytes'], { type: 'image/png' })
       adapter.mockResolvedValue({ status: 200, data: blob, headers: {}, config: {}, statusText: 'OK' })
 
-      const result = await getCreativeRunOutputContent('run-9', 2)
+      const result = await getCreativeRunOutputContent('run-9', 2, WORKSPACE_ID)
 
       expect(result).toBe(blob)
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.url).toBe('/creative/runs/run-9/outputs/2/content')
       expect(config.responseType).toBe('blob')
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
   })
 
@@ -120,19 +124,21 @@ describe('creative API', () => {
       expect(models).toEqual([{ group_id: 'g1', model: 'm1' }])
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.url).toBe('/creative/models')
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBeFalsy()
     })
 
     it('列表接口兼容 {items,total} 与数组两种返回', async () => {
       adapter.mockResolvedValueOnce(jsonResponse({ items: [{ id: 'r1' }], total: 5 }))
-      expect(await getCreativeRuns(1, 20)).toEqual({ items: [{ id: 'r1' }], total: 5 })
+      expect(await getCreativeRuns(WORKSPACE_ID, 1, 20)).toEqual({ items: [{ id: 'r1' }], total: 5 })
 
       adapter.mockResolvedValueOnce(jsonResponse([{ id: 'r2' }]))
-      expect(await getCreativeRuns(1, 20)).toEqual({ items: [{ id: 'r2' }], total: 1 })
+      expect(await getCreativeRuns(WORKSPACE_ID, 1, 20)).toEqual({ items: [{ id: 'r2' }], total: 1 })
 
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.params.limit).toBe(20)
       expect(config.params.page).toBeUndefined()
       expect(config.params.page_size).toBeUndefined()
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
   })
 
@@ -140,22 +146,24 @@ describe('creative API', () => {
     it('查询单个 run 详情', async () => {
       adapter.mockResolvedValue(jsonResponse({ id: 'run-4', status: 'running' }))
 
-      const run = await getCreativeRun('run-4')
+      const run = await getCreativeRun('run-4', WORKSPACE_ID)
 
       expect(run.id).toBe('run-4')
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.method).toBe('get')
       expect(config.url).toBe('/creative/runs/run-4')
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
 
     it('确认输出已持久化', async () => {
       adapter.mockResolvedValue(jsonResponse(null))
 
-      await ackCreativeRunOutput('run-4', 1)
+      await ackCreativeRunOutput('run-4', 1, WORKSPACE_ID)
 
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.method).toBe('post')
       expect(config.url).toBe('/creative/runs/run-4/outputs/1/ack')
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
 
   })

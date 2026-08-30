@@ -15,6 +15,10 @@ const STORE_ASSETS = 'assets'
 const STORE_SCENES = 'scenes'
 const STORE_SETTINGS = 'settings'
 
+// 创作台浏览器工作区标识：同源标签页共享，不同浏览器拥有独立值。
+export const CREATIVE_WORKSPACE_STORAGE_KEY = 'creative:workspaceId'
+const CREATIVE_WORKSPACE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 // 素材种类：源图 / mask / AI 输出
 export type LocalAssetKind = 'source' | 'mask' | 'output'
 
@@ -78,6 +82,61 @@ export function outputAssetKey(runId: string, outputIndex: number): string {
 // 本地素材 key（源图 / mask 等用户本地产物）
 export function localAssetKey(kind: LocalAssetKind, localId: string): string {
   return `${kind}:local:${localId}`
+}
+
+// 校验并规范化浏览器工作区 UUID，避免客户端把任意长字符串送到服务端。
+export function normalizeCreativeWorkspaceId(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase()
+  return CREATIVE_WORKSPACE_UUID_RE.test(normalized) ? normalized : null
+}
+
+function generateCreativeWorkspaceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().toLowerCase()
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16)
+    crypto.getRandomValues(bytes)
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+  throw new LocalStoreError('unavailable', 'Creative workspace identity is unavailable')
+}
+
+// 读取或创建当前浏览器工作区；失败时 fail-close，不回退到共享工作区。
+export function getCreativeWorkspaceId(): string {
+  if (typeof window === 'undefined') {
+    throw new LocalStoreError('unavailable', 'Browser local storage is unavailable')
+  }
+  try {
+    const storage = window.localStorage
+    const current = normalizeCreativeWorkspaceId(storage.getItem(CREATIVE_WORKSPACE_STORAGE_KEY))
+    if (current) return current
+    const generated = generateCreativeWorkspaceId()
+    storage.setItem(CREATIVE_WORKSPACE_STORAGE_KEY, generated)
+    return generated
+  } catch (error) {
+    if (error instanceof LocalStoreError) throw error
+    throw new LocalStoreError('unavailable', 'Browser local storage is unavailable', error)
+  }
+}
+
+// 旋转当前浏览器工作区，使清空本机数据后旧历史不可见。
+export function rotateCreativeWorkspaceId(): string {
+  if (typeof window === 'undefined') {
+    throw new LocalStoreError('unavailable', 'Browser local storage is unavailable')
+  }
+  try {
+    const generated = generateCreativeWorkspaceId()
+    window.localStorage.setItem(CREATIVE_WORKSPACE_STORAGE_KEY, generated)
+    return generated
+  } catch (error) {
+    if (error instanceof LocalStoreError) throw error
+    throw new LocalStoreError('unavailable', 'Browser local storage is unavailable', error)
+  }
 }
 
 // ==================== 内部工具 ====================

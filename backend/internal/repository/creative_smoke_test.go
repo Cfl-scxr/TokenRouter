@@ -39,9 +39,11 @@ func newSmokeFakeRunRepo() *smokeFakeRunRepo {
 }
 
 func (r *smokeFakeRunRepo) CreateCreativeRun(ctx context.Context, params service.CreateCreativeRunParams) (*service.CreativeRun, error) {
+	workspaceID := params.WorkspaceID
 	run := &service.CreativeRun{
 		RunID:                params.RunID,
 		UserID:               params.UserID,
+		WorkspaceID:          &workspaceID,
 		GroupID:              params.GroupID,
 		APIKeyID:             params.APIKeyID,
 		Model:                params.Model,
@@ -70,22 +72,22 @@ func (r *smokeFakeRunRepo) GetCreativeRunByRunID(ctx context.Context, runID stri
 	return run, nil
 }
 
-func (r *smokeFakeRunRepo) GetCreativeRunByRunIDForOwner(ctx context.Context, userID int64, runID string) (*service.CreativeRun, error) {
+func (r *smokeFakeRunRepo) GetCreativeRunByRunIDForOwner(ctx context.Context, scope service.CreativeRunScope, runID string) (*service.CreativeRun, error) {
 	run, err := r.GetCreativeRunByRunID(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
-	if run.UserID != userID {
+	if run.UserID != scope.UserID || run.WorkspaceID == nil || *run.WorkspaceID != scope.WorkspaceID {
 		return nil, service.ErrCreativeRunNotFound
 	}
 	return run, nil
 }
 
-func (r *smokeFakeRunRepo) GetCreativeRunByIdempotencyKey(ctx context.Context, userID int64, key string) (*service.CreativeRun, error) {
+func (r *smokeFakeRunRepo) GetCreativeRunByIdempotencyKey(ctx context.Context, scope service.CreativeRunScope, key string) (*service.CreativeRun, error) {
 	return nil, service.ErrCreativeRunNotFound
 }
 
-func (r *smokeFakeRunRepo) ListCreativeRunsForOwner(ctx context.Context, userID int64, filter service.CreativeRunFilter) ([]*service.CreativeRun, error) {
+func (r *smokeFakeRunRepo) ListCreativeRunsForOwner(ctx context.Context, scope service.CreativeRunScope, filter service.CreativeRunFilter) ([]*service.CreativeRun, error) {
 	return nil, nil
 }
 
@@ -382,7 +384,8 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 
 	// 1. 创建任务（含源图 + prompt，经校验/审核跳过/估价/预占/暂存/入队）。
 	png := smokeTestPNG(t)
-	created, err := svc.CreateRun(ctx, 7, service.CreateCreativeRunParamsPublic{
+	scope := service.CreativeRunScope{UserID: 7, WorkspaceID: "11111111-1111-4111-8111-111111111111"}
+	created, err := svc.CreateRun(ctx, scope, service.CreateCreativeRunParamsPublic{
 		GroupID:      12,
 		Model:        "gemini-3.1-flash-image",
 		Operation:    service.CreativeOperationGenerate,
@@ -402,19 +405,19 @@ func TestCreativeFullChainSmoke(t *testing.T) {
 	require.Equal(t, service.CreativeRunOutputStatusSucceeded, repo.outputs[runID][0].Status)
 
 	// 3. 取回输出字节。
-	content, err := svc.GetOutputContent(ctx, 7, runID, 0)
+	content, err := svc.GetOutputContent(ctx, scope, runID, 0)
 	require.NoError(t, err)
 	require.Equal(t, []byte("smoke-image-bytes"), content.Content)
 	require.Equal(t, "image/png", content.ContentType)
 
 	// 4. ack 删除临时输出。
-	require.NoError(t, svc.AckOutput(ctx, 7, runID, 0))
+	require.NoError(t, svc.AckOutput(ctx, scope, runID, 0))
 	require.Equal(t, service.CreativeRunOutputStatusAcked, repo.outputs[runID][0].Status)
 	_, err = store.LoadOutput(ctx, runID, 0)
 	require.Error(t, err, "ack 后临时输出必须已删除")
 
 	// 5. 再次获取返回 410 语义错误。
-	_, err = svc.GetOutputContent(ctx, 7, runID, 0)
+	_, err = svc.GetOutputContent(ctx, scope, runID, 0)
 	require.ErrorIs(t, err, service.ErrCreativeOutputExpired)
 }
 

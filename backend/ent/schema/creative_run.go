@@ -37,6 +37,8 @@ func (CreativeRun) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("run_id").MaxLen(64).Immutable(),
 		field.Int64("user_id"),
+		// workspace_id 为空表示迁移前旧任务，用户侧工作区查询会将其隐藏。
+		field.String("workspace_id").Optional().Nillable().MaxLen(64),
 		field.Int64("group_id"),
 		// api_key_id 指向创作台隐藏执行 Key（managed_by = 'creative_studio'）。
 		field.Int64("api_key_id"),
@@ -86,9 +88,10 @@ func (CreativeRun) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("run_id").Unique(),
 		index.Fields("user_id", "created_at"),
+		index.Fields("user_id", "workspace_id", "created_at"),
 		index.Fields("status").Annotations(entsql.IndexWhere("status IN ('queued', 'running')")),
-		index.Fields("user_id", "idempotency_key").
+		index.Fields("user_id", "workspace_id", "idempotency_key").
 			Unique().
-			Annotations(entsql.IndexWhere("idempotency_key IS NOT NULL AND idempotency_key <> ''")),
+			Annotations(entsql.IndexWhere("workspace_id IS NOT NULL AND idempotency_key IS NOT NULL AND idempotency_key <> ''")),
 	}
 }

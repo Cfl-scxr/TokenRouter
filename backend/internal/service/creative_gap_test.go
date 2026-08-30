@@ -23,6 +23,7 @@ func seedOwnedRun(t *testing.T, svc *CreativePublicService, runID string, userID
 	repo.runs[runID] = &CreativeRun{
 		RunID:                runID,
 		UserID:               userID,
+		WorkspaceID:          creativeStringValuePtr(testCreativeWorkspaceID),
 		GroupID:              12,
 		APIKeyID:             900,
 		Model:                "gemini-3.1-flash-image",
@@ -56,17 +57,17 @@ func TestCreativeOwnershipEnforced(t *testing.T) {
 	store := svc.TransientStore.(*creativeFakeTransient)
 	store.outputs[runID+":0"] = []byte("img")
 
-	_, err := svc.GetRun(ctx, 7, runID)
+	_, err := svc.GetRun(ctx, testCreativeScope(7), runID)
 	require.ErrorIs(t, err, ErrCreativeRunNotFound)
 
-	_, err = svc.GetOutputContent(ctx, 7, runID, 0)
+	_, err = svc.GetOutputContent(ctx, testCreativeScope(7), runID, 0)
 	require.ErrorIs(t, err, ErrCreativeRunNotFound)
 
-	err = svc.AckOutput(ctx, 7, runID, 0)
+	err = svc.AckOutput(ctx, testCreativeScope(7), runID, 0)
 	require.ErrorIs(t, err, ErrCreativeRunNotFound)
 
 	// 本人访问不受影响。
-	got, err := svc.GetRun(ctx, 99, runID)
+	got, err := svc.GetRun(ctx, testCreativeScope(99), runID)
 	require.NoError(t, err)
 	require.Equal(t, runID, got.ID)
 }
@@ -85,6 +86,7 @@ func TestCreativeGetOutputContentExpiresToResultLost(t *testing.T) {
 	repo.runs[runID] = &CreativeRun{
 		RunID:                runID,
 		UserID:               7,
+		WorkspaceID:          creativeStringValuePtr(testCreativeWorkspaceID),
 		GroupID:              12,
 		APIKeyID:             900,
 		Model:                "gemini-3.1-flash-image",
@@ -97,7 +99,7 @@ func TestCreativeGetOutputContentExpiresToResultLost(t *testing.T) {
 		{RunID: runID, OutputIndex: 0, Status: CreativeRunOutputStatusSucceeded, MimeType: creativeStringValuePtr("image/png"), TransientExpiresAt: &past},
 	}
 
-	_, err := svc.GetOutputContent(ctx, 7, runID, 0)
+	_, err := svc.GetOutputContent(ctx, testCreativeScope(7), runID, 0)
 	require.ErrorIs(t, err, ErrCreativeOutputExpired)
 	// 成功任务不得伪装成功：必须降级为 result_lost。
 	require.Equal(t, CreativeRunStatusResultLost, repo.runs[runID].Status)
@@ -112,6 +114,7 @@ func TestCreativeGetOutputContentMissingTransientToResultLost(t *testing.T) {
 	repo.runs[runID] = &CreativeRun{
 		RunID:                runID,
 		UserID:               7,
+		WorkspaceID:          creativeStringValuePtr(testCreativeWorkspaceID),
 		GroupID:              12,
 		APIKeyID:             900,
 		Model:                "gemini-3.1-flash-image",
@@ -125,7 +128,7 @@ func TestCreativeGetOutputContentMissingTransientToResultLost(t *testing.T) {
 	}
 	// 注意：临时存储中没有输出字节（worker 丢失 / 已被清理）。
 
-	_, err := svc.GetOutputContent(ctx, 7, runID, 0)
+	_, err := svc.GetOutputContent(ctx, testCreativeScope(7), runID, 0)
 	require.ErrorIs(t, err, ErrCreativeResultLost)
 	require.Equal(t, CreativeRunStatusResultLost, repo.runs[runID].Status)
 }
@@ -138,7 +141,7 @@ func TestCreativeGetOutputContentSuccess(t *testing.T) {
 	store := svc.TransientStore.(*creativeFakeTransient)
 	store.outputs[runID+":0"] = []byte("png-bytes")
 
-	content, err := svc.GetOutputContent(ctx, 7, runID, 0)
+	content, err := svc.GetOutputContent(ctx, testCreativeScope(7), runID, 0)
 	require.NoError(t, err)
 	require.Equal(t, []byte("png-bytes"), content.Content)
 	require.Equal(t, "image/png", content.ContentType)
@@ -174,6 +177,7 @@ func TestCreativeSucceedRunIdempotentSettlement(t *testing.T) {
 	repo.runs[runID] = &CreativeRun{
 		RunID:                runID,
 		UserID:               7,
+		WorkspaceID:          creativeStringValuePtr(testCreativeWorkspaceID),
 		GroupID:              12,
 		APIKeyID:             900,
 		AccountID:            &accountID,
@@ -247,6 +251,7 @@ func TestCreativeSucceedRunRequiresTransientOutput(t *testing.T) {
 			repo.runs[runID] = &CreativeRun{
 				RunID:                runID,
 				UserID:               7,
+				WorkspaceID:          creativeStringValuePtr(testCreativeWorkspaceID),
 				GroupID:              12,
 				APIKeyID:             900,
 				AccountID:            &accountID,
@@ -298,7 +303,7 @@ func TestCreativeCreateRunPersistsOnlyMetadata(t *testing.T) {
 	params := validCreateParams()
 	params.Prompt = "这是一段绝不应落库的 prompt 明文"
 	params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 4, 4), Mime: "image/png"}}
-	created, err := svc.CreateRun(ctx, 7, params, "")
+	created, err := svc.CreateRun(ctx, testCreativeScope(7), params, "")
 	require.NoError(t, err)
 	require.True(t, IsValidCreativeRunID(created.ID))
 
@@ -587,7 +592,7 @@ func TestCreativeListRunsIncludesOutputs(t *testing.T) {
 	runID := "crun_listoutputs001"
 	seedOwnedRun(t, svc, runID, 7, CreativeRunStatusSucceeded)
 
-	got, err := svc.ListRuns(ctx, 7, CreativeRunFilter{Limit: 20})
+	got, err := svc.ListRuns(ctx, testCreativeScope(7), CreativeRunFilter{Limit: 20})
 	require.NoError(t, err)
 	require.Len(t, got.Data, 1)
 	require.Len(t, got.Data[0].Outputs, 1)

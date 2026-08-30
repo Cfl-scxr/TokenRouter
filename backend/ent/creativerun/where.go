@@ -74,6 +74,11 @@ func UserID(v int64) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldUserID, v))
 }
 
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldGroupID, v))
@@ -407,6 +412,81 @@ func UserIDLT(v int64) predicate.CreativeRun {
 // UserIDLTE applies the LTE predicate on the "user_id" field.
 func UserIDLTE(v int64) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldLTE(FieldUserID, v))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContains applies the Contains predicate on the "workspace_id" field.
+func WorkspaceIDContains(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContains(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasPrefix applies the HasPrefix predicate on the "workspace_id" field.
+func WorkspaceIDHasPrefix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasPrefix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasSuffix applies the HasSuffix predicate on the "workspace_id" field.
+func WorkspaceIDHasSuffix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasSuffix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIsNil applies the IsNil predicate on the "workspace_id" field.
+func WorkspaceIDIsNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIsNull(FieldWorkspaceID))
+}
+
+// WorkspaceIDNotNil applies the NotNil predicate on the "workspace_id" field.
+func WorkspaceIDNotNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotNull(FieldWorkspaceID))
+}
+
+// WorkspaceIDEqualFold applies the EqualFold predicate on the "workspace_id" field.
+func WorkspaceIDEqualFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEqualFold(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
+func WorkspaceIDContainsFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContainsFold(FieldWorkspaceID, v))
 }
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

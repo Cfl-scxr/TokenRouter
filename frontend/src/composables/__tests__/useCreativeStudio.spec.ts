@@ -44,6 +44,11 @@ import type { CreativeRun } from '@/api/creative'
 const mockedApi = vi.mocked(creativeApi)
 const mockedStore = vi.mocked(localStore)
 
+// currentWorkspaceId 返回测试当前浏览器工作区。
+function currentWorkspaceId(): string {
+  return localStorage.getItem(localStore.CREATIVE_WORKSPACE_STORAGE_KEY) ?? ''
+}
+
 const MODEL = {
   group_id: 'g1',
   group_name: 'Group A',
@@ -106,6 +111,7 @@ describe('useCreativeStudio', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.clearAllMocks()
   })
 
@@ -225,7 +231,8 @@ describe('useCreativeStudio', () => {
       })
 
       expect(ok).toBe(true)
-      const [, key] = mockedApi.createCreativeRun.mock.calls[0]
+      const [, workspaceId, key] = mockedApi.createCreativeRun.mock.calls[0]
+      expect(workspaceId).toBe(currentWorkspaceId())
       expect(typeof key).toBe('string')
       expect(key).toHaveLength(36)
       const form = mockedApi.createCreativeRun.mock.calls[0][0] as FormData
@@ -243,19 +250,19 @@ describe('useCreativeStudio', () => {
 
       expect(first).toBe(false)
       expect(retry).toBe(false)
-      const keyAfterFail = mockedApi.createCreativeRun.mock.calls[1][1]
-      expect(mockedApi.createCreativeRun.mock.calls[0][1]).toBe(keyAfterFail)
+      const keyAfterFail = mockedApi.createCreativeRun.mock.calls[1][2]
+      expect(mockedApi.createCreativeRun.mock.calls[0][2]).toBe(keyAfterFail)
 
       // 成功后续重试仍用同一 key（同一次提交意图），随后重置
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-2', status: 'queued' }))
       const success = await studio.createRun({ sourceBlobs: [], maskBlob: null })
       expect(success).toBe(true)
-      expect(mockedApi.createCreativeRun.mock.calls[2][1]).toBe(keyAfterFail)
+      expect(mockedApi.createCreativeRun.mock.calls[2][2]).toBe(keyAfterFail)
 
       // 新一次提交生成新 key
       mockedApi.createCreativeRun.mockRejectedValue(new Error('network'))
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      const newKey = mockedApi.createCreativeRun.mock.calls[3][1]
+      const newKey = mockedApi.createCreativeRun.mock.calls[3][2]
       expect(newKey).not.toBe(keyAfterFail)
       expect(typeof newKey).toBe('string')
     })
@@ -431,8 +438,8 @@ describe('useCreativeStudio', () => {
       await vi.advanceTimersByTimeAsync(3000)
 
       expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledTimes(2)
-      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenNthCalledWith(1, 'run-1', 0)
-      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenNthCalledWith(2, 'run-1', 1)
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenNthCalledWith(1, 'run-1', 0, currentWorkspaceId())
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenNthCalledWith(2, 'run-1', 1, currentWorkspaceId())
 
       expect(mockedStore.saveAsset).toHaveBeenCalledTimes(2)
       const savedKeys = mockedStore.saveAsset.mock.calls.map(([asset]) => asset.key)
@@ -443,8 +450,8 @@ describe('useCreativeStudio', () => {
       }
 
       expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(2)
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenNthCalledWith(1, 'run-1', 0)
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenNthCalledWith(2, 'run-1', 1)
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenNthCalledWith(1, 'run-1', 0, currentWorkspaceId())
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenNthCalledWith(2, 'run-1', 1, currentWorkspaceId())
       expect(studio.missingOutputKeys.value.size).toBe(0)
     })
 
@@ -486,7 +493,7 @@ describe('useCreativeStudio', () => {
       expect(studio.missingOutputKeys.value.has('output:run-1:1')).toBe(false)
       expect(mockedStore.saveAsset).toHaveBeenCalledTimes(1)
       expect(mockedStore.saveAsset.mock.calls[0][0].outputIndex).toBe(1)
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-1', 1)
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-1', 1, currentWorkspaceId())
     })
 
     it('已 ack 的输出跳过取回', async () => {
@@ -628,36 +635,100 @@ describe('useCreativeStudio', () => {
       const { studio } = await setupStudio()
       studio.currentRun.value = makeRun({ id: 'run-1', status: 'succeeded' })
       studio.runHistory.value = [makeRun({ id: 'run-1', status: 'succeeded' })]
+      const previousWorkspaceId = currentWorkspaceId()
 
       await studio.clearLocalData()
 
       expect(mockedStore.clearAll).toHaveBeenCalledTimes(1)
-      // 清空后写入时间水位线，供历史列表过滤旧任务
-      expect(mockedStore.saveSetting).toHaveBeenCalledWith('creative:clearedAt', expect.any(Number))
+      // 清空后旋转工作区，服务端旧任务在当前浏览器立即隐藏
+      expect(currentWorkspaceId()).toMatch(/^[0-9a-f-]{36}$/)
+      expect(currentWorkspaceId()).not.toBe(previousWorkspaceId)
       expect(studio.currentRun.value).toBeNull()
       expect(studio.runHistory.value).toEqual([])
       expect(studio.missingOutputKeys.value.size).toBe(0)
     })
+
+    it('清空期间完成的旧收割不会把素材重新写回', async () => {
+      const { studio } = await setupStudio()
+      const run = makeRun({
+        id: 'run-clearing',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      let resolveContent!: (blob: Blob) => void
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
+      mockedApi.getCreativeRunOutputContent.mockReturnValue(
+        new Promise((resolve) => {
+          resolveContent = resolve
+        }),
+      )
+
+      const refresh = studio.refreshHistory()
+      await Promise.resolve()
+      await Promise.resolve()
+      await studio.clearLocalData()
+      resolveContent(new Blob(['stale']))
+      await refresh
+
+      expect(mockedStore.saveAsset).not.toHaveBeenCalled()
+      expect(studio.runHistory.value).toEqual([])
+    })
+
+    it('同源标签页收到工作区变化后重置并刷新历史', async () => {
+      const { studio } = await setupStudio()
+      await studio.refreshHistory()
+      const previousWorkspaceId = currentWorkspaceId()
+      const nextWorkspaceId = '22222222-2222-4222-8222-222222222222'
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({ id: 'new-workspace-run', status: 'queued' })],
+        total: 1,
+      })
+
+      localStorage.setItem(localStore.CREATIVE_WORKSPACE_STORAGE_KEY, nextWorkspaceId)
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: localStore.CREATIVE_WORKSPACE_STORAGE_KEY,
+          oldValue: previousWorkspaceId,
+          newValue: nextWorkspaceId,
+          storageArea: localStorage,
+        }),
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(studio.runHistory.value.map((run) => run.id)).toEqual(['new-workspace-run'])
+      expect(mockedApi.getCreativeRuns).toHaveBeenLastCalledWith(nextWorkspaceId, 1, 20)
+    })
   })
 
   describe('refreshHistory', () => {
-    it('按清空水位线隐藏旧任务，新任务仍展示', async () => {
+    it('工作区本地存储不可用时不回退到共享历史', async () => {
       const { studio } = await setupStudio()
-      const now = Date.now()
-      mockedStore.loadSetting.mockImplementation((key: string) =>
-        key === 'creative:clearedAt' ? Promise.resolve(now - 1000) : Promise.resolve(null),
-      )
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError')
+      })
+
+      await studio.refreshHistory()
+
+      expect(mockedApi.getCreativeRuns).not.toHaveBeenCalled()
+      expect(studio.runHistory.value).toEqual([])
+      expect(studio.error.value).toBe('creative.error.workspaceUnavailable')
+    })
+
+    it('不再按本机时间水位线过滤服务端历史', async () => {
+      const { studio } = await setupStudio()
       mockedApi.getCreativeRuns.mockResolvedValue({
         items: [
-          makeRun({ id: 'old-run', status: 'succeeded', created_at: Math.floor((now - 2000) / 1000) }),
-          makeRun({ id: 'new-run', status: 'succeeded', created_at: Math.floor(now / 1000) }),
+          makeRun({ id: 'old-run', status: 'succeeded', created_at: 1 }),
+          makeRun({ id: 'new-run', status: 'succeeded', created_at: 2 }),
         ],
         total: 2,
       })
 
       await studio.refreshHistory()
 
-      expect(studio.runHistory.value.map((r) => r.id)).toEqual(['new-run'])
+      expect(studio.runHistory.value.map((r) => r.id)).toEqual(['old-run', 'new-run'])
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledWith(currentWorkspaceId(), 1, 20)
     })
 
     it('历史刷新自动恢复未 ack 的服务端输出并关联本地素材', async () => {
@@ -691,8 +762,8 @@ describe('useCreativeStudio', () => {
       expect(studio.outputAssetMap.value.has('output:run-7:1')).toBe(true)
       expect(studio.missingOutputKeys.value.has('output:run-7:1')).toBe(false)
       expect(studio.missingOutputKeys.value.has('output:run-7:0')).toBe(false)
-      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-7', 1)
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-7', 1)
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-7', 1, currentWorkspaceId())
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-7', 1, currentWorkspaceId())
     })
 
     it('历史刷新自动收割尚未 ack 的服务端输出', async () => {
@@ -708,7 +779,7 @@ describe('useCreativeStudio', () => {
 
       await studio.refreshHistory()
 
-      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-history-recover', 0)
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-history-recover', 0, currentWorkspaceId())
       expect(mockedStore.saveAsset).toHaveBeenCalledWith(
         expect.objectContaining({
           key: 'output:run-history-recover:0',
@@ -716,7 +787,7 @@ describe('useCreativeStudio', () => {
           blob,
         }),
       )
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-history-recover', 0)
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-history-recover', 0, currentWorkspaceId())
       expect(studio.outputAssetMap.value.get('output:run-history-recover:0')?.blob).toBe(blob)
       expect(studio.missingOutputKeys.value.has('output:run-history-recover:0')).toBe(false)
     })
@@ -744,7 +815,7 @@ describe('useCreativeStudio', () => {
       await studio.refreshHistory()
 
       expect(mockedApi.getCreativeRunOutputContent).not.toHaveBeenCalled()
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-local-recover', 0)
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-local-recover', 0, currentWorkspaceId())
       expect(studio.outputAssetMap.value.get(localOutput.key)).toEqual(localOutput)
       expect(studio.missingOutputKeys.value.has(localOutput.key)).toBe(false)
     })

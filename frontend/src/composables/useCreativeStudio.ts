@@ -19,11 +19,15 @@ import {
   type CreativeRun,
 } from '@/api/creative'
 import {
+  LocalStoreError,
   LocalStoreQuotaError,
+  CREATIVE_WORKSPACE_STORAGE_KEY,
   clearAll,
+  getCreativeWorkspaceId,
   listAssets,
   loadSetting,
   outputAssetKey,
+  rotateCreativeWorkspaceId,
   saveAsset,
   saveSetting,
   type LocalAsset,
@@ -45,8 +49,6 @@ interface CreativeSelectionSettings {
 }
 
 const SETTINGS_KEY = 'creative:selection'
-// 清空本机数据的时间水位线：此后的历史列表只展示该时间之后创建的服务端任务
-const CLEARED_AT_KEY = 'creative:clearedAt'
 const PROMPT_MAX_LENGTH = 8000
 
 // 所有进行中任务共享一次列表轮询；生图通常耗时 1–3 分钟，无需前置快速轮询。
@@ -94,6 +96,20 @@ export function useCreativeStudio() {
   const activeIdempotencyKey = ref('')
   // 画布桥接实例（视图在挂载时注册，卸载时可传 null 解绑）
   let canvasBridge: CreativeCanvasBridge | null = null
+  // 浏览器工作区代际：清空或其它标签页旋转工作区后，旧异步请求不得回写状态。
+  let workspaceGeneration = 0
+  let workspaceId: string | null = null
+
+  // 丢弃当前工作区的页面状态与轮询，避免本地身份不可用时继续展示旧历史。
+  function resetWorkspaceState(): void {
+    stopPolling()
+    clearPollingTimer()
+    currentRun.value = null
+    runHistory.value = []
+    outputAssetMap.value = new Map()
+    missingOutputKeys.value = new Set()
+    activeIdempotencyKey.value = ''
+  }
 
   // ==================== 计算属性 ====================
 
@@ -212,7 +228,46 @@ export function useCreativeStudio() {
     canvasBridge = bridge
   }
 
-  // 历史里的输出导入画布：取本地素材调用画布桥接；素材缺失或画布未就绪时返回 false
+  // 读取当前浏览器工作区；工作区变化时立即丢弃旧页面状态。
+  function readWorkspaceId(): string {
+    const next = getCreativeWorkspaceId()
+    if (workspaceId && workspaceId !== next) {
+      workspaceGeneration++
+      // 工作区变化会让进行中的历史请求失效，避免旧浏览器列表覆盖新工作区状态。
+      historyRefreshGeneration++
+      resetWorkspaceState()
+    }
+    workspaceId = next
+    return next
+  }
+
+  function isWorkspaceCurrent(id: string, generation: number): boolean {
+    return workspaceId === id && workspaceGeneration === generation
+  }
+
+  // 同源标签页清空数据后会通过 storage 事件切换到新工作区。
+  function onWorkspaceStorage(event: StorageEvent): void {
+    // key 为 null 表示 storage.clear()，同样需要重新建立工作区。
+    if (event.key !== CREATIVE_WORKSPACE_STORAGE_KEY && event.key !== null) return
+    const previous = workspaceId
+    try {
+      const next = readWorkspaceId()
+      if (next === previous) return
+      void refreshHistory()
+    } catch (cause) {
+      if (cause instanceof LocalStoreError && cause.type === 'unavailable') {
+        workspaceId = null
+        resetWorkspaceState()
+      }
+      error.value = creativeErrorMessage(cause, 'creative.error.historyFailed')
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', onWorkspaceStorage)
+  }
+
+  // 历史里的输出导入画布：取当前工作区的本地素材调用画布桥接；素材缺失或画布未就绪时返回 false
   function importOutputToCanvas(runId: string, outputIndex: number): boolean {
     const asset = outputAssetMap.value.get(outputAssetKey(runId, outputIndex))
     if (!asset || !canvasBridge) return false
@@ -254,6 +309,8 @@ export function useCreativeStudio() {
     busy.value = true
     error.value = ''
     try {
+      const requestWorkspaceId = readWorkspaceId()
+      const requestGeneration = workspaceGeneration
       // 同一表单提交意图复用同一幂等键，直到成功
       if (!activeIdempotencyKey.value) {
         activeIdempotencyKey.value = crypto.randomUUID()
@@ -277,15 +334,16 @@ export function useCreativeStudio() {
         form.append('mask', exported.maskBlob, 'mask.png')
       }
 
-      const run = await createCreativeRun(form, activeIdempotencyKey.value)
+      const run = await createCreativeRun(form, requestWorkspaceId, activeIdempotencyKey.value)
       // 提交成功，重置幂等键；失败重试时保留
       activeIdempotencyKey.value = ''
+      if (!isWorkspaceCurrent(requestWorkspaceId, requestGeneration)) return true
       currentRun.value = run
       upsertRunInHistory(run)
       startPolling(run.id, { placeOnCanvas: true })
       return true
     } catch (e) {
-      error.value = extractErrorMessage(e) || t('creative.error.submitFailed')
+      error.value = creativeErrorMessage(e, 'creative.error.submitFailed')
       return false
     } finally {
       busy.value = false
@@ -351,6 +409,8 @@ export function useCreativeStudio() {
     assets?: Map<string, LocalAsset>
     missing?: Set<string>
     isCurrent?: () => boolean
+    workspaceId?: string
+    workspaceGeneration?: number
   }
 
   // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack → 可选放上画布。
@@ -364,10 +424,13 @@ export function useCreativeStudio() {
 
   async function harvestOutputsNow(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
     const outputs = Array.isArray(run.outputs) ? run.outputs : []
+    const activeWorkspaceId = options.workspaceId ?? readWorkspaceId()
+    const activeWorkspaceGeneration = options.workspaceGeneration ?? workspaceGeneration
     const assets = options.assets ?? new Map(outputAssetMap.value)
     const missing = options.missing ?? new Set(missingOutputKeys.value)
     for (const output of outputs) {
       if (options.isCurrent && !options.isCurrent()) return
+      if (!isWorkspaceCurrent(activeWorkspaceId, activeWorkspaceGeneration)) return
       if (output.status !== 'succeeded') continue
       const key = outputAssetKey(run.id, output.output_index)
       if (output.acked_at && !assets.has(key)) {
@@ -380,7 +443,8 @@ export function useCreativeStudio() {
         let asset = assets.get(key) ?? outputAssetMap.value.get(key)
         if (asset) assets.set(key, asset)
         if (!asset) {
-          const blob = await getCreativeRunOutputContent(run.id, output.output_index)
+          const blob = await getCreativeRunOutputContent(run.id, output.output_index, activeWorkspaceId)
+          if (!isWorkspaceCurrent(activeWorkspaceId, activeWorkspaceGeneration)) return
           asset = {
             key,
             kind: 'output',
@@ -390,6 +454,7 @@ export function useCreativeStudio() {
             createdAt: Date.now(),
           }
           await saveAsset(asset)
+          if (!isWorkspaceCurrent(activeWorkspaceId, activeWorkspaceGeneration)) return
           assets.set(key, asset)
           // 保存成功后立即合并更新，不能等下一次历史刷新才显示图片。
           if (!options.isCurrent || options.isCurrent()) {
@@ -402,7 +467,8 @@ export function useCreativeStudio() {
         // 本地已有素材时也重试 ack，但 ack 失败不能抹掉可用的本地图片。
         if (!output.acked_at) {
           try {
-            await ackCreativeRunOutput(run.id, output.output_index)
+            if (!isWorkspaceCurrent(activeWorkspaceId, activeWorkspaceGeneration)) return
+            await ackCreativeRunOutput(run.id, output.output_index, activeWorkspaceId)
           } catch (e) {
             console.error(`Failed to ack creative output ${key}:`, e)
           }
@@ -451,22 +517,20 @@ export function useCreativeStudio() {
   }
 
   // 拉取服务端历史 + 本地输出素材索引；服务端标记成功但本地无 blob 的输出记为 missing。
-  // 历史列表只展示本机清空时间之后创建的任务：更早的任务元数据仍在服务端，仅不再展示。
+  // 历史列表由服务端按当前浏览器工作区返回；图片仍只从当前浏览器本地素材索引关联。
   async function refreshHistory(): Promise<void> {
     // 手动刷新或定时刷新开始时取消旧定时器，完成后再按固定间隔续排。
     clearPollingTimer()
     const generation = ++historyRefreshGeneration
     loadingHistory.value = true
+    let requestWorkspaceId = ''
+    let requestWorkspaceGeneration = 0
     try {
-      const page = await getCreativeRuns(1, 20)
-      const clearedAt = await loadSetting<number>(CLEARED_AT_KEY)
-      const items =
-        typeof clearedAt === 'number' && clearedAt > 0
-          ? page.items.filter(
-              (run) => typeof run.created_at !== 'number' || run.created_at * 1000 > clearedAt,
-            )
-          : page.items
-      if (generation !== historyRefreshGeneration) return
+      requestWorkspaceId = readWorkspaceId()
+      requestWorkspaceGeneration = workspaceGeneration
+      const page = await getCreativeRuns(requestWorkspaceId, 1, 20)
+      const items = page.items
+      if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
       // 列表接口偶尔会返回旧快照，已观测到的终态不能被其它快照改写。
       const knownRuns = new Map(runHistory.value.map((run) => [run.id, run]))
       const mergedItems = items.map((run) => {
@@ -492,8 +556,10 @@ export function useCreativeStudio() {
             await harvestOutputs(run, {
               placeOnCanvas: state.placeOnCanvas,
               isCurrent: () => generation === historyRefreshGeneration,
+              workspaceId: requestWorkspaceId,
+              workspaceGeneration: requestWorkspaceGeneration,
             })
-            if (generation !== historyRefreshGeneration) return
+            if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
           }
         }
       }
@@ -506,7 +572,7 @@ export function useCreativeStudio() {
       // 只需输出素材索引（missing 判定用）；源图 / mask 素材已由画布自行管理
       const outputs = await listAssets('output')
       const map = new Map(outputs.map((a) => [a.key, a]))
-      if (generation !== historyRefreshGeneration) return
+      if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
       const missing = new Set<string>()
       for (const run of mergedItems) {
         if (!terminalHarvestedRunIds.has(run.id)) {
@@ -515,8 +581,10 @@ export function useCreativeStudio() {
             missing,
             placeOnCanvas: false,
             isCurrent: () => generation === historyRefreshGeneration,
+            workspaceId: requestWorkspaceId,
+            workspaceGeneration: requestWorkspaceGeneration,
           })
-          if (generation !== historyRefreshGeneration) return
+          if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
         }
         for (const output of run.outputs ?? []) {
           if (output.status !== 'succeeded') continue
@@ -527,7 +595,7 @@ export function useCreativeStudio() {
           }
         }
       }
-      if (generation !== historyRefreshGeneration) return
+      if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
       // 合并历史快照期间终态收割刚保存的素材，避免旧快照覆盖最新内存索引。
       for (const [key, asset] of outputAssetMap.value) {
         if (!map.has(key)) map.set(key, asset)
@@ -543,6 +611,11 @@ export function useCreativeStudio() {
       }
     } catch (e) {
       console.error('Failed to refresh creative history:', e)
+      if (e instanceof LocalStoreError && e.type === 'unavailable') {
+        workspaceId = null
+        resetWorkspaceState()
+      }
+      error.value = creativeErrorMessage(e, 'creative.error.historyFailed')
     } finally {
       if (generation === historyRefreshGeneration) schedulePollingRefresh()
       if (generation === historyRefreshGeneration) {
@@ -554,26 +627,21 @@ export function useCreativeStudio() {
   // ==================== 本地数据 ====================
 
   // 清空本机创作数据（素材 + 场景 + 设置）并重置内存状态；
-  // 同时记录清空时间水位线，此后的历史列表只展示该时间之后创建的服务端任务。
+  // 清空成功后旋转工作区，使旧任务在当前浏览器立即不可见。
   async function clearLocalData(): Promise<void> {
     stopPolling()
     clearPollingTimer()
     // 使清空过程中仍在进行的历史请求失效，避免旧素材重新写回内存。
     historyRefreshGeneration++
+    workspaceGeneration++
     try {
       await clearAll()
+      workspaceId = rotateCreativeWorkspaceId()
     } catch (e) {
-      error.value = extractErrorMessage(e) || t('creative.error.clearFailed')
+      error.value = creativeErrorMessage(e, 'creative.error.clearFailed')
       throw e
     }
-    await saveSetting(CLEARED_AT_KEY, Date.now()).catch(() => {
-      // 水位线写入失败不影响清空本身
-    })
-    currentRun.value = null
-    runHistory.value = []
-    outputAssetMap.value = new Map()
-    missingOutputKeys.value = new Set()
-    activeIdempotencyKey.value = ''
+    resetWorkspaceState()
   }
 
   // ==================== 工具 ====================
@@ -583,11 +651,22 @@ export function useCreativeStudio() {
     return typeof message === 'string' ? message : ''
   }
 
+  // 本地存储不可用时明确提示并保持 fail-close，不回退到共享历史。
+  function creativeErrorMessage(e: unknown, fallbackKey: string): string {
+    if (e instanceof LocalStoreError && e.type === 'unavailable') {
+      return t('creative.error.workspaceUnavailable')
+    }
+    return extractErrorMessage(e) || t(fallbackKey)
+  }
+
   // 组件卸载时清理轮询定时器，避免内存泄漏与野回调
   onBeforeUnmount(() => {
     stopPolling()
     clearPollingTimer()
     historyRefreshGeneration++
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', onWorkspaceStorage)
+    }
   })
 
   return {

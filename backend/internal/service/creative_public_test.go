@@ -30,6 +30,12 @@ type creativeFakeRunRepo struct {
 	setAccountN  int
 }
 
+const testCreativeWorkspaceID = "11111111-1111-4111-8111-111111111111"
+
+func testCreativeScope(userID int64) CreativeRunScope {
+	return CreativeRunScope{UserID: userID, WorkspaceID: testCreativeWorkspaceID}
+}
+
 func newCreativeFakeRunRepo() *creativeFakeRunRepo {
 	return &creativeFakeRunRepo{
 		runs:    make(map[string]*CreativeRun),
@@ -43,9 +49,11 @@ func (r *creativeFakeRunRepo) CreateCreativeRun(ctx context.Context, params Crea
 		return nil, r.createErr
 	}
 	r.createParams = append(r.createParams, params)
+	workspaceID := params.WorkspaceID
 	run := &CreativeRun{
 		RunID:                      params.RunID,
 		UserID:                     params.UserID,
+		WorkspaceID:                &workspaceID,
 		GroupID:                    params.GroupID,
 		APIKeyID:                   params.APIKeyID,
 		Model:                      params.Model,
@@ -69,7 +77,7 @@ func (r *creativeFakeRunRepo) CreateCreativeRun(ctx context.Context, params Crea
 	}
 	r.runs[run.RunID] = run
 	if params.IdempotencyKey != nil {
-		r.byIdem[*params.IdempotencyKey] = run
+		r.byIdem[workspaceID+":"+*params.IdempotencyKey] = run
 	}
 	outputs := make([]*CreativeRunOutput, 0, params.RequestedOutputCount)
 	for index := 0; index < params.RequestedOutputCount; index++ {
@@ -87,29 +95,29 @@ func (r *creativeFakeRunRepo) GetCreativeRunByRunID(ctx context.Context, runID s
 	return run, nil
 }
 
-func (r *creativeFakeRunRepo) GetCreativeRunByRunIDForOwner(ctx context.Context, userID int64, runID string) (*CreativeRun, error) {
+func (r *creativeFakeRunRepo) GetCreativeRunByRunIDForOwner(ctx context.Context, scope CreativeRunScope, runID string) (*CreativeRun, error) {
 	run, err := r.GetCreativeRunByRunID(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
-	if run.UserID != userID {
+	if run.UserID != scope.UserID || run.WorkspaceID == nil || *run.WorkspaceID != scope.WorkspaceID {
 		return nil, ErrCreativeRunNotFound
 	}
 	return run, nil
 }
 
-func (r *creativeFakeRunRepo) GetCreativeRunByIdempotencyKey(ctx context.Context, userID int64, key string) (*CreativeRun, error) {
-	run, ok := r.byIdem[key]
-	if !ok || run.UserID != userID {
+func (r *creativeFakeRunRepo) GetCreativeRunByIdempotencyKey(ctx context.Context, scope CreativeRunScope, key string) (*CreativeRun, error) {
+	run, ok := r.byIdem[scope.WorkspaceID+":"+key]
+	if !ok || run.UserID != scope.UserID || run.WorkspaceID == nil || *run.WorkspaceID != scope.WorkspaceID {
 		return nil, ErrCreativeRunNotFound
 	}
 	return run, nil
 }
 
-func (r *creativeFakeRunRepo) ListCreativeRunsForOwner(ctx context.Context, userID int64, filter CreativeRunFilter) ([]*CreativeRun, error) {
+func (r *creativeFakeRunRepo) ListCreativeRunsForOwner(ctx context.Context, scope CreativeRunScope, filter CreativeRunFilter) ([]*CreativeRun, error) {
 	out := make([]*CreativeRun, 0)
 	for _, run := range r.runs {
-		if run.UserID == userID {
+		if run.UserID == scope.UserID && run.WorkspaceID != nil && *run.WorkspaceID == scope.WorkspaceID {
 			out = append(out, run)
 		}
 	}
@@ -809,14 +817,14 @@ func TestCreateRunIdempotency(t *testing.T) {
 	svc := newCreativeTestService()
 	ctx := context.Background()
 
-	first, err := svc.CreateRun(ctx, 7, validCreateParams(), "idem-key-1")
+	first, err := svc.CreateRun(ctx, testCreativeScope(7), validCreateParams(), "idem-key-1")
 	require.NoError(t, err)
 	require.False(t, first.IdempotentReplay)
 	require.Equal(t, CreativeRunStatusQueued, first.Status)
 	require.True(t, IsValidCreativeRunID(first.ID))
 
 	// 相同 Key + 相同请求体：返回原任务并标记重放。
-	replay, err := svc.CreateRun(ctx, 7, validCreateParams(), "idem-key-1")
+	replay, err := svc.CreateRun(ctx, testCreativeScope(7), validCreateParams(), "idem-key-1")
 	require.NoError(t, err)
 	require.True(t, replay.IdempotentReplay)
 	require.Equal(t, first.ID, replay.ID)
@@ -824,11 +832,11 @@ func TestCreateRunIdempotency(t *testing.T) {
 	// 相同 Key + 不同请求体：返回冲突。
 	conflictParams := validCreateParams()
 	conflictParams.Prompt = "完全不同的 prompt"
-	_, err = svc.CreateRun(ctx, 7, conflictParams, "idem-key-1")
+	_, err = svc.CreateRun(ctx, testCreativeScope(7), conflictParams, "idem-key-1")
 	require.ErrorIs(t, err, ErrCreativeRunIdempotencyConflict)
 
 	// 相同请求体 + 不同 Key：不得冲突（指纹不做全局唯一，允许正常重试）。
-	retry, err := svc.CreateRun(ctx, 7, validCreateParams(), "idem-key-2")
+	retry, err := svc.CreateRun(ctx, testCreativeScope(7), validCreateParams(), "idem-key-2")
 	require.NoError(t, err)
 	require.False(t, retry.IdempotentReplay)
 	require.NotEqual(t, first.ID, retry.ID)
@@ -836,6 +844,62 @@ func TestCreateRunIdempotency(t *testing.T) {
 	// 计费预占与入队各发生两次（重放不重复扣费/入队）。
 	require.Equal(t, 2, svc.BillingRepo.(*creativeFakeBillingRepo).reserveN)
 	require.Len(t, svc.Queue.(*creativeFakeQueue).enqueued, 2)
+}
+
+// TestCreativeWorkspaceScopeIsolation 校验同一用户的不同浏览器工作区互不可见且幂等键隔离。
+func TestCreativeWorkspaceScopeIsolation(t *testing.T) {
+	svc := newCreativeTestService()
+	ctx := context.Background()
+	firstScope := testCreativeScope(7)
+	secondScope := CreativeRunScope{UserID: 7, WorkspaceID: "22222222-2222-4222-8222-222222222222"}
+
+	first, err := svc.CreateRun(ctx, firstScope, validCreateParams(), "same-idempotency-key")
+	require.NoError(t, err)
+	second, err := svc.CreateRun(ctx, secondScope, validCreateParams(), "same-idempotency-key")
+	require.NoError(t, err)
+	require.NotEqual(t, first.ID, second.ID)
+
+	firstList, err := svc.ListRuns(ctx, firstScope, CreativeRunFilter{Limit: 20})
+	require.NoError(t, err)
+	require.Len(t, firstList.Data, 1)
+	require.Equal(t, first.ID, firstList.Data[0].ID)
+
+	secondList, err := svc.ListRuns(ctx, secondScope, CreativeRunFilter{Limit: 20})
+	require.NoError(t, err)
+	require.Len(t, secondList.Data, 1)
+	require.Equal(t, second.ID, secondList.Data[0].ID)
+
+	_, err = svc.GetRun(ctx, firstScope, second.ID)
+	require.ErrorIs(t, err, ErrCreativeRunNotFound)
+
+	legacyID := "crun_legacy_workspace_hidden"
+	svc.Repo.(*creativeFakeRunRepo).runs[legacyID] = &CreativeRun{RunID: legacyID, UserID: 7}
+	legacyList, err := svc.ListRuns(ctx, firstScope, CreativeRunFilter{Limit: 20})
+	require.NoError(t, err)
+	for _, run := range legacyList.Data {
+		require.NotEqual(t, legacyID, run.ID)
+	}
+	_, err = svc.GetRun(ctx, firstScope, legacyID)
+	require.ErrorIs(t, err, ErrCreativeRunNotFound)
+	_, err = svc.GetOutputContent(ctx, firstScope, legacyID, 0)
+	require.ErrorIs(t, err, ErrCreativeRunNotFound)
+	require.ErrorIs(t, svc.AckOutput(ctx, firstScope, legacyID, 0), ErrCreativeRunNotFound)
+}
+
+// TestNormalizeCreativeWorkspaceID 校验工作区 header 的缺失、非法与规范化行为。
+func TestNormalizeCreativeWorkspaceID(t *testing.T) {
+	_, err := NormalizeCreativeWorkspaceID("")
+	require.ErrorIs(t, err, ErrCreativeWorkspaceRequired)
+	_, err = NormalizeCreativeWorkspaceID("not-a-uuid")
+	require.ErrorIs(t, err, ErrCreativeWorkspaceInvalid)
+	normalized, err := NormalizeCreativeWorkspaceID("11111111-1111-4111-8111-111111111111")
+	require.NoError(t, err)
+	require.Equal(t, testCreativeWorkspaceID, normalized)
+	scope, err := NormalizeCreativeRunScope(CreativeRunScope{UserID: 7, WorkspaceID: "11111111-1111-4111-8111-111111111111"})
+	require.NoError(t, err)
+	require.Equal(t, testCreativeWorkspaceID, scope.WorkspaceID)
+	_, err = NormalizeCreativeRunScope(CreativeRunScope{UserID: 0, WorkspaceID: testCreativeWorkspaceID})
+	require.ErrorIs(t, err, ErrCreativeRunNotFound)
 }
 
 // TestEnsureCreativeManagedKey 校验隐藏执行 Key 的幂等供应。
@@ -889,7 +953,7 @@ func TestCreativeEnabledGate(t *testing.T) {
 		svc := newCreativeTestService()
 		svc.Settings = &creativeFakeSettingReader{enabled: false}
 
-		_, err := svc.CreateRun(context.Background(), 7, validCreateParams(), "")
+		_, err := svc.CreateRun(context.Background(), testCreativeScope(7), validCreateParams(), "")
 		require.ErrorIs(t, err, ErrCreativeDisabled)
 	})
 

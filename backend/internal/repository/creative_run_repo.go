@@ -56,6 +56,9 @@ func (r *creativeRunRepository) CreateCreativeRun(ctx context.Context, params se
 		SetSubscriptionRateMultiplier(params.SubscriptionRateMultiplier).
 		SetBalanceRateMultiplier(params.BalanceRateMultiplier).
 		SetPlanGroupRateMultiplierEnabled(params.PlanGroupRateEnabled)
+	if params.WorkspaceID != "" {
+		builder.SetWorkspaceID(params.WorkspaceID)
+	}
 	if params.IdempotencyKey != nil {
 		builder.SetIdempotencyKey(*params.IdempotencyKey)
 	}
@@ -92,11 +95,12 @@ func (r *creativeRunRepository) GetCreativeRunByRunID(ctx context.Context, runID
 	return creativeRunEntityToService(entity), nil
 }
 
-func (r *creativeRunRepository) GetCreativeRunByRunIDForOwner(ctx context.Context, userID int64, runID string) (*service.CreativeRun, error) {
+func (r *creativeRunRepository) GetCreativeRunByRunIDForOwner(ctx context.Context, scope service.CreativeRunScope, runID string) (*service.CreativeRun, error) {
 	entity, err := r.client.CreativeRun.Query().
 		Where(
 			creativerun.RunIDEQ(runID),
-			creativerun.UserIDEQ(userID),
+			creativerun.UserIDEQ(scope.UserID),
+			creativerun.WorkspaceIDEQ(scope.WorkspaceID),
 		).
 		Only(ctx)
 	if err != nil {
@@ -105,10 +109,11 @@ func (r *creativeRunRepository) GetCreativeRunByRunIDForOwner(ctx context.Contex
 	return creativeRunEntityToService(entity), nil
 }
 
-func (r *creativeRunRepository) GetCreativeRunByIdempotencyKey(ctx context.Context, userID int64, key string) (*service.CreativeRun, error) {
+func (r *creativeRunRepository) GetCreativeRunByIdempotencyKey(ctx context.Context, scope service.CreativeRunScope, key string) (*service.CreativeRun, error) {
 	entity, err := r.client.CreativeRun.Query().
 		Where(
-			creativerun.UserIDEQ(userID),
+			creativerun.UserIDEQ(scope.UserID),
+			creativerun.WorkspaceIDEQ(scope.WorkspaceID),
 			creativerun.IdempotencyKeyEQ(key),
 		).
 		Order(dbent.Desc(creativerun.FieldID)).
@@ -119,7 +124,7 @@ func (r *creativeRunRepository) GetCreativeRunByIdempotencyKey(ctx context.Conte
 	return creativeRunEntityToService(entity), nil
 }
 
-func (r *creativeRunRepository) ListCreativeRunsForOwner(ctx context.Context, userID int64, filter service.CreativeRunFilter) ([]*service.CreativeRun, error) {
+func (r *creativeRunRepository) ListCreativeRunsForOwner(ctx context.Context, scope service.CreativeRunScope, filter service.CreativeRunFilter) ([]*service.CreativeRun, error) {
 	limit := filter.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -128,7 +133,10 @@ func (r *creativeRunRepository) ListCreativeRunsForOwner(ctx context.Context, us
 		filter.Offset = 0
 	}
 	query := r.client.CreativeRun.Query().
-		Where(creativerun.UserIDEQ(userID))
+		Where(
+			creativerun.UserIDEQ(scope.UserID),
+			creativerun.WorkspaceIDEQ(scope.WorkspaceID),
+		)
 	if filter.Status != "" {
 		query = query.Where(creativerun.StatusEQ(filter.Status))
 	}
@@ -473,6 +481,7 @@ func creativeRunEntityToService(entity *dbent.CreativeRun) *service.CreativeRun 
 		ID:                          entity.ID,
 		RunID:                       entity.RunID,
 		UserID:                      entity.UserID,
+		WorkspaceID:                 entity.WorkspaceID,
 		GroupID:                     entity.GroupID,
 		APIKeyID:                    entity.APIKeyID,
 		AccountID:                   entity.AccountID,

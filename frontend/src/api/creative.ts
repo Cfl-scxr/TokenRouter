@@ -42,7 +42,7 @@ export type CreativeRunStatus =
   | 'result_lost'
   | (string & {})
 
-export type CreativeOutputStatus = 'succeeded' | 'failed' | 'cancelled' | (string & {})
+export type CreativeOutputStatus = 'succeeded' | 'failed' | 'cancelled' | 'acked' | (string & {})
 
 // 单个输出位的元信息（图片本体不落库，transient 存储）
 export interface CreativeRunOutput {
@@ -98,12 +98,14 @@ export async function getCreativeModels(): Promise<CreativeModelOption[]> {
  */
 export async function createCreativeRun(
   form: FormData,
+  workspaceId: string,
   idempotencyKey?: string,
 ): Promise<CreativeRun> {
   const { data } = await apiClient.post<CreativeRun>('/creative/runs', form, {
     headers: {
       // 必须覆盖实例默认的 application/json，否则 transformRequest 会把 FormData 序列化成 JSON
       'Content-Type': 'multipart/form-data',
+      'X-Creative-Workspace-ID': workspaceId,
       ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
   })
@@ -113,10 +115,11 @@ export async function createCreativeRun(
 /**
  * 查询 run 列表。服务端可能返回 {items,total} 也可能直接返回数组，这里宽松归一化。
  */
-export async function getCreativeRuns(_page = 1, pageSize = 20): Promise<CreativeRunsPage> {
+export async function getCreativeRuns(workspaceId: string, _page = 1, pageSize = 20): Promise<CreativeRunsPage> {
   const { data } = await apiClient.get<CreativeRunsPage | CreativeRun[]>('/creative/runs', {
     // 后端当前使用 limit，保留 page 形参用于兼容现有调用方，后续扩展 offset 时无需改签名。
     params: { limit: pageSize },
+    headers: { 'X-Creative-Workspace-ID': workspaceId },
   })
   if (Array.isArray(data)) {
     return { items: data, total: data.length }
@@ -128,8 +131,10 @@ export async function getCreativeRuns(_page = 1, pageSize = 20): Promise<Creativ
 /**
  * 查询单个 run 详情（含 outputs 元信息）
  */
-export async function getCreativeRun(id: string): Promise<CreativeRun> {
-  const { data } = await apiClient.get<CreativeRun>(`/creative/runs/${encodeURIComponent(id)}`)
+export async function getCreativeRun(id: string, workspaceId: string): Promise<CreativeRun> {
+  const { data } = await apiClient.get<CreativeRun>(`/creative/runs/${encodeURIComponent(id)}`, {
+    headers: { 'X-Creative-Workspace-ID': workspaceId },
+  })
   return data
 }
 
@@ -137,10 +142,10 @@ export async function getCreativeRun(id: string): Promise<CreativeRun> {
  * 获取输出图片二进制（transient，取回后应立即本地保存并 ack）。
  * 注意：二进制响应不适用 {code,message,data} envelope。
  */
-export async function getCreativeRunOutputContent(runId: string, index: number): Promise<Blob> {
+export async function getCreativeRunOutputContent(runId: string, index: number, workspaceId: string): Promise<Blob> {
   const { data } = await apiClient.get<Blob>(
     `/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/content`,
-    { responseType: 'blob' },
+    { responseType: 'blob', headers: { 'X-Creative-Workspace-ID': workspaceId } },
   )
   return data
 }
@@ -148,6 +153,10 @@ export async function getCreativeRunOutputContent(runId: string, index: number):
 /**
  * 确认输出已持久化到本地（服务端据此清理 transient 资源）
  */
-export async function ackCreativeRunOutput(runId: string, index: number): Promise<void> {
-  await apiClient.post(`/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/ack`)
+export async function ackCreativeRunOutput(runId: string, index: number, workspaceId: string): Promise<void> {
+  await apiClient.post(
+    `/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/ack`,
+    undefined,
+    { headers: { 'X-Creative-Workspace-ID': workspaceId } },
+  )
 }

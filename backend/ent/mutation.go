@@ -17290,6 +17290,7 @@ type CreativeRunMutation struct {
 	run_id                              *string
 	user_id                             *int64
 	adduser_id                          *int64
+	workspace_id                        *string
 	group_id                            *int64
 	addgroup_id                         *int64
 	api_key_id                          *int64
@@ -17601,6 +17602,55 @@ func (m *CreativeRunMutation) AddedUserID() (r int64, exists bool) {
 func (m *CreativeRunMutation) ResetUserID() {
 	m.user_id = nil
 	m.adduser_id = nil
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *CreativeRunMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *CreativeRunMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldWorkspaceID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ClearWorkspaceID clears the value of the "workspace_id" field.
+func (m *CreativeRunMutation) ClearWorkspaceID() {
+	m.workspace_id = nil
+	m.clearedFields[creativerun.FieldWorkspaceID] = struct{}{}
+}
+
+// WorkspaceIDCleared returns if the "workspace_id" field was cleared in this mutation.
+func (m *CreativeRunMutation) WorkspaceIDCleared() bool {
+	_, ok := m.clearedFields[creativerun.FieldWorkspaceID]
+	return ok
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *CreativeRunMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+	delete(m.clearedFields, creativerun.FieldWorkspaceID)
 }
 
 // SetGroupID sets the "group_id" field.
@@ -19148,7 +19198,7 @@ func (m *CreativeRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CreativeRunMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, creativerun.FieldCreatedAt)
 	}
@@ -19160,6 +19210,9 @@ func (m *CreativeRunMutation) Fields() []string {
 	}
 	if m.user_id != nil {
 		fields = append(fields, creativerun.FieldUserID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, creativerun.FieldWorkspaceID)
 	}
 	if m.group_id != nil {
 		fields = append(fields, creativerun.FieldGroupID)
@@ -19270,6 +19323,8 @@ func (m *CreativeRunMutation) Field(name string) (ent.Value, bool) {
 		return m.RunID()
 	case creativerun.FieldUserID:
 		return m.UserID()
+	case creativerun.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case creativerun.FieldGroupID:
 		return m.GroupID()
 	case creativerun.FieldAPIKeyID:
@@ -19349,6 +19404,8 @@ func (m *CreativeRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldRunID(ctx)
 	case creativerun.FieldUserID:
 		return m.OldUserID(ctx)
+	case creativerun.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case creativerun.FieldGroupID:
 		return m.OldGroupID(ctx)
 	case creativerun.FieldAPIKeyID:
@@ -19447,6 +19504,13 @@ func (m *CreativeRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUserID(v)
+		return nil
+	case creativerun.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case creativerun.FieldGroupID:
 		v, ok := value.(int64)
@@ -19866,6 +19930,9 @@ func (m *CreativeRunMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *CreativeRunMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(creativerun.FieldWorkspaceID) {
+		fields = append(fields, creativerun.FieldWorkspaceID)
+	}
 	if m.FieldCleared(creativerun.FieldAccountID) {
 		fields = append(fields, creativerun.FieldAccountID)
 	}
@@ -19907,6 +19974,9 @@ func (m *CreativeRunMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *CreativeRunMutation) ClearField(name string) error {
 	switch name {
+	case creativerun.FieldWorkspaceID:
+		m.ClearWorkspaceID()
+		return nil
 	case creativerun.FieldAccountID:
 		m.ClearAccountID()
 		return nil
@@ -19953,6 +20023,9 @@ func (m *CreativeRunMutation) ResetField(name string) error {
 		return nil
 	case creativerun.FieldUserID:
 		m.ResetUserID()
+		return nil
+	case creativerun.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case creativerun.FieldGroupID:
 		m.ResetGroupID()

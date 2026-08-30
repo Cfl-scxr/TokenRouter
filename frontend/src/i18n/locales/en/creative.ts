@@ -87,7 +87,7 @@ export default {
       clearSuccess: 'Local creative data cleared.',
       confirmClearTitle: 'Clear local creative data?',
       confirmClearMessage:
-        'This permanently deletes locally stored source images, masks, results and canvas scenes. Run history will also be hidden from this device (task metadata stays on the server). Images already generated cannot be recovered. This does not affect your account balance.',
+        'This permanently deletes locally stored source images, masks, results and canvas scenes and resets this browser workspace. Older history will be hidden from this browser (task metadata remains on the server), and new runs will use a new workspace. Images already generated cannot be recovered. This does not affect your account balance.',
     },
     status: {
       queued: 'Queued',
@@ -112,6 +112,8 @@ export default {
       sourceRequired: 'Edit and inpaint operations require at least one source image.',
       maskRequired: 'Inpaint requires a mask. Select an image and paint the area with the brush first.',
       submitFailed: 'Failed to submit the creative run. Please retry.',
+      historyFailed: 'Failed to load run history. Check this browser storage permission and retry.',
+      workspaceUnavailable: 'This browser workspace is unavailable. Allow local storage for this site and retry.',
       clearFailed: 'Failed to clear local data.',
       loadImageFailed: 'Failed to load the image.',
       quotaExceeded: 'Local storage is full. Please download your assets before continuing.',

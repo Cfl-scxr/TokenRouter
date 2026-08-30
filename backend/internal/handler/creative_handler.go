@@ -28,6 +28,15 @@ func NewCreativeHandler(service *service.CreativePublicService) *CreativeHandler
 	return &CreativeHandler{service: service}
 }
 
+// creativeRunScopeFromRequest 解析创作台浏览器工作区并绑定当前用户身份。
+func creativeRunScopeFromRequest(c *gin.Context, userID int64) (service.CreativeRunScope, error) {
+	workspaceID, err := service.NormalizeCreativeWorkspaceID(c.GetHeader(service.CreativeWorkspaceHeader))
+	if err != nil {
+		return service.CreativeRunScope{}, err
+	}
+	return service.CreativeRunScope{UserID: userID, WorkspaceID: workspaceID}, nil
+}
+
 // ListModels 返回当前用户可用的分组 + 图片模型组合。
 // GET /api/v1/creative/models
 func (h *CreativeHandler) ListModels(c *gin.Context) {
@@ -67,12 +76,17 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	req, err := parseCreativeCreateRunMultipart(c)
 	if err != nil {
 		response.ErrorFrom(c, service.ErrCreativeInvalidParams)
 		return
 	}
-	got, err := h.service.CreateRun(c.Request.Context(), subject.UserID, service.CreateCreativeRunParamsPublic{
+	got, err := h.service.CreateRun(c.Request.Context(), scope, service.CreateCreativeRunParamsPublic{
 		GroupID:      req.GroupID,
 		Model:        req.Model,
 		Operation:    req.Operation,
@@ -204,8 +218,13 @@ func (h *CreativeHandler) ListRuns(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	got, err := h.service.ListRuns(c.Request.Context(), subject.UserID, service.CreativeRunFilter{
+	got, err := h.service.ListRuns(c.Request.Context(), scope, service.CreativeRunFilter{
 		Status: strings.TrimSpace(c.Query("status")),
 		Limit:  limit,
 		Offset: 0,
@@ -226,7 +245,12 @@ func (h *CreativeHandler) GetRun(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	got, err := h.service.GetRun(c.Request.Context(), subject.UserID, c.Param("id"))
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	got, err := h.service.GetRun(c.Request.Context(), scope, c.Param("id"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -242,12 +266,17 @@ func (h *CreativeHandler) GetOutputContent(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	outputIndex, err := strconv.Atoi(c.Param("index"))
 	if err != nil || outputIndex < 0 {
 		response.ErrorFrom(c, service.ErrCreativeOutputNotFound)
 		return
 	}
-	content, err := h.service.GetOutputContent(c.Request.Context(), subject.UserID, c.Param("id"), outputIndex)
+	content, err := h.service.GetOutputContent(c.Request.Context(), scope, c.Param("id"), outputIndex)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -265,12 +294,17 @@ func (h *CreativeHandler) AckOutput(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	outputIndex, err := strconv.Atoi(c.Param("index"))
 	if err != nil || outputIndex < 0 {
 		response.ErrorFrom(c, service.ErrCreativeOutputNotFound)
 		return
 	}
-	if err := h.service.AckOutput(c.Request.Context(), subject.UserID, c.Param("id"), outputIndex); err != nil {
+	if err := h.service.AckOutput(c.Request.Context(), scope, c.Param("id"), outputIndex); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

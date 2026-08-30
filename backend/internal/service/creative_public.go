@@ -538,7 +538,13 @@ type validatedCreativeParams struct {
 }
 
 // CreateRun 创建创作台任务：校验 → 审核 → 幂等 → 估价 → 供应隐藏 Key → 建行 → 预占 → 暂存 → 入队。
-func (s *CreativePublicService) CreateRun(ctx context.Context, userID int64, params CreateCreativeRunParamsPublic, idempotencyKey string) (*CreativeRunPublic, error) {
+func (s *CreativePublicService) CreateRun(ctx context.Context, scope CreativeRunScope, params CreateCreativeRunParamsPublic, idempotencyKey string) (*CreativeRunPublic, error) {
+	normalizedScope, err := NormalizeCreativeRunScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	scope = normalizedScope
+	userID := scope.UserID
 	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
@@ -551,7 +557,7 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, userID int64, par
 	}
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if idempotencyKey != "" {
-		existing, err := s.Repo.GetCreativeRunByIdempotencyKey(ctx, userID, idempotencyKey)
+		existing, err := s.Repo.GetCreativeRunByIdempotencyKey(ctx, scope, idempotencyKey)
 		if err == nil {
 			if existing.RequestFingerprint != validated.fingerprint {
 				return nil, ErrCreativeRunIdempotencyConflict
@@ -583,6 +589,7 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, userID int64, par
 	run, err := s.Repo.CreateCreativeRun(ctx, CreateCreativeRunParams{
 		RunID:                      runID,
 		UserID:                     userID,
+		WorkspaceID:                scope.WorkspaceID,
 		GroupID:                    validated.group.ID,
 		APIKeyID:                   managedKey.ID,
 		Model:                      validated.model,
@@ -1153,11 +1160,16 @@ func (s *CreativePublicService) getRunPublic(ctx context.Context, runID string) 
 }
 
 // GetRun 返回单个任务（含输出元数据），校验所有权。
-func (s *CreativePublicService) GetRun(ctx context.Context, userID int64, runID string) (*CreativeRunPublic, error) {
+func (s *CreativePublicService) GetRun(ctx context.Context, scope CreativeRunScope, runID string) (*CreativeRunPublic, error) {
+	normalizedScope, err := NormalizeCreativeRunScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	scope = normalizedScope
 	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
-	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
+	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, scope, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -1169,7 +1181,12 @@ func (s *CreativePublicService) GetRun(ctx context.Context, userID int64, runID 
 }
 
 // ListRuns 返回当前用户的任务列表（created_at desc 分页）。
-func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filter CreativeRunFilter) (*CreativeListRunsResponse, error) {
+func (s *CreativePublicService) ListRuns(ctx context.Context, scope CreativeRunScope, filter CreativeRunFilter) (*CreativeListRunsResponse, error) {
+	normalizedScope, err := NormalizeCreativeRunScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	scope = normalizedScope
 	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
@@ -1179,7 +1196,7 @@ func (s *CreativePublicService) ListRuns(ctx context.Context, userID int64, filt
 	if filter.Offset < 0 {
 		filter.Offset = 0
 	}
-	runs, err := s.Repo.ListCreativeRunsForOwner(ctx, userID, filter)
+	runs, err := s.Repo.ListCreativeRunsForOwner(ctx, scope, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1203,11 +1220,16 @@ type CreativeOutputContent struct {
 
 // GetOutputContent 校验所有权与输出状态后从临时存储读取图片字节。
 // 过期或缺失时：任务为 succeeded 则转 result_lost，并返回明确错误，绝不明示成功。
-func (s *CreativePublicService) GetOutputContent(ctx context.Context, userID int64, runID string, outputIndex int) (*CreativeOutputContent, error) {
+func (s *CreativePublicService) GetOutputContent(ctx context.Context, scope CreativeRunScope, runID string, outputIndex int) (*CreativeOutputContent, error) {
+	normalizedScope, err := NormalizeCreativeRunScope(scope)
+	if err != nil {
+		return nil, err
+	}
+	scope = normalizedScope
 	if !s.enabled(ctx) {
 		return nil, ErrCreativeDisabled
 	}
-	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
+	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, scope, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -1264,11 +1286,16 @@ func (s *CreativePublicService) markRunResultLostBestEffort(ctx context.Context,
 }
 
 // AckOutput 在客户端确认保存后删除临时输出并标记 acked，幂等。
-func (s *CreativePublicService) AckOutput(ctx context.Context, userID int64, runID string, outputIndex int) error {
+func (s *CreativePublicService) AckOutput(ctx context.Context, scope CreativeRunScope, runID string, outputIndex int) error {
+	normalizedScope, err := NormalizeCreativeRunScope(scope)
+	if err != nil {
+		return err
+	}
+	scope = normalizedScope
 	if !s.enabled(ctx) {
 		return ErrCreativeDisabled
 	}
-	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, userID, runID)
+	run, err := s.Repo.GetCreativeRunByRunIDForOwner(ctx, scope, runID)
 	if err != nil {
 		return err
 	}

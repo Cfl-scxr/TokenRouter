@@ -10,18 +10,22 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // 换成 Node 原生 Blob 保证 IndexedDB 结构化克隆往返一致
 globalThis.Blob = NodeBlob as unknown as typeof Blob
 import {
-  LocalStoreQuotaError,
-  __resetCreativeStoreForTest,
+	CREATIVE_WORKSPACE_STORAGE_KEY,
+	LocalStoreQuotaError,
+	LocalStoreError,
+	__resetCreativeStoreForTest,
   clearAll,
   clearKind,
-  deleteAsset,
-  listAssets,
+	deleteAsset,
+	getCreativeWorkspaceId,
+	listAssets,
   loadAsset,
   loadSceneJson,
   loadSetting,
   localAssetKey,
-  outputAssetKey,
-  saveAsset,
+	outputAssetKey,
+	rotateCreativeWorkspaceId,
+	saveAsset,
   saveSceneJson,
   saveSetting,
   type LocalAsset,
@@ -38,6 +42,7 @@ function makeAsset(partial: Partial<LocalAsset> & Pick<LocalAsset, 'key' | 'kind
 describe('creativeLocalStore', () => {
   beforeEach(async () => {
     __resetCreativeStoreForTest()
+    localStorage.clear()
     await clearAll()
   })
 
@@ -98,13 +103,40 @@ describe('creativeLocalStore', () => {
     expect(await loadSceneJson('creative:canvas')).toBe('{"objects":[]}')
   })
 
-  it('saveSetting/loadSetting 往返且覆盖写', async () => {
-    expect(await loadSetting('creative:selection')).toBeNull()
-    await saveSetting('creative:selection', { optionKey: 'a' })
-    expect(await loadSetting('creative:selection')).toEqual({ optionKey: 'a' })
-    await saveSetting('creative:selection', { optionKey: 'b' })
-    expect(await loadSetting('creative:selection')).toEqual({ optionKey: 'b' })
-  })
+	it('saveSetting/loadSetting 往返且覆盖写', async () => {
+		expect(await loadSetting('creative:selection')).toBeNull()
+		await saveSetting('creative:selection', { optionKey: 'a' })
+		expect(await loadSetting('creative:selection')).toEqual({ optionKey: 'a' })
+		await saveSetting('creative:selection', { optionKey: 'b' })
+		expect(await loadSetting('creative:selection')).toEqual({ optionKey: 'b' })
+	})
+
+	it('工作区首次生成并在同源标签页之间复用', () => {
+		const first = getCreativeWorkspaceId()
+
+		expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+		expect(localStorage.getItem(CREATIVE_WORKSPACE_STORAGE_KEY)).toBe(first)
+		expect(getCreativeWorkspaceId()).toBe(first)
+	})
+
+	it('非法工作区值会重新生成，旋转后与原值不同', () => {
+		localStorage.setItem(CREATIVE_WORKSPACE_STORAGE_KEY, 'invalid')
+		const generated = getCreativeWorkspaceId()
+		expect(generated).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+		expect(generated).not.toBe('invalid')
+
+		const rotated = rotateCreativeWorkspaceId()
+		expect(rotated).not.toBe(generated)
+		expect(localStorage.getItem(CREATIVE_WORKSPACE_STORAGE_KEY)).toBe(rotated)
+	})
+
+	it('本地存储不可用时工作区读取失败，不回退到共享标识', () => {
+		vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+			throw new DOMException('blocked', 'SecurityError')
+		})
+
+		expect(() => getCreativeWorkspaceId()).toThrow(LocalStoreError)
+	})
 
   it('clearAll 清空素材、场景与设置', async () => {
     await saveAsset(makeAsset({ key: localAssetKey('source', 'c'), kind: 'source' }))
