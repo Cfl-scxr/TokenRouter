@@ -20,7 +20,11 @@
       class="grid transition-[grid-template-rows,opacity] duration-300 ease-in-out"
       :class="expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 invisible'"
     >
-      <div class="min-h-0 overflow-hidden">
+      <!-- 抽屉内容顶部间距：仅展开时保留，收起时归零，不占卡片空间。 -->
+      <div
+        class="min-h-0 overflow-hidden transition-[padding-top] duration-300 ease-in-out"
+        :class="{ 'pt-3': expanded }"
+      >
         <!-- 右上角：上下文区间 / fast mode 切换，定价行随选择联动。 -->
         <div
           v-if="selectableIntervals.length > 0 || hasFastPricing"
