@@ -81,7 +81,6 @@ func TestBuildCreativeRequestFingerprint(t *testing.T) {
 		ImageSHA256:  []string{sha256Hex([]byte("img"))},
 		ImageSize:    "1K",
 		AspectRatio:  "1:1",
-		OutputFormat: "png",
 		OutputCount:  1,
 	}
 	first := buildCreativeRequestFingerprint(base)

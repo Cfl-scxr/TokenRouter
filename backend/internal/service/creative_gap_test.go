@@ -474,7 +474,8 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.Len(t, byGroup[21], 2)
 	for _, item := range byGroup[21] {
 		require.Equal(t, []string{"low", "medium", "high", "auto"}, item.Qualities)
-		require.Equal(t, []string{"png", "jpeg", "webp"}, item.OutputFormats)
+		require.Empty(t, item.OutputFormats)
+		require.Nil(t, item.OutputCompression)
 		if item.Model == "gpt-image-2" {
 			require.Equal(t, []string{"auto", "opaque", "transparent"}, item.BackgroundOptions)
 		} else {

@@ -388,8 +388,6 @@ func creativeCapabilitiesForModel(platform, model string) creativeModelCapabilit
 		}
 		capabilities.aspectRatios = []string{"1:1", "4:3", "3:4", "16:9", "9:16"}
 		capabilities.qualities = []string{"low", "medium", "high", "auto"}
-		capabilities.outputFormats = []string{"png", "jpeg", "webp"}
-		capabilities.outputCompression = &CreativeNumericRange{Min: 0, Max: 100, Step: 1}
 		capabilities.backgroundOptions = []string{"auto", "opaque"}
 		if isCreativeGPTImage2Model(normalizedModel) {
 			capabilities.backgroundOptions = append(capabilities.backgroundOptions, "transparent")
@@ -557,15 +555,16 @@ func creativeContainsOption(options []string, value string) bool {
 	return ok
 }
 
-func creativeOutputFormatMIME(format string) string {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "jpeg", "jpg":
-		return "image/jpeg"
-	case "webp":
-		return "image/webp"
-	default:
-		return "image/png"
+// creativeDefaultOption 返回参数的产品默认值；首选值不可用时回退到模型能力的第一项。
+func creativeDefaultOption(options []string, preferred string) string {
+	if creativeContainsOption(options, preferred) {
+		value, _ := creativeCanonicalOption(preferred, options)
+		return value
 	}
+	if len(options) > 0 {
+		return options[0]
+	}
+	return ""
 }
 
 func creativeOutputFormatFromMIME(mime string) string {
@@ -713,22 +712,20 @@ func defaultCreativeGrokModelCandidates() []string {
 
 // validatedCreativeParams 是校验通过的创建参数。
 type validatedCreativeParams struct {
-	group             *Group
-	model             string
-	operation         string
-	prompt            string
-	promptHash        string
-	imageSize         string
-	aspectRatio       string
-	quality           string
-	outputFormat      string
-	outputCompression *int
-	background        string
-	thinkingLevel     string
-	outputCount       int
-	sources           []CreativeInputImage
-	mask              *CreativeInputImage
-	fingerprint       string
+	group         *Group
+	model         string
+	operation     string
+	prompt        string
+	promptHash    string
+	imageSize     string
+	aspectRatio   string
+	quality       string
+	background    string
+	thinkingLevel string
+	outputCount   int
+	sources       []CreativeInputImage
+	mask          *CreativeInputImage
+	fingerprint   string
 }
 
 // CreateRun 创建创作台任务：校验 → 审核 → 幂等 → 估价 → 供应隐藏 Key → 建行 → 预占 → 暂存 → 入队。
@@ -792,7 +789,7 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, scope CreativeRun
 		RequestedOutputCount:       validated.outputCount,
 		ImageSize:                  validated.imageSize,
 		AspectRatio:                validated.aspectRatio,
-		ResponseMIMEType:           creativeOutputFormatMIME(validated.outputFormat),
+		ResponseMIMEType:           defaultCreativeResponseMime,
 		PromptHash:                 validated.promptHash,
 		RequestFingerprint:         validated.fingerprint,
 		IdempotencyKey:             creativeStringPtr(idempotencyKey),
@@ -863,8 +860,6 @@ func (s *CreativePublicService) saveRunTransient(ctx context.Context, run *Creat
 		Prompt:             validated.prompt,
 		ImageSize:          run.ImageSize,
 		AspectRatio:        run.AspectRatio,
-		OutputFormat:       validated.outputFormat,
-		OutputCompression:  validated.outputCompression,
 		Background:         validated.background,
 		ThinkingLevel:      validated.thinkingLevel,
 		Quality:            validated.quality,
@@ -969,43 +964,42 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		return nil, ErrCreativeInvalidParams
 	}
 	aspectRatio := strings.TrimSpace(params.AspectRatio)
-	if aspectRatio != "" {
+	if aspectRatio == "" {
+		aspectRatio = creativeDefaultOption(capabilities.aspectRatios, "auto")
+	} else {
 		aspectRatio, supported = creativeCanonicalOption(aspectRatio, capabilities.aspectRatios)
 		if !supported {
 			return nil, ErrCreativeInvalidParams
 		}
 	}
 	quality := strings.ToLower(strings.TrimSpace(params.Quality))
-	if quality != "" && !creativeContainsOption(capabilities.qualities, quality) {
-		return nil, ErrCreativeInvalidParams
-	}
-	outputFormat := strings.ToLower(strings.TrimSpace(params.OutputFormat))
-	if outputFormat == "" {
-		outputFormat = "png"
-	} else if !creativeContainsOption(capabilities.outputFormats, outputFormat) {
-		return nil, ErrCreativeInvalidParams
-	}
-	var outputCompression *int
-	if params.OutputCompression != nil {
-		rangeConfig := capabilities.outputCompression
-		value := *params.OutputCompression
-		if rangeConfig == nil || (outputFormat != "jpeg" && outputFormat != "webp") || value < rangeConfig.Min || value > rangeConfig.Max {
+	if len(capabilities.qualities) > 0 {
+		if quality == "" {
+			quality = creativeDefaultOption(capabilities.qualities, "medium")
+		} else if !creativeContainsOption(capabilities.qualities, quality) {
 			return nil, ErrCreativeInvalidParams
 		}
-		if rangeConfig.Step > 1 && (value-rangeConfig.Min)%rangeConfig.Step != 0 {
-			return nil, ErrCreativeInvalidParams
-		}
-		outputCompression = &value
+	} else if quality != "" {
+		return nil, ErrCreativeInvalidParams
 	}
 	background := strings.ToLower(strings.TrimSpace(params.Background))
-	if background != "" && !creativeContainsOption(capabilities.backgroundOptions, background) {
-		return nil, ErrCreativeInvalidParams
-	}
-	if background == "transparent" && outputFormat == "jpeg" {
+	if len(capabilities.backgroundOptions) > 0 {
+		if background == "" {
+			background = creativeDefaultOption(capabilities.backgroundOptions, "auto")
+		} else if !creativeContainsOption(capabilities.backgroundOptions, background) {
+			return nil, ErrCreativeInvalidParams
+		}
+	} else if background != "" {
 		return nil, ErrCreativeInvalidParams
 	}
 	thinkingLevel := strings.ToLower(strings.TrimSpace(params.ThinkingLevel))
-	if thinkingLevel != "" && !creativeContainsOption(capabilities.thinkingLevels, thinkingLevel) {
+	if len(capabilities.thinkingLevels) > 0 {
+		if thinkingLevel == "" {
+			thinkingLevel = creativeDefaultOption(capabilities.thinkingLevels, "minimal")
+		} else if !creativeContainsOption(capabilities.thinkingLevels, thinkingLevel) {
+			return nil, ErrCreativeInvalidParams
+		}
+	} else if thinkingLevel != "" {
 		return nil, ErrCreativeInvalidParams
 	}
 
@@ -1062,38 +1056,34 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 
 	promptHash := sha256Hex([]byte(prompt))
 	fingerprint := buildCreativeRequestFingerprint(creativeFingerprintPayload{
-		GroupID:           group.ID,
-		Model:             model,
-		Operation:         operation,
-		PromptSHA256:      promptHash,
-		ImageSHA256:       creativeImageHashes(sources),
-		MaskSHA256:        creativeImageHash(mask),
-		ImageSize:         imageSize,
-		AspectRatio:       aspectRatio,
-		Quality:           quality,
-		OutputFormat:      outputFormat,
-		OutputCompression: outputCompression,
-		Background:        background,
-		ThinkingLevel:     thinkingLevel,
-		OutputCount:       outputCount,
+		GroupID:       group.ID,
+		Model:         model,
+		Operation:     operation,
+		PromptSHA256:  promptHash,
+		ImageSHA256:   creativeImageHashes(sources),
+		MaskSHA256:    creativeImageHash(mask),
+		ImageSize:     imageSize,
+		AspectRatio:   aspectRatio,
+		Quality:       quality,
+		Background:    background,
+		ThinkingLevel: thinkingLevel,
+		OutputCount:   outputCount,
 	})
 	return &validatedCreativeParams{
-		group:             group,
-		model:             model,
-		operation:         operation,
-		prompt:            prompt,
-		promptHash:        promptHash,
-		imageSize:         imageSize,
-		aspectRatio:       aspectRatio,
-		quality:           quality,
-		outputFormat:      outputFormat,
-		outputCompression: outputCompression,
-		background:        background,
-		thinkingLevel:     thinkingLevel,
-		outputCount:       outputCount,
-		sources:           sources,
-		mask:              mask,
-		fingerprint:       fingerprint,
+		group:         group,
+		model:         model,
+		operation:     operation,
+		prompt:        prompt,
+		promptHash:    promptHash,
+		imageSize:     imageSize,
+		aspectRatio:   aspectRatio,
+		quality:       quality,
+		background:    background,
+		thinkingLevel: thinkingLevel,
+		outputCount:   outputCount,
+		sources:       sources,
+		mask:          mask,
+		fingerprint:   fingerprint,
 	}, nil
 }
 
@@ -1159,20 +1149,18 @@ func creativeImageDimensions(data []byte, mime string) (int, int, error) {
 
 // creativeFingerprintPayload 是请求指纹的 canonical JSON 载体（字段顺序固定）。
 type creativeFingerprintPayload struct {
-	GroupID           int64    `json:"group_id"`
-	Model             string   `json:"model"`
-	Operation         string   `json:"operation"`
-	PromptSHA256      string   `json:"prompt_sha256"`
-	ImageSHA256       []string `json:"image_sha256"`
-	MaskSHA256        string   `json:"mask_sha256,omitempty"`
-	ImageSize         string   `json:"image_size"`
-	AspectRatio       string   `json:"aspect_ratio"`
-	Quality           string   `json:"quality,omitempty"`
-	OutputFormat      string   `json:"output_format"`
-	OutputCompression *int     `json:"output_compression,omitempty"`
-	Background        string   `json:"background,omitempty"`
-	ThinkingLevel     string   `json:"thinking_level,omitempty"`
-	OutputCount       int      `json:"output_count"`
+	GroupID       int64    `json:"group_id"`
+	Model         string   `json:"model"`
+	Operation     string   `json:"operation"`
+	PromptSHA256  string   `json:"prompt_sha256"`
+	ImageSHA256   []string `json:"image_sha256"`
+	MaskSHA256    string   `json:"mask_sha256,omitempty"`
+	ImageSize     string   `json:"image_size"`
+	AspectRatio   string   `json:"aspect_ratio"`
+	Quality       string   `json:"quality,omitempty"`
+	Background    string   `json:"background,omitempty"`
+	ThinkingLevel string   `json:"thinking_level,omitempty"`
+	OutputCount   int      `json:"output_count"`
 }
 
 // buildCreativeRequestFingerprint 计算幂等指纹：canonical JSON 的 sha256。

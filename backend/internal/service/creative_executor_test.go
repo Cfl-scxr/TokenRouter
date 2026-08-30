@@ -304,13 +304,10 @@ func TestExecuteCreativeGrokEditUsesJSONEditEndpoint(t *testing.T) {
 func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	// generate：JSON。
 	run := CreativeRun{Operation: CreativeOperationGenerate, ImageSize: "1K", RequestedOutputCount: 2}
-	compression := 55
 	payload := CreativeRunPayload{
-		Prompt:            "hello",
-		Quality:           "high",
-		OutputFormat:      "webp",
-		OutputCompression: &compression,
-		Background:        "opaque",
+		Prompt:     "hello",
+		Quality:    "high",
+		Background: "opaque",
 	}
 	body, contentType, err := buildCreativeOpenAIRequestBody(run, payload, "gpt-image-2")
 	require.NoError(t, err)
@@ -321,8 +318,8 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.Equal(t, "b64_json", generateBody["response_format"])
 	require.Equal(t, float64(1), generateBody["n"])
 	require.Equal(t, "high", generateBody["quality"])
-	require.Equal(t, "webp", generateBody["output_format"])
-	require.Equal(t, float64(55), generateBody["output_compression"])
+	require.Equal(t, "png", generateBody["output_format"])
+	require.NotContains(t, generateBody, "output_compression")
 	require.Equal(t, "opaque", generateBody["background"])
 
 	// GPT Image 2 的 4K 横向尺寸使用真实的 3840x2160 像素值。
@@ -335,13 +332,11 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	// inpaint：multipart，含 image/mask/model/prompt 字段。
 	run = CreativeRun{Operation: CreativeOperationInpaint, ImageSize: "1K", AspectRatio: "1:1", RequestedOutputCount: 2}
 	payload = CreativeRunPayload{
-		Prompt:            "inpaint me",
-		Sources:           []CreativeInputImage{{Bytes: []byte("img"), Mime: "image/png"}},
-		Mask:              &CreativeInputImage{Bytes: []byte("mask"), Mime: "image/png"},
-		Quality:           "high",
-		OutputFormat:      "webp",
-		OutputCompression: &compression,
-		Background:        "opaque",
+		Prompt:     "inpaint me",
+		Sources:    []CreativeInputImage{{Bytes: []byte("img"), Mime: "image/png"}},
+		Mask:       &CreativeInputImage{Bytes: []byte("mask"), Mime: "image/png"},
+		Quality:    "high",
+		Background: "opaque",
 	}
 	body, contentType, err = buildCreativeOpenAIRequestBody(run, payload, "gpt-image-2")
 	require.NoError(t, err)
@@ -354,7 +349,7 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.Contains(t, string(body), `name="n"`)
 	require.Contains(t, string(body), `name="quality"`)
 	require.Contains(t, string(body), `name="output_format"`)
-	require.Contains(t, string(body), `name="output_compression"`)
+	require.NotContains(t, string(body), `name="output_compression"`)
 	require.Contains(t, string(body), `name="background"`)
 }
 

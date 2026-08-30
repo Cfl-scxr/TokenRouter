@@ -261,8 +261,6 @@ type CreativeRunPayload struct {
 	Prompt             string `json:"prompt"`
 	ImageSize          string `json:"image_size"`
 	AspectRatio        string `json:"aspect_ratio"`
-	OutputFormat       string `json:"output_format"`
-	OutputCompression  *int   `json:"output_compression,omitempty"`
 	Background         string `json:"background,omitempty"`
 	ThinkingLevel      string `json:"thinking_level,omitempty"`
 	Quality            string `json:"quality,omitempty"`
@@ -283,20 +281,18 @@ type CreativeInputImage struct {
 
 // CreateCreativeRunParamsPublic 是 CreateRun 的入参（由 handler 解析 multipart 后组装）。
 type CreateCreativeRunParamsPublic struct {
-	GroupID           int64
-	Model             string
-	Operation         string
-	Prompt            string
-	SourceImages      []CreativeInputImage
-	Mask              *CreativeInputImage
-	ImageSize         string
-	AspectRatio       string
-	Quality           string
-	OutputFormat      string
-	OutputCompression *int
-	Background        string
-	ThinkingLevel     string
-	OutputCount       int
+	GroupID       int64
+	Model         string
+	Operation     string
+	Prompt        string
+	SourceImages  []CreativeInputImage
+	Mask          *CreativeInputImage
+	ImageSize     string
+	AspectRatio   string
+	Quality       string
+	Background    string
+	ThinkingLevel string
+	OutputCount   int
 }
 
 // CreativeRunPublic 是任务对客户端的展示结构。

@@ -642,40 +642,31 @@ func TestValidateCreateParams(t *testing.T) {
 	t.Run("OpenAI 模型参数通过且固定单输出", func(t *testing.T) {
 		svc := newCreativeTestService()
 		configureOpenAICreativeTestService(svc)
-		compression := 72
 		params := validCreateParams()
 		params.Model = "gpt-image-2"
 		params.AspectRatio = "16:9"
 		params.Quality = "auto"
-		params.OutputFormat = "webp"
-		params.OutputCompression = &compression
 		params.Background = "transparent"
 		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
 		require.NoError(t, err)
 		require.Equal(t, 1, validated.outputCount)
-		require.Equal(t, "webp", validated.outputFormat)
-		require.Equal(t, 72, *validated.outputCompression)
+		require.Equal(t, "16:9", validated.aspectRatio)
+		require.Equal(t, "auto", validated.quality)
 		require.Equal(t, "transparent", validated.background)
 	})
 
-	t.Run("OpenAI 非法输出组合被拒绝", func(t *testing.T) {
+	t.Run("固定 PNG 输出且不接受输出格式参数", func(t *testing.T) {
 		svc := newCreativeTestService()
 		configureOpenAICreativeTestService(svc)
 		params := validCreateParams()
 		params.Model = "gpt-image-2"
-		params.OutputFormat = "jpeg"
 		params.Background = "transparent"
-		_, err := svc.validateCreateParams(context.Background(), 7, &params)
-		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "1:1", validated.aspectRatio)
+		require.Equal(t, "medium", validated.quality)
+		require.Equal(t, "transparent", validated.background)
 
-		compression := 50
-		params.OutputFormat = "png"
-		params.Background = ""
-		params.OutputCompression = &compression
-		_, err = svc.validateCreateParams(context.Background(), 7, &params)
-		require.ErrorIs(t, err, ErrCreativeInvalidParams)
-
-		params.OutputCompression = nil
 		params.OutputCount = 11
 		_, err = svc.validateCreateParams(context.Background(), 7, &params)
 		require.ErrorIs(t, err, ErrCreativeInvalidParams)
@@ -693,6 +684,34 @@ func TestValidateCreateParams(t *testing.T) {
 		require.Equal(t, "low", validated.quality)
 		require.Equal(t, "21:9", validated.aspectRatio)
 		require.Equal(t, 1, validated.outputCount)
+	})
+
+	t.Run("支持模型缺省参数自动选择产品默认值", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureGrok2CreativeTestService(svc)
+		params := validCreateParams()
+		params.Model = "grok-imagine-image-2.0"
+		validated, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "auto", validated.aspectRatio)
+		require.Equal(t, "medium", validated.quality)
+
+		svc = newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
+		params = validCreateParams()
+		params.Model = "gpt-image-2"
+		validated, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "1:1", validated.aspectRatio)
+		require.Equal(t, "medium", validated.quality)
+		require.Equal(t, "auto", validated.background)
+
+		svc = newCreativeTestService()
+		params = validCreateParams()
+		validated, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+		require.Equal(t, "1:1", validated.aspectRatio)
+		require.Equal(t, "minimal", validated.thinkingLevel)
 	})
 
 	t.Run("Gemini 3.1 支持 512 和思考强度但保持单输出", func(t *testing.T) {

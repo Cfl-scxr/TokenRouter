@@ -14,9 +14,9 @@
       class="pointer-events-none absolute inset-2 z-[2] rounded-xl border-2 border-dashed border-primary-500/70 bg-primary-500/5"
     ></div>
 
-    <!-- 浮动工具栏（顶部居中，含移动端；窄屏限宽并换行成圆角矩形，避免与左上角设置、右上角历史按钮重叠）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
+    <!-- 浮动工具栏（顶部居中，含移动端；窄屏限宽并换行，圆角保持与桌面端一致，避免与左上角设置、右上角历史按钮重叠）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
-      class="absolute left-1/2 top-3 z-10 flex max-sm:w-[calc(100%-7.5rem)] max-sm:max-w-[calc(100%-7.5rem)] max-sm:flex-wrap max-sm:justify-center max-sm:rounded-2xl -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
+      class="absolute left-1/2 top-3 z-10 flex max-sm:w-fit max-sm:max-w-[calc(100%-7.5rem)] max-sm:flex-wrap max-sm:justify-center -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
     >
       <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
       <button type="button" class="canvas-tool-btn" :title="t('creative.panel.uploadSource')" @click="fileInputRef?.click()">

@@ -11,8 +11,6 @@ export default {
       imageSize: 'Image size',
       aspectRatio: 'Aspect ratio',
       quality: 'Quality',
-      outputFormat: 'Output format',
-      outputCompression: 'Compression quality',
       background: 'Background',
       thinkingLevel: 'Thinking level',
       estimatedCost: '{cost}',
@@ -47,26 +45,19 @@ export default {
       '16x9': '16:9',
       '9x16': '9:16',
     },
-    // 生图画质档位由模型目录下发；再次点击已选项取消选择表示使用上游默认。
+    // 生图画质档位由模型目录下发；支持时默认选择 medium，始终保持一个选项。
     qualities: {
       low: 'Low',
       medium: 'Medium',
       high: 'High',
       auto: 'Auto',
     },
-    outputFormats: {
-      png: 'PNG',
-      jpeg: 'JPEG',
-      webp: 'WebP',
-    },
     backgrounds: {
-      default: 'Provider default',
       auto: 'Auto',
       opaque: 'Opaque',
       transparent: 'Transparent',
     },
     thinkingLevels: {
-      default: 'Model default',
       minimal: 'Minimal',
       high: 'High',
     },

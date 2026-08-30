@@ -115,8 +115,9 @@
                     :class="studio.aspectRatio.value === ratio && 'param-chip-active'"
                     @click="setAspectRatio(ratio)"
                   >
+                    <Icon v-if="ratio === 'auto'" name="sparkles" size="xs" class="opacity-70" aria-hidden="true" />
                     <!-- 比例预览小方框：直观展示宽高比 -->
-                    <span v-if="ratio !== 'auto'" class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
+                    <span v-else class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
                     {{ ratio }}
                   </button>
                 </div>
@@ -136,47 +137,9 @@
                   </button>
                 </div>
               </div>
-              <div v-if="studio.outputFormatOptions.value.length">
-                <p class="param-label">{{ t('creative.panel.outputFormat') }}</p>
-                <div class="flex flex-wrap gap-1.5">
-                  <button
-                    v-for="option in studio.outputFormatOptions.value"
-                    :key="option"
-                    type="button"
-                    class="param-chip"
-                    :class="studio.outputFormat.value === option && 'param-chip-active'"
-                    @click="setOutputFormat(option)"
-                  >
-                    {{ t(`creative.outputFormats.${option}`, option.toUpperCase()) }}
-                  </button>
-                </div>
-              </div>
-              <div v-if="studio.outputCompressionRange.value && (studio.outputFormat.value === 'jpeg' || studio.outputFormat.value === 'webp')">
-                <div class="mb-1.5 flex items-center justify-between gap-2">
-                  <p class="param-label mb-0">{{ t('creative.panel.outputCompression') }}</p>
-                  <span class="text-[11px] tabular-nums text-gray-500 dark:text-dark-300">{{ studio.outputCompression.value }}%</span>
-                </div>
-                <input
-                  type="range"
-                  class="compression-slider"
-                  :min="studio.outputCompressionRange.value.min"
-                  :max="studio.outputCompressionRange.value.max"
-                  :step="studio.outputCompressionRange.value.step"
-                  :value="studio.outputCompression.value ?? studio.outputCompressionRange.value.max"
-                  @input="setOutputCompression"
-                />
-              </div>
               <div v-if="studio.backgroundOptions.value.length">
                 <p class="param-label">{{ t('creative.panel.background') }}</p>
                 <div class="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    class="param-chip"
-                    :class="!studio.background.value && 'param-chip-active'"
-                    @click="setBackground('')"
-                  >
-                    {{ t('creative.backgrounds.default') }}
-                  </button>
                   <button
                     v-for="option in studio.backgroundOptions.value"
                     :key="option"
@@ -192,14 +155,6 @@
               <div v-if="studio.thinkingLevelOptions.value.length">
                 <p class="param-label">{{ t('creative.panel.thinkingLevel') }}</p>
                 <div class="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    class="param-chip"
-                    :class="!studio.thinkingLevel.value && 'param-chip-active'"
-                    @click="setThinkingLevel('')"
-                  >
-                    {{ t('creative.thinkingLevels.default') }}
-                  </button>
                   <button
                     v-for="option in studio.thinkingLevelOptions.value"
                     :key="option"
@@ -420,16 +375,7 @@ function ratioPreviewStyle(ratio: string): { width: string; height: string } {
 
 // 画质选择（经别名写入，避免模板内联赋值触发 prop mutation 校验）
 function setQuality(option: string): void {
-  studio.quality.value = studio.quality.value === option ? '' : option
-}
-
-function setOutputFormat(value: string): void {
-  studio.outputFormat.value = value
-}
-
-function setOutputCompression(event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value)
-  studio.outputCompression.value = Number.isFinite(value) ? value : null
+  studio.quality.value = option
 }
 
 function setBackground(value: string): void {
@@ -513,10 +459,6 @@ function autosize(): void {
 
 .param-chip-active {
   @apply border-primary-500 bg-primary-600/10 text-primary-700 dark:border-primary-500 dark:text-primary-300;
-}
-
-.compression-slider {
-  @apply h-2 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-primary-600 dark:bg-dark-600;
 }
 
 /* 比例预览小方框：内联尺寸由 ratioPreviewStyle 计算 */

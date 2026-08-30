@@ -41,7 +41,7 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 
 除 `GET /creative/models` 外，以上任务创建、历史、详情、输出读取和 ack 路由都必须携带 `X-Creative-Workspace-ID` 请求头。请求头必须是非空 UUID；服务端会规范化为小写，缺失返回 `400 CREATIVE_WORKSPACE_REQUIRED`，格式非法返回 `400 CREATIVE_WORKSPACE_INVALID`。工作区 ID 是浏览器数据分区标识，不替代 JWT 用户权限校验；同源标签页共享同一个值，不同浏览器、无痕窗口或清除站点数据后会使用不同值。
 
-`GET /creative/models` 返回当前用户可用分组与图片模型的组合。每项除分组、模型、操作、尺寸和图片单价（`price_512`、`price_1k`、`price_2k`、`price_4k`）外，还按具体模型返回 `aspect_ratios`、`qualities`、`output_formats`、`output_compression`、`background_options`、`thinking_levels`、`max_output_count` 与 `max_reference_images`；不支持的集合返回空数组，压缩范围返回对象或 `null`。`max_output_count` 固定为 1，创作台每次任务只生成一张图片。`price_512` 仅用于支持 Gemini 512 档位的模型：若渠道配置了 `512` 分层价格则优先使用，否则使用渠道默认价格。前端只按这些服务端能力渲染参数，不根据模型名自行猜测。列表只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。OpenAI 分组支持 `generate`/`edit`/`inpaint`，Gemini（含 Vertex 账号）与 Grok 分组支持 `generate`/`edit`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
+`GET /creative/models` 返回当前用户可用分组与图片模型的组合。每项除分组、模型、操作、尺寸和图片单价（`price_512`、`price_1k`、`price_2k`、`price_4k`）外，还按具体模型返回 `aspect_ratios`、`qualities`、`output_formats`、`output_compression`、`background_options`、`thinking_levels`、`max_output_count` 与 `max_reference_images`；不支持的集合返回空数组，压缩范围返回对象或 `null`。创作台当前固定输出 PNG，因此 `output_formats` 对所有模型为空数组、`output_compression` 为 `null`，这两个字段仅作为能力协议保留。`max_output_count` 固定为 1，创作台每次任务只生成一张图片。`price_512` 仅用于支持 Gemini 512 档位的模型：若渠道配置了 `512` 分层价格则优先使用，否则使用渠道默认价格。前端只按这些服务端能力渲染参数，不根据模型名自行猜测。列表只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。OpenAI 分组支持 `generate`/`edit`/`inpaint`，Gemini（含 Vertex 账号）与 Grok 分组支持 `generate`/`edit`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
 
 管理员还可以在系统设置中配置全局生图模型白名单。`creative_model_settings` 是 `settings` 表中的 JSON 数组，每项精确绑定一个分组和模型，并声明允许的能力：
 
@@ -64,12 +64,10 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 | `source_images` | 文件，可多个 | 源图；字段名兼容 `source_images`、`source_images[]`、`source_images[i]` |
 | `mask` | 文件，单个 | 局部重绘蒙版，仅 `inpaint` 允许携带 |
 | `image_size` | 文本 | 可选，默认 `1K`；Gemini 3.1 Flash Image 可包含 `512`，其余实际档位以模型目录为准 |
-| `aspect_ratio` | 文本 | 可选，须位于模型目录返回的 `aspect_ratios` |
-| `quality` | 文本 | 可选，OpenAI GPT Image 支持 `low`/`medium`/`high`/`auto`，Grok 仅 `grok-imagine-image-2.0` 支持 `low`/`medium` |
-| `output_format` | 文本 | 可选，默认 `png`；当前只对 OpenAI 暴露 `png`/`jpeg`/`webp` |
-| `output_compression` | 整数 | 可选，0–100；只允许与 OpenAI JPEG/WebP 一起使用 |
-| `background` | 文本 | 可选，OpenAI 支持 `auto`/`opaque`/`transparent`，其中 JPEG 不允许透明背景 |
-| `thinking_level` | 文本 | 可选，Gemini 3.1 图片模型按目录能力支持 `minimal`/`high` |
+| `aspect_ratio` | 文本 | 可选，须位于模型目录返回的 `aspect_ratios`；缺失时优先使用 `auto`，不支持 `auto` 时使用模型能力第一项 |
+| `quality` | 文本 | 可选，OpenAI GPT Image 支持 `low`/`medium`/`high`/`auto`，Grok 仅 `grok-imagine-image-2.0` 支持 `low`/`medium`；支持质量参数时缺失默认 `medium` |
+| `background` | 文本 | 可选，OpenAI 支持 `auto`/`opaque`/`transparent`；支持背景参数时缺失默认 `auto` |
+| `thinking_level` | 文本 | 可选，Gemini 3.1 图片模型按目录能力支持 `minimal`/`high`；支持思考强度时缺失默认 `minimal` |
 
 请求限制（默认值来自 `creative.*` 配置）：
 
@@ -113,7 +111,7 @@ worker 从 Redis 预留任务后先读取用户最新并发配置，并通过现
 
 - 客户端可对 `POST /creative/runs` 携带 `Idempotency-Key` 头；同一用户同一工作区同一键重放时，若请求指纹一致则直接返回原任务（`idempotent_replay=true`），不重复建单、不重复计费。
 - 同一用户同一工作区同一键但请求体不同（指纹不一致）返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`；不同工作区即使使用相同键也会创建独立任务。
-- 请求指纹是规范化 JSON（分组、模型、操作、prompt sha256、各源图 sha256、mask sha256、尺寸、比例、质量、输出格式、压缩、背景、思考强度和固定单张输出）的 sha256；`creative_runs.request_fingerprint` 只用于比较同一幂等键的请求体，不设置全局唯一约束。
+- 请求指纹是规范化 JSON（分组、模型、操作、prompt sha256、各源图 sha256、mask sha256、尺寸、比例、质量、背景、思考强度和固定单张输出）的 sha256；输出格式固定为 PNG，不作为用户输入参与指纹；`creative_runs.request_fingerprint` 只用于比较同一幂等键的请求体，不设置全局唯一约束。
 - `(user_id, workspace_id, idempotency_key)` 部分唯一索引只约束带工作区的非空键；迁移前 `workspace_id IS NULL` 的旧任务不参与新的幂等查询，键本身最长 255 字符。
 - 计费与结算请求 ID 全部经由 `usage_billing_dedup` 幂等表去重，worker 重试、重复回调不会产生重复资金动作。
 
@@ -127,7 +125,7 @@ worker 从 Redis 预留任务后先读取用户最新并发配置，并通过现
 
 ## 计费
 
-创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按所选尺寸基础单价估价，快照订阅/余额倍率；没有批量折扣与账号倍率。质量、输出格式、压缩、背景和思考强度不参与创作台价格计算。每次任务固定只生成一张图片。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
+创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按所选尺寸基础单价估价，快照订阅/余额倍率；没有批量折扣与账号倍率。质量、背景和思考强度不参与创作台价格计算，输出格式固定为 PNG。每次任务固定只生成一张图片。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
 
 ```text
 creative_hold:{run_id}      创建任务时预占
@@ -174,7 +172,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 执行器按分组平台直接构造上游 HTTP 请求，不经过本地 HTTP 回环；执行超时为 `creative.execute_timeout_seconds`（默认 300 秒）。单张输出不超过 32 MiB，同一任务内按 sha256 去重重复输出：
 
-- `openai`：`generate` 走 `/v1/images/generations`（JSON）；`edit`/`inpaint` 走 `/v1/images/edits`（multipart，多源图 + mask）。三条路径都透传尺寸、质量、输出格式、压缩和背景，并固定请求单张 `n=1`，使用 `response_format: "b64_json"` 取回结果。
+- `openai`：`generate` 走 `/v1/images/generations`（JSON）；`edit`/`inpaint` 走 `/v1/images/edits`（multipart，多源图 + mask）。三条路径都透传尺寸、质量和背景，内部固定 `output_format: "png"`、单张 `n=1`，使用 `response_format: "b64_json"` 取回结果。
 - `grok`：`generate` 走 `/v1/images/generations`；`edit` 走 `/v1/images/edits` 的 JSON 契约，单张源图放入 `image: {type: "image_url", url: "data:image/...;base64,..."}`，多张放入 `images` 数组，最多 3 张；两条路径都透传分辨率、比例和 `grok-imagine-image-2.0` 的质量，并固定请求单张 `n=1` 与 `response_format: "b64_json"`；`inpaint` 直接拒绝。
 - `gemini`：`generate` 与普通参考图 `edit` 统一使用原生 `generateContent`，prompt 与源图以 inlineData 放入 parts，不发送独立 mask；图片尺寸与比例位于 `generationConfig.imageConfig`，支持的 3.1 图片模型可附加 `generationConfig.thinkingConfig`，`includeThoughts` 固定为 false；执行器取最后一个图片 part 作为最终输出。凭据按账号类型选择：API Key 账号用 `x-goog-api-key`，Vertex 服务账号与 OAuth 用 Bearer token。
 
@@ -191,7 +189,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 - 画布交互：空白拖拽平移视角；普通 wheel（包括触控板双指滚动）按跟手方向平移，浏览器标记 `ctrlKey` 的触控板捏合以光标为中心缩放（0.2–3）；图片可点选、拖动、删除；支持从操作系统文件夹拖入 PNG/JPEG/WebP 图片，也支持把历史记录中的本地输出缩略图拖到画布，图片中心对齐拖放落点，多图从落点按固定间距斜向错开；外部拖入绕过裁剪弹窗并保存为源素材，历史拖入复用已有 output 素材；历史默认折叠为画布右上角悬浮列表，点击任务行时若其输出已在本画布上（按 runId + outputIndex 匹配对象 data）则视角平移过去；进行中的任务只显示加载状态，不提供素材操作或取消入口。
 - 生成输入：文生图不需要选图；图生图 / 局部重绘以画布当前选中的图片为源图，局部重绘另附画笔导出的 mask（白底透明 PNG，尺寸拉伸回源图自然尺寸）；画笔是唯一画布工具，白色轨迹作为 mask path 画在图片上层。
 - 输出上板与历史恢复：全部进行中任务共享一次历史列表轮询，每 3 秒批量同步当前历史页中的任务状态与输出元数据，不按任务分别请求详情；刷新发现的新排队/执行中任务自动加入追踪。终态为 `succeeded` 时逐个取回未 ack 的输出，先写入 IndexedDB 再调用 ack，随后自动把输出图片放上画布（上一个放置位置右侧 40px、约 2200px 换行）并平移视角到新图中心。进入创作台或手动刷新历史时，对当前历史页内 `succeeded` 且未 ack 的输出执行同一收割流程；本地已有素材时只重试 ack。单个输出取回失败（410/`result_lost`）或本地保存失败只标记该输出缺失，不中断其它输出；ack 失败不抹掉已经保存的本地素材，后续刷新继续重试。
-- 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/输出 blob）、`scenes`（画布 JSON 快照，图片 src 以 `asset://<key>` 占位、刷新后回 assets 取 blob 恢复，缺失的图跳过不阻塞）和 `settings`（模型、操作、尺寸、比例、画质、输出格式、压缩、背景、思考强度与提示词草稿）；画布恢复完成前不会执行外部上板或用空画布覆盖已有快照，画布变更防抖约 1 秒存快照，并在页面隐藏/卸载时刷新待写入内容，恢复时重建 runId + outputIndex → 画布对象的注册表；图片绝不以 base64 进入 localStorage。另用 localStorage 的 `creative:workspaceId` 持久化高熵 UUID，同源标签页共享；清空本机创作数据会删除 IndexedDB 内容并旋转工作区 ID，因此旧历史立即隐藏，后续任务进入新工作区。
+- 本地存储：IndexedDB 库名 `tokenrouter-creative-studio`（版本 1），对象仓库为 `assets`（源图/输出 blob）、`scenes`（画布 JSON 快照，图片 src 以 `asset://<key>` 占位、刷新后回 assets 取 blob 恢复，缺失的图跳过不阻塞）和 `settings`（模型、操作、尺寸、比例、画质、背景、思考强度与提示词草稿）；画布恢复完成前不会执行外部上板或用空画布覆盖已有快照，画布变更防抖约 1 秒存快照，并在页面隐藏/卸载时刷新待写入内容，恢复时重建 runId + outputIndex → 画布对象的注册表；图片绝不以 base64 进入 localStorage。另用 localStorage 的 `creative:workspaceId` 持久化高熵 UUID，同源标签页共享；清空本机创作数据会删除 IndexedDB 内容并旋转工作区 ID，因此旧历史立即隐藏，后续任务进入新工作区。
 - 丢失边界：历史自动恢复只适用于服务端仍为 `succeeded`、输出未 ack 且 transient 尚未过期的任务；服务端已 ack、transient 已过期或本地保存失败后仍无对应 blob 的输出显示“素材缺失”。本地配额不足时提示用户下载备份；清理浏览器站点数据会清空全部本地素材并创建新的工作区，且没有任何跨设备同步。
 - 幂等重试：创建任务失败重试复用同一 Idempotency-Key，成功后重置。
 

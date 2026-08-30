@@ -55,12 +55,12 @@ const MODEL = {
   model: 'model-x',
   operations: ['generate', 'edit', 'inpaint'],
   image_sizes: ['512', '1K', '2K'],
-  aspect_ratios: ['1:1', '4:3', '16:9'],
+  aspect_ratios: ['1:1', '4:3', '16:9', 'auto'],
   qualities: ['low', 'medium', 'high', 'auto'],
-  output_formats: ['png', 'jpeg', 'webp'],
-  output_compression: { min: 0, max: 100, step: 1 },
+  output_formats: [],
+  output_compression: null,
   background_options: ['auto', 'opaque', 'transparent'],
-  thinking_levels: [],
+  thinking_levels: ['minimal', 'high'],
   max_output_count: 1,
   max_reference_images: 16,
   price_512: 1.5,
@@ -132,6 +132,16 @@ describe('useCreativeStudio', () => {
     return { studio, wrapper }
   }
 
+  it('模型支持时为比例、画质、背景和思考强度选择固定默认值', async () => {
+    const { studio, wrapper } = await setupStudio()
+
+    expect(studio.aspectRatio.value).toBe('auto')
+    expect(studio.quality.value).toBe('medium')
+    expect(studio.background.value).toBe('auto')
+    expect(studio.thinkingLevel.value).toBe('minimal')
+    wrapper.unmount()
+  })
+
   describe('创作参数本地持久化', () => {
     it('恢复完整的模型参数与提示词设置', async () => {
       mockedStore.loadSetting.mockResolvedValueOnce({
@@ -140,8 +150,6 @@ describe('useCreativeStudio', () => {
         imageSize: '2K',
         aspectRatio: '4:3',
         quality: 'high',
-        outputFormat: 'webp',
-        outputCompression: 76,
         background: 'transparent',
         thinkingLevel: '',
         prompt: '恢复的提示词',
@@ -155,8 +163,6 @@ describe('useCreativeStudio', () => {
       expect(studio.imageSize.value).toBe('2K')
       expect(studio.aspectRatio.value).toBe('4:3')
       expect(studio.quality.value).toBe('high')
-      expect(studio.outputFormat.value).toBe('webp')
-      expect(studio.outputCompression.value).toBe(76)
       expect(studio.background.value).toBe('transparent')
       wrapper.unmount()
     })
@@ -264,9 +270,8 @@ describe('useCreativeStudio', () => {
   describe('createRun 提交', () => {
     it('成功路径：FormData 字段齐全并启动轮询', async () => {
       const { studio } = await setupStudio()
-      studio.prompt.value = '一只猫'
+		studio.prompt.value = '一只猫'
 		studio.quality.value = 'high'
-		studio.outputFormat.value = 'jpeg'
 		studio.background.value = 'opaque'
 		await Promise.resolve()
       const sourceBlob = new Blob(['src'], { type: 'image/png' })
@@ -287,13 +292,14 @@ describe('useCreativeStudio', () => {
       expect(form.get('model')).toBe('model-x')
       expect(form.get('operation')).toBe('generate')
       expect(form.get('prompt')).toBe('一只猫')
-      expect(form.get('image_size')).toBe('1K')
-      expect(form.get('aspect_ratio')).toBe('1:1')
-		expect(form.get('quality')).toBe('high')
-		expect(form.get('output_format')).toBe('jpeg')
-		expect(form.get('output_compression')).toBe('100')
-		expect(form.get('background')).toBe('opaque')
-		expect(form.get('response_mime_type')).toBeNull()
+			expect(form.get('image_size')).toBe('1K')
+			expect(form.get('aspect_ratio')).toBe('auto')
+			expect(form.get('quality')).toBe('high')
+			expect(form.get('output_format')).toBeNull()
+			expect(form.get('output_compression')).toBeNull()
+			expect(form.get('background')).toBe('opaque')
+			expect(form.get('thinking_level')).toBe('minimal')
+			expect(form.get('response_mime_type')).toBeNull()
       expect(form.getAll('source_images[]')).toHaveLength(1)
 
       // 进入轮询：前进 3s 后发出第一次批量列表查询

@@ -46,8 +46,6 @@ interface CreativeSelectionSettings {
   imageSize: string
   aspectRatio: string
   quality: string
-  outputFormat: string
-  outputCompression: number | null
   background: string
   thinkingLevel: string
   prompt: string
@@ -85,13 +83,11 @@ export function useCreativeStudio() {
   const operation = ref<CreativeOperation>('generate')
   const prompt = ref('')
   const imageSize = ref('')
-  const aspectRatio = ref('1:1')
-  // 模型级画质档位，空串表示沿用上游默认值。
-  const quality = ref('')
-  const outputFormat = ref('')
-  const outputCompression = ref<number | null>(null)
-  const background = ref('')
-  const thinkingLevel = ref('')
+  const aspectRatio = ref('auto')
+  // 模型级画质档位，支持时默认使用 medium。
+  const quality = ref('medium')
+  const background = ref('auto')
+  const thinkingLevel = ref('minimal')
   const currentRun = ref<CreativeRun | null>(null)
   const runHistory = ref<CreativeRun[]>([])
   const loadingHistory = ref(false)
@@ -143,14 +139,7 @@ export function useCreativeStudio() {
   // 可选画质档位（模型不支持时为空，参数面板隐藏画质行）
   const qualityOptions = computed(() => selectedOption.value?.qualities ?? [])
 
-  const outputFormatOptions = computed(() => selectedOption.value?.output_formats ?? [])
-
-  const outputCompressionRange = computed(() => selectedOption.value?.output_compression ?? null)
-
-  const backgroundOptions = computed(() => {
-    const options = selectedOption.value?.background_options ?? []
-    return outputFormat.value === 'jpeg' ? options.filter((option) => option !== 'transparent') : options
-  })
+  const backgroundOptions = computed(() => selectedOption.value?.background_options ?? [])
 
   const thinkingLevelOptions = computed(() => selectedOption.value?.thinking_levels ?? [])
 
@@ -215,8 +204,6 @@ export function useCreativeStudio() {
       if (saved.imageSize) imageSize.value = saved.imageSize
       if (saved.aspectRatio) aspectRatio.value = saved.aspectRatio
       if (typeof saved.quality === 'string') quality.value = saved.quality
-      if (typeof saved.outputFormat === 'string') outputFormat.value = saved.outputFormat
-      if (typeof saved.outputCompression === 'number') outputCompression.value = saved.outputCompression
       if (typeof saved.background === 'string') background.value = saved.background
       if (typeof saved.thinkingLevel === 'string') thinkingLevel.value = saved.thinkingLevel
       if (typeof saved.prompt === 'string') prompt.value = saved.prompt.slice(0, PROMPT_MAX_LENGTH)
@@ -241,31 +228,25 @@ export function useCreativeStudio() {
     }
     const aspectRatios = option.aspect_ratios ?? []
     if (!aspectRatios.includes(aspectRatio.value)) {
-      aspectRatio.value = aspectRatios[0] ?? ''
+      aspectRatio.value = aspectRatios.includes('auto') ? 'auto' : (aspectRatios[0] ?? '')
     }
     const qualities = option.qualities ?? []
-    if (quality.value && !qualities.includes(quality.value)) {
+    if (qualities.length === 0) {
       quality.value = ''
-    }
-    const outputFormats = option.output_formats ?? []
-    if (!outputFormats.includes(outputFormat.value)) {
-      outputFormat.value = outputFormats[0] ?? ''
-    }
-    const compressionRange = option.output_compression
-    const compressionEnabled = compressionRange && (outputFormat.value === 'jpeg' || outputFormat.value === 'webp')
-    if (compressionEnabled && compressionRange) {
-      const current = outputCompression.value ?? compressionRange.max
-      outputCompression.value = Math.min(compressionRange.max, Math.max(compressionRange.min, current))
-    } else {
-      outputCompression.value = null
+    } else if (!qualities.includes(quality.value)) {
+      quality.value = qualities.includes('medium') ? 'medium' : (qualities[0] ?? '')
     }
     const backgrounds = backgroundOptions.value
-    if (background.value && !backgrounds.includes(background.value)) {
+    if (backgrounds.length === 0) {
       background.value = ''
+    } else if (!backgrounds.includes(background.value)) {
+      background.value = backgrounds.includes('auto') ? 'auto' : (backgrounds[0] ?? '')
     }
     const thinkingLevels = option.thinking_levels ?? []
-    if (thinkingLevel.value && !thinkingLevels.includes(thinkingLevel.value)) {
+    if (thinkingLevels.length === 0) {
       thinkingLevel.value = ''
+    } else if (!thinkingLevels.includes(thinkingLevel.value)) {
+      thinkingLevel.value = thinkingLevels.includes('minimal') ? 'minimal' : (thinkingLevels[0] ?? '')
     }
   }
 
@@ -281,8 +262,6 @@ export function useCreativeStudio() {
       imageSize: imageSize.value,
       aspectRatio: aspectRatio.value,
       quality: quality.value,
-      outputFormat: outputFormat.value,
-      outputCompression: outputCompression.value,
       background: background.value,
       thinkingLevel: thinkingLevel.value,
       prompt: prompt.value.slice(0, PROMPT_MAX_LENGTH),
@@ -325,14 +304,11 @@ export function useCreativeStudio() {
 
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, quality, outputFormat, outputCompression, background, thinkingLevel, prompt],
+    [selectedOptionKey, operation, imageSize, aspectRatio, quality, background, thinkingLevel, prompt],
     scheduleSelectionSettingsSave,
     // 使用同步 watcher 先记录脏状态，确保 pagehide 触发时能拿到最新提示词。
     { flush: 'sync' },
   )
-
-  // 输出格式变化时同步压缩和背景约束，避免提交服务端会拒绝的组合。
-  watch(outputFormat, normalizeSelection)
 
   // ==================== 画布桥接 ====================
 
@@ -452,12 +428,6 @@ export function useCreativeStudio() {
       form.append('aspect_ratio', aspectRatio.value)
       if (quality.value) {
         form.append('quality', quality.value)
-      }
-      if (outputFormat.value) {
-        form.append('output_format', outputFormat.value)
-      }
-      if (outputCompression.value !== null) {
-        form.append('output_compression', String(outputCompression.value))
       }
       if (background.value) {
         form.append('background', background.value)
@@ -821,8 +791,6 @@ export function useCreativeStudio() {
     imageSize,
     aspectRatio,
     quality,
-    outputFormat,
-    outputCompression,
     background,
     thinkingLevel,
     currentRun,
@@ -838,8 +806,6 @@ export function useCreativeStudio() {
     imageSizeOptions,
     aspectRatioOptions,
     qualityOptions,
-    outputFormatOptions,
-    outputCompressionRange,
     backgroundOptions,
     thinkingLevelOptions,
     maxReferenceImages,

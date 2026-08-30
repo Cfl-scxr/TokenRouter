@@ -10,7 +10,7 @@ import { apiClient } from './client'
 // 创作台支持的操作类型，以服务端返回的 operations 为准
 export type CreativeOperation = 'generate' | 'edit' | 'inpaint' | (string & {})
 
-// 服务端下发的数值参数范围；当前用于 OpenAI 图片压缩级别。
+// 服务端能力协议中的数值范围；当前创作台固定 PNG，不会下发压缩范围。
 export interface CreativeNumericRange {
   min: number
   max: number
