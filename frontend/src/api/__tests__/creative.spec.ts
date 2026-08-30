@@ -130,8 +130,9 @@ describe('creative API', () => {
       expect(await getCreativeRuns(1, 20)).toEqual({ items: [{ id: 'r2' }], total: 1 })
 
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
-      expect(config.params.page).toBe(1)
-      expect(config.params.page_size).toBe(20)
+      expect(config.params.limit).toBe(20)
+      expect(config.params.page).toBeUndefined()
+      expect(config.params.page_size).toBeUndefined()
     })
   })
 

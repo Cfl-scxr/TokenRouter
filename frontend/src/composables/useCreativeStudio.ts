@@ -11,7 +11,6 @@ import {
   CREATIVE_RUN_TERMINAL_STATUSES,
   createCreativeRun,
   getCreativeModels,
-  getCreativeRun,
   getCreativeRunOutputContent,
   getCreativeRuns,
   ackCreativeRunOutput,
@@ -50,10 +49,8 @@ const SETTINGS_KEY = 'creative:selection'
 const CLEARED_AT_KEY = 'creative:clearedAt'
 const PROMPT_MAX_LENGTH = 8000
 
-// 轮询节奏：前 10 秒每 1s，之后每 3s
-const POLL_FAST_INTERVAL = 1000
-const POLL_SLOW_INTERVAL = 3000
-const POLL_FAST_WINDOW = 10000
+// 所有进行中任务共享一次列表轮询；生图通常耗时 1–3 分钟，无需前置快速轮询。
+const POLL_INTERVAL = 3000
 
 // 画布桥接：视图注册后，收割成功的输出自动放上画布，历史里的输出可一键导入画布
 export interface CreativeCanvasBridge {
@@ -285,7 +282,7 @@ export function useCreativeStudio() {
       activeIdempotencyKey.value = ''
       currentRun.value = run
       upsertRunInHistory(run)
-      startPolling(run.id)
+      startPolling(run.id, { placeOnCanvas: true })
       return true
     } catch (e) {
       error.value = extractErrorMessage(e) || t('creative.error.submitFailed')
@@ -297,47 +294,54 @@ export function useCreativeStudio() {
 
   // ==================== 轮询与输出收割 ====================
 
+  interface PollState {
+    // 由当前页面创建的任务完成后自动上板；历史恢复的任务只收割到本地。
+    placeOnCanvas: boolean
+  }
+
+  // 只记录需要追踪的 run 与上板意图，实际状态由同一次列表请求批量同步。
+  const pollStates = new Map<string, PollState>()
   let pollTimer: ReturnType<typeof setTimeout> | null = null
-  let pollStartedAt = 0
+  // 所有收割流程共用一个队列，避免多个任务同时完成时重复下载或覆盖本地索引。
+  let harvestQueue: Promise<void> = Promise.resolve()
   // 历史刷新采用最新请求胜出，避免旧请求覆盖较新的任务与本地素材索引。
   let historyRefreshGeneration = 0
 
-  function stopPolling(): void {
-    if (pollTimer) {
-      clearTimeout(pollTimer)
-      pollTimer = null
-    }
-    polling.value = false
+  function updatePollingState(): void {
+    polling.value = pollStates.size > 0
   }
 
-  function startPolling(runId: string): void {
-    stopPolling()
-    polling.value = true
-    pollStartedAt = Date.now()
-
-    const tick = async () => {
-      pollTimer = null
-      try {
-        const run = await getCreativeRun(runId)
-        currentRun.value = run
-        upsertRunInHistory(run)
-        if (CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)) {
-          stopPolling()
-          if (run.status === 'succeeded') {
-            await harvestOutputs(run, { placeOnCanvas: true })
-          }
-          await refreshHistory()
-          return
-        }
-      } catch (e) {
-        // 单次轮询失败不打断流程，按原节奏继续
-        console.error('Creative run poll failed:', e)
-      }
-      const interval = Date.now() - pollStartedAt < POLL_FAST_WINDOW ? POLL_FAST_INTERVAL : POLL_SLOW_INTERVAL
-      pollTimer = setTimeout(() => void tick(), interval)
+  function stopPolling(runId?: string): void {
+    if (runId) {
+      pollStates.delete(runId)
+    } else {
+      pollStates.clear()
     }
+    updatePollingState()
+  }
 
-    pollTimer = setTimeout(() => void tick(), POLL_FAST_INTERVAL)
+  function clearPollingTimer(): void {
+    if (!pollTimer) return
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+
+  function schedulePollingRefresh(): void {
+    if (pollTimer || pollStates.size === 0) return
+    pollTimer = setTimeout(() => {
+      pollTimer = null
+      if (pollStates.size === 0) return
+      void refreshHistory()
+    }, POLL_INTERVAL)
+  }
+
+  function startPolling(runId: string, options: { placeOnCanvas?: boolean } = {}): void {
+    const existing = pollStates.get(runId)
+    pollStates.set(runId, {
+      placeOnCanvas: Boolean(existing?.placeOnCanvas || options.placeOnCanvas),
+    })
+    updatePollingState()
+    schedulePollingRefresh()
   }
 
   interface HarvestOptions {
@@ -351,7 +355,14 @@ export function useCreativeStudio() {
 
   // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack → 可选放上画布。
   // 历史刷新也复用该流程，因此页面重新进入时仍能收割尚未 ack 的 transient 输出。
-  async function harvestOutputs(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
+  function harvestOutputs(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
+    const task = harvestQueue.then(() => harvestOutputsNow(run, options))
+    // 队列本身不能被单个任务失败阻塞，具体错误已在 harvestOutputsNow 内按输出隔离。
+    harvestQueue = task.catch(() => undefined)
+    return task
+  }
+
+  async function harvestOutputsNow(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
     const outputs = Array.isArray(run.outputs) ? run.outputs : []
     const assets = options.assets ?? new Map(outputAssetMap.value)
     const missing = options.missing ?? new Set(missingOutputKeys.value)
@@ -365,7 +376,9 @@ export function useCreativeStudio() {
         continue
       }
       try {
-        let asset = assets.get(key)
+        // 历史刷新拿到的工作副本可能早于另一个收割流程，优先复用已合并到全局的素材。
+        let asset = assets.get(key) ?? outputAssetMap.value.get(key)
+        if (asset) assets.set(key, asset)
         if (!asset) {
           const blob = await getCreativeRunOutputContent(run.id, output.output_index)
           asset = {
@@ -415,8 +428,17 @@ export function useCreativeStudio() {
       }
     }
     if (!options.assets) {
-      outputAssetMap.value = assets
-      missingOutputKeys.value = missing
+      // 合并而非直接替换，避免并发收割时后完成的任务覆盖先完成任务的本地索引。
+      const mergedAssets = new Map(outputAssetMap.value)
+      for (const [key, asset] of assets) mergedAssets.set(key, asset)
+      outputAssetMap.value = mergedAssets
+      const mergedMissing = new Set(missingOutputKeys.value)
+      for (const key of missing) {
+        if (mergedAssets.has(key)) mergedMissing.delete(key)
+        else mergedMissing.add(key)
+      }
+      for (const key of mergedAssets.keys()) mergedMissing.delete(key)
+      missingOutputKeys.value = mergedMissing
     }
   }
 
@@ -431,6 +453,8 @@ export function useCreativeStudio() {
   // 拉取服务端历史 + 本地输出素材索引；服务端标记成功但本地无 blob 的输出记为 missing。
   // 历史列表只展示本机清空时间之后创建的任务：更早的任务元数据仍在服务端，仅不再展示。
   async function refreshHistory(): Promise<void> {
+    // 手动刷新或定时刷新开始时取消旧定时器，完成后再按固定间隔续排。
+    clearPollingTimer()
     const generation = ++historyRefreshGeneration
     loadingHistory.value = true
     try {
@@ -443,20 +467,57 @@ export function useCreativeStudio() {
             )
           : page.items
       if (generation !== historyRefreshGeneration) return
-      runHistory.value = items
+      // 列表接口偶尔会返回旧快照，已观测到的终态不能被其它快照改写。
+      const knownRuns = new Map(runHistory.value.map((run) => [run.id, run]))
+      const mergedItems = items.map((run) => {
+        const known = knownRuns.get(run.id)
+        if (
+          known &&
+          CREATIVE_RUN_TERMINAL_STATUSES.includes(known.status) &&
+          known.status !== run.status
+        ) {
+          return known
+        }
+        return run
+      })
+      runHistory.value = mergedItems
+      // 历史接口已返回终态时立即停止对应轮询，并沿用创建任务时的自动上板策略。
+      const terminalHarvestedRunIds = new Set<string>()
+      for (const run of mergedItems) {
+        const state = pollStates.get(run.id)
+        if (state && CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)) {
+          stopPolling(run.id)
+          if (run.status === 'succeeded') {
+            terminalHarvestedRunIds.add(run.id)
+            await harvestOutputs(run, {
+              placeOnCanvas: state.placeOnCanvas,
+              isCurrent: () => generation === historyRefreshGeneration,
+            })
+            if (generation !== historyRefreshGeneration) return
+          }
+        }
+      }
+      // 页面刷新后接管仍在进行中的任务；后续由同一个列表轮询统一更新。
+      for (const run of mergedItems) {
+        if ((run.status === 'queued' || run.status === 'running') && !pollStates.has(run.id)) {
+          startPolling(run.id)
+        }
+      }
       // 只需输出素材索引（missing 判定用）；源图 / mask 素材已由画布自行管理
       const outputs = await listAssets('output')
       const map = new Map(outputs.map((a) => [a.key, a]))
       if (generation !== historyRefreshGeneration) return
       const missing = new Set<string>()
-      for (const run of items) {
-        await harvestOutputs(run, {
-          assets: map,
-          missing,
-          placeOnCanvas: false,
-          isCurrent: () => generation === historyRefreshGeneration,
-        })
-        if (generation !== historyRefreshGeneration) return
+      for (const run of mergedItems) {
+        if (!terminalHarvestedRunIds.has(run.id)) {
+          await harvestOutputs(run, {
+            assets: map,
+            missing,
+            placeOnCanvas: false,
+            isCurrent: () => generation === historyRefreshGeneration,
+          })
+          if (generation !== historyRefreshGeneration) return
+        }
         for (const output of run.outputs ?? []) {
           if (output.status !== 'succeeded') continue
           // 收割失败或已 ack 且本地没有副本时保留缺失占位。
@@ -477,12 +538,13 @@ export function useCreativeStudio() {
       outputAssetMap.value = map
       missingOutputKeys.value = missing
       if (currentRun.value) {
-        const fresh = page.items.find((r) => r.id === currentRun.value?.id)
+        const fresh = mergedItems.find((r) => r.id === currentRun.value?.id)
         if (fresh) currentRun.value = fresh
       }
     } catch (e) {
       console.error('Failed to refresh creative history:', e)
     } finally {
+      if (generation === historyRefreshGeneration) schedulePollingRefresh()
       if (generation === historyRefreshGeneration) {
         loadingHistory.value = false
       }
@@ -495,6 +557,7 @@ export function useCreativeStudio() {
   // 同时记录清空时间水位线，此后的历史列表只展示该时间之后创建的服务端任务。
   async function clearLocalData(): Promise<void> {
     stopPolling()
+    clearPollingTimer()
     // 使清空过程中仍在进行的历史请求失效，避免旧素材重新写回内存。
     historyRefreshGeneration++
     try {
@@ -523,6 +586,8 @@ export function useCreativeStudio() {
   // 组件卸载时清理轮询定时器，避免内存泄漏与野回调
   onBeforeUnmount(() => {
     stopPolling()
+    clearPollingTimer()
+    historyRefreshGeneration++
   })
 
   return {

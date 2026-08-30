@@ -186,7 +186,10 @@ describe('useCreativeStudio', () => {
       studio.prompt.value = '一只猫'
       const sourceBlob = new Blob(['src'], { type: 'image/png' })
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'queued' }))
-      mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'succeeded' }))
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({ id: 'run-9', status: 'succeeded' })],
+        total: 1,
+      })
 
       const ok = await studio.createRun({ sourceBlobs: [sourceBlob], maskBlob: null })
 
@@ -205,10 +208,11 @@ describe('useCreativeStudio', () => {
       expect(form.get('response_mime_type')).toBe('image/png')
       expect(form.getAll('source_images[]')).toHaveLength(1)
 
-      // 进入轮询：前进 1s 后发出第一次详情查询
+      // 进入轮询：前进 3s 后发出第一次批量列表查询
       expect(studio.polling.value).toBe(true)
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledWith('run-9')
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(1)
+      expect(mockedApi.getCreativeRun).not.toHaveBeenCalled()
     })
 
     it('inpaint 时附加 mask 文件与幂等键', async () => {
@@ -244,7 +248,6 @@ describe('useCreativeStudio', () => {
 
       // 成功后续重试仍用同一 key（同一次提交意图），随后重置
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-2', status: 'queued' }))
-      mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-2', status: 'succeeded' }))
       const success = await studio.createRun({ sourceBlobs: [], maskBlob: null })
       expect(success).toBe(true)
       expect(mockedApi.createCreativeRun.mock.calls[2][1]).toBe(keyAfterFail)
@@ -259,49 +262,132 @@ describe('useCreativeStudio', () => {
   })
 
   describe('轮询节奏', () => {
-    it('前 10s 每 1s 查询，之后每 3s，终态停止', async () => {
+    it('多个 run 共享一次列表轮询并分别收割输出', async () => {
       const { studio } = await setupStudio()
-      // 前 11 次返回 running，之后 succeeded
-      let calls = 0
-      mockedApi.getCreativeRun.mockImplementation(() => {
-        calls += 1
-        return Promise.resolve(
-          makeRun({ id: 'run-1', status: calls <= 11 ? 'running' : 'succeeded' }),
-        )
+      const run1 = makeRun({
+        id: 'run-1',
+        status: 'queued',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      const run2 = makeRun({
+        id: 'run-2',
+        status: 'queued',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      mockedApi.createCreativeRun
+        .mockResolvedValueOnce(run1)
+        .mockResolvedValueOnce(run2)
+      let pollCount = 0
+      mockedApi.getCreativeRuns.mockImplementation(() => {
+        pollCount += 1
+        const status = pollCount === 1 ? 'running' : 'succeeded'
+        const outputs = status === 'succeeded' ? [{ output_index: 0, status: 'succeeded' as const }] : []
+        return Promise.resolve({
+          items: [
+            makeRun({ id: 'run-2', status, outputs }),
+            makeRun({ id: 'run-1', status, outputs }),
+          ],
+          total: 2,
+        })
+      })
+      const placed: string[] = []
+      studio.registerCanvasBridge({
+        placeOutput: ({ runId }) => {
+          placed.push(runId)
+        },
+        importToCanvas: vi.fn(),
       })
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(1)
       expect(mockedApi.getCreativeRun).not.toHaveBeenCalled()
-
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(1)
-
-      // 前进到 t=10s：累计 10 次（t=1..10s 各一次）
-      await vi.advanceTimersByTimeAsync(9000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(10)
-
-      // t=10s 之后改为 3s 间隔
       await vi.advanceTimersByTimeAsync(3000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(11)
-      await vi.advanceTimersByTimeAsync(3000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(12)
 
-      // 第 12 次查询返回 succeeded，轮询停止
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(2)
+      expect(new Set(placed)).toEqual(new Set(['run-1', 'run-2']))
+      expect(studio.outputAssetMap.value.has('output:run-1:0')).toBe(true)
+      expect(studio.outputAssetMap.value.has('output:run-2:0')).toBe(true)
+      expect(studio.polling.value).toBe(false)
+    })
+
+    it('批量轮询会同步外部任务终态并停止追踪', async () => {
+      const { studio } = await setupStudio()
+      const queuedRun = makeRun({ id: 'run-external', status: 'queued' })
+      const succeededRun = makeRun({ id: 'run-external', status: 'succeeded' })
+      mockedApi.getCreativeRuns
+        .mockResolvedValueOnce({ items: [queuedRun], total: 1 })
+        .mockResolvedValueOnce({ items: [succeededRun], total: 1 })
+
+      await studio.refreshHistory()
+      expect(studio.runHistory.value[0]?.status).toBe('queued')
+
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(studio.runHistory.value[0]?.status).toBe('succeeded')
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(2)
+      expect(studio.polling.value).toBe(false)
+    })
+
+    it('历史接口短暂返回旧状态时不会降级已完成任务', async () => {
+      const { studio } = await setupStudio()
+      const succeededRun = makeRun({ id: 'run-stale-list', status: 'succeeded' })
+      mockedApi.createCreativeRun.mockResolvedValue(succeededRun)
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({ id: 'run-stale-list', status: 'queued' })],
+        total: 1,
+      })
+
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(studio.currentRun.value?.status).toBe('succeeded')
+      expect(studio.runHistory.value[0]?.status).toBe('succeeded')
+      expect(studio.polling.value).toBe(false)
+    })
+
+    it('固定每 3s 批量查询，终态后停止', async () => {
+      const { studio } = await setupStudio()
+      let calls = 0
+      mockedApi.getCreativeRuns.mockImplementation(() => {
+        calls += 1
+        return Promise.resolve({
+          items: [makeRun({ id: 'run-1', status: calls <= 2 ? 'running' : 'succeeded' })],
+          total: 1,
+        })
+      })
+
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      expect(mockedApi.getCreativeRuns).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(2999)
+      expect(mockedApi.getCreativeRuns).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(3)
+
       expect(studio.polling.value).toBe(false)
       expect(studio.currentRun.value?.status).toBe('succeeded')
-      const countAfterTerminal = mockedApi.getCreativeRun.mock.calls.length
+      const countAfterTerminal = mockedApi.getCreativeRuns.mock.calls.length
       await vi.advanceTimersByTimeAsync(10000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(countAfterTerminal)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(countAfterTerminal)
+      expect(mockedApi.getCreativeRun).not.toHaveBeenCalled()
     })
 
     it('result_lost 终态直接停止，不尝试取回内容', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(
-        makeRun({ id: 'run-1', status: 'result_lost' }),
-      )
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({ id: 'run-1', status: 'result_lost' })],
+        total: 1,
+      })
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       expect(studio.polling.value).toBe(false)
       expect(studio.currentRun.value?.status).toBe('result_lost')
@@ -310,15 +396,18 @@ describe('useCreativeStudio', () => {
 
     it('组件卸载后定时器清理，不再轮询', async () => {
       const { studio, wrapper } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-1', status: 'running' }))
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({ id: 'run-1', status: 'running' })],
+        total: 1,
+      })
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(1)
 
       wrapper.unmount()
       await vi.advanceTimersByTimeAsync(10000)
-      expect(mockedApi.getCreativeRun).toHaveBeenCalledTimes(1)
+      expect(mockedApi.getCreativeRuns).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -336,10 +425,10 @@ describe('useCreativeStudio', () => {
 
     it('succeeded 后逐输出取回 → 存本地 → ack', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithOutputs())
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [succeededRunWithOutputs()], total: 1 })
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledTimes(2)
       expect(mockedApi.getCreativeRunOutputContent).toHaveBeenNthCalledWith(1, 'run-1', 0)
@@ -361,7 +450,6 @@ describe('useCreativeStudio', () => {
 
     it('单个输出取回失败仅标 missing，不影响其它输出', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithOutputs())
       mockedApi.getCreativeRunOutputContent.mockImplementation((_runId: string, index: number) => {
         if (index === 0) {
           return Promise.reject(Object.assign(new Error('gone'), { status: 410 }))
@@ -391,7 +479,7 @@ describe('useCreativeStudio', () => {
       )
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       // 输出 0 缺失，输出 1 仍正常收割
       expect(studio.missingOutputKeys.value.has('output:run-1:0')).toBe(true)
@@ -403,16 +491,17 @@ describe('useCreativeStudio', () => {
 
     it('已 ack 的输出跳过取回', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(
-        makeRun({
+      mockedApi.getCreativeRuns.mockResolvedValue({
+        items: [makeRun({
           id: 'run-1',
           status: 'succeeded',
           outputs: [{ output_index: 0, status: 'succeeded', acked_at: 1725000000 }],
-        }),
-      )
+        })],
+        total: 1,
+      })
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       expect(mockedApi.getCreativeRunOutputContent).not.toHaveBeenCalled()
       expect(mockedApi.ackCreativeRunOutput).not.toHaveBeenCalled()
@@ -435,7 +524,7 @@ describe('useCreativeStudio', () => {
       const { studio } = await setupStudio()
       const blob0 = new Blob(['img-0'], { type: 'image/png' })
       const blob1 = new Blob(['img-1'], { type: 'image/png' })
-      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [succeededRunWithTwoOutputs()], total: 1 })
       mockedApi.getCreativeRunOutputContent.mockImplementation((_runId: string, index: number) =>
         Promise.resolve(index === 0 ? blob0 : blob1),
       )
@@ -443,7 +532,7 @@ describe('useCreativeStudio', () => {
       studio.registerCanvasBridge(bridge)
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       // 先 save + ack，再上板
       expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(2)
@@ -455,7 +544,7 @@ describe('useCreativeStudio', () => {
 
     it('多输出上板按顺序等待前一张完成，避免并发覆盖画布状态', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [succeededRunWithTwoOutputs()], total: 1 })
 
       let resolveFirst!: () => void
       const firstPlacementDone = new Promise<void>((resolve) => {
@@ -472,7 +561,7 @@ describe('useCreativeStudio', () => {
       studio.registerCanvasBridge(bridge)
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       // 第一张尚未完成时，收割流程不能启动第二次画布委托。
       expect(started).toEqual([0])
@@ -484,7 +573,7 @@ describe('useCreativeStudio', () => {
 
     it('桥接 placeOutput 抛异常不影响收割与 ack', async () => {
       const { studio } = await setupStudio()
-      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [succeededRunWithTwoOutputs()], total: 1 })
       const bridge = {
         placeOutput: vi.fn(() => {
           throw new Error('canvas not ready')
@@ -494,7 +583,7 @@ describe('useCreativeStudio', () => {
       studio.registerCanvasBridge(bridge)
 
       await studio.createRun({ sourceBlobs: [], maskBlob: null })
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(3000)
 
       expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(2)
       expect(studio.missingOutputKeys.value.size).toBe(0)

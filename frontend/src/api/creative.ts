@@ -113,9 +113,10 @@ export async function createCreativeRun(
 /**
  * 查询 run 列表。服务端可能返回 {items,total} 也可能直接返回数组，这里宽松归一化。
  */
-export async function getCreativeRuns(page = 1, pageSize = 20): Promise<CreativeRunsPage> {
+export async function getCreativeRuns(_page = 1, pageSize = 20): Promise<CreativeRunsPage> {
   const { data } = await apiClient.get<CreativeRunsPage | CreativeRun[]>('/creative/runs', {
-    params: { page, page_size: pageSize },
+    // 后端当前使用 limit，保留 page 形参用于兼容现有调用方，后续扩展 offset 时无需改签名。
+    params: { limit: pageSize },
   })
   if (Array.isArray(data)) {
     return { items: data, total: data.length }

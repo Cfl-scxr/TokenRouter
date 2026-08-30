@@ -160,8 +160,10 @@ const PILL_TONES: Record<string, string> = {
 }
 
 const pillState = computed<StatusPill | null>(() => {
+  // 并发生成时当前任务可能已完成，优先显示历史中仍在执行的任务状态。
+  const activeRun = studio.runHistory.value.find((run) => run.status === 'queued' || run.status === 'running')
   if (studio.polling.value || studio.busy.value) {
-    const status = studio.currentRun.value?.status
+    const status = activeRun?.status ?? studio.currentRun.value?.status
     const phase = status === 'running' ? 'running' : status === 'queued' ? 'queued' : 'submitting'
     return {
       text: t(`creative.status.${phase}`),
