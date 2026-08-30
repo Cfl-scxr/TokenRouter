@@ -15,40 +15,43 @@
           class="flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
           :class="settingsOpen && 'text-primary-700 dark:text-primary-300'"
           :title="t('creative.canvas.settings')"
+          :aria-expanded="settingsOpen"
           @click="settingsOpen = !settingsOpen"
         >
           <Icon name="cog" size="md" />
         </button>
         <!-- 向下展开的设置面板：返回仪表盘 / 清空画布 / 清空本机创作数据 -->
-        <div
-          v-if="settingsOpen"
-          class="absolute left-0 top-12 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
-        >
-          <button
-            type="button"
-            class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
-            @click="onBackToDashboard"
+        <Transition name="settings-panel">
+          <div
+            v-if="settingsOpen"
+            class="absolute left-0 top-12 w-64 rounded-xl border border-primary-900/10 bg-white/95 p-3 shadow-lg backdrop-blur dark:border-dark-600 dark:bg-dark-900/95"
           >
-            <Icon name="home" size="sm" />
-            {{ t('creative.canvas.backToDashboard') }}
-          </button>
-          <button
-            type="button"
-            class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
-            @click="onResetCanvas"
-          >
-            <Icon name="trash" size="sm" />
-            {{ t('creative.canvas.reset') }}
-          </button>
-          <button
-            type="button"
-            class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
-            @click="onClearRequested"
-          >
-            <Icon name="trash" size="sm" />
-            {{ t('creative.history.clearData') }}
-          </button>
-        </div>
+            <button
+              type="button"
+              class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
+              @click="onBackToDashboard"
+            >
+              <Icon name="home" size="sm" />
+              {{ t('creative.canvas.backToDashboard') }}
+            </button>
+            <button
+              type="button"
+              class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
+              @click="onResetCanvas"
+            >
+              <Icon name="trash" size="sm" />
+              {{ t('creative.canvas.reset') }}
+            </button>
+            <button
+              type="button"
+              class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+              @click="onClearRequested"
+            >
+              <Icon name="trash" size="sm" />
+              {{ t('creative.history.clearData') }}
+            </button>
+          </div>
+        </Transition>
       </div>
 
       <!-- 聊天式输入框：固定底部居中，不随选中图片移动 -->
@@ -268,3 +271,28 @@ async function onClearLocalData(): Promise<void> {
   }
 }
 </script>
+
+<style scoped>
+/* 设置面板从齿轮下方向外展开，关闭时沿原路径收回。 */
+.settings-panel-enter-active,
+.settings-panel-leave-active {
+  transform-origin: top left;
+  transition:
+    opacity 200ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.settings-panel-enter-from,
+.settings-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel-enter-active,
+  .settings-panel-leave-active {
+    transition-duration: 1ms;
+  }
+}
+</style>

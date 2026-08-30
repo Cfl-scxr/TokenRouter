@@ -24,12 +24,13 @@
     <!-- 底栏：左下 = 模型 / 参数 / 操作 三个调参入口；右下 = 预估费用 + 发送（预估费用窄屏隐藏，避免把发送按钮挤出屏幕） -->
     <div class="flex items-center gap-1.5 px-3 pb-3">
       <!-- 模型：弹层锚定在该按钮上方 -->
-      <span class="relative">
+      <span class="relative min-w-0">
         <button
           type="button"
           class="composer-chip"
           :class="openPanel === 'model' && 'composer-chip-active'"
           :title="t('creative.composer.model')"
+          :aria-expanded="openPanel === 'model'"
           @click="togglePanel('model', $event)"
         >
           <!-- 行首图标：已选模型显示厂家品牌 logo（ProviderIcon 解析，未知品牌回落首字母），未选模型用 sparkles -->
@@ -38,51 +39,55 @@
           <span class="max-w-28 truncate">{{ modelChipLabel }}</span>
           <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'model' && 'rotate-180'" />
         </button>
-        <div
-          v-if="openPanel === 'model'"
-          class="chip-popover"
-          :style="popoverStyle"
-        >
-          <p v-if="showModelsEmptyHint" class="rounded-md bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
-            {{ modelsEmptyHintText }}
-          </p>
-          <button
-            v-for="option in studio.models.value"
-            :key="creativeOptionKey(option)"
-            type="button"
-            class="flex w-full items-center gap-2 rounded-[18px] px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
-            :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
-            @click="selectModel(option)"
+        <Transition name="composer-popover">
+          <div
+            v-if="openPanel === 'model'"
+            class="chip-popover"
+            :style="popoverStyle"
           >
-            <ProviderIcon :brand="option.model" size="16px" class="flex-shrink-0" />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-xs font-medium text-gray-800 dark:text-gray-100">{{ option.model }}</span>
-              <span class="block truncate text-[11px] text-gray-400 dark:text-dark-400">{{ option.group_name }}</span>
-            </span>
-            <Icon v-if="studio.selectedOptionKey.value === creativeOptionKey(option)" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
-          </button>
-        </div>
+            <p v-if="showModelsEmptyHint" class="rounded-md bg-primary-900/5 px-3 py-2 text-xs text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              {{ modelsEmptyHintText }}
+            </p>
+            <button
+              v-for="option in studio.models.value"
+              :key="creativeOptionKey(option)"
+              type="button"
+              class="composer-option flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+              :class="studio.selectedOptionKey.value === creativeOptionKey(option) && 'bg-primary-600/5 dark:bg-primary-900/20'"
+              @click="selectModel(option)"
+            >
+              <ProviderIcon :brand="option.model" size="16px" class="flex-shrink-0" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-xs font-medium text-gray-800 dark:text-gray-100">{{ option.model }}</span>
+                <span class="block truncate text-[11px] text-gray-400 dark:text-dark-400">{{ option.group_name }}</span>
+              </span>
+              <Icon v-if="studio.selectedOptionKey.value === creativeOptionKey(option)" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
+            </button>
+          </div>
+        </Transition>
       </span>
 
       <!-- 参数：弹层锚定在该按钮上方 -->
-      <span class="relative">
+      <span class="relative min-w-0">
         <button
           type="button"
           class="composer-chip"
           :class="openPanel === 'params' && 'composer-chip-active'"
           :title="t('creative.composer.params')"
+          :aria-expanded="openPanel === 'params'"
           @click="togglePanel('params', $event)"
         >
           <Icon name="filter" size="xs" class="flex-shrink-0" />
           <span class="max-w-24 truncate">{{ paramsChipLabel }}</span>
           <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'params' && 'rotate-180'" />
         </button>
-        <div
-          v-if="openPanel === 'params'"
-          class="chip-popover"
-          :style="popoverStyle"
-        >
-          <div class="space-y-3 p-3">
+        <Transition name="composer-popover">
+          <div
+            v-if="openPanel === 'params'"
+            class="chip-popover"
+            :style="popoverStyle"
+          >
+            <div class="space-y-3 p-3">
             <div>
               <p class="param-label">{{ t('creative.panel.imageSize') }}</p>
               <div class="flex flex-wrap gap-1.5">
@@ -132,46 +137,50 @@
                 </button>
               </div>
             </div>
+            </div>
           </div>
-        </div>
+        </Transition>
       </span>
 
       <!-- 操作：弹层锚定在该按钮上方 -->
-      <span class="relative">
+      <span class="relative min-w-0">
         <button
           type="button"
           class="composer-chip"
           :class="openPanel === 'operation' && 'composer-chip-active'"
           :title="t('creative.composer.operation')"
+          :aria-expanded="openPanel === 'operation'"
           @click="togglePanel('operation', $event)"
         >
           <Icon name="swap" size="xs" class="flex-shrink-0" />
           <span class="max-w-24 truncate">{{ operationChipLabel }}</span>
           <Icon name="chevronUp" size="xs" class="flex-shrink-0 transition-transform" :class="openPanel !== 'operation' && 'rotate-180'" />
         </button>
-        <div
-          v-if="openPanel === 'operation'"
-          class="chip-popover"
-          :style="popoverStyle"
-        >
-          <p v-if="!studio.operationOptions.value.length" class="px-2.5 py-2 text-[11px] text-gray-400 dark:text-dark-400">
-            {{ t('creative.composer.selectModelFirst') }}
-          </p>
-          <button
-            v-for="op in studio.operationOptions.value"
-            :key="op"
-            type="button"
-            class="flex w-full items-center gap-2 rounded-[18px] px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
-            :class="studio.operation.value === op && 'bg-primary-600/5 dark:bg-primary-900/20'"
-            @click="selectOperation(op)"
+        <Transition name="composer-popover">
+          <div
+            v-if="openPanel === 'operation'"
+            class="chip-popover"
+            :style="popoverStyle"
           >
-            <span class="min-w-0 flex-1">
-              <span class="block text-xs font-medium text-gray-800 dark:text-gray-100">{{ t(`creative.operations.${op}`, op) }}</span>
-              <span class="block text-[11px] text-gray-400 dark:text-dark-400">{{ t(`creative.operationsDesc.${op}`) }}</span>
-            </span>
-            <Icon v-if="studio.operation.value === op" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
-          </button>
-        </div>
+            <p v-if="!studio.operationOptions.value.length" class="px-2.5 py-2 text-[11px] text-gray-400 dark:text-dark-400">
+              {{ t('creative.composer.selectModelFirst') }}
+            </p>
+            <button
+              v-for="op in studio.operationOptions.value"
+              :key="op"
+              type="button"
+              class="composer-option flex w-full items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+              :class="studio.operation.value === op && 'bg-primary-600/5 dark:bg-primary-900/20'"
+              @click="selectOperation(op)"
+            >
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs font-medium text-gray-800 dark:text-gray-100">{{ t(`creative.operations.${op}`, op) }}</span>
+                <span class="block text-[11px] text-gray-400 dark:text-dark-400">{{ t(`creative.operationsDesc.${op}`) }}</span>
+              </span>
+              <Icon v-if="studio.operation.value === op" name="check" size="sm" class="flex-shrink-0 text-primary-600 dark:text-primary-300" />
+            </button>
+          </div>
+        </Transition>
       </span>
 
       <div class="ml-auto flex items-center gap-2">
@@ -365,7 +374,7 @@ function autosize(): void {
 }
 
 .composer-chip {
-  @apply inline-flex h-8 items-center gap-1 rounded-full border border-primary-900/10 bg-white px-2.5 text-xs text-gray-600 transition-colors;
+  @apply inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-full border border-primary-900/10 bg-white px-2.5 text-xs text-gray-600 transition-colors;
   @apply hover:border-black/20 hover:text-gray-900;
   @apply dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-400 dark:hover:text-gray-100;
 }
@@ -377,17 +386,37 @@ function autosize(): void {
 /* 调参弹层：锚定在所点击 chip 的正上方，圆角与输入框一致；高度随内容自适应，不内嵌滚动条。
    此处宽度仅为初始值，展开时由 layoutPopover 写入内联样式（宽度三路取小、位置钳制在输入框内，防止窄屏溢出屏幕） */
 .chip-popover {
-  @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-[24px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
+  @apply absolute bottom-full left-0 z-30 mb-2 w-[min(320px,calc(100vw-3.5rem))] overflow-hidden rounded-[16px] border border-primary-900/10 bg-white/95 shadow-xl backdrop-blur;
   @apply p-1.5;
   @apply dark:border-dark-600 dark:bg-dark-900/95;
 }
 
+/* 三类调参弹层共用同一套向上展开动效，离场也只用一条节奏，避免视觉顿点。 */
+.composer-popover-enter-active,
+.composer-popover-leave-active {
+  transform-origin: bottom center;
+  transition:
+    opacity 200ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.composer-popover-enter-from,
+.composer-popover-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+}
+
+.composer-option {
+  @apply rounded-[12px];
+}
+
 .param-label {
-  @apply mb-1.5 text-[11px] font-medium text-gray-500 dark:text-dark-400;
+  @apply mb-1.5 text-[11px] font-medium text-gray-900 dark:text-white;
 }
 
 .param-chip {
-  @apply rounded-full border border-primary-900/10 px-2.5 py-1 text-[11px] text-gray-600 transition-colors;
+  @apply rounded-[12px] border border-primary-900/10 px-2.5 py-1 text-[11px] text-gray-600 transition-colors;
   @apply hover:border-black/20 hover:text-gray-900;
   @apply dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-400 dark:hover:text-gray-100;
 }
@@ -399,5 +428,12 @@ function autosize(): void {
 /* 比例预览小方框：内联尺寸由 ratioPreviewStyle 计算 */
 .ratio-preview {
   @apply inline-block flex-shrink-0 rounded-[3px] border-[1.5px] border-current opacity-70;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-popover-enter-active,
+  .composer-popover-leave-active {
+    transition-duration: 1ms;
+  }
 }
 </style>

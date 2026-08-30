@@ -7,7 +7,7 @@
 
     <!-- 浮动工具栏（顶部居中，含移动端；窄屏限宽并换行成圆角矩形，避免与左上角设置、右上角历史按钮重叠）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
-      class="absolute left-1/2 top-3 z-10 flex max-sm:max-w-[calc(100%-7.5rem)] max-sm:flex-wrap max-sm:justify-center max-sm:rounded-2xl -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
+      class="absolute left-1/2 top-3 z-10 flex max-sm:w-[calc(100%-7.5rem)] max-sm:max-w-[calc(100%-7.5rem)] max-sm:flex-wrap max-sm:justify-center max-sm:rounded-2xl -translate-x-1/2 items-center gap-1.5 rounded-full border border-primary-900/10 bg-white/90 px-2 py-1.5 shadow-md backdrop-blur dark:border-dark-600 dark:bg-dark-900/90"
     >
       <!-- 上传图片：裁剪确认后直接放上画布当前视角中心 -->
       <button type="button" class="canvas-tool-btn" :title="t('creative.panel.uploadSource')" @click="fileInputRef?.click()">
@@ -47,76 +47,78 @@
       </button>
 
       <!-- 画笔组：仅局部重绘模式可用（选中图片后自动进入涂抹，可用开关暂停去移动视角） -->
-      <template v-if="isInpaint">
-        <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :class="painting && 'canvas-tool-btn-active'"
-          :title="painting ? t('creative.canvas.paintToggleOff') : t('creative.canvas.paintToggleOn')"
-          @click="togglePainting"
-        >
-          <Icon name="edit" size="sm" />
-        </button>
-        <!-- 清除当前所有涂抹笔迹 -->
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :disabled="!hasMaskStrokes"
-          :title="t('creative.canvas.clearMask')"
-          @click="clearMask"
-        >
-          <Icon name="trash" size="sm" />
-        </button>
-        <!-- 撤销上一笔涂抹（同 Ctrl/Cmd+Z） -->
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :disabled="!canUndoMask"
-          :title="t('creative.canvas.undoMask')"
-          @click="undoMask"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-          </svg>
-        </button>
-        <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高；轨道/滑块配色见 .brush-size） -->
-        <div class="flex items-center gap-1.5 px-1">
-          <input
-            v-model.number="brushSize"
-            type="range"
-            min="8"
-            max="96"
-            step="1"
-            class="brush-size h-8 w-16 cursor-pointer sm:w-24"
-            :title="t('creative.canvas.brushSize')"
-          />
-          <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
+      <Transition name="canvas-toolbar-extension">
+        <div v-if="isInpaint" class="canvas-toolbar-extension">
+          <span class="mx-0.5 h-5 w-px flex-none bg-primary-900/10 dark:bg-dark-600"></span>
+          <button
+            type="button"
+            class="canvas-tool-btn flex-none"
+            :class="painting && 'canvas-tool-btn-active'"
+            :title="painting ? t('creative.canvas.paintToggleOff') : t('creative.canvas.paintToggleOn')"
+            @click="togglePainting"
+          >
+            <Icon name="edit" size="sm" />
+          </button>
+          <!-- 清除当前所有涂抹笔迹 -->
+          <button
+            type="button"
+            class="canvas-tool-btn flex-none"
+            :disabled="!hasMaskStrokes"
+            :title="t('creative.canvas.clearMask')"
+            @click="clearMask"
+          >
+            <Icon name="trash" size="sm" />
+          </button>
+          <!-- 撤销上一笔涂抹（同 Ctrl/Cmd+Z） -->
+          <button
+            type="button"
+            class="canvas-tool-btn flex-none"
+            :disabled="!canUndoMask"
+            :title="t('creative.canvas.undoMask')"
+            @click="undoMask"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+          </button>
+          <!-- 画笔粗细滑块：8–96（固定高度与工具栏按钮同高；轨道/滑块配色见 .brush-size） -->
+          <div class="flex flex-none items-center gap-1.5 px-1">
+            <input
+              v-model.number="brushSize"
+              type="range"
+              min="8"
+              max="96"
+              step="1"
+              class="brush-size h-8 w-16 cursor-pointer sm:w-24"
+              :title="t('creative.canvas.brushSize')"
+            />
+            <span class="w-6 text-center text-[11px] tabular-nums text-gray-500 dark:text-dark-400">{{ brushSize }}</span>
+          </div>
+          <!-- 笔迹形状：圆头 / 方头 -->
+          <button
+            type="button"
+            class="canvas-tool-btn flex-none"
+            :class="brushShape === 'round' && 'canvas-tool-btn-active'"
+            :title="t('creative.canvas.shapeRound')"
+            @click="setBrushShape('round')"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="canvas-tool-btn flex-none"
+            :class="brushShape === 'square' && 'canvas-tool-btn-active'"
+            :title="t('creative.canvas.shapeSquare')"
+            @click="setBrushShape('square')"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="7" y="7" width="10" height="10" />
+            </svg>
+          </button>
         </div>
-        <!-- 笔迹形状：圆头 / 方头 -->
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :class="brushShape === 'round' && 'canvas-tool-btn-active'"
-          :title="t('creative.canvas.shapeRound')"
-          @click="setBrushShape('round')"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="12" cy="12" r="5" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="canvas-tool-btn"
-          :class="brushShape === 'square' && 'canvas-tool-btn-active'"
-          :title="t('creative.canvas.shapeSquare')"
-          @click="setBrushShape('square')"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="7" y="7" width="10" height="10" />
-          </svg>
-        </button>
-      </template>
+      </Transition>
 
       <span class="mx-0.5 h-5 w-px bg-primary-900/10 dark:bg-dark-600"></span>
       <!-- 删除选中图片 -->
@@ -1508,6 +1510,55 @@ defineExpose({
   @apply bg-primary-600/10 text-primary-700 dark:text-primary-300;
 }
 
+/* 桌面端让新增画笔组带动工具条平滑扩展；窄屏保留原有逐项换行，并淡入新增控件。 */
+.canvas-toolbar-extension {
+  display: flex;
+  min-width: 0;
+  max-width: 22rem;
+  max-height: 2rem;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.375rem;
+  overflow: hidden;
+}
+
+.canvas-toolbar-extension-enter-active,
+.canvas-toolbar-extension-leave-active {
+  transition:
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 280ms ease,
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: max-width, max-height, opacity, transform;
+}
+
+.canvas-toolbar-extension-enter-from,
+.canvas-toolbar-extension-leave-to {
+  max-width: 0;
+  max-height: 0;
+  opacity: 0;
+  transform: translateX(-6px) scale(0.96);
+}
+
+@media (max-width: 639px) {
+  .canvas-toolbar-extension {
+    display: contents;
+  }
+
+  .canvas-toolbar-extension-enter-active > *,
+  .canvas-toolbar-extension-leave-active > * {
+    transition:
+      opacity 160ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .canvas-toolbar-extension-enter-from > *,
+  .canvas-toolbar-extension-leave-to > * {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.92);
+  }
+}
+
 /* 画笔粗细滑块自定义配色：accent-color 对未填充轨道的着色在浅色模式下过深；
    浅色模式用浅灰轨道 + 品牌青滑块，深色模式用暗色轨道（配色对齐项目 dark-700） */
 .brush-size {
@@ -1553,5 +1604,14 @@ defineExpose({
   border: none;
   border-radius: 9999px;
   background: rgb(0 210 255);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-toolbar-extension-enter-active,
+  .canvas-toolbar-extension-leave-active,
+  .canvas-toolbar-extension-enter-active > *,
+  .canvas-toolbar-extension-leave-active > * {
+    transition-duration: 1ms;
+  }
 }
 </style>
