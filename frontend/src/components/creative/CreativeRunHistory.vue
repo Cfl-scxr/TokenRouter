@@ -77,25 +77,26 @@
               <span>{{ t(`creative.status.${run.status}`, run.status) }}</span>
             </div>
             <template v-else-if="run.outputs?.length">
-              <div v-for="output in run.outputs" :key="output.output_index" class="flex items-center gap-2">
+              <!-- 输出纵向排列：图片优先撑满弹窗宽度，操作按钮统一放在图片下方 -->
+              <div v-for="output in run.outputs" :key="output.output_index" class="flex flex-col gap-1.5">
                 <div
-                  class="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950"
+                  class="flex w-full items-center justify-center overflow-hidden rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950"
                 >
                   <img
                     v-if="assetFor(run.id, output.output_index)"
                     :src="urlForAsset(outputAssetKey(run.id, output.output_index), assetFor(run.id, output.output_index)!.blob)"
                     :alt="`output-${output.output_index}`"
-                    class="h-full w-full object-cover"
+                    class="block h-auto w-full"
                   />
-                  <div v-else class="flex h-full w-full flex-col items-center justify-center gap-0.5 text-gray-300 dark:text-dark-600">
+                  <div v-else class="flex h-24 w-full flex-col items-center justify-center gap-0.5 text-gray-300 dark:text-dark-600">
                     <Icon name="modalityImage" size="sm" />
                     <span class="scale-90 text-[10px]">{{ t('creative.result.missing') }}</span>
                   </div>
                 </div>
-                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div class="flex gap-1.5">
                   <button
                     type="button"
-                    class="flex items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                    class="flex flex-1 items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
                     :disabled="!assetFor(run.id, output.output_index)"
                     @click="importToCanvas(run.id, output.output_index)"
                   >
@@ -104,7 +105,7 @@
                   </button>
                   <button
                     type="button"
-                    class="flex items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                    class="flex flex-1 items-center justify-center gap-1 rounded-md border border-primary-900/10 px-2 py-1 text-[11px] text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
                     :disabled="!assetFor(run.id, output.output_index)"
                     @click="downloadOutput(run.id, output.output_index, output.mime_type)"
                   >
@@ -129,8 +130,8 @@
 /**
  * 创作 run 历史（悬浮层）：
  * - 画布右上角图标按钮展开 / 收起；列表每行 = 状态徽章 + 模型名 + 时间（+ 实际费用）
- * - 点击行原地向下展开：终态任务显示本地保存的输出图片，提供「导入到画布」和「下载」；
- *   本地素材缺失时按钮禁用并展示缺失占位
+ * - 点击行原地向下展开：终态任务显示本地保存的输出图片，图片按原始比例撑满弹窗宽度，
+ *   「导入到画布」和「下载」按钮统一放在图片下方并排展示；本地素材缺失时按钮禁用并展示缺失占位
  * - 进行中的任务只展示加载状态，不提供素材操作或取消入口
  */
 import { h, onBeforeUnmount, ref, watch } from 'vue'
