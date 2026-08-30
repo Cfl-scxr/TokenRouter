@@ -15,7 +15,6 @@ export default {
       outputCompression: '压缩质量',
       background: '背景',
       thinkingLevel: '思考强度',
-      outputCount: '生成数量',
       estimatedCost: '{cost}',
       uploadSource: '上传图片',
       promptPlaceholder: '描述想要生成的画面...',

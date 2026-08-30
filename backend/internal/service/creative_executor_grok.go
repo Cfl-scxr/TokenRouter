@@ -80,7 +80,7 @@ func buildCreativeGrokRequest(run CreativeRun, payload CreativeRunPayload, upstr
 	request := map[string]any{
 		"model":           upstreamModel,
 		"prompt":          payload.Prompt,
-		"n":               max(run.RequestedOutputCount, 1),
+		"n":               1,
 		"response_format": "b64_json",
 		"resolution":      creativeGrokImageResolution(run.ImageSize),
 	}
@@ -99,7 +99,7 @@ func buildCreativeGrokEditRequest(run CreativeRun, payload CreativeRunPayload, u
 	request := map[string]any{
 		"model":           upstreamModel,
 		"prompt":          payload.Prompt,
-		"n":               max(run.RequestedOutputCount, 1),
+		"n":               1,
 		"response_format": "b64_json",
 		"resolution":      creativeGrokImageResolution(run.ImageSize),
 	}

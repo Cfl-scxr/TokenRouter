@@ -15,7 +15,6 @@ export default {
       outputCompression: 'Compression quality',
       background: 'Background',
       thinkingLevel: 'Thinking level',
-      outputCount: 'Output count',
       estimatedCost: '{cost}',
       uploadSource: 'Upload image',
       promptPlaceholder: 'Describe the image you want to create...',

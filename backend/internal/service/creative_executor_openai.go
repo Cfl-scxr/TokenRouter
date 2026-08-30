@@ -96,7 +96,7 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 		bodyMap := map[string]any{
 			"model":           upstreamModel,
 			"prompt":          payload.Prompt,
-			"n":               max(run.RequestedOutputCount, 1),
+			"n":               1,
 			"response_format": "b64_json",
 			"size":            creativeOpenAIImageSize(run.ImageSize, run.AspectRatio),
 		}
@@ -151,7 +151,7 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 	if err := writer.WriteField("size", creativeOpenAIImageSize(run.ImageSize, run.AspectRatio)); err != nil {
 		return nil, "", err
 	}
-	if err := writer.WriteField("n", strconv.Itoa(max(run.RequestedOutputCount, 1))); err != nil {
+	if err := writer.WriteField("n", "1"); err != nil {
 		return nil, "", err
 	}
 	if quality := strings.TrimSpace(payload.Quality); quality != "" {
@@ -182,6 +182,7 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 
 // parseCreativeOpenAIImageOutputs 解析 OpenAI images 响应（grok 同结构）的 data[].b64_json。
 func parseCreativeOpenAIImageOutputs(body []byte, maxCount int) ([]CreativeOutput, error) {
+	maxCount = 1
 	data := gjson.GetBytes(body, "data")
 	if !data.IsArray() || len(data.Array()) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "upstream returned no image output")

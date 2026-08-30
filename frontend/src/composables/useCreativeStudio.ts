@@ -50,7 +50,6 @@ interface CreativeSelectionSettings {
   outputCompression: number | null
   background: string
   thinkingLevel: string
-  outputCount: number
   prompt: string
 }
 
@@ -93,7 +92,6 @@ export function useCreativeStudio() {
   const outputCompression = ref<number | null>(null)
   const background = ref('')
   const thinkingLevel = ref('')
-  const outputCount = ref(1)
   const currentRun = ref<CreativeRun | null>(null)
   const runHistory = ref<CreativeRun[]>([])
   const loadingHistory = ref(false)
@@ -156,8 +154,6 @@ export function useCreativeStudio() {
 
   const thinkingLevelOptions = computed(() => selectedOption.value?.thinking_levels ?? [])
 
-  const maxOutputCount = computed(() => Math.max(1, selectedOption.value?.max_output_count ?? 1))
-
   const maxReferenceImages = computed(() => Math.max(1, selectedOption.value?.max_reference_images ?? 1))
 
   // 估算费用直接使用模型目录返回的档位价格，避免创作台与模型广场价格口径不一致。
@@ -178,7 +174,7 @@ export function useCreativeStudio() {
       default:
         unitPrice = option.price_1k
     }
-    return unitPrice * outputCount.value
+    return unitPrice
   })
 
   const canGenerate = computed(() => {
@@ -223,7 +219,6 @@ export function useCreativeStudio() {
       if (typeof saved.outputCompression === 'number') outputCompression.value = saved.outputCompression
       if (typeof saved.background === 'string') background.value = saved.background
       if (typeof saved.thinkingLevel === 'string') thinkingLevel.value = saved.thinkingLevel
-      if (typeof saved.outputCount === 'number') outputCount.value = saved.outputCount
       if (typeof saved.prompt === 'string') prompt.value = saved.prompt.slice(0, PROMPT_MAX_LENGTH)
       normalizeSelection()
     } catch (e) {
@@ -272,7 +267,6 @@ export function useCreativeStudio() {
     if (thinkingLevel.value && !thinkingLevels.includes(thinkingLevel.value)) {
       thinkingLevel.value = ''
     }
-    outputCount.value = Math.min(Math.max(1, outputCount.value), Math.max(1, option.max_output_count ?? 1))
   }
 
   function selectOption(key: string): void {
@@ -291,7 +285,6 @@ export function useCreativeStudio() {
       outputCompression: outputCompression.value,
       background: background.value,
       thinkingLevel: thinkingLevel.value,
-      outputCount: outputCount.value,
       prompt: prompt.value.slice(0, PROMPT_MAX_LENGTH),
     }
   }
@@ -332,7 +325,7 @@ export function useCreativeStudio() {
 
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, quality, outputFormat, outputCompression, background, thinkingLevel, outputCount, prompt],
+    [selectedOptionKey, operation, imageSize, aspectRatio, quality, outputFormat, outputCompression, background, thinkingLevel, prompt],
     scheduleSelectionSettingsSave,
     // 使用同步 watcher 先记录脏状态，确保 pagehide 触发时能拿到最新提示词。
     { flush: 'sync' },
@@ -457,7 +450,6 @@ export function useCreativeStudio() {
       form.append('prompt', prompt.value)
       form.append('image_size', imageSize.value)
       form.append('aspect_ratio', aspectRatio.value)
-      form.append('output_count', String(outputCount.value))
       if (quality.value) {
         form.append('quality', quality.value)
       }
@@ -623,7 +615,7 @@ export function useCreativeStudio() {
         if (options.placeOnCanvas) {
           // 本地保存 + ack（或 ack 失败但本地已保存）后再上画布；画布异常不影响收割结果。
           try {
-            // 画布上板是异步的，必须等待当前输出完成，确保多张图片按顺序排布且全部可见。
+            // 画布上板是异步的，必须等待当前输出完成，确保图片已经可见。
             await canvasBridge?.placeOutput({ blob: asset.blob, runId: run.id, outputIndex: output.output_index })
           } catch (e) {
             console.error(`Failed to place creative output ${key} on canvas:`, e)
@@ -833,7 +825,6 @@ export function useCreativeStudio() {
     outputCompression,
     background,
     thinkingLevel,
-    outputCount,
     currentRun,
     runHistory,
     loadingHistory,
@@ -851,7 +842,6 @@ export function useCreativeStudio() {
     outputCompressionRange,
     backgroundOptions,
     thinkingLevelOptions,
-    maxOutputCount,
     maxReferenceImages,
     estimatedCost,
     canGenerate,

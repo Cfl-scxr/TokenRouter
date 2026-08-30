@@ -206,6 +206,7 @@ func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, ups
 
 // parseCreativeGeminiImageOutputs 从 generateContent 响应中提取 inlineData 图片输出。
 func parseCreativeGeminiImageOutputs(body []byte, maxCount int) ([]CreativeOutput, error) {
+	maxCount = 1
 	parts := gjson.GetBytes(body, "candidates.0.content.parts")
 	if !parts.IsArray() || len(parts.Array()) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "gemini upstream returned no content parts")

@@ -116,7 +116,7 @@
                     @click="setAspectRatio(ratio)"
                   >
                     <!-- 比例预览小方框：直观展示宽高比 -->
-                    <span class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
+                    <span v-if="ratio !== 'auto'" class="ratio-preview" :style="ratioPreviewStyle(ratio)"></span>
                     {{ ratio }}
                   </button>
                 </div>
@@ -138,12 +138,18 @@
               </div>
               <div v-if="studio.outputFormatOptions.value.length">
                 <p class="param-label">{{ t('creative.panel.outputFormat') }}</p>
-                <Select
-                  :model-value="studio.outputFormat.value"
-                  :options="outputFormatSelectOptions"
-                  :searchable="false"
-                  @update:model-value="setOutputFormat"
-                />
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="option in studio.outputFormatOptions.value"
+                    :key="option"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.outputFormat.value === option && 'param-chip-active'"
+                    @click="setOutputFormat(option)"
+                  >
+                    {{ t(`creative.outputFormats.${option}`, option.toUpperCase()) }}
+                  </button>
+                </div>
               </div>
               <div v-if="studio.outputCompressionRange.value && (studio.outputFormat.value === 'jpeg' || studio.outputFormat.value === 'webp')">
                 <div class="mb-1.5 flex items-center justify-between gap-2">
@@ -162,34 +168,49 @@
               </div>
               <div v-if="studio.backgroundOptions.value.length">
                 <p class="param-label">{{ t('creative.panel.background') }}</p>
-                <Select
-                  :model-value="studio.background.value"
-                  :options="backgroundSelectOptions"
-                  :placeholder="t('creative.backgrounds.default')"
-                  :searchable="false"
-                  clearable
-                  @update:model-value="setBackground"
-                />
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    class="param-chip"
+                    :class="!studio.background.value && 'param-chip-active'"
+                    @click="setBackground('')"
+                  >
+                    {{ t('creative.backgrounds.default') }}
+                  </button>
+                  <button
+                    v-for="option in studio.backgroundOptions.value"
+                    :key="option"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.background.value === option && 'param-chip-active'"
+                    @click="setBackground(option)"
+                  >
+                    {{ t(`creative.backgrounds.${option}`, option) }}
+                  </button>
+                </div>
               </div>
               <div v-if="studio.thinkingLevelOptions.value.length">
                 <p class="param-label">{{ t('creative.panel.thinkingLevel') }}</p>
-                <Select
-                  :model-value="studio.thinkingLevel.value"
-                  :options="thinkingLevelSelectOptions"
-                  :placeholder="t('creative.thinkingLevels.default')"
-                  :searchable="false"
-                  clearable
-                  @update:model-value="setThinkingLevel"
-                />
-              </div>
-              <div v-if="studio.maxOutputCount.value > 1">
-                <p class="param-label">{{ t('creative.panel.outputCount') }}</p>
-                <Select
-                  :model-value="studio.outputCount.value"
-                  :options="outputCountSelectOptions"
-                  :searchable="false"
-                  @update:model-value="setOutputCount"
-                />
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    class="param-chip"
+                    :class="!studio.thinkingLevel.value && 'param-chip-active'"
+                    @click="setThinkingLevel('')"
+                  >
+                    {{ t('creative.thinkingLevels.default') }}
+                  </button>
+                  <button
+                    v-for="option in studio.thinkingLevelOptions.value"
+                    :key="option"
+                    type="button"
+                    class="param-chip"
+                    :class="studio.thinkingLevel.value === option && 'param-chip-active'"
+                    @click="setThinkingLevel(option)"
+                  >
+                    {{ t(`creative.thinkingLevels.${option}`, option) }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -270,7 +291,6 @@ import { useI18n } from 'vue-i18n'
 import { onClickOutside, useEventListener } from '@vueuse/core'
 import Icon from '@/components/icons/Icon.vue'
 import ProviderIcon from '@/components/common/ProviderIcon.vue'
-import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { useAppStore } from '@/stores/app'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
@@ -344,34 +364,6 @@ const modelChipLabel = computed(() => {
 const paramsChipLabel = computed(() => t('creative.composer.params'))
 const operationChipLabel = computed(() => t(`creative.operations.${studio.operation.value}`, studio.operation.value))
 
-const outputFormatSelectOptions = computed<SelectOption[]>(() =>
-  studio.outputFormatOptions.value.map((option) => ({
-    value: option,
-    label: t(`creative.outputFormats.${option}`, option.toUpperCase()),
-  })),
-)
-
-const backgroundSelectOptions = computed<SelectOption[]>(() =>
-  studio.backgroundOptions.value.map((option) => ({
-    value: option,
-    label: t(`creative.backgrounds.${option}`, option),
-  })),
-)
-
-const thinkingLevelSelectOptions = computed<SelectOption[]>(() =>
-  studio.thinkingLevelOptions.value.map((option) => ({
-    value: option,
-    label: t(`creative.thinkingLevels.${option}`, option),
-  })),
-)
-
-const outputCountSelectOptions = computed<SelectOption[]>(() =>
-  Array.from({ length: studio.maxOutputCount.value }, (_, index) => ({
-    value: index + 1,
-    label: String(index + 1),
-  })),
-)
-
 // 展开 / 收起调参面板；展开时同步计算弹层定位（宽度 + 水平钳制）
 function togglePanel(panel: 'model' | 'params' | 'operation', event: MouseEvent): void {
   openPanel.value = openPanel.value === panel ? null : panel
@@ -431,8 +423,8 @@ function setQuality(option: string): void {
   studio.quality.value = studio.quality.value === option ? '' : option
 }
 
-function setOutputFormat(value: string | number | boolean | null): void {
-  studio.outputFormat.value = typeof value === 'string' ? value : ''
+function setOutputFormat(value: string): void {
+  studio.outputFormat.value = value
 }
 
 function setOutputCompression(event: Event): void {
@@ -440,17 +432,12 @@ function setOutputCompression(event: Event): void {
   studio.outputCompression.value = Number.isFinite(value) ? value : null
 }
 
-function setBackground(value: string | number | boolean | null): void {
-  studio.background.value = typeof value === 'string' ? value : ''
+function setBackground(value: string): void {
+  studio.background.value = value
 }
 
-function setThinkingLevel(value: string | number | boolean | null): void {
-  studio.thinkingLevel.value = typeof value === 'string' ? value : ''
-}
-
-function setOutputCount(value: string | number | boolean | null): void {
-  const count = Number(value)
-  studio.outputCount.value = Number.isInteger(count) ? count : 1
+function setThinkingLevel(value: string): void {
+  studio.thinkingLevel.value = value
 }
 
 // Ctrl / Cmd + Enter 发送；普通 Enter 换行

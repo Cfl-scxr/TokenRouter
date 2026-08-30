@@ -31,13 +31,11 @@ func TestParseCreativeOpenAIImageOutputs(t *testing.T) {
 
 	outputs, err := parseCreativeOpenAIImageOutputs(body, 4)
 	require.NoError(t, err)
-	require.Len(t, outputs, 2)
+	require.Len(t, outputs, 1)
 	require.Equal(t, 0, outputs[0].Index)
 	require.Equal(t, []byte("png-bytes-1"), outputs[0].Bytes)
 	require.Equal(t, "image/png", outputs[0].Mime)
-	require.Equal(t, 1, outputs[1].Index)
-
-	// maxCount 截断。
+	// 即使调用方传入更大的 maxCount，创作台也固定只保留一张。
 	outputs, err = parseCreativeOpenAIImageOutputs(body, 1)
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
@@ -64,10 +62,9 @@ func TestParseCreativeGeminiImageOutputs(t *testing.T) {
 
 	outputs, err := parseCreativeGeminiImageOutputs(body, 4)
 	require.NoError(t, err)
-	require.Len(t, outputs, 2)
-	require.Equal(t, []byte("gemini-image-bytes"), outputs[0].Bytes)
-	require.Equal(t, "image/png", outputs[0].Mime)
-	require.Equal(t, "image/webp", outputs[1].Mime)
+	require.Len(t, outputs, 1)
+	require.Equal(t, []byte("webp-bytes"), outputs[0].Bytes)
+	require.Equal(t, "image/webp", outputs[0].Mime)
 
 	// 无候选内容时报可重试错误。
 	_, err = parseCreativeGeminiImageOutputs([]byte(`{"candidates":[]}`), 4)
@@ -77,7 +74,7 @@ func TestParseCreativeGeminiImageOutputs(t *testing.T) {
 	require.True(t, upstreamErr.Retryable)
 }
 
-// TestNormalizeCreativeOutputs 校验大小上限、去重与截断。
+// TestNormalizeCreativeOutputs 校验大小上限、去重并固定只保留一张。
 func TestNormalizeCreativeOutputs(t *testing.T) {
 	// sha256 去重：相同字节只保留一张。
 	outputs, err := normalizeCreativeOutputs([]CreativeOutput{
@@ -86,24 +83,18 @@ func TestNormalizeCreativeOutputs(t *testing.T) {
 		{Index: 2, Bytes: []byte("other"), Mime: "image/png"},
 	}, 2)
 	require.NoError(t, err)
-	require.Len(t, outputs, 2)
-	require.Equal(t, []byte("other"), outputs[1].Bytes)
+	require.Len(t, outputs, 1)
+	require.Equal(t, []byte("same"), outputs[0].Bytes)
 
-	// 返回数量少于请求数量时整体失败，避免留下 pending 输出行。
-	_, err = normalizeCreativeOutputs([]CreativeOutput{{Index: 0, Bytes: []byte("only"), Mime: "image/png"}}, 2)
-	require.Error(t, err)
-	require.False(t, IsRetryableCreativeError(err))
-
-	// requested 截断并重排行号。
+	// 上游返回多张时固定截断为一张并重排行号。
 	outputs, err = normalizeCreativeOutputs([]CreativeOutput{
 		{Index: 0, Bytes: []byte("a"), Mime: "image/png"},
 		{Index: 1, Bytes: []byte("b"), Mime: "image/png"},
 		{Index: 2, Bytes: []byte("c"), Mime: "image/png"},
 	}, 2)
 	require.NoError(t, err)
-	require.Len(t, outputs, 2)
+	require.Len(t, outputs, 1)
 	require.Equal(t, 0, outputs[0].Index)
-	require.Equal(t, 1, outputs[1].Index)
 
 	// 单张超限（>32MiB）视为失败。
 	big := make([]byte, creativeMaxOutputBytes+1)
@@ -217,7 +208,7 @@ func TestBuildCreativeGrokRequest(t *testing.T) {
 	request := buildCreativeGrokRequest(run, payload, "grok-imagine")
 	require.Equal(t, "grok-imagine", request["model"])
 	require.Equal(t, "画猫", request["prompt"])
-	require.Equal(t, 2, request["n"])
+	require.Equal(t, 1, request["n"])
 	require.Equal(t, "b64_json", request["response_format"])
 	require.Equal(t, "2k", request["resolution"])
 	require.Equal(t, "16:9", request["aspect_ratio"])
@@ -248,7 +239,7 @@ func TestBuildCreativeGrokEditRequest(t *testing.T) {
 	require.Equal(t, "b64_json", request["response_format"])
 	require.Equal(t, "2k", request["resolution"])
 	require.Equal(t, "16:9", request["aspect_ratio"])
-	require.Equal(t, 2, request["n"])
+	require.Equal(t, 1, request["n"])
 	require.Equal(t, "medium", request["quality"])
 	require.NotContains(t, request, "image")
 	images, ok := request["images"].([]map[string]string)
@@ -328,7 +319,7 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &generateBody))
 	require.Equal(t, "gpt-image-2", generateBody["model"])
 	require.Equal(t, "b64_json", generateBody["response_format"])
-	require.Equal(t, float64(2), generateBody["n"])
+	require.Equal(t, float64(1), generateBody["n"])
 	require.Equal(t, "high", generateBody["quality"])
 	require.Equal(t, "webp", generateBody["output_format"])
 	require.Equal(t, float64(55), generateBody["output_compression"])

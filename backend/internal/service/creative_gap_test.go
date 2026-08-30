@@ -480,7 +480,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		} else {
 			require.Equal(t, []string{"auto", "opaque"}, item.BackgroundOptions)
 		}
-		require.Equal(t, 10, item.MaxOutputCount)
+		require.Equal(t, 1, item.MaxOutputCount)
 		require.Equal(t, 16, item.MaxReferenceImages)
 		require.Greater(t, item.Price1K, 0.0)
 		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
@@ -512,7 +512,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.Contains(t, grok2.AspectRatios, "21:9")
 	require.Contains(t, grok2.AspectRatios, "5:2")
 	require.Contains(t, grok2.AspectRatios, "auto")
-	require.Equal(t, 10, grok2.MaxOutputCount)
+	require.Equal(t, 1, grok2.MaxOutputCount)
 	require.Equal(t, 3, grok2.MaxReferenceImages)
 
 	// GPT Image 2 即使未配置 4K 覆盖价，也开放 4K 并回退默认价格。

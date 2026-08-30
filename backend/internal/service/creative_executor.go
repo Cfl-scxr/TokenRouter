@@ -175,6 +175,8 @@ func (e *CreativeExecutor) Execute(ctx context.Context, run CreativeRun, payload
 		return nil, errors.New("creative execution context is not configured")
 	}
 	account := execution.Account
+	// 创作台固定每次只生成一张，避免历史载荷或内部调用携带多图数量。
+	run.RequestedOutputCount = 1
 	upstreamModel := strings.TrimSpace(execution.UpstreamModel)
 	if upstreamModel == "" {
 		return nil, errors.New("creative execution upstream model is not configured")
@@ -281,8 +283,9 @@ func readCreativeUpstreamBody(body io.Reader, limit int64) ([]byte, error) {
 }
 
 // normalizeCreativeOutputs 对执行器输出做后处理：
-// 单张大小上限、按请求数量截断、sha256 去重（同一任务内重复输出只保留一张）。
+// 单张大小上限、固定取一张、sha256 去重。
 func normalizeCreativeOutputs(outputs []CreativeOutput, requested int) ([]CreativeOutput, error) {
+	requested = 1
 	if len(outputs) == 0 {
 		return nil, creativeNonRetryableError("provider returned no image output")
 	}

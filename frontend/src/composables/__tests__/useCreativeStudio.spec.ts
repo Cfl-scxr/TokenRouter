@@ -61,7 +61,7 @@ const MODEL = {
   output_compression: { min: 0, max: 100, step: 1 },
   background_options: ['auto', 'opaque', 'transparent'],
   thinking_levels: [],
-  max_output_count: 3,
+  max_output_count: 1,
   max_reference_images: 16,
   price_512: 1.5,
   price_1k: 2,
@@ -144,7 +144,6 @@ describe('useCreativeStudio', () => {
         outputCompression: 76,
         background: 'transparent',
         thinkingLevel: '',
-        outputCount: 3,
         prompt: '恢复的提示词',
       })
       const { studio, wrapper } = mountStudio()
@@ -159,7 +158,6 @@ describe('useCreativeStudio', () => {
       expect(studio.outputFormat.value).toBe('webp')
       expect(studio.outputCompression.value).toBe(76)
       expect(studio.background.value).toBe('transparent')
-      expect(studio.outputCount.value).toBe(3)
       wrapper.unmount()
     })
 
@@ -259,8 +257,7 @@ describe('useCreativeStudio', () => {
 		expect(studio.estimatedCost.value).toBe(1.5)
 
 		studio.imageSize.value = '2K'
-		studio.outputCount.value = 3
-		expect(studio.estimatedCost.value).toBe(9)
+		expect(studio.estimatedCost.value).toBe(3)
     })
   })
 
@@ -271,7 +268,6 @@ describe('useCreativeStudio', () => {
 		studio.quality.value = 'high'
 		studio.outputFormat.value = 'jpeg'
 		studio.background.value = 'opaque'
-		studio.outputCount.value = 2
 		await Promise.resolve()
       const sourceBlob = new Blob(['src'], { type: 'image/png' })
       mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-9', status: 'queued' }))
@@ -293,7 +289,6 @@ describe('useCreativeStudio', () => {
       expect(form.get('prompt')).toBe('一只猫')
       expect(form.get('image_size')).toBe('1K')
       expect(form.get('aspect_ratio')).toBe('1:1')
-		expect(form.get('output_count')).toBe('2')
 		expect(form.get('quality')).toBe('high')
 		expect(form.get('output_format')).toBe('jpeg')
 		expect(form.get('output_compression')).toBe('100')

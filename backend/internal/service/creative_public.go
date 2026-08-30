@@ -394,7 +394,6 @@ func creativeCapabilitiesForModel(platform, model string) creativeModelCapabilit
 		if isCreativeGPTImage2Model(normalizedModel) {
 			capabilities.backgroundOptions = append(capabilities.backgroundOptions, "transparent")
 		}
-		capabilities.maxOutputCount = 10
 		capabilities.maxReferenceImages = 16
 	case PlatformGrok:
 		if !isGrokImageGenerationModel(normalizedModel) {
@@ -407,7 +406,6 @@ func creativeCapabilitiesForModel(platform, model string) creativeModelCapabilit
 		if normalizedModel == "grok-imagine-image-2.0" {
 			capabilities.qualities = []string{"low", "medium"}
 		}
-		capabilities.maxOutputCount = 10
 		capabilities.maxReferenceImages = grokMediaMaxEditSourceImages
 	case PlatformGemini:
 		if !isImageGenerationModel(normalizedModel) && !strings.Contains(normalizedModel, "image") {
@@ -1646,7 +1644,7 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 			successCount++
 		}
 	}
-	// 所有成功输出都已写入 transient 后再更新数据库状态，避免多输出任务部分成功。
+	// 所有成功输出都已写入 transient 后再更新数据库状态，避免输出部分成功。
 	for i := range results {
 		result := &results[i]
 		if result.Success {
