@@ -247,6 +247,36 @@ func TestSettingService_PageFeatureFlagsArePersisted(t *testing.T) {
 	require.Equal(t, "false", repo.updates[SettingKeyCreativeEnabled])
 }
 
+// TestSettingService_CreativeWorkerCountIsPersisted 验证 worker 数量随系统设置持久化。
+func TestSettingService_CreativeWorkerCountIsPersisted(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{CreativeWorkerCount: 7})
+	require.NoError(t, err)
+	require.Equal(t, "7", repo.updates[SettingKeyCreativeWorkerCount])
+}
+
+// TestSettingService_CreativeWorkerCountCallbackOnlyAfterWrite 验证失败写入不会改变运行时 worker 数量。
+func TestSettingService_CreativeWorkerCountCallbackOnlyAfterWrite(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	var callbackValue int
+	callbackCalls := 0
+	svc.SetCreativeWorkerCountCallback(func(value int) {
+		callbackValue = value
+		callbackCalls++
+	})
+
+	require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{CreativeWorkerCount: 9}))
+	require.Equal(t, 9, callbackValue)
+	require.Equal(t, 1, callbackCalls)
+
+	repo.setMultipleErr = errors.New("database unavailable")
+	require.Error(t, svc.UpdateSettings(context.Background(), &SystemSettings{CreativeWorkerCount: 11}))
+	require.Equal(t, 1, callbackCalls)
+}
+
 func (s *defaultSubPlanReaderStub) GetByID(ctx context.Context, id int64) (*SubscriptionPlan, error) {
 	s.calls = append(s.calls, id)
 	if err, ok := s.errBy[id]; ok {
@@ -738,6 +768,20 @@ func TestSettingService_ParseSettings_CreativeEnabledDefaultsTrue(t *testing.T) 
 
 	got = svc.parseSettings(map[string]string{SettingKeyCreativeEnabled: "false"})
 	require.False(t, got.CreativeEnabled)
+}
+
+// TestSettingService_ParseSettings_CreativeWorkerCount 验证创作台 worker 设置的默认与脏值回退。
+func TestSettingService_ParseSettings_CreativeWorkerCount(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	got := svc.parseSettings(map[string]string{})
+	require.Equal(t, DefaultCreativeWorkerCount, got.CreativeWorkerCount)
+	got = svc.parseSettings(map[string]string{SettingKeyCreativeWorkerCount: "7"})
+	require.Equal(t, 7, got.CreativeWorkerCount)
+	got = svc.parseSettings(map[string]string{SettingKeyCreativeWorkerCount: "0"})
+	require.Equal(t, DefaultCreativeWorkerCount, got.CreativeWorkerCount)
+	got = svc.parseSettings(map[string]string{SettingKeyCreativeWorkerCount: "invalid"})
+	require.Equal(t, DefaultCreativeWorkerCount, got.CreativeWorkerCount)
 }
 
 // IsCreativeEnabled 是创作台请求期门控读取：显式 "false" 关闭，键缺失或读取失败默认开启。

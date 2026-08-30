@@ -7500,6 +7500,26 @@
                 <Toggle v-model="form.creative_enabled" />
               </div>
 
+              <div class="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white" for="creative-worker-count">
+                    {{ t("admin.settings.features.creative.workerCount") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.creative.workerCountHint") }}
+                  </p>
+                </div>
+                <input
+                  id="creative-worker-count"
+                  v-model.number="form.creative_worker_count"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  class="form-input w-32"
+                />
+              </div>
+
               <div class="mt-6 border-t border-gray-100 pt-5 dark:border-dark-700">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -9883,6 +9903,7 @@ const form = reactive<SettingsForm>({
   data_sharing_enabled: true,
   creative_enabled: true,
   creative_model_settings: [] as CreativeModelSetting[],
+  creative_worker_count: 128,
   risk_control_enabled: false,
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
@@ -11464,6 +11485,13 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const normalizedCreativeWorkerCount = Math.floor(Number(form.creative_worker_count));
+    if (!Number.isSafeInteger(normalizedCreativeWorkerCount) || normalizedCreativeWorkerCount <= 0) {
+      appStore.showError(t("admin.settings.features.creative.workerCountInvalid"));
+      return;
+    }
+    form.creative_worker_count = normalizedCreativeWorkerCount;
+
     const rawDefaultUserAPIKeyLimit = String(
       form.default_user_api_key_limit,
     ).trim();
@@ -11932,6 +11960,7 @@ async function saveSettings() {
       data_sharing_enabled: form.data_sharing_enabled,
       creative_enabled: form.creative_enabled,
       creative_model_settings: normalizedCreativeModelSettings,
+      creative_worker_count: normalizedCreativeWorkerCount,
       risk_control_enabled: form.risk_control_enabled,
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds: Math.max(

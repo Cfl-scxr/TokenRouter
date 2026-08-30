@@ -718,6 +718,7 @@ export interface SystemSettings {
   data_sharing_enabled: boolean;
   creative_enabled: boolean;
   creative_model_settings: CreativeModelSetting[];
+  creative_worker_count: number;
   risk_control_enabled: boolean;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
@@ -1036,6 +1037,7 @@ export interface UpdateSettingsRequest {
   team_enabled?: boolean;
   data_sharing_enabled?: boolean;
   creative_enabled?: boolean;
+  creative_worker_count?: number;
   risk_control_enabled?: boolean;
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;

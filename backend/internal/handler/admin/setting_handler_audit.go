@@ -72,6 +72,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !reflect.DeepEqual(before.CreativeModelSettings, after.CreativeModelSettings) {
 		changed = append(changed, "creative_model_settings")
 	}
+	if before.CreativeWorkerCount != after.CreativeWorkerCount {
+		changed = append(changed, "creative_worker_count")
+	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")
 	}

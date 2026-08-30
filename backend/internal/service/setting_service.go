@@ -199,6 +199,7 @@ type SettingService struct {
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                         *config.Config
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
+	creativeWorkerCountCallback func(int)
 	version                     string // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
 	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
@@ -440,6 +441,14 @@ func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, e
 // This is used for cache invalidation (e.g., HTML cache in frontend server)
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
 	s.onUpdate = callback
+}
+
+// SetCreativeWorkerCountCallback 设置创作台 worker 数量热更新回调。
+func (s *SettingService) SetCreativeWorkerCountCallback(callback func(int)) {
+	if s == nil {
+		return
+	}
+	s.creativeWorkerCountCallback = callback
 }
 
 // SetVersion sets the application version for injection into public settings

@@ -230,7 +230,15 @@ func (r *smokeFakeBillingRepo) ReleaseBatchImageBalance(ctx context.Context, cmd
 // smokeFakeExecutor 返回固定输出。
 type smokeFakeExecutor struct{}
 
-func (e *smokeFakeExecutor) Execute(ctx context.Context, run service.CreativeRun, payload service.CreativeRunPayload) (*service.CreativeExecuteResult, error) {
+func (e *smokeFakeExecutor) Prepare(ctx context.Context, run service.CreativeRun) (*service.CreativeExecution, error) {
+	return &service.CreativeExecution{
+		Account:       &service.Account{ID: 55, Platform: service.PlatformGemini},
+		UpstreamModel: run.Model,
+		ReleaseFunc:   func() {},
+	}, nil
+}
+
+func (e *smokeFakeExecutor) Execute(ctx context.Context, run service.CreativeRun, payload service.CreativeRunPayload, execution *service.CreativeExecution) (*service.CreativeExecuteResult, error) {
 	return &service.CreativeExecuteResult{
 		Outputs:   []service.CreativeOutput{{Index: 0, Bytes: []byte("smoke-image-bytes"), Mime: "image/png"}},
 		AccountID: 55,

@@ -13,14 +13,26 @@ import (
 
 // creativeFakeExecutor 是 CreativeRunExecutor 的测试替身。
 type creativeFakeExecutor struct {
-	result *CreativeExecuteResult
-	err    error
+	result         *CreativeExecuteResult
+	err            error
+	execPrepareErr error
 	// onExecute 可在执行期间修改仓储状态（模拟状态竞争）。
 	onExecute func(runID string)
 	calls     int
 }
 
-func (e *creativeFakeExecutor) Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload) (*CreativeExecuteResult, error) {
+func (e *creativeFakeExecutor) Prepare(ctx context.Context, run CreativeRun) (*CreativeExecution, error) {
+	if e.execPrepareErr != nil {
+		return nil, e.execPrepareErr
+	}
+	return &CreativeExecution{
+		Account:       &Account{ID: 55, Platform: PlatformGemini},
+		UpstreamModel: run.Model,
+		ReleaseFunc:   func() {},
+	}, nil
+}
+
+func (e *creativeFakeExecutor) Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload, execution *CreativeExecution) (*CreativeExecuteResult, error) {
 	e.calls++
 	if e.onExecute != nil {
 		e.onExecute(run.RunID)
@@ -126,6 +138,36 @@ func TestCreativeWorkerSuccessPath(t *testing.T) {
 	require.Equal(t, 0, f.billing.reserveN)
 	require.Equal(t, 1, f.billing.captureN)
 	require.Equal(t, 0, f.billing.releaseN)
+}
+
+// TestCreativeWorkerUserConcurrencyPending 验证用户槽位未获取时任务保持 queued 并释放 worker。
+func TestCreativeWorkerUserConcurrencyPending(t *testing.T) {
+	f := newCreativeWorkerFixture()
+	seedCreativeRun(f, "crun_worker_user_pending", true)
+	userRepo := f.service.UserRepo.(*creativeFakeUserRepo)
+	userRepo.user.Concurrency = 1
+	cache := &stubConcurrencyCacheForTest{acquireResult: false}
+	f.worker = NewCreativeRunWorker(f.queue, f.repo, f.store, f.exec, f.service, f.worker.opts, NewConcurrencyService(cache))
+
+	result, err := f.worker.process(context.Background(), "crun_worker_user_pending")
+	require.NoError(t, err)
+	require.False(t, result.Terminal)
+	require.Equal(t, defaultCreativeConcurrencyRequeueDelay, result.RequeueAfter)
+	require.Equal(t, CreativeRunStatusQueued, f.repo.runs["crun_worker_user_pending"].Status)
+	require.Equal(t, 0, f.exec.calls)
+}
+
+// TestCreativeWorkerAccountConcurrencyPending 验证执行器报告账号槽位不足时不推进任务状态。
+func TestCreativeWorkerAccountConcurrencyPending(t *testing.T) {
+	f := newCreativeWorkerFixture()
+	seedCreativeRun(f, "crun_worker_account_pending", true)
+	f.exec.execPrepareErr = ErrCreativeExecutionPending
+
+	result, err := f.worker.process(context.Background(), "crun_worker_account_pending")
+	require.NoError(t, err)
+	require.False(t, result.Terminal)
+	require.Equal(t, defaultCreativeConcurrencyRequeueDelay, result.RequeueAfter)
+	require.Equal(t, CreativeRunStatusQueued, f.repo.runs["crun_worker_account_pending"].Status)
 }
 
 // TestCreativeWorkerRetriesTransientOutputFailure 校验输出暂存失败时沿用结算重试路径。

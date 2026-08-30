@@ -177,6 +177,7 @@ type SystemSettings struct {
 	FooterText                  string                         `json:"footer_text"`
 	HomeFeaturedModels          []string                       `json:"home_featured_models"`
 	CreativeModelSettings       []service.CreativeModelSetting `json:"creative_model_settings"`
+	CreativeWorkerCount         int                            `json:"creative_worker_count"`
 
 	DefaultConcurrency                   int                          `json:"default_concurrency"`
 	DefaultBalance                       float64                      `json:"default_balance"`

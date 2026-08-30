@@ -98,6 +98,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyFooterText:                                "",
 		SettingKeyHomeFeaturedModels:                        "[]",
 		SettingKeyCreativeModelSettings:                     "[]",
+		SettingKeyCreativeWorkerCount:                       strconv.Itoa(DefaultCreativeWorkerCount),
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
 		SettingKeyWeChatConnectAppSecret:                    "",
@@ -382,6 +383,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FooterText:                             settings[SettingKeyFooterText],
 		HomeFeaturedModels:                     settings[SettingKeyHomeFeaturedModels],
 		CreativeModelSettings:                  parseCreativeModelSettings(settings[SettingKeyCreativeModelSettings]),
+		CreativeWorkerCount:                    parseCreativeWorkerCount(settings[SettingKeyCreativeWorkerCount]),
 		BalanceUnitName:                        balanceUnitName,
 		BalanceUnitSymbol:                      balanceUnitSymbol,
 		BalanceIconSVG:                         strings.TrimSpace(settings[SettingKeyBalanceIconSVG]),
@@ -1014,6 +1016,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	})
 
 	return result
+}
+
+// parseCreativeWorkerCount 解析创作台 worker 数量；缺失或脏值按默认并发回退。
+func parseCreativeWorkerCount(value string) int {
+	count, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || count <= 0 {
+		return DefaultCreativeWorkerCount
+	}
+	return count
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

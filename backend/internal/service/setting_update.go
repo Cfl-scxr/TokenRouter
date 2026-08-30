@@ -413,6 +413,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	settings.CreativeModelSettings = normalizedCreativeModelSettings
 	updates[SettingKeyCreativeModelSettings] = creativeModelSettingsJSON
+	if settings.CreativeWorkerCount <= 0 {
+		settings.CreativeWorkerCount = DefaultCreativeWorkerCount
+	}
+	updates[SettingKeyCreativeWorkerCount] = strconv.Itoa(settings.CreativeWorkerCount)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -897,6 +901,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
+	}
+	if s.creativeWorkerCountCallback != nil {
+		s.creativeWorkerCountCallback(settings.CreativeWorkerCount)
 	}
 }
 

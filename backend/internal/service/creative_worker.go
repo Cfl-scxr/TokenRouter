@@ -24,13 +24,28 @@ type CreativeExecuteResult struct {
 	ProviderCost float64
 }
 
+// CreativeExecution 是一次已经完成账号调度与账号槽位预占的执行上下文。
+// worker 在标记任务 running 前创建它，确保并发未准入的任务仍保持 queued。
+type CreativeExecution struct {
+	Account       *Account
+	UpstreamModel string
+	Selection     *AccountSelectionResult
+	ReleaseFunc   func()
+}
+
 // CreativeRunExecutor 抽象创作台任务的上游执行能力。
 // 由按平台分派的 HTTP 执行器实现（openai/grok/gemini），不经过本地 HTTP 回环。
 type CreativeRunExecutor interface {
-	Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload) (*CreativeExecuteResult, error)
+	// Prepare 选择可用账号并预占账号并发槽位；暂时没有槽位时返回 ErrCreativeExecutionPending。
+	Prepare(ctx context.Context, run CreativeRun) (*CreativeExecution, error)
+	// Execute 使用 Prepare 返回的上下文调用上游，不能在此阶段重新选择账号。
+	Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload, execution *CreativeExecution) (*CreativeExecuteResult, error)
 	// IsRetryable 判断瞬时错误是否值得有限重试。
 	IsRetryable(err error) bool
 }
+
+// ErrCreativeExecutionPending 表示任务暂时没有用户或账号执行槽位，应保留 queued 并重排。
+var ErrCreativeExecutionPending = errors.New("creative execution is pending concurrency admission")
 
 const (
 	defaultCreativeWorkerLockTTL             = 5 * time.Minute
@@ -44,6 +59,7 @@ const (
 	defaultCreativeWorkerRecoverLimit        = 100
 	defaultCreativeWorkerErrorBackoff        = time.Second
 	defaultCreativeWorkerReserveBlockTimeout = 5 * time.Second
+	defaultCreativeConcurrencyRequeueDelay   = time.Second
 )
 
 // CreativeWorkerOptions 是创作台 worker 的运行参数（全部可由配置覆盖）。
@@ -129,43 +145,88 @@ type CreativeProcessResult struct {
 
 // CreativeRunWorker 是创作台队列 worker：Reserve → 锁 → 执行 → 结算 → Ack/Requeue。
 type CreativeRunWorker struct {
-	queue    CreativeRunQueue
-	repo     CreativeRunRepository
-	store    CreativeTransientStore
-	executor CreativeRunExecutor
-	service  *CreativePublicService
-	opts     CreativeWorkerOptions
+	queue       CreativeRunQueue
+	repo        CreativeRunRepository
+	store       CreativeTransientStore
+	executor    CreativeRunExecutor
+	service     *CreativePublicService
+	concurrency *ConcurrencyService
+	opts        CreativeWorkerOptions
 }
 
 // NewCreativeRunWorker 创建创作台 worker。
-func NewCreativeRunWorker(queue CreativeRunQueue, repo CreativeRunRepository, store CreativeTransientStore, executor CreativeRunExecutor, service *CreativePublicService, opts CreativeWorkerOptions) *CreativeRunWorker {
+func NewCreativeRunWorker(queue CreativeRunQueue, repo CreativeRunRepository, store CreativeTransientStore, executor CreativeRunExecutor, service *CreativePublicService, opts CreativeWorkerOptions, concurrencyServices ...*ConcurrencyService) *CreativeRunWorker {
+	var concurrency *ConcurrencyService
+	if len(concurrencyServices) > 0 {
+		concurrency = concurrencyServices[0]
+	}
 	return &CreativeRunWorker{
-		queue:    queue,
-		repo:     repo,
-		store:    store,
-		executor: executor,
-		service:  service,
-		opts:     normalizeCreativeWorkerOptions(opts),
+		queue:       queue,
+		repo:        repo,
+		store:       store,
+		executor:    executor,
+		service:     service,
+		concurrency: concurrency,
+		opts:        normalizeCreativeWorkerOptions(opts),
 	}
 }
 
 // Run 是 worker 主循环；ctx 取消后退出。
 func (w *CreativeRunWorker) Run(ctx context.Context) {
+	w.RunUntilStopped(ctx, nil)
+}
+
+// RunUntilStopped 运行一个可优雅排空的 worker；stop 关闭后不再领取新任务。
+func (w *CreativeRunWorker) RunUntilStopped(ctx context.Context, stop <-chan struct{}) {
 	if w == nil {
 		return
 	}
 	for {
-		if err := ctx.Err(); err != nil {
+		if ctx.Err() != nil || creativeWorkerStopRequested(stop) {
 			return
 		}
-		if err := w.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			sleepOrDone(ctx, w.opts.ErrorBackoff)
+		if err := w.runOnce(ctx, stop); err != nil && ctx.Err() == nil {
+			if !sleepOrCreativeWorkerStop(ctx, w.opts.ErrorBackoff, stop) {
+				return
+			}
 		}
+	}
+}
+
+func creativeWorkerStopRequested(stop <-chan struct{}) bool {
+	if stop == nil {
+		return false
+	}
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func sleepOrCreativeWorkerStop(ctx context.Context, delay time.Duration, stop <-chan struct{}) bool {
+	if delay <= 0 {
+		return ctx.Err() == nil && !creativeWorkerStopRequested(stop)
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-stop:
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
 // RunOnce 处理一个队列任务。
 func (w *CreativeRunWorker) RunOnce(ctx context.Context) error {
+	return w.runOnce(ctx, nil)
+}
+
+func (w *CreativeRunWorker) runOnce(ctx context.Context, stop <-chan struct{}) error {
 	if w == nil || w.queue == nil || w.repo == nil || w.service == nil || w.executor == nil {
 		return nil
 	}
@@ -176,6 +237,10 @@ func (w *CreativeRunWorker) RunOnce(ctx context.Context) error {
 	}
 	if err != nil {
 		return err
+	}
+	if creativeWorkerStopRequested(stop) {
+		// 缩容信号在 Reserve 阻塞期间到达时，把刚取出的任务立即放回 ready。
+		return w.queue.RequeueAfter(ctx, reserved.RunID, 0)
 	}
 
 	lock, ok, err := w.queue.TryAcquireJobLock(ctx, reserved.RunID, w.opts.JobLockTTL)
@@ -228,6 +293,9 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 		}
 		return CreativeProcessResult{}, err
 	}
+	if run == nil {
+		return CreativeProcessResult{}, errors.New("creative run is unavailable")
+	}
 	if IsTerminalCreativeRunStatus(run.Status) {
 		return CreativeProcessResult{Terminal: true}, nil
 	}
@@ -244,7 +312,62 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 		return CreativeProcessResult{Terminal: true}, nil
 	}
 
-	// 幂等推进 running；任务已处于终态时 MarkRunning 无副作用。
+	// 异步任务只在真正执行阶段占用用户并发槽位；未获取槽位时让出 worker 并重排任务。
+	var userRelease func()
+	if w.concurrency != nil && w.service.UserRepo != nil {
+		user, userErr := w.service.UserRepo.GetByID(ctx, run.UserID)
+		if userErr != nil {
+			if errors.Is(userErr, ErrUserNotFound) {
+				_ = w.service.MarkResultLost(ctx, runID, false)
+				return CreativeProcessResult{Terminal: true}, nil
+			}
+			return CreativeProcessResult{}, userErr
+		}
+		if user == nil {
+			return CreativeProcessResult{}, errors.New("creative run user is unavailable")
+		}
+		acquired, acquireErr := w.concurrency.AcquireUserSlot(ctx, run.UserID, user.Concurrency)
+		if acquireErr != nil {
+			return CreativeProcessResult{}, acquireErr
+		}
+		if acquired == nil || !acquired.Acquired {
+			return CreativeProcessResult{RequeueAfter: defaultCreativeConcurrencyRequeueDelay}, nil
+		}
+		userRelease = acquired.ReleaseFunc
+		defer func() {
+			if userRelease != nil {
+				userRelease()
+			}
+		}()
+	}
+
+	execution, err := w.executor.Prepare(ctx, *run)
+	if errors.Is(err, ErrCreativeExecutionPending) {
+		return CreativeProcessResult{RequeueAfter: defaultCreativeConcurrencyRequeueDelay}, nil
+	}
+	if err != nil {
+		return w.handleExecuteError(ctx, runID, err)
+	}
+	if execution == nil || execution.Account == nil {
+		return w.handleExecuteError(ctx, runID, errors.New("creative execution account is unavailable"))
+	}
+	if execution.ReleaseFunc == nil && execution.Selection != nil {
+		execution.ReleaseFunc = execution.Selection.ReleaseFunc
+	}
+	// 槽位只覆盖上游生图阶段；provider 返回后立即释放，结算/计费不占用并发名额。
+	releaseSlots := func() {
+		if execution.ReleaseFunc != nil {
+			execution.ReleaseFunc()
+			execution.ReleaseFunc = nil
+		}
+		if userRelease != nil {
+			userRelease()
+			userRelease = nil
+		}
+	}
+	defer releaseSlots()
+
+	// 幂等推进 running；账号已在 Prepare 阶段准入，成功结算时再写入实际账号。
 	if err := w.service.MarkRunning(ctx, runID, 0); err != nil {
 		return CreativeProcessResult{}, err
 	}
@@ -253,6 +376,9 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 	if err != nil {
 		return CreativeProcessResult{}, err
 	}
+	if current == nil {
+		return CreativeProcessResult{}, errors.New("creative run is unavailable")
+	}
 	if current.Status == CreativeRunStatusCancelled || IsTerminalCreativeRunStatus(current.Status) {
 		if err := w.service.CancelRunByWorker(ctx, runID); err != nil {
 			return CreativeProcessResult{}, err
@@ -260,9 +386,13 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 		return CreativeProcessResult{Terminal: true}, nil
 	}
 
-	result, err := w.executor.Execute(ctx, *current, *payload)
+	result, err := w.executor.Execute(ctx, *current, *payload, execution)
+	releaseSlots()
 	if err != nil {
 		return w.handleExecuteError(ctx, runID, err)
+	}
+	if result == nil {
+		return w.handleExecuteError(ctx, runID, errors.New("creative executor returned no result"))
 	}
 	results := make([]CreativeOutputResult, 0, len(result.Outputs))
 	for _, output := range result.Outputs {

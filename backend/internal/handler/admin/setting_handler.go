@@ -316,6 +316,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DataSharingEnabled:                               settings.DataSharingEnabled,
 		CreativeEnabled:                                  settings.CreativeEnabled,
 		CreativeModelSettings:                            settings.CreativeModelSettings,
+		CreativeWorkerCount:                              settings.CreativeWorkerCount,
 		RiskControlEnabled:                               settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                         settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                      settings.CyberSessionBlockTTLSeconds,

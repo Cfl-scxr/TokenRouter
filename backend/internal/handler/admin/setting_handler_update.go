@@ -186,6 +186,7 @@ type UpdateSettingsRequest struct {
 	FooterText                  *string                         `json:"footer_text"`
 	HomeFeaturedModels          *[]string                       `json:"home_featured_models"`
 	CreativeModelSettings       *[]service.CreativeModelSetting `json:"creative_model_settings"`
+	CreativeWorkerCount         *int                            `json:"creative_worker_count"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -1687,6 +1688,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
 		return
 	}
+	if req.CreativeWorkerCount != nil && *req.CreativeWorkerCount <= 0 {
+		response.BadRequest(c, "creative_worker_count must be > 0")
+		return
+	}
 
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
@@ -1869,6 +1874,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.CreativeModelSettings
 			}
 			return previousSettings.CreativeModelSettings
+		}(),
+		CreativeWorkerCount: func() int {
+			if req.CreativeWorkerCount != nil {
+				return *req.CreativeWorkerCount
+			}
+			return previousSettings.CreativeWorkerCount
 		}(),
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
@@ -2430,6 +2441,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DataSharingEnabled:                               updatedSettings.DataSharingEnabled,
 		CreativeEnabled:                                  updatedSettings.CreativeEnabled,
 		CreativeModelSettings:                            updatedSettings.CreativeModelSettings,
+		CreativeWorkerCount:                              updatedSettings.CreativeWorkerCount,
 		RiskControlEnabled:                               updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                         updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                      updatedSettings.CyberSessionBlockTTLSeconds,

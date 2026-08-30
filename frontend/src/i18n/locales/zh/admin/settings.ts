@@ -126,6 +126,9 @@ dataSharing: {
           description: '控制用户创作台页面是否开放。',
           enabled: '启用创作台',
           enabledHint: '关闭后隐藏创作台入口，模型列表返回为空并阻止创建任务。',
+          workerCount: 'Worker 数量',
+          workerCountHint: '控制创作台同时处理的任务数，默认 128；修改后立即生效。',
+          workerCountInvalid: 'Worker 数量必须是大于 0 的整数。',
           modelSettings: {
             title: '生图模型与能力',
             description: '仅允许所选分组中的模型用于创作台；空列表表示创作台无法使用生图模型。',

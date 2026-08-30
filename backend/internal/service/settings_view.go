@@ -182,6 +182,8 @@ type SystemSettings struct {
 	HomeFeaturedModels          string // JSON array of model IDs featured on the home page
 	// CreativeModelSettings 是创作台允许使用的全局分组+模型+能力白名单 JSON。
 	CreativeModelSettings []CreativeModelSetting
+	// CreativeWorkerCount 是创作台任务 worker 数量，缺失时回退默认值。
+	CreativeWorkerCount int
 
 	DefaultConcurrency int
 	DefaultBalance     float64

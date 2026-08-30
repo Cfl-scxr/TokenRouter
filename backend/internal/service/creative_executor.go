@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -64,6 +63,7 @@ type CreativeExecutor struct {
 	accountRepo    CreativeAccountRepository
 	groupRepo      CreativeGroupRepository
 	gateway        *OpenAIGatewayService
+	gatewayService *GatewayService
 	geminiTokens   *GeminiTokenProvider
 	settingService *SettingService
 }
@@ -74,6 +74,7 @@ func NewCreativeExecutor(
 	accountRepo CreativeAccountRepository,
 	groupRepo CreativeGroupRepository,
 	gateway *OpenAIGatewayService,
+	gatewayService *GatewayService,
 	geminiTokens *GeminiTokenProvider,
 	settingService *SettingService,
 ) *CreativeExecutor {
@@ -82,24 +83,107 @@ func NewCreativeExecutor(
 		accountRepo:    accountRepo,
 		groupRepo:      groupRepo,
 		gateway:        gateway,
+		gatewayService: gatewayService,
 		geminiTokens:   geminiTokens,
 		settingService: settingService,
 	}
 }
 
-// Execute 按账号平台分派执行创作台任务。
-func (e *CreativeExecutor) Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload) (*CreativeExecuteResult, error) {
+// Prepare 复用现有网关调度器选择账号并预占账号并发槽位。
+func (e *CreativeExecutor) Prepare(ctx context.Context, run CreativeRun) (*CreativeExecution, error) {
 	if e == nil {
 		return nil, errors.New("creative executor is not configured")
 	}
-	account, upstreamModel, err := e.selectAccount(ctx, run)
+	platform, err := e.resolveGroupPlatform(ctx, run.GroupID)
 	if err != nil {
 		return nil, err
+	}
+	groupID := run.GroupID
+	var selection *AccountSelectionResult
+	switch platform {
+	case PlatformOpenAI:
+		if e.gateway == nil {
+			return nil, errors.New("creative OpenAI gateway is not configured")
+		}
+		selection, _, err = e.gateway.SelectAccountWithSchedulerForImages(
+			ctx,
+			&groupID,
+			"",
+			run.Model,
+			nil,
+			OpenAIImagesCapabilityNative,
+		)
+	case PlatformGrok:
+		if e.gateway == nil {
+			return nil, errors.New("creative OpenAI gateway is not configured")
+		}
+		selection, _, err = e.gateway.SelectAccountWithSchedulerForCapability(
+			ctx,
+			&groupID,
+			"",
+			"",
+			run.Model,
+			nil,
+			OpenAIUpstreamTransportHTTPSSE,
+			OpenAIEndpointCapabilityGrokMediaGeneration,
+			false,
+			false,
+			PlatformGrok,
+		)
+	case PlatformGemini:
+		if e.gatewayService == nil {
+			return nil, errors.New("creative gateway service is not configured")
+		}
+		selection, err = e.gatewayService.SelectAccountWithLoadAwareness(ctx, &groupID, "", run.Model, nil, "", 0)
+	default:
+		return nil, creativeNonRetryableError("creative executor unsupported account platform %s", platform)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, creativeNonRetryableError("no compatible creative account available for group %d model %s", run.GroupID, run.Model)
+	}
+	if !selection.Acquired {
+		// 异步队列自身承担等待职责，不能阻塞 worker 等待账号槽位。
+		if selection.WaitPlan != nil {
+			return nil, ErrCreativeExecutionPending
+		}
+		return nil, creativeNonRetryableError("creative account %d was not admitted", selection.Account.ID)
+	}
+	upstreamModel := strings.TrimSpace(resolveAccountUpstreamModel(ctx, selection.Account, run.Model))
+	if upstreamModel == "" {
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+		return nil, creativeNonRetryableError("creative account %d has no upstream model for %s", selection.Account.ID, run.Model)
+	}
+	return &CreativeExecution{
+		Account:       selection.Account,
+		UpstreamModel: upstreamModel,
+		Selection:     selection,
+		ReleaseFunc:   selection.ReleaseFunc,
+	}, nil
+}
+
+// Execute 使用 Prepare 返回的账号上下文调用上游。
+func (e *CreativeExecutor) Execute(ctx context.Context, run CreativeRun, payload CreativeRunPayload, execution *CreativeExecution) (*CreativeExecuteResult, error) {
+	if e == nil {
+		return nil, errors.New("creative executor is not configured")
+	}
+	if execution == nil || execution.Account == nil {
+		return nil, errors.New("creative execution context is not configured")
+	}
+	account := execution.Account
+	upstreamModel := strings.TrimSpace(execution.UpstreamModel)
+	if upstreamModel == "" {
+		return nil, errors.New("creative execution upstream model is not configured")
 	}
 	execCtx, cancel := context.WithTimeout(ctx, e.executeTimeout())
 	defer cancel()
 
 	var outputs []CreativeOutput
+	var err error
 	switch account.Platform {
 	case PlatformOpenAI:
 		outputs, err = e.executeOpenAI(execCtx, run, payload, account, upstreamModel)
@@ -111,12 +195,15 @@ func (e *CreativeExecutor) Execute(ctx context.Context, run CreativeRun, payload
 		return nil, creativeNonRetryableError("creative executor unsupported account platform %s", account.Platform)
 	}
 	if err != nil {
+		e.reportScheduleResult(execution, account.ID, false)
 		return nil, err
 	}
 	outputs, err = normalizeCreativeOutputs(outputs, run.RequestedOutputCount)
 	if err != nil {
+		e.reportScheduleResult(execution, account.ID, false)
 		return nil, err
 	}
+	e.reportScheduleResult(execution, account.ID, true)
 	return &CreativeExecuteResult{
 		Outputs:   outputs,
 		AccountID: account.ID,
@@ -128,37 +215,21 @@ func (e *CreativeExecutor) IsRetryable(err error) bool {
 	return IsRetryableCreativeError(err)
 }
 
-// selectAccount 从分组的可调度账号中选出执行账号，返回账号与账号映射后的上游模型。
-func (e *CreativeExecutor) selectAccount(ctx context.Context, run CreativeRun) (*Account, string, error) {
-	if e.accountRepo == nil {
-		return nil, "", errors.New("creative account repository is not configured")
+// reportScheduleResult 将创作台执行结果反馈给实际使用的调度器。
+func (e *CreativeExecutor) reportScheduleResult(execution *CreativeExecution, accountID int64, success bool) {
+	if e == nil || execution == nil || execution.Selection == nil || accountID <= 0 {
+		return
 	}
-	group, err := e.resolveGroupPlatform(ctx, run.GroupID)
-	if err != nil {
-		return nil, "", err
-	}
-	accounts, err := e.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, run.GroupID, group)
-	if err != nil {
-		return nil, "", err
-	}
-	sort.SliceStable(accounts, func(i, j int) bool {
-		if accounts[i].Priority != accounts[j].Priority {
-			return accounts[i].Priority > accounts[j].Priority
+	switch execution.Account.Platform {
+	case PlatformOpenAI, PlatformGrok:
+		if e.gateway != nil {
+			e.gateway.ReportOpenAIAccountScheduleResultForSelection(execution.Selection, accountID, execution.UpstreamModel, success, nil)
 		}
-		return accounts[i].ID < accounts[j].ID
-	})
-	for i := range accounts {
-		account := &accounts[i]
-		if !account.IsSchedulable() || !account.IsModelSupported(run.Model) {
-			continue
+	case PlatformGemini:
+		if e.gatewayService != nil {
+			e.gatewayService.ReportAdvancedAccountScheduleResult(execution.Selection, accountID, success, nil)
 		}
-		upstreamModel := strings.TrimSpace(resolveAccountUpstreamModel(ctx, account, run.Model))
-		if upstreamModel == "" {
-			continue
-		}
-		return account, upstreamModel, nil
 	}
-	return nil, "", creativeNonRetryableError("no compatible creative account available for group %d model %s", run.GroupID, run.Model)
 }
 
 // resolveGroupPlatform 读取分组平台；平台决定执行协议分派。

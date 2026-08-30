@@ -114,6 +114,34 @@ func TestUpdateSettingsCreativeModelSettingsPartialSemantics(t *testing.T) {
 	require.JSONEq(t, "[]", repo.values[service.SettingKeyCreativeModelSettings])
 }
 
+// TestUpdateSettingsCreativeWorkerCountPartialSemantics 验证 worker 数量可部分更新且保留旧值。
+func TestUpdateSettingsCreativeWorkerCountPartialSemantics(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCreativeWorkerCount: "4",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"creative_worker_count": 7}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "7", repo.values[service.SettingKeyCreativeWorkerCount])
+
+	rec = doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "7", repo.values[service.SettingKeyCreativeWorkerCount])
+}
+
+// TestUpdateSettingsRejectsInvalidCreativeWorkerCount 验证 worker 数量必须为正整数。
+func TestUpdateSettingsRejectsInvalidCreativeWorkerCount(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyCreativeWorkerCount: "4",
+	})
+
+	for _, value := range []int{0, -1} {
+		rec := doUpdateSettings(t, h, map[string]any{"creative_worker_count": value}, nil)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Equal(t, "4", repo.values[service.SettingKeyCreativeWorkerCount])
+	}
+}
+
 // TestUpdateSettingsNormalizesGeminiInpaintBeforeSave 校验管理员保存会清理旧 Gemini inpaint。
 func TestUpdateSettingsNormalizesGeminiInpaintBeforeSave(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})

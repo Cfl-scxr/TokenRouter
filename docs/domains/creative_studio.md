@@ -98,7 +98,7 @@ succeeded -> result_lost
 - worker 加载不到 payload 或输入（TTL 过期，provider 未执行）时标记 `result_lost` 并释放预占；上游已确认成功但结果丢失的路径保持计费（见[计费](#计费)）。
 - 输出读取路径发现临时输出过期或缺失时，把 `succeeded` 任务降级为 `result_lost`（错误码 `RESULT_EXPIRED`）并返回 410。
 
-worker 从 Redis 预留任务后先幂等推进 `running`，provider 返回结果后在结算前持久化真实执行账号；执行前检查任务是否已处于 `cancelled`。历史竞态任务若 provider 已成功，仍按实际成功输出捕获费用并记录用量，但终态保持 `cancelled`，绝不回写为 `succeeded`。
+worker 从 Redis 预留任务后先读取用户最新并发配置，并通过现有用户并发槽位执行一次非阻塞准入；随后由平台对应的现有账号调度器选择账号并预占账号槽位。两类槽位任一暂时不可用时，任务保持 `queued`，不增加执行次数、不改变计费预占，按约 1 秒短延迟重排以释放 worker。只有用户和账号都准入后才幂等推进 `running`，provider 返回结果后在结算前持久化真实执行账号；执行前检查任务是否已处于 `cancelled`。历史竞态任务若 provider 已成功，仍按实际成功输出捕获费用并记录用量，但终态保持 `cancelled`，绝不回写为 `succeeded`。
 
 执行错误的重试边界：网络层错误、429 与 5xx 视为可重试，按 `max_execute_attempts`（默认 3，含首次）递增尝试并重排；其余 4xx 不可重试直接 `failed`。结算失败的按错误重试预算重排（上限为执行次数的两倍），超限后保留当前状态出队。
 
@@ -150,7 +150,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 输出保存时同时把 `transient_expires_at` 写入输出元数据，客户端据此知道取回截止时间；ack 立即删除对应输出键。worker 只有在输出字节成功写入 transient store 后才会把输出和任务标记为 `succeeded`；Redis 写入失败会返回结算错误并按 worker 重试预算重排，避免出现成功状态却没有可取图片的任务。
 
-队列协调（`creative:queue:*`）与批量图片同构：ready 列表、delayed 有序集合、active 有序集合、单任务 inflight 键（默认 TTL 7 天）、单任务锁键（默认 TTL 300 秒）；入队与预留用 Lua 脚本原子执行，重排/确认用事务管道。`creative.queue_enabled` 默认开启，应用启动时运行 worker、delayed mover 和 stale active recovery 三个循环；worker 从 Redis 预留任务并持锁执行，处理中按心跳续期锁并刷新 active 时间戳，超时未心跳的 active 任务由恢复循环重投。
+队列协调（`creative:queue:*`）与批量图片同构：ready 列表、delayed 有序集合、active 有序集合、单任务 inflight 键（默认 TTL 7 天）、单任务锁键（默认 TTL 300 秒）；入队与预留用 Lua 脚本原子执行，重排/确认用事务管道。`creative.queue_enabled` 默认开启，应用启动时运行 `creative_worker_count` 个任务 worker（默认 128）、一个 delayed mover 和一个 stale active recovery；worker 从 Redis 预留任务并持锁执行，处理中按心跳续期锁并刷新 active 时间戳，超时未心跳的 active 任务由恢复循环重投。worker 数量通过管理端功能设置热更新，扩容立即生效，缩容只停止领取新任务并等待当前任务完成。
 
 ## 审核无留存
 
@@ -219,7 +219,7 @@ creative:
 
 校验约束：`max_total_input_bytes` 不得小于 `max_asset_bytes`；启用队列时所有队列键非空。创作台每次提交固定生成一张图片，多张图片请重复提交任务。与批量图片不同，创作台的 `enabled` 与 `queue_enabled` 默认开启，但缺少 Redis 时任务创建会失败。
 
-除进程配置外，创作台还有数据库运行时开关 `creative_enabled`（默认 true，管理端"功能特性"页可切换，经公开设置下发给前端）：仅当进程配置 `creative.enabled` 与运行时开关同时开启时创作台才可用，管理服务 `enabled()` 判定在请求期读取该开关。
+除进程配置外，创作台还有数据库运行时开关 `creative_enabled`（默认 true，管理端"功能特性"页可切换，经公开设置下发给前端）以及 `creative_worker_count`（默认 128，要求为正整数，管理端保存后热更新当前 worker 池）：仅当进程配置 `creative.enabled` 与运行时开关同时开启时创作台才可用，管理服务 `enabled()` 判定在请求期读取该开关。创作台不使用 HTTP 网关的进程级图片 limiter；实际执行并发由 worker 池、用户 Redis 并发槽位和账号调度器的账号槽位共同约束。
 
 ## 运维检查清单
 

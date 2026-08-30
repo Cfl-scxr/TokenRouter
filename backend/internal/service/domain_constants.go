@@ -220,6 +220,7 @@ const (
 	SettingKeyDataSharingEnabled                  = "data_sharing_enabled"             // 是否显示数据共享相关页面
 	SettingKeyCreativeEnabled                     = "creative_enabled"                 // 创作台功能开关
 	SettingKeyCreativeModelSettings               = "creative_model_settings"          // 创作台生图模型与能力白名单（JSON）
+	SettingKeyCreativeWorkerCount                 = "creative_worker_count"            // 创作台 worker 数量（正整数）
 	SettingKeyRiskControlEnabled                  = "risk_control_enabled"             // 是否启用风控中心入口与内容审计链路
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"      // cyber_policy 命中后的会话本地屏蔽开关
 	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds"  // cyber_policy 会话本地屏蔽时长（秒）
