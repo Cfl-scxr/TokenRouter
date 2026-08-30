@@ -64,7 +64,7 @@ func ResolveOpenAIServiceTierBilling(account *Account, requested, observed strin
 
 func codexOAuthResponseTierIsNonAuthoritative(observed string) bool {
 	switch normalizeBillingServiceTier(observed) {
-	case "default", "standard":
+	case "default":
 		return true
 	default:
 		return false
