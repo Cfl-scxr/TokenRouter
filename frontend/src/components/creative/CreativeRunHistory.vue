@@ -94,7 +94,9 @@
                           v-if="assetFor(run.id, output.output_index)"
                           :src="urlForAsset(outputAssetKey(run.id, output.output_index), assetFor(run.id, output.output_index)!.blob)"
                           :alt="`output-${output.output_index}`"
-                          class="block h-auto w-full"
+                          draggable="true"
+                          class="block h-auto w-full cursor-grab select-none active:cursor-grabbing"
+                          @dragstart.stop="onOutputDragStart($event, run.id, output.output_index)"
                         />
                         <div v-else class="flex h-24 w-full flex-col items-center justify-center gap-0.5 text-gray-300 dark:text-dark-600">
                           <Icon name="modalityImage" size="sm" />
@@ -143,7 +145,7 @@
  * 创作 run 历史（悬浮层）：
  * - 画布右上角图标按钮展开 / 收起；列表每行 = 状态徽章 + 模型名 + 时间（+ 实际费用）
  * - 点击行原地向下展开：终态任务显示本地保存的输出图片，图片按原始比例撑满弹窗宽度，
- *   「导入到画布」和「下载」按钮统一放在图片下方并排展示；本地素材缺失时按钮禁用并展示缺失占位
+ *   图片支持拖到画布，且「导入到画布」和「下载」按钮统一放在图片下方并排展示；本地素材缺失时按钮禁用并展示缺失占位
  * - 进行中的任务只展示加载状态，不提供素材操作或取消入口
  */
 import { h, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -153,6 +155,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { CreativeRun } from '@/api/creative'
 import { formatDateTime } from '@/utils/format'
 import { outputAssetKey, type LocalAsset } from '@/utils/creativeLocalStore'
+import { CREATIVE_OUTPUT_DRAG_MIME, serializeCreativeOutputDrag } from '@/utils/creativeDrag'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { useCreativeStudio } from '@/composables/useCreativeStudio'
 
@@ -212,6 +215,17 @@ onBeforeUnmount(revokeExpandedUrls)
 // 导入画布：把本地保存的输出素材放上画布（走画布桥接）
 function importToCanvas(runId: string, outputIndex: number): void {
   studio.importOutputToCanvas(runId, outputIndex)
+}
+
+// 历史缩略图拖放只传运行记录索引，画布接收后从 IndexedDB 取回图片本体。
+function onOutputDragStart(event: DragEvent, runId: string, outputIndex: number): void {
+  const asset = assetFor(runId, outputIndex)
+  if (!asset || !event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData(
+    CREATIVE_OUTPUT_DRAG_MIME,
+    serializeCreativeOutputDrag({ runId, outputIndex }),
+  )
 }
 
 // 下载本地保存的输出素材

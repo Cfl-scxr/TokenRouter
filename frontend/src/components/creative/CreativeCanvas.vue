@@ -1,9 +1,18 @@
 <template>
   <!-- 画布即整个背景：透明无边框，圆点网格铺满 -->
-  <div ref="containerRef" class="dot-grid relative h-full w-full overflow-hidden">
+  <div
+    ref="containerRef"
+    class="dot-grid relative h-full w-full overflow-hidden"
+    :class="dropTargetActive && 'drop-target-active'"
+  >
     <canvas ref="canvasElRef"></canvas>
     <!-- 独立 mask 画布：先以不透明颜色合成，再整体设置透明度，避免笔迹重叠变深 -->
     <canvas ref="maskCanvasElRef" class="mask-overlay"></canvas>
+    <!-- 拖放目标反馈不接收指针事件，避免覆盖 Fabric 画布交互。 -->
+    <div
+      v-if="dropTargetActive"
+      class="pointer-events-none absolute inset-2 z-[2] rounded-xl border-2 border-dashed border-primary-500/70 bg-primary-500/5"
+    ></div>
 
     <!-- 浮动工具栏（顶部居中，含移动端；窄屏限宽并换行成圆角矩形，避免与左上角设置、右上角历史按钮重叠）：上传 | 局部重绘画笔组 | 删除选中 / 清空 -->
     <div
@@ -168,6 +177,7 @@
  * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
  *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
  * - 工具栏：上传、下载选中、框选、画笔组（仅局部重绘）、删除选中；清空画布收在左上角设置里
+ * - 拖放：外部 PNG/JPEG/WebP 直接保存并按落点上板，历史 output 通过本地 key 拖放并按落点上板
  * - 场景快照（含 data 自定义属性，图片 src 以 asset:// 占位）防抖存入 IndexedDB，刷新后恢复并重建输出注册表
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -187,6 +197,11 @@ import {
   saveAsset,
   saveSceneJson,
 } from '@/utils/creativeLocalStore'
+import {
+  CREATIVE_OUTPUT_DRAG_MIME,
+  isSupportedCreativeImageFile,
+  parseCreativeOutputDrag,
+} from '@/utils/creativeDrag'
 
 interface Props {
   // 当前操作：局部重绘时启用画笔组并在选中图片后自动进入涂抹模式
@@ -399,6 +414,8 @@ const brushShape = ref<BrushShape>('round')
 const selectedImage = shallowRef<FabricObject | null>(null)
 // 当前 Fabric 活动选区内的对象数量；框选多张图片时也要允许使用删除工具
 const selectedObjectCount = ref(0)
+// 当前是否有外部图片或历史输出悬停在画布上，用于显示拖放目标反馈
+const dropTargetActive = ref(false)
 // mask 锚定的图片对象：选中图片时设置，与 fabric 选中态解耦，避免画笔落笔自动丢弃选中后涂抹被中断
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
@@ -419,6 +436,8 @@ let canvas: Canvas | null = null
 let maskCanvas: StaticCanvas | null = null
 let resizeObserver: ResizeObserver | null = null
 let sceneSaveTimer: ReturnType<typeof setTimeout> | null = null
+// dragenter/dragleave 在子元素间移动时会成对触发，使用深度计数避免反馈闪烁
+let dragDepth = 0
 // 平移拖拽状态：pointerId 统一鼠标 / 触摸
 let isPanning = false
 let lastClientX = 0
@@ -472,6 +491,11 @@ onMounted(() => {
   syncCanvasSelection()
   // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
   container.addEventListener('contextmenu', suppressContextMenu)
+  // 原生文件与历史缩略图拖放都在画布根节点接收，落点转换在 drop 时完成。
+  container.addEventListener('dragenter', onDragEnter)
+  container.addEventListener('dragover', onDragOver)
+  container.addEventListener('dragleave', onDragLeave)
+  container.addEventListener('drop', onDrop)
   resizeObserver = new ResizeObserver(fitToContainer)
   resizeObserver.observe(container)
   window.addEventListener('keydown', onKeyDown)
@@ -481,7 +505,14 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  containerRef.value?.removeEventListener('contextmenu', suppressContextMenu)
+  const container = containerRef.value
+  container?.removeEventListener('contextmenu', suppressContextMenu)
+  container?.removeEventListener('dragenter', onDragEnter)
+  container?.removeEventListener('dragover', onDragOver)
+  container?.removeEventListener('dragleave', onDragLeave)
+  container?.removeEventListener('drop', onDrop)
+  dragDepth = 0
+  dropTargetActive.value = false
   resizeObserver?.disconnect()
   resizeObserver = null
   stopPanAnim()
@@ -510,6 +541,69 @@ function fitToContainer(): void {
 
 function suppressContextMenu(event: Event): void {
   event.preventDefault()
+}
+
+// 拖放过程中浏览器可能隐藏文件列表，只能同时检查 Files 类型与实际文件。
+function isCreativeDropCandidate(dataTransfer: DataTransfer | null): boolean {
+  if (!dataTransfer) return false
+  const types = Array.from(dataTransfer.types ?? [])
+  return types.includes(CREATIVE_OUTPUT_DRAG_MIME) || types.includes('Files') || dataTransfer.files.length > 0
+}
+
+function onDragEnter(event: DragEvent): void {
+  if (!isCreativeDropCandidate(event.dataTransfer)) return
+  dragDepth += 1
+  dropTargetActive.value = true
+}
+
+function onDragOver(event: DragEvent): void {
+  if (!isCreativeDropCandidate(event.dataTransfer)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  dropTargetActive.value = true
+}
+
+function onDragLeave(event: DragEvent): void {
+  if (!dropTargetActive.value && !isCreativeDropCandidate(event.dataTransfer)) return
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) dropTargetActive.value = false
+}
+
+// 将浏览器拖放事件转换为场景坐标；Fabric 会自动扣除当前缩放与视口平移。
+function scenePointForDrop(event: DragEvent): { x: number; y: number } | null {
+  if (!canvas) return null
+  return canvas.getScenePoint(event)
+}
+
+function onDrop(event: DragEvent): void {
+  const dataTransfer = event.dataTransfer
+  if (!isCreativeDropCandidate(dataTransfer)) return
+  event.preventDefault()
+  event.stopPropagation()
+  dragDepth = 0
+  dropTargetActive.value = false
+  const center = scenePointForDrop(event)
+  if (!center || !dataTransfer) return
+
+  const outputValue = dataTransfer.getData(CREATIVE_OUTPUT_DRAG_MIME)
+  if (outputValue) {
+    const payload = parseCreativeOutputDrag(outputValue)
+    if (!payload) {
+      emit('error', t('creative.error.dropInvalid'))
+      return
+    }
+    void importDroppedOutput(payload, center)
+    return
+  }
+
+  const files = Array.from(dataTransfer.files ?? [])
+  const imageFiles = files.filter(isSupportedCreativeImageFile)
+  if (!imageFiles.length) {
+    emit('error', t('creative.error.dropUnsupported'))
+    return
+  }
+  void addDroppedFiles(imageFiles, center)
 }
 
 function bindCanvasEvents(): void {
@@ -1093,6 +1187,26 @@ function nextPlacementPoint(width: number, height: number): { x: number; y: numb
   return { x, y }
 }
 
+// 根据图片中心与显示比例计算左上角场景坐标，保证拖放落点对应图片中心。
+function centeredPlacementPoint(
+  size: { width: number; height: number },
+  center: { x: number; y: number },
+  scale = PLACE_SCALE,
+): { x: number; y: number } {
+  return {
+    x: center.x - (size.width * scale) / 2,
+    y: center.y - (size.height * scale) / 2,
+  }
+}
+
+function recordLastPlaced(position: { x: number; y: number }, size: { width: number; height: number }): void {
+  lastPlaced = {
+    right: position.x + size.width,
+    top: position.y,
+    bottom: position.y + size.height,
+  }
+}
+
 // 把图片 blob 放上画布：左上角定位于 position，按 scale 缩放显示（原始 blob 不受影响），登记 data 与运行时 blob
 async function addImageToScene(
   blob: Blob,
@@ -1105,6 +1219,9 @@ async function addImageToScene(
   try {
     const image = await FabricImage.fromURL(url)
     image.set({
+      // position 是按左上角计算的，覆盖 FabricImage 默认的中心原点，保证拖放中心定位准确。
+      originX: 'left',
+      originY: 'top',
       left: position.x,
       top: position.y,
       scaleX: scale,
@@ -1141,7 +1258,20 @@ async function placeOutput(asset: { blob: Blob; runId: string; outputIndex: numb
   await placement
 }
 
-async function placeOutputNow(asset: { blob: Blob; runId: string; outputIndex: number }): Promise<void> {
+// 历史输出拖到画布时使用指定中心点，但仍串入输出队列，避免与自动收割同时修改 Fabric 场景。
+async function placeOutputAt(
+  asset: { blob: Blob; runId: string; outputIndex: number },
+  center: { x: number; y: number },
+): Promise<void> {
+  const placement = outputPlacementQueue.then(() => placeOutputNow(asset, center))
+  outputPlacementQueue = placement.catch(() => undefined)
+  await placement
+}
+
+async function placeOutputNow(
+  asset: { blob: Blob; runId: string; outputIndex: number },
+  center?: { x: number; y: number },
+): Promise<void> {
   if (!canvas) return
   const assetKey = outputAssetKey(asset.runId, asset.outputIndex)
   runtimeBlobs.set(assetKey, asset.blob)
@@ -1150,7 +1280,9 @@ async function placeOutputNow(asset: { blob: Blob; runId: string; outputIndex: n
     const size = await probeImageSize(asset.blob)
     const placedWidth = size.width * PLACE_SCALE
     const placedHeight = size.height * PLACE_SCALE
-    const position = nextPlacementPoint(placedWidth, placedHeight)
+    const position = center
+      ? centeredPlacementPoint(size, center)
+      : nextPlacementPoint(placedWidth, placedHeight)
     const image = await addImageToScene(
       asset.blob,
       { assetKey, runId: asset.runId, outputIndex: asset.outputIndex },
@@ -1158,12 +1290,10 @@ async function placeOutputNow(asset: { blob: Blob; runId: string; outputIndex: n
       PLACE_SCALE,
     )
     if (!image) return
-    lastPlaced = {
-      right: position.x + placedWidth,
-      top: position.y,
-      bottom: position.y + placedHeight,
+    recordLastPlaced(position, { width: placedWidth, height: placedHeight })
+    if (!center) {
+      panToScenePoint({ x: position.x + placedWidth / 2, y: position.y + placedHeight / 2 })
     }
-    panToScenePoint({ x: position.x + placedWidth / 2, y: position.y + placedHeight / 2 })
     scheduleSceneSave()
   } catch (error) {
     console.error('Failed to place creative output:', error)
@@ -1171,8 +1301,8 @@ async function placeOutputNow(asset: { blob: Blob; runId: string; outputIndex: n
   }
 }
 
-// 上传（裁剪确认后）放上画布：先存本地库保证刷新后可恢复，再放到当前视角中心
-async function addUploadedImage(blob: Blob): Promise<void> {
+// 上传或外部拖入的源图先保存本地库，再按指定中心点放置，保证场景刷新后仍可恢复。
+async function addUploadedImageAt(blob: Blob, center: { x: number; y: number }): Promise<void> {
   if (!canvas) return
   const assetKey = localAssetKey('source', `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
   try {
@@ -1190,19 +1320,52 @@ async function addUploadedImage(blob: Blob): Promise<void> {
   try {
     // 上传图按 1/4 尺寸上板（与生成输出统一；原始 blob 不变，源图仍发全分辨率给模型）
     const size = await probeImageSize(blob)
-    const center = viewCenterScene()
     const scale = PLACE_SCALE
-    await addImageToScene(
+    const position = centeredPlacementPoint(size, center, scale)
+    const image = await addImageToScene(
       blob,
       { assetKey },
-      { x: center.x - (size.width * scale) / 2, y: center.y - (size.height * scale) / 2 },
+      position,
       scale,
     )
+    if (image) {
+      recordLastPlaced(position, { width: size.width * scale, height: size.height * scale })
+    }
     scheduleSceneSave()
   } catch (error) {
     console.error('Failed to place uploaded image:', error)
     emit('error', t('creative.error.loadImageFailed'))
   }
+}
+
+// 工具栏上传仍沿用“当前视角中心”语义；外部拖放通过 addUploadedImageAt 传入落点。
+async function addUploadedImage(blob: Blob): Promise<void> {
+  if (!canvas) return
+  await addUploadedImageAt(blob, viewCenterScene())
+}
+
+// 多张外部图片按落点中心开始斜向错开，单张失败不会阻塞后续文件。
+async function addDroppedFiles(files: File[], center: { x: number; y: number }): Promise<void> {
+  for (const [index, file] of files.entries()) {
+    const offset = index * PLACE_GAP
+    await addUploadedImageAt(file, { x: center.x + offset, y: center.y + offset })
+  }
+}
+
+// 历史缩略图只传本地 key；实际图片从当前浏览器 IndexedDB 读取，不触发网络请求。
+async function importDroppedOutput(
+  payload: { runId: string; outputIndex: number },
+  center: { x: number; y: number },
+): Promise<void> {
+  const asset = await loadAsset(outputAssetKey(payload.runId, payload.outputIndex)).catch(() => null)
+  if (!asset || asset.kind !== 'output') {
+    emit('error', t('creative.error.dropHistoryUnavailable'))
+    return
+  }
+  await placeOutputAt(
+    { blob: asset.blob, runId: payload.runId, outputIndex: payload.outputIndex },
+    center,
+  )
 }
 
 // ==================== 生成输入采集 ====================
@@ -1472,6 +1635,7 @@ function onCropCancel(): void {
 
 defineExpose({
   placeOutput,
+  placeOutputAt,
   addUploadedImage,
   getSelectedImageBlob,
   getEditRefBlobs,
@@ -1488,6 +1652,11 @@ defineExpose({
 .dot-grid {
   background-image: radial-gradient(circle, rgb(15 23 42 / 0.12) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+/* 拖放期间给画布边缘提供稳定反馈，不改变图片与 Fabric 对象尺寸。 */
+.drop-target-active {
+  box-shadow: inset 0 0 0 2px rgb(124 58 237 / 0.45);
 }
 
 .dark .dot-grid {

@@ -117,6 +117,9 @@ export default {
       clearFailed: 'Failed to clear local data.',
       loadImageFailed: 'Failed to load the image.',
       quotaExceeded: 'Local storage is full. Please download your assets before continuing.',
+      dropInvalid: 'The dropped history image could not be recognized.',
+      dropUnsupported: 'Only PNG, JPEG, or WebP images are supported.',
+      dropHistoryUnavailable: 'This history image is no longer available in this browser.',
     },
   },
 }

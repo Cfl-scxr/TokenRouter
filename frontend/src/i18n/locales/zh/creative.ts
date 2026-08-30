@@ -117,6 +117,9 @@ export default {
       clearFailed: '清空本机数据失败。',
       loadImageFailed: '图片加载失败。',
       quotaExceeded: '本地存储空间不足，请先下载备份素材。',
+      dropInvalid: '无法识别拖入的历史图片。',
+      dropUnsupported: '仅支持 PNG、JPEG 或 WebP 图片。',
+      dropHistoryUnavailable: '历史图片已不在本机，无法拖入画布。',
     },
   },
 }
