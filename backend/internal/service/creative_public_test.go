@@ -414,10 +414,11 @@ func (q *creativeFakeQueue) TryAcquireJobLock(ctx context.Context, runID string,
 }
 
 type creativeFakeTransient struct {
-	payloads map[string]*CreativeRunPayload
-	inputs   map[string][]byte
-	masks    map[string][]byte
-	outputs  map[string][]byte
+	payloads      map[string]*CreativeRunPayload
+	inputs        map[string][]byte
+	masks         map[string][]byte
+	outputs       map[string][]byte
+	saveOutputErr error
 }
 
 func newCreativeFakeTransient() *creativeFakeTransient {
@@ -473,6 +474,9 @@ func (s *creativeFakeTransient) LoadMask(ctx context.Context, runID string) ([]b
 }
 
 func (s *creativeFakeTransient) SaveOutput(ctx context.Context, runID string, index int, data []byte, ttl time.Duration) error {
+	if s.saveOutputErr != nil {
+		return s.saveOutputErr
+	}
 	s.outputs[fmtInputKey(runID, index)] = data
 	return nil
 }

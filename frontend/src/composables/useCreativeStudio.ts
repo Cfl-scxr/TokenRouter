@@ -298,6 +298,8 @@ export function useCreativeStudio() {
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let pollStartedAt = 0
+  // 历史刷新采用最新请求胜出，避免旧请求覆盖较新的任务与本地素材索引。
+  let historyRefreshGeneration = 0
 
   function stopPolling(): void {
     if (pollTimer) {
@@ -321,7 +323,7 @@ export function useCreativeStudio() {
         if (CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)) {
           stopPolling()
           if (run.status === 'succeeded') {
-            await harvestOutputs(run)
+            await harvestOutputs(run, { placeOnCanvas: true })
           }
           await refreshHistory()
           return
@@ -337,39 +339,82 @@ export function useCreativeStudio() {
     pollTimer = setTimeout(() => void tick(), POLL_FAST_INTERVAL)
   }
 
-  // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack → 放上画布
-  async function harvestOutputs(run: CreativeRun): Promise<void> {
+  interface HarvestOptions {
+    // 当前任务完成时自动放上画布；历史恢复只保存本地，不重复上板。
+    placeOnCanvas?: boolean
+    // 历史刷新传入工作副本，避免旧请求直接覆盖当前索引。
+    assets?: Map<string, LocalAsset>
+    missing?: Set<string>
+    isCurrent?: () => boolean
+  }
+
+  // 终态 succeeded：逐个取回未 ack 的输出 → 存本地 → ack → 可选放上画布。
+  // 历史刷新也复用该流程，因此页面重新进入时仍能收割尚未 ack 的 transient 输出。
+  async function harvestOutputs(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
     const outputs = Array.isArray(run.outputs) ? run.outputs : []
+    const assets = options.assets ?? new Map(outputAssetMap.value)
+    const missing = options.missing ?? new Set(missingOutputKeys.value)
     for (const output of outputs) {
-      if (output.status !== 'succeeded' || output.acked_at) continue
+      if (options.isCurrent && !options.isCurrent()) return
+      if (output.status !== 'succeeded') continue
       const key = outputAssetKey(run.id, output.output_index)
+      if (output.acked_at && !assets.has(key)) {
+        // ack 后 transient 已被服务端删除，当前浏览器没有副本时无法恢复。
+        missing.add(key)
+        continue
+      }
       try {
-        const blob = await getCreativeRunOutputContent(run.id, output.output_index)
-        await saveAsset({
-          key,
-          kind: 'output',
-          blob,
-          runId: run.id,
-          outputIndex: output.output_index,
-          createdAt: Date.now(),
-        })
-        await ackCreativeRunOutput(run.id, output.output_index)
-        // 本地保存 + ack 成功后再上画布；画布异常不影响收割结果
-        try {
-          canvasBridge?.placeOutput({ blob, runId: run.id, outputIndex: output.output_index })
-        } catch (e) {
-          console.error(`Failed to place creative output ${key} on canvas:`, e)
+        let asset = assets.get(key)
+        if (!asset) {
+          const blob = await getCreativeRunOutputContent(run.id, output.output_index)
+          asset = {
+            key,
+            kind: 'output',
+            blob,
+            runId: run.id,
+            outputIndex: output.output_index,
+            createdAt: Date.now(),
+          }
+          await saveAsset(asset)
+          assets.set(key, asset)
+          // 保存成功后立即合并更新，不能等下一次历史刷新才显示图片。
+          if (!options.isCurrent || options.isCurrent()) {
+            const nextMap = new Map(outputAssetMap.value)
+            nextMap.set(key, asset)
+            outputAssetMap.value = nextMap
+          }
         }
-        missingOutputKeys.value.delete(key)
+
+        // 本地已有素材时也重试 ack，但 ack 失败不能抹掉可用的本地图片。
+        if (!output.acked_at) {
+          try {
+            await ackCreativeRunOutput(run.id, output.output_index)
+          } catch (e) {
+            console.error(`Failed to ack creative output ${key}:`, e)
+          }
+        }
+
+        if (options.placeOnCanvas) {
+          // 本地保存 + ack（或 ack 失败但本地已保存）后再上画布；画布异常不影响收割结果。
+          try {
+            canvasBridge?.placeOutput({ blob: asset.blob, runId: run.id, outputIndex: output.output_index })
+          } catch (e) {
+            console.error(`Failed to place creative output ${key} on canvas:`, e)
+          }
+        }
+        missing.delete(key)
       } catch (e) {
-        // 单个输出 transient 取回失败（410 / result_lost）只标记 missing，不中断其它输出；
-        // 本地配额不足时单独提示用户下载备份
+        // 单个输出 transient 取回或本地保存失败只标记 missing，不中断其它输出。
         console.error(`Failed to harvest creative output ${key}:`, e)
         if (e instanceof LocalStoreQuotaError) {
           error.value = t('creative.error.quotaExceeded')
         }
-        missingOutputKeys.value.add(key)
+        missing.add(key)
       }
+    }
+    if (!options.assets) {
+      outputAssetMap.value = assets
+      missingOutputKeys.value = missing
     }
   }
 
@@ -384,6 +429,7 @@ export function useCreativeStudio() {
   // 拉取服务端历史 + 本地输出素材索引；服务端标记成功但本地无 blob 的输出记为 missing。
   // 历史列表只展示本机清空时间之后创建的任务：更早的任务元数据仍在服务端，仅不再展示。
   async function refreshHistory(): Promise<void> {
+    const generation = ++historyRefreshGeneration
     loadingHistory.value = true
     try {
       const page = await getCreativeRuns(1, 20)
@@ -394,19 +440,39 @@ export function useCreativeStudio() {
               (run) => typeof run.created_at !== 'number' || run.created_at * 1000 > clearedAt,
             )
           : page.items
+      if (generation !== historyRefreshGeneration) return
       runHistory.value = items
       // 只需输出素材索引（missing 判定用）；源图 / mask 素材已由画布自行管理
       const outputs = await listAssets('output')
       const map = new Map(outputs.map((a) => [a.key, a]))
-      outputAssetMap.value = map
+      if (generation !== historyRefreshGeneration) return
       const missing = new Set<string>()
       for (const run of items) {
+        await harvestOutputs(run, {
+          assets: map,
+          missing,
+          placeOnCanvas: false,
+          isCurrent: () => generation === historyRefreshGeneration,
+        })
+        if (generation !== historyRefreshGeneration) return
         for (const output of run.outputs ?? []) {
           if (output.status !== 'succeeded') continue
+          // 收割失败或已 ack 且本地没有副本时保留缺失占位。
           const key = outputAssetKey(run.id, output.output_index)
-          if (!map.has(key)) missing.add(key)
+          if (!map.has(key)) {
+            missing.add(key)
+          }
         }
       }
+      if (generation !== historyRefreshGeneration) return
+      // 合并历史快照期间终态收割刚保存的素材，避免旧快照覆盖最新内存索引。
+      for (const [key, asset] of outputAssetMap.value) {
+        if (!map.has(key)) map.set(key, asset)
+      }
+      for (const key of missing) {
+        if (map.has(key)) missing.delete(key)
+      }
+      outputAssetMap.value = map
       missingOutputKeys.value = missing
       if (currentRun.value) {
         const fresh = page.items.find((r) => r.id === currentRun.value?.id)
@@ -415,7 +481,9 @@ export function useCreativeStudio() {
     } catch (e) {
       console.error('Failed to refresh creative history:', e)
     } finally {
-      loadingHistory.value = false
+      if (generation === historyRefreshGeneration) {
+        loadingHistory.value = false
+      }
     }
   }
 
@@ -425,6 +493,8 @@ export function useCreativeStudio() {
   // 同时记录清空时间水位线，此后的历史列表只展示该时间之后创建的服务端任务。
   async function clearLocalData(): Promise<void> {
     stopPolling()
+    // 使清空过程中仍在进行的历史请求失效，避免旧素材重新写回内存。
+    historyRefreshGeneration++
     try {
       await clearAll()
     } catch (e) {

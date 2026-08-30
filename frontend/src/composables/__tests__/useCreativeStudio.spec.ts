@@ -362,11 +362,13 @@ describe('useCreativeStudio', () => {
     it('单个输出取回失败仅标 missing，不影响其它输出', async () => {
       const { studio } = await setupStudio()
       mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithOutputs())
-      mockedApi.getCreativeRunOutputContent.mockRejectedValueOnce(
-        Object.assign(new Error('gone'), { status: 410 }),
-      )
-      // 终态后 refreshHistory 会用服务端历史 + 本地素材重建 missing 集合：
-      // 输出 1 已在本地，输出 0 本地缺失
+      mockedApi.getCreativeRunOutputContent.mockImplementation((_runId: string, index: number) => {
+        if (index === 0) {
+          return Promise.reject(Object.assign(new Error('gone'), { status: 410 }))
+        }
+        return Promise.resolve(new Blob(['img-1'], { type: 'image/png' }))
+      })
+      // 终态后 refreshHistory 会再次尝试自动恢复；输出 0 每次都失败，输出 1 已在本地。
       mockedApi.getCreativeRuns.mockResolvedValue({
         items: [succeededRunWithOutputs()],
         total: 1,
@@ -396,7 +398,6 @@ describe('useCreativeStudio', () => {
       expect(studio.missingOutputKeys.value.has('output:run-1:1')).toBe(false)
       expect(mockedStore.saveAsset).toHaveBeenCalledTimes(1)
       expect(mockedStore.saveAsset.mock.calls[0][0].outputIndex).toBe(1)
-      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledTimes(1)
       expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-1', 1)
     })
 
@@ -541,7 +542,7 @@ describe('useCreativeStudio', () => {
       expect(studio.runHistory.value.map((r) => r.id)).toEqual(['new-run'])
     })
 
-    it('服务端 outputs 与本地素材关联，缺 blob 标 missing 且不向服务端请求恢复', async () => {
+    it('历史刷新自动恢复未 ack 的服务端输出并关联本地素材', async () => {
       const { studio } = await setupStudio()
       const run = makeRun({
         id: 'run-7',
@@ -552,7 +553,7 @@ describe('useCreativeStudio', () => {
         ],
       })
       mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
-      // 本地只有输出 0
+      // 本地只有输出 0，输出 1 仍在服务端 transient 中。
       const localOutput = {
         key: 'output:run-7:0',
         kind: 'output' as const,
@@ -569,10 +570,128 @@ describe('useCreativeStudio', () => {
 
       expect(studio.runHistory.value.map((r) => r.id)).toEqual(['run-7'])
       expect(studio.outputAssetMap.value.get('output:run-7:0')).toEqual(localOutput)
-      expect(studio.missingOutputKeys.value.has('output:run-7:1')).toBe(true)
+      expect(studio.outputAssetMap.value.has('output:run-7:1')).toBe(true)
+      expect(studio.missingOutputKeys.value.has('output:run-7:1')).toBe(false)
       expect(studio.missingOutputKeys.value.has('output:run-7:0')).toBe(false)
-      // 绝不在刷新历史时向服务端请求恢复素材
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-7', 1)
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-7', 1)
+    })
+
+    it('历史刷新自动收割尚未 ack 的服务端输出', async () => {
+      const { studio } = await setupStudio()
+      const run = makeRun({
+        id: 'run-history-recover',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      const blob = new Blob(['history-image'], { type: 'image/png' })
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
+      mockedApi.getCreativeRunOutputContent.mockResolvedValue(blob)
+
+      await studio.refreshHistory()
+
+      expect(mockedApi.getCreativeRunOutputContent).toHaveBeenCalledWith('run-history-recover', 0)
+      expect(mockedStore.saveAsset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'output:run-history-recover:0',
+          kind: 'output',
+          blob,
+        }),
+      )
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-history-recover', 0)
+      expect(studio.outputAssetMap.value.get('output:run-history-recover:0')?.blob).toBe(blob)
+      expect(studio.missingOutputKeys.value.has('output:run-history-recover:0')).toBe(false)
+    })
+
+    it('本地已有未 ack 素材时只重试 ack，不重复下载', async () => {
+      const { studio } = await setupStudio()
+      const run = makeRun({
+        id: 'run-local-recover',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      const localOutput = {
+        key: 'output:run-local-recover:0',
+        kind: 'output' as const,
+        blob: new Blob(['local-image']),
+        runId: 'run-local-recover',
+        outputIndex: 0,
+        createdAt: 1,
+      }
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
+      mockedStore.listAssets.mockImplementation((kind: string) =>
+        Promise.resolve(kind === 'output' ? [localOutput] : []),
+      )
+
+      await studio.refreshHistory()
+
       expect(mockedApi.getCreativeRunOutputContent).not.toHaveBeenCalled()
+      expect(mockedApi.ackCreativeRunOutput).toHaveBeenCalledWith('run-local-recover', 0)
+      expect(studio.outputAssetMap.value.get(localOutput.key)).toEqual(localOutput)
+      expect(studio.missingOutputKeys.value.has(localOutput.key)).toBe(false)
+    })
+
+    it('本地保存成功但 ack 失败时仍保留素材，不标记 missing', async () => {
+      const { studio } = await setupStudio()
+      const run = makeRun({
+        id: 'run-ack-retry',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
+      mockedApi.ackCreativeRunOutput.mockRejectedValue(new Error('ack network error'))
+
+      await studio.refreshHistory()
+
+      expect(mockedStore.saveAsset).toHaveBeenCalledTimes(1)
+      expect(studio.outputAssetMap.value.has('output:run-ack-retry:0')).toBe(true)
+      expect(studio.missingOutputKeys.value.has('output:run-ack-retry:0')).toBe(false)
+    })
+
+    it('已 ack 且本地无素材时不尝试从服务端恢复', async () => {
+      const { studio } = await setupStudio()
+      const run = makeRun({
+        id: 'run-acked-missing',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded', acked_at: 1725000000 }],
+      })
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [run], total: 1 })
+
+      await studio.refreshHistory()
+
+      expect(mockedApi.getCreativeRunOutputContent).not.toHaveBeenCalled()
+      expect(mockedApi.ackCreativeRunOutput).not.toHaveBeenCalled()
+      expect(studio.missingOutputKeys.value.has('output:run-acked-missing:0')).toBe(true)
+    })
+
+    it('并发历史刷新只接受最新请求，旧响应不能覆盖新列表', async () => {
+      const { studio } = await setupStudio()
+      const oldRun = makeRun({ id: 'run-old', status: 'succeeded' })
+      const newRun = makeRun({
+        id: 'run-new',
+        status: 'succeeded',
+        outputs: [{ output_index: 0, status: 'succeeded' }],
+      })
+      let resolveOld!: (page: { items: CreativeRun[]; total: number }) => void
+      mockedApi.getCreativeRuns
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveOld = resolve
+            }),
+        )
+        .mockResolvedValueOnce({ items: [newRun], total: 1 })
+
+      const oldRefresh = studio.refreshHistory()
+      await Promise.resolve()
+      const newRefresh = studio.refreshHistory()
+      await newRefresh
+
+      resolveOld({ items: [oldRun], total: 1 })
+      await oldRefresh
+
+      expect(studio.runHistory.value.map((run) => run.id)).toEqual(['run-new'])
+      expect(studio.outputAssetMap.value.has('output:run-new:0')).toBe(true)
     })
   })
 })

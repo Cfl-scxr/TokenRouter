@@ -1372,16 +1372,29 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 	for i := range results {
 		result := &results[i]
 		if result.Success {
-			successCount++
-			if s.TransientStore != nil && len(result.Bytes) > 0 {
-				if err := s.TransientStore.SaveOutput(ctx, runID, result.Index, result.Bytes, transientTTL); err != nil {
-					logger.L().Warn("creative.save_output_failed",
-						zap.String("run_id", runID),
-						zap.Int("output_index", result.Index),
-						zap.Error(err),
-					)
-				}
+			// 成功状态必须建立在输出已写入 transient store 的前提上，
+			// 否则客户端会收到 succeeded 却永远无法取回图片的假成功。
+			if s.TransientStore == nil {
+				return nil, fmt.Errorf("%w: transient store is not configured", ErrCreativeTransientFailed)
 			}
+			if len(result.Bytes) == 0 {
+				return nil, fmt.Errorf("%w: creative output %d is empty", ErrCreativeTransientFailed, result.Index)
+			}
+			if err := s.TransientStore.SaveOutput(ctx, runID, result.Index, result.Bytes, transientTTL); err != nil {
+				logger.L().Warn("creative.save_output_failed",
+					zap.String("run_id", runID),
+					zap.Int("output_index", result.Index),
+					zap.Error(err),
+				)
+				return nil, fmt.Errorf("%w: save output %d: %v", ErrCreativeTransientFailed, result.Index, err)
+			}
+			successCount++
+		}
+	}
+	// 所有成功输出都已写入 transient 后再更新数据库状态，避免多输出任务部分成功。
+	for i := range results {
+		result := &results[i]
+		if result.Success {
 			if err := s.Repo.UpdateCreativeRunOutput(ctx, runID, result.Index, CreativeRunOutputStatusSucceeded, result.Mime, int64(len(result.Bytes)), &expiresAt, "", ""); err != nil {
 				return nil, err
 			}

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -207,6 +208,74 @@ func TestCreativeSucceedRunIdempotentSettlement(t *testing.T) {
 	outputs := repo.outputs[runID]
 	require.Len(t, outputs, 1)
 	require.Equal(t, CreativeRunOutputStatusSucceeded, outputs[0].Status)
+}
+
+// TestCreativeSucceedRunRequiresTransientOutput 校验任务成功前必须先持久化输出。
+func TestCreativeSucceedRunRequiresTransientOutput(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*CreativePublicService)
+		bytes     []byte
+	}{
+		{
+			name: "transient store missing",
+			configure: func(svc *CreativePublicService) {
+				svc.TransientStore = nil
+			},
+		},
+		{
+			name: "save output failed",
+			configure: func(svc *CreativePublicService) {
+				svc.TransientStore.(*creativeFakeTransient).saveOutputErr = errors.New("redis unavailable")
+			},
+		},
+		{
+			name:  "empty output",
+			bytes: []byte{},
+			configure: func(svc *CreativePublicService) {
+				// 使用默认 fake transient，校验空字节在写入前被拒绝。
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc := newCreativeTestService()
+			repo := svc.Repo.(*creativeFakeRunRepo)
+			accountID := int64(55)
+			runID := "crun_transientrequired"
+			repo.runs[runID] = &CreativeRun{
+				RunID:                runID,
+				UserID:               7,
+				GroupID:              12,
+				APIKeyID:             900,
+				AccountID:            &accountID,
+				Model:                "gemini-3.1-flash-image",
+				Operation:            CreativeOperationGenerate,
+				RequestedOutputCount: 1,
+				Status:               CreativeRunStatusRunning,
+				EstimatedCost:        0.02,
+				BaseUnitPrice:        0.02,
+			}
+			repo.outputs[runID] = []*CreativeRunOutput{{
+				RunID: runID, OutputIndex: 0, Status: CreativeRunOutputStatusPending,
+			}}
+			test.configure(svc)
+
+			outputBytes := test.bytes
+			if outputBytes == nil {
+				outputBytes = []byte("image")
+			}
+			_, err := svc.SucceedRun(context.Background(), runID, accountID, []CreativeOutputResult{{
+				Index: 0, Success: true, Bytes: outputBytes, Mime: "image/png",
+			}})
+
+			require.ErrorIs(t, err, ErrCreativeTransientFailed)
+			require.Equal(t, CreativeRunStatusRunning, repo.runs[runID].Status)
+			require.Equal(t, CreativeRunOutputStatusPending, repo.outputs[runID][0].Status)
+			require.Equal(t, 0, svc.BillingRepo.(*creativeFakeBillingRepo).captureN)
+		})
+	}
 }
 
 func stringValue(v *string) string {

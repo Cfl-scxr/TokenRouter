@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -125,6 +126,27 @@ func TestCreativeWorkerSuccessPath(t *testing.T) {
 	require.Equal(t, 0, f.billing.reserveN)
 	require.Equal(t, 1, f.billing.captureN)
 	require.Equal(t, 0, f.billing.releaseN)
+}
+
+// TestCreativeWorkerRetriesTransientOutputFailure 校验输出暂存失败时沿用结算重试路径。
+func TestCreativeWorkerRetriesTransientOutputFailure(t *testing.T) {
+	f := newCreativeWorkerFixture()
+	runID := "crun_workeroutputretry1"
+	seedCreativeRun(f, runID, true)
+	f.store.saveOutputErr = errors.New("redis unavailable")
+	f.exec.result = &CreativeExecuteResult{
+		Outputs:   []CreativeOutput{{Index: 0, Bytes: []byte("img"), Mime: "image/png"}},
+		AccountID: 55,
+	}
+
+	result, err := f.worker.process(context.Background(), runID)
+	require.NoError(t, err)
+	require.False(t, result.Terminal)
+	require.Greater(t, result.RequeueAfter, time.Duration(0))
+	require.Equal(t, 1, f.repo.runs[runID].AttemptCount)
+	require.Equal(t, CreativeRunStatusRunning, f.repo.runs[runID].Status)
+	require.Equal(t, CreativeRunOutputStatusPending, f.repo.outputs[runID][0].Status)
+	require.Equal(t, 0, f.billing.captureN)
 }
 
 func TestCreativeWorkerRetryableError(t *testing.T) {
