@@ -58,9 +58,10 @@ const POLL_FAST_WINDOW = 10000
 // 画布桥接：视图注册后，收割成功的输出自动放上画布，历史里的输出可一键导入画布
 export interface CreativeCanvasBridge {
   // 收割成功（save + ack 后）把输出图片放到画布
-  placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): void
+  // 返回 Promise 时，收割流程会等待当前图片完成上板再处理下一张，避免并发争用画布位置。
+  placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): void | Promise<void>
   // 把历史里的本地输出素材放到画布（与自动上板同一入口）
-  importToCanvas(blob: Blob, runId: string, outputIndex: number): void
+  importToCanvas(blob: Blob, runId: string, outputIndex: number): void | Promise<void>
 }
 
 // group + model 合成选项 key
@@ -397,7 +398,8 @@ export function useCreativeStudio() {
         if (options.placeOnCanvas) {
           // 本地保存 + ack（或 ack 失败但本地已保存）后再上画布；画布异常不影响收割结果。
           try {
-            canvasBridge?.placeOutput({ blob: asset.blob, runId: run.id, outputIndex: output.output_index })
+            // 画布上板是异步的，必须等待当前输出完成，确保多张图片按顺序排布且全部可见。
+            await canvasBridge?.placeOutput({ blob: asset.blob, runId: run.id, outputIndex: output.output_index })
           } catch (e) {
             console.error(`Failed to place creative output ${key} on canvas:`, e)
           }

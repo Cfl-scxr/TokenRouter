@@ -453,6 +453,35 @@ describe('useCreativeStudio', () => {
       expect(studio.missingOutputKeys.value.size).toBe(0)
     })
 
+    it('多输出上板按顺序等待前一张完成，避免并发覆盖画布状态', async () => {
+      const { studio } = await setupStudio()
+      mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())
+
+      let resolveFirst!: () => void
+      const firstPlacementDone = new Promise<void>((resolve) => {
+        resolveFirst = resolve
+      })
+      const started: number[] = []
+      const bridge = {
+        placeOutput: vi.fn(({ outputIndex }: { outputIndex: number }) => {
+          started.push(outputIndex)
+          return outputIndex === 0 ? firstPlacementDone : Promise.resolve()
+        }),
+        importToCanvas: vi.fn(),
+      }
+      studio.registerCanvasBridge(bridge)
+
+      await studio.createRun({ sourceBlobs: [], maskBlob: null })
+      await vi.advanceTimersByTimeAsync(1000)
+
+      // 第一张尚未完成时，收割流程不能启动第二次画布委托。
+      expect(started).toEqual([0])
+      resolveFirst()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(started).toEqual([0, 1])
+    })
+
     it('桥接 placeOutput 抛异常不影响收割与 ack', async () => {
       const { studio } = await setupStudio()
       mockedApi.getCreativeRun.mockResolvedValue(succeededRunWithTwoOutputs())

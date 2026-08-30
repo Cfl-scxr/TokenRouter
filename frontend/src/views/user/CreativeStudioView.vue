@@ -125,10 +125,10 @@ onMounted(() => {
   // 画布桥接：收割自动上板 + 历史输出导入画布；桥接方法自身保证异常不外溢
   studio.registerCanvasBridge({
     placeOutput: (asset) => {
-      void canvasRef.value?.placeOutput(asset)
+      return canvasRef.value?.placeOutput(asset)
     },
     importToCanvas: (blob, runId, outputIndex) => {
-      void canvasRef.value?.placeOutput({ blob, runId, outputIndex })
+      return canvasRef.value?.placeOutput({ blob, runId, outputIndex })
     },
   })
   void studio.loadModels()

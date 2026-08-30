@@ -123,7 +123,7 @@
       <button
         type="button"
         class="canvas-tool-btn"
-        :disabled="!selectedImage"
+        :disabled="selectedObjectCount === 0"
         :title="t('creative.canvas.removeSelected')"
         @click="removeSelected"
       >
@@ -395,6 +395,8 @@ const brushSize = ref(28)
 const brushShape = ref<BrushShape>('round')
 // 当前选中的图片对象（fabric 活动对象；画笔落笔时 fabric 会丢弃选中，不能作为 mask 锚点依据）
 const selectedImage = shallowRef<FabricObject | null>(null)
+// 当前 Fabric 活动选区内的对象数量；框选多张图片时也要允许使用删除工具
+const selectedObjectCount = ref(0)
 // mask 锚定的图片对象：选中图片时设置，与 fabric 选中态解耦，避免画笔落笔自动丢弃选中后涂抹被中断
 const inpaintAnchor = shallowRef<FabricObject | null>(null)
 // 手动暂停涂抹（移动视角 / 换选图片后再恢复）
@@ -425,6 +427,8 @@ let panAnimFrame: number | null = null
 const runtimeBlobs = new Map<string, Blob>()
 // 上一个放置位置（场景坐标，right/bottom 为右缘 / 下缘）
 let lastPlaced: { right: number; top: number; bottom: number } | null = null
+// 多个异步输出共享同一画布时串行排布，避免同时计算到相同的上板位置
+let outputPlacementQueue: Promise<void> = Promise.resolve()
 // mask 笔迹撤销栈（LIFO，上限见 MASK_UNDO_LIMIT）：记录笔迹新增与整体清除
 type MaskUndoEntry =
   | { type: 'add'; path: FabricObject }
@@ -615,14 +619,17 @@ function bindCanvasEvents(): void {
     scheduleSceneSave()
   })
   canvas.on('selection:created', (event) => {
+    selectedObjectCount.value = canvas?.getActiveObjects().length || event.selected?.length || 0
     syncEditRefFromSelection(event.selected)
     onImageSelected(event.selected?.length === 1 ? pickImage(event.selected[0]) : null)
   })
   canvas.on('selection:updated', (event) => {
+    selectedObjectCount.value = canvas?.getActiveObjects().length || event.selected?.length || 0
     syncEditRefFromSelection(event.selected)
     onImageSelected(event.selected?.length === 1 ? pickImage(event.selected[0]) : null)
   })
   canvas.on('selection:cleared', () => {
+    selectedObjectCount.value = 0
     selectedImage.value = null
     // fabric 画笔落笔时会自动丢弃选中对象：涂抹期间保留锚点，仅手动取消选中才清空；
     // 编辑模式的参考图集合与选中态解耦，取消选中不影响已选参考
@@ -695,11 +702,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return
   }
   if (painting.value || event.key !== 'Delete' && event.key !== 'Backspace') return
-  const active = canvas.getActiveObject()
-  if (!active) return
+  const selected = canvas.getActiveObjects()
+  if (!selected.length) return
   event.preventDefault()
-  canvas.remove(active)
+  // ActiveSelection 只是选区包装对象，必须移除其中的实际图片对象，否则框选删除不会生效。
   canvas.discardActiveObject()
+  canvas.remove(...selected)
   canvas.requestRenderAll()
 }
 
@@ -1109,6 +1117,7 @@ async function addImageToScene(
     })
     canvas.add(image)
     canvas.setActiveObject(image)
+    selectedObjectCount.value = 1
     selectedImage.value = image
     refreshResolutionTag(image)
     canvas.requestRenderAll()
@@ -1122,8 +1131,15 @@ async function addImageToScene(
   }
 }
 
-// 收割成功的输出自动上板：记录 blob → 放置 → 视角移动到新图中心
+// 收割成功的输出自动上板：通过队列串行执行，记录 blob → 放置 → 视角移动到新图中心
 async function placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): Promise<void> {
+  const placement = outputPlacementQueue.then(() => placeOutputNow(asset))
+  // 队列本身不能被单次失败阻塞；具体错误由 placeOutputNow 自行处理并转为已完成。
+  outputPlacementQueue = placement.catch(() => undefined)
+  await placement
+}
+
+async function placeOutputNow(asset: { blob: Blob; runId: string; outputIndex: number }): Promise<void> {
   if (!canvas) return
   const assetKey = outputAssetKey(asset.runId, asset.outputIndex)
   runtimeBlobs.set(assetKey, asset.blob)
@@ -1291,10 +1307,11 @@ async function getMaskBlob(): Promise<Blob | null> {
 
 function removeSelected(): void {
   if (!canvas) return
-  const active = canvas.getActiveObject()
-  if (!active) return
-  canvas.remove(active)
+  const selected = canvas.getActiveObjects()
+  if (!selected.length) return
+  // ActiveSelection 不是画布中的实际图片，逐个移除其成员才能删除框选的全部图片。
   canvas.discardActiveObject()
+  canvas.remove(...selected)
   canvas.requestRenderAll()
 }
 
@@ -1329,6 +1346,7 @@ function resetCanvas(): void {
   lastPlaced = null
   runtimeBlobs.clear()
   selectedImage.value = null
+  selectedObjectCount.value = 0
   canvas.requestRenderAll()
   scheduleSceneSave()
 }
