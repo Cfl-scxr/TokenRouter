@@ -551,8 +551,8 @@ func newCreativeTestService() *CreativePublicService {
 		TransientStore:    newCreativeFakeTransient(),
 		BillingRepo:       &creativeFakeBillingRepo{},
 		Settings: &creativeFakeSettingReader{enabled: true, models: []CreativeModelSetting{
-			{GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
-			{GroupID: 12, Model: "grok-imagine", Operations: []string{CreativeOperationGenerate}},
+			{GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+			{GroupID: 12, Model: "grok-imagine", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
 		}},
 		Config: &config.Config{
 			Creative: config.CreativeConfig{
@@ -586,6 +586,25 @@ func validCreateParams() CreateCreativeRunParamsPublic {
 		ImageSize:    "1K",
 		ResponseMIME: "image/png",
 	}
+}
+
+// configureOpenAICreativeTestService 将校验夹具切换到 OpenAI，以覆盖仍保留的 PNG inpaint 规则。
+func configureOpenAICreativeTestService(svc *CreativePublicService) {
+	group := newCreativeTestGroup()
+	group.Name = "OpenAI Image"
+	group.Platform = PlatformOpenAI
+	svc.GroupRepo.(*creativeFakeGroupRepo).byID[group.ID] = group
+	svc.AccountRepo.(*creativeFakeAccountRepo).byGroup[group.ID] = []Account{{
+		ID:          57,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-image-2": "gpt-image-2"}},
+	}}
+	svc.Settings.(*creativeFakeSettingReader).models = []CreativeModelSetting{{
+		GroupID: group.ID, Model: "gpt-image-2",
+		Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint},
+	}}
 }
 
 // TestValidateCreateParams 覆盖 CreateRun 的参数校验矩阵。
@@ -624,6 +643,32 @@ func TestValidateCreateParams(t *testing.T) {
 		params.Operation = CreativeOperationInpaint
 		_, err := svc.validateCreateParams(context.Background(), 7, &params)
 		require.ErrorIs(t, err, ErrCreativeOperationUnsupported)
+	})
+
+	t.Run("grok edit 支持单图且最多三张源图", func(t *testing.T) {
+		svc := newCreativeTestService()
+		group := newCreativeTestGroup()
+		group.Platform = PlatformGrok
+		svc.GroupRepo.(*creativeFakeGroupRepo).byID[12] = group
+		svc.AccountRepo.(*creativeFakeAccountRepo).byGroup[12] = []Account{{
+			ID: 56, Platform: PlatformGrok, Status: StatusActive, Schedulable: true,
+			Credentials: map[string]any{"model_mapping": map[string]any{"grok-imagine": "grok-imagine"}},
+		}}
+		params := validCreateParams()
+		params.Model = "grok-imagine"
+		params.Operation = CreativeOperationEdit
+		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
+		_, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.NoError(t, err)
+
+		params.SourceImages = []CreativeInputImage{
+			{Bytes: makeTestPNG(t, 2, 2), Mime: "image/png"},
+			{Bytes: makeTestPNG(t, 2, 2), Mime: "image/png"},
+			{Bytes: makeTestPNG(t, 2, 2), Mime: "image/png"},
+			{Bytes: makeTestPNG(t, 2, 2), Mime: "image/png"},
+		}
+		_, err = svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
 	})
 
 	t.Run("prompt 超长", func(t *testing.T) {
@@ -665,16 +710,40 @@ func TestValidateCreateParams(t *testing.T) {
 
 	t.Run("inpaint 缺 mask", func(t *testing.T) {
 		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
 		params := validCreateParams()
+		params.Model = "gpt-image-2"
 		params.Operation = CreativeOperationInpaint
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
 		_, err := svc.validateCreateParams(context.Background(), 7, &params)
 		require.ErrorIs(t, err, ErrCreativeMaskRequired)
 	})
 
-	t.Run("mask 非 PNG", func(t *testing.T) {
+	t.Run("gemini inpaint 直接拒绝", func(t *testing.T) {
 		svc := newCreativeTestService()
 		params := validCreateParams()
+		params.Operation = CreativeOperationInpaint
+		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
+		params.Mask = &CreativeInputImage{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}
+		_, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeOperationUnsupported)
+	})
+
+	t.Run("gemini edit 不接受 mask", func(t *testing.T) {
+		svc := newCreativeTestService()
+		params := validCreateParams()
+		params.Operation = CreativeOperationEdit
+		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
+		params.Mask = &CreativeInputImage{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}
+		_, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+	})
+
+	t.Run("mask 非 PNG", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
+		params := validCreateParams()
+		params.Model = "gpt-image-2"
 		params.Operation = CreativeOperationInpaint
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
 		params.Mask = &CreativeInputImage{Bytes: []byte{0xFF, 0xD8, 0xFF, 0x00}, Mime: "image/jpeg"}
@@ -684,7 +753,9 @@ func TestValidateCreateParams(t *testing.T) {
 
 	t.Run("mask 尺寸不一致", func(t *testing.T) {
 		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
 		params := validCreateParams()
+		params.Model = "gpt-image-2"
 		params.Operation = CreativeOperationInpaint
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
 		params.Mask = &CreativeInputImage{Bytes: makeTestPNG(t, 16, 16), Mime: "image/png"}
@@ -694,7 +765,9 @@ func TestValidateCreateParams(t *testing.T) {
 
 	t.Run("非 inpaint 不允许 mask", func(t *testing.T) {
 		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
 		params := validCreateParams()
+		params.Model = "gpt-image-2"
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}
 		params.Mask = &CreativeInputImage{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}
 		_, err := svc.validateCreateParams(context.Background(), 7, &params)
@@ -711,7 +784,9 @@ func TestValidateCreateParams(t *testing.T) {
 
 	t.Run("合法 inpaint 通过且默认值生效", func(t *testing.T) {
 		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
 		params := validCreateParams()
+		params.Model = "gpt-image-2"
 		params.Operation = CreativeOperationInpaint
 		params.ImageSize = ""
 		params.SourceImages = []CreativeInputImage{{Bytes: makeTestPNG(t, 8, 8), Mime: "image/png"}}

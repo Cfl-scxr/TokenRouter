@@ -75,7 +75,7 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 
 `home_featured_models` 保存首页「已支持的 AI 模型」板块的精选模型 ID 列表（JSON 数组，最多 12 个，按数组顺序展示），在管理端“系统设置 - 通用设置”的「首页模型展示」卡片维护，选项来自公开模型广场分组。它通过公开设置接口和 SSR 注入同时下发，首页按 ID 在市场分组中解析模型；列表为空或全部解析不到时，首页回退到按服务商类别聚合的默认卡片。该设置可热更新、不需要迁移（读路径容忍缺键按空列表处理）；管理更新请求省略该字段时保留当前值，写入前会去掉空白项、去重并拒绝超长列表。
 
-`creative_model_settings` 保存创作台允许使用的全局生图模型与能力白名单（JSON 数组），每项为 `group_id`、`model` 和 `operations`，能力值仅允许 `generate`、`edit`、`inpaint`。默认值为 `[]`，空列表表示创作台没有任何可用生图模型；不需要数据库迁移。管理 PUT 省略字段时保留旧值，显式发送 `[]` 时清空；保存校验正整数分组 ID、非空模型名、至少一项能力和分组+模型唯一性。读取损坏 JSON 或读取失败按空列表处理并记录日志，设置不建立外键，因此失效分组/账号配置会保留并在恢复后重新生效。
+`creative_model_settings` 保存创作台允许使用的全局生图模型与能力白名单（JSON 数组），每项为 `group_id`、`model` 和 `operations`，通用能力值仅允许 `generate`、`edit`、`inpaint`，实际平台交集为 OpenAI 三项、Gemini/Grok 的 `generate`/`edit`。默认值为 `[]`，空列表表示创作台没有任何可用生图模型；不需要数据库迁移。管理 PUT 省略字段时保留旧值，显式发送 `[]` 时清空；保存校验正整数分组 ID、非空模型名、至少一项能力和分组+模型唯一性，并按可解析的实际分组平台移除 Gemini 的 `inpaint`，移除后无能力的条目删除；无法解析的历史分组暂时保留。读取损坏 JSON 或读取失败按空列表处理并记录日志，设置不建立外键，因此失效分组/账号配置会保留并在恢复后重新生效。
 
 `usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。排行行的 `user_id` 表示付款主体；团队 Key 的请求按 `billing_user_id` 归到团队 Owner，Usage 明细中的 `user_id` 仍表示实际行为成员。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。
 

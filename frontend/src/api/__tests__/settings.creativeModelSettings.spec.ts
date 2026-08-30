@@ -36,7 +36,7 @@ describe("creative model settings API", () => {
       group_name: "Images",
       platform: "grok",
       model: "grok-imagine",
-      operations: ["generate"],
+      operations: ["generate", "edit"],
     }];
     adapter.mockResolvedValue(jsonResponse(candidates));
 

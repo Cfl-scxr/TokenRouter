@@ -33,8 +33,14 @@ type creativeGeminiGenerateRequest struct {
 }
 
 // executeGemini 执行 Gemini 平台任务（含 vertex 服务账号与 AI Studio apikey/OAuth）。
-// 统一使用原生 generateContent：prompt 与源图/mask 以 inlineData 放入 parts。
+// 统一使用原生 generateContent：prompt 与参考图以 inlineData 放入 parts。
 func (e *CreativeExecutor) executeGemini(ctx context.Context, run CreativeRun, payload CreativeRunPayload, account *Account, upstreamModel string) ([]CreativeOutput, error) {
+	if run.Operation == CreativeOperationInpaint {
+		return nil, creativeNonRetryableError("gemini platform does not support creative operation %s", run.Operation)
+	}
+	if run.Operation != CreativeOperationGenerate && run.Operation != CreativeOperationEdit {
+		return nil, creativeNonRetryableError("gemini platform does not support creative operation %s", run.Operation)
+	}
 	if e.gateway == nil {
 		return nil, errors.New("creative gemini gateway is not configured")
 	}
@@ -156,9 +162,9 @@ func (e *CreativeExecutor) applyGeminiAuth(ctx context.Context, req *http.Reques
 }
 
 // buildCreativeGeminiRequest 构造 Gemini generateContent 请求体：
-// parts 为 prompt 文本 + 每张源图 inlineData；inpaint 时 mask 作为额外图片附加，prompt 描述重绘区域。
+// parts 为 prompt 文本与每张参考图 inlineData；创作台不向 Gemini 发送独立 mask。
 func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, upstreamModel string) creativeGeminiGenerateRequest {
-	parts := make([]geminiPart, 0, len(payload.Sources)+2)
+	parts := make([]geminiPart, 0, len(payload.Sources)+1)
 	if prompt := strings.TrimSpace(payload.Prompt); prompt != "" {
 		parts = append(parts, geminiPart{Text: prompt})
 	}
@@ -170,16 +176,6 @@ func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, ups
 		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
 			MimeType: mime,
 			Data:     base64.StdEncoding.EncodeToString(source.Bytes),
-		}})
-	}
-	if payload.Mask != nil {
-		mime := strings.TrimSpace(payload.Mask.Mime)
-		if mime == "" {
-			mime = "image/png"
-		}
-		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
-			MimeType: mime,
-			Data:     base64.StdEncoding.EncodeToString(payload.Mask.Bytes),
 		}})
 	}
 	imageConfig := &creativeGeminiImageConfig{

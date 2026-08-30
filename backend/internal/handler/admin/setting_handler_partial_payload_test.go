@@ -114,12 +114,52 @@ func TestUpdateSettingsCreativeModelSettingsPartialSemantics(t *testing.T) {
 	require.JSONEq(t, "[]", repo.values[service.SettingKeyCreativeModelSettings])
 }
 
+// TestUpdateSettingsNormalizesGeminiInpaintBeforeSave 校验管理员保存会清理旧 Gemini inpaint。
+func TestUpdateSettingsNormalizesGeminiInpaintBeforeSave(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	h.SetCreativeModelReader(&creativeModelCandidateReaderStub{sanitizeGemini: true})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"creative_model_settings": []map[string]any{{
+			"group_id":   12,
+			"model":      "gemini-3.1-flash-image",
+			"operations": []string{"generate", "inpaint"},
+		}},
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[{"group_id":12,"model":"gemini-3.1-flash-image","operations":["generate"]}]`, repo.values[service.SettingKeyCreativeModelSettings])
+}
+
 type creativeModelCandidateReaderStub struct {
-	candidates []service.CreativeModelCandidate
+	candidates     []service.CreativeModelCandidate
+	sanitizeGemini bool
 }
 
 func (s *creativeModelCandidateReaderStub) ListCreativeModelCandidates(context.Context) ([]service.CreativeModelCandidate, error) {
 	return s.candidates, nil
+}
+
+func (s *creativeModelCandidateReaderStub) NormalizeCreativeModelSettingsForSave(_ context.Context, input []service.CreativeModelSetting) ([]service.CreativeModelSetting, error) {
+	if !s.sanitizeGemini {
+		return input, nil
+	}
+	normalized, err := service.NormalizeCreativeModelSettings(input)
+	if err != nil {
+		return nil, err
+	}
+	for i := range normalized {
+		if normalized[i].GroupID != 12 {
+			continue
+		}
+		filtered := normalized[i].Operations[:0]
+		for _, operation := range normalized[i].Operations {
+			if operation != service.CreativeOperationInpaint {
+				filtered = append(filtered, operation)
+			}
+		}
+		normalized[i].Operations = filtered
+	}
+	return normalized, nil
 }
 
 func TestListCreativeModelCandidates(t *testing.T) {

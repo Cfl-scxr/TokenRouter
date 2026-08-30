@@ -301,13 +301,13 @@ func (s *CreativePublicService) creativeResolvedImageUnitPrice(ctx context.Conte
 }
 
 // creativeOperationsForPlatform 返回分组平台支持的操作集合。
-// gemini（含 vertex 账号）与 openai（edits + mask 即 inpaint）支持全部三种，grok 仅文生图。
+// OpenAI 保留 mask inpaint；Gemini 使用普通参考图 edit；Grok 使用 xAI 图片编辑端点。
 func creativeOperationsForPlatform(platform string) []string {
 	switch strings.TrimSpace(platform) {
-	case PlatformGemini, PlatformOpenAI:
+	case PlatformOpenAI:
 		return []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}
-	case PlatformGrok:
-		return []string{CreativeOperationGenerate}
+	case PlatformGemini, PlatformGrok:
+		return []string{CreativeOperationGenerate, CreativeOperationEdit}
 	default:
 		return nil
 	}
@@ -513,7 +513,7 @@ func defaultCreativeOpenAIModelCandidates() []string {
 }
 
 func defaultCreativeGrokModelCandidates() []string {
-	return []string{"grok-imagine", "grok-imagine-edit", "grok-imagine-image-1.0"}
+	return []string{"grok-imagine", "grok-imagine-edit", "grok-imagine-image-1.0", "grok-imagine-image-2.0"}
 }
 
 // ---------------------------------------------------------------------------
@@ -734,6 +734,9 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	}
 	if !operationAllowed {
 		return nil, ErrCreativeOperationUnsupported
+	}
+	if strings.TrimSpace(group.Platform) == PlatformGrok && operation == CreativeOperationEdit && len(params.SourceImages) > grokMediaMaxEditSourceImages {
+		return nil, ErrCreativeInvalidParams
 	}
 
 	prompt := strings.TrimSpace(params.Prompt)

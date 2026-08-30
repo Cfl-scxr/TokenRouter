@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -21,6 +22,39 @@ type CreativeModelCandidate struct {
 	Platform   string   `json:"platform"`
 	Model      string   `json:"model"`
 	Operations []string `json:"operations"`
+}
+
+// NormalizeCreativeModelSettingsForSave 按实际分组平台清理即将保存的能力白名单。
+// Gemini 的独立 PNG mask inpaint 已从创作台移除，OpenAI 的同名能力保持不变。
+// 无法解析的历史分组保留原配置，避免在不知道平台时误删管理员设置。
+func (s *CreativePublicService) NormalizeCreativeModelSettingsForSave(ctx context.Context, input []CreativeModelSetting) ([]CreativeModelSetting, error) {
+	normalized, err := NormalizeCreativeModelSettings(input)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.GroupRepo == nil {
+		return normalized, nil
+	}
+	out := make([]CreativeModelSetting, 0, len(normalized))
+	for _, item := range normalized {
+		group, lookupErr := s.GroupRepo.GetByIDLite(ctx, item.GroupID)
+		if lookupErr != nil || group == nil || strings.TrimSpace(group.Platform) != PlatformGemini {
+			out = append(out, item)
+			continue
+		}
+		operations := make([]string, 0, len(item.Operations))
+		for _, operation := range item.Operations {
+			if operation != CreativeOperationInpaint {
+				operations = append(operations, operation)
+			}
+		}
+		if len(operations) == 0 {
+			continue
+		}
+		item.Operations = operations
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // creativeOperationOrder 保证设置、候选和公开目录中的能力顺序稳定。

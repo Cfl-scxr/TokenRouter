@@ -309,7 +309,7 @@ func (smokeCreativeSettingReader) GetCreativeModelSettings(context.Context) []se
 	return []service.CreativeModelSetting{{
 		GroupID:    12,
 		Model:      "gemini-3.1-flash-image",
-		Operations: []string{service.CreativeOperationGenerate, service.CreativeOperationEdit, service.CreativeOperationInpaint},
+		Operations: []string{service.CreativeOperationGenerate, service.CreativeOperationEdit},
 	}}
 }
 

@@ -38,7 +38,7 @@ GET  /api/v1/creative/runs/{id}/outputs/{index}/content
 POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 ```
 
-`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k, price_2k, price_4k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。Gemini（含 Vertex 账号）与 OpenAI 分组支持 `generate`/`edit`/`inpaint`，Grok 分组仅支持 `generate`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
+`GET /creative/models` 返回当前用户可用分组与图片模型的组合（`data` 为 `{group_id, group_name, model, operations, image_sizes, price_1k, price_2k, price_4k}` 数组）：只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。OpenAI 分组支持 `generate`/`edit`/`inpaint`，Gemini（含 Vertex 账号）与 Grok 分组支持 `generate`/`edit`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
 
 管理员还可以在系统设置中配置全局生图模型白名单。`creative_model_settings` 是 `settings` 表中的 JSON 数组，每项精确绑定一个分组和模型，并声明允许的能力：
 
@@ -48,7 +48,7 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 ]
 ```
 
-`generate`、`edit`、`inpaint` 分别表示文生图、图生图和局部重绘。空数组（新安装和升级后的默认值）表示创作台没有任何可用生图模型；目录请求和新任务创建都 fail-closed。目录中的能力是管理员配置与平台执行器能力的交集，创建任务时会重新读取设置校验。配置不绑定外键，分组或账号暂时下线时保留设置，恢复后自动重新生效；已经排队的任务不因后续配置变更取消。
+`generate`、`edit`、`inpaint` 分别表示文生图、图生图和局部重绘。空数组（新安装和升级后的默认值）表示创作台没有任何可用生图模型；目录请求和新任务创建都 fail-closed。目录中的能力是管理员配置与平台执行器能力的交集：Gemini/Grok 不会暴露 `inpaint`，管理员保存时也会移除已解析为 Gemini 的旧 `inpaint`，而 OpenAI 的 `inpaint` 保留。配置不绑定外键，分组或账号暂时下线时保留设置，恢复后自动重新生效；已经排队的任务不因后续配置变更取消。
 
 `POST /creative/runs` 接受 `multipart/form-data`，只接受上传文件，不接受远程 URL：
 
@@ -68,7 +68,7 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 
 - 单文件（源图/mask）不超过 32 MiB，单次任务输入总量（全部源图 + mask）不超过 64 MiB；multipart 单字段读取上限 40 MiB（含头部余量）。
 - 上传文件 MIME 只接受 `image/png`、`image/jpeg`、`image/webp`，缺失或非法时按字节魔数嗅探。
-- `edit` 必须至少携带一张源图；`inpaint` 必须携带源图和 PNG mask，且 mask 尺寸必须与第一张源图一致；非 `inpaint` 操作携带 mask 直接拒绝。
+- `edit` 必须至少携带一张源图；Grok `edit` 最多接受 3 张源图；`inpaint` 仅 OpenAI 支持，必须携带源图和 PNG mask，且 mask 尺寸必须与第一张源图一致；非 `inpaint` 操作携带 mask 直接拒绝。
 - 除 `group_id` 外的字段缺失或非法返回 `400` 系列业务错误（如 `CREATIVE_INVALID_PARAMS`、`CREATIVE_MASK_REQUIRED`、`CREATIVE_MASK_SIZE_MISMATCH`）；分组不可用返回 `403`；余额不足以预占返回 `402 CREATIVE_INSUFFICIENT_BALANCE`；审核命中返回 `403 CREATIVE_CONTENT_BLOCKED`。
 - `Idempotency-Key` 请求头可选，最长 255 字符，语义见[幂等](#幂等)。
 
@@ -166,12 +166,12 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 执行器按分组平台直接构造上游 HTTP 请求，不经过本地 HTTP 回环；执行超时为 `creative.execute_timeout_seconds`（默认 300 秒）。单张输出不超过 32 MiB，同一任务内按 sha256 去重重复输出：
 
 - `openai`：`generate` 走 `/v1/images/generations`（JSON）；`edit`/`inpaint` 走 `/v1/images/edits`（multipart，多源图 + mask）。
-- `grok`：仅 `generate`（xAI images generations，OpenAI 协议兼容）；`edit`/`inpaint` 直接拒绝。
-- `gemini`：统一使用原生 `generateContent`，prompt 与源图/mask 以 inlineData 放入 parts；图片尺寸与比例位于 `generationConfig.imageConfig`；Vertex 高分辨率响应可能包含中间 thought image，执行器取最后一个图片 part 作为最终输出；`inpaint` 时 mask 作为额外 inline 图片附加。凭据按账号类型选择：API Key 账号用 `x-goog-api-key`，Vertex 服务账号与 OAuth 用 Bearer token。
+- `grok`：`generate` 走 `/v1/images/generations`；`edit` 走 `/v1/images/edits` 的 JSON 契约，单张源图放入 `image: {type: "image_url", url: "data:image/...;base64,..."}`，多张放入 `images` 数组，最多 3 张，并请求 `response_format: "b64_json"`；`inpaint` 直接拒绝。
+- `gemini`：`generate` 与普通参考图 `edit` 统一使用原生 `generateContent`，prompt 与源图以 inlineData 放入 parts，不发送独立 mask；图片尺寸与比例位于 `generationConfig.imageConfig`；Vertex 高分辨率响应可能包含中间 thought image，执行器取最后一个图片 part 作为最终输出。凭据按账号类型选择：API Key 账号用 `x-goog-api-key`，Vertex 服务账号与 OAuth 用 Bearer token。
 
 模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按上述平台候选回退并经过账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回并按已知模型能力收窄；GPT Image 2 即使分组未填写 4K 覆盖价也会开放 `4K` 并沿用默认价；完全未配置时回退平台默认档位（GPT Image 2 为 `1K/2K/4K`，其它 OpenAI 图片模型为 `1K/2K`，Grok 为 `1K/2K`，Gemini 的 4K 仅对支持高分辨率的型号开放，`gemini-2.5-flash-image` 与 `gemini-3.1-flash-lite-image` 固定为 `1K`）。接口同时返回按模型广场分组倍率计算的三档展示单价，创作台预估费用直接使用所选档位价格，与模型广场一致。
 
-管理员候选接口 `GET /api/v1/admin/settings/creative-model-candidates` 返回当前 active、启用图片生成且存在可调度图片模型的全部分组和模型，不按管理员用户分组权限过滤，因此可以配置 exclusive 分组。OpenAI/Gemini 候选返回执行器支持的三项能力，Grok 只返回 `generate`。
+管理员候选接口 `GET /api/v1/admin/settings/creative-model-candidates` 返回当前 active、启用图片生成且存在可调度图片模型的全部分组和模型，不按管理员用户分组权限过滤，因此可以配置 exclusive 分组。OpenAI 候选返回 `generate`/`edit`/`inpaint`，Gemini/Grok 候选返回 `generate`/`edit`。
 
 ## 前端本地存储边界
 

@@ -72,6 +72,30 @@ func TestCreativeOperationsForModelIntersectsPlatformSupport(t *testing.T) {
 	require.Empty(t, operations)
 }
 
+// TestNormalizeCreativeModelSettingsForSaveByPlatform 校验保存时按实际平台清理能力。
+func TestNormalizeCreativeModelSettingsForSaveByPlatform(t *testing.T) {
+	svc := newCreativeTestService()
+	groupRepo := svc.GroupRepo.(*creativeFakeGroupRepo)
+	openai := newCreativeTestGroup()
+	openai.ID = 13
+	openai.Name = "OpenAI Image"
+	openai.Platform = PlatformOpenAI
+	groupRepo.byID[13] = openai
+
+	got, err := svc.NormalizeCreativeModelSettingsForSave(context.Background(), []CreativeModelSetting{
+		{GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationInpaint}},
+		{GroupID: 13, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationInpaint}},
+		{GroupID: 12, Model: "gemini-only-inpaint", Operations: []string{CreativeOperationInpaint}},
+		{GroupID: 999, Model: "legacy", Operations: []string{CreativeOperationInpaint}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []CreativeModelSetting{
+		{GroupID: 12, Model: "gemini-3.1-flash-image", Operations: []string{CreativeOperationGenerate}},
+		{GroupID: 13, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationInpaint}},
+		{GroupID: 999, Model: "legacy", Operations: []string{CreativeOperationInpaint}},
+	}, got)
+}
+
 func TestSettingServiceGetCreativeModelSettings(t *testing.T) {
 	repo := &settingUpdateRepoStub{values: map[string]string{
 		SettingKeyCreativeModelSettings: `[{"group_id":12,"model":"gpt-image-2","operations":["generate"]}]`,

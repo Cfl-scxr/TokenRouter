@@ -10018,8 +10018,19 @@ function normalizeCreativeModelSettingsForSave(): CreativeModelSetting[] | null 
   for (const item of form.creative_model_settings) {
     const groupID = Number(item.group_id);
     const model = String(item.model || "").trim();
-    const operations = creativeOperationChoices.filter((operation) => item.operations.includes(operation));
-    if (!Number.isSafeInteger(groupID) || groupID <= 0 || !model || operations.length === 0) {
+    const candidate = creativeModelCandidates.value.find(
+      (entry) => creativeModelSettingKey(entry) === creativeModelSettingKey({ group_id: groupID, model }),
+    );
+    // 候选已知时只提交平台实际支持的能力，避免旧 Gemini inpaint 被重新写回。
+    const operations = creativeOperationChoices.filter(
+      (operation) => item.operations.includes(operation) && (candidate?.operations.includes(operation) ?? true),
+    );
+    if (!Number.isSafeInteger(groupID) || groupID <= 0 || !model) {
+      return null;
+    }
+    if (operations.length === 0) {
+      // 已知候选但没有任何可用能力时删除该条目；未知历史分组仍按 fail-closed 保留原值。
+      if (candidate) continue;
       return null;
     }
     const key = creativeModelSettingKey({ group_id: groupID, model });

@@ -493,6 +493,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	// 管理端保存白名单时按实际分组平台收敛能力，清理已下线的 Gemini inpaint。
+	if req.CreativeModelSettings != nil {
+		if sanitizer, ok := h.creativeModelReader.(interface {
+			NormalizeCreativeModelSettingsForSave(context.Context, []service.CreativeModelSetting) ([]service.CreativeModelSetting, error)
+		}); ok {
+			normalized, normalizeErr := sanitizer.NormalizeCreativeModelSettingsForSave(c.Request.Context(), *req.CreativeModelSettings)
+			if normalizeErr != nil {
+				response.BadRequest(c, "Invalid creative model settings: "+normalizeErr.Error())
+				return
+			}
+			req.CreativeModelSettings = &normalized
+		}
+	}
 	auditReq := settingsAuditRequest(req)
 	omitted := omittedSettingKeys(sentFields)
 

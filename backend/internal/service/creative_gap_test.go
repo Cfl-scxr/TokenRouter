@@ -281,7 +281,7 @@ func TestCreativeListModelsFiltersAndContent(t *testing.T) {
 	require.NotEmpty(t, got.Data)
 	for _, item := range got.Data {
 		require.Equal(t, int64(12), item.GroupID, "无图片权限或不受支持的分组不得进入模型列表")
-		require.Equal(t, []string{"generate", "edit", "inpaint"}, item.Operations)
+		require.Equal(t, []string{"generate", "edit"}, item.Operations)
 		require.Equal(t, []string{"1K", "2K"}, item.ImageSizes)
 		require.InDelta(t, 0.02, item.Price1K, 1e-9)
 		require.InDelta(t, 0.04, item.Price2K, 1e-9)
@@ -339,7 +339,7 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 		},
 	}}
 
-	// grok 分组：无显式图片价 → 尺寸回退 ["1K","2K"]，操作仅 generate。
+	// grok 分组：无显式图片价 → 尺寸回退 ["1K","2K"]，操作支持 generate/edit。
 	grokGroup := newCreativeTestGroup()
 	grokGroup.ID = 23
 	grokGroup.Name = "Grok Imagine"
@@ -377,6 +377,14 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 			"model_mapping": map[string]any{"gpt-image-2": "gpt-image-2"},
 		},
 	}}
+	svc.Settings.(*creativeFakeSettingReader).models = append(svc.Settings.(*creativeFakeSettingReader).models,
+		CreativeModelSetting{GroupID: 21, Model: "gpt-image-1", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
+		CreativeModelSetting{GroupID: 21, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
+		CreativeModelSetting{GroupID: 22, Model: "gemini-2.5-flash-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+		CreativeModelSetting{GroupID: 22, Model: "gemini-3-pro-image", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+		CreativeModelSetting{GroupID: 23, Model: "grok-imagine-image-1.0", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit}},
+		CreativeModelSetting{GroupID: 24, Model: "gpt-image-2", Operations: []string{CreativeOperationGenerate, CreativeOperationEdit, CreativeOperationInpaint}},
+	)
 
 	got, err := svc.ListModels(ctx, 7)
 	require.NoError(t, err)
@@ -405,11 +413,11 @@ func TestCreativeListModelsFallbacks(t *testing.T) {
 	require.ElementsMatch(t, []string{"gemini-2.5-flash-image", "gemini-3-pro-image"},
 		[]string{byGroup[22][0].Model, byGroup[22][1].Model})
 
-	// grok 回退：1K/2K 档 + 仅 generate。
+	// grok 回退：1K/2K 档 + generate/edit。
 	require.Len(t, byGroup[23], 1)
 	require.Equal(t, "grok-imagine-image-1.0", byGroup[23][0].Model)
 	require.Equal(t, []string{"1K", "2K"}, byGroup[23][0].ImageSizes)
-	require.Equal(t, []string{"generate"}, byGroup[23][0].Operations)
+	require.Equal(t, []string{"generate", "edit"}, byGroup[23][0].Operations)
 
 	// GPT Image 2 即使未配置 4K 覆盖价，也开放 4K 并回退默认价格。
 	require.Len(t, byGroup[24], 1)

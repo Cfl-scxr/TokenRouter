@@ -2279,6 +2279,66 @@ describe("admin SettingsView payment visible method controls", () => {
       expect.objectContaining({ creative_model_settings: creativeSettings }),
     );
   });
+
+  it("removes stale Gemini inpaint when saving creative model settings", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      creative_model_settings: [{
+        group_id: 12,
+        model: "gemini-3.1-flash-image",
+        operations: ["generate", "inpaint"],
+      }],
+    });
+    getCreativeModelCandidates.mockResolvedValue([{
+      group_id: 12,
+      group_name: "Gemini Images",
+      platform: "gemini",
+      model: "gemini-3.1-flash-image",
+      operations: ["generate", "edit"],
+    }]);
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creative_model_settings: [{
+          group_id: 12,
+          model: "gemini-3.1-flash-image",
+          operations: ["generate"],
+        }],
+      }),
+    );
+  });
+
+  it("drops a Gemini setting that only contains stale inpaint", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      creative_model_settings: [{
+        group_id: 12,
+        model: "gemini-3.1-flash-image",
+        operations: ["inpaint"],
+      }],
+    });
+    getCreativeModelCandidates.mockResolvedValue([{
+      group_id: 12,
+      group_name: "Gemini Images",
+      platform: "gemini",
+      model: "gemini-3.1-flash-image",
+      operations: ["generate", "edit"],
+    }]);
+
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ creative_model_settings: [] }),
+    );
+  });
 });
 
 describe("admin SettingsView security tab controls", () => {
