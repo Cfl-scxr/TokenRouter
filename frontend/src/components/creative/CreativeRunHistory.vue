@@ -23,11 +23,17 @@
       </h3>
       <button
         type="button"
-        class="ml-auto text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+        class="ml-auto text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-gray-200"
+        :disabled="refreshing || studio.loadingHistory.value"
+        :aria-busy="refreshing || studio.loadingHistory.value"
         :title="t('common.refresh')"
         @click="refresh"
       >
-        <Icon name="refresh" size="sm" :class="studio.loadingHistory.value && 'animate-spin'" />
+        <Icon
+          name="refresh"
+          size="sm"
+          :class="(refreshing || studio.loadingHistory.value) && 'animate-spin'"
+        />
       </button>
       <button
         type="button"
@@ -140,7 +146,7 @@
  *   「导入到画布」和「下载」按钮统一放在图片下方并排展示；本地素材缺失时按钮禁用并展示缺失占位
  * - 进行中的任务只展示加载状态，不提供素材操作或取消入口
  */
-import { h, onBeforeUnmount, ref, watch } from 'vue'
+import { h, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import Icon from '@/components/icons/Icon.vue'
@@ -166,6 +172,8 @@ const { formatBalanceAmount } = useBalanceDisplay()
 const open = ref(false)
 // 原地展开的历史任务 id（同时只展开一条）
 const expandedRunId = ref<string | null>(null)
+// 手动刷新状态独立维护，确保快速响应也能先渲染出旋转反馈
+const refreshing = ref(false)
 
 // 展开区的 objectURL 缓存：切换收起或卸载时统一回收
 const expandedUrls = new Map<string, string>()
@@ -251,8 +259,16 @@ function formatRunTime(timestamp: number | undefined): string {
   return formatDateTime(new Date(ms))
 }
 
-function refresh(): void {
-  void studio.refreshHistory()
+async function refresh(): Promise<void> {
+  if (refreshing.value || studio.loadingHistory.value) return
+  refreshing.value = true
+  // 先提交刷新状态，让图标在请求开始前完成一次绘制。
+  await nextTick()
+  try {
+    await studio.refreshHistory()
+  } finally {
+    refreshing.value = false
+  }
 }
 </script>
 
