@@ -87,7 +87,7 @@ export default {
       clearSuccess: 'Local creative data cleared.',
       confirmClearTitle: 'Clear local creative data?',
       confirmClearMessage:
-        'This permanently deletes locally stored source images, masks, results and canvas scenes and resets this browser workspace. Older history will be hidden from this browser (task metadata remains on the server), and new runs will use a new workspace. Images already generated cannot be recovered. This does not affect your account balance.',
+        'This permanently deletes locally stored source images, masks, results, canvas scenes and creative drafts, and resets this browser workspace. Older history will be hidden from this browser (task metadata remains on the server), and new runs will use a new workspace. Images already generated cannot be recovered. This does not affect your account balance.',
     },
     status: {
       queued: 'Queued',

@@ -55,6 +55,7 @@ const MODEL = {
   model: 'model-x',
   operations: ['generate', 'edit', 'inpaint'],
   image_sizes: ['1K', '2K'],
+  qualities: ['low', 'medium', 'high'],
   price_1k: 2,
   price_2k: 3,
   price_4k: 4,
@@ -122,6 +123,72 @@ describe('useCreativeStudio', () => {
     studio.selectOption(creativeOptionKey(MODEL))
     return { studio, wrapper }
   }
+
+  describe('创作参数本地持久化', () => {
+    it('恢复包含提示词的新设置记录，并兼容没有提示词的旧记录', async () => {
+      mockedStore.loadSetting.mockResolvedValueOnce({
+        optionKey: creativeOptionKey(MODEL),
+        operation: 'edit',
+        imageSize: '2K',
+        aspectRatio: '4:3',
+        quality: 'high',
+        prompt: '恢复的提示词',
+      })
+      const { studio, wrapper } = mountStudio()
+
+      await studio.loadModels()
+
+      expect(studio.prompt.value).toBe('恢复的提示词')
+      expect(studio.operation.value).toBe('edit')
+      expect(studio.imageSize.value).toBe('2K')
+      expect(studio.aspectRatio.value).toBe('4:3')
+      expect(studio.quality.value).toBe('high')
+      wrapper.unmount()
+
+      mockedStore.loadSetting.mockResolvedValueOnce({
+        optionKey: creativeOptionKey(MODEL),
+        operation: 'generate',
+        imageSize: '1K',
+        aspectRatio: '1:1',
+        quality: '',
+      })
+      const second = mountStudio()
+      await second.studio.loadModels()
+      expect(second.studio.prompt.value).toBe('')
+      second.wrapper.unmount()
+    })
+
+    it('提示词输入使用防抖写入，并在页面隐藏时立即刷新', async () => {
+      const { studio, wrapper } = await setupStudio()
+      // 清除恢复阶段产生的设置写入，单独观察本次输入。
+      await vi.advanceTimersByTimeAsync(300)
+      mockedStore.saveSetting.mockClear()
+
+      studio.prompt.value = '正在编辑的提示词'
+      await Promise.resolve()
+      expect(mockedStore.saveSetting).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(299)
+      expect(mockedStore.saveSetting).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      await Promise.resolve()
+      expect(mockedStore.saveSetting).toHaveBeenCalledWith(
+        'creative:selection',
+        expect.objectContaining({ prompt: '正在编辑的提示词' }),
+      )
+
+      mockedStore.saveSetting.mockClear()
+      studio.prompt.value = '关闭前的最新提示词'
+      window.dispatchEvent(new Event('pagehide'))
+      await vi.advanceTimersByTimeAsync(0)
+      await Promise.resolve()
+      expect(mockedStore.saveSetting).toHaveBeenCalledWith(
+        'creative:selection',
+        expect.objectContaining({ prompt: '关闭前的最新提示词' }),
+      )
+      wrapper.unmount()
+    })
+  })
 
   describe('createRun 校验', () => {
     it('edit 无源图时直接报错且不发起请求', async () => {

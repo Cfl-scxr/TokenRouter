@@ -306,6 +306,11 @@ function setObjectData(object: FabricObject, data: Record<string, unknown>): voi
   target.data = data
 }
 
+// Fabric 7 序列化图片类型为大写 Image，兼容旧快照中的小写 image。
+function isImageSnapshotObject(object: Record<string, unknown>): boolean {
+  return typeof object.type === 'string' && object.type.toLowerCase() === 'image'
+}
+
 // 读取图片原始像素尺寸：优先使用快照中的数据，兼容旧场景则回退到图片元素本身
 function imageResolution(image: FabricImage): ImageResolution | null {
   const stored = objectData(image).resolution
@@ -442,6 +447,20 @@ let canvas: Canvas | null = null
 let maskCanvas: StaticCanvas | null = null
 let resizeObserver: ResizeObserver | null = null
 let sceneSaveTimer: ReturnType<typeof setTimeout> | null = null
+// 恢复期间禁止保存 Fabric 的 clear/add 事件，避免异步恢复把快照写成空场景
+let sceneRestoreInProgress = false
+// 恢复代际用于使卸载或用户清空后的迟到恢复回调失效
+let sceneRestoreGeneration = 0
+// 组件销毁后忽略所有异步恢复与放置回调
+let sceneDisposed = false
+// 只有用户变更过画布才需要在卸载时刷新快照
+let sceneDirty = false
+// 快照版本递增，旧写入完成后不能把较新的变更标记为已保存
+let sceneRevision = 0
+// IndexedDB 快照写入串行化，保持提交顺序稳定
+let sceneWriteChain: Promise<void> = Promise.resolve()
+// 初始恢复 Promise 作为所有外部上板/导入操作的屏障
+let sceneRestorePromise: Promise<void> = Promise.resolve()
 // dragenter/dragleave 在子元素间移动时会成对触发，使用深度计数避免反馈闪烁
 let dragDepth = 0
 // 平移拖拽状态：pointerId 统一鼠标 / 触摸
@@ -505,12 +524,19 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(fitToContainer)
   resizeObserver.observe(container)
   window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('pagehide', onPageHide)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   syncDotGrid()
-  void restoreScene()
+  sceneDisposed = false
+  sceneRestoreInProgress = true
+  const generation = ++sceneRestoreGeneration
+  sceneRestorePromise = restoreScene(generation)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('pagehide', onPageHide)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   const container = containerRef.value
   container?.removeEventListener('contextmenu', suppressContextMenu)
   container?.removeEventListener('dragenter', onDragEnter)
@@ -523,8 +549,12 @@ onBeforeUnmount(() => {
   resizeObserver = null
   stopPanAnim()
   if (sceneSaveTimer) clearTimeout(sceneSaveTimer)
+  sceneSaveTimer = null
+  // 恢复尚未完成时不要用当前空画布覆盖已有快照；已完成且有变更时尽力刷新最后一次写入。
+  if (!sceneRestoreInProgress && sceneDirty) flushSceneSave()
+  sceneDisposed = true
+  sceneRestoreGeneration++
   if (canvas) {
-    persistSceneNow()
     void canvas.dispose()
     canvas = null
   }
@@ -753,6 +783,15 @@ function bindCanvasEvents(): void {
       refreshResolutionTag(inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null)
     }
   })
+}
+
+// 页面进入后台时提前刷新待写快照，降低直接关闭浏览器造成的最后一次变更丢失概率。
+function onPageHide(): void {
+  flushSceneSave()
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'hidden') flushSceneSave()
 }
 
 // 将 wheel 的像素、行、页三种单位统一成画布像素，避免鼠标滚轮平移过慢。
@@ -1279,7 +1318,11 @@ async function addImageToScene(
 
 // 收割成功的输出自动上板：通过队列串行执行，记录 blob → 放置 → 视角移动到新图中心
 async function placeOutput(asset: { blob: Blob; runId: string; outputIndex: number }): Promise<void> {
-  const placement = outputPlacementQueue.then(() => placeOutputNow(asset))
+  const placement = outputPlacementQueue.then(async () => {
+    await sceneRestorePromise
+    if (sceneDisposed) return
+    await placeOutputNow(asset)
+  })
   // 队列本身不能被单次失败阻塞；具体错误由 placeOutputNow 自行处理并转为已完成。
   outputPlacementQueue = placement.catch(() => undefined)
   await placement
@@ -1290,7 +1333,11 @@ async function placeOutputAt(
   asset: { blob: Blob; runId: string; outputIndex: number },
   center: { x: number; y: number },
 ): Promise<void> {
-  const placement = outputPlacementQueue.then(() => placeOutputNow(asset, center))
+  const placement = outputPlacementQueue.then(async () => {
+    await sceneRestorePromise
+    if (sceneDisposed) return
+    await placeOutputNow(asset, center)
+  })
   outputPlacementQueue = placement.catch(() => undefined)
   await placement
 }
@@ -1322,6 +1369,8 @@ async function placeOutputNow(
       panToScenePoint({ x: position.x + placedWidth / 2, y: position.y + placedHeight / 2 })
     }
     scheduleSceneSave()
+    // 图片完成上板后立即落一份快照，避免用户在防抖窗口内刷新导致场景丢失。
+    flushSceneSave()
   } catch (error) {
     console.error('Failed to place creative output:', error)
     emit('error', t('creative.error.loadImageFailed'))
@@ -1330,6 +1379,8 @@ async function placeOutputNow(
 
 // 上传或外部拖入的源图先保存本地库，再按指定中心点放置，保证场景刷新后仍可恢复。
 async function addUploadedImageAt(blob: Blob, center: { x: number; y: number }): Promise<void> {
+  await sceneRestorePromise
+  if (sceneDisposed) return
   if (!canvas) return
   const assetKey = localAssetKey('source', `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
   try {
@@ -1359,6 +1410,8 @@ async function addUploadedImageAt(blob: Blob, center: { x: number; y: number }):
       recordLastPlaced(position, { width: size.width * scale, height: size.height * scale })
     }
     scheduleSceneSave()
+    // 上传图片已经写入素材库后立即保存场景，确保刚放置完成就刷新也能恢复。
+    flushSceneSave()
   } catch (error) {
     console.error('Failed to place uploaded image:', error)
     emit('error', t('creative.error.loadImageFailed'))
@@ -1517,6 +1570,9 @@ async function downloadSelected(): Promise<void> {
 
 function resetCanvas(): void {
   if (!canvas) return
+  // 用户明确清空画布时取消尚未完成的旧快照恢复，避免清空后旧对象迟到复活。
+  sceneRestoreGeneration++
+  sceneRestoreInProgress = false
   stopPanAnim()
   inpaintAnchor.value = null
   paintSuspended.value = false
@@ -1541,21 +1597,44 @@ function resetCanvas(): void {
   selectedObjectCount.value = 0
   canvas.requestRenderAll()
   scheduleSceneSave()
+  // 清空是用户明确操作，立即写入空场景，避免旧快照在短暂防抖期间复活。
+  flushSceneSave()
 }
 
 // ==================== 场景持久化 ====================
 
 function scheduleSceneSave(): void {
+  if (sceneDisposed || sceneRestoreInProgress) return
+  sceneDirty = true
+  sceneRevision++
   if (sceneSaveTimer) clearTimeout(sceneSaveTimer)
-  sceneSaveTimer = setTimeout(() => persistSceneNow(), SCENE_SAVE_DEBOUNCE)
+  sceneSaveTimer = setTimeout(() => {
+    sceneSaveTimer = null
+    void persistSceneNow()
+  }, SCENE_SAVE_DEBOUNCE)
 }
 
-function persistSceneNow(): void {
-  if (!canvas) return
+function flushSceneSave(): void {
+  if (sceneSaveTimer) clearTimeout(sceneSaveTimer)
+  sceneSaveTimer = null
+  void persistSceneNow()
+}
+
+function persistSceneNow(): Promise<void> {
+  if (!canvas || sceneDisposed || sceneRestoreInProgress || !sceneDirty) return sceneWriteChain
   const json = snapshotScene()
-  void saveSceneJson(SCENE_KEY, json).catch((error) => {
-    console.error('Failed to persist creative scene:', error)
-  })
+  const revision = sceneRevision
+  sceneWriteChain = sceneWriteChain
+    .catch(() => undefined)
+    .then(() => saveSceneJson(SCENE_KEY, json))
+    .then(() => {
+      // 只有期间没有更新过画布时才清除脏标记，否则保留给下一次写入。
+      if (sceneRevision === revision) sceneDirty = false
+    })
+    .catch((error) => {
+      console.error('Failed to persist creative scene:', error)
+    })
+  return sceneWriteChain
 }
 
 // 序列化（含自定义 data）：图片像素不进快照，src 用 asset://<assetKey> 占位；
@@ -1565,7 +1644,7 @@ function snapshotScene(): string {
   const json = canvas.toObject(['data']) as { objects?: Array<Record<string, unknown> & ObjectWithData> }
   for (const object of json.objects ?? []) {
     const assetKey = object.data?.assetKey
-    if (object.type === 'image' && typeof assetKey === 'string') {
+    if (isImageSnapshotObject(object) && typeof assetKey === 'string') {
       object.src = `${ASSET_PROTOCOL}${assetKey}`
     }
   }
@@ -1580,14 +1659,19 @@ function snapshotScene(): string {
 }
 
 // 挂载时恢复：asset:// 图片回 IndexedDB 取 blob，缺失的图跳过不阻塞
-async function restoreScene(): Promise<void> {
-  if (!canvas) return
+async function restoreScene(generation: number): Promise<void> {
+  const target = canvas
+  if (!target) {
+    sceneRestoreInProgress = false
+    return
+  }
+  const pendingUrls: string[] = []
+  const isCurrent = () => !sceneDisposed && canvas === target && sceneRestoreGeneration === generation
   try {
     const stored = await loadSceneJson(SCENE_KEY)
-    if (!stored) return
+    if (!stored || !isCurrent()) return
     const parsed = JSON.parse(stored) as { objects?: Array<Record<string, unknown> & ObjectWithData> }
     const objects = Array.isArray(parsed.objects) ? parsed.objects : []
-    const pendingUrls: string[] = []
     const restored: typeof objects = []
     for (const object of objects) {
       // 旧快照里可能残留锚点/参考图描边等运行时辅助对象，直接跳过
@@ -1604,10 +1688,11 @@ async function restoreScene(): Promise<void> {
         continue
       }
       const assetKey = object.data?.assetKey
-      if (object.type === 'image' && typeof assetKey === 'string') {
+      if (isImageSnapshotObject(object) && typeof assetKey === 'string') {
         const blob = await loadAsset(assetKey)
           .then((asset) => asset?.blob ?? null)
           .catch(() => null)
+        if (!isCurrent()) return
         if (!blob) {
           // 本地素材缺失：跳过该图，继续恢复其它对象
           continue
@@ -1617,7 +1702,7 @@ async function restoreScene(): Promise<void> {
         object.src = objectUrl
         pendingUrls.push(objectUrl)
       } else if (
-        object.type === 'image' &&
+        isImageSnapshotObject(object) &&
         typeof object.src === 'string' &&
         // 旧版本快照里的 blob: 对象 URL 已失效，无法恢复，跳过
         object.src.startsWith('blob:')
@@ -1627,14 +1712,22 @@ async function restoreScene(): Promise<void> {
       restored.push(object)
     }
     parsed.objects = restored
-    await canvas.loadFromJSON(parsed as never)
-    pendingUrls.forEach((url) => URL.revokeObjectURL(url))
-    canvas.requestRenderAll()
+    if (!isCurrent()) return
+    await target.loadFromJSON(parsed as never)
+    if (!isCurrent()) return
+    target.requestRenderAll()
     // 恢复的视口/缩放同步到圆点网格
     syncDotGrid()
     hasMaskStrokes.value = getMaskPaths().length > 0
   } catch (error) {
     console.error('Failed to restore creative scene:', error)
+  } finally {
+    pendingUrls.forEach((url) => URL.revokeObjectURL(url))
+    if (sceneRestoreGeneration === generation) {
+      sceneRestoreInProgress = false
+      // 恢复过程本身触发的 Fabric 事件不属于用户变更。
+      sceneDirty = false
+    }
   }
 }
 

@@ -46,10 +46,13 @@ interface CreativeSelectionSettings {
   imageSize: string
   aspectRatio: string
   quality: string
+  // 兼容旧记录：历史版本没有保存提示词草稿
+  prompt?: string
 }
 
 const SETTINGS_KEY = 'creative:selection'
 const PROMPT_MAX_LENGTH = 8000
+const SETTINGS_SAVE_DEBOUNCE = 300
 
 // 所有进行中任务共享一次列表轮询；生图通常耗时 1–3 分钟，无需前置快速轮询。
 const POLL_INTERVAL = 3000
@@ -99,6 +102,13 @@ export function useCreativeStudio() {
   // 浏览器工作区代际：清空或其它标签页旋转工作区后，旧异步请求不得回写状态。
   let workspaceGeneration = 0
   let workspaceId: string | null = null
+  // 设置恢复完成前不写入默认值，避免异步恢复把旧记录覆盖掉
+  let settingsHydrated = false
+  let settingsSaveTimer: ReturnType<typeof setTimeout> | null = null
+  let settingsRevision = 0
+  let settingsDirty = false
+  // 设置写入串行化，保证快速输入时最后一次快照不会被旧写入覆盖
+  let settingsWriteChain: Promise<void> = Promise.resolve()
 
   // 丢弃当前工作区的页面状态与轮询，避免本地身份不可用时继续展示旧历史。
   function resetWorkspaceState(): void {
@@ -176,9 +186,13 @@ export function useCreativeStudio() {
       if (saved.imageSize) imageSize.value = saved.imageSize
       if (saved.aspectRatio) aspectRatio.value = saved.aspectRatio
       if (typeof saved.quality === 'string') quality.value = saved.quality
+      if (typeof saved.prompt === 'string') prompt.value = saved.prompt.slice(0, PROMPT_MAX_LENGTH)
       normalizeSelection()
     } catch (e) {
       console.error('Failed to restore creative settings:', e)
+    } finally {
+      settingsHydrated = true
+      scheduleSelectionSettingsSave()
     }
   }
 
@@ -203,22 +217,57 @@ export function useCreativeStudio() {
     normalizeSelection()
   }
 
+  function selectionSettingsSnapshot(): CreativeSelectionSettings {
+    return {
+      optionKey: selectedOptionKey.value,
+      operation: operation.value,
+      imageSize: imageSize.value,
+      aspectRatio: aspectRatio.value,
+      quality: quality.value,
+      prompt: prompt.value.slice(0, PROMPT_MAX_LENGTH),
+    }
+  }
+
+  // 设置变化防抖持久化，避免提示词逐字输入产生大量 IndexedDB 事务
+  function scheduleSelectionSettingsSave(): void {
+    if (!settingsHydrated) return
+    settingsDirty = true
+    settingsRevision++
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
+    settingsSaveTimer = setTimeout(() => {
+      settingsSaveTimer = null
+      void persistSelectionSettings()
+    }, SETTINGS_SAVE_DEBOUNCE)
+  }
+
+  function flushSelectionSettingsSave(): void {
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
+    settingsSaveTimer = null
+    void persistSelectionSettings()
+  }
+
+  function persistSelectionSettings(): Promise<void> {
+    if (!settingsHydrated || !settingsDirty) return settingsWriteChain
+    const snapshot = selectionSettingsSnapshot()
+    const revision = settingsRevision
+    settingsWriteChain = settingsWriteChain
+      .catch(() => undefined)
+      .then(() => saveSetting(SETTINGS_KEY, snapshot))
+      .then(() => {
+        if (settingsRevision === revision) settingsDirty = false
+      })
+      .catch((error) => {
+        console.error('Failed to persist creative settings:', error)
+      })
+    return settingsWriteChain
+  }
+
   // 参数变化持久化，下次进入恢复
   watch(
-    [selectedOptionKey, operation, imageSize, aspectRatio, quality],
-    () => {
-      const snapshot: CreativeSelectionSettings = {
-        optionKey: selectedOptionKey.value,
-        operation: operation.value,
-        imageSize: imageSize.value,
-        aspectRatio: aspectRatio.value,
-        quality: quality.value,
-      }
-      void saveSetting(SETTINGS_KEY, snapshot).catch(() => {
-        // 设置持久化失败不影响使用
-      })
-    },
-    { flush: 'post' },
+    [selectedOptionKey, operation, imageSize, aspectRatio, quality, prompt],
+    scheduleSelectionSettingsSave,
+    // 使用同步 watcher 先记录脏状态，确保 pagehide 触发时能拿到最新提示词。
+    { flush: 'sync' },
   )
 
   // ==================== 画布桥接 ====================
@@ -265,6 +314,17 @@ export function useCreativeStudio() {
 
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', onWorkspaceStorage)
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
+
+  // 页面进入后台时刷新当前表单草稿，降低直接关闭浏览器造成的最后一次输入丢失概率。
+  function onPageHide(): void {
+    flushSelectionSettingsSave()
+  }
+
+  function onVisibilityChange(): void {
+    if (document.visibilityState === 'hidden') flushSelectionSettingsSave()
   }
 
   // 历史里的输出导入画布：取当前工作区的本地素材调用画布桥接；素材缺失或画布未就绪时返回 false
@@ -666,7 +726,10 @@ export function useCreativeStudio() {
     historyRefreshGeneration++
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', onWorkspaceStorage)
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
+    flushSelectionSettingsSave()
   })
 
   return {
