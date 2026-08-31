@@ -67,7 +67,7 @@ func (e *CreativeExecutor) executeOpenAI(ctx context.Context, run CreativeRun, p
 	if resp.StatusCode >= 400 {
 		return nil, creativeHTTPStatusError(resp.StatusCode, extractUpstreamErrorMessage(respBody))
 	}
-	return parseCreativeOpenAIImageOutputs(respBody, run.RequestedOutputCount)
+	return parseCreativeOpenAIImageOutputs(respBody)
 }
 
 // creativeOpenAIURL 推导 OpenAI images 上游 URL：账号自定义 base_url 优先，否则官方端点。
@@ -177,8 +177,7 @@ func creativeOpenAIUsesResponseFormat(model string) bool {
 }
 
 // parseCreativeOpenAIImageOutputs 解析 OpenAI images 响应（grok 同结构）的 data[].b64_json。
-func parseCreativeOpenAIImageOutputs(body []byte, maxCount int) ([]CreativeOutput, error) {
-	maxCount = 1
+func parseCreativeOpenAIImageOutputs(body []byte) ([]CreativeOutput, error) {
 	data := gjson.GetBytes(body, "data")
 	if !data.IsArray() || len(data.Array()) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "upstream returned no image output")
@@ -194,9 +193,7 @@ func parseCreativeOpenAIImageOutputs(body []byte, maxCount int) ([]CreativeOutpu
 			continue
 		}
 		outputs = append(outputs, CreativeOutput{Index: len(outputs), Bytes: decoded.Bytes, Mime: decoded.Mime})
-		if maxCount > 0 && len(outputs) >= maxCount {
-			break
-		}
+		break
 	}
 	if len(outputs) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "upstream returned no decodable image output")

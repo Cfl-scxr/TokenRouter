@@ -72,7 +72,7 @@ func (e *CreativeExecutor) executeGrok(ctx context.Context, run CreativeRun, pay
 	if resp.StatusCode >= 400 {
 		return nil, creativeHTTPStatusError(resp.StatusCode, extractUpstreamErrorMessage(respBody))
 	}
-	return parseCreativeOpenAIImageOutputs(respBody, run.RequestedOutputCount)
+	return parseCreativeOpenAIImageOutputs(respBody)
 }
 
 // buildCreativeGrokRequest 构造 xAI images/generations 请求体。

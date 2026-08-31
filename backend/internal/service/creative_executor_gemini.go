@@ -137,7 +137,7 @@ func (e *CreativeExecutor) executeGemini(ctx context.Context, run CreativeRun, p
 			return nil, creativeHTTPStatusError(http.StatusBadGateway, err.Error())
 		}
 	}
-	return parseCreativeGeminiImageOutputs(respBody, run.RequestedOutputCount)
+	return parseCreativeGeminiImageOutputs(respBody)
 }
 
 // validateGeminiBaseURL 校验 Gemini base URL；失败时直接返回错误，禁止改变数据发送目标。
@@ -214,8 +214,7 @@ func buildCreativeGeminiRequest(run CreativeRun, payload CreativeRunPayload, ups
 }
 
 // parseCreativeGeminiImageOutputs 从 generateContent 响应中提取 inlineData 图片输出。
-func parseCreativeGeminiImageOutputs(body []byte, maxCount int) ([]CreativeOutput, error) {
-	maxCount = 1
+func parseCreativeGeminiImageOutputs(body []byte) ([]CreativeOutput, error) {
 	parts := gjson.GetBytes(body, "candidates.0.content.parts")
 	if !parts.IsArray() || len(parts.Array()) == 0 {
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "gemini upstream returned no content parts")
@@ -250,9 +249,7 @@ func parseCreativeGeminiImageOutputs(body []byte, maxCount int) ([]CreativeOutpu
 		return nil, creativeHTTPStatusError(http.StatusBadGateway, "gemini upstream returned no image output")
 	}
 	// Vertex 高分辨率生成可能先返回 thought image，再返回最终图片；最终图片位于最后一个 image part。
-	if maxCount > 0 && len(outputs) > maxCount {
-		outputs = outputs[len(outputs)-maxCount:]
-	}
+	outputs = outputs[len(outputs)-1:]
 	for index := range outputs {
 		outputs[index].Index = index
 	}

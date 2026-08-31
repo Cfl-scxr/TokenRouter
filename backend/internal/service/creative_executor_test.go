@@ -29,19 +29,14 @@ func TestParseCreativeOpenAIImageOutputs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	outputs, err := parseCreativeOpenAIImageOutputs(body, 4)
+	outputs, err := parseCreativeOpenAIImageOutputs(body)
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
 	require.Equal(t, 0, outputs[0].Index)
 	require.Equal(t, []byte("png-bytes-1"), outputs[0].Bytes)
 	require.Equal(t, "image/png", outputs[0].Mime)
-	// 即使调用方传入更大的 maxCount，创作台也固定只保留一张。
-	outputs, err = parseCreativeOpenAIImageOutputs(body, 1)
-	require.NoError(t, err)
-	require.Len(t, outputs, 1)
-
 	// 空 data 报 502 可重试上游错误。
-	_, err = parseCreativeOpenAIImageOutputs([]byte(`{"data":[]}`), 4)
+	_, err = parseCreativeOpenAIImageOutputs([]byte(`{"data":[]}`))
 	require.Error(t, err)
 	var upstreamErr *CreativeUpstreamError
 	require.True(t, errors.As(err, &upstreamErr))
@@ -60,14 +55,14 @@ func TestParseCreativeGeminiImageOutputs(t *testing.T) {
 		]}}]
 	}`, img, base64.StdEncoding.EncodeToString([]byte("webp-bytes"))))
 
-	outputs, err := parseCreativeGeminiImageOutputs(body, 4)
+	outputs, err := parseCreativeGeminiImageOutputs(body)
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
 	require.Equal(t, []byte("webp-bytes"), outputs[0].Bytes)
 	require.Equal(t, "image/webp", outputs[0].Mime)
 
 	// 无候选内容时报可重试错误。
-	_, err = parseCreativeGeminiImageOutputs([]byte(`{"candidates":[]}`), 4)
+	_, err = parseCreativeGeminiImageOutputs([]byte(`{"candidates":[]}`))
 	require.Error(t, err)
 	var upstreamErr *CreativeUpstreamError
 	require.True(t, errors.As(err, &upstreamErr))
@@ -81,7 +76,7 @@ func TestNormalizeCreativeOutputs(t *testing.T) {
 		{Index: 0, Bytes: []byte("same"), Mime: "image/png"},
 		{Index: 1, Bytes: []byte("same"), Mime: "image/png"},
 		{Index: 2, Bytes: []byte("other"), Mime: "image/png"},
-	}, 2)
+	})
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
 	require.Equal(t, []byte("same"), outputs[0].Bytes)
@@ -91,19 +86,19 @@ func TestNormalizeCreativeOutputs(t *testing.T) {
 		{Index: 0, Bytes: []byte("a"), Mime: "image/png"},
 		{Index: 1, Bytes: []byte("b"), Mime: "image/png"},
 		{Index: 2, Bytes: []byte("c"), Mime: "image/png"},
-	}, 2)
+	})
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
 	require.Equal(t, 0, outputs[0].Index)
 
 	// 单张超限（>32MiB）视为失败。
 	big := make([]byte, creativeMaxOutputBytes+1)
-	_, err = normalizeCreativeOutputs([]CreativeOutput{{Index: 0, Bytes: big, Mime: "image/png"}}, 1)
+	_, err = normalizeCreativeOutputs([]CreativeOutput{{Index: 0, Bytes: big, Mime: "image/png"}})
 	require.Error(t, err)
 	require.False(t, IsRetryableCreativeError(err))
 
 	// 空输出视为失败。
-	_, err = normalizeCreativeOutputs(nil, 1)
+	_, err = normalizeCreativeOutputs(nil)
 	require.Error(t, err)
 }
 
@@ -420,7 +415,7 @@ func TestParseCreativeGeminiImageOutputsUsesFinalImagePart(t *testing.T) {
 	final := base64.StdEncoding.EncodeToString([]byte("final-image"))
 	body := fmt.Sprintf(`{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":%q}},{"inlineData":{"mimeType":"image/png","data":%q}}]}}]}`, thought, final)
 
-	outputs, err := parseCreativeGeminiImageOutputs([]byte(body), 1)
+	outputs, err := parseCreativeGeminiImageOutputs([]byte(body))
 	require.NoError(t, err)
 	require.Len(t, outputs, 1)
 	require.Equal(t, []byte("final-image"), outputs[0].Bytes)

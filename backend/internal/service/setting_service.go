@@ -194,23 +194,23 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo                 SettingRepository
-	defaultSubPlanReader        DefaultSubscriptionPlanReader
-	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                         *config.Config
-	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
-	creativeWorkerCountCallback func(int)
+	settingRepo                  SettingRepository
+	defaultSubPlanReader         DefaultSubscriptionPlanReader
+	proxyRepo                    ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                          *config.Config
+	onUpdate                     func() // Callback when settings are updated (for cache invalidation)
+	creativeWorkerCountCallback  func(int)
 	creativeWorkerStatusCallback func() CreativeWorkerStatus
-	version                     string // Application version
-	webSearchManagerBuilder     WebSearchManagerBuilder
-	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF      singleflight.Group
-	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF             singleflight.Group
-	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
-	openAIAllowCodexPluginSF    singleflight.Group
-	cyberSessionBlockCache      atomic.Value // *cachedCyberSessionBlockRuntime
-	cyberSessionBlockSF         singleflight.Group
+	version                      string // Application version
+	webSearchManagerBuilder      WebSearchManagerBuilder
+	antigravityUAVersionCache    atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF       singleflight.Group
+	openAICodexUACache           atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF              singleflight.Group
+	openAIAllowCodexPluginCache  atomic.Value // *cachedOpenAIAllowCodexPlugin
+	openAIAllowCodexPluginSF     singleflight.Group
+	cyberSessionBlockCache       atomic.Value // *cachedCyberSessionBlockRuntime
+	cyberSessionBlockSF          singleflight.Group
 
 	// panelRateLimitCache 面板 API 限流配置进程内缓存（*cachedPanelRateLimitSettings）。
 	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。

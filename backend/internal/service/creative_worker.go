@@ -589,24 +589,6 @@ func (w *CreativeRunWorker) handleExecuteError(ctx context.Context, runID string
 	return CreativeProcessResult{Terminal: true}, nil
 }
 
-// retryOrGiveUp 结算类错误的重试路径：按错误重试预算重排，超限后放弃（保留当前状态出队）。
-func (w *CreativeRunWorker) retryOrGiveUp(ctx context.Context, runID, code string, cause error) (CreativeProcessResult, error) {
-	attempts, err := w.repo.IncrementCreativeRunAttempt(ctx, runID)
-	if err != nil {
-		return CreativeProcessResult{}, err
-	}
-	if attempts < w.opts.MaxAttempts*2 {
-		return CreativeProcessResult{RequeueAfter: w.opts.ErrorRetryDelay}, nil
-	}
-	logger.L().Warn("creative.worker_settlement_retry_exhausted",
-		zap.String("run_id", runID),
-		zap.String("code", code),
-		zap.Int("attempts", attempts),
-		zap.Error(cause),
-	)
-	return CreativeProcessResult{Terminal: true}, nil
-}
-
 // creativeExecuteErrorParts 把执行错误映射为落库的错误码与消息。
 func creativeExecuteErrorParts(err error) (string, string) {
 	var upstreamErr *CreativeUpstreamError

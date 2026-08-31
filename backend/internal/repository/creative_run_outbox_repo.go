@@ -121,10 +121,10 @@ func (r *creativeRunOutboxRepository) Retry(ctx context.Context, id int64, lease
 	if availableAt.IsZero() {
 		availableAt = time.Now().Add(time.Minute)
 	}
-	return r.updateClaimed(ctx, id, leaseToken, fmt.Sprintf(`
+	return r.updateClaimed(ctx, id, leaseToken, `
 		SET status = 'pending', available_at = $3, lease_token = NULL, lease_until = NULL,
 			last_error = $4, updated_at = NOW()
-	`), availableAt, strings.TrimSpace(lastError))
+	`, availableAt, strings.TrimSpace(lastError))
 }
 
 func (r *creativeRunOutboxRepository) Cancel(ctx context.Context, id int64, leaseToken string) error {

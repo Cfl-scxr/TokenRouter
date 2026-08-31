@@ -232,7 +232,7 @@ func (e *CreativeExecutor) Execute(ctx context.Context, run CreativeRun, payload
 		e.reportScheduleResult(execution, account.ID, false)
 		return nil, err
 	}
-	outputs, err = normalizeCreativeOutputs(outputs, run.RequestedOutputCount)
+	outputs, err = normalizeCreativeOutputs(outputs)
 	if err != nil {
 		e.reportScheduleResult(execution, account.ID, false)
 		return nil, err
@@ -290,14 +290,6 @@ func (e *CreativeExecutor) executeTimeout() time.Duration {
 	return defaultCreativeExecuteTimeout
 }
 
-// maxExecuteAttempts 返回最大执行次数（含首次）。
-func (e *CreativeExecutor) maxExecuteAttempts() int {
-	if e != nil && e.cfg != nil && e.cfg.Creative.MaxExecuteAttempts > 0 {
-		return e.cfg.Creative.MaxExecuteAttempts
-	}
-	return defaultCreativeMaxAttempts
-}
-
 // accountProxyURL 返回账号绑定的代理地址（无代理时为空串）。
 func accountProxyURL(account *Account) string {
 	if account == nil || account.ProxyID == nil || account.Proxy == nil {
@@ -316,8 +308,7 @@ func readCreativeUpstreamBody(body io.Reader, limit int64) ([]byte, error) {
 
 // normalizeCreativeOutputs 对执行器输出做后处理：
 // 单张大小上限、固定取一张、sha256 去重。
-func normalizeCreativeOutputs(outputs []CreativeOutput, requested int) ([]CreativeOutput, error) {
-	requested = 1
+func normalizeCreativeOutputs(outputs []CreativeOutput) ([]CreativeOutput, error) {
 	if len(outputs) == 0 {
 		return nil, creativeNonRetryableError("provider returned no image output")
 	}
@@ -340,11 +331,8 @@ func normalizeCreativeOutputs(outputs []CreativeOutput, requested int) ([]Creati
 	if len(out) == 0 {
 		return nil, creativeNonRetryableError("provider returned no usable image output")
 	}
-	if requested > 0 && len(out) < requested {
-		return nil, creativeNonRetryableError("provider returned %d image outputs, expected %d", len(out), requested)
-	}
-	if requested > 0 && len(out) > requested {
-		out = out[:requested]
+	if len(out) > 1 {
+		out = out[:1]
 	}
 	for index := range out {
 		out[index].Index = index

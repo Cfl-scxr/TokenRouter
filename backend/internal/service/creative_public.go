@@ -1832,7 +1832,10 @@ func (s *CreativePublicService) SettleRun(ctx context.Context, runID string) err
 	if err != nil {
 		return err
 	}
-	if run == nil || (!IsCreativeRunSettlementPending(run.Status) && !(run.Status == CreativeRunStatusCancelled && run.ProviderResultRecordedAt != nil)) {
+	if run == nil {
+		return nil
+	}
+	if !IsCreativeRunSettlementPending(run.Status) && (run.Status != CreativeRunStatusCancelled || run.ProviderResultRecordedAt == nil) {
 		return nil
 	}
 	if run.Status == CreativeRunStatusReleasePending {
@@ -2114,13 +2117,6 @@ func (s *CreativePublicService) maxTotalInputBytes() int64 {
 		return s.Config.Creative.MaxTotalInputBytes
 	}
 	return 67108864
-}
-
-func (s *CreativePublicService) defaultResponseMimeType() string {
-	if s != nil && s.Config != nil && strings.TrimSpace(s.Config.Creative.DefaultResponseMimeType) != "" {
-		return strings.TrimSpace(s.Config.Creative.DefaultResponseMimeType)
-	}
-	return defaultCreativeResponseMime
 }
 
 func (s *CreativePublicService) defaultImageSize() string {

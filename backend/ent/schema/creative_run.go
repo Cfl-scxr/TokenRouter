@@ -71,21 +71,21 @@ func (CreativeRun) Fields() []ent.Field {
 		field.Float("subscription_rate_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(1),
 		field.Float("balance_rate_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).Default(1),
 		field.Bool("plan_group_rate_multiplier_enabled").Default(true),
-	field.String("error_code").Optional().Nillable().MaxLen(128),
-	field.String("error_message").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
-	// release_target_status 记录 release_pending 完成后应落入的终态。
-	field.String("release_target_status").MaxLen(20).Default("failed"),
+		field.String("error_code").Optional().Nillable().MaxLen(128),
+		field.String("error_message").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		// release_target_status 记录 release_pending 完成后应落入的终态。
+		field.String("release_target_status").MaxLen(20).Default("failed"),
 		field.Int("attempt_count").Default(0),
 		// 额度预记标记：与 batch_image_jobs.allowance_reserved 同语义，预占时置 true，捕获/释放后复位。
-	field.Bool("allowance_reserved").Default(false),
-	// provisioning_phase 记录创建 saga 已完成的最后阶段，供崩溃恢复继续执行。
-	field.String("provisioning_phase").MaxLen(32).Default("created"),
-	field.Time("provider_result_recorded_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-	field.Int("settlement_attempt_count").Default(0),
-	field.Int("release_attempt_count").Default(0),
-	field.Time("next_reconcile_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-	field.String("last_reconcile_error").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
-	// version 乐观锁：状态转换时 +1。
+		field.Bool("allowance_reserved").Default(false),
+		// provisioning_phase 记录创建 saga 已完成的最后阶段，供崩溃恢复继续执行。
+		field.String("provisioning_phase").MaxLen(32).Default("created"),
+		field.Time("provider_result_recorded_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Int("settlement_attempt_count").Default(0),
+		field.Int("release_attempt_count").Default(0),
+		field.Time("next_reconcile_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.String("last_reconcile_error").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		// version 乐观锁：状态转换时 +1。
 		field.Int64("version").Default(1),
 		field.Time("started_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("completed_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
