@@ -894,6 +894,19 @@ func TestValidateCreateParams(t *testing.T) {
 		require.ErrorIs(t, err, ErrCreativeInputTooLarge)
 	})
 
+	t.Run("generate 参考图数量超限", func(t *testing.T) {
+		svc := newCreativeTestService()
+		configureOpenAICreativeTestService(svc)
+		params := validCreateParams()
+		params.Model = "gpt-image-2"
+		params.SourceImages = make([]CreativeInputImage, 17)
+		for i := range params.SourceImages {
+			params.SourceImages[i] = CreativeInputImage{Bytes: makeTestPNG(t, 2, 2), Mime: "image/png"}
+		}
+		_, err := svc.validateCreateParams(context.Background(), 7, &params)
+		require.ErrorIs(t, err, ErrCreativeInvalidParams)
+	})
+
 	t.Run("inpaint 缺 mask", func(t *testing.T) {
 		svc := newCreativeTestService()
 		configureOpenAICreativeTestService(svc)

@@ -20,6 +20,9 @@ import (
 // 创作台 multipart 单字段大小上限：配置值通过 limit+1 读取检测，避免静默截断。
 const creativeMaxUploadPartSize = 40 << 20
 
+// multipart 请求体除图片外还包含字段与边界，预留少量空间后再套用总输入上限。
+const creativeMultipartOverheadBytes = 1 << 20
+
 // CreativeHandler 处理创作台用户侧请求。
 type CreativeHandler struct {
 	service *service.CreativePublicService
@@ -95,12 +98,18 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		return
 	}
 	partLimit := int64(creativeMaxUploadPartSize)
+	totalInputLimit := int64(64 << 20)
 	if h.service != nil && h.service.MaxAssetBytes() > 0 {
 		partLimit = h.service.MaxAssetBytes()
 	}
-	req, err := parseCreativeCreateRunMultipart(c, partLimit)
+	if h.service != nil && h.service.MaxTotalInputBytes() > 0 {
+		totalInputLimit = h.service.MaxTotalInputBytes()
+	}
+	// 先限制整个请求体，避免解析器在服务层总量校验前累积任意多的文件。
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, totalInputLimit+creativeMultipartOverheadBytes)
+	req, err := parseCreativeCreateRunMultipart(c, partLimit, totalInputLimit)
 	if err != nil {
-		if errors.Is(err, service.ErrCreativeAssetTooLarge) {
+		if errors.Is(err, service.ErrCreativeAssetTooLarge) || errors.Is(err, service.ErrCreativeInputTooLarge) {
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -131,7 +140,7 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 // 字段 group_id/model/operation/prompt/image_size/aspect_ratio/quality/background/
 // thinking_level，
 // 文件字段 source_images（多文件）与 mask（单文件）。只接受上传文件，不接受远程 URL。
-func parseCreativeCreateRunMultipart(c *gin.Context, partLimit int64) (*creativeCreateRunRequest, error) {
+func parseCreativeCreateRunMultipart(c *gin.Context, partLimit, totalInputLimit int64) (*creativeCreateRunRequest, error) {
 	contentType := c.GetHeader("Content-Type")
 	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -142,6 +151,10 @@ func parseCreativeCreateRunMultipart(c *gin.Context, partLimit int64) (*creative
 		return nil, http.ErrMissingBoundary
 	}
 	req := &creativeCreateRunRequest{}
+	if totalInputLimit <= 0 {
+		totalInputLimit = 64 << 20
+	}
+	var totalFileBytes int64
 	reader := multipart.NewReader(c.Request.Body, boundary)
 	for {
 		part, err := reader.NextPart()
@@ -161,14 +174,31 @@ func parseCreativeCreateRunMultipart(c *gin.Context, partLimit int64) (*creative
 			if partLimit <= 0 {
 				partLimit = creativeMaxUploadPartSize
 			}
-			data, readErr := io.ReadAll(io.LimitReader(part, partLimit+1))
+			remaining := totalInputLimit - totalFileBytes
+			if remaining <= 0 {
+				_ = part.Close()
+				return nil, service.ErrCreativeInputTooLarge
+			}
+			readLimit := partLimit
+			if remaining < readLimit {
+				readLimit = remaining
+			}
+			data, readErr := io.ReadAll(io.LimitReader(part, readLimit+1))
 			_ = part.Close()
 			if readErr != nil {
+				var maxBytesErr *http.MaxBytesError
+				if errors.As(readErr, &maxBytesErr) {
+					return nil, service.ErrCreativeInputTooLarge
+				}
 				return nil, readErr
 			}
-			if int64(len(data)) > partLimit {
+			if int64(len(data)) > readLimit {
+				if readLimit < partLimit {
+					return nil, service.ErrCreativeInputTooLarge
+				}
 				return nil, service.ErrCreativeAssetTooLarge
 			}
+			totalFileBytes += int64(len(data))
 			partMIME := normalizeCreativeUploadMime(strings.TrimSpace(part.Header.Get("Content-Type")), data)
 			switch {
 			case name == "mask":

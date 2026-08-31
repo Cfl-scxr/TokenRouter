@@ -1045,7 +1045,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 		return nil, ErrCreativeOperationUnsupported
 	}
 	capabilities := creativeCapabilitiesForModel(group.Platform, finalModel)
-	if operation != CreativeOperationGenerate && capabilities.maxReferenceImages > 0 && len(params.SourceImages) > capabilities.maxReferenceImages {
+	if capabilities.maxReferenceImages > 0 && len(params.SourceImages) > capabilities.maxReferenceImages {
 		return nil, ErrCreativeInvalidParams
 	}
 
@@ -2102,6 +2102,11 @@ func (s *CreativePublicService) maxAssetBytes() int64 {
 // MaxAssetBytes 返回 handler 与模型目录共用的单文件上限。
 func (s *CreativePublicService) MaxAssetBytes() int64 {
 	return s.maxAssetBytes()
+}
+
+// MaxTotalInputBytes 返回 handler 与参数校验共用的单次任务素材总量上限。
+func (s *CreativePublicService) MaxTotalInputBytes() int64 {
+	return s.maxTotalInputBytes()
 }
 
 func (s *CreativePublicService) maxTotalInputBytes() int64 {
