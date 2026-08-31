@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CreativeRunHistory from '@/components/creative/CreativeRunHistory.vue'
@@ -105,5 +105,51 @@ describe('CreativeRunHistory 拖放', () => {
     expect(badge.exists()).toBe(true)
     expect(badge.text()).toBe('1')
     wrapper.unmount()
+  })
+
+  it('在活动任务详情中显示并更新生成耗时', async () => {
+    vi.useFakeTimers()
+    const now = new Date('2026-08-31T00:01:05.000Z')
+    vi.setSystemTime(now)
+    const startedAt = now.getTime() - 65_000
+    const asset: LocalAsset = {
+      key: outputAssetKey(run.id, 0),
+      kind: 'output',
+      blob: new Blob(['image'], { type: 'image/png' }),
+      runId: run.id,
+      outputIndex: 0,
+      createdAt: startedAt,
+    }
+    const activeRun = {
+      ...run,
+      id: 'crun_active_timer',
+      status: 'running' as const,
+      created_at: startedAt,
+      started_at: startedAt,
+      outputs: [],
+    }
+    const studio = createStudio(asset)
+    studio.runHistory.value = [activeRun]
+    const wrapper = mount(CreativeRunHistory, {
+      props: { studio },
+      global: { stubs: { Icon: true } },
+    })
+
+    await wrapper.get('button[aria-expanded="false"]').trigger('click')
+    const rowButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('creative.status.running'))
+    expect(rowButton).toBeDefined()
+    expect(rowButton!.text()).toContain('01:05')
+    await rowButton!.trigger('click')
+
+    expect(wrapper.get('[data-testid="creative-run-elapsed"]').text()).toBe('01:05')
+    vi.advanceTimersByTime(2_000)
+    await nextTick()
+    expect(wrapper.get('[data-testid="creative-run-elapsed"]').text()).toBe('01:07')
+    expect(rowButton!.text()).toContain('01:07')
+
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 })

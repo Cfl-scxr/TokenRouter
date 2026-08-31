@@ -91,6 +91,7 @@ export default {
     },
     history: {
       title: '历史记录',
+      elapsed: '已用时 {time}',
       toggle: '展开 / 收起历史记录',
       empty: '暂无创作记录。',
       importToCanvas: '导入到画布',

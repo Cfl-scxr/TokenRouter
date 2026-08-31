@@ -91,6 +91,7 @@ export default {
     },
     history: {
       title: 'History',
+      elapsed: 'Elapsed {time}',
       toggle: 'Toggle run history',
       empty: 'No creative runs yet.',
       importToCanvas: 'Send to canvas',

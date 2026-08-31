@@ -77,6 +77,15 @@
             </div>
             <div class="mt-1 flex items-center gap-2 text-[11px] text-gray-400 dark:text-dark-400">
               <span>{{ formatRunTime(run.created_at) }}</span>
+              <span
+                v-if="formatElapsed(run)"
+                class="inline-flex shrink-0 items-center gap-1 tabular-nums"
+                :aria-label="t('creative.history.elapsed', { time: formatElapsed(run) })"
+                :title="t('creative.history.elapsed', { time: formatElapsed(run) })"
+              >
+                <Icon name="clock" size="xs" aria-hidden="true" />
+                <span>{{ formatElapsed(run) }}</span>
+              </span>
               <span v-if="run.actual_cost != null" class="ml-auto">{{ t('creative.result.actualCost', { cost: formatBalanceAmount(run.actual_cost, { fractionDigits: 3 }) }) }}</span>
             </div>
           </button>
@@ -90,7 +99,19 @@
                     <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-primary-900/10 bg-gray-50 dark:border-dark-600 dark:bg-dark-950">
                       <Icon name="refresh" size="md" class="animate-spin text-primary-500" />
                     </div>
-                    <span>{{ t(`creative.status.${run.status}`, run.status) }}</span>
+                    <div class="min-w-0">
+                      <span class="block">{{ t(`creative.status.${run.status}`, run.status) }}</span>
+                      <span
+                        v-if="formatElapsed(run)"
+                        data-testid="creative-run-elapsed"
+                        class="mt-1 inline-flex items-center gap-1 tabular-nums text-[11px] text-gray-400 dark:text-dark-400"
+                        :aria-label="t('creative.history.elapsed', { time: formatElapsed(run) })"
+                        :title="t('creative.history.elapsed', { time: formatElapsed(run) })"
+                      >
+                        <Icon name="clock" size="xs" aria-hidden="true" />
+                        <span>{{ formatElapsed(run) }}</span>
+                      </span>
+                    </div>
                   </div>
                   <template v-else-if="run.outputs?.length">
                     <!-- 输出纵向排列：图片优先撑满弹窗宽度，操作按钮统一放在图片下方 -->
@@ -190,6 +211,9 @@ const expandedRunId = ref<string | null>(null)
 const refreshing = ref(false)
 const historyButtonRef = ref<HTMLButtonElement | null>(null)
 defineExpose({ historyButtonRef })
+// 只有存在活动任务时才运行时钟，终态任务直接使用服务端完成时间。
+const elapsedNow = ref(Date.now())
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 // 展开区的 objectURL 缓存：切换收起或卸载时统一回收
 const expandedUrls = new Map<string, string>()
@@ -223,7 +247,29 @@ watch(open, (value) => {
     revokeExpandedUrls()
   }
 })
-onBeforeUnmount(revokeExpandedUrls)
+watch(
+  () => studio.runHistory.value,
+  (runs) => {
+    const hasActiveRun = runs.some((run) => isActive(run))
+    if (hasActiveRun && !elapsedTimer) {
+      elapsedNow.value = Date.now()
+      elapsedTimer = setInterval(() => {
+        elapsedNow.value = Date.now()
+      }, 1000)
+    } else if (!hasActiveRun && elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
+    }
+  },
+  { deep: true, immediate: true },
+)
+onBeforeUnmount(() => {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
+  revokeExpandedUrls()
+})
 
 // 导入画布：把本地保存的输出素材放上画布（走画布桥接）
 function importToCanvas(runId: string, outputIndex: number): void {
@@ -279,11 +325,32 @@ function isActive(run: CreativeRun): boolean {
   return !CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)
 }
 
-// 后端时间戳兼容秒 / 毫秒
+// 后端时间戳兼容秒 / 毫秒。
+function timestampToMilliseconds(timestamp: number | null | undefined): number | null {
+  if (timestamp == null || !Number.isFinite(timestamp)) return null
+  return timestamp < 1e12 ? timestamp * 1000 : timestamp
+}
+
 function formatRunTime(timestamp: number | undefined): string {
-  if (!timestamp) return ''
-  const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp
+  const ms = timestampToMilliseconds(timestamp)
+  if (ms == null) return ''
   return formatDateTime(new Date(ms))
+}
+
+// 活动任务实时计时，终态任务使用服务端完成时间固定显示最终耗时。
+function formatElapsed(run: CreativeRun): string {
+  const startedAt = timestampToMilliseconds(run.started_at ?? run.created_at)
+  if (startedAt == null) return ''
+  const endedAt = isActive(run)
+    ? elapsedNow.value
+    : timestampToMilliseconds(run.completed_at ?? run.cancelled_at)
+  if (endedAt == null) return ''
+  const totalSeconds = Math.max(0, Math.floor((endedAt - startedAt) / 1000))
+  const seconds = totalSeconds % 60
+  const minutes = Math.floor(totalSeconds / 60) % 60
+  const hours = Math.floor(totalSeconds / 3600)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`
 }
 
 async function refresh(): Promise<void> {
