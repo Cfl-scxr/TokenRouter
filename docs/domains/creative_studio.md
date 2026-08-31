@@ -43,7 +43,7 @@ POST /api/v1/creative/runs/{id}/outputs/{index}/ack
 
 除 `GET /creative/models` 与 `GET /creative/capabilities` 外，以上任务创建、历史、活动、详情、输出读取和 ack 路由都必须携带 `X-Creative-Workspace-ID` 请求头。请求头必须是非空 UUID；服务端会规范化为小写，缺失返回 `400 CREATIVE_WORKSPACE_REQUIRED`，格式非法返回 `400 CREATIVE_WORKSPACE_INVALID`。工作区 ID 是浏览器数据分区标识，不替代 JWT 用户权限校验；同源标签页共享同一个值，不同浏览器、无痕窗口或清除站点数据后会使用不同值。
 
-`GET /creative/models` 返回当前用户可用分组与图片模型的组合。每项除分组、模型、操作、尺寸和图片单价（`price_512`、`price_1k`、`price_2k`、`price_4k`）外，还按具体模型返回 `aspect_ratios`、`qualities`、`output_formats`、`output_compression`、`background_options`、`thinking_levels`、`max_output_count` 与 `max_reference_images`；不支持的集合返回空数组，压缩范围返回对象或 `null`。创作台当前固定输出 PNG，因此 `output_formats` 对所有模型为空数组、`output_compression` 为 `null`，这两个字段仅作为能力协议保留。`max_output_count` 固定为 1，创作台每次任务只生成一张图片。`price_512` 仅用于支持 Gemini 512 档位的模型：若渠道配置了 `512` 分层价格则优先使用，否则使用渠道默认价格。前端只按这些服务端能力渲染参数，不根据模型名自行猜测。列表只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。OpenAI 分组支持 `generate`/`edit`/`inpaint`，Gemini（含 Vertex 账号）与 Grok 分组支持 `generate`/`edit`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
+`GET /creative/models` 返回当前用户可用分组与图片模型的组合。每项除分组、模型、操作、尺寸和图片单价（`price_512`、`price_1k`、`price_2k`、`price_4k`）外，还按具体模型返回 `aspect_ratios`、`qualities`、`output_formats`、`output_compression`、`background_options`、`thinking_levels`、`max_output_count` 与 `max_reference_images`；不支持的集合返回空数组，压缩范围返回对象或 `null`。创作台不提供输出格式选择，因此 `output_formats` 对所有模型为空数组、`output_compression` 为 `null`，这两个字段仅作为能力协议保留；输出格式由供应商实际返回决定，任务输出 metadata 的 `mime_type` 保留真实 MIME（例如 `image/png` 或 `image/jpeg`），前端按该 MIME 保存和下载。`max_output_count` 固定为 1，创作台每次任务只生成一张图片。`price_512` 仅用于支持 Gemini 512 档位的模型：若渠道配置了 `512` 分层价格则优先使用，否则使用渠道默认价格。前端只按这些服务端能力渲染参数，不根据模型名自行猜测。列表只包含用户可绑定、已启用图片生成、平台支持创作台操作且能解析图片价格的分组。OpenAI 分组支持 `generate`/`edit`/`inpaint`，Gemini（含 Vertex 账号）与 Grok 分组支持 `generate`/`edit`。功能关闭（进程配置 `creative.enabled` 或数据库运行时开关 `creative_enabled` 关闭）时，该接口返回空数组而非错误，前端据此展示"已停用"空态；其余写/读接口返回 404 `CREATIVE_DISABLED`。
 
 管理员还可以在系统设置中配置全局生图模型白名单。`creative_model_settings` 是 `settings` 表中的 JSON 数组，每项精确绑定一个分组和模型，并声明允许的能力：
 
@@ -113,7 +113,7 @@ worker 从 Redis 预留任务后先读取用户最新并发配置，并通过现
 
 - 客户端可对 `POST /creative/runs` 携带 `Idempotency-Key` 头；同一用户同一工作区同一键重放时，若请求指纹一致则直接返回原任务（`idempotent_replay=true`），不重复建单、不重复计费。
 - 同一用户同一工作区同一键但请求体不同（指纹不一致）返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`；不同工作区即使使用相同键也会创建独立任务。
-- 请求指纹是规范化 JSON（分组、模型、操作、prompt sha256、各源图 sha256、mask sha256、尺寸、比例、质量、背景、思考强度和固定单张输出）的 sha256；输出格式固定为 PNG，不作为用户输入参与指纹；`creative_runs.request_fingerprint` 只用于比较同一幂等键的请求体，不设置全局唯一约束。
+- 请求指纹是规范化 JSON（分组、模型、操作、prompt sha256、各源图 sha256、mask sha256、尺寸、比例、质量、背景、思考强度和固定单张输出）的 sha256；输出格式不是用户输入，不参与指纹，实际输出 MIME 由供应商决定并写入输出 metadata；`creative_runs.request_fingerprint` 只用于比较同一幂等键的请求体，不设置全局唯一约束。
 - `(user_id, workspace_id, idempotency_key)` 部分唯一索引只约束带工作区的非空键；迁移前 `workspace_id IS NULL` 的旧任务不参与新的幂等查询，键本身最长 255 字符。
 - 计费与结算请求 ID 全部经由 `usage_billing_dedup` 幂等表去重，worker 重试、重复回调不会产生重复资金动作。
 
@@ -127,7 +127,7 @@ worker 从 Redis 预留任务后先读取用户最新并发配置，并通过现
 
 ## 计费
 
-创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按所选尺寸基础单价估价，快照订阅/余额倍率；没有批量折扣与账号倍率。质量、背景和思考强度不参与创作台价格计算，输出格式固定为 PNG。每次任务固定只生成一张图片。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
+创作台复用批量图片的 UsageBillingRepository hold/capture/release 路径（`ReserveBatchImageBalance`/`CaptureBatchImageBalance`/`ReleaseBatchImageBalance`），按所选尺寸基础单价估价，快照订阅/余额倍率；没有批量折扣与账号倍率。质量、背景和思考强度不参与创作台价格计算，输出格式不参与价格计算且不由客户端指定，实际 MIME 以供应商返回为准。每次任务固定只生成一张图片。资金动作的请求 ID 前缀固定，全部经 `usage_billing_dedup` 幂等：
 
 ```text
 creative_hold:{run_id}      创建任务时预占
@@ -207,7 +207,7 @@ creative:
   max_asset_bytes: 33554432           # 源图单文件上传上限（32 MiB）
   max_total_input_bytes: 67108864     # 单次任务输入总量上限（64 MiB）
   max_prompt_chars: 8000              # prompt 最大 Unicode code point 数
-  default_response_mime_type: "image/png"
+  default_response_mime_type: "image/png"  # 供应商未声明输出 MIME 时的默认值
   default_image_size: "1K"
   queue_ready_key: "creative:queue:ready"
   queue_delayed_key: "creative:queue:delayed"
